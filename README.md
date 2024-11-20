@@ -23,22 +23,32 @@ use serde_json::json;
 
 fn main() {
     let logic = JsonLogic::new();
-    
-    // Rule: Check if user is 21 or older
-    let rule = json!({
-        ">=" : [
-            {"var": "age"},
-            21
+
+    // Complex discount rule:
+    // - 20% off if cart total > $100 AND user is premium member
+    // - OR 10% off if cart has more than 5 items
+    let discount_rule = json!({
+        "or": [
+            {"and": [
+                {">": [{"var": "cart.total"}, 100]},
+                {"==": [{"var": "user.membership"}, "premium"]}
+            ]},
+            {">": [{"var": "cart.item_count"}, 5]}
         ]
     });
-    
-    // Data to evaluate
-    let data = json!({
-        "age": 25
+
+    let customer_data = json!({
+        "cart": {
+            "total": 120.00,
+            "item_count": 3
+        },
+        "user": {
+            "membership": "premium"
+        }
     });
 
-    let result = logic.apply(&rule, &data).unwrap();
-    assert_eq!(result, json!(true));
+    let applies_for_discount = logic.apply(&discount_rule, &customer_data).unwrap();
+    assert_eq!(applies_for_discount, json!(true));
 }
 ```
 
@@ -49,17 +59,9 @@ This implementation supports all standard JSONLogic operations including:
 - Basic operators (`==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`)
 - Logic operators (`!`, `!!`, `or`, `and`, `if`)
 - Numeric operations (`+`, `-`, `*`, `/`, `%`)
-- Array operations (
-
-map
-
-, `reduce`, `filter`, `all`, `none`, `some`, `merge`)
+- Array operations (`merge`)
 - String operations (`cat`, `substr`)
-- Data access (
-
-var
-
-)
+- Data access (`var`)
 
 For detailed documentation of operations and examples, visit [jsonlogic.com](http://jsonlogic.com).
 
