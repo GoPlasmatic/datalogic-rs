@@ -1,4 +1,3 @@
-// src/operators/array_ops.rs
 use crate::operators::operator::Operator;
 use crate::{JsonLogic, JsonLogicResult};
 use serde_json::{json, Value};
@@ -79,18 +78,21 @@ impl Operator for MapOperator {
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
         let (source, mapper) = match Self::validate_args(args) {
             Some(args) => args,
-            None => return Ok(Value::Array(vec![])),
+            None => return Ok(Value::Array(Vec::new())),
         };
 
         let array = match logic.apply(source, data)? {
             Value::Array(arr) => arr,
-            _ => return Ok(Value::Array(vec![])),
+            _ => return Ok(Value::Array(Vec::new())),
         };
 
-        let result = array
-            .into_iter()
-            .map(|item| logic.apply(mapper, &item))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut result = Vec::with_capacity(array.len());
+        result.extend(
+            array
+                .into_iter()
+                .map(|item| logic.apply(mapper, &item))
+                .collect::<Result<Vec<_>, _>>()?
+        );
 
         Ok(Value::Array(result))
     }
