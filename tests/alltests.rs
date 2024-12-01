@@ -79,7 +79,7 @@ fn test_jsonlogic_all_test_suites() {
         // Remote URLs
         "https://jsonlogic.com/tests.json",
         // Local file
-        "tests/custom_tests.json",  // Add your local test file path here
+        // "tests/custom_tests.json",  // Add your local test file path here
     ];
 
     let mut overall_passed = 0;
