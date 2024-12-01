@@ -78,10 +78,8 @@ fn test_jsonlogic_all_test_suites() {
     let test_sources = vec![
         // Remote URLs
         "https://jsonlogic.com/tests.json",
-        // "https://raw.githubusercontent.com/TotalTechGeek/json-logic-engine/refs/heads/master/bench/tests.json",
-        // "https://raw.githubusercontent.com/TotalTechGeek/json-logic-engine/refs/heads/master/bench/compatible.json",
         // Local file
-        // "tests/custom_tests.json",  // Add your local test file path here
+        "tests/custom_tests.json",  // Add your local test file path here
     ];
 
     let mut overall_passed = 0;

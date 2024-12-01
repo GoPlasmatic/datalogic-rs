@@ -1,6 +1,16 @@
 [
     "Custom Tests",
     [
+        {"var": "hello\\.world"},
+        {"hello": {"world": "i'm here!"}, "hello.world": "ups!"},
+        "ups!"
+    ],
+    [
+        {"var": "hello.world"},
+        {"hello": {"world": "i'm here!"}, "hello.world": "ups!"},
+        "i'm here!"
+    ],
+    [
         {
             "var": "hello\\.world"
         },
@@ -57,5 +67,24 @@
             ]
         },
         [{"name":"Israel","code":"he","flag":"🇮🇱","iso":"he-IL","dir":"rtl"},{"name":"українська","code":"ue","flag":"🇺🇦","iso":"uk-UA","dir":"ltr"}]
+    ],
+    [
+        {
+            "if": [
+                {
+                    "and": [
+                        { "===": [ { "var": "first_name" }, true ] },
+                        { "===": [ { "var": "last_name" }, true ] }
+                    ]
+                },
+                { "preserve": { "first_name": "scott", "last_name": "wyatt" } },
+                { "preserve": { "first_name": "no", "last_name": "idea" } }
+            ]
+        }, 
+        {
+            "first_name": true,
+            "last_name": true
+        },
+        {"first_name":"scott","last_name":"wyatt"}
     ]
 ]

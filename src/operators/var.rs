@@ -11,11 +11,27 @@ impl VarOperator {
             return Some(data.clone());
         }
 
+        // Handle escaped path first
+        if path.contains("\\.") {
+            let unescaped_key = path.replace("\\.", ".");
+            if let Value::Object(map) = data {
+                return map.get(&unescaped_key).cloned();
+            }
+            return None;
+        }
+
+        // Handle dot navigation for unescaped paths
         let mut current = data;
         for part in path.split('.') {
-            current = match (current, part.parse::<usize>()) {
-                (Value::Object(map), _) => map.get(part).unwrap_or(&Value::Null),
-                (Value::Array(arr), Ok(index)) => arr.get(index).unwrap_or(&Value::Null),
+            current = match current {
+                Value::Object(map) => map.get(part).unwrap_or(&Value::Null),
+                Value::Array(arr) => {
+                    if let Ok(index) = part.parse::<usize>() {
+                        arr.get(index).unwrap_or(&Value::Null)
+                    } else {
+                        return None;
+                    }
+                },
                 _ => return None
             };
 
@@ -23,7 +39,7 @@ impl VarOperator {
                 return None;
             }
         }
-
+        
         Some(current.clone())
     }
 
@@ -42,26 +58,13 @@ impl VarOperator {
         }
     }
 
-    fn handle_string_path(path_str: &str, data: &Value, default: Option<&Value>) -> JsonLogicResult {
-        if path_str.is_empty() {
-            return Ok(data.clone());
+    fn handle_string_path(path: &str, data: &Value, default: Option<&Value>) -> JsonLogicResult {
+        match Self::get_value_at_path(data, path) {
+            Some(value) => Ok(value),
+            None => Self::get_default(default)
         }
-
-        let mut current = data;
-        for part in path_str.split('.') {
-            current = match (current, part.parse::<usize>()) {
-                (Value::Object(map), _) => map.get(part).unwrap_or(&Value::Null),
-                (Value::Array(arr), Ok(index)) => arr.get(index).unwrap_or(&Value::Null),
-                _ => return Self::get_default(default)
-            };
-
-            if current == &Value::Null {
-                return Self::get_default(default);
-            }
-        }
-
-        Ok(current.clone())
     }
+
 }
 
 impl Operator for VarOperator {

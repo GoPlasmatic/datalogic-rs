@@ -2,6 +2,7 @@ mod error;
 mod operators;
 
 use error::Error;
+use operators::preserve::PreserveOperator;
 use operators::{
     operator::Operator, 
     var::VarOperator, 
@@ -83,6 +84,7 @@ impl JsonLogic {
         self.operators.insert("none".into(), Arc::new(NoneOperator)); 
         self.operators.insert("some".into(), Arc::new(SomeOperator));
  
+        self.operators.insert("preserve".into(), Arc::new(PreserveOperator));
     
     }
 
