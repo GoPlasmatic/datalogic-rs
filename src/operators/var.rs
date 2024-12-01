@@ -1,4 +1,3 @@
-// src/operators/var.rs
 use crate::operators::operator::Operator;
 use crate::{JsonLogic, JsonLogicResult};
 use serde_json::Value;
@@ -9,6 +8,22 @@ impl VarOperator {
     pub(crate) fn get_value_at_path(data: &Value, path: &str) -> Option<Value> {
         if path.is_empty() {
             return Some(data.clone());
+        }
+
+        // Handle direct array access with numeric string
+        if let Ok(index) = path.parse::<usize>() {
+            if let Value::Array(arr) = data {
+                return arr.get(index).cloned();
+            }
+            return None;
+        }
+        
+        // Avoid allocation for single-level paths
+        if !path.contains('.') {
+            if let Value::Object(map) = data {
+                return map.get(path).cloned();
+            }
+            return None;
         }
 
         // Handle escaped path first

@@ -33,7 +33,11 @@ lazy_static::lazy_static! {
 fn bench_apply_all_rules(c: &mut Criterion) {
     let logic = JsonLogic::new();
     
-    c.bench_function("apply_all_rules", |b| {
+    let mut group = c.benchmark_group("jsonlogic_rules");
+    group.sampling_mode(criterion::SamplingMode::Linear);
+    group.sample_size(50);
+    
+    group.bench_function("apply_all_rules", |b| {
         b.iter(|| {
             for (rule, data, expected) in TEST_CASES.iter() {
                 if let Ok(result) = logic.apply(rule, data) {
@@ -42,7 +46,13 @@ fn bench_apply_all_rules(c: &mut Criterion) {
             }
         })
     });
+    
+    group.finish();
 }
 
-criterion_group!(benches, bench_apply_all_rules);
+criterion_group!(
+    name = benches;
+    config = Criterion::default();
+    targets = bench_apply_all_rules
+);
 criterion_main!(benches);

@@ -113,11 +113,10 @@ impl JsonLogic {
                 }
             }
             Value::Array(values) => {
-                // Recursively evaluate each array element
-                let results = values
-                    .iter()
-                    .map(|v| self.apply(v, data))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let mut results = Vec::with_capacity(values.len());
+                for v in values {
+                    results.push(self.apply(v, data)?);
+                }
                 Ok(Value::Array(results))
             }
             Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {
