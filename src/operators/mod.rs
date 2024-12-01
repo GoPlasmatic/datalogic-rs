@@ -7,3 +7,4 @@ pub mod string;
 pub mod array;
 pub mod missing;
 pub mod array_ops;
+pub mod preserve;
