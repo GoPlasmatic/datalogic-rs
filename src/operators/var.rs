@@ -6,16 +6,23 @@ use serde_json::Value;
 pub struct VarOperator;
 
 impl VarOperator {
-    fn get_nested_value<'a>(data: &'a Value, path: &str) -> &'a Value {
+    pub(crate) fn get_nested_value<'a>(data: &'a Value, path: &str) -> &'a Value {
         if path.is_empty() {
             return data;
         }
 
-        let parts: Vec<&str> = path.split('.').collect();
+                // Handle escaped dots by:
+        // 1. Split on unescaped dots
+        // 2. Replace escaped dots with regular dots in each part
+        let parts: Vec<String> = path
+            .split(|c| c == '.' && path.chars().nth(path.find(c).unwrap().checked_sub(1).unwrap_or(0)) != Some('\\'))
+            .map(|s| s.replace("\\.", "."))
+            .collect();
+
         let mut current = data;
-        
-        for part in parts {
+        for part in &parts {
             current = match current {
+                Value::Object(obj) => obj.get(part.as_str()).unwrap_or(&Value::Null),
                 Value::Array(arr) => {
                     if let Ok(index) = part.parse::<usize>() {
                         arr.get(index).unwrap_or(&Value::Null)
@@ -23,7 +30,6 @@ impl VarOperator {
                         &Value::Null
                     }
                 },
-                Value::Object(obj) => obj.get(part).unwrap_or(&Value::Null),
                 _ => &Value::Null,
             };
         }

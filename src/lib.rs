@@ -10,6 +10,8 @@ use operators::{
     arithmetic::*,
     string::*,
     array::*,
+    missing::*,
+    array_ops::*,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -70,6 +72,17 @@ impl JsonLogic {
         self.operators.insert("merge".into(), Arc::new(MergeOperator));
 
         self.operators.insert("if".into(), Arc::new(IfOperator));
+
+        self.operators.insert("missing".into(), Arc::new(MissingOperator));
+        self.operators.insert("missing_some".into(), Arc::new(MissingSomeOperator));
+
+        self.operators.insert("filter".into(), Arc::new(FilterOperator));
+        self.operators.insert("map".into(), Arc::new(MapOperator));
+        self.operators.insert("reduce".into(), Arc::new(ReduceOperator));
+        self.operators.insert("all".into(), Arc::new(AllOperator));
+        self.operators.insert("none".into(), Arc::new(NoneOperator)); 
+        self.operators.insert("some".into(), Arc::new(SomeOperator));
+ 
     
     }
 

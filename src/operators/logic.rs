@@ -32,7 +32,7 @@ impl Operator for OrOperator {
 }
 
 // Helper function to determine truthiness according to JSONLogic rules
-fn is_truthy(value: &Value) -> bool {
+pub(crate) fn is_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(b) => *b,
