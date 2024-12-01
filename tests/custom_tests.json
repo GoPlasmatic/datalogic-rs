@@ -1,0 +1,61 @@
+[
+    "Custom Tests",
+    [
+        {
+            "var": "hello\\.world"
+        },
+        {
+            "hello": {
+                "world": "i'm here!"
+            },
+            "hello.world": "ups!"
+        },
+        "ups!"
+    ],
+    [
+        {
+            "filter": [
+                {
+                    "var": "locales"
+                },
+                {
+                    "!==": [
+                        {
+                            "var": "code"
+                        },
+                        {
+                            "var": "../../locale"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "locale": "pl",
+            "locales": [
+                {
+                    "name": "Israel",
+                    "code": "he",
+                    "flag": "🇮🇱",
+                    "iso": "he-IL",
+                    "dir": "rtl"
+                },
+                {
+                    "name": "українська",
+                    "code": "ue",
+                    "flag": "🇺🇦",
+                    "iso": "uk-UA",
+                    "dir": "ltr"
+                },
+                {
+                    "name": "Polski",
+                    "code": "pl",
+                    "flag": "🇵🇱",
+                    "iso": "pl-PL",
+                    "dir": "ltr"
+                }
+            ]
+        },
+        [{"name":"Israel","code":"he","flag":"🇮🇱","iso":"he-IL","dir":"rtl"},{"name":"українська","code":"ue","flag":"🇺🇦","iso":"uk-UA","dir":"ltr"}]
+    ]
+]
