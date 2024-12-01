@@ -4,175 +4,280 @@ use crate::{JsonLogic, JsonLogicResult};
 use serde_json::{json, Value};
 
 pub struct FilterOperator;
-pub struct MapOperator;
-pub struct ReduceOperator;
-pub struct AllOperator;
-pub struct NoneOperator;
-pub struct SomeOperator;
+
+impl FilterOperator {
+    fn validate_args(args: &Value) -> Option<(&Value, &Value)> {
+        if let Value::Array(values) = args {
+            if values.len() == 2 {
+                return Some((&values[0], &values[1]));
+            }
+        }
+        None
+    }
+
+    fn get_array(logic: &JsonLogic, source: &Value, data: &Value) -> JsonLogicResult {
+        match logic.apply(source, data)? {
+            Value::Array(arr) => Ok(Value::Array(arr)),
+            _ => Ok(Value::Array(vec![]))
+        }
+    }
+
+    fn test_condition(logic: &JsonLogic, condition: &Value, item: &Value) -> JsonLogicResult {
+        let result = logic.apply(condition, item)?;
+        Ok(Value::Bool(crate::operators::logic::is_truthy(&result)))
+    }
+}
 
 impl Operator for FilterOperator {
+    fn auto_traverse(&self) -> bool {
+        false
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 2 {
-                return Ok(Value::Array(vec![]));
-            }
+        let (source, condition) = match Self::validate_args(args) {
+            Some(args) => args,
+            None => return Ok(Value::Array(vec![]))
+        };
 
-            // Get the array to filter from first argument
-            let arr = match logic.apply(&values[0], data)? {
-                Value::Array(a) => a,
-                _ => return Ok(Value::Array(vec![])),
-            };
-
-            let mut result = Vec::new();
+        let array = Self::get_array(logic, source, data)?;
+        
+        if let Value::Array(items) = array {
+            let result = items
+                .into_iter()
+                .filter(|item| {
+                    Self::test_condition(logic, condition, item)
+                        .map(|v| crate::operators::logic::is_truthy(&v))
+                        .unwrap_or(false)
+                })
+                .collect::<Vec<_>>();
             
-            // Apply filter predicate to each item
-            for item in arr {
-                // Test condition against current item
-                let test = logic.apply(&values[1], &item)?;
-                if crate::operators::logic::is_truthy(&test) {
-                    result.push(item.clone());
-                }
-            }
-
             Ok(Value::Array(result))
         } else {
             Ok(Value::Array(vec![]))
         }
+    }
+}
+
+pub struct MapOperator;
+
+impl MapOperator {
+    fn validate_args(args: &Value) -> Option<(&Value, &Value)> {
+        if let Value::Array(values) = args {
+            if values.len() == 2 {
+                return Some((&values[0], &values[1]));
+            }
+        }
+        None
     }
 }
 
 impl Operator for MapOperator {
+    fn auto_traverse(&self) -> bool {
+        false
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
+        let (source, mapper) = match Self::validate_args(args) {
+            Some(args) => args,
+            None => return Ok(Value::Array(vec![])),
+        };
+
+        let array = match logic.apply(source, data)? {
+            Value::Array(arr) => arr,
+            _ => return Ok(Value::Array(vec![])),
+        };
+
+        let result = array
+            .into_iter()
+            .map(|item| logic.apply(mapper, &item))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Value::Array(result))
+    }
+}
+
+pub struct ReduceOperator;
+
+impl ReduceOperator {
+    fn validate_args(args: &Value) -> Option<(&Value, &Value, &Value)> {
         if let Value::Array(values) = args {
-            if values.len() != 2 {
-                return Ok(Value::Array(vec![]));
+            if values.len() == 3 {
+                return Some((&values[0], &values[1], &values[2]));
             }
-
-            let arr = match logic.apply(&values[0], data)? {
-                Value::Array(a) => a,
-                _ => return Ok(Value::Array(vec![])),
-            };
-
-            let mut result = Vec::new();
-            for item in arr {
-                let mapped = logic.apply(&values[1], &item)?;
-                result.push(mapped);
-            }
-
-            Ok(Value::Array(result))
-        } else {
-            Ok(Value::Array(vec![]))
         }
+        None
     }
 }
 
 impl Operator for ReduceOperator {
+    fn auto_traverse(&self) -> bool {
+        false
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 3 {
-                return Ok(Value::Number(0.into()));
-            }
+        let (source, reducer, initial) = match Self::validate_args(args) {
+            Some(args) => args,
+            None => return Ok(Value::Null),
+        };
 
-            let arr = match logic.apply(&values[0], data)? {
-                Value::Array(a) => a,
-                _ => return Ok(logic.apply(&values[2], data)?),
-            };
+        // Evaluate initial value in data context
+        let initial_value = logic.apply(initial, data)?;
 
-            let mut accumulator = logic.apply(&values[2], data)?;
-            
-            for current in arr {
-                let scope = json!({
-                    "current": current,
-                    "accumulator": accumulator
-                });
-                accumulator = logic.apply(&values[1], &scope)?;
-            }
+        // Get array from source
+        let array = match logic.apply(source, data)? {
+            Value::Array(arr) => arr,
+            _ => return Ok(initial_value),
+        };
 
-            Ok(accumulator)
-        } else {
-            Ok(Value::Number(0.into()))
+        // Handle empty array case
+        if array.is_empty() {
+            return Ok(initial_value);
         }
+
+        // Fold with proper context for accumulator and current
+        array.into_iter().fold(Ok(initial_value), |acc, current| {
+            let accumulator = acc?;
+            let context = json!({
+                "current": current,
+                "accumulator": accumulator
+            });
+            logic.apply(reducer, &context)
+        })
+    }
+}
+
+pub struct AllOperator;
+
+impl AllOperator {
+    fn validate_args(args: &Value) -> Option<(&Value, &Value)> {
+        if let Value::Array(values) = args {
+            if values.len() == 2 {
+                return Some((&values[0], &values[1]));
+            }
+        }
+        None
     }
 }
 
 impl Operator for AllOperator {
+    fn auto_traverse(&self) -> bool {
+        false
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 2 {
-                return Ok(Value::Bool(false));
-            }
+        let (source, condition) = match Self::validate_args(args) {
+            Some(args) => args,
+            None => return Ok(Value::Bool(false)),
+        };
 
-            let arr = match logic.apply(&values[0], data)? {
-                Value::Array(a) => a,
-                _ => return Ok(Value::Bool(false)),
-            };
+        let array = match logic.apply(source, data)? {
+            Value::Array(arr) => arr,
+            _ => return Ok(Value::Bool(false)),
+        };
 
-            if arr.is_empty() {
-                return Ok(Value::Bool(false));
-            }
-
-            for item in arr {
-                let test = logic.apply(&values[1], &item)?;
-                if !crate::operators::logic::is_truthy(&test) {
-                    return Ok(Value::Bool(false));
-                }
-            }
-
-            Ok(Value::Bool(true))
-        } else {
-            Ok(Value::Bool(false))
+        // Empty array returns false
+        if array.is_empty() {
+            return Ok(Value::Bool(false));
         }
+
+        let result = array
+            .iter()
+            .all(|item| {
+                logic.apply(condition, item)
+                    .map(|v| crate::operators::logic::is_truthy(&v))
+                    .unwrap_or(false)
+            });
+
+        Ok(Value::Bool(result))
+    }
+}
+
+pub struct NoneOperator;
+
+impl NoneOperator {
+    fn validate_args(args: &Value) -> Option<(&Value, &Value)> {
+        if let Value::Array(values) = args {
+            if values.len() == 2 {
+                return Some((&values[0], &values[1]));
+            }
+        }
+        None
     }
 }
 
 impl Operator for NoneOperator {
+    fn auto_traverse(&self) -> bool {
+        false
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 2 {
-                return Ok(Value::Bool(true));
-            }
+        let (source, condition) = match Self::validate_args(args) {
+            Some(args) => args,
+            None => return Ok(Value::Bool(true)),
+        };
 
-            let arr = match logic.apply(&values[0], data)? {
-                Value::Array(a) => a,
-                _ => return Ok(Value::Bool(true)),
-            };
+        let array = match logic.apply(source, data)? {
+            Value::Array(arr) => arr,
+            _ => return Ok(Value::Bool(true)),
+        };
 
-            for item in arr {
-                let test = logic.apply(&values[1], &item)?;
-                if crate::operators::logic::is_truthy(&test) {
-                    return Ok(Value::Bool(false));
-                }
-            }
-
-            Ok(Value::Bool(true))
-        } else {
-            Ok(Value::Bool(true))
+        if array.is_empty() {
+            return Ok(Value::Bool(true));
         }
+
+        let result = !array
+            .iter()
+            .any(|item| {
+                logic.apply(condition, item)
+                    .map(|v| crate::operators::logic::is_truthy(&v))
+                    .unwrap_or(false)
+            });
+
+        Ok(Value::Bool(result))
+    }
+}
+
+pub struct SomeOperator;
+
+impl SomeOperator {
+    fn validate_args(args: &Value) -> Option<(&Value, &Value)> {
+        if let Value::Array(values) = args {
+            if values.len() == 2 {
+                return Some((&values[0], &values[1]));
+            }
+        }
+        None
     }
 }
 
 impl Operator for SomeOperator {
+    fn auto_traverse(&self) -> bool {
+        false 
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 2 {
-                return Ok(Value::Bool(false));
-            }
+        let (source, condition) = match Self::validate_args(args) {
+            Some(args) => args,
+            None => return Ok(Value::Bool(false)),
+        };
 
-            let arr = match logic.apply(&values[0], data)? {
-                Value::Array(a) => a,
-                _ => return Ok(Value::Bool(false)),
-            };
+        let array = match logic.apply(source, data)? {
+            Value::Array(arr) => arr,
+            _ => return Ok(Value::Bool(false)),
+        };
 
-            for item in arr {
-                let test = logic.apply(&values[1], &item)?;
-                if crate::operators::logic::is_truthy(&test) {
-                    return Ok(Value::Bool(true));
-                }
-            }
-
-            Ok(Value::Bool(false))
-        } else {
-            Ok(Value::Bool(false))
+        if array.is_empty() {
+            return Ok(Value::Bool(false));
         }
+
+        let result = array
+            .iter()
+            .any(|item| {
+                logic.apply(condition, item)
+                    .map(|v| crate::operators::logic::is_truthy(&v))
+                    .unwrap_or(false)
+            });
+
+        Ok(Value::Bool(result))
     }
 }

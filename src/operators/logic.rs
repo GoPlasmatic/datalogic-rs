@@ -100,6 +100,10 @@ impl Operator for TernaryOperator {
 pub struct IfOperator;
 
 impl Operator for IfOperator {
+    fn auto_traverse(&self) -> bool {
+        false
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
         if let Value::Array(values) = args {
             if values.is_empty() {

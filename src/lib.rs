@@ -90,10 +90,25 @@ impl JsonLogic {
         match logic {
             Value::Object(map) if map.len() == 1 => {
                 let (op, args) = map.iter().next().unwrap();
-                self.operators
+                let operator = self.operators
                     .get(op)
-                    .ok_or(Error::UnknownOperator(op.clone()))?
-                    .apply(self, args, data)
+                    .ok_or(Error::UnknownOperator(op.clone()))?;
+
+                // Handle automatic traversal
+                if operator.auto_traverse() {
+                    match args {
+                        Value::Array(values) => {
+                            let evaluated = values
+                                .iter()
+                                .map(|v| self.apply(v, data))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            operator.apply(self, &Value::Array(evaluated), data)
+                        }
+                        _ => operator.apply(self, args, data)
+                    }
+                } else {
+                    operator.apply(self, args, data)
+                }
             }
             Value::Array(values) => {
                 // Recursively evaluate each array element

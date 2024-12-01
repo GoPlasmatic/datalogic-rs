@@ -29,7 +29,7 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
     for (index, entry) in json_data.iter().enumerate() {
         if let Value::String(title) = entry {
             current_section = title.clone();
-            println!("\nTesting section: {}", current_section);
+            println!("Testing section: {}", current_section);
             continue;
         }
 
@@ -44,14 +44,12 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
             let data = &test_case[1];
             let expected = &test_case[2];
 
-            println!("Running test {}: Rule={}", total_tests, rule);
-            
             match logic.apply(rule, data) {
                 Ok(result) => {
                     if result == *expected {
                         passed_tests += 1;
                     } else {
-                        println!("\nTest {} failed in section: {}", total_tests, current_section);
+                        println!("Test {} failed in section: {}", total_tests, current_section);
                         println!("Rule: {}", rule);
                         println!("Data: {}", data);
                         println!("Expected: {}", expected);
@@ -59,7 +57,10 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
                     }
                 },
                 Err(e) => {
-                    println!("\nError in test {}: {}", total_tests, e);
+                    println!("Error in test {}: {}", total_tests, e);
+                    println!("Rule: {}", rule);
+                    println!("Data: {}", data);
+                    println!("Expected: {}", expected);
                 }
             }
         }
@@ -76,8 +77,9 @@ fn extract_filename(url: &str) -> &str {
 fn test_jsonlogic_all_test_suites() {
     let test_sources = vec![
         // Remote URLs
-        "https://raw.githubusercontent.com/TotalTechGeek/json-logic-engine/refs/heads/master/bench/tests.json",
-        "https://raw.githubusercontent.com/TotalTechGeek/json-logic-engine/refs/heads/master/bench/compatible.json",
+        "https://jsonlogic.com/tests.json",
+        // "https://raw.githubusercontent.com/TotalTechGeek/json-logic-engine/refs/heads/master/bench/tests.json",
+        // "https://raw.githubusercontent.com/TotalTechGeek/json-logic-engine/refs/heads/master/bench/compatible.json",
         // Local file
         // "tests/custom_tests.json",  // Add your local test file path here
     ];

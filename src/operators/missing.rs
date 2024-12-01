@@ -4,7 +4,6 @@ use crate::operators::var::VarOperator;
 use serde_json::Value;
 
 pub struct MissingOperator;
-pub struct MissingSomeOperator;
 
 impl MissingOperator {
     fn process_keys(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
@@ -39,9 +38,12 @@ impl MissingOperator {
         if let Value::Array(key_array) = keys {
             for key in key_array {
                 if let Value::String(path) = key {
-                    let value = VarOperator::get_nested_value(data, &path);
-                    if value == &Value::Null {
-                        missing.push(Value::String(path));
+                    // Check if value is None (missing) or Some(Value::Null)
+                    match VarOperator::get_value_at_path(data, &path) {
+                        None | Some(Value::Null) => {
+                            missing.push(Value::String(path));
+                        },
+                        Some(_) => {}  // Value exists and is not null
                     }
                 }
             }
@@ -57,8 +59,10 @@ impl Operator for MissingOperator {
     }
 }
 
-impl Operator for MissingSomeOperator {
-    fn apply(&self, _logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
+pub struct MissingSomeOperator;
+
+impl MissingSomeOperator {
+    fn process_keys(&self, _logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
         if let Value::Array(values) = args {
             if values.len() != 2 {
                 return Ok(Value::Array(vec![]));
@@ -70,22 +74,20 @@ impl Operator for MissingSomeOperator {
                 return Ok(Value::Array(vec![]));
             };
 
-            let keys = if let Value::Array(arr) = &values[1] {
-                arr
-            } else {
-                return Ok(Value::Array(vec![]));
-            };
-
             let mut missing = Vec::new();
             let mut found = 0;
 
-            for key in keys {
-                if let Value::String(path) = key {
-                    let value = VarOperator::get_nested_value(data, path);
-                    if value == &Value::Null {
-                        missing.push(Value::String(path.clone()));
-                    } else {
-                        found += 1;
+            if let Value::Array(key_array) = &values[1] {
+                for key in key_array {
+                    if let Value::String(path) = key {
+                        match VarOperator::get_value_at_path(data, path) {
+                            None | Some(Value::Null) => {
+                                missing.push(Value::String(path.to_string()));
+                            },
+                            Some(_) => {
+                                found += 1;
+                            }
+                        }
                     }
                 }
             }
@@ -98,5 +100,11 @@ impl Operator for MissingSomeOperator {
         } else {
             Ok(Value::Array(vec![]))
         }
+    }
+}
+
+impl Operator for MissingSomeOperator {
+    fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
+        self.process_keys(logic, args, data)
     }
 }
