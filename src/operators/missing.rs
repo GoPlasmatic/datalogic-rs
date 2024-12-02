@@ -10,28 +10,23 @@ impl MissingOperator {
         let mut missing = Vec::new();
         let keys = match args {
             Value::Object(obj) => {
-                if let Some(merge_arr) = obj.get("merge") {
-                    // For each element in merge array, evaluate it
-                    if let Value::Array(elements) = merge_arr {
-                        let mut result = Vec::new();
-                        for elem in elements {
-                            let evaluated = logic.apply(elem, data)?;
-                            match evaluated {
-                                Value::Array(arr) => result.extend(arr),
-                                Value::String(s) => result.push(Value::String(s)),
-                                _ => continue,
-                            }
+                if let Some(Value::Array(elements)) = obj.get("merge") {
+                    let mut result = Vec::new();
+                    for elem in elements {
+                        let evaluated = logic.apply(elem, data)?;
+                        match evaluated {
+                            Value::Array(arr) => result.extend(arr),
+                            Value::String(s) => result.push(Value::String(s)),
+                            _ => continue,
                         }
-                        Value::Array(result)
-                    } else {
-                        return Ok(Value::Array(vec![]))
                     }
+                    Value::Array(result)
                 } else {
                     return Ok(Value::Array(vec![]))
                 }
             }
-            Value::Array(arr) => Value::Array(arr.clone()),
-            Value::String(s) => Value::Array(vec![Value::String(s.clone())]),
+            Value::Array(arr) => Value::Array(arr.to_owned()),
+            Value::String(s) => Value::Array(vec![Value::String(s.to_owned())]),
             _ => return Ok(Value::Array(vec![])),
         };
 

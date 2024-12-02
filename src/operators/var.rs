@@ -7,7 +7,7 @@ pub struct VarOperator;
 impl VarOperator {
     pub(crate) fn get_value_at_path(data: &Value, path: &str) -> Option<Value> {
         if path.is_empty() {
-            return Some(data.clone());
+            return Some(data.to_owned());
         }
 
         // Handle direct array access with numeric string
@@ -55,17 +55,17 @@ impl VarOperator {
             }
         }
         
-        Some(current.clone())
+        Some(current.to_owned())
     }
 
-    fn get_default<'a>(default: Option<&'a Value>) -> JsonLogicResult {
-        default.map_or(Ok(Value::Null), |d| Ok(d.clone()))
+    fn get_default(default: Option<&Value>) -> JsonLogicResult {
+        default.map_or(Ok(Value::Null), |d| Ok(d.to_owned()))
     }
 
     fn handle_numeric_index(index: usize, data: &Value, default: Option<&Value>) -> JsonLogicResult {
         if let Value::Array(arr) = data {
             match arr.get(index) {
-                Some(v) => Ok(v.clone()),
+                Some(v) => Ok(v.to_owned()),
                 None => Self::get_default(default)
             }
         } else {
@@ -99,7 +99,7 @@ impl Operator for VarOperator {
         // Evaluate path if needed
         let path = match path_arg {
             Value::Object(_) | Value::Array(_) => logic.apply(path_arg, data)?,
-            _ => path_arg.clone()
+            _ => path_arg.to_owned()
         };
 
         // Handle different path types

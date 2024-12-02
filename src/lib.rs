@@ -12,7 +12,6 @@ use operators::{
     string::*,
     array::*,
     missing::*,
-    array_ops::*,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -22,6 +21,24 @@ pub type JsonLogicResult = Result<Value, Error>;
 
 #[derive(Clone)]
 pub struct JsonLogic {
+    var_op: Arc<VarOperator>,
+
+    // Common comparison operators
+    eq_op: Arc<EqualsOperator>,
+    strict_eq_op: Arc<StrictEqualsOperator>,
+    gt_op: Arc<GreaterThanOperator>,
+    lt_op: Arc<LessThanOperator>,
+    
+    // Common logical operators
+    and_op: Arc<AndOperator>,
+    or_op: Arc<OrOperator>,
+    not_op: Arc<NotOperator>,
+    
+    // Common array operators
+    map_op: Arc<MapOperator>,
+    filter_op: Arc<FilterOperator>,
+    reduce_op: Arc<ReduceOperator>,
+
     operators: HashMap<String, Arc<dyn Operator>>,
 }
 
@@ -34,6 +51,17 @@ impl Default for JsonLogic {
 impl JsonLogic {
     pub fn new() -> Self {
         let mut logic = Self {
+            var_op: Arc::new(VarOperator),
+            eq_op: Arc::new(EqualsOperator),
+            strict_eq_op: Arc::new(StrictEqualsOperator),
+            gt_op: Arc::new(GreaterThanOperator),
+            lt_op: Arc::new(LessThanOperator),
+            and_op: Arc::new(AndOperator),
+            or_op: Arc::new(OrOperator),
+            not_op: Arc::new(NotOperator),
+            map_op: Arc::new(MapOperator),
+            filter_op: Arc::new(FilterOperator),
+            reduce_op: Arc::new(ReduceOperator),
             operators: HashMap::new(),
         };
         logic.register_defaults();
@@ -41,20 +69,11 @@ impl JsonLogic {
     }
 
     fn register_defaults(&mut self) {
-        self.operators.insert("var".into(), Arc::new(VarOperator));
-
-        self.operators.insert("==".into(), Arc::new(EqualsOperator));
-        self.operators.insert("===".into(), Arc::new(StrictEqualsOperator));
         self.operators.insert("!=".into(), Arc::new(NotEqualsOperator));
         self.operators.insert("!==".into(), Arc::new(StrictNotEqualsOperator));
-        self.operators.insert(">".into(), Arc::new(GreaterThanOperator));
         self.operators.insert(">=".into(), Arc::new(GreaterThanEqualOperator));
-        self.operators.insert("<".into(), Arc::new(LessThanOperator));
         self.operators.insert("<=".into(), Arc::new(LessThanEqualOperator));
-        self.operators.insert("!".into(), Arc::new(NotOperator));
 
-        self.operators.insert("or".into(), Arc::new(OrOperator));
-        self.operators.insert("and".into(), Arc::new(AndOperator));
         self.operators.insert("?:".into(), Arc::new(TernaryOperator));
         self.operators.insert("!!".into(), Arc::new(DoubleBangOperator));
 
@@ -77,9 +96,6 @@ impl JsonLogic {
         self.operators.insert("missing".into(), Arc::new(MissingOperator));
         self.operators.insert("missing_some".into(), Arc::new(MissingSomeOperator));
 
-        self.operators.insert("filter".into(), Arc::new(FilterOperator));
-        self.operators.insert("map".into(), Arc::new(MapOperator));
-        self.operators.insert("reduce".into(), Arc::new(ReduceOperator));
         self.operators.insert("all".into(), Arc::new(AllOperator));
         self.operators.insert("none".into(), Arc::new(NoneOperator)); 
         self.operators.insert("some".into(), Arc::new(SomeOperator));
@@ -92,11 +108,22 @@ impl JsonLogic {
         match logic {
             Value::Object(map) if map.len() == 1 => {
                 let (op, args) = map.iter().next().unwrap();
-                let operator = self.operators
-                    .get(op)
-                    .ok_or(Error::UnknownOperator(op.clone()))?;
+                let operator: &dyn Operator = match op.as_str() {
+                    "var" => &*self.var_op,
+                    "==" => &*self.eq_op,
+                    "===" => &*self.strict_eq_op,
+                    ">" => &*self.gt_op,
+                    "<" => &*self.lt_op,
+                    "and" => &*self.and_op,
+                    "or" => &*self.or_op,
+                    "!" => &*self.not_op,
+                    "map" => &*self.map_op,
+                    "filter" => &*self.filter_op,
+                    "reduce" => &*self.reduce_op,
+                    _ => &**self.operators.get(op)
+                        .ok_or(Error::UnknownOperator(op.clone()))?
+                };
 
-                // Handle automatic traversal
                 if operator.auto_traverse() {
                     match args {
                         Value::Array(values) => {

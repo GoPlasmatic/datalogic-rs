@@ -32,28 +32,32 @@ impl Operator for InOperator {
 pub struct CatOperator;
 
 impl Operator for CatOperator {
-    fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        let values: Vec<&Value> = match args {
-            Value::Array(arr) => arr.iter().collect(),
-            value => vec![value],
-        };
+    fn apply(&self, _logic: &JsonLogic, args: &Value, _data: &Value) -> JsonLogicResult {
+        match args {
+            Value::Array(arr) if arr.is_empty() => Ok(Value::String(String::new())),
+            Value::Array(arr) => {
+                let total_len = arr.iter()
+                    .map(|v| match v {
+                        Value::String(s) => s.len(),
+                        _ => 2
+                    })
+                    .sum();
 
-        let result = values
-            .iter()
-            .map(|v| logic.apply(v, data))
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .map(|v| match v {
-                Value::String(s) => s.to_string(),
-                Value::Number(n) => n.to_string(),
-                Value::Bool(b) => b.to_string(),
-                Value::Null => "null".to_string(),
-                _ => "".to_string(),
-            })
-            .collect::<Vec<String>>()
-            .join("");
-
-        Ok(Value::String(result))
+                let mut result = String::with_capacity(total_len);
+                
+                for value in arr {
+                    match value {
+                        Value::String(s) => result.push_str(s),
+                        Value::Null => {},
+                        _ => result.push_str(&value.to_string())
+                    }
+                }
+                
+                Ok(Value::String(result))
+            },
+            Value::String(s) => Ok(Value::String(s.clone())),
+            _ => Ok(Value::String(args.to_string()))
+        }
     }
 }
 
@@ -61,58 +65,55 @@ pub struct SubstrOperator;
 
 impl Operator for SubstrOperator {
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            let str_val = logic.apply(&values[0], data)?;
-            let str = match str_val {
-                Value::String(s) => s,
-                _ => return Err(Error::InvalidArguments("substr requires string first argument".into())),
-            };
-
-            let start = if let Some(start_val) = values.get(1) {
-                let start_num = logic.apply(start_val, data)?;
-                match start_num {
-                    Value::Number(n) => n.as_i64().unwrap_or(0) as i32,
-                    _ => 0,
+        match args {
+            Value::Array(arr) => {
+                if arr.len() < 2 || arr.len() > 3 {
+                    return Ok(Value::Null);
                 }
-            } else {
-                0
-            };
 
-            let length = if let Some(len_val) = values.get(2) {
-                let len_num = logic.apply(len_val, data)?;
-                match len_num {
-                    Value::Number(n) => Some(n.as_i64().unwrap_or(0) as i32),
-                    _ => None,
-                }
-            } else {
-                None
-            };
+                // Get string and convert to chars for proper Unicode handling
+                let string = match logic.apply(&arr[0], data)? {
+                    Value::String(s) => s,
+                    other => other.to_string(),
+                };
+                let chars: Vec<char> = string.chars().collect();
 
-            let chars: Vec<char> = str.chars().collect();
-            let len = chars.len() as i32;
-            
-            // Handle negative start index
-            let normalized_start = if start < 0 {
-                (len + start).max(0) as usize
-            } else {
-                start as usize
-            };
+                // Handle negative start index
+                let start = match logic.apply(&arr[1], data)? {
+                    Value::Number(n) => n.as_i64().unwrap_or(0) as isize,
+                    _ => return Ok(Value::Null),
+                };
+                
+                let start_idx = if start < 0 {
+                    chars.len().saturating_sub((-start) as usize)
+                } else {
+                    start.min(chars.len() as isize) as usize
+                };
 
-            let result = match length {
-                Some(l) => {
-                    let normalized_len = if l < 0 {
-                        (len - normalized_start as i32 + l).max(0) as usize
-                    } else {
-                        l as usize
-                    };
-                    chars[normalized_start..].iter().take(normalized_len).collect()
-                },
-                None => chars[normalized_start..].iter().collect(),
-            };
+                // Handle length with negative values
+                let length = if arr.len() == 3 {
+                    match logic.apply(&arr[2], data)? {
+                        Value::Number(n) => n.as_i64().unwrap_or(0),
+                        _ => return Ok(Value::Null),
+                    }
+                } else {
+                    chars.len() as i64
+                };
 
-            Ok(Value::String(result))
-        } else {
-            Err(Error::InvalidArguments("substr requires array arguments".into()))
+                let take_count = if length < 0 {
+                    chars.len().saturating_sub(start_idx).saturating_sub((-length) as usize)
+                } else {
+                    length as usize
+                };
+
+                Ok(Value::String(
+                    chars.iter()
+                        .skip(start_idx)
+                        .take(take_count)
+                        .collect()
+                ))
+            }
+            _ => Ok(Value::Null),
         }
     }
 }
