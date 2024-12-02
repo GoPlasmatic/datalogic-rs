@@ -76,23 +76,22 @@ impl Operator for AndOperator {
 pub struct TernaryOperator;
 
 impl Operator for TernaryOperator {
+    fn auto_traverse(&self) -> bool {
+        false // Prevent double evaluation
+    }
+
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 3 {
-                return Err(Error::InvalidArguments("?: requires exactly 3 arguments".into()));
-            }
-
-            let condition = logic.apply(&values[0], data)?;
-            let true_value = &values[1];
-            let false_value = &values[2];
-
-            if is_truthy(&condition) {
-                logic.apply(true_value, data)
-            } else {
-                logic.apply(false_value, data)
-            }
-        } else {
-            Err(Error::InvalidArguments("?: requires array argument".into()))
+        match args {
+            Value::Array(arr) if arr.len() == 3 => {
+                let condition = logic.apply(&arr[0], data)?;
+                
+                if crate::operators::logic::is_truthy(&condition) {
+                    logic.apply(&arr[1], data)
+                } else {
+                    logic.apply(&arr[2], data)
+                }
+            },
+            _ => Ok(Value::Null)
         }
     }
 }

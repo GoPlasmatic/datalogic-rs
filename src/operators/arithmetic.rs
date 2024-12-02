@@ -7,41 +7,43 @@ pub struct AddOperator;
 impl Operator for AddOperator {
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
         match args {
-            // Handle unary plus operation (type conversion)
-            Value::String(s) => {
-                match s.parse::<f64>() {
-                    Ok(n) => {
-                        if n.fract() == 0.0 {
-                            Ok(Value::Number(serde_json::Number::from(n as i64)))
-                        } else {
-                            Ok(Value::Number(serde_json::Number::from_f64(n).unwrap()))
-                        }
-                    },
-                    Err(_) => Err(Error::InvalidArguments("Invalid number string".into()))
-                }
-            },
+            // Fast path for single number
             Value::Number(n) => Ok(Value::Number(n.clone())),
-            // Handle array of values for addition
-            Value::Array(values) => {
-                let sum = values
-                    .iter()
-                    .map(|v| logic.apply(v, data))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .iter()
-                    .map(|v| match v {
-                        Value::Number(n) => Ok(n.as_f64().unwrap()),
-                        Value::String(s) => s.parse::<f64>()
-                            .map_err(|_| Error::InvalidArguments("Invalid number string".into())),
-                        _ => Ok(0.0),
-                    })
-                    .sum::<Result<f64, _>>()?;
-
-                if sum.fract() == 0.0 {
-                    Ok(Value::Number(serde_json::Number::from(sum as i64)))
-                } else {
-                    Ok(Value::Number(serde_json::Number::from_f64(sum).unwrap()))
+            
+            // Fast path for single string
+            Value::String(s) => {
+                if let Ok(n) = s.parse::<f64>() {
+                    return Ok(Value::Number(if n.fract() == 0.0 {
+                        serde_json::Number::from(n as i64)
+                    } else {
+                        serde_json::Number::from_f64(n).unwrap()
+                    }));
                 }
+                Err(Error::InvalidArguments("Invalid number string".into()))
             },
+            
+            // Optimized array handling
+            Value::Array(values) => {
+                let mut sum = 0.0f64;
+                
+                // Direct iteration without collect
+                for value in values {
+                    let n = match logic.apply(value, data)? {
+                        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+                        Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+                        _ => 0.0
+                    };
+                    sum += n;
+                }
+
+                // Single conversion at end
+                Ok(Value::Number(if sum.fract() == 0.0 {
+                    serde_json::Number::from(sum as i64)
+                } else {
+                    serde_json::Number::from_f64(sum).unwrap()
+                }))
+            },
+            
             _ => Err(Error::InvalidArguments("+ requires string or array argument".into()))
         }
     }
@@ -51,36 +53,25 @@ pub struct ModuloOperator;
 
 impl Operator for ModuloOperator {
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        if let Value::Array(values) = args {
-            if values.len() != 2 {
-                return Err(Error::InvalidArguments("% requires 2 arguments".into()));
-            }
+        match args {
+            Value::Array(values) if values.len() == 2 => {
+                let (n1, n2) = match (logic.apply(&values[0], data)?, logic.apply(&values[1], data)?) {
+                    (Value::Number(n1), Value::Number(n2)) => (n1.as_f64().unwrap(), n2.as_f64().unwrap()),
+                    _ => return Err(Error::InvalidArguments("% requires numeric arguments".into()))
+                };
+                
+                if n2 == 0.0 {
+                    return Err(Error::InvalidArguments("Division by zero".into()));
+                }
 
-            let left = logic.apply(&values[0], data)?;
-            let right = logic.apply(&values[1], data)?;
-
-            match (left, right) {
-                (Value::Number(n1), Value::Number(n2)) => {
-                    let dividend = n1.as_f64().unwrap();
-                    let divisor = n2.as_f64().unwrap();
-                    
-                    if divisor == 0.0 {
-                        return Err(Error::InvalidArguments("Division by zero".into()));
-                    }
-
-                    let result = dividend % divisor;
-                    
-                    // Convert to integer if result has no decimal part
-                    if result.fract() == 0.0 {
-                        Ok(Value::Number(serde_json::Number::from(result as i64)))
-                    } else {
-                        Ok(Value::Number(serde_json::Number::from_f64(result).unwrap()))
-                    }
-                },
-                _ => Err(Error::InvalidArguments("% requires numeric arguments".into()))
-            }
-        } else {
-            Err(Error::InvalidArguments("% requires array argument".into()))
+                let result = n1 % n2;
+                Ok(Value::Number(if result.fract() == 0.0 {
+                    serde_json::Number::from(result as i64)
+                } else {
+                    serde_json::Number::from_f64(result).unwrap()
+                }))
+            },
+            _ => Err(Error::InvalidArguments("% requires 2 arguments".into()))
         }
     }
 }
