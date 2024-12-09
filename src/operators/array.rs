@@ -114,13 +114,26 @@ impl Operator for ReduceOperator {
             _ => return Ok(initial_value),
         };
 
-        array.into_iter().try_fold(initial_value, |acc, current| {
-            let context = json!({
-                "current": current,
-                "accumulator": acc
-            });
-            logic.apply(reducer, &context)
-        })
+        static CURRENT: &str = "current";
+        static ACCUMULATOR: &str = "accumulator";
+        
+        let mut context = serde_json::Map::with_capacity(2);
+        let mut acc = initial_value;
+
+        context.insert(CURRENT.to_owned(), Value::Null);
+        context.insert(ACCUMULATOR.to_owned(), Value::Null);
+        let mut context_value = Value::Object(context);
+
+        for current in array {
+            if let Value::Object(ref mut map) = context_value {
+                map.get_mut(CURRENT).map(|v| *v = current);
+                map.get_mut(ACCUMULATOR).map(|v| *v = acc.clone());
+            }
+            
+            acc = logic.apply(reducer, &context_value)?;
+        }
+
+        Ok(acc)
     }
 }
 

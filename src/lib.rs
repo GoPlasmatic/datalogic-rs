@@ -14,7 +14,6 @@ use operators::{
     missing::*,
 };
 use serde_json::Value;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type JsonLogicResult = Result<Value, Error>;
@@ -39,7 +38,38 @@ pub struct JsonLogic {
     filter_op: Arc<FilterOperator>,
     reduce_op: Arc<ReduceOperator>,
 
-    operators: HashMap<String, Arc<dyn Operator>>,
+    // Common arithmetic operators
+    not_eq_op: Arc<NotEqualsOperator>,
+    strict_not_eq_op: Arc<StrictNotEqualsOperator>,
+    gt_eq_op: Arc<GreaterThanEqualOperator>,
+    lt_eq_op: Arc<LessThanEqualOperator>,
+
+    // Logic operators
+    ternary_op: Arc<TernaryOperator>,
+    double_bang_op: Arc<DoubleBangOperator>,
+    if_op: Arc<IfOperator>,
+    merge_op: Arc<MergeOperator>,
+    missing_op: Arc<MissingOperator>,
+    missing_some_op: Arc<MissingSomeOperator>,
+    all_op: Arc<AllOperator>,
+    none_op: Arc<NoneOperator>,
+    some_op: Arc<SomeOperator>,
+
+    preserve_op: Arc<PreserveOperator>,
+
+    // String operators
+    in_op: Arc<InOperator>,
+    cat_op: Arc<CatOperator>,
+    substr_op: Arc<SubstrOperator>,
+
+    // Arithmetic operators
+    add_op: Arc<AddOperator>,
+    multiply_op: Arc<MultiplyOperator>,
+    subtract_op: Arc<SubtractOperator>,
+    divide_op: Arc<DivideOperator>,
+    modulo_op: Arc<ModuloOperator>,
+    max_op: Arc<MaxOperator>,
+    min_op: Arc<MinOperator>,
 }
 
 impl Default for JsonLogic {
@@ -50,7 +80,7 @@ impl Default for JsonLogic {
 
 impl JsonLogic {
     pub fn new() -> Self {
-        let mut logic = Self {
+        let logic = Self {
             var_op: Arc::new(VarOperator),
             eq_op: Arc::new(EqualsOperator),
             strict_eq_op: Arc::new(StrictEqualsOperator),
@@ -62,50 +92,39 @@ impl JsonLogic {
             map_op: Arc::new(MapOperator),
             filter_op: Arc::new(FilterOperator),
             reduce_op: Arc::new(ReduceOperator),
-            operators: HashMap::new(),
+            not_eq_op: Arc::new(NotEqualsOperator),
+            strict_not_eq_op: Arc::new(StrictNotEqualsOperator),
+            gt_eq_op: Arc::new(GreaterThanEqualOperator),
+            lt_eq_op: Arc::new(LessThanEqualOperator),
+            ternary_op: Arc::new(TernaryOperator),
+            double_bang_op: Arc::new(DoubleBangOperator),
+            if_op: Arc::new(IfOperator),
+            merge_op: Arc::new(MergeOperator),
+            missing_op: Arc::new(MissingOperator),
+            missing_some_op: Arc::new(MissingSomeOperator),
+            all_op: Arc::new(AllOperator),
+            none_op: Arc::new(NoneOperator),
+            some_op: Arc::new(SomeOperator),
+            preserve_op: Arc::new(PreserveOperator),
+            in_op: Arc::new(InOperator),
+            cat_op: Arc::new(CatOperator),
+            substr_op: Arc::new(SubstrOperator),
+            add_op: Arc::new(AddOperator),
+            multiply_op: Arc::new(MultiplyOperator),
+            subtract_op: Arc::new(SubtractOperator),
+            divide_op: Arc::new(DivideOperator),
+            modulo_op: Arc::new(ModuloOperator),
+            max_op: Arc::new(MaxOperator),
+            min_op: Arc::new(MinOperator),
         };
-        logic.register_defaults();
         logic
-    }
-
-    fn register_defaults(&mut self) {
-        self.operators.insert("!=".into(), Arc::new(NotEqualsOperator));
-        self.operators.insert("!==".into(), Arc::new(StrictNotEqualsOperator));
-        self.operators.insert(">=".into(), Arc::new(GreaterThanEqualOperator));
-        self.operators.insert("<=".into(), Arc::new(LessThanEqualOperator));
-
-        self.operators.insert("?:".into(), Arc::new(TernaryOperator));
-        self.operators.insert("!!".into(), Arc::new(DoubleBangOperator));
-
-        self.operators.insert("in".into(), Arc::new(InOperator));
-        self.operators.insert("cat".into(), Arc::new(CatOperator));
-        self.operators.insert("substr".into(), Arc::new(SubstrOperator));
-
-        self.operators.insert("+".into(), Arc::new(AddOperator));
-        self.operators.insert("*".into(), Arc::new(MultiplyOperator));
-        self.operators.insert("-".into(), Arc::new(SubtractOperator));
-        self.operators.insert("/".into(), Arc::new(DivideOperator));
-        self.operators.insert("%".into(), Arc::new(ModuloOperator));
-        self.operators.insert("max".into(), Arc::new(MaxOperator));
-        self.operators.insert("min".into(), Arc::new(MinOperator));
-
-        self.operators.insert("merge".into(), Arc::new(MergeOperator));
-
-        self.operators.insert("if".into(), Arc::new(IfOperator));
-
-        self.operators.insert("missing".into(), Arc::new(MissingOperator));
-        self.operators.insert("missing_some".into(), Arc::new(MissingSomeOperator));
-
-        self.operators.insert("all".into(), Arc::new(AllOperator));
-        self.operators.insert("none".into(), Arc::new(NoneOperator)); 
-        self.operators.insert("some".into(), Arc::new(SomeOperator));
- 
-        self.operators.insert("preserve".into(), Arc::new(PreserveOperator));
-    
     }
 
     pub fn apply(&self, logic: &Value, data: &Value) -> JsonLogicResult {
         match logic {
+            Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {
+                Ok(logic.clone())
+            }
             Value::Object(map) if map.len() == 1 => {
                 let (op, args) = map.iter().next().unwrap();
                 let operator: &dyn Operator = match op.as_str() {
@@ -120,8 +139,33 @@ impl JsonLogic {
                     "map" => &*self.map_op,
                     "filter" => &*self.filter_op,
                     "reduce" => &*self.reduce_op,
-                    _ => &**self.operators.get(op)
-                        .ok_or(Error::UnknownOperator(op.clone()))?
+                    "!=" => &*self.not_eq_op,
+                    "!==" => &*self.strict_not_eq_op,
+                    ">=" => &*self.gt_eq_op,
+                    "<=" => &*self.lt_eq_op,
+                    "?:" => &*self.ternary_op,
+                    "!!" => &*self.double_bang_op,
+                    "if" => &*self.if_op,
+                    "merge" => &*self.merge_op,
+                    "missing" => &*self.missing_op,
+                    "missing_some" => &*self.missing_some_op,
+                    "all" => &*self.all_op,
+                    "none" => &*self.none_op,
+                    "some" => &*self.some_op,
+                    "preserve" => &*self.preserve_op,
+                    "in" => &*self.in_op,
+                    "cat" => &*self.cat_op,
+                    "substr" => &*self.substr_op,
+                    "+" => &*self.add_op,
+                    "*" => &*self.multiply_op,
+                    "-" => &*self.subtract_op,
+                    "/" => &*self.divide_op,
+                    "%" => &*self.modulo_op,
+                    "max" => &*self.max_op,
+                    "min" => &*self.min_op,
+                    _ => {
+                        return Err(Error::UnknownOperator(op.clone()));
+                    }                
                 };
 
                 if operator.auto_traverse() {
@@ -145,9 +189,6 @@ impl JsonLogic {
                     results.push(self.apply(v, data)?);
                 }
                 Ok(Value::Array(results))
-            }
-            Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {
-                Ok(logic.clone())
             }
             _ => Err(Error::InvalidRule("Invalid Rule".to_string())),
         }
