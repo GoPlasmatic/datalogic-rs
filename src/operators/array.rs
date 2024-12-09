@@ -1,6 +1,6 @@
 use crate::operators::operator::Operator;
 use crate::{JsonLogic, JsonLogicResult};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub struct FilterOperator;
 
@@ -31,7 +31,7 @@ impl Operator for FilterOperator {
             _ => return Ok(Value::Array(Vec::new())),
         };
         
-        let mut result = Vec::with_capacity(array.len() / 2);
+        let mut result = Vec::with_capacity(array.len() / 4);
         
         for item in array {
             let condition_result = logic.apply(condition, &item)?;

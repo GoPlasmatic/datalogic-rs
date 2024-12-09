@@ -32,7 +32,7 @@ lazy_static::lazy_static! {
 fn main() {
     let logic = JsonLogic::new();
     
-    for i in 0..100000 {
+    for _ in 0..100000 {
         for (rule, data, expected) in TEST_CASES.iter() {
             if let Ok(result) = logic.apply(rule, data) {
                 assert_eq!(result, *expected);
