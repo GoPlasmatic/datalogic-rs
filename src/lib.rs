@@ -80,7 +80,7 @@ impl Default for JsonLogic {
 
 impl JsonLogic {
     pub fn new() -> Self {
-        let logic = Self {
+        Self {
             var_op: Arc::new(VarOperator),
             eq_op: Arc::new(EqualsOperator),
             strict_eq_op: Arc::new(StrictEqualsOperator),
@@ -116,8 +116,7 @@ impl JsonLogic {
             modulo_op: Arc::new(ModuloOperator),
             max_op: Arc::new(MaxOperator),
             min_op: Arc::new(MinOperator),
-        };
-        logic
+        }
     }
 
     pub fn apply(&self, logic: &Value, data: &Value) -> JsonLogicResult {

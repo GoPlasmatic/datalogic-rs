@@ -77,7 +77,7 @@ impl MissingSomeOperator {
                     if let Value::String(path) = key {
                         match VarOperator::get_value_at_path(data, path) {
                             None | Some(Value::Null) => {
-                                missing.push(Value::String(path.to_string()));
+                                missing.push(Value::String(path.to_owned()));
                             },
                             Some(_) => {
                                 found += 1;
