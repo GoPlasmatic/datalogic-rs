@@ -263,9 +263,44 @@ impl Operator for SomeOperator {
 
 pub struct MergeOperator;
 
+impl MergeOperator {
+    #[inline]
+    fn estimate_capacity(value: &Value) -> usize {
+        const SAMPLE_SIZE: usize = 5;
+        
+        match value {
+            Value::Null => 0,
+            Value::Array(values) => {
+                if values.is_empty() {
+                    return 0;
+                }
+                
+                let sample_len = values.len().min(SAMPLE_SIZE);
+                let total_size = values.iter()
+                    .take(SAMPLE_SIZE)
+                    .map(|v| match v {
+                        Value::Array(arr) => arr.len(),
+                        _ => 1
+                    })
+                    .sum::<usize>();
+                
+                (total_size / sample_len) * values.len()
+            },
+            _ => 1
+        }
+    }
+}
+
 impl Operator for MergeOperator {
     fn apply(&self, logic: &JsonLogic, args: &Value, data: &Value) -> JsonLogicResult {
-        let mut result = Vec::new();
+        match args {
+            Value::Null => return Ok(Value::Array(Vec::new())),
+            Value::Array(values) if values.is_empty() => return Ok(Value::Array(Vec::new())),
+            _ => {}
+        }
+
+        let initial_capacity = Self::estimate_capacity(args);
+        let mut result = Vec::with_capacity(initial_capacity);
 
         match args {
             Value::Array(values) => {
