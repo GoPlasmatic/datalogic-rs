@@ -119,6 +119,47 @@ impl JsonLogic {
         }
     }
 
+    fn get_operator(&self, op: &str) -> Result<&dyn Operator, Error> {
+        match op {
+            "var" => Ok(&*self.var_op),
+            "==" => Ok(&*self.eq_op),
+            "===" => Ok(&*self.strict_eq_op),
+            ">" => Ok(&*self.gt_op),
+            "<" => Ok(&*self.lt_op),
+            "and" => Ok(&*self.and_op),
+            "or" => Ok(&*self.or_op),
+            "!" => Ok(&*self.not_op),
+            "map" => Ok(&*self.map_op),
+            "filter" => Ok(&*self.filter_op),
+            "reduce" => Ok(&*self.reduce_op),
+            "!=" => Ok(&*self.not_eq_op),
+            "!==" => Ok(&*self.strict_not_eq_op),
+            ">=" => Ok(&*self.gt_eq_op),
+            "<=" => Ok(&*self.lt_eq_op),
+            "?:" => Ok(&*self.ternary_op),
+            "!!" => Ok(&*self.double_bang_op),
+            "if" => Ok(&*self.if_op),
+            "merge" => Ok(&*self.merge_op),
+            "missing" => Ok(&*self.missing_op),
+            "missing_some" => Ok(&*self.missing_some_op),
+            "all" => Ok(&*self.all_op),
+            "none" => Ok(&*self.none_op),
+            "some" => Ok(&*self.some_op),
+            "preserve" => Ok(&*self.preserve_op),
+            "in" => Ok(&*self.in_op),
+            "cat" => Ok(&*self.cat_op),
+            "substr" => Ok(&*self.substr_op),
+            "+" => Ok(&*self.add_op),
+            "*" => Ok(&*self.multiply_op),
+            "-" => Ok(&*self.subtract_op),
+            "/" => Ok(&*self.divide_op),
+            "%" => Ok(&*self.modulo_op),
+            "max" => Ok(&*self.max_op),
+            "min" => Ok(&*self.min_op),
+            _ => Err(Error::UnknownOperator(op.to_string())),
+        }
+    }
+
     pub fn apply(&self, logic: &Value, data: &Value) -> JsonLogicResult {
         match logic {
             Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {
@@ -126,46 +167,7 @@ impl JsonLogic {
             }
             Value::Object(map) if map.len() == 1 => {
                 let (op, args) = map.iter().next().unwrap();
-                let operator: &dyn Operator = match op.as_str() {
-                    "var" => &*self.var_op,
-                    "==" => &*self.eq_op,
-                    "===" => &*self.strict_eq_op,
-                    ">" => &*self.gt_op,
-                    "<" => &*self.lt_op,
-                    "and" => &*self.and_op,
-                    "or" => &*self.or_op,
-                    "!" => &*self.not_op,
-                    "map" => &*self.map_op,
-                    "filter" => &*self.filter_op,
-                    "reduce" => &*self.reduce_op,
-                    "!=" => &*self.not_eq_op,
-                    "!==" => &*self.strict_not_eq_op,
-                    ">=" => &*self.gt_eq_op,
-                    "<=" => &*self.lt_eq_op,
-                    "?:" => &*self.ternary_op,
-                    "!!" => &*self.double_bang_op,
-                    "if" => &*self.if_op,
-                    "merge" => &*self.merge_op,
-                    "missing" => &*self.missing_op,
-                    "missing_some" => &*self.missing_some_op,
-                    "all" => &*self.all_op,
-                    "none" => &*self.none_op,
-                    "some" => &*self.some_op,
-                    "preserve" => &*self.preserve_op,
-                    "in" => &*self.in_op,
-                    "cat" => &*self.cat_op,
-                    "substr" => &*self.substr_op,
-                    "+" => &*self.add_op,
-                    "*" => &*self.multiply_op,
-                    "-" => &*self.subtract_op,
-                    "/" => &*self.divide_op,
-                    "%" => &*self.modulo_op,
-                    "max" => &*self.max_op,
-                    "min" => &*self.min_op,
-                    _ => {
-                        return Err(Error::UnknownOperator(op.clone()));
-                    }                
-                };
+                let operator: &dyn Operator = self.get_operator(op)?;
 
                 if operator.auto_traverse() {
                     match args {
