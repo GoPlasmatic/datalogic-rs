@@ -1,4 +1,4 @@
-use datalogic_rs::JsonLogic;
+use datalogic_rs::{JsonLogic, Rule};
 use serde_json::Value;
 use reqwest::blocking::get;
 use std::fs;
@@ -21,7 +21,7 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
     let json_data: Vec<Value> = serde_json::from_str(&content)?;
     println!("Parsed {} test cases", json_data.len());
 
-    let logic = JsonLogic::new();
+    let engine = JsonLogic::new();
     let mut current_section = String::new();
     let mut total_tests = 0;
     let mut passed_tests = 0;
@@ -40,17 +40,18 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
             }
 
             total_tests += 1;
-            let rule = &test_case[0];
+            let logic = &test_case[0];
             let data = &test_case[1];
             let expected = &test_case[2];
+            let rule = Rule::from_value(&logic).unwrap();
 
-            match logic.apply(rule, data) {
+            match engine.apply(&rule, data) {
                 Ok(result) => {
                     if result == *expected {
                         passed_tests += 1;
                     } else {
                         println!("Test {} failed in section: {}", total_tests, current_section);
-                        println!("Rule: {}", rule);
+                        println!("Rule: {}", logic);
                         println!("Data: {}", data);
                         println!("Expected: {}", expected);
                         println!("Got: {}", result);
@@ -58,7 +59,7 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
                 },
                 Err(e) => {
                     println!("Error in test {}: {}", total_tests, e);
-                    println!("Rule: {}", rule);
+                    println!("Rule: {}", logic);
                     println!("Data: {}", data);
                     println!("Expected: {}", expected);
                 }

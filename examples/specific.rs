@@ -1,8 +1,8 @@
-use datalogic_rs::JsonLogic;
+use datalogic_rs::*;
 use serde_json::json;
 
 fn main() {
-    let logic = JsonLogic::new();
+    let engine = JsonLogic::new();
 
     // Test both escaped dot and regular dot navigation
     let test_cases = vec![
@@ -20,9 +20,10 @@ fn main() {
         )
     ];
 
-    for (rule, data, expected) in test_cases {
-        let result = logic.apply(&rule, &data).unwrap();
-        println!("Rule: {}", rule);
+    for (logic, data, expected) in test_cases {
+        let rule = Rule::from_value(&logic).unwrap();
+        let result = engine.apply(&rule, &data).unwrap();
+        println!("Rule: {}", logic);
         println!("Result: {}", result);
         println!("Expected: {}", expected);
         println!("---");
