@@ -1,10 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use datalogic_rs::JsonLogic;
+use datalogic_rs::*;
 use reqwest::blocking::get;
 use serde_json::Value;
 
 lazy_static::lazy_static! {
-    static ref TEST_CASES: Vec<(Value, Value, Value)> = {
+    static ref TEST_CASES: Vec<(Rule, Value, Value)> = {
         let response = get("http://jsonlogic.com/tests.json")
             .expect("Failed to fetch test cases")
             .text()
@@ -17,8 +17,9 @@ lazy_static::lazy_static! {
             .filter_map(|entry| {
                 if let Value::Array(test_case) = entry {
                     if test_case.len() == 3 {
+                        let rule = Rule::from_value(&test_case[0]).ok()?;
                         return Some((
-                            test_case[0].clone(),
+                            rule,
                             test_case[1].clone(),
                             test_case[2].clone()
                         ));
@@ -31,7 +32,7 @@ lazy_static::lazy_static! {
 }
 
 fn bench_apply_all_rules(c: &mut Criterion) {
-    let logic = JsonLogic::new();
+    let engine = JsonLogic::new();
     
     let mut group = c.benchmark_group("jsonlogic_rules");
     group.sampling_mode(criterion::SamplingMode::Linear);
@@ -40,13 +41,12 @@ fn bench_apply_all_rules(c: &mut Criterion) {
     group.bench_function("apply_all_rules", |b| {
         b.iter(|| {
             for (rule, data, expected) in TEST_CASES.iter() {
-                if let Ok(result) = logic.apply(rule, data) {
+                if let Ok(result) = engine.apply(rule, data) {
                     assert_eq!(result, *expected);
                 }
             }
         })
     });
-    
     group.finish();
 }
 
