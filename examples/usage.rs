@@ -2,8 +2,6 @@ use datalogic_rs::*;
 use serde_json::json;
 
 fn main() {
-    let engine = JsonLogic::new();
-    
     let logic = json!({
         "==": [
             {"var": "user.age"},
@@ -19,6 +17,6 @@ fn main() {
     });
 
     let rule = Rule::from_value(&logic).unwrap();
-    let result = engine.apply(&rule, &data).unwrap();
+    let result = JsonLogic::apply(&rule, &data).unwrap();
     println!("Is user 21? {}", result);  // Prints: Is user 21? true
 }

@@ -2,65 +2,76 @@ use serde_json::Value;
 use crate::Error;
 use super::{Operator, Rule};
 
+const ERR_MISSING_SOME: &str = "missing_some requires 2 arguments";
+const ERR_FIRST_ARG: &str = "First argument must be a number";
+const ERR_SECOND_ARG: &str = "Second argument must be an array";
+
 pub struct MissingOperator;
 pub struct MissingSomeOperator;
 
+impl MissingOperator {
+    #[inline]
+    fn process_keys(value: Value) -> Vec<String> {
+        match value {
+            Value::String(s) => vec![s],
+            Value::Array(arr) => {
+                let mut keys = Vec::with_capacity(arr.len());
+                for v in arr {
+                    match v {
+                        Value::String(s) => keys.push(s),
+                        Value::Number(n) => keys.push(n.to_string()),
+                        _ => continue,
+                    }
+                }
+                keys
+            },
+            Value::Number(n) => vec![n.to_string()],
+            _ => Vec::new(),
+        }
+    }
+
+    #[inline]
+    fn check_path<'a>(data: &'a Value, path: &str) -> bool {
+        let mut current = data;
+        
+        for part in path.split('.') {
+            match current {
+                Value::Object(obj) => {
+                    if let Some(val) = obj.get(part) {
+                        current = val;
+                    } else {
+                        return true;
+                    }
+                },
+                Value::Array(arr) => {
+                    match part.parse::<usize>() {
+                        Ok(index) if index < arr.len() => current = &arr[index],
+                        _ => return true,
+                    }
+                },
+                _ => return true,
+            }
+        }
+        false
+    }
+}
+
 impl Operator for MissingOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        let mut missing = Vec::new();
+        // Fast path for empty args
+        if args.is_empty() {
+            return Ok(Value::Array(Vec::new()));
+        }
+
+        // Pre-allocate with estimated capacity
+        let mut missing = Vec::with_capacity(args.len());
         
         for arg in args {
             let key = arg.apply(data)?;
-            let key_list = match key {
-                Value::String(s) => vec![s],
-                Value::Array(arr) => arr
-                    .into_iter()
-                    .filter_map(|v| match v {
-                        Value::String(s) => Some(s),
-                        Value::Number(n) => Some(n.to_string()),
-                        _ => None,
-                    })
-                    .collect(),
-                Value::Number(n) => vec![n.to_string()],
-                _ => vec![],
-            };
+            let key_list = Self::process_keys(key);
 
             for key_str in key_list {
-                let parts: Vec<&str> = key_str.split('.').collect();
-                let mut current = data;
-                let mut is_missing = false;
-                
-                for part in parts {
-                    match current {
-                        Value::Object(obj) => {
-                            if let Some(val) = obj.get(part) {
-                                current = val;
-                            } else {
-                                is_missing = true;
-                                break;
-                            }
-                        },
-                        Value::Array(arr) => {
-                            if let Ok(index) = part.parse::<usize>() {
-                                if let Some(val) = arr.get(index) {
-                                    current = val;
-                                } else {
-                                    is_missing = true;
-                                    break;
-                                }
-                            } else {
-                                is_missing = true;
-                                break;
-                            }
-                        },
-                        _ => {
-                            is_missing = true;
-                            break;
-                        }
-                    }
-                }
-                
-                if is_missing {
+                if Self::check_path(data, &key_str) {
                     missing.push(Value::String(key_str));
                 }
             }
@@ -73,30 +84,24 @@ impl Operator for MissingOperator {
 impl Operator for MissingSomeOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.len() != 2 {
-            return Err(Error::InvalidArguments("missing_some requires 2 arguments".to_string()));
+            return Err(Error::InvalidArguments(ERR_MISSING_SOME.into()));
         }
 
-        // First argument is the minimum number of required fields
         let min_required = args[0].apply(data)?
             .as_u64()
-            .ok_or_else(|| Error::InvalidRule("First argument must be a number".to_string()))?;
+            .ok_or_else(|| Error::InvalidRule(ERR_FIRST_ARG.into()))?;
 
-        // Second argument is the array of keys to check
         let keys = args[1].apply(data)?;
         let keys = keys.as_array()
-            .ok_or_else(|| Error::InvalidRule("Second argument must be an array".to_string()))?;
+            .ok_or_else(|| Error::InvalidRule(ERR_SECOND_ARG.into()))?;
 
-        let mut key_rules = Vec::new();
-        for key in keys {
-            key_rules.push(Rule::Value(key.clone()));
-        }
+        let key_rules: Vec<_> = keys.iter()
+            .map(|key| Rule::Value(key.clone()))
+            .collect();
 
-        // Use MissingOperator to find missing keys
-        let missing_op = MissingOperator;
-        let missing = missing_op.apply(&key_rules, data)?;
+        let missing = MissingOperator.apply(&key_rules, data)?;
         let missing_count = missing.as_array().unwrap().len() as u64;
 
-        // If we have enough required fields, return empty array
         if keys.len() as u64 - missing_count >= min_required {
             Ok(Value::Array(Vec::new()))
         } else {

@@ -5,6 +5,50 @@ use crate::Error;
 
 pub use operators::*;
 
+static VAR_OP: VarOperator = VarOperator;
+static EQUALS_OP: EqualsOperator = EqualsOperator;
+static STRICT_EQUALS_OP: StrictEqualsOperator = StrictEqualsOperator;
+static NOT_EQUALS_OP: NotEqualsOperator = NotEqualsOperator;
+static STRICT_NOT_EQUALS_OP: StrictNotEqualsOperator = StrictNotEqualsOperator;
+static GREATER_THAN_OP: GreaterThanOperator = GreaterThanOperator;
+static LESS_THAN_OP: LessThanOperator = LessThanOperator;
+static GREATER_THAN_EQUAL_OP: GreaterThanEqualOperator = GreaterThanEqualOperator;
+static LESS_THAN_EQUAL_OP: LessThanEqualOperator = LessThanEqualOperator;
+
+static AND_OP: AndOperator = AndOperator;
+static OR_OP: OrOperator = OrOperator;
+static NOT_OP: NotOperator = NotOperator;
+static DOUBLE_BANG_OP: DoubleBangOperator = DoubleBangOperator;
+
+static IF_OP: IfOperator = IfOperator;
+static TERNARY_OP: TernaryOperator = TernaryOperator;
+
+static MAP_OP: MapOperator = MapOperator;
+static FILTER_OP: FilterOperator = FilterOperator;
+static REDUCE_OP: ReduceOperator = ReduceOperator;
+static ALL_OP: AllOperator = AllOperator;
+static NONE_OP: NoneOperator = NoneOperator;
+static SOME_OP: SomeOperator = SomeOperator;
+static MERGE_OP: MergeOperator = MergeOperator;
+
+static MISSING_OP: MissingOperator = MissingOperator;
+static MISSING_SOME_OP: MissingSomeOperator = MissingSomeOperator;
+
+static IN_OP: InOperator = InOperator;
+static CAT_OP: CatOperator = CatOperator;
+static SUBSTR_OP: SubstrOperator = SubstrOperator;
+
+static ADD_OP: AddOperator = AddOperator;
+static MULTIPLY_OP: MultiplyOperator = MultiplyOperator;
+static SUBTRACT_OP: SubtractOperator = SubtractOperator;
+static DIVIDE_OP: DivideOperator = DivideOperator;
+static MODULO_OP: ModuloOperator = ModuloOperator;
+static MAX_OP: MaxOperator = MaxOperator;
+static MIN_OP: MinOperator = MinOperator;
+
+static PRESERVE_OP: PreserveOperator = PreserveOperator;
+
+
 #[derive(Debug)]
 pub enum Rule {
     // Variable access
@@ -157,60 +201,61 @@ impl Rule {
         }
     }
 
-    fn get_operator(&self) -> Result<Box<dyn Operator>, Error> {
+    fn get_operator(&self) -> Result<&'static dyn Operator, Error> {
         match self {
-            // Variable access
-            Rule::Var(_) => Ok(Box::new(VarOperator)),
+            Rule::Var(_) => Ok(&VAR_OP),
             
-            // Comparison operators
-            Rule::Equals(_) => Ok(Box::new(EqualsOperator)),
-            Rule::StrictEquals(_) => Ok(Box::new(StrictEqualsOperator)),
-            Rule::NotEquals(_) => Ok(Box::new(NotEqualsOperator)),
-            Rule::StrictNotEquals(_) => Ok(Box::new(StrictNotEqualsOperator)),
-            Rule::GreaterThan(_) => Ok(Box::new(GreaterThanOperator)),
-            Rule::LessThan(_) => Ok(Box::new(LessThanOperator)),
-            Rule::GreaterThanEqual(_) => Ok(Box::new(GreaterThanEqualOperator)),
-            Rule::LessThanEqual(_) => Ok(Box::new(LessThanEqualOperator)),
+            // Group comparison operators
+            Rule::Equals(_) => Ok(&EQUALS_OP),
+            Rule::StrictEquals(_) => Ok(&STRICT_EQUALS_OP),
+            Rule::NotEquals(_) => Ok(&NOT_EQUALS_OP),
+            Rule::StrictNotEquals(_) => Ok(&STRICT_NOT_EQUALS_OP),
             
-            // Logical operators
-            Rule::And(_) => Ok(Box::new(AndOperator)),
-            Rule::Or(_) => Ok(Box::new(OrOperator)),
-            Rule::Not(_) => Ok(Box::new(NotOperator)),
-            Rule::DoubleBang(_) => Ok(Box::new(DoubleBangOperator)),
+            // Group arithmetic operators
+            Rule::GreaterThan(_) => Ok(&GREATER_THAN_OP),
+            Rule::LessThan(_) => Ok(&LESS_THAN_OP),
+            Rule::GreaterThanEqual(_) => Ok(&GREATER_THAN_EQUAL_OP),
+            Rule::LessThanEqual(_) => Ok(&LESS_THAN_EQUAL_OP),
             
-            // Control operators
-            Rule::If(_) => Ok(Box::new(IfOperator)),
-            Rule::Ternary(_) => Ok(Box::new(TernaryOperator)),
+            // Group logical operators
+            Rule::And(_) => Ok(&AND_OP),
+            Rule::Or(_) => Ok(&OR_OP),
+            Rule::Not(_) => Ok(&NOT_OP),
+            Rule::DoubleBang(_) => Ok(&DOUBLE_BANG_OP),
             
-            // Array operators
-            Rule::Map(_) => Ok(Box::new(MapOperator)),
-            Rule::Filter(_) => Ok(Box::new(FilterOperator)),
-            Rule::Reduce(_) => Ok(Box::new(ReduceOperator)),
-            Rule::All(_) => Ok(Box::new(AllOperator)),
-            Rule::None(_) => Ok(Box::new(NoneOperator)),
-            Rule::Some(_) => Ok(Box::new(SomeOperator)),
-            Rule::Merge(_) => Ok(Box::new(MergeOperator)),
+            // Group control operators
+            Rule::If(_) => Ok(&IF_OP),
+            Rule::Ternary(_) => Ok(&TERNARY_OP),
             
-            // Missing operators
-            Rule::Missing(_) => Ok(Box::new(MissingOperator)),
-            Rule::MissingSome(_) => Ok(Box::new(MissingSomeOperator)),
+            // Group array operators
+            Rule::Map(_) => Ok(&MAP_OP),
+            Rule::Filter(_) => Ok(&FILTER_OP),
+            Rule::Reduce(_) => Ok(&REDUCE_OP),
+            Rule::All(_) => Ok(&ALL_OP),
+            Rule::None(_) => Ok(&NONE_OP),
+            Rule::Some(_) => Ok(&SOME_OP),
+            Rule::Merge(_) => Ok(&MERGE_OP),
             
-            // String operators
-            Rule::In(_) => Ok(Box::new(InOperator)),
-            Rule::Cat(_) => Ok(Box::new(CatOperator)),
-            Rule::Substr(_) => Ok(Box::new(SubstrOperator)),
-            
-            // Arithmetic operators
-            Rule::Add(_) => Ok(Box::new(AddOperator)),
-            Rule::Multiply(_) => Ok(Box::new(MultiplyOperator)),
-            Rule::Subtract(_) => Ok(Box::new(SubtractOperator)),
-            Rule::Divide(_) => Ok(Box::new(DivideOperator)),
-            Rule::Modulo(_) => Ok(Box::new(ModuloOperator)),
-            Rule::Max(_) => Ok(Box::new(MaxOperator)),
-            Rule::Min(_) => Ok(Box::new(MinOperator)),
-            
-            // Special operators
-            Rule::Preserve(_) => Ok(Box::new(PreserveOperator)),
+            // Group missing operators
+            Rule::Missing(_) => Ok(&MISSING_OP),
+            Rule::MissingSome(_) => Ok(&MISSING_SOME_OP),
+
+            // Group string operators
+            Rule::In(_) => Ok(&IN_OP),
+            Rule::Cat(_) => Ok(&CAT_OP),
+            Rule::Substr(_) => Ok(&SUBSTR_OP),
+
+            // Group arithmetic operators
+            Rule::Add(_) => Ok(&ADD_OP),
+            Rule::Multiply(_) => Ok(&MULTIPLY_OP),
+            Rule::Subtract(_) => Ok(&SUBTRACT_OP),
+            Rule::Divide(_) => Ok(&DIVIDE_OP),
+            Rule::Modulo(_) => Ok(&MODULO_OP),
+            Rule::Max(_) => Ok(&MAX_OP),
+            Rule::Min(_) => Ok(&MIN_OP),
+
+            // Group special operators
+            Rule::Preserve(_) => Ok(&PRESERVE_OP),
             
             // Value is handled separately in apply_rule
             Rule::Value(_) => Err(Error::InvalidRule("Value does not have an operator".to_string())),

@@ -2,8 +2,6 @@ use datalogic_rs::*;
 use serde_json::json;
 
 fn main() {
-    let engine = JsonLogic::new();
-
     // Test both escaped dot and regular dot navigation
     let test_cases = vec![
         // Test 1: Escaped dot should look up exact key
@@ -22,7 +20,7 @@ fn main() {
 
     for (logic, data, expected) in test_cases {
         let rule = Rule::from_value(&logic).unwrap();
-        let result = engine.apply(&rule, &data).unwrap();
+        let result = JsonLogic::apply(&rule, &data).unwrap();
         println!("Rule: {}", logic);
         println!("Result: {}", result);
         println!("Expected: {}", expected);

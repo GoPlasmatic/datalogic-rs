@@ -32,8 +32,6 @@ use datalogic_rs::JsonLogic;
 use serde_json::json;
 
 fn main() {
-    let engine = JsonLogic::new();
-
     // Complex discount rule example
     let discount_rule = json!({
         "if": [
@@ -56,7 +54,7 @@ fn main() {
     });
 
     let rule = Rule::from_value(&discount_rule).unwrap();
-    let price = engine.apply(&rule, &data).unwrap();
+    let price = JsonLogic::apply(&rule, &data).unwrap();
     assert_eq!(price, json!(90.0)); // 25% off 120
 }
 ```

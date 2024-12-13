@@ -14,13 +14,17 @@ fn to_number(value: &Value) -> f64 {
     match value {
         Value::Number(n) => n.as_f64().unwrap_or(0.0),
         Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
-        Value::Bool(b) => if *b { 1.0 } else { 0.0 },
+        Value::Bool(b) => match b {
+            true => 1.0,
+            false => 0.0
+        },
         _ => 0.0,
     }
 }
 
 fn to_value(num: f64) -> Value {
-    if num.fract() == 0.0 {
+    const ZERO_FRACT: f64 = 0.0;
+    if (num.fract() == ZERO_FRACT) && (num >= i64::MIN as f64) && (num <= i64::MAX as f64) {
         Value::Number(serde_json::Number::from(num as i64))
     } else {
         Value::Number(serde_json::Number::from_f64(num).unwrap())
@@ -40,15 +44,20 @@ impl Operator for AddOperator {
 
 impl Operator for MultiplyOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.is_empty() {
-            return Ok(Value::Number(1.into()));
+        match args.len() {
+            0 => return Ok(Value::Number(1.into())),
+            1 => return Ok(to_value(to_number(&args[0].apply(data)?))),
+            _ => {
+                let mut product = 1.0;
+                for arg in args {
+                    product *= to_number(&arg.apply(data)?);
+                    if product == 0.0 {
+                        return Ok(Value::Number(0.into()));
+                    }
+                }
+                Ok(to_value(product))
+            }
         }
-        let mut product = 1.0;
-        for arg in args {
-            let val = arg.apply(data)?;
-            product *= to_number(&val);
-        }
-        Ok(to_value(product))
     }
 }
 

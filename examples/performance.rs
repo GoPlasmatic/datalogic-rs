@@ -73,20 +73,18 @@ fn main() {
         ]
     });
 
-    let json_logic = JsonLogic::new();
-
     // Convert logic to Rule
     let rule = Rule::from_value(&logic).unwrap();
 
     // Warm-up
     for _ in 0..100 {
-        json_logic.apply(&rule, &data).unwrap();
+        JsonLogic::apply(&rule, &data).unwrap();
     }
 
     // Measure performance of the new apply_rule function
     let start = Instant::now();
     for _ in 0..100000 {
-        json_logic.apply(&rule, &data).unwrap();
+        JsonLogic::apply(&rule, &data).unwrap();
     }
     let duration_apply_rule = start.elapsed();
 
