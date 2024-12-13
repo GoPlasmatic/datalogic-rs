@@ -103,7 +103,8 @@ pub enum Rule {
     
     // Special operators
     Preserve(Vec<Rule>),
-    
+
+    Array(Vec<Rule>),
     // Literal value
     Value(Value),
 }
@@ -174,7 +175,14 @@ impl Rule {
                     
                     _ => Err(Error::UnknownOperator(op.to_string())),
                 }
-            }
+            },
+            Value::Array(arr) => {
+                Ok(Rule::Array(
+                    arr.iter()
+                        .map(Rule::from_value)
+                        .collect::<Result<Vec<_>, _>>()?
+                ))
+            },
             _ => Ok(Rule::Value(value.clone())),
         }
     }
@@ -182,17 +190,13 @@ impl Rule {
     pub fn apply(&self, data: &Value) -> Result<Value, Error> {
         match self {
             Rule::Value(value) => {
-                if let Value::Array(arr) = value {
-                    let mut result = Vec::with_capacity(arr.len());
-                    for item in arr {
-                        let item_rule = Rule::from_value(item)?;
-                        result.push(item_rule.apply(data)?);
-                    }
-                    Ok(Value::Array(result))
-                } else {
-                    Ok(value.clone())
-                }
+                Ok(value.clone())
             },
+            Rule::Array(rules) => Ok(Value::Array(
+                rules.iter()
+                    .map(|rule| rule.apply(data))
+                    .collect::<Result<Vec<_>, _>>()?
+            )),
             _ => {
                 let op = self.get_operator()?;
                 let args = self.get_args();
@@ -257,7 +261,7 @@ impl Rule {
             // Group special operators
             Rule::Preserve(_) => Ok(&PRESERVE_OP),
             
-            // Value is handled separately in apply_rule
+            Rule::Array(_) => Err(Error::InvalidRule("Array does not have an operator".to_string())),
             Rule::Value(_) => Err(Error::InvalidRule("Value does not have an operator".to_string())),
         }
     }
@@ -266,6 +270,7 @@ impl Rule {
         match self {
             // Value (no args)
             Rule::Value(_) => &[],
+            Rule::Array(args) => args,
             
             // Variable access
             Rule::Var(args) => args,
