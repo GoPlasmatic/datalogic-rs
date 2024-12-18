@@ -3,11 +3,8 @@ use serde_json::json;
 
 fn main() {
     let logic = json!({
-        "==": [
-            {"var": "user.age"},
-            21
-        ]
-    });
+        "map": [[5, 6, 7], { "+": [{ "var": [] }, 1] }]
+      });
     
     let data = json!({
         "user": {
@@ -17,6 +14,7 @@ fn main() {
     });
 
     let rule = Rule::from_value(&logic).unwrap();
+    println!("Rule: {:?}", rule);
     let result = JsonLogic::apply(&rule, &data).unwrap();
-    println!("Is user 21? {}", result);  // Prints: Is user 21? true
+    println!("Result: {}", result);
 }

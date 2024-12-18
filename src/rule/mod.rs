@@ -49,7 +49,7 @@ static MIN_OP: MinOperator = MinOperator;
 static PRESERVE_OP: PreserveOperator = PreserveOperator;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Rule {
     // Variable access
     Var(Vec<Rule>),
@@ -110,16 +110,177 @@ pub enum Rule {
 }
 
 impl Rule {
+    fn is_static(&self) -> bool {
+        match self {
+            Rule::Value(_) => true,
+            Rule::Missing(_) | Rule::MissingSome(_) => false,
+
+            Rule::Map(args) | 
+            Rule::Filter(args) | 
+            Rule::Reduce(args) |
+            Rule::None(args) |
+            Rule::Some(args) |
+            Rule::All(args) => {
+                if let [array, _] = args.as_slice() {
+                    match array {
+                        Rule::Value(Value::Array(_)) => true,
+                        _ => false
+                    }
+                } else {
+                    false
+                }
+            },
+            Rule::Var(_) => false,
+            // Rule::Var(args) |
+            Rule::Array(args) |
+            Rule::If(args) | 
+            Rule::Equals(args) |
+            Rule::StrictEquals(args) |
+            Rule::NotEquals(args) |
+            Rule::StrictNotEquals(args) |
+            Rule::GreaterThan(args) |
+            Rule::LessThan(args) |
+            Rule::GreaterThanEqual(args) |
+            Rule::LessThanEqual(args) |
+            Rule::And(args) |
+            Rule::Or(args) |
+            Rule::Not(args) |
+            Rule::DoubleBang(args) |
+            Rule::Ternary(args) |
+            Rule::Merge(args) |
+            Rule::In(args) |
+            Rule::Cat(args) |
+            Rule::Substr(args) |
+            Rule::Add(args) |
+            Rule::Multiply(args) |
+            Rule::Subtract(args) |
+            Rule::Divide(args) |
+            Rule::Modulo(args) |
+            Rule::Max(args) |
+            Rule::Min(args) |
+            Rule::Preserve(args) => args.iter().all(|r| r.is_static()),
+        }
+    }
+
+    fn optimize_args(args: &[Rule]) -> Result<Vec<Rule>, Error> {
+        args.iter()
+            .cloned()
+            .map(Self::optimize_rule)
+            .collect()
+    }
+
+    fn rebuild_with_args(rule: Rule, optimized: Vec<Rule>) -> Rule {
+        match rule {
+            Rule::Map(_) => Rule::Map(optimized),
+            Rule::Filter(_) => Rule::Filter(optimized),
+            Rule::Reduce(_) => Rule::Reduce(optimized),
+            Rule::All(_) => Rule::All(optimized),
+            Rule::None(_) => Rule::None(optimized),
+            Rule::Some(_) => Rule::Some(optimized),
+            Rule::Merge(_) => Rule::Merge(optimized),
+            Rule::Missing(_) => Rule::Missing(optimized),
+            Rule::MissingSome(_) => Rule::MissingSome(optimized),
+            Rule::In(_) => Rule::In(optimized),
+            Rule::Cat(_) => Rule::Cat(optimized),
+            Rule::Substr(_) => Rule::Substr(optimized),
+            Rule::Add(_) => Rule::Add(optimized),
+            Rule::Multiply(_) => Rule::Multiply(optimized),
+            Rule::Subtract(_) => Rule::Subtract(optimized),
+            Rule::Divide(_) => Rule::Divide(optimized),
+            Rule::Modulo(_) => Rule::Modulo(optimized),
+            Rule::Max(_) => Rule::Max(optimized),
+            Rule::Min(_) => Rule::Min(optimized),
+            Rule::Equals(_) => Rule::Equals(optimized),
+            Rule::StrictEquals(_) => Rule::StrictEquals(optimized),
+            Rule::NotEquals(_) => Rule::NotEquals(optimized),
+            Rule::StrictNotEquals(_) => Rule::StrictNotEquals(optimized),
+            Rule::GreaterThan(_) => Rule::GreaterThan(optimized),
+            Rule::LessThan(_) => Rule::LessThan(optimized),
+            Rule::GreaterThanEqual(_) => Rule::GreaterThanEqual(optimized),
+            Rule::LessThanEqual(_) => Rule::LessThanEqual(optimized),
+            Rule::And(_) => Rule::And(optimized),
+            Rule::Or(_) => Rule::Or(optimized),
+            Rule::Not(_) => Rule::Not(optimized),
+            Rule::DoubleBang(_) => Rule::DoubleBang(optimized),
+            Rule::If(_) => Rule::If(optimized),
+            Rule::Ternary(_) => Rule::Ternary(optimized),
+            Rule::Preserve(_) => Rule::Preserve(optimized),
+                        
+            _ => rule
+        }
+    }
+
+    fn optimize_rule(rule: Rule) -> Result<Rule, Error> {
+        match rule {
+            // Never optimize these
+            Rule::Missing(_) | Rule::MissingSome(_) => Ok(rule),
+            Rule::Value(_) => Ok(rule),
+
+            // Handle static evaluation
+            rule if rule.is_static() => {
+                rule.apply(&Value::Null)
+                    .map(Rule::Value)
+                    .or(Ok(rule))
+            },
+
+            // Process arrays
+            Rule::Array(args) => {
+                let optimized = Self::optimize_args(&args)?;
+                Ok(Rule::Array(optimized))
+            },
+
+            // Process operators
+            Rule::Var(ref args) |
+            Rule::Map(ref args) |
+            Rule::Filter(ref args) |
+            Rule::Reduce(ref args) |
+            Rule::All(ref args) |
+            Rule::None(ref args) |
+            Rule::Some(ref args) |
+            Rule::Merge(ref args) |
+            Rule::In(ref args) |
+            Rule::Cat(ref args) |
+            Rule::Substr(ref args) |
+            Rule::Add(ref args) |
+            Rule::Multiply(ref args) |
+            Rule::Subtract(ref args) |
+            Rule::Divide(ref args) |
+            Rule::Modulo(ref args) |
+            Rule::Max(ref args) |
+            Rule::Min(ref args) |
+            Rule::Equals(ref args) |
+            Rule::StrictEquals(ref args) |
+            Rule::NotEquals(ref args) |
+            Rule::StrictNotEquals(ref args) |
+            Rule::GreaterThan(ref args) |
+            Rule::LessThan(ref args) |
+            Rule::GreaterThanEqual(ref args) |
+            Rule::LessThanEqual(ref args) |
+            Rule::And(ref args) |
+            Rule::Or(ref args) |
+            Rule::Not(ref args) |
+            Rule::DoubleBang(ref args) |
+            Rule::If(ref args) |
+            Rule::Ternary(ref args) |
+            Rule::Preserve(ref args) => {
+                let optimized = Self::optimize_args(args)?;
+                Ok(Self::rebuild_with_args(rule, optimized))
+            },
+        }
+    }
+
     pub fn from_value(value: &Value) -> Result<Self, Error> {
         match value {
             Value::Object(map) if map.len() == 1 => {
                 let (op, args) = map.iter().next().unwrap();
                 let args = match args {
-                    Value::Array(arr) => arr.iter().map(Rule::from_value).collect::<Result<Vec<_>, _>>()?,
+                    Value::Array(arr) => arr.iter()
+                        .map(Rule::from_value)
+                        .collect::<Result<Vec<_>, _>>()?,
                     _ => vec![Rule::from_value(args)?],
                 };
                 
-                match op.as_str() {
+                let rule = match op.as_str() {
                     // Variable access
                     "var" => Ok(Rule::Var(args)),
                     
@@ -174,14 +335,18 @@ impl Rule {
                     "preserve" => Ok(Rule::Preserve(args)),
                     
                     _ => Err(Error::UnknownOperator(op.to_string())),
-                }
+                };
+
+                // Optimize the rule before returning
+                Self::optimize_rule(rule?)
             },
             Value::Array(arr) => {
-                Ok(Rule::Array(
+                let rule = Rule::Array(
                     arr.iter()
                         .map(Rule::from_value)
                         .collect::<Result<Vec<_>, _>>()?
-                ))
+                );
+                Self::optimize_rule(rule)
             },
             _ => Ok(Rule::Value(value.clone())),
         }

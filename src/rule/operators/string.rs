@@ -33,7 +33,7 @@ impl Operator for CatOperator {
         // Fast paths
         match args.len() {
             0 => return Ok(Value::String(String::new())),
-            1 => return Ok(Value::String(self.value_to_string(&args[0].apply(data)?))),
+            1 => return Ok(Value::String(Self::value_to_string(&args[0].apply(data)?))),
             _ => {}
         }
 
@@ -43,7 +43,7 @@ impl Operator for CatOperator {
 
         for arg in args {
             let value = arg.apply(data)?;
-            self.append_value_to_string(&mut result, &value);
+            Self::append_value_to_string(&mut result, &value);
         }
 
         Ok(Value::String(result))
@@ -52,7 +52,7 @@ impl Operator for CatOperator {
 
 impl CatOperator {
     #[inline]
-    fn value_to_string(&self, value: &Value) -> String {
+    fn value_to_string(value: &Value) -> String {
         match value {
             Value::String(s) => s.clone(),
             Value::Number(n) => n.to_string(),
@@ -60,11 +60,8 @@ impl CatOperator {
             Value::Null => "null".to_string(),
             Value::Array(arr) => {
                 let mut result = String::with_capacity(arr.len() * 8);
-                for (i, item) in arr.iter().enumerate() {
-                    if i > 0 {
-                        result.push(',');
-                    }
-                    self.append_value_to_string(&mut result, item);
+                for item in arr.iter() {
+                    Self::append_value_to_string(&mut result, item);
                 }
                 result
             },
@@ -73,18 +70,15 @@ impl CatOperator {
     }
 
     #[inline]
-    fn append_value_to_string(&self, result: &mut String, value: &Value) {
+    fn append_value_to_string(result: &mut String, value: &Value) {
         match value {
             Value::String(s) => result.push_str(s),
             Value::Number(n) => result.push_str(&n.to_string()),
             Value::Bool(b) => result.push_str(if *b { "true" } else { "false" }),
             Value::Null => result.push_str("null"),
             Value::Array(arr) => {
-                for (i, item) in arr.iter().enumerate() {
-                    if i > 0 {
-                        result.push(',');
-                    }
-                    self.append_value_to_string(result, item);
+                for item in arr.iter() {
+                    Self::append_value_to_string(result, item);
                 }
             },
             Value::Object(_) => result.push_str("[object Object]"),
