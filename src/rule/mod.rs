@@ -122,10 +122,7 @@ impl Rule {
             Rule::Some(args) |
             Rule::All(args) => {
                 if let [array, _] = args.as_slice() {
-                    match array {
-                        Rule::Value(Value::Array(_)) => true,
-                        _ => false
-                    }
+                    matches!(array, Rule::Value(Value::Array(_)))
                 } else {
                     false
                 }

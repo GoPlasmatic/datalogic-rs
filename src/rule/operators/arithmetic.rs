@@ -45,8 +45,8 @@ impl Operator for AddOperator {
 impl Operator for MultiplyOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
-            0 => return Ok(Value::Number(1.into())),
-            1 => return Ok(to_value(to_number(&args[0].apply(data)?))),
+            0 => Ok(Value::Number(1.into())),
+            1 => Ok(to_value(to_number(&args[0].apply(data)?))),
             _ => {
                 let mut product = 1.0;
                 for arg in args {

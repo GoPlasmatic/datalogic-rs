@@ -44,7 +44,7 @@ const ERR_INVALID_PATH: &str = "Invalid path";
 
 impl VarOperator {
     #[inline]
-    fn get_value_by_path<'a>(&self, data: &'a Value, path: &str) -> Result<Value, Error> {
+    fn get_value_by_path(&self, data: &Value, path: &str) -> Result<Value, Error> {
         // Fast path for empty or root path
         if path.is_empty() {
             return Ok(data.clone());

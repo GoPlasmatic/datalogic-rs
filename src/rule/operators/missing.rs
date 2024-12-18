@@ -31,7 +31,7 @@ impl MissingOperator {
     }
 
     #[inline]
-    fn check_path<'a>(data: &'a Value, path: &str) -> bool {
+    fn check_path(data: &Value, path: &str) -> bool {
         let mut current = data;
         
         for part in path.split('.') {
