@@ -197,133 +197,50 @@ impl Rule {
                     .map(|rule| rule.apply(data))
                     .collect::<Result<Vec<_>, _>>()?
             )),
-            _ => {
-                let op = self.get_operator()?;
-                let args = self.get_args();
-                op.apply(args, data)
-            }
-        }
-    }
+            Rule::Var(args) => VAR_OP.apply(args, data),
 
-    fn get_operator(&self) -> Result<&'static dyn Operator, Error> {
-        match self {
-            Rule::Var(_) => Ok(&VAR_OP),
-            
-            // Group comparison operators
-            Rule::Equals(_) => Ok(&EQUALS_OP),
-            Rule::StrictEquals(_) => Ok(&STRICT_EQUALS_OP),
-            Rule::NotEquals(_) => Ok(&NOT_EQUALS_OP),
-            Rule::StrictNotEquals(_) => Ok(&STRICT_NOT_EQUALS_OP),
-            
-            // Group arithmetic operators
-            Rule::GreaterThan(_) => Ok(&GREATER_THAN_OP),
-            Rule::LessThan(_) => Ok(&LESS_THAN_OP),
-            Rule::GreaterThanEqual(_) => Ok(&GREATER_THAN_EQUAL_OP),
-            Rule::LessThanEqual(_) => Ok(&LESS_THAN_EQUAL_OP),
-            
-            // Group logical operators
-            Rule::And(_) => Ok(&AND_OP),
-            Rule::Or(_) => Ok(&OR_OP),
-            Rule::Not(_) => Ok(&NOT_OP),
-            Rule::DoubleBang(_) => Ok(&DOUBLE_BANG_OP),
-            
-            // Group control operators
-            Rule::If(_) => Ok(&IF_OP),
-            Rule::Ternary(_) => Ok(&TERNARY_OP),
-            
-            // Group array operators
-            Rule::Map(_) => Ok(&MAP_OP),
-            Rule::Filter(_) => Ok(&FILTER_OP),
-            Rule::Reduce(_) => Ok(&REDUCE_OP),
-            Rule::All(_) => Ok(&ALL_OP),
-            Rule::None(_) => Ok(&NONE_OP),
-            Rule::Some(_) => Ok(&SOME_OP),
-            Rule::Merge(_) => Ok(&MERGE_OP),
-            
-            // Group missing operators
-            Rule::Missing(_) => Ok(&MISSING_OP),
-            Rule::MissingSome(_) => Ok(&MISSING_SOME_OP),
+            Rule::Equals(args) => EQUALS_OP.apply(args, data),
+            Rule::StrictEquals(args) => STRICT_EQUALS_OP.apply(args, data),
+            Rule::NotEquals(args) => NOT_EQUALS_OP.apply(args, data),
+            Rule::StrictNotEquals(args) => STRICT_NOT_EQUALS_OP.apply(args, data),
 
-            // Group string operators
-            Rule::In(_) => Ok(&IN_OP),
-            Rule::Cat(_) => Ok(&CAT_OP),
-            Rule::Substr(_) => Ok(&SUBSTR_OP),
+            Rule::GreaterThan(args) => GREATER_THAN_OP.apply(args, data),
+            Rule::LessThan(args) => LESS_THAN_OP.apply(args, data),
+            Rule::GreaterThanEqual(args) => GREATER_THAN_EQUAL_OP.apply(args, data),
+            Rule::LessThanEqual(args) => LESS_THAN_EQUAL_OP.apply(args, data),
 
-            // Group arithmetic operators
-            Rule::Add(_) => Ok(&ADD_OP),
-            Rule::Multiply(_) => Ok(&MULTIPLY_OP),
-            Rule::Subtract(_) => Ok(&SUBTRACT_OP),
-            Rule::Divide(_) => Ok(&DIVIDE_OP),
-            Rule::Modulo(_) => Ok(&MODULO_OP),
-            Rule::Max(_) => Ok(&MAX_OP),
-            Rule::Min(_) => Ok(&MIN_OP),
+            Rule::And(args) => AND_OP.apply(args, data),
+            Rule::Or(args) => OR_OP.apply(args, data),
+            Rule::Not(args) => NOT_OP.apply(args, data),
+            Rule::DoubleBang(args) => DOUBLE_BANG_OP.apply(args, data),
 
-            // Group special operators
-            Rule::Preserve(_) => Ok(&PRESERVE_OP),
-            
-            Rule::Array(_) => Err(Error::InvalidRule("Array does not have an operator".to_string())),
-            Rule::Value(_) => Err(Error::InvalidRule("Value does not have an operator".to_string())),
-        }
-    }
+            Rule::If(args) => IF_OP.apply(args, data),
+            Rule::Ternary(args) => TERNARY_OP.apply(args, data),
 
-    fn get_args(&self) -> &[Rule] {
-        match self {
-            // Value (no args)
-            Rule::Value(_) => &[],
-            Rule::Array(args) => args,
+            Rule::Map(args) => MAP_OP.apply(args, data),
+            Rule::Filter(args) => FILTER_OP.apply(args, data),
+            Rule::Reduce(args) => REDUCE_OP.apply(args, data),
+            Rule::All(args) => ALL_OP.apply(args, data),
+            Rule::None(args) => NONE_OP.apply(args, data),
+            Rule::Some(args) => SOME_OP.apply(args, data),
+            Rule::Merge(args) => MERGE_OP.apply(args, data),
+
+            Rule::Missing(args) => MISSING_OP.apply(args, data),
+            Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
             
-            // Variable access
-            Rule::Var(args) => args,
-            
-            // Comparison operators
-            Rule::Equals(args) => args,
-            Rule::StrictEquals(args) => args,
-            Rule::NotEquals(args) => args,
-            Rule::StrictNotEquals(args) => args,
-            Rule::GreaterThan(args) => args,
-            Rule::LessThan(args) => args,
-            Rule::GreaterThanEqual(args) => args,
-            Rule::LessThanEqual(args) => args,
-            
-            // Logical operators
-            Rule::And(args) => args,
-            Rule::Or(args) => args,
-            Rule::Not(args) => args,
-            Rule::DoubleBang(args) => args,
-            
-            // Control operators
-            Rule::If(args) => args,
-            Rule::Ternary(args) => args,
-            
-            // Array operators
-            Rule::Map(args) => args,
-            Rule::Filter(args) => args,
-            Rule::Reduce(args) => args,
-            Rule::All(args) => args,
-            Rule::None(args) => args,
-            Rule::Some(args) => args,
-            Rule::Merge(args) => args,
-            
-            // Missing operators
-            Rule::Missing(args) => args,
-            Rule::MissingSome(args) => args,
-            
-            // String operators
-            Rule::In(args) => args,
-            Rule::Cat(args) => args,
-            Rule::Substr(args) => args,
-            
-            // Arithmetic operators
-            Rule::Add(args) => args,
-            Rule::Multiply(args) => args,
-            Rule::Subtract(args) => args,
-            Rule::Divide(args) => args,
-            Rule::Modulo(args) => args,
-            Rule::Max(args) => args,
-            Rule::Min(args) => args,
-            
-            // Special operators
-            Rule::Preserve(args) => args,
+            Rule::In(args) => IN_OP.apply(args, data),
+            Rule::Cat(args) => CAT_OP.apply(args, data),
+            Rule::Substr(args) => SUBSTR_OP.apply(args, data),
+
+            Rule::Add(args) => ADD_OP.apply(args, data),
+            Rule::Multiply(args) => MULTIPLY_OP.apply(args, data),
+            Rule::Subtract(args) => SUBTRACT_OP.apply(args, data),
+            Rule::Divide(args) => DIVIDE_OP.apply(args, data),
+            Rule::Modulo(args) => MODULO_OP.apply(args, data),
+            Rule::Max(args) => MAX_OP.apply(args, data),
+            Rule::Min(args) => MIN_OP.apply(args, data),
+
+            Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
         }
     }
 }
