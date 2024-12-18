@@ -32,14 +32,13 @@ lazy_static::lazy_static! {
 }
 
 fn main() {
-    let engine = JsonLogic::new();
     let iterations = 1e5 as u32;
     
     let start = Instant::now();
     
     for _ in 0..iterations {
         for (rule, data, expected) in TEST_CASES.iter() {
-            if let Ok(result) = engine.apply(rule, data) {
+            if let Ok(result) = JsonLogic::apply(rule, data) {
                 assert_eq!(result, *expected);
             }
         }

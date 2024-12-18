@@ -22,7 +22,7 @@ impl JsonLogic {
         Self {}
     }
 
-    pub fn apply(&self, rule: &Rule, data: &Value) -> JsonLogicResult {
+    pub fn apply(rule: &Rule, data: &Value) -> JsonLogicResult {
         rule.apply(data)
     }
 }

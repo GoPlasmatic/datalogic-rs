@@ -10,6 +10,7 @@ pub struct NoneOperator;
 pub struct SomeOperator;
 pub struct MergeOperator;
 
+#[inline]
 fn is_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
@@ -24,21 +25,18 @@ fn is_truthy(value: &Value) -> bool {
 impl Operator for MapOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.len() != 2 {
-            return Err(Error::InvalidArguments("map requires 2 arguments".to_string()));
+            return Err(Error::InvalidArguments("map requires 2 arguments".into()));
         }
         
-        let array = args[0].apply(data)?;
-        let array = match array {
+        let array = match args[0].apply(data)? {
             Value::Array(arr) => arr,
-            _ => return Ok(Value::Array(vec![])),
+            _ => return Ok(Value::Array(Vec::new())),
         };
         
-        let mut results = Vec::new();
-        for item in array {
-            // Pass the array item as the data context for mapping
-            let result = args[1].apply(&item)?;
-            results.push(result);
-        }
+        let results = array
+            .into_iter()
+            .map(|item| args[1].apply(&item))
+            .collect::<Result<Vec<_>, _>>()?;
         
         Ok(Value::Array(results))
     }
@@ -47,23 +45,18 @@ impl Operator for MapOperator {
 impl Operator for FilterOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.len() != 2 {
-            return Err(Error::InvalidArguments("filter requires 2 arguments".to_string()));
+            return Err(Error::InvalidArguments("filter requires 2 arguments".into()));
         }
     
-        let array = args[0].apply(data)?;
-        let array = match array {
+        let array = match args[0].apply(data)? {
             Value::Array(arr) => arr,
-            _ => return Ok(Value::Array(vec![])),
+            _ => return Ok(Value::Array(Vec::new())),
         };
         
-        let mut results = Vec::new();
-        for item in array {
-            // Pass item directly as context
-            let result = args[1].apply(&item)?;
-            if is_truthy(&result) {
-                results.push(item);
-            }
-        }
+        let results = array
+            .into_iter()
+            .filter(|item| matches!(args[1].apply(item), Ok(v) if is_truthy(&v)))
+            .collect::<Vec<_>>();
         
         Ok(Value::Array(results))
     }
@@ -75,26 +68,18 @@ impl Operator for ReduceOperator {
         if args.len() != 3 {
             return Err(Error::InvalidArguments("reduce requires 3 arguments".to_string()));
         }
-        
+
         let array = args[0].apply(data)?;
         let array = match array {
             Value::Array(arr) => arr,
-            _ => return args[2].apply(data), // Return initial value instead of null
+            _ => return args[2].apply(data),
         };
         
+        let mut item_data = Value::Object(serde_json::Map::with_capacity(2));
         let mut accumulator = args[2].apply(data)?;
         for item in array {
-            let mut item_data = serde_json::json!({
-                "current": item,
-                "accumulator": accumulator,
-            });
-            if let Value::Object(obj) = data {
-                if let Value::Object(item_obj) = &mut item_data {
-                    for (k, v) in obj {
-                        item_obj.insert(k.clone(), v.clone());
-                    }
-                }
-            }
+            item_data["current"] = item;
+            item_data["accumulator"] = accumulator;
             accumulator = args[1].apply(&item_data)?;
         }
         Ok(accumulator)
@@ -117,15 +102,11 @@ impl Operator for AllOperator {
             return Ok(Value::Bool(false));
         }
     
-        for item in array {
-            // Pass item directly as context, similar to FilterOperator
-            let result = args[1].apply(&item)?;
-            if !is_truthy(&result) {
-                return Ok(Value::Bool(false));
-            }
-        }
-        
-        Ok(Value::Bool(true))
+        let result = array
+            .into_iter()
+            .all(|item| matches!(args[1].apply(&item), Ok(v) if is_truthy(&v)));
+            
+        Ok(Value::Bool(result))
     }
 }
 
@@ -162,22 +143,25 @@ impl Operator for SomeOperator {
             _ => return Err(Error::InvalidRule("First argument must be array".to_string())),
         };
         
-        for item in array {
-            if args[1].apply(&item)?.as_bool().unwrap_or(false) {
-                return Ok(Value::Bool(true));
-            }
-        }
-        Ok(Value::Bool(false))
+        let result = array
+            .into_iter()
+            .any(|item| matches!(args[1].apply(&item), Ok(v) if is_truthy(&v)));
+            
+        Ok(Value::Bool(result))
     }
 }
 
 impl Operator for MergeOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        let mut merged = Vec::new();
+        if args.is_empty() {
+            return Ok(Value::Array(Vec::new()));
+        }
+        
+        let capacity = args.len() * 2;
+        let mut merged = Vec::with_capacity(capacity);
         
         for arg in args {
-            let value = arg.apply(data)?;
-            match value {
+            match arg.apply(data)? {
                 Value::Array(arr) => merged.extend(arr),
                 value => merged.push(value),
             }

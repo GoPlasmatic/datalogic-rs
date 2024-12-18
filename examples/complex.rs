@@ -2,8 +2,6 @@ use datalogic_rs::*;
 use serde_json::json;
 
 fn main() {
-    let engine = JsonLogic::new();
-
     // Example 1: Dynamic Pricing Rules
     let pricing_logic = json!({
         "if": [
@@ -112,14 +110,14 @@ fn main() {
 
     // Test the rules
     let pricing_rule = Rule::from_value(&pricing_logic).unwrap();
-    let final_price = engine.apply(&pricing_rule, &pricing_data).unwrap();
+    let final_price = JsonLogic::apply(&pricing_rule, &pricing_data).unwrap();
     println!("Final price after discounts: ${}", final_price);
 
     let loan_eligibility_rule = Rule::from_value(&loan_eligibility).unwrap();
-    let is_eligible = engine.apply(&loan_eligibility_rule, &loan_data).unwrap();
+    let is_eligible = JsonLogic::apply(&loan_eligibility_rule, &loan_data).unwrap();
     println!("Loan application approved: {}", is_eligible);
 
     let fraud_check_rule = Rule::from_value(&fraud_check).unwrap();
-    let is_fraudulent = engine.apply(&fraud_check_rule, &transaction_data).unwrap();
+    let is_fraudulent = JsonLogic::apply(&fraud_check_rule, &transaction_data).unwrap();
     println!("Transaction flagged as fraudulent: {}", is_fraudulent);
 }

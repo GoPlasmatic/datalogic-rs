@@ -32,8 +32,6 @@ lazy_static::lazy_static! {
 }
 
 fn bench_apply_all_rules(c: &mut Criterion) {
-    let engine = JsonLogic::new();
-    
     let mut group = c.benchmark_group("jsonlogic_rules");
     group.sampling_mode(criterion::SamplingMode::Linear);
     group.sample_size(50);
@@ -41,7 +39,7 @@ fn bench_apply_all_rules(c: &mut Criterion) {
     group.bench_function("apply_all_rules", |b| {
         b.iter(|| {
             for (rule, data, expected) in TEST_CASES.iter() {
-                if let Ok(result) = engine.apply(rule, data) {
+                if let Ok(result) = JsonLogic::apply(rule, data) {
                     assert_eq!(result, *expected);
                 }
             }

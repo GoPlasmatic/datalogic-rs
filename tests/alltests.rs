@@ -21,7 +21,6 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
     let json_data: Vec<Value> = serde_json::from_str(&content)?;
     println!("Parsed {} test cases", json_data.len());
 
-    let engine = JsonLogic::new();
     let mut current_section = String::new();
     let mut total_tests = 0;
     let mut passed_tests = 0;
@@ -45,7 +44,7 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
             let expected = &test_case[2];
             let rule = Rule::from_value(&logic).unwrap();
 
-            match engine.apply(&rule, data) {
+            match JsonLogic::apply(&rule, data) {
                 Ok(result) => {
                     if result == *expected {
                         passed_tests += 1;
