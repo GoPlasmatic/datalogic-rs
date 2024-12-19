@@ -1,23 +1,12 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule};
+use super::{Operator, Rule, ValueCoercion};
 
 const ERR_TERNARY: &str = "?: requires 3 arguments";
 
 pub struct IfOperator;
 pub struct TernaryOperator;
 
-#[inline]
-fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(b) => *b,  // Most common case first
-        Value::Null => false,
-        Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
 
 impl Operator for IfOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
@@ -26,7 +15,7 @@ impl Operator for IfOperator {
             0 => return Ok(Value::Null),
             1 => return args[0].apply(data),
             2 => {
-                return if is_truthy(&args[0].apply(data)?) {
+                return if args[0].apply(data)?.coerce_to_bool() {
                     args[1].apply(data)
                 } else {
                     Ok(Value::Null)
@@ -40,7 +29,7 @@ impl Operator for IfOperator {
         let remainder = chunks.remainder();
 
         for chunk in chunks {
-            if is_truthy(&chunk[0].apply(data)?) {
+            if chunk[0].apply(data)?.coerce_to_bool() {
                 return chunk[1].apply(data);
             }
         }
@@ -61,7 +50,7 @@ impl Operator for TernaryOperator {
             return Err(Error::InvalidArguments(ERR_TERNARY.into()));
         }
 
-        if is_truthy(&args[0].apply(data)?) {
+        if args[0].apply(data)?.coerce_to_bool() {
             args[1].apply(data)
         } else {
             args[2].apply(data)

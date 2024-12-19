@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule};
+use super::{Operator, Rule, ValueCoercion};
 
 pub struct EqualsOperator;
 pub struct StrictEqualsOperator;
@@ -11,26 +11,6 @@ pub struct LessThanOperator;
 pub struct GreaterThanEqualOperator;
 pub struct LessThanEqualOperator;
 
-#[inline]
-fn to_number(value: &Value) -> f64 {
-    match value {
-        Value::Number(n) => n.as_f64().unwrap_or(0.0),
-        Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
-        Value::Bool(true) => 1.0,
-        Value::Bool(false) => 0.0,
-        _ => 0.0,
-    }
-}
-
-#[inline]
-fn check_string_number(left: &Value, right: &Value) -> Option<bool> {
-    match (left, right) {
-        (Value::String(s), Value::Number(_)) | (Value::Number(_), Value::String(s)) => {
-            s.parse::<f64>().ok().map(|_| true)
-        },
-        _ => None
-    }
-}
 
 impl Operator for EqualsOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
@@ -40,11 +20,7 @@ impl Operator for EqualsOperator {
         let left = args[0].apply(data)?;
         let right = args[1].apply(data)?;
         
-        Ok(Value::Bool(if check_string_number(&left, &right).is_some() {
-            to_number(&left) == to_number(&right)
-        } else {
-            left == right
-        }))
+        Ok(Value::Bool(left.coerce_to_number() == right.coerce_to_number()))
     }
 }
 
@@ -70,7 +46,7 @@ impl Operator for NotEqualsOperator {
         match (&left, &right) {
             (Value::String(s), Value::Number(_)) | (Value::Number(_), Value::String(s)) => {
                 if s.parse::<f64>().is_ok() {
-                    return Ok(Value::Bool(to_number(&left) != to_number(&right)));
+                    return Ok(Value::Bool(left.coerce_to_number() != right.coerce_to_number()));
                 }
             },
             _ => {}
@@ -97,7 +73,7 @@ impl Operator for GreaterThanOperator {
         }
         let left = args[0].apply(data)?;
         let right = args[1].apply(data)?;
-        Ok(Value::Bool(to_number(&left) > to_number(&right)))
+        Ok(Value::Bool(left.coerce_to_number() > right.coerce_to_number()))
     }
 }
 
@@ -106,9 +82,9 @@ impl Operator for LessThanOperator {
         if args.len() < 2 {
             return Err(Error::InvalidArguments("< requires at least 2 arguments".to_string()));
         }
-        let mut current = to_number(&args[0].apply(data)?);
+        let mut current = args[0].apply(data)?.coerce_to_number();
         for arg in &args[1..] {
-            let next = to_number(&arg.apply(data)?);
+            let next = arg.apply(data)?.coerce_to_number();
             if current >= next {
                 return Ok(Value::Bool(false));
             }
@@ -123,9 +99,9 @@ impl Operator for LessThanEqualOperator {
         if args.len() < 2 {
             return Err(Error::InvalidArguments("<= requires at least 2 arguments".to_string()));
         }
-        let mut current = to_number(&args[0].apply(data)?);
+        let mut current = args[0].apply(data)?.coerce_to_number();
         for arg in &args[1..] {
-            let next = to_number(&arg.apply(data)?);
+            let next = arg.apply(data)?.coerce_to_number();
             if current > next {
                 return Ok(Value::Bool(false));
             }
@@ -140,9 +116,9 @@ impl Operator for GreaterThanEqualOperator {
         if args.len() < 2 {
             return Err(Error::InvalidArguments(">= requires at least 2 arguments".to_string()));
         }
-        let mut current = to_number(&args[0].apply(data)?);
+        let mut current = args[0].apply(data)?.coerce_to_number();
         for arg in &args[1..] {
-            let next = to_number(&arg.apply(data)?);
+            let next = arg.apply(data)?.coerce_to_number();
             if current < next {
                 return Ok(Value::Bool(false));
             }

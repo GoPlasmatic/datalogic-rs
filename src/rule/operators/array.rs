@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule};
+use super::{Operator, Rule, ValueCoercion};
 
 pub struct MapOperator;
 pub struct FilterOperator;
@@ -9,18 +9,6 @@ pub struct AllOperator;
 pub struct NoneOperator;
 pub struct SomeOperator;
 pub struct MergeOperator;
-
-#[inline]
-fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
 
 impl Operator for MapOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
@@ -55,13 +43,12 @@ impl Operator for FilterOperator {
         
         let results = array
             .into_iter()
-            .filter(|item| matches!(args[1].apply(item), Ok(v) if is_truthy(&v)))
+            .filter(|item| matches!(args[1].apply(item), Ok(v) if v.coerce_to_bool()))
             .collect::<Vec<_>>();
         
         Ok(Value::Array(results))
     }
 }
-
 
 impl Operator for ReduceOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
@@ -92,8 +79,7 @@ impl Operator for AllOperator {
             return Err(Error::InvalidArguments("all requires 2 arguments".to_string()));
         }
         
-        let array = args[0].apply(data)?;
-        let array = match array {
+        let array = match args[0].apply(data)? {
             Value::Array(arr) => arr,
             _ => return Ok(Value::Bool(false)),
         };
@@ -104,7 +90,7 @@ impl Operator for AllOperator {
     
         let result = array
             .into_iter()
-            .all(|item| matches!(args[1].apply(&item), Ok(v) if is_truthy(&v)));
+            .all(|item| matches!(args[1].apply(&item), Ok(v) if v.coerce_to_bool()));
             
         Ok(Value::Bool(result))
     }
@@ -117,17 +103,16 @@ impl Operator for NoneOperator {
         }
         
         let array = args[0].apply(data)?;
-        let array = match array {
+        let array = match &array {
             Value::Array(arr) => arr,
             _ => return Err(Error::InvalidRule("First argument must be array".to_string())),
         };
         
-        for item in array {
-            if args[1].apply(&item)?.as_bool().unwrap_or(false) {
-                return Ok(Value::Bool(false));
-            }
-        }
-        Ok(Value::Bool(true))
+        let result = array
+            .into_iter()
+            .any(|item| matches!(args[1].apply(&item), Ok(v) if v.coerce_to_bool()));
+
+        Ok(Value::Bool(!result))
     }
 }
 
@@ -138,14 +123,14 @@ impl Operator for SomeOperator {
         }
         
         let array = args[0].apply(data)?;
-        let array = match array {
+        let array = match &array {
             Value::Array(arr) => arr,
             _ => return Err(Error::InvalidRule("First argument must be array".to_string())),
         };
         
         let result = array
             .into_iter()
-            .any(|item| matches!(args[1].apply(&item), Ok(v) if is_truthy(&v)));
+            .any(|item| matches!(args[1].apply(&item), Ok(v) if v.coerce_to_bool()));
             
         Ok(Value::Bool(result))
     }

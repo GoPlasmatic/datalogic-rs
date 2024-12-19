@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule};
+use super::{Operator, Rule, ValueCoercion, ValueConvert};
 
 pub struct AddOperator;
 pub struct MultiplyOperator;
@@ -10,35 +10,14 @@ pub struct ModuloOperator;
 pub struct MaxOperator;
 pub struct MinOperator;
 
-fn to_number(value: &Value) -> f64 {
-    match value {
-        Value::Number(n) => n.as_f64().unwrap_or(0.0),
-        Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
-        Value::Bool(b) => match b {
-            true => 1.0,
-            false => 0.0
-        },
-        _ => 0.0,
-    }
-}
-
-fn to_value(num: f64) -> Value {
-    const ZERO_FRACT: f64 = 0.0;
-    if (num.fract() == ZERO_FRACT) && (num >= i64::MIN as f64) && (num <= i64::MAX as f64) {
-        Value::Number(serde_json::Number::from(num as i64))
-    } else {
-        Value::Number(serde_json::Number::from_f64(num).unwrap())
-    }
-}
-
 impl Operator for AddOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         let mut sum = 0.0;
         for arg in args {
             let val = arg.apply(data)?;
-            sum += to_number(&val);
+            sum += val.coerce_to_number();
         }
-        Ok(to_value(sum))
+        Ok(sum.to_value())
     }
 }
 
@@ -46,16 +25,16 @@ impl Operator for MultiplyOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Number(1.into())),
-            1 => Ok(to_value(to_number(&args[0].apply(data)?))),
+            1 => Ok(args[0].apply(data)?.coerce_to_number().to_value()),
             _ => {
                 let mut product = 1.0;
                 for arg in args {
-                    product *= to_number(&arg.apply(data)?);
+                    product *= &arg.apply(data)?.coerce_to_number();
                     if product == 0.0 {
                         return Ok(Value::Number(0.into()));
                     }
                 }
-                Ok(to_value(product))
+                Ok(product.to_value())
             }
         }
     }
@@ -66,16 +45,16 @@ impl Operator for SubtractOperator {
         if args.is_empty() {
             return Ok(Value::Number(0.into()));
         }
-        let first = to_number(&args[0].apply(data)?);
+        let first = &args[0].apply(data)?.coerce_to_number();
         if args.len() == 1 {
-            return Ok(to_value(-first));
+            return Ok((-first).to_value());
         }
-        let mut result = first;
+        let mut result: f64 = *first;
         for arg in &args[1..] {
             let val = arg.apply(data)?;
-            result -= to_number(&val);
+            result -= val.coerce_to_number();
         }
-        Ok(to_value(result))
+        Ok(result.to_value())
     }
 }
 
@@ -84,12 +63,12 @@ impl Operator for DivideOperator {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("divide requires 2 arguments".to_string()));
         }
-        let numerator = to_number(&args[0].apply(data)?);
-        let denominator = to_number(&args[1].apply(data)?);
+        let numerator = args[0].apply(data)?.coerce_to_number();
+        let denominator = args[1].apply(data)?.coerce_to_number();
         if denominator == 0.0 {
             return Ok(Value::Null);
         }
-        Ok(to_value(numerator / denominator))
+        Ok((numerator / denominator).to_value())
     }
 }
 
@@ -98,12 +77,12 @@ impl Operator for ModuloOperator {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("modulo requires 2 arguments".to_string()));
         }
-        let a = to_number(&args[0].apply(data)?);
-        let b = to_number(&args[1].apply(data)?);
+        let a = args[0].apply(data)?.coerce_to_number();
+        let b = args[1].apply(data)?.coerce_to_number();
         if b == 0.0 {
             return Ok(Value::Null);
         }
-        Ok(to_value(a % b))
+        Ok((a % b).to_value())
     }
 }
 
@@ -114,10 +93,10 @@ impl Operator for MaxOperator {
         }
         let mut max = f64::NEG_INFINITY;
         for arg in args {
-            let val = arg.apply(data)?;
-            max = max.max(to_number(&val));
+            let val = arg.apply(data)?.coerce_to_number();
+            max = max.max(val);
         }
-        Ok(to_value(max))
+        Ok(max.to_value())
     }
 }
 
@@ -128,9 +107,9 @@ impl Operator for MinOperator {
         }
         let mut min = f64::INFINITY;
         for arg in args {
-            let val = arg.apply(data)?;
-            min = min.min(to_number(&val));
+            let val = arg.apply(data)?.coerce_to_number();
+            min = min.min(val);
         }
-        Ok(to_value(min))
+        Ok(min.to_value())
     }
 }
