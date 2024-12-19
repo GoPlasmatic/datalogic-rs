@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule};
+use super::{Operator, Rule, ValueCoercion};
 
 pub struct AndOperator;
 pub struct OrOperator;
@@ -8,28 +8,16 @@ pub struct NotOperator;
 pub struct DoubleBangOperator;
 
 
-#[inline]
-fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(b) => *b,  // Most common case first
-        Value::Null => false,
-        Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
-
 impl Operator for OrOperator {
     #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
-            0 => return Ok(Value::Bool(false)),
-            1 => return args[0].apply(data),
+            0 => Ok(Value::Bool(false)),
+            1 => args[0].apply(data),
             _ => {
                 for arg in args {
                     let value = arg.apply(data)?;
-                    if is_truthy(&value) {
+                    if value.coerce_to_bool() {
                         return Ok(value);
                     }
                 }
@@ -43,12 +31,12 @@ impl Operator for AndOperator {
     #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
-            0 => return Ok(Value::Bool(true)),
-            1 => return args[0].apply(data),
+            0 => Ok(Value::Bool(true)),
+            1 => args[0].apply(data),
             _ => {
                 for arg in args {
                     let value = arg.apply(data)?;
-                    if !is_truthy(&value) {
+                    if !value.coerce_to_bool() {
                         return Ok(value);
                     }
                 }
@@ -62,14 +50,14 @@ impl Operator for NotOperator {
     #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
-            0 => return Ok(Value::Bool(true)),
+            0 => Ok(Value::Bool(true)),
             1 => {
                 let value = args[0].apply(data)?;
-                Ok(Value::Bool(!is_truthy(&value)))
+                Ok(Value::Bool(!value.coerce_to_bool()))
             },
             _ => {
                 let value = args[0].apply(data)?;
-                Ok(Value::Bool(!is_truthy(&value)))
+                Ok(Value::Bool(!value.coerce_to_bool()))
             }
         }
     }
@@ -82,7 +70,7 @@ impl Operator for DoubleBangOperator {
             0 => Ok(Value::Bool(false)),
             _ => {
                 let value = args[0].apply(data)?;
-                Ok(Value::Bool(is_truthy(&value)))
+                Ok(Value::Bool(value.coerce_to_bool()))
             }
         }
     }

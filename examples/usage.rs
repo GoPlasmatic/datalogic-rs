@@ -3,7 +3,17 @@ use serde_json::json;
 
 fn main() {
     let logic = json!({
-        "map": [[5, 6, 7], { "+": [{ "var": [] }, 1] }]
+        "cat": {
+          "map": [
+            ["Jesse", "Jeremy", "Harishankar"],
+            {
+              "cat": [
+                { "var": [] },
+                ' '
+              ]
+            }
+          ]
+        }
       });
     
     let data = json!({
@@ -12,6 +22,7 @@ fn main() {
             "name": "John"
         }
     });
+    println!("Logic: {:?}", logic);
 
     let rule = Rule::from_value(&logic).unwrap();
     println!("Rule: {:?}", rule);

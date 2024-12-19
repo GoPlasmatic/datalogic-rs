@@ -27,7 +27,7 @@ impl Operator for VarOperator {
             return Ok(data.clone());
         }
 
-        self.get_value_by_path(data, &path_str).or({
+        self.get_value_ref(data, &path_str).cloned().or({
             if let Some(default) = default_value {
                 Ok(default)
             } else {
@@ -44,22 +44,20 @@ const ERR_INVALID_PATH: &str = "Invalid path";
 
 impl VarOperator {
     #[inline]
-    fn get_value_by_path<'a>(&self, data: &'a Value, path: &str) -> Result<Value, Error> {
+    fn get_value_ref<'a>(&self, data: &'a Value, path: &str) -> Result<&'a Value, Error> {
         // Fast path for empty or root path
         if path.is_empty() {
-            return Ok(data.clone());
+            return Ok(data);
         }
 
         // Fast path for simple key lookup
         if !path.contains('.') {
             return match data {
                 Value::Object(obj) => obj.get(path)
-                    .cloned()
                     .ok_or_else(|| Error::InvalidArguments(format!("{}{}", ERR_NOT_FOUND, path))),
                 Value::Array(arr) => path.parse::<usize>()
                     .ok()
                     .and_then(|i| arr.get(i))
-                    .cloned()
                     .ok_or_else(|| Error::InvalidArguments(format!("{}{}", ERR_OUT_OF_BOUNDS, path))),
                 _ => Err(Error::InvalidArguments(ERR_INVALID_PATH.into())),
             };
@@ -83,6 +81,6 @@ impl VarOperator {
             };
         }
 
-        Ok(current.clone())
+        Ok(current)
     }
 }
