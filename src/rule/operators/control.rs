@@ -52,7 +52,6 @@ impl Operator for IfOperator {
 }
 
 impl Operator for TernaryOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [condition, consequent, alternative] => {

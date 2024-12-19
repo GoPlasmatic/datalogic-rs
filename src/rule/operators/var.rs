@@ -43,7 +43,6 @@ const ERR_INVALID_INDEX: &str = "Invalid array index: ";
 const ERR_INVALID_PATH: &str = "Invalid path";
 
 impl VarOperator {
-    #[inline]
     fn get_value_ref<'a>(&self, data: &'a Value, path: &str) -> Result<&'a Value, Error> {
         // Fast path for empty or root path
         if path.is_empty() {

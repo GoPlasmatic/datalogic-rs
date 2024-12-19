@@ -10,7 +10,6 @@ pub struct MissingOperator;
 pub struct MissingSomeOperator;
 
 impl MissingOperator {
-    #[inline]
     fn process_keys(value: Value) -> Vec<String> {
         match value {
             Value::String(s) => vec![s],
@@ -30,7 +29,6 @@ impl MissingOperator {
         }
     }
 
-    #[inline]
     fn check_path(data: &Value, path: &str) -> bool {
         let mut current = data;
         

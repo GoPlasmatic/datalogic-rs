@@ -10,7 +10,6 @@ pub struct CatOperator;
 pub struct SubstrOperator;
 
 impl Operator for InOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments(ERR_IN.into()));
@@ -28,7 +27,6 @@ impl Operator for InOperator {
 }
 
 impl Operator for CatOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         // Fast paths
         match args.len() {
