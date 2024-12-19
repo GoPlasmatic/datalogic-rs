@@ -14,116 +14,216 @@ pub struct LessThanEqualOperator;
 
 impl Operator for EqualsOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("== requires 2 arguments".to_string()));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(match (&left, &right) {
+                    (Value::Number(n1), Value::Number(n2)) => n1 == n2,
+                    (Value::String(s1), Value::String(s2)) => s1 == s2,
+                    (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
+                    _ => left.coerce_to_number() == right.coerce_to_number()
+                }))
+            },
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if std::mem::discriminant(&prev) == std::mem::discriminant(&curr) || prev == curr {
+                        return Ok(Value::Bool(false));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(true))
+            }
+            _ => Err(Error::InvalidArguments("==".into()))
         }
-        let left = args[0].apply(data)?;
-        let right = args[1].apply(data)?;
-        
-        Ok(Value::Bool(left.coerce_to_number() == right.coerce_to_number()))
     }
 }
 
 impl Operator for StrictEqualsOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("=== requires 2 arguments".to_string()));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(std::mem::discriminant(&left) == std::mem::discriminant(&right) && left == right))
+            }
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if std::mem::discriminant(&prev) != std::mem::discriminant(&curr) || prev != curr {
+                        return Ok(Value::Bool(false));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(true))
+            }
+            _ => Err(Error::InvalidArguments("===".into()))
         }
-        let left = args[0].apply(data)?;
-        let right = args[1].apply(data)?;
-        Ok(Value::Bool(std::mem::discriminant(&left) == std::mem::discriminant(&right) && left == right))
     }
 }
 
 impl Operator for NotEqualsOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments("!= requires at least 2 arguments".to_string()));
-        }
-        let left = args[0].apply(data)?;
-        let right = args[1].apply(data)?;
-        
-        match (&left, &right) {
-            (Value::String(s), Value::Number(_)) | (Value::Number(_), Value::String(s)) => {
-                if s.parse::<f64>().is_ok() {
-                    return Ok(Value::Bool(left.coerce_to_number() != right.coerce_to_number()));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(match (&left, &right) {
+                    (Value::Number(n1), Value::Number(n2)) => n1 != n2,
+                    (Value::String(s1), Value::String(s2)) => s1 != s2,
+                    (Value::Bool(b1), Value::Bool(b2)) => b1 != b2,
+                    _ => left.coerce_to_number() != right.coerce_to_number()
+                }))
+            }
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    let not_equal = match (&prev, &curr) {
+                        (Value::Number(n1), Value::Number(n2)) => n1 != n2,
+                        (Value::String(s1), Value::String(s2)) => s1 != s2,
+                        (Value::Bool(b1), Value::Bool(b2)) => b1 != b2,
+                        _ => prev.coerce_to_number() != curr.coerce_to_number()
+                    };
+                    if not_equal {
+                        return Ok(Value::Bool(true));
+                    }
+                    prev = curr;
                 }
-            },
-            _ => {}
+                Ok(Value::Bool(false))
+            }
+            _ => Err(Error::InvalidArguments("!=".into()))
         }
-        Ok(Value::Bool(left != right))
     }
 }
 
 impl Operator for StrictNotEqualsOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments("!== requires at least 2 arguments".to_string()));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(std::mem::discriminant(&left) != std::mem::discriminant(&right) || left != right))
+            }
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if std::mem::discriminant(&prev) != std::mem::discriminant(&curr) || prev != curr {
+                        return Ok(Value::Bool(true));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(false))
+            }
+            _ => Err(Error::InvalidArguments("!==".into()))
         }
-        let left = args[0].apply(data)?;
-        let right = args[1].apply(data)?;
-        Ok(Value::Bool(std::mem::discriminant(&left) != std::mem::discriminant(&right) || left != right))
     }
 }
 
 impl Operator for GreaterThanOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments("> requires at least 2 arguments".to_string()));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(left.coerce_to_number() > right.coerce_to_number()))
+            },
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if prev.coerce_to_number() <= curr.coerce_to_number() {
+                        return Ok(Value::Bool(false));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(true))
+            }
+            _ => Err(Error::InvalidArguments(">".into()))
         }
-        let left = args[0].apply(data)?;
-        let right = args[1].apply(data)?;
-        Ok(Value::Bool(left.coerce_to_number() > right.coerce_to_number()))
     }
 }
 
 impl Operator for LessThanOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments("< requires at least 2 arguments".to_string()));
-        }
-        let mut current = args[0].apply(data)?.coerce_to_number();
-        for arg in &args[1..] {
-            let next = arg.apply(data)?.coerce_to_number();
-            if current >= next {
-                return Ok(Value::Bool(false));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(left.coerce_to_number() < right.coerce_to_number()))
             }
-            current = next;
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if prev.coerce_to_number() >= curr.coerce_to_number() {
+                        return Ok(Value::Bool(false));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(true))
+            }
+            _ => Err(Error::InvalidArguments("<".into()))
         }
-        Ok(Value::Bool(true))
     }
 }
 
 impl Operator for LessThanEqualOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments("<= requires at least 2 arguments".to_string()));
-        }
-        let mut current = args[0].apply(data)?.coerce_to_number();
-        for arg in &args[1..] {
-            let next = arg.apply(data)?.coerce_to_number();
-            if current > next {
-                return Ok(Value::Bool(false));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(left.coerce_to_number() <= right.coerce_to_number()))
             }
-            current = next;
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if prev.coerce_to_number() > curr.coerce_to_number() {
+                        return Ok(Value::Bool(false));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(true))
+            }
+            _ => Err(Error::InvalidArguments("<=".into()))
         }
-        Ok(Value::Bool(true))
     }
 }
 
 impl Operator for GreaterThanEqualOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments(">= requires at least 2 arguments".to_string()));
-        }
-        let mut current = args[0].apply(data)?.coerce_to_number();
-        for arg in &args[1..] {
-            let next = arg.apply(data)?.coerce_to_number();
-            if current < next {
-                return Ok(Value::Bool(false));
+        match args {
+            [a, b] => {
+                let left = a.apply(data)?;
+                let right = b.apply(data)?;
+                
+                Ok(Value::Bool(left.coerce_to_number() >= right.coerce_to_number()))
             }
-            current = next;
+            args if args.len() > 2 => {
+                let mut prev = args[0].apply(data)?;
+                for arg in args.iter().skip(1) {
+                    let curr = arg.apply(data)?;
+                    if prev.coerce_to_number() < curr.coerce_to_number() {
+                        return Ok(Value::Bool(false));
+                    }
+                    prev = curr;
+                }
+                Ok(Value::Bool(true))
+            }
+            _ => Err(Error::InvalidArguments(">=".into()))
         }
-        Ok(Value::Bool(true))
     }
 }

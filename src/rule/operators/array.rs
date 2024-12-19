@@ -54,49 +54,36 @@ impl Operator for FilterOperator {
 
 impl Operator for ReduceOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+        // Static keys to avoid repeated allocations
+        static CURRENT: &str = "current";
+        static ACCUMULATOR: &str = "accumulator";
+
         match args {
             [array_rule, reducer_rule, initial_rule] => {
                 match array_rule.apply(data)? {
-                    // Fast path: empty array
                     Value::Array(arr) if arr.is_empty() => initial_rule.apply(data),
-                    
-                    // Fast path: single element
-                    Value::Array(arr) if arr.len() == 1 => {
-                        let mut item_data = Value::Object(serde_json::Map::with_capacity(2));
-                        let accumulator = initial_rule.apply(data)?;
-                        item_data["current"] = arr[0].clone();
-                        item_data["accumulator"] = accumulator;
-                        reducer_rule.apply(&item_data)
-                    },
-                    
-                    // Fast path: small arrays (2-4 elements)
-                    Value::Array(arr) if arr.len() <= 4 => {
-                        let mut item_data = Value::Object(serde_json::Map::with_capacity(2));
-                        let mut accumulator = initial_rule.apply(data)?;
-                        
-                        // Unrolled loop for small arrays
-                        for item in arr {
-                            item_data["current"] = item;
-                            item_data["accumulator"] = accumulator;
-                            accumulator = reducer_rule.apply(&item_data)?;
-                        }
-                        Ok(accumulator)
-                    },
-                    
-                    // Regular path: larger arrays
                     Value::Array(arr) => {
-                        let mut item_data = Value::Object(serde_json::Map::with_capacity(2));
-                        let mut accumulator = initial_rule.apply(data)?;
-                        
-                        // Process in chunks of 4 for better cache utilization
-                        for chunk in arr.chunks(4) {
-                            for item in chunk {
-                                item_data["current"] = item.clone();
-                                item_data["accumulator"] = accumulator;
-                                accumulator = reducer_rule.apply(&item_data)?;
+                        let mut map = serde_json::Map::with_capacity(2);
+                        map.insert(CURRENT.to_string(), Value::Null);
+                        map.insert(ACCUMULATOR.to_string(), initial_rule.apply(data)?);
+                        let mut item_data = Value::Object(map);
+
+                        for item in arr {
+                            if let Value::Object(ref mut map) = item_data {
+                                map.insert(CURRENT.to_string(), item);
+                            }
+
+                            let result = reducer_rule.apply(&item_data)?;
+
+                            if let Value::Object(ref mut map) = item_data {
+                                map.insert(ACCUMULATOR.to_string(), result);
                             }
                         }
-                        Ok(accumulator)
+
+                        match item_data {
+                            Value::Object(map) => Ok(map.get(ACCUMULATOR).cloned().unwrap_or(Value::Null)),
+                            _ => Ok(Value::Null)
+                        }
                     },
                     _ => initial_rule.apply(data),
                 }

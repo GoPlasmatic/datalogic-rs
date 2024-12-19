@@ -9,7 +9,6 @@ pub struct DoubleBangOperator;
 
 
 impl Operator for OrOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(false)),
@@ -28,7 +27,6 @@ impl Operator for OrOperator {
 }
 
 impl Operator for AndOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(true)),
@@ -47,7 +45,6 @@ impl Operator for AndOperator {
 }
 
 impl Operator for NotOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(true)),
@@ -64,7 +61,6 @@ impl Operator for NotOperator {
 }
 
 impl Operator for DoubleBangOperator {
-    #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(false)),
