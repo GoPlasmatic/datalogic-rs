@@ -12,12 +12,15 @@ pub struct MinOperator;
 
 impl Operator for AddOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        let mut sum = 0.0;
-        for arg in args {
-            let val = arg.apply(data)?;
-            sum += val.coerce_to_number();
+        match args {
+            [] => Ok(Value::Number(0.into())),
+            _ => {
+                let sum = args.iter()
+                    .map(|arg| arg.apply(data).unwrap().coerce_to_number())
+                    .sum::<f64>();
+                Ok(sum.to_value())
+            }
         }
-        Ok(sum.to_value())
     }
 }
 
@@ -42,74 +45,97 @@ impl Operator for MultiplyOperator {
 
 impl Operator for SubtractOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.is_empty() {
-            return Ok(Value::Number(0.into()));
+        match args {
+            [] => Ok(Value::Number(0.into())),
+            [single] => {
+                let value = single.apply(data)?.coerce_to_number();
+                Ok((-value).to_value())
+            },
+            [first, rest @ ..] => {
+                let mut result = first.apply(data)?.coerce_to_number();
+                for arg in rest {
+                    result -= arg.apply(data)?.coerce_to_number();
+                }
+                Ok(result.to_value())
+            }
         }
-        let first = &args[0].apply(data)?.coerce_to_number();
-        if args.len() == 1 {
-            return Ok((-first).to_value());
-        }
-        let mut result: f64 = *first;
-        for arg in &args[1..] {
-            let val = arg.apply(data)?;
-            result -= val.coerce_to_number();
-        }
-        Ok(result.to_value())
     }
 }
 
 impl Operator for DivideOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("divide requires 2 arguments".to_string()));
+        match args {
+            [numerator, denominator] => {
+                let num = numerator.apply(data)?.coerce_to_number();
+                let den = denominator.apply(data)?.coerce_to_number();
+                
+                match den {
+                    0.0 => Ok(Value::Null),
+                    _ => Ok((num / den).to_value())
+                }
+            },
+            _ => Err(Error::InvalidArguments("divide requires 2 arguments".into()))
         }
-        let numerator = args[0].apply(data)?.coerce_to_number();
-        let denominator = args[1].apply(data)?.coerce_to_number();
-        if denominator == 0.0 {
-            return Ok(Value::Null);
-        }
-        Ok((numerator / denominator).to_value())
     }
 }
 
 impl Operator for ModuloOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("modulo requires 2 arguments".to_string()));
+        match args {
+            [numerator, denominator] => {
+                let num = numerator.apply(data)?.coerce_to_number();
+                let den = denominator.apply(data)?.coerce_to_number();
+                
+                match den {
+                    0.0 => Ok(Value::Null),
+                    _ => Ok((num % den).to_value())
+                }
+            },
+            _ => Err(Error::InvalidArguments("modulo requires 2 arguments".into()))
         }
-        let a = args[0].apply(data)?.coerce_to_number();
-        let b = args[1].apply(data)?.coerce_to_number();
-        if b == 0.0 {
-            return Ok(Value::Null);
-        }
-        Ok((a % b).to_value())
     }
 }
 
 impl Operator for MaxOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.is_empty() {
-            return Ok(Value::Null);
+        match args {
+            [] => Ok(Value::Null),
+            [single] => single.apply(data),
+            [first, second] => {
+                let a = first.apply(data)?.coerce_to_number();
+                let b = second.apply(data)?.coerce_to_number();
+                Ok(a.max(b).to_value())
+            },
+            _ => {
+                let mut max = f64::NEG_INFINITY;
+                for arg in args {
+                    let val = arg.apply(data)?.coerce_to_number();
+                    max = max.max(val);
+                }
+                Ok(max.to_value())
+            }
         }
-        let mut max = f64::NEG_INFINITY;
-        for arg in args {
-            let val = arg.apply(data)?.coerce_to_number();
-            max = max.max(val);
-        }
-        Ok(max.to_value())
     }
 }
 
 impl Operator for MinOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.is_empty() {
-            return Ok(Value::Null);
+        match args {
+            [] => Ok(Value::Null),
+            [single] => single.apply(data),
+            [first, second] => {
+                let a = first.apply(data)?.coerce_to_number();
+                let b = second.apply(data)?.coerce_to_number();
+                Ok(a.min(b).to_value())
+            },
+            _ => {
+                let mut min = f64::INFINITY;
+                for arg in args {
+                    let val = arg.apply(data)?.coerce_to_number();
+                    min = min.min(val);
+                }
+                Ok(min.to_value())
+            }
         }
-        let mut min = f64::INFINITY;
-        for arg in args {
-            let val = arg.apply(data)?.coerce_to_number();
-            min = min.min(val);
-        }
-        Ok(min.to_value())
     }
 }

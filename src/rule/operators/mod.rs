@@ -40,11 +40,11 @@ impl ValueCoercion for Value {
     fn coerce_to_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Null => false,
             Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
             Value::String(s) => !s.is_empty(),
             Value::Array(a) => !a.is_empty(),
             Value::Object(o) => !o.is_empty(),
+            Value::Null => false,
         }
     }
 
@@ -103,7 +103,7 @@ impl ValueConvert for f64 {
     #[inline(always)]
     fn to_value(&self) -> Value {
         const ZERO_FRACT: f64 = 0.0;
-        if (self.fract() == ZERO_FRACT) && (self.abs() as i64 >= i64::MIN) && (self.abs() as i64 <= i64::MAX) {
+        if self.fract() == ZERO_FRACT {
             Value::Number(serde_json::Number::from(*self as i64))
         } else {
             Value::Number(serde_json::Number::from_f64(*self).unwrap())

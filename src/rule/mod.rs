@@ -128,7 +128,6 @@ impl Rule {
                 }
             },
             Rule::Var(_) => false,
-            // Rule::Var(args) |
             Rule::Array(args) |
             Rule::If(args) | 
             Rule::Equals(args) |

@@ -10,50 +10,60 @@ pub struct TernaryOperator;
 
 impl Operator for IfOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        // Fast paths
-        match args.len() {
-            0 => return Ok(Value::Null),
-            1 => return args[0].apply(data),
-            2 => {
-                return if args[0].apply(data)?.coerce_to_bool() {
-                    args[1].apply(data)
+        match args {
+            [] => Ok(Value::Null),
+            [single] => single.apply(data),
+            [condition, consequent] => {
+                let cond = condition.apply(data)?;
+                if cond.coerce_to_bool() {
+                    consequent.apply(data)
                 } else {
                     Ok(Value::Null)
                 }
             }
-            _ => {}
-        }
+            [condition, consequent, alternative] => {
+                let cond = condition.apply(data)?;
+                if cond.coerce_to_bool() {
+                    consequent.apply(data)
+                } else {
+                    alternative.apply(data)
+                }
+            }
+            _ => {
+                // Optimized multiple condition handling
+                let chunks = args.chunks_exact(2);
+                let remainder = chunks.remainder();
 
-        // Process multiple conditions
-        let chunks = args.chunks_exact(2);
-        let remainder = chunks.remainder();
+                // Use iterator instead of collecting into Vec
+                for chunk in chunks {
+                    if chunk[0].apply(data)?.coerce_to_bool() {
+                        return chunk[1].apply(data);
+                    }
+                }
 
-        for chunk in chunks {
-            if chunk[0].apply(data)?.coerce_to_bool() {
-                return chunk[1].apply(data);
+                // Default case optimization
+                match remainder {
+                    [default] => default.apply(data),
+                    _ => Ok(Value::Null),
+                }
             }
         }
-
-        // Handle default case
-        if let [default] = remainder {
-            return default.apply(data);
-        }
-
-        Ok(Value::Null)
     }
 }
 
 impl Operator for TernaryOperator {
     #[inline]
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 3 {
-            return Err(Error::InvalidArguments(ERR_TERNARY.into()));
-        }
-
-        if args[0].apply(data)?.coerce_to_bool() {
-            args[1].apply(data)
-        } else {
-            args[2].apply(data)
+        match args {
+            [condition, consequent, alternative] => {
+                let cond = condition.apply(data)?;
+                if cond.coerce_to_bool() {
+                    consequent.apply(data)
+                } else {
+                    alternative.apply(data)
+                }
+            }
+            _ => Err(Error::InvalidArguments(ERR_TERNARY.into()))
         }
     }
 }

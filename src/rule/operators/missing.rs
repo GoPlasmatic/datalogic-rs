@@ -83,29 +83,49 @@ impl Operator for MissingOperator {
 
 impl Operator for MissingSomeOperator {
     fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments(ERR_MISSING_SOME.into()));
-        }
+        // Fast path: validate args
+        match args {
+            [min_rule, keys_rule] => {
+                // Get minimum required
+                let min_required = min_rule.apply(data)?
+                    .as_u64()
+                    .ok_or_else(|| Error::InvalidRule(ERR_FIRST_ARG.into()))?;
 
-        let min_required = args[0].apply(data)?
-            .as_u64()
-            .ok_or_else(|| Error::InvalidRule(ERR_FIRST_ARG.into()))?;
+                // Get keys array
+                let keys = keys_rule.apply(data)?;
+                let keys = keys.as_array()
+                    .ok_or_else(|| Error::InvalidRule(ERR_SECOND_ARG.into()))?;
 
-        let keys = args[1].apply(data)?;
-        let keys = keys.as_array()
-            .ok_or_else(|| Error::InvalidRule(ERR_SECOND_ARG.into()))?;
+                // Fast path: empty keys array
+                if keys.is_empty() {
+                    return Ok(Value::Array(Vec::new()));
+                }
 
-        let key_rules: Vec<_> = keys.iter()
-            .map(|key| Rule::Value(key.clone()))
-            .collect();
+                // Pre-allocate missing array with estimated capacity
+                let mut missing = Vec::with_capacity(keys.len());
+                let mut found_count = 0;
 
-        let missing = MissingOperator.apply(&key_rules, data)?;
-        let missing_count = missing.as_array().unwrap().len() as u64;
+                // Single pass over keys
+                for key in keys {
+                    match key {
+                        Value::String(key_str) => {
+                            if MissingOperator::check_path(data, key_str) {
+                                missing.push(Value::String(key_str.clone()));
+                            } else {
+                                found_count += 1;
+                                // Fast path: we found enough keys
+                                if found_count >= min_required {
+                                    return Ok(Value::Array(Vec::new()));
+                                }
+                            }
+                        }
+                        _ => return Err(Error::InvalidRule("Keys must be strings".into()))
+                    }
+                }
 
-        if keys.len() as u64 - missing_count >= min_required {
-            Ok(Value::Array(Vec::new()))
-        } else {
-            Ok(missing)
+                Ok(Value::Array(missing))
+            }
+            _ => Err(Error::InvalidArguments(ERR_MISSING_SOME.into()))
         }
     }
 }
