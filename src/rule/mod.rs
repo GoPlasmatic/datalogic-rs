@@ -269,6 +269,51 @@ impl Rule {
         }
     }
 
+    /// Creates a new `Rule` from a JSON Value
+    ///
+    /// Parses a serde_json::Value into a Rule that can be evaluated. The value must follow
+    /// the JSONLogic specification format.
+    ///
+    /// ## Arguments
+    /// * `value` - A JSON value representing the rule. Must be a valid JSONLogic expression.
+    ///
+    /// ## Returns
+    /// * `Result<Rule, Error>` - A Result containing either the parsed Rule or an error
+    ///
+    /// ## Examples
+    ///
+    /// Basic usage:
+    /// ```rust
+    /// use datalogic_rs::Rule;
+    /// use serde_json::json;
+    ///
+    /// let rule = Rule::from_value(&json!({"==": [1, 1]})).unwrap();
+    /// assert!(rule.apply(&json!(null)).unwrap().as_bool().unwrap());
+    /// ```
+    ///
+    /// Complex nested rules:
+    /// ```rust
+    /// use datalogic_rs::Rule;
+    /// use serde_json::json;
+    ///
+    /// let rule = Rule::from_value(&json!({
+    ///     "and": [
+    ///         {">": [{"var": "age"}, 18]},
+    ///         {"<": [{"var": "age"}, 65]}
+    ///     ]
+    /// })).unwrap();
+    /// ```
+    ///
+    /// Error handling:
+    /// ```rust
+    /// use datalogic_rs::Rule;
+    /// use serde_json::json;
+    ///
+    /// let result = Rule::from_value(&json!({"invalid_op": []}));
+    /// assert!(result.is_err());
+    /// ```
+    ///
+    /// See also: [`from_str`](Rule::from_str), [`apply`](Rule::apply)
     pub fn from_value(value: &Value) -> Result<Self, Error> {
         match value {
             Value::Object(map) if map.len() == 1 => {
@@ -352,7 +397,6 @@ impl Rule {
         }
     }
 
-    #[inline(always)]
     pub fn apply(&self, data: &Value) -> Result<Value, Error> {
         match self {
             Rule::Value(value) => {
