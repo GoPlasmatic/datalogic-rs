@@ -65,8 +65,8 @@ impl JsonLogic {
     ///
     /// ## Example
     /// ```rust
-    /// ### use datalogic_rs::{JsonLogic, Rule};
-    /// ### use serde_json::json;
+    /// # use datalogic_rs::{JsonLogic, Rule};
+    /// # use serde_json::json;
     /// let rule = Rule::from_value(&json!({"var": "user.name"})).unwrap();
     /// let data = json!({"user": {"name": "John"}});
     /// let result = JsonLogic::apply(&rule, &data).unwrap();
