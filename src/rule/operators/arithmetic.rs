@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion, ValueConvert};
+use super::{Rule, ValueCoercion, ValueConvert};
 
 pub struct AddOperator;
 pub struct MultiplyOperator;
@@ -10,8 +10,8 @@ pub struct ModuloOperator;
 pub struct MaxOperator;
 pub struct MinOperator;
 
-impl Operator for AddOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl AddOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [] => Ok(Value::Number(0.into())),
             _ => {
@@ -24,8 +24,8 @@ impl Operator for AddOperator {
     }
 }
 
-impl Operator for MultiplyOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MultiplyOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Number(1.into())),
             1 => Ok(args[0].apply(data)?.coerce_to_number().to_value()),
@@ -43,8 +43,8 @@ impl Operator for MultiplyOperator {
     }
 }
 
-impl Operator for SubtractOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl SubtractOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [] => Ok(Value::Number(0.into())),
             [single] => {
@@ -62,8 +62,8 @@ impl Operator for SubtractOperator {
     }
 }
 
-impl Operator for DivideOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl DivideOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [numerator, denominator] => {
                 let num = numerator.apply(data)?.coerce_to_number();
@@ -79,8 +79,8 @@ impl Operator for DivideOperator {
     }
 }
 
-impl Operator for ModuloOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl ModuloOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [numerator, denominator] => {
                 let num = numerator.apply(data)?.coerce_to_number();
@@ -96,8 +96,8 @@ impl Operator for ModuloOperator {
     }
 }
 
-impl Operator for MaxOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MaxOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [] => Ok(Value::Null),
             [single] => single.apply(data),
@@ -118,8 +118,8 @@ impl Operator for MaxOperator {
     }
 }
 
-impl Operator for MinOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MinOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [] => Ok(Value::Null),
             [single] => single.apply(data),

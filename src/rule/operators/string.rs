@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion};
+use super::{Rule, ValueCoercion};
 
 const ERR_IN: &str = "in requires 2 arguments";
 const ERR_SUBSTR: &str = "substr requires 2 or 3 arguments";
@@ -9,8 +9,8 @@ pub struct InOperator;
 pub struct CatOperator;
 pub struct SubstrOperator;
 
-impl Operator for InOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl InOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments(ERR_IN.into()));
         }
@@ -26,8 +26,8 @@ impl Operator for InOperator {
     }
 }
 
-impl Operator for CatOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl CatOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         // Fast paths
         match args.len() {
             0 => return Ok(Value::String(String::new())),
@@ -48,8 +48,8 @@ impl Operator for CatOperator {
     }
 }
 
-impl Operator for SubstrOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl SubstrOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.len() < 2 || args.len() > 3 {
             return Err(Error::InvalidArguments(ERR_SUBSTR.into()));
         }

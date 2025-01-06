@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion};
+use super::{Rule, ValueCoercion};
 
 pub struct MapOperator;
 pub struct FilterOperator;
@@ -10,8 +10,8 @@ pub struct NoneOperator;
 pub struct SomeOperator;
 pub struct MergeOperator;
 
-impl Operator for MapOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MapOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [array_rule, mapper] => {
                 match array_rule.apply(data)? {
@@ -31,8 +31,8 @@ impl Operator for MapOperator {
     }
 }
 
-impl Operator for FilterOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl FilterOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [array_rule, predicate] => {
                 match array_rule.apply(data)? {
@@ -52,8 +52,8 @@ impl Operator for FilterOperator {
     }
 }
 
-impl Operator for ReduceOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl ReduceOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         // Static keys to avoid repeated allocations
         static CURRENT: &str = "current";
         static ACCUMULATOR: &str = "accumulator";
@@ -93,8 +93,8 @@ impl Operator for ReduceOperator {
     }
 }
 
-impl Operator for AllOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl AllOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [array_rule, predicate] => {
                 match array_rule.apply(data)? {
@@ -114,8 +114,8 @@ impl Operator for AllOperator {
     }
 }
 
-impl Operator for NoneOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl NoneOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [array_rule, predicate] => {
                 match array_rule.apply(data)? {
@@ -134,8 +134,8 @@ impl Operator for NoneOperator {
     }
 }
 
-impl Operator for SomeOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl SomeOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [array_rule, predicate] => {
                 match array_rule.apply(data)? {
@@ -154,8 +154,8 @@ impl Operator for SomeOperator {
     }
 }
 
-impl Operator for MergeOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MergeOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         if args.is_empty() {
             return Ok(Value::Array(Vec::new()));
         }

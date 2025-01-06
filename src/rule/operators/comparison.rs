@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion};
+use super::{Rule, ValueCoercion};
 
 pub struct EqualsOperator;
 pub struct StrictEqualsOperator;
@@ -12,8 +12,8 @@ pub struct GreaterThanEqualOperator;
 pub struct LessThanEqualOperator;
 
 
-impl Operator for EqualsOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl EqualsOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -42,8 +42,8 @@ impl Operator for EqualsOperator {
     }
 }
 
-impl Operator for StrictEqualsOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl StrictEqualsOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -67,8 +67,8 @@ impl Operator for StrictEqualsOperator {
     }
 }
 
-impl Operator for NotEqualsOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl NotEqualsOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -103,8 +103,8 @@ impl Operator for NotEqualsOperator {
     }
 }
 
-impl Operator for StrictNotEqualsOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl StrictNotEqualsOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -128,8 +128,8 @@ impl Operator for StrictNotEqualsOperator {
     }
 }
 
-impl Operator for GreaterThanOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl GreaterThanOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -153,8 +153,8 @@ impl Operator for GreaterThanOperator {
     }
 }
 
-impl Operator for LessThanOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl LessThanOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -178,8 +178,8 @@ impl Operator for LessThanOperator {
     }
 }
 
-impl Operator for LessThanEqualOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl LessThanEqualOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -203,8 +203,8 @@ impl Operator for LessThanEqualOperator {
     }
 }
 
-impl Operator for GreaterThanEqualOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl GreaterThanEqualOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;

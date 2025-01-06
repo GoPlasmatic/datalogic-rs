@@ -52,7 +52,7 @@ static PRESERVE_OP: PreserveOperator = PreserveOperator;
 #[derive(Debug, Clone)]
 pub enum Rule {
     // Variable access
-    Var(Vec<Rule>),
+    Var(Box<Rule>, Option<Box<Rule>>),
     
     // Comparison operators
     Equals(Vec<Rule>),
@@ -128,7 +128,7 @@ impl Rule {
                     false
                 }
             },
-            Rule::Var(_) => false,
+            Rule::Var(_, _) => false,
             Rule::Array(args) |
             Rule::If(args) | 
             Rule::Equals(args) |
@@ -201,7 +201,6 @@ impl Rule {
             Rule::Or(_) => Rule::Or(optimized),
             Rule::Not(_) => Rule::Not(optimized),
             Rule::DoubleBang(_) => Rule::DoubleBang(optimized),
-            Rule::If(_) => Rule::If(optimized),
             Rule::Ternary(_) => Rule::Ternary(optimized),
             Rule::Preserve(_) => Rule::Preserve(optimized),
                         
@@ -229,8 +228,13 @@ impl Rule {
                 Ok(Rule::Array(optimized))
             },
 
+            Rule::Var(path, default) => {
+                let optimized_path = Self::optimize_rule(*path)?;
+                let optimized_default = default.map(|d| Self::optimize_rule(*d)).transpose()?;
+                Ok(Rule::Var(Box::new(optimized_path), optimized_default.map(Box::new)))
+            },
+
             // Process operators
-            Rule::Var(ref args) |
             Rule::Map(ref args) |
             Rule::Filter(ref args) |
             Rule::Reduce(ref args) |
@@ -327,7 +331,10 @@ impl Rule {
                 
                 let rule = match op.as_str() {
                     // Variable access
-                    "var" => Ok(Rule::Var(args)),
+                    "var" => Ok(Rule::Var(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        args.get(1).cloned().map(Box::new)
+                    )),
                     
                     // Comparison operators
                     "==" => Ok(Rule::Equals(args)),
@@ -407,7 +414,7 @@ impl Rule {
                     .map(|rule| rule.apply(data))
                     .collect::<Result<Vec<_>, _>>()?
             )),
-            Rule::Var(args) => VAR_OP.apply(args, data),
+            Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
 
             Rule::Equals(args) => EQUALS_OP.apply(args, data),
             Rule::StrictEquals(args) => STRICT_EQUALS_OP.apply(args, data),
