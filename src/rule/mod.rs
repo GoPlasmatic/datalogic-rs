@@ -115,18 +115,21 @@ impl Rule {
         match self {
             Rule::Value(_) => true,
             Rule::Missing(_) | Rule::MissingSome(_) => false,
+            Rule::Var(_, _) => false,
 
-            Rule::Map(array_rule, _) | 
-            Rule::Filter(array_rule, _) |
-            Rule::Reduce(array_rule, _, _) |
-            Rule::All(array_rule, _) |
-            Rule::None(array_rule, _) |
-            Rule::Some(array_rule, _) => {
-                match array_rule.as_ref() {
-                    Rule::Value(Value::Array(_)) => true,
-                    _ => false,
-                }
+            Rule::Map(array_rule, mapper) => {
+                array_rule.is_static() && mapper.is_static()
             }
+            Rule::Reduce(array_rule, reducer, initial) => {
+                array_rule.is_static() && reducer.is_static() && initial.is_static()
+            }
+            Rule::Filter(array_rule, predicate) |
+            Rule::All(array_rule, predicate) |
+            Rule::None(array_rule, predicate) |
+            Rule::Some(array_rule, predicate) => {
+                array_rule.is_static() && predicate.is_static()
+            }
+
             Rule::In(search, target) => {
                 search.is_static() && target.is_static()
             }
@@ -138,7 +141,6 @@ impl Rule {
                 }
             }
 
-            Rule::Var(_, _) => false,
             Rule::Array(args) |
             Rule::If(args) | 
             Rule::Equals(args) |
