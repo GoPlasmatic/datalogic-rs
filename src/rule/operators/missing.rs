@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule};
+use super::Rule;
 
 const ERR_MISSING_SOME: &str = "missing_some requires 2 arguments";
 const ERR_FIRST_ARG: &str = "First argument must be a number";
@@ -54,8 +54,8 @@ impl MissingOperator {
     }
 }
 
-impl Operator for MissingOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MissingOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         // Fast path for empty args
         if args.is_empty() {
             return Ok(Value::Array(Vec::new()));
@@ -79,8 +79,8 @@ impl Operator for MissingOperator {
     }
 }
 
-impl Operator for MissingSomeOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl MissingSomeOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         // Fast path: validate args
         match args {
             [min_rule, keys_rule] => {

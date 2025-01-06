@@ -1,5 +1,4 @@
 use serde_json::Value;
-use crate::Error;
 use super::Rule;
 
 pub mod arithmetic;
@@ -22,11 +21,6 @@ pub use string::*;
 pub use var::*;
 pub use control::*;
 
-/// Trait defining the interface for all JSONLogic operators
-pub trait Operator {
-    /// Apply the operator with given arguments and data
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error>;
-}
 
 trait ValueCoercion {
     fn coerce_to_bool(&self) -> bool;

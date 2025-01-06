@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion};
+use super::{Rule, ValueCoercion};
 
 pub struct AndOperator;
 pub struct OrOperator;
@@ -8,8 +8,8 @@ pub struct NotOperator;
 pub struct DoubleBangOperator;
 
 
-impl Operator for OrOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl OrOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(false)),
             1 => args[0].apply(data),
@@ -26,8 +26,8 @@ impl Operator for OrOperator {
     }
 }
 
-impl Operator for AndOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl AndOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(true)),
             1 => args[0].apply(data),
@@ -44,8 +44,8 @@ impl Operator for AndOperator {
     }
 }
 
-impl Operator for NotOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl NotOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(true)),
             1 => {
@@ -60,8 +60,8 @@ impl Operator for NotOperator {
     }
 }
 
-impl Operator for DoubleBangOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl DoubleBangOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args.len() {
             0 => Ok(Value::Bool(false)),
             _ => {

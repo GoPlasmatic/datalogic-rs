@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion};
+use super::{Rule, ValueCoercion};
 
 const ERR_TERNARY: &str = "?: requires 3 arguments";
 
@@ -8,8 +8,8 @@ pub struct IfOperator;
 pub struct TernaryOperator;
 
 
-impl Operator for IfOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl IfOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [] => Ok(Value::Null),
             [single] => single.apply(data),
@@ -51,8 +51,8 @@ impl Operator for IfOperator {
     }
 }
 
-impl Operator for TernaryOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl TernaryOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         match args {
             [condition, consequent, alternative] => {
                 let cond = condition.apply(data)?;

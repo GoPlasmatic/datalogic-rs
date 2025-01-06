@@ -1,22 +1,12 @@
-use super::{Operator, Rule};
+use super::Rule;
 use crate::Error;
 use serde_json::Value;
 
 pub struct VarOperator;
 
-impl Operator for VarOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.is_empty() {
-            return Ok(data.clone());
-        }
-
-        let path_value = args[0].apply(data)?;
-        let default_value = if args.len() > 1 {
-            Some(args[1].apply(data)?)
-        } else {
-            None
-        };
-
+impl VarOperator {
+    pub fn apply(&self, path: &Rule, default: Option<&Rule>, data: &Value) -> Result<Value, Error> {
+        let path_value = path.apply(data)?;
         let path_str = match path_value {
             Value::String(ref s) => s.clone(),
             Value::Number(ref n) => n.to_string(),
@@ -28,8 +18,8 @@ impl Operator for VarOperator {
         }
 
         self.get_value_ref(data, &path_str).cloned().or({
-            if let Some(default) = default_value {
-                Ok(default)
+            if default.is_some() {
+                Ok(default.unwrap().apply(data)?)
             } else {
                 Ok(Value::Null)
             }

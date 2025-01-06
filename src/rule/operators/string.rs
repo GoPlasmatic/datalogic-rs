@@ -1,23 +1,15 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Operator, Rule, ValueCoercion};
-
-const ERR_IN: &str = "in requires 2 arguments";
-const ERR_SUBSTR: &str = "substr requires 2 or 3 arguments";
+use super::{Rule, ValueCoercion};
 
 pub struct InOperator;
 pub struct CatOperator;
 pub struct SubstrOperator;
 
-impl Operator for InOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments(ERR_IN.into()));
-        }
-
-        let search = args[0].apply(data)?;
-        let target = args[1].apply(data)?;
-
+impl InOperator {
+    pub fn apply(&self, search: &Rule, target: &Rule, data: &Value) -> Result<Value, Error> {
+        let search = search.apply(data)?;
+        let target = target.apply(data)?;        
         Ok(Value::Bool(match (&search, &target) {
             (Value::String(s), Value::String(t)) => t.contains(s),
             (_, Value::Array(arr)) => arr.contains(&search),
@@ -26,8 +18,8 @@ impl Operator for InOperator {
     }
 }
 
-impl Operator for CatOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+impl CatOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
         // Fast paths
         match args.len() {
             0 => return Ok(Value::String(String::new())),
@@ -48,20 +40,9 @@ impl Operator for CatOperator {
     }
 }
 
-impl Operator for SubstrOperator {
-    fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
-        if args.len() < 2 || args.len() > 3 {
-            return Err(Error::InvalidArguments(ERR_SUBSTR.into()));
-        }
-
-        let string = args[0].apply(data)?;
-        let start = args[1].apply(data)?;
-        let length = if args.len() == 3 {
-            Some(args[2].apply(data)?)
-        } else {
-            None
-        };
-
+impl SubstrOperator {
+    pub fn apply(&self, string: &Rule, start: &Rule, length: Option<&Rule>, data: &Value) -> Result<Value, Error> {
+        let string = string.apply(data)?;
         let string = match string {
             Value::String(s) => s,
             _ => return Ok(Value::String(String::new())),
@@ -70,6 +51,7 @@ impl Operator for SubstrOperator {
         let chars: Vec<char> = string.chars().collect();
         let str_len = chars.len() as i64;
 
+        let start = start.apply(data)?;
         let start_idx = match start {
             Value::Number(n) => {
                 let start = n.as_i64().unwrap_or(0);
@@ -82,6 +64,11 @@ impl Operator for SubstrOperator {
             _ => return Ok(Value::String(String::new())),
         };
 
+        let length = if length.is_some() {
+            Some(length.unwrap().apply(data)?)
+        } else {
+            None
+        };
         match length {
             Some(Value::Number(n)) => {
                 let len = n.as_i64().unwrap_or(0);

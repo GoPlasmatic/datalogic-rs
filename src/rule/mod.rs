@@ -52,7 +52,7 @@ static PRESERVE_OP: PreserveOperator = PreserveOperator;
 #[derive(Debug, Clone)]
 pub enum Rule {
     // Variable access
-    Var(Vec<Rule>),
+    Var(Box<Rule>, Option<Box<Rule>>),
     
     // Comparison operators
     Equals(Vec<Rule>),
@@ -75,12 +75,12 @@ pub enum Rule {
     Ternary(Vec<Rule>),
     
     // Array operators
-    Map(Vec<Rule>),
-    Filter(Vec<Rule>),
-    Reduce(Vec<Rule>),
-    All(Vec<Rule>),
-    None(Vec<Rule>),
-    Some(Vec<Rule>),
+    Map(Box<Rule>, Box<Rule>),
+    Filter(Box<Rule>, Box<Rule>),
+    Reduce(Box<Rule>, Box<Rule>, Box<Rule>),
+    All(Box<Rule>, Box<Rule>),
+    None(Box<Rule>, Box<Rule>),
+    Some(Box<Rule>, Box<Rule>),
     Merge(Vec<Rule>),
     
     // Missing operators
@@ -88,9 +88,9 @@ pub enum Rule {
     MissingSome(Vec<Rule>),
     
     // String operators
-    In(Vec<Rule>),
+    In(Box<Rule>, Box<Rule>),
     Cat(Vec<Rule>),
-    Substr(Vec<Rule>),
+    Substr(Box<Rule>, Box<Rule>, Option<Box<Rule>>),
     
     // Arithmetic operators
     Add(Vec<Rule>),
@@ -115,20 +115,32 @@ impl Rule {
         match self {
             Rule::Value(_) => true,
             Rule::Missing(_) | Rule::MissingSome(_) => false,
+            Rule::Var(_, _) => false,
 
-            Rule::Map(args) | 
-            Rule::Filter(args) | 
-            Rule::Reduce(args) |
-            Rule::None(args) |
-            Rule::Some(args) |
-            Rule::All(args) => {
-                if let [array, _] = args.as_slice() {
-                    matches!(array, Rule::Value(Value::Array(_)))
+            Rule::Map(array_rule, mapper) => {
+                array_rule.is_static() && mapper.is_static()
+            }
+            Rule::Reduce(array_rule, reducer, initial) => {
+                array_rule.is_static() && reducer.is_static() && initial.is_static()
+            }
+            Rule::Filter(array_rule, predicate) |
+            Rule::All(array_rule, predicate) |
+            Rule::None(array_rule, predicate) |
+            Rule::Some(array_rule, predicate) => {
+                array_rule.is_static() && predicate.is_static()
+            }
+
+            Rule::In(search, target) => {
+                search.is_static() && target.is_static()
+            }
+            Rule::Substr(string, start, length) => {
+                if length.is_none() {
+                    return string.is_static() && start.is_static();
                 } else {
-                    false
+                    return string.is_static() && start.is_static() && length.as_deref().unwrap().is_static();
                 }
-            },
-            Rule::Var(_) => false,
+            }
+
             Rule::Array(args) |
             Rule::If(args) | 
             Rule::Equals(args) |
@@ -145,9 +157,7 @@ impl Rule {
             Rule::DoubleBang(args) |
             Rule::Ternary(args) |
             Rule::Merge(args) |
-            Rule::In(args) |
             Rule::Cat(args) |
-            Rule::Substr(args) |
             Rule::Add(args) |
             Rule::Multiply(args) |
             Rule::Subtract(args) |
@@ -170,18 +180,10 @@ impl Rule {
     #[inline]
     fn rebuild_with_args(rule: Rule, optimized: Vec<Rule>) -> Rule {
         match rule {
-            Rule::Map(_) => Rule::Map(optimized),
-            Rule::Filter(_) => Rule::Filter(optimized),
-            Rule::Reduce(_) => Rule::Reduce(optimized),
-            Rule::All(_) => Rule::All(optimized),
-            Rule::None(_) => Rule::None(optimized),
-            Rule::Some(_) => Rule::Some(optimized),
             Rule::Merge(_) => Rule::Merge(optimized),
             Rule::Missing(_) => Rule::Missing(optimized),
             Rule::MissingSome(_) => Rule::MissingSome(optimized),
-            Rule::In(_) => Rule::In(optimized),
             Rule::Cat(_) => Rule::Cat(optimized),
-            Rule::Substr(_) => Rule::Substr(optimized),
             Rule::Add(_) => Rule::Add(optimized),
             Rule::Multiply(_) => Rule::Multiply(optimized),
             Rule::Subtract(_) => Rule::Subtract(optimized),
@@ -201,7 +203,6 @@ impl Rule {
             Rule::Or(_) => Rule::Or(optimized),
             Rule::Not(_) => Rule::Not(optimized),
             Rule::DoubleBang(_) => Rule::DoubleBang(optimized),
-            Rule::If(_) => Rule::If(optimized),
             Rule::Ternary(_) => Rule::Ternary(optimized),
             Rule::Preserve(_) => Rule::Preserve(optimized),
                         
@@ -229,18 +230,58 @@ impl Rule {
                 Ok(Rule::Array(optimized))
             },
 
+            Rule::Var(path, default) => {
+                let optimized_path = Self::optimize_rule(*path)?;
+                let optimized_default = default.map(|d| Self::optimize_rule(*d)).transpose()?;
+                Ok(Rule::Var(Box::new(optimized_path), optimized_default.map(Box::new)))
+            },
+
+            Rule::Map(array_rule, predicate) => {
+                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
+                let optimized_predicate = Self::optimize_rule(*predicate)?;
+                Ok(Rule::Map(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
+            },
+            Rule::All(array_rule, predicate ) => {
+                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
+                let optimized_predicate = Self::optimize_rule(*predicate)?;
+                Ok(Rule::All(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
+            },
+            Rule::None(array_rule, predicate) => {
+                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
+                let optimized_predicate = Self::optimize_rule(*predicate)?;
+                Ok(Rule::None(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
+            },
+            Rule::Some(array_rule, predicate) => {
+                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
+                let optimized_predicate = Self::optimize_rule(*predicate)?;
+                Ok(Rule::Some(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
+            },
+            Rule::Filter(array_rule, predicate) => {
+                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
+                let optimized_predicate = Self::optimize_rule(*predicate)?;
+                Ok(Rule::Filter(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
+            },
+            Rule::Reduce(array_rule, predicate, initial) => {
+                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
+                let optimized_initial = Self::optimize_rule(*initial)?;
+                let optimized_predicate = Self::optimize_rule(*predicate)?;
+                Ok(Rule::Reduce(Box::new(optimized_array_rule), Box::new(optimized_predicate), Box::new(optimized_initial)))
+            },
+
+            Rule::In(search, target) => {
+                let optimized_search = Self::optimize_rule(*search)?;
+                let optimized_target = Self::optimize_rule(*target)?;
+                Ok(Rule::In(Box::new(optimized_search), Box::new(optimized_target)))
+            },
+            Rule::Substr(string, start, length) => {
+                let optimized_string = Self::optimize_rule(*string)?;
+                let optimized_start = Self::optimize_rule(*start)?;
+                let optimized_length = length.map(|l| Self::optimize_rule(*l)).transpose()?;
+                Ok(Rule::Substr(Box::new(optimized_string), Box::new(optimized_start), optimized_length.map(Box::new)))
+            },
             // Process operators
-            Rule::Var(ref args) |
-            Rule::Map(ref args) |
-            Rule::Filter(ref args) |
-            Rule::Reduce(ref args) |
-            Rule::All(ref args) |
-            Rule::None(ref args) |
-            Rule::Some(ref args) |
             Rule::Merge(ref args) |
-            Rule::In(ref args) |
             Rule::Cat(ref args) |
-            Rule::Substr(ref args) |
             Rule::Add(ref args) |
             Rule::Multiply(ref args) |
             Rule::Subtract(ref args) |
@@ -327,7 +368,10 @@ impl Rule {
                 
                 let rule = match op.as_str() {
                     // Variable access
-                    "var" => Ok(Rule::Var(args)),
+                    "var" => Ok(Rule::Var(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        args.get(1).cloned().map(Box::new)
+                    )),
                     
                     // Comparison operators
                     "==" => Ok(Rule::Equals(args)),
@@ -350,12 +394,31 @@ impl Rule {
                     "?:" => Ok(Rule::Ternary(args)),
                     
                     // Array operators
-                    "map" => Ok(Rule::Map(args)),
-                    "filter" => Ok(Rule::Filter(args)),
-                    "reduce" => Ok(Rule::Reduce(args)),
-                    "all" => Ok(Rule::All(args)),
-                    "none" => Ok(Rule::None(args)),
-                    "some" => Ok(Rule::Some(args)),
+                    "map" => Ok(Rule::Map(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
+                    "filter" => Ok(Rule::Filter(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
+                    "reduce" => Ok(Rule::Reduce(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(2).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
+                    "all" => Ok(Rule::All(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
+                    "none" => Ok(Rule::None(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
+                    "some" => Ok(Rule::Some(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
                     "merge" => Ok(Rule::Merge(args)),
                     
                     // Missing operators
@@ -363,9 +426,16 @@ impl Rule {
                     "missing_some" => Ok(Rule::MissingSome(args)),
                     
                     // String operators
-                    "in" => Ok(Rule::In(args)),
+                    "in" => Ok(Rule::In(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
                     "cat" => Ok(Rule::Cat(args)),
-                    "substr" => Ok(Rule::Substr(args)),
+                    "substr" => Ok(Rule::Substr(
+                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        args.get(2).cloned().map(Box::new)
+                    )),
                     
                     // Arithmetic operators
                     "+" => Ok(Rule::Add(args)),
@@ -407,7 +477,7 @@ impl Rule {
                     .map(|rule| rule.apply(data))
                     .collect::<Result<Vec<_>, _>>()?
             )),
-            Rule::Var(args) => VAR_OP.apply(args, data),
+            Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
 
             Rule::Equals(args) => EQUALS_OP.apply(args, data),
             Rule::StrictEquals(args) => STRICT_EQUALS_OP.apply(args, data),
@@ -427,20 +497,20 @@ impl Rule {
             Rule::If(args) => IF_OP.apply(args, data),
             Rule::Ternary(args) => TERNARY_OP.apply(args, data),
 
-            Rule::Map(args) => MAP_OP.apply(args, data),
-            Rule::Filter(args) => FILTER_OP.apply(args, data),
-            Rule::Reduce(args) => REDUCE_OP.apply(args, data),
-            Rule::All(args) => ALL_OP.apply(args, data),
-            Rule::None(args) => NONE_OP.apply(args, data),
-            Rule::Some(args) => SOME_OP.apply(args, data),
+            Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
+            Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
+            Rule::Reduce(array_rule, reducer_rule, initial_rule) => REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, data),
+            Rule::All(array_rule, predicate) => ALL_OP.apply(array_rule, predicate, data),
+            Rule::None(array_rule, predicate) => NONE_OP.apply(array_rule, predicate, data),
+            Rule::Some(array_rule, predicate) => SOME_OP.apply(array_rule, predicate, data),
             Rule::Merge(args) => MERGE_OP.apply(args, data),
 
             Rule::Missing(args) => MISSING_OP.apply(args, data),
             Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
             
-            Rule::In(args) => IN_OP.apply(args, data),
+            Rule::In(search, target) => IN_OP.apply(search, target, data),
             Rule::Cat(args) => CAT_OP.apply(args, data),
-            Rule::Substr(args) => SUBSTR_OP.apply(args, data),
+            Rule::Substr(string, start, length) => SUBSTR_OP.apply(string, start, length.as_deref(), data),
 
             Rule::Add(args) => ADD_OP.apply(args, data),
             Rule::Multiply(args) => MULTIPLY_OP.apply(args, data),
