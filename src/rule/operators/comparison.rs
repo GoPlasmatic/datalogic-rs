@@ -37,6 +37,9 @@ impl EqualsOperator {
                 }
                 Ok(Value::Bool(true))
             }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
+            }
             _ => Err(Error::InvalidArguments("==".into()))
         }
     }
@@ -61,6 +64,9 @@ impl StrictEqualsOperator {
                     prev = curr;
                 }
                 Ok(Value::Bool(true))
+            }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
             }
             _ => Err(Error::InvalidArguments("===".into()))
         }
@@ -98,6 +104,9 @@ impl NotEqualsOperator {
                 }
                 Ok(Value::Bool(false))
             }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
+            }
             _ => Err(Error::InvalidArguments("!=".into()))
         }
     }
@@ -121,6 +130,9 @@ impl StrictNotEqualsOperator {
                     }
                     prev = curr;
                 }
+                Ok(Value::Bool(false))
+            }
+            args if args.len() < 2 => {
                 Ok(Value::Bool(false))
             }
             _ => Err(Error::InvalidArguments("!==".into()))
@@ -148,6 +160,9 @@ impl GreaterThanOperator {
                 }
                 Ok(Value::Bool(true))
             }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
+            }
             _ => Err(Error::InvalidArguments(">".into()))
         }
     }
@@ -172,6 +187,9 @@ impl LessThanOperator {
                     prev = curr;
                 }
                 Ok(Value::Bool(true))
+            }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
             }
             _ => Err(Error::InvalidArguments("<".into()))
         }
@@ -198,6 +216,9 @@ impl LessThanEqualOperator {
                 }
                 Ok(Value::Bool(true))
             }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
+            }
             _ => Err(Error::InvalidArguments("<=".into()))
         }
     }
@@ -222,6 +243,9 @@ impl GreaterThanEqualOperator {
                     prev = curr;
                 }
                 Ok(Value::Bool(true))
+            }
+            args if args.len() < 2 => {
+                Ok(Value::Bool(false))
             }
             _ => Err(Error::InvalidArguments(">=".into()))
         }

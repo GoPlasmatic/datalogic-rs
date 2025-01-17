@@ -79,6 +79,7 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
             let data = test_case.get("data").unwrap();
             let expected = test_case.get("result").unwrap();
             total_tests += 1;
+            println!("Testing: {}", description);
             match run_jsonlogic_test(logic, data, expected) {
                 Ok(_) => {
                     passed_tests += 1;
@@ -104,6 +105,8 @@ fn test_jsonlogic_all_test_suites() {
         // Remote URLs
         "https://jsonlogic.com/tests.json",
         "tests/leaf-coercion-proposal.json",
+        "tests/add-operator.json",
+        "tests/lessthan-operator.json"
         // Local file
         // "tests/custom_tests.json",  // Add your local test file path here
     ];
