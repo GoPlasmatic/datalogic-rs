@@ -1,14 +1,14 @@
 [package]
 name = "datalogic-rs"
-version = "2.0.5"
+version = "2.0.8"
 edition = "2021"
 exclude = ["/xsd", "/xml", ".DS_Store", "/target", ".vscode", "generate.sh"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
 readme = "README.md"
-homepage = "https://github.com/Open-Payments/datalogic-rs"
-repository = "https://github.com/Open-Payments/datalogic-rs"
+homepage = "https://github.com/codetiger/datalogic-rs"
+repository = "https://github.com/codetiger/datalogic-rs"
 keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 
@@ -18,7 +18,7 @@ thiserror = "1.0"
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false }
-lazy_static = "1.4"
+lazy_static = "1.5"
 reqwest = { version = "0.11", features = ["blocking"] }
 
 [[bench]]

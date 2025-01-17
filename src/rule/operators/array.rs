@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::Error;
+use crate::{Error, JsonLogicResult};
 use super::{Rule, ValueCoercion};
 
 pub struct MapOperator;
@@ -11,7 +11,7 @@ pub struct SomeOperator;
 pub struct MergeOperator;
 
 impl MapOperator {
-    pub fn apply(&self, array_rule: &Rule, mapper: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, array_rule: &Rule, mapper: &Rule, data: &Value) -> JsonLogicResult {
         match array_rule.apply(data)? {
             Value::Array(arr) => {
                 let results = arr
@@ -27,7 +27,7 @@ impl MapOperator {
 }
 
 impl FilterOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
         match array_rule.apply(data)? {
             Value::Array(arr) => {
                 let results = arr
@@ -43,7 +43,7 @@ impl FilterOperator {
 }
 
 impl ReduceOperator {
-    pub fn apply(&self, array_rule: &Rule, reducer_rule: &Rule, initial_rule: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, array_rule: &Rule, reducer_rule: &Rule, initial_rule: &Rule, data: &Value) -> JsonLogicResult {
         static CURRENT: &str = "current";
         static ACCUMULATOR: &str = "accumulator";
 
@@ -78,7 +78,7 @@ impl ReduceOperator {
 }
 
 impl AllOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
         match array_rule.apply(data)? {
             Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
             Value::Array(arr) => {
@@ -94,7 +94,7 @@ impl AllOperator {
 }
 
 impl NoneOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
         match array_rule.apply(data)? {
             Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(true)),
             Value::Array(arr) => {
@@ -109,7 +109,7 @@ impl NoneOperator {
 }
 
 impl SomeOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
         match array_rule.apply(data)? {
             Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
             Value::Array(arr) => {
@@ -124,7 +124,7 @@ impl SomeOperator {
 }
 
 impl MergeOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         if args.is_empty() {
             return Ok(Value::Array(Vec::new()));
         }

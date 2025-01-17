@@ -12,6 +12,31 @@ fn load_test_cases(source: &str) -> Result<String, Box<dyn std::error::Error>> {
     }
 }
 
+fn run_jsonlogic_test(logic: &Value, data: &Value, expected: &Value) -> Result<(), ()> {
+    let rule = Rule::from_value(&logic).unwrap();
+
+    match JsonLogic::apply(&rule, data) {
+        Ok(result) => {
+            if result == *expected {
+                Ok(())
+            } else {
+                println!("Rule: {}", logic);
+                println!("Data: {}", data);
+                println!("Expected: {}", expected);
+                println!("Got: {}", result);
+                Err(())
+            }
+        },
+        Err(e) => {
+            println!("Error: {}", e);
+            println!("Rule: {}", logic);
+            println!("Data: {}", data);
+            println!("Expected: {}", expected);
+            Err(())
+        }
+    }
+}
+
 fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std::error::Error>> {
     println!("\nLoading tests from: {}", source);
     
@@ -30,9 +55,7 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
             current_section = title.clone();
             println!("Testing section: {}", current_section);
             continue;
-        }
-
-        if let Value::Array(test_case) = entry {
+        } else if let Value::Array(test_case) = entry {
             if test_case.len() != 3 {
                 println!("Skipping malformed test case {}: {:?}", index, test_case);
                 continue;
@@ -42,27 +65,29 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
             let logic = &test_case[0];
             let data = &test_case[1];
             let expected = &test_case[2];
-            let rule = Rule::from_value(&logic).unwrap();
-
-            match JsonLogic::apply(&rule, data) {
-                Ok(result) => {
-                    if result == *expected {
-                        passed_tests += 1;
-                    } else {
-                        println!("Test {} failed in section: {}", total_tests, current_section);
-                        println!("Rule: {}", logic);
-                        println!("Data: {}", data);
-                        println!("Expected: {}", expected);
-                        println!("Got: {}", result);
-                    }
+            match run_jsonlogic_test(logic, data, expected) {
+                Ok(_) => {
+                    passed_tests += 1;
                 },
-                Err(e) => {
-                    println!("Error in test {}: {}", total_tests, e);
-                    println!("Rule: {}", logic);
-                    println!("Data: {}", data);
-                    println!("Expected: {}", expected);
+                Err(_) => {
+                    println!("Test {} failed", index);
                 }
             }
+        } else if let Value::Object(test_case) = entry {
+            let description = test_case.get("description").unwrap();
+            let logic = test_case.get("rule").unwrap();
+            let data = test_case.get("data").unwrap();
+            let expected = test_case.get("result").unwrap();
+            total_tests += 1;
+            match run_jsonlogic_test(logic, data, expected) {
+                Ok(_) => {
+                    passed_tests += 1;
+                },
+                Err(_) => {
+                    println!("Test {} failed: {}", index, description);
+                }
+            }
+            
         }
     }
     
@@ -78,6 +103,7 @@ fn test_jsonlogic_all_test_suites() {
     let test_sources = vec![
         // Remote URLs
         "https://jsonlogic.com/tests.json",
+        "tests/leaf-coercion-proposal.json",
         // Local file
         // "tests/custom_tests.json",  // Add your local test file path here
     ];

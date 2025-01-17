@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::Error;
+use crate::{Error, JsonLogicResult};
 use super::{Rule, ValueCoercion};
 
 pub struct EqualsOperator;
@@ -13,7 +13,7 @@ pub struct LessThanEqualOperator;
 
 
 impl EqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -43,7 +43,7 @@ impl EqualsOperator {
 }
 
 impl StrictEqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -68,7 +68,7 @@ impl StrictEqualsOperator {
 }
 
 impl NotEqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -104,7 +104,7 @@ impl NotEqualsOperator {
 }
 
 impl StrictNotEqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -129,7 +129,7 @@ impl StrictNotEqualsOperator {
 }
 
 impl GreaterThanOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -154,7 +154,7 @@ impl GreaterThanOperator {
 }
 
 impl LessThanOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -179,7 +179,7 @@ impl LessThanOperator {
 }
 
 impl LessThanEqualOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
@@ -204,7 +204,7 @@ impl LessThanEqualOperator {
 }
 
 impl GreaterThanEqualOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;

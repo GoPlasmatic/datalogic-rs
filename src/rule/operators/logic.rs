@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::Error;
+use crate::JsonLogicResult;
 use super::{Rule, ValueCoercion};
 
 pub struct AndOperator;
@@ -9,7 +9,7 @@ pub struct DoubleBangOperator;
 
 
 impl OrOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(false)),
             1 => args[0].apply(data),
@@ -27,7 +27,7 @@ impl OrOperator {
 }
 
 impl AndOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(true)),
             1 => args[0].apply(data),
@@ -45,7 +45,7 @@ impl AndOperator {
 }
 
 impl NotOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(true)),
             1 => {
@@ -61,7 +61,7 @@ impl NotOperator {
 }
 
 impl DoubleBangOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(false)),
             _ => {

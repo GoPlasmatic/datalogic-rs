@@ -1,7 +1,7 @@
 mod operators;
 
 use serde_json::Value;
-use crate::Error;
+use crate::{Error, JsonLogicResult};
 
 pub use operators::*;
 
@@ -48,6 +48,11 @@ static MIN_OP: MinOperator = MinOperator;
 
 static PRESERVE_OP: PreserveOperator = PreserveOperator;
 
+#[derive(Debug, Clone)]
+pub enum ArgType {
+    Array(Vec<Rule>),
+    Single(Box<Rule>)
+}
 
 #[derive(Debug, Clone)]
 pub enum Rule {
@@ -93,16 +98,16 @@ pub enum Rule {
     Substr(Box<Rule>, Box<Rule>, Option<Box<Rule>>),
     
     // Arithmetic operators
-    Add(Vec<Rule>),
-    Multiply(Vec<Rule>),
-    Subtract(Vec<Rule>),
-    Divide(Vec<Rule>),
-    Modulo(Vec<Rule>),
-    Max(Vec<Rule>),
-    Min(Vec<Rule>),
+    Add(ArgType),
+    Multiply(ArgType),
+    Subtract(ArgType),
+    Divide(ArgType),
+    Modulo(ArgType),
+    Max(ArgType),
+    Min(ArgType),
     
     // Special operators
-    Preserve(Vec<Rule>),
+    Preserve(ArgType),
 
     Array(Vec<Rule>),
     // Literal value
@@ -141,6 +146,20 @@ impl Rule {
                 }
             }
 
+            Rule::Preserve(args) |
+            Rule::Add(args) |
+            Rule::Multiply(args) |
+            Rule::Subtract(args) |
+            Rule::Divide(args) |
+            Rule::Modulo(args) |
+            Rule::Min(args) |
+            Rule::Max(args) => {
+                match args {
+                    ArgType::Array(arr) => arr.iter().all(|r| r.is_static()),
+                    ArgType::Single(r) => r.is_static(),
+                }
+            }
+
             Rule::Array(args) |
             Rule::If(args) | 
             Rule::Equals(args) |
@@ -157,15 +176,7 @@ impl Rule {
             Rule::DoubleBang(args) |
             Rule::Ternary(args) |
             Rule::Merge(args) |
-            Rule::Cat(args) |
-            Rule::Add(args) |
-            Rule::Multiply(args) |
-            Rule::Subtract(args) |
-            Rule::Divide(args) |
-            Rule::Modulo(args) |
-            Rule::Max(args) |
-            Rule::Min(args) |
-            Rule::Preserve(args) => args.iter().all(|r| r.is_static()),
+            Rule::Cat(args) => args.iter().all(|r| r.is_static()),
         }
     }
 
@@ -184,13 +195,13 @@ impl Rule {
             Rule::Missing(_) => Rule::Missing(optimized),
             Rule::MissingSome(_) => Rule::MissingSome(optimized),
             Rule::Cat(_) => Rule::Cat(optimized),
-            Rule::Add(_) => Rule::Add(optimized),
-            Rule::Multiply(_) => Rule::Multiply(optimized),
-            Rule::Subtract(_) => Rule::Subtract(optimized),
-            Rule::Divide(_) => Rule::Divide(optimized),
-            Rule::Modulo(_) => Rule::Modulo(optimized),
-            Rule::Max(_) => Rule::Max(optimized),
-            Rule::Min(_) => Rule::Min(optimized),
+            Rule::Add(_) => Rule::Add(ArgType::Array(optimized)),
+            Rule::Multiply(_) => Rule::Multiply(ArgType::Array(optimized)),
+            Rule::Subtract(_) => Rule::Subtract(ArgType::Array(optimized)),
+            Rule::Divide(_) => Rule::Divide(ArgType::Array(optimized)),
+            Rule::Modulo(_) => Rule::Modulo(ArgType::Array(optimized)),
+            Rule::Max(_) => Rule::Max(ArgType::Array(optimized)),
+            Rule::Min(_) => Rule::Min(ArgType::Array(optimized)),
             Rule::Equals(_) => Rule::Equals(optimized),
             Rule::StrictEquals(_) => Rule::StrictEquals(optimized),
             Rule::NotEquals(_) => Rule::NotEquals(optimized),
@@ -204,7 +215,7 @@ impl Rule {
             Rule::Not(_) => Rule::Not(optimized),
             Rule::DoubleBang(_) => Rule::DoubleBang(optimized),
             Rule::Ternary(_) => Rule::Ternary(optimized),
-            Rule::Preserve(_) => Rule::Preserve(optimized),
+            Rule::Preserve(_) => Rule::Preserve(ArgType::Array(optimized)),
                         
             _ => rule
         }
@@ -279,16 +290,107 @@ impl Rule {
                 let optimized_length = length.map(|l| Self::optimize_rule(*l)).transpose()?;
                 Ok(Rule::Substr(Box::new(optimized_string), Box::new(optimized_start), optimized_length.map(Box::new)))
             },
+            Rule::Add(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Add(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Add(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Multiply(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Multiply(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Multiply(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Subtract(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Subtract(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Subtract(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Divide(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Divide(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Divide(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Modulo(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Modulo(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Modulo(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Max(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Max(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Max(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Min(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Min(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Min(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            },
+
+            Rule::Preserve(args) => {
+                match args {
+                    ArgType::Array(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Preserve(ArgType::Array(optimized)))
+                    },
+                    ArgType::Single(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Preserve(ArgType::Single(Box::new(optimized))))
+                    }
+                }
+            }
+
             // Process operators
             Rule::Merge(ref args) |
             Rule::Cat(ref args) |
-            Rule::Add(ref args) |
-            Rule::Multiply(ref args) |
-            Rule::Subtract(ref args) |
-            Rule::Divide(ref args) |
-            Rule::Modulo(ref args) |
-            Rule::Max(ref args) |
-            Rule::Min(ref args) |
             Rule::Equals(ref args) |
             Rule::StrictEquals(ref args) |
             Rule::NotEquals(ref args) |
@@ -302,8 +404,7 @@ impl Rule {
             Rule::Not(ref args) |
             Rule::DoubleBang(ref args) |
             Rule::If(ref args) |
-            Rule::Ternary(ref args) |
-            Rule::Preserve(ref args) => {
+            Rule::Ternary(ref args) => {
                 let optimized = Self::optimize_args(args)?;
                 Ok(Self::rebuild_with_args(rule, optimized))
             },
@@ -358,12 +459,12 @@ impl Rule {
     pub fn from_value(value: &Value) -> Result<Self, Error> {
         match value {
             Value::Object(map) if map.len() == 1 => {
-                let (op, args) = map.iter().next().unwrap();
-                let args = match args {
+                let (op, args_raw) = map.iter().next().unwrap();
+                let args = match args_raw {
                     Value::Array(arr) => arr.iter()
                         .map(Rule::from_value)
                         .collect::<Result<Vec<_>, _>>()?,
-                    _ => vec![Rule::from_value(args)?],
+                    _ => vec![Rule::from_value(args_raw)?],
                 };
                 
                 let rule = match op.as_str() {
@@ -438,16 +539,64 @@ impl Rule {
                     )),
                     
                     // Arithmetic operators
-                    "+" => Ok(Rule::Add(args)),
-                    "*" => Ok(Rule::Multiply(args)),
-                    "-" => Ok(Rule::Subtract(args)),
-                    "/" => Ok(Rule::Divide(args)),
-                    "%" => Ok(Rule::Modulo(args)),
-                    "max" => Ok(Rule::Max(args)),
-                    "min" => Ok(Rule::Min(args)),
+                    "+" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Add(arg))
+                    },
+                    "*" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Multiply(arg))
+                    },
+                    "-" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Subtract(arg))
+                    },
+                    "/" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Divide(arg))
+                    },
+                    "%" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Modulo(arg))
+                    },
+                    "max" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Max(arg))
+                    },
+                    "min" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Min(arg))
+                    },
                     
                     // Special operators
-                    "preserve" => Ok(Rule::Preserve(args)),
+                    "preserve" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Array(args),
+                            _ => ArgType::Single(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Preserve(arg))
+                    },
                     
                     _ => Err(Error::UnknownOperator(op.to_string())),
                 };
@@ -467,7 +616,7 @@ impl Rule {
         }
     }
 
-    pub fn apply(&self, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, data: &Value) -> JsonLogicResult {
         match self {
             Rule::Value(value) => {
                 Ok(value.clone())
