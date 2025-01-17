@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::Error;
+use crate::{Error, JsonLogicResult};
 use super::{Rule, ValueCoercion};
 
 const ERR_TERNARY: &str = "?: requires 3 arguments";
@@ -9,7 +9,7 @@ pub struct TernaryOperator;
 
 
 impl IfOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [] => Ok(Value::Null),
             [single] => single.apply(data),
@@ -52,7 +52,7 @@ impl IfOperator {
 }
 
 impl TernaryOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [condition, consequent, alternative] => {
                 let cond = condition.apply(data)?;

@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::Error;
+use crate::{Error, JsonLogicResult};
 use super::Rule;
 
 const ERR_MISSING_SOME: &str = "missing_some requires 2 arguments";
@@ -55,7 +55,7 @@ impl MissingOperator {
 }
 
 impl MissingOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         // Fast path for empty args
         if args.is_empty() {
             return Ok(Value::Array(Vec::new()));
@@ -80,7 +80,7 @@ impl MissingOperator {
 }
 
 impl MissingSomeOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         // Fast path: validate args
         match args {
             [min_rule, keys_rule] => {
@@ -107,7 +107,7 @@ impl MissingSomeOperator {
                 for key in keys {
                     match key {
                         Value::String(key_str) => {
-                            if MissingOperator::check_path(data, key_str) {
+                            if MissingOperator::check_path(data, key_str.as_str()) {
                                 missing.push(Value::String(key_str.clone()));
                             } else {
                                 found_count += 1;

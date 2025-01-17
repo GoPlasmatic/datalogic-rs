@@ -1,7 +1,7 @@
 mod operators;
 
 use serde_json::Value;
-use crate::Error;
+use crate::{Error, JsonLogicResult};
 
 pub use operators::*;
 
@@ -467,7 +467,7 @@ impl Rule {
         }
     }
 
-    pub fn apply(&self, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, data: &Value) -> JsonLogicResult {
         match self {
             Rule::Value(value) => {
                 Ok(value.clone())

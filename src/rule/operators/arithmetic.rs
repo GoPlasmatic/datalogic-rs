@@ -1,6 +1,6 @@
 use serde_json::Value;
-use crate::Error;
-use super::{Rule, ValueCoercion, ValueConvert};
+use crate::{Error, JsonLogicResult};
+use super::{Rule, ValueConvert, ValueCoercion};
 
 pub struct AddOperator;
 pub struct MultiplyOperator;
@@ -11,7 +11,7 @@ pub struct MaxOperator;
 pub struct MinOperator;
 
 impl AddOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [] => Ok(Value::Number(0.into())),
             _ => {
@@ -25,7 +25,7 @@ impl AddOperator {
 }
 
 impl MultiplyOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Number(1.into())),
             1 => Ok(args[0].apply(data)?.coerce_to_number().to_value()),
@@ -44,7 +44,7 @@ impl MultiplyOperator {
 }
 
 impl SubtractOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [] => Ok(Value::Number(0.into())),
             [single] => {
@@ -63,7 +63,7 @@ impl SubtractOperator {
 }
 
 impl DivideOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [numerator, denominator] => {
                 let num = numerator.apply(data)?.coerce_to_number();
@@ -80,7 +80,7 @@ impl DivideOperator {
 }
 
 impl ModuloOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [numerator, denominator] => {
                 let num = numerator.apply(data)?.coerce_to_number();
@@ -97,7 +97,7 @@ impl ModuloOperator {
 }
 
 impl MaxOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [] => Ok(Value::Null),
             [single] => single.apply(data),
@@ -119,7 +119,7 @@ impl MaxOperator {
 }
 
 impl MinOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args {
             [] => Ok(Value::Null),
             [single] => single.apply(data),

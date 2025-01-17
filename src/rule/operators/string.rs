@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::Error;
+use crate::JsonLogicResult;
 use super::{Rule, ValueCoercion};
 
 pub struct InOperator;
@@ -7,7 +7,7 @@ pub struct CatOperator;
 pub struct SubstrOperator;
 
 impl InOperator {
-    pub fn apply(&self, search: &Rule, target: &Rule, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, search: &Rule, target: &Rule, data: &Value) -> JsonLogicResult {
         let search = search.apply(data)?;
         let target = target.apply(data)?;        
         Ok(Value::Bool(match (&search, &target) {
@@ -19,7 +19,7 @@ impl InOperator {
 }
 
 impl CatOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         // Fast paths
         match args.len() {
             0 => return Ok(Value::String(String::new())),
@@ -41,7 +41,7 @@ impl CatOperator {
 }
 
 impl SubstrOperator {
-    pub fn apply(&self, string: &Rule, start: &Rule, length: Option<&Rule>, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, string: &Rule, start: &Rule, length: Option<&Rule>, data: &Value) -> JsonLogicResult {
         let string = string.apply(data)?;
         let string = match string {
             Value::String(s) => s,

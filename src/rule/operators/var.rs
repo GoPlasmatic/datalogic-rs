@@ -1,11 +1,11 @@
+use crate::{Error, JsonLogicResult};
 use super::Rule;
-use crate::Error;
 use serde_json::Value;
 
 pub struct VarOperator;
 
 impl VarOperator {
-    pub fn apply(&self, path: &Rule, default: Option<&Rule>, data: &Value) -> Result<Value, Error> {
+    pub fn apply(&self, path: &Rule, default: Option<&Rule>, data: &Value) -> JsonLogicResult {
         let path_value = path.apply(data)?;
         let path_str = match path_value {
             Value::String(ref s) => s.clone(),
