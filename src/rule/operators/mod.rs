@@ -34,7 +34,10 @@ impl ValueCoercion for Value {
     fn coerce_to_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
+            Value::Number(n) => {
+                let num = n.as_f64().unwrap_or(0.0);
+                num != 0.0
+            },
             Value::String(s) => !s.is_empty(),
             Value::Array(a) => !a.is_empty(),
             Value::Object(o) => !o.is_empty(),

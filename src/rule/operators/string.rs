@@ -28,7 +28,7 @@ impl CatOperator {
         }
 
         // Pre-allocate with estimated capacity
-        let capacity = args.len() * 8;
+        let capacity = args.len() * 16;
         let mut result = String::with_capacity(capacity);
 
         for arg in args {
