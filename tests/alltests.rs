@@ -106,7 +106,8 @@ fn test_jsonlogic_all_test_suites() {
         "https://jsonlogic.com/tests.json",
         "tests/leaf-coercion-proposal.json",
         "tests/add-operator.json",
-        "tests/lessthan-operator.json"
+        "tests/lessthan-operator.json",
+        "tests/variadic-proposal.json",
         // Local file
         // "tests/custom_tests.json",  // Add your local test file path here
     ];

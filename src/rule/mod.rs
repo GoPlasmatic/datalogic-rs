@@ -94,9 +94,9 @@ impl Rule {
             }
             Rule::Substr(string, start, length) => {
                 if length.is_none() {
-                    return string.is_static() && start.is_static();
+                    string.is_static() && start.is_static()
                 } else {
-                    return string.is_static() && start.is_static() && length.as_deref().unwrap().is_static();
+                    string.is_static() && start.is_static() && length.as_deref().unwrap().is_static()
                 }
             }
 
@@ -302,7 +302,7 @@ impl Rule {
                 let rule = match op.as_str() {
                     // Variable access
                     "var" => Ok(Rule::Var(
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         args.get(1).cloned().map(Box::new)
                     )),
                     
@@ -328,31 +328,31 @@ impl Rule {
                     
                     // Array operators
                     "map" => Ok(Rule::Map(
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "filter" => Ok(Rule::Filter(
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "reduce" => Ok(Rule::Reduce(
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(2).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "all" => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::All,
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "none" => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::None,
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "some" => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::Some,
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "merge" => Ok(Rule::Merge(args)),
@@ -363,12 +363,12 @@ impl Rule {
                     
                     // String operators
                     "in" => Ok(Rule::In(
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
                     "cat" => Ok(Rule::Cat(args)),
                     "substr" => Ok(Rule::Substr(
-                        Box::new(args.get(0).cloned().unwrap_or(Rule::Value(Value::Null))),
+                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
                         args.get(2).cloned().map(Box::new)
                     )),

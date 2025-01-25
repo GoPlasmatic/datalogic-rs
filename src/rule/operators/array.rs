@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::{Error, JsonLogicResult};
+use crate::JsonLogicResult;
 use super::{Rule, ValueCoercion};
 
 pub struct MapOperator;
@@ -85,39 +85,35 @@ pub struct ArrayPredicateOperator;
 
 impl ArrayPredicateOperator {
     pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value, op_type: ArrayPredicateType) -> JsonLogicResult {
-        let array_value = array_rule.apply(data)?;
-        
-        match array_value {
-            Value::Array(arr) => {
+        let array_value = match array_rule {
+            Rule::Value(value) => value,
+            _ => &array_rule.apply(data)?
+        };
+
+        let result = if let Value::Array(arr) = array_value {
+            if arr.is_empty() {
                 match op_type {
-                    ArrayPredicateType::All => {
-                        if arr.is_empty() {
-                            return Ok(Value::Bool(false));
-                        }
-                        let result = arr.iter()
-                            .all(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                        Ok(Value::Bool(result))
-                    },
-                    ArrayPredicateType::Some => {
-                        if arr.is_empty() {
-                            return Ok(Value::Bool(false));
-                        }
-                        let result = arr.iter()
-                            .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                        Ok(Value::Bool(result))
-                    },
-                    ArrayPredicateType::None => {
-                        if arr.is_empty() {
-                            return Ok(Value::Bool(true));
-                        }
-                        let result = arr.iter()
-                            .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                        Ok(Value::Bool(!result))
-                    }
+                    ArrayPredicateType::All => true,
+                    ArrayPredicateType::Some => false,
+                    ArrayPredicateType::None => true,
                 }
-            },
-            _ => Err(Error::InvalidRule("First argument must be array".into()))
-        }
+            } else {
+                let predicate_fn = |item: &Value| -> bool {
+                    predicate.apply(item)
+                        .map(|v| v.coerce_to_bool())
+                        .unwrap_or(false)
+                };
+
+                match op_type {
+                    ArrayPredicateType::All | ArrayPredicateType::Some => arr.iter().any(predicate_fn),
+                    ArrayPredicateType::None => !arr.iter().any(predicate_fn),
+                }
+            }
+        } else {
+            false
+        };
+
+        Ok(Value::Bool(result))
     }
 }
 
