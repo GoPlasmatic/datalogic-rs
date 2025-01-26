@@ -1,13 +1,10 @@
 use serde_json::Value;
-use crate::{Error, JsonLogicResult};
+use crate::{JsonLogicResult, Error};
 use super::{Rule, ValueCoercion};
 
 pub struct MapOperator;
 pub struct FilterOperator;
 pub struct ReduceOperator;
-pub struct AllOperator;
-pub struct NoneOperator;
-pub struct SomeOperator;
 pub struct MergeOperator;
 
 impl MapOperator {
@@ -44,29 +41,29 @@ impl FilterOperator {
 
 impl ReduceOperator {
     pub fn apply(&self, array_rule: &Rule, reducer_rule: &Rule, initial_rule: &Rule, data: &Value) -> JsonLogicResult {
-        static CURRENT: &str = "current";
-        static ACCUMULATOR: &str = "accumulator";
-
         match array_rule.apply(data)? {
             Value::Array(arr) if arr.is_empty() => initial_rule.apply(data),
             Value::Array(arr) => {
+                static CURRENT: &str = "current";
+                static ACCUMULATOR: &str = "accumulator";
+        
                 let mut map = serde_json::Map::with_capacity(2);
                 map.insert(CURRENT.to_string(), Value::Null);
                 map.insert(ACCUMULATOR.to_string(), initial_rule.apply(data)?);
                 let mut item_data = Value::Object(map);
-
+        
                 for item in arr {
                     if let Value::Object(ref mut map) = item_data {
-                        map.insert(CURRENT.to_string(), item);
+                        map[&CURRENT.to_string()] = item.clone();
                     }
-
+        
                     let result = reducer_rule.apply(&item_data)?;
-
+        
                     if let Value::Object(ref mut map) = item_data {
-                        map.insert(ACCUMULATOR.to_string(), result);
+                        map[&ACCUMULATOR.to_string()] = result;
                     }
                 }
-
+        
                 match item_data {
                     Value::Object(map) => Ok(map.get(ACCUMULATOR).cloned().unwrap_or(Value::Null)),
                     _ => Ok(Value::Null)
@@ -77,46 +74,47 @@ impl ReduceOperator {
     }
 }
 
-impl AllOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
-        match array_rule.apply(data)? {
-            Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
-            Value::Array(arr) => {
-                let result = arr
-                    .into_iter()
-                    .all(|item| matches!(predicate.apply(&item), Ok(v) if v.coerce_to_bool()));
-                
-                Ok(Value::Bool(result))
-            },
-            _ => Ok(Value::Bool(false))
-        }
-    }
+#[derive(Debug, Clone)]
+pub enum ArrayPredicateType {
+    All,
+    Some,
+    None
 }
 
-impl NoneOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
-        match array_rule.apply(data)? {
-            Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(true)),
-            Value::Array(arr) => {
-                let result = arr
-                    .iter()
-                    .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                Ok(Value::Bool(!result))
-            },
-            _ => Err(Error::InvalidRule("First argument must be array".into()))
-        }
-    }
-}
+pub struct ArrayPredicateOperator;
 
-impl SomeOperator {
-    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
-        match array_rule.apply(data)? {
-            Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
+impl ArrayPredicateOperator {
+    pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value, op_type: &ArrayPredicateType) -> JsonLogicResult {
+        let array_value = array_rule.apply(data)?;
+        
+        match array_value {
             Value::Array(arr) => {
-                let result = arr
-                    .iter()
-                    .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                Ok(Value::Bool(result))
+                match op_type {
+                    ArrayPredicateType::All => {
+                        if arr.is_empty() {
+                            return Ok(Value::Bool(false));
+                        }
+                        let result = arr.iter()
+                            .all(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
+                        Ok(Value::Bool(result))
+                    },
+                    ArrayPredicateType::Some => {
+                        if arr.is_empty() {
+                            return Ok(Value::Bool(false));
+                        }
+                        let result = arr.iter()
+                            .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
+                        Ok(Value::Bool(result))
+                    },
+                    ArrayPredicateType::None => {
+                        if arr.is_empty() {
+                            return Ok(Value::Bool(true));
+                        }
+                        let result = arr.iter()
+                            .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
+                        Ok(Value::Bool(!result))
+                    }
+                }
             },
             _ => Err(Error::InvalidRule("First argument must be array".into()))
         }

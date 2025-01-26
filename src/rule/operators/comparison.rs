@@ -1,229 +1,92 @@
 use serde_json::Value;
-use crate::{Error, JsonLogicResult};
+use crate::JsonLogicResult;
 use super::{Rule, ValueCoercion};
 
-pub struct EqualsOperator;
-pub struct StrictEqualsOperator;
-pub struct NotEqualsOperator;
-pub struct StrictNotEqualsOperator;
-pub struct GreaterThanOperator;
-pub struct LessThanOperator;
-pub struct GreaterThanEqualOperator;
-pub struct LessThanEqualOperator;
 
+#[derive(Debug, Clone)]
+pub enum CompareType { Equals, StrictEquals, NotEquals, StrictNotEquals, GreaterThan, LessThan, GreaterThanEqual, LessThanEqual }
 
-impl EqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
+pub struct CompareOperator;
+
+impl CompareOperator {
+    pub fn apply(&self, args: &[Rule], data: &Value, compare_type: &CompareType) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;
                 let right = b.apply(data)?;
                 
-                Ok(Value::Bool(match (&left, &right) {
-                    (Value::Number(n1), Value::Number(n2)) => n1 == n2,
-                    (Value::String(s1), Value::String(s2)) => s1 == s2,
-                    (Value::Bool(b1), Value::Bool(b2)) => b1 == b2,
-                    _ => left.coerce_to_number() == right.coerce_to_number()
-                }))
+                Ok(Value::Bool(self.compare(&left, &right, &compare_type)))
             },
             args if args.len() > 2 => {
                 let mut prev = args[0].apply(data)?;
                 for arg in args.iter().skip(1) {
                     let curr = arg.apply(data)?;
-                    if std::mem::discriminant(&prev) == std::mem::discriminant(&curr) || prev == curr {
+                    if !self.compare(&prev, &curr, &compare_type) {
                         return Ok(Value::Bool(false));
                     }
                     prev = curr;
                 }
                 Ok(Value::Bool(true))
             }
-            _ => Err(Error::InvalidArguments("==".into()))
+            _ => Ok(Value::Bool(false))
         }
     }
-}
 
-impl StrictEqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(std::mem::discriminant(&left) == std::mem::discriminant(&right) && left == right))
+    fn compare(&self, left: &Value, right: &Value, compare_type: &CompareType) -> bool {
+        use CompareType::*;
+        
+        match compare_type {
+            StrictEquals => {
+                return std::mem::discriminant(left) == std::mem::discriminant(right) && left == right;
             }
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    if std::mem::discriminant(&prev) != std::mem::discriminant(&curr) || prev != curr {
-                        return Ok(Value::Bool(false));
-                    }
-                    prev = curr;
-                }
-                Ok(Value::Bool(true))
+            StrictNotEquals => {
+                return std::mem::discriminant(left) != std::mem::discriminant(right) || left != right;
             }
-            _ => Err(Error::InvalidArguments("===".into()))
+            _ => {}
         }
-    }
-}
-
-impl NotEqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(match (&left, &right) {
-                    (Value::Number(n1), Value::Number(n2)) => n1 != n2,
-                    (Value::String(s1), Value::String(s2)) => s1 != s2,
-                    (Value::Bool(b1), Value::Bool(b2)) => b1 != b2,
-                    _ => left.coerce_to_number() != right.coerce_to_number()
-                }))
+    
+        match compare_type {
+            GreaterThan | LessThan | GreaterThanEqual | LessThanEqual => {
+                let l_num = left.coerce_to_number();
+                let r_num = right.coerce_to_number();
+                return match compare_type {
+                    GreaterThan => l_num > r_num,
+                    LessThan => l_num < r_num,
+                    GreaterThanEqual => l_num >= r_num,
+                    LessThanEqual => l_num <= r_num,
+                    _ => unreachable!()
+                };
             }
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    let not_equal = match (&prev, &curr) {
-                        (Value::Number(n1), Value::Number(n2)) => n1 != n2,
-                        (Value::String(s1), Value::String(s2)) => s1 != s2,
-                        (Value::Bool(b1), Value::Bool(b2)) => b1 != b2,
-                        _ => prev.coerce_to_number() != curr.coerce_to_number()
-                    };
-                    if not_equal {
-                        return Ok(Value::Bool(true));
-                    }
-                    prev = curr;
-                }
-                Ok(Value::Bool(false))
-            }
-            _ => Err(Error::InvalidArguments("!=".into()))
+            _ => {}
         }
-    }
-}
-
-impl StrictNotEqualsOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(std::mem::discriminant(&left) != std::mem::discriminant(&right) || left != right))
-            }
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    if std::mem::discriminant(&prev) != std::mem::discriminant(&curr) || prev != curr {
-                        return Ok(Value::Bool(true));
-                    }
-                    prev = curr;
+    
+        match (left, right) {
+            (Value::Number(n1), Value::Number(n2)) => {
+                match compare_type {
+                    Equals => n1 == n2,
+                    NotEquals => n1 != n2,
+                    _ => unreachable!()
                 }
-                Ok(Value::Bool(false))
             }
-            _ => Err(Error::InvalidArguments("!==".into()))
-        }
-    }
-}
-
-impl GreaterThanOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(left.coerce_to_number() > right.coerce_to_number()))
-            },
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    if prev.coerce_to_number() <= curr.coerce_to_number() {
-                        return Ok(Value::Bool(false));
-                    }
-                    prev = curr;
+            (Value::String(s1), Value::String(s2)) => {
+                match compare_type {
+                    Equals => s1 == s2,
+                    NotEquals => s1 != s2,
+                    _ => unreachable!()
                 }
-                Ok(Value::Bool(true))
             }
-            _ => Err(Error::InvalidArguments(">".into()))
-        }
-    }
-}
-
-impl LessThanOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(left.coerce_to_number() < right.coerce_to_number()))
-            }
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    if prev.coerce_to_number() >= curr.coerce_to_number() {
-                        return Ok(Value::Bool(false));
-                    }
-                    prev = curr;
+            (Value::Bool(b1), Value::Bool(b2)) => {
+                match compare_type {
+                    Equals => b1 == b2,
+                    NotEquals => b1 != b2,
+                    _ => unreachable!()
                 }
-                Ok(Value::Bool(true))
             }
-            _ => Err(Error::InvalidArguments("<".into()))
-        }
-    }
-}
-
-impl LessThanEqualOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(left.coerce_to_number() <= right.coerce_to_number()))
+            _ => match compare_type {
+                Equals => left.coerce_to_number() == right.coerce_to_number(),
+                NotEquals => left.coerce_to_number() != right.coerce_to_number(),
+                _ => unreachable!()
             }
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    if prev.coerce_to_number() > curr.coerce_to_number() {
-                        return Ok(Value::Bool(false));
-                    }
-                    prev = curr;
-                }
-                Ok(Value::Bool(true))
-            }
-            _ => Err(Error::InvalidArguments("<=".into()))
-        }
-    }
-}
-
-impl GreaterThanEqualOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        match args {
-            [a, b] => {
-                let left = a.apply(data)?;
-                let right = b.apply(data)?;
-                
-                Ok(Value::Bool(left.coerce_to_number() >= right.coerce_to_number()))
-            }
-            args if args.len() > 2 => {
-                let mut prev = args[0].apply(data)?;
-                for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
-                    if prev.coerce_to_number() < curr.coerce_to_number() {
-                        return Ok(Value::Bool(false));
-                    }
-                    prev = curr;
-                }
-                Ok(Value::Bool(true))
-            }
-            _ => Err(Error::InvalidArguments(">=".into()))
         }
     }
 }

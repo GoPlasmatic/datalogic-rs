@@ -1,0 +1,483 @@
+[
+    "# Less Than (<) Operator Tests",
+    
+    "# Two Argument Tests",
+    {
+      "description": "Basic numbers comparison",
+      "rule": {"<": [1, 2]},
+      "data": null,
+      "result": true
+    },
+    {
+      "description": "Equal numbers",
+      "rule": {"<": [2, 2]},
+      "data": null,
+      "result": false
+    },
+    {
+      "description": "Reverse order numbers",
+      "rule": {"<": [2, 1]},
+      "data": null,
+      "result": false
+    },
+    
+    "# Three Argument Tests",
+    {
+      "description": "Three ascending numbers",
+      "rule": {"<": [1, 2, 3]},
+      "data": null,
+      "result": true
+    },
+    {
+      "description": "Three non-ascending numbers",
+      "rule": {"<": [1, 3, 2]},
+      "data": null,
+      "result": false
+    },
+    
+    "# Multiple Argument Tests",
+    {
+      "description": "Many ascending numbers",
+      "rule": {"<": [1, 2, 3, 4, 5]},
+      "data": null,
+      "result": true
+    },
+    {
+      "description": "Break in sequence",
+      "rule": {"<": [1, 2, 2, 3]},
+      "data": null,
+      "result": false
+    },
+    
+    "# Type Coercion Tests",
+    {
+      "description": "String numbers",
+      "rule": {"<": ["1", "2"]},
+      "data": null,
+      "result": true
+    },
+    {
+      "description": "Mixed types",
+      "rule": {"<": [1, "2", 3]},
+      "data": null,
+      "result": true
+    },
+    {
+      "description": "Boolean values",
+      "rule": {"<": [false, true]},
+      "data": null,
+      "result": true
+    },
+    
+    "# Data Context Tests",
+    {
+      "description": "Values from data",
+      "rule": {"<": [{"var": "x"}, {"var": "y"}]},
+      "data": {"x": 1, "y": 2},
+      "result": true
+    },
+    {
+      "description": "Mixed literal and data",
+      "rule": {"<": [{"var": "x"}, 5, {"var": "y"}]},
+      "data": {"x": 1, "y": 10},
+      "result": true
+    },
+    
+    "# Edge Cases",
+    {
+      "description": "Single argument",
+      "rule": {"<": [1]},
+      "data": null,
+      "result": false
+    },
+    {
+      "description": "Empty array",
+      "rule": {"<": []},
+      "data": null,
+      "result": false
+    },
+    {
+      "description": "Null values",
+      "rule": {"<": [null, 1]},
+      "data": null,
+      "result": true
+    },
+    {
+      "description": "Undefined var",
+      "rule": {"<": [{"var": "missing"}, 1]},
+      "data": {},
+      "result": true
+    },
+
+    "# Less Than or Equal (<=) Operator Tests",
+    
+    "# Two Argument Tests",
+    {
+        "description": "Basic numbers comparison",
+        "rule": {"<=": [1, 2]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Equal numbers",
+        "rule": {"<=": [2, 2]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Reverse order numbers",
+        "rule": {"<=": [2, 1]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Three Argument Tests",
+    {
+        "description": "Three ascending numbers",
+        "rule": {"<=": [1, 2, 3]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Three non-ascending numbers",
+        "rule": {"<=": [1, 3, 2]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Multiple Argument Tests",
+    {
+        "description": "Many ascending numbers",
+        "rule": {"<=": [1, 2, 3, 4, 5]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Break in sequence",
+        "rule": {"<=": [1, 2, 2, 3]},
+        "data": null,
+        "result": true
+    },
+    
+    "# Type Coercion Tests",
+    {
+        "description": "String numbers",
+        "rule": {"<=": ["1", "2"]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Mixed types",
+        "rule": {"<=": [1, "2", 3]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Boolean values",
+        "rule": {"<=": [false, true]},
+        "data": null,
+        "result": true
+    },
+    
+    "# Data Context Tests",
+    {
+        "description": "Values from data",
+        "rule": {"<=": [{"var": "x"}, {"var": "y"}]},
+        "data": {"x": 1, "y": 2},
+        "result": true
+    },
+    {
+        "description": "Mixed literal and data",
+        "rule": {"<=": [{"var": "x"}, 5, {"var": "y"}]},
+        "data": {"x": 1, "y": 10},
+        "result": true
+    },
+    
+    "# Edge Cases",
+    {
+        "description": "Single argument",
+        "rule": {"<=": [1]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Empty array",
+        "rule": {"<=": []},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Null values",
+        "rule": {"<=": [null, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Undefined var",
+        "rule": {"<=": [{"var": "missing"}, 1]},
+        "data": {},
+        "result": true
+    },
+
+    "# Greater Than (>) Operator Tests",
+    
+    "# Two Argument Tests",
+    {
+        "description": "Basic numbers comparison",
+        "rule": {">": [2, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Equal numbers",
+        "rule": {">": [2, 2]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Reverse order numbers",
+        "rule": {">": [1, 2]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Three Argument Tests",
+    {
+        "description": "Three descending numbers",
+        "rule": {">": [3, 2, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Three non-descending numbers",
+        "rule": {">": [3, 1, 2]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Multiple Argument Tests",
+    {
+        "description": "Many descending numbers",
+        "rule": {">": [5, 4, 3, 2, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Break in sequence",
+        "rule": {">": [3, 2, 2, 1]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Type Coercion Tests",
+    {
+        "description": "String numbers",
+        "rule": {">": ["2", "1"]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Mixed types",
+        "rule": {">": [3, "2", 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Boolean values",
+        "rule": {">": [true, false]},
+        "data": null,
+        "result": true
+    },
+    
+    "# Data Context Tests",
+    {
+        "description": "Values from data",
+        "rule": {">": [{"var": "y"}, {"var": "x"}]},
+        "data": {"x": 1, "y": 2},
+        "result": true
+    },
+    {
+        "description": "Mixed literal and data",
+        "rule": {">": [{"var": "y"}, 5, {"var": "x"}]},
+        "data": {"x": 1, "y": 10},
+        "result": true
+    },
+    
+    "# Edge Cases",
+    {
+        "description": "Single argument",
+        "rule": {">": [1]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Empty array",
+        "rule": {">": []},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Null values",
+        "rule": {">": [1, null]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Undefined var",
+        "rule": {">": [1, {"var": "missing"}]},
+        "data": {},
+        "result": true
+    },
+
+    "# Greater Than or Equal (>=) Operator Tests",
+    
+    "# Two Argument Tests",
+    {
+        "description": "Basic numbers comparison",
+        "rule": {">=": [2, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Equal numbers",
+        "rule": {">=": [2, 2]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Reverse order numbers",
+        "rule": {">=": [1, 2]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Three Argument Tests",
+    {
+        "description": "Three descending numbers",
+        "rule": {">=": [3, 2, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Three non-descending numbers",
+        "rule": {">=": [3, 1, 2]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Multiple Argument Tests",
+    {
+        "description": "Many descending numbers",
+        "rule": {">=": [5, 4, 3, 2, 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Break in sequence",
+        "rule": {">=": [3, 2, 2, 1]},
+        "data": null,
+        "result": true
+    },
+    
+    "# Type Coercion Tests",
+    {
+        "description": "String numbers",
+        "rule": {">=": ["2", "1"]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Mixed types",
+        "rule": {">=": [3, "2", 1]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Boolean values",
+        "rule": {">=": [true, false]},
+        "data": null,
+        "result": true
+    },
+    
+    "# Data Context Tests",
+    {
+        "description": "Values from data",
+        "rule": {">=": [{"var": "y"}, {"var": "x"}]},
+        "data": {"x": 1, "y": 2},
+        "result": true
+    },
+    {
+        "description": "Mixed literal and data",
+        "rule": {">=": [{"var": "y"}, 5, {"var": "x"}]},
+        "data": {"x": 1, "y": 10},
+        "result": true
+    },
+    
+    "# Edge Cases",
+    {
+        "description": "Single argument",
+        "rule": {">=": [1]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Empty array",
+        "rule": {">=": []},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Null values",
+        "rule": {">=": [1, null]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Undefined var",
+        "rule": {">=": [1, {"var": "missing"}]},
+        "data": {},
+        "result": true
+    },
+    
+    "# Additional Sequential Comparison Tests",
+    {
+        "description": "Mixed equality in ascending sequence",
+        "rule": {"<": [1, 2, 2, 2, 3]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Mixed equality in descending sequence",
+        "rule": {">": [3, 2, 2, 2, 1]},
+        "data": null,
+        "result": false
+    },
+    
+    "# Extended Type Coercion Tests",
+    {
+        "description": "String and number mixed sequence",
+        "rule": {"<=": ["1", 2, "2", 3, "3"]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Complex mixed types",
+        "rule": {">=": [true, 1, "0", false]},
+        "data": null,
+        "result": true
+    },
+    
+    "# Short-Circuit Tests",
+    {
+        "description": "Early failure in sequence",
+        "rule": {"<": [1, 3, 2, 4, 5]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Late failure in sequence",
+        "rule": {">": [5, 4, 3, 3, 2]},
+        "data": null,
+        "result": false
+    }
+]
