@@ -3,7 +3,7 @@ use crate::JsonLogicResult;
 use crate::rule::{Rule, ArgType};
 use super::{ValueCoercion, ValueConvert};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ArithmeticType {
     Add,
     Multiply,

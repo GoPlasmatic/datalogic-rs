@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::JsonLogicResult;
-use super::{Rule, ValueCoercion, ValueConvert, ArithmeticType};
+use super::{Rule, ValueCoercion};
 
 pub struct MapOperator;
 pub struct FilterOperator;
@@ -44,59 +44,32 @@ impl ReduceOperator {
         match array_rule.apply(data)? {
             Value::Array(arr) if arr.is_empty() => initial_rule.apply(data),
             Value::Array(arr) => {
-                if let Rule::Arithmetic(op_type, _) = reducer_rule {
-                    let init = initial_rule.apply(data)?.coerce_to_number();
-                    
-                    let result = match op_type {
-                        ArithmeticType::Add => {
-                            arr.iter()
-                                .map(|v| v.coerce_to_number())
-                                .fold(init, |acc, x| acc + x)
-                        },
-                        ArithmeticType::Multiply => {
-                            arr.iter()
-                                .map(|v| v.coerce_to_number())
-                                .fold(init, |acc, x| acc * x)
-                        },
-                        _ => {
-                            return self.standard_reduce(&arr, reducer_rule, initial_rule, data);
-                        }
-                    };
-                    
-                    return Ok(result.to_value());
+                static CURRENT: &str = "current";
+                static ACCUMULATOR: &str = "accumulator";
+        
+                let mut map = serde_json::Map::with_capacity(2);
+                map.insert(CURRENT.to_string(), Value::Null);
+                map.insert(ACCUMULATOR.to_string(), initial_rule.apply(data)?);
+                let mut item_data = Value::Object(map);
+        
+                for item in arr {
+                    if let Value::Object(ref mut map) = item_data {
+                        map[&CURRENT.to_string()] = item.clone();
+                    }
+        
+                    let result = reducer_rule.apply(&item_data)?;
+        
+                    if let Value::Object(ref mut map) = item_data {
+                        map[&ACCUMULATOR.to_string()] = result;
+                    }
                 }
-
-                self.standard_reduce(&arr, reducer_rule, initial_rule, data)
+        
+                match item_data {
+                    Value::Object(map) => Ok(map.get(ACCUMULATOR).cloned().unwrap_or(Value::Null)),
+                    _ => Ok(Value::Null)
+                }
             },
             _ => initial_rule.apply(data),
-        }
-    }
-
-    // Extract existing reduction logic to separate method
-    fn standard_reduce(&self, arr: &[Value], reducer_rule: &Rule, initial_rule: &Rule, data: &Value) -> JsonLogicResult {
-        static CURRENT: &str = "current";
-        static ACCUMULATOR: &str = "accumulator";
-
-        let mut map = serde_json::Map::with_capacity(2);
-        map.insert(CURRENT.to_string(), Value::Null);
-        map.insert(ACCUMULATOR.to_string(), initial_rule.apply(data)?);
-        let mut item_data = Value::Object(map);
-
-        for item in arr {
-            if let Value::Object(ref mut map) = item_data {
-                map[&CURRENT.to_string()] = item.clone();
-            }
-
-            let result = reducer_rule.apply(&item_data)?;
-
-            if let Value::Object(ref mut map) = item_data {
-                map[&ACCUMULATOR.to_string()] = result;
-            }
-        }
-
-        match item_data {
-            Value::Object(map) => Ok(map.get(ACCUMULATOR).cloned().unwrap_or(Value::Null)),
-            _ => Ok(Value::Null)
         }
     }
 }

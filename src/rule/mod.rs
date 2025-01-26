@@ -243,6 +243,14 @@ impl Rule {
         }
     }
 
+    fn is_arithmetic_op(&self) -> Option<ArithmeticType> {
+        if let Rule::Arithmetic(op_type, _) = self {
+            Some(*op_type)
+        } else {
+            None
+        }
+    }
+
     /// Creates a new `Rule` from a JSON Value
     ///
     /// Parses a serde_json::Value into a Rule that can be evaluated. The value must follow
@@ -335,11 +343,33 @@ impl Rule {
                         Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
-                    "reduce" => Ok(Rule::Reduce(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(2).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
+                    "reduce" => {
+                        let array = args.first().cloned().unwrap_or(Rule::Value(Value::Null));
+                        let reducer = args.get(1).cloned().unwrap_or(Rule::Value(Value::Null));
+                        let initial = args.get(2).cloned().unwrap_or(Rule::Value(Value::Null));
+
+                        if let Some(op_type) = reducer.is_arithmetic_op() {
+                            match op_type {
+                                ArithmeticType::Add | ArithmeticType::Multiply => {
+                                    Ok(Rule::Arithmetic(
+                                        op_type,
+                                        ArgType::Array(vec![initial, array])
+                                    ))
+                                },
+                                _ => Ok(Rule::Reduce(
+                                    Box::new(array),
+                                    Box::new(reducer),
+                                    Box::new(initial)
+                                ))
+                            }
+                        } else {
+                            Ok(Rule::Reduce(
+                                Box::new(array),
+                                Box::new(reducer),
+                                Box::new(initial)
+                            ))
+                        }
+                    },
                     "all" => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::All,
                         Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
