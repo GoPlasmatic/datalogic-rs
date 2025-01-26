@@ -349,19 +349,10 @@ impl Rule {
                         let initial = args.get(2).cloned().unwrap_or(Rule::Value(Value::Null));
 
                         if let Some(op_type) = reducer.is_arithmetic_op() {
-                            match op_type {
-                                ArithmeticType::Add | ArithmeticType::Multiply => {
-                                    Ok(Rule::Arithmetic(
-                                        op_type,
-                                        ArgType::Array(vec![initial, array])
-                                    ))
-                                },
-                                _ => Ok(Rule::Reduce(
-                                    Box::new(array),
-                                    Box::new(reducer),
-                                    Box::new(initial)
-                                ))
-                            }
+                            Ok(Rule::Arithmetic(
+                                op_type,
+                                ArgType::Array(vec![initial, array])
+                            ))
                         } else {
                             Ok(Rule::Reduce(
                                 Box::new(array),
