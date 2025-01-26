@@ -459,9 +459,9 @@ impl Rule {
             )),
             Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
 
-            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op.clone()),
-            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op.clone()),
-            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op.clone()),
+            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
+            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
+            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
 
             Rule::If(args) => IF_OP.apply(args, data),
             Rule::Ternary(args) => TERNARY_OP.apply(args, data),
@@ -470,7 +470,7 @@ impl Rule {
             Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
             Rule::Reduce(array_rule, reducer_rule, initial_rule) => REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, data),
             Rule::Merge(args) => MERGE_OP.apply(args, data),
-            Rule::ArrayPredicate(op, array_rule, predicate) => ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op.clone()),
+            Rule::ArrayPredicate(op, array_rule, predicate) => ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op),
 
             Rule::Missing(args) => MISSING_OP.apply(args, data),
             Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),

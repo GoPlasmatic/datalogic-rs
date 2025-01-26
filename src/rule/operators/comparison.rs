@@ -9,7 +9,7 @@ pub enum CompareType { Equals, StrictEquals, NotEquals, StrictNotEquals, Greater
 pub struct CompareOperator;
 
 impl CompareOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value, compare_type: CompareType) -> JsonLogicResult {
+    pub fn apply(&self, args: &[Rule], data: &Value, compare_type: &CompareType) -> JsonLogicResult {
         match args {
             [a, b] => {
                 let left = a.apply(data)?;

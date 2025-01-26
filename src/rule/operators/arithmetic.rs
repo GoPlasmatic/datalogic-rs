@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::JsonLogicResult;
-use crate::rule::ArgType;
+use crate::rule::{Rule, ArgType};
 use super::{ValueCoercion, ValueConvert};
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,7 @@ pub enum ArithmeticType {
 pub struct ArithmeticOperator;
 
 impl ArithmeticOperator {
-    pub fn apply(&self, arg: &ArgType, data: &Value, op_type: ArithmeticType) -> JsonLogicResult {
+    pub fn apply(&self, arg: &ArgType, data: &Value, op_type: &ArithmeticType) -> JsonLogicResult {
         match op_type {
             ArithmeticType::Add => self.apply_add(arg, data),
             ArithmeticType::Multiply => self.apply_multiply(arg, data),
@@ -61,16 +61,20 @@ impl ArithmeticOperator {
     fn apply_multiply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Single(rule) => {
-                let value = rule.apply(data)?;
-                match value {
-                    Value::Array(_) => {
-                        let product = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
-                            .product::<f64>();
-                        Ok(product.to_value())
+                match rule.as_ref() {
+                    Rule::Array(rules) => {
+                        match rules.len() {
+                            0 => Ok(Value::Number(1.into())),
+                            _ => {
+                                let product = rules.iter()
+                                    .map(|rule| rule.apply(data).unwrap().coerce_to_number())
+                                    .product::<f64>();
+                                Ok(product.to_value())
+                            }
+                        }
                     },
-                    _ => Ok(value.coerce_to_number().to_value())
+                    Rule::Value(value) => Ok(value.coerce_to_number().to_value()),
+                    _ => unreachable!("Invalid rule type for multiply")
                 }
             },
             ArgType::Array(rules) => {

@@ -8,7 +8,7 @@ pub enum LogicType { And, Or, Not, DoubleBang }
 pub struct LogicOperator;
 
 impl LogicOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value, logic_type: LogicType) -> JsonLogicResult {
+    pub fn apply(&self, args: &[Rule], data: &Value, logic_type: &LogicType) -> JsonLogicResult {
         match logic_type {
             LogicType::And => self.apply_and(args, data),
             LogicType::Or => self.apply_or(args, data),
