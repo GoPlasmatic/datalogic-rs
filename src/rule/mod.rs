@@ -30,8 +30,8 @@ static PRESERVE_OP: PreserveOperator = PreserveOperator;
 
 #[derive(Debug, Clone)]
 pub enum ArgType {
-    Array(Vec<Rule>),
-    Single(Box<Rule>)
+    Unary(Box<Rule>),
+    Multiple(Vec<Rule>),
 }
 
 #[derive(Debug, Clone)]
@@ -108,14 +108,14 @@ impl Rule {
             }
             Rule::Arithmetic(_, args) => {
                 match args {
-                    ArgType::Array(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Single(r) => r.is_static(),
+                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                    ArgType::Unary(r) => r.is_static(),
                 }
             }
             Rule::Preserve(args) => {
                 match args {
-                    ArgType::Array(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Single(r) => r.is_static(),
+                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                    ArgType::Unary(r) => r.is_static(),
                 }
             }
 
@@ -161,13 +161,13 @@ impl Rule {
             },
             Rule::Arithmetic(op, args) => {
                 match args {
-                    ArgType::Array(arr) => {
+                    ArgType::Multiple(arr) => {
                         let optimized = Self::optimize_args(&arr)?;
-                        Ok(Rule::Arithmetic(op, ArgType::Array(optimized)))
+                        Ok(Rule::Arithmetic(op, ArgType::Multiple(optimized)))
                     },
-                    ArgType::Single(rule) => {
+                    ArgType::Unary(rule) => {
                         let optimized = Self::optimize_rule(*rule)?;
-                        Ok(Rule::Arithmetic(op, ArgType::Single(Box::new(optimized))))
+                        Ok(Rule::Arithmetic(op, ArgType::Unary(Box::new(optimized))))
                     }
                 }
             },
@@ -206,13 +206,13 @@ impl Rule {
             },
             Rule::Preserve(args) => {
                 match args {
-                    ArgType::Array(arr) => {
+                    ArgType::Multiple(arr) => {
                         let optimized = Self::optimize_args(&arr)?;
-                        Ok(Rule::Preserve(ArgType::Array(optimized)))
+                        Ok(Rule::Preserve(ArgType::Multiple(optimized)))
                     },
-                    ArgType::Single(rule) => {
+                    ArgType::Unary(rule) => {
                         let optimized = Self::optimize_rule(*rule)?;
-                        Ok(Rule::Preserve(ArgType::Single(Box::new(optimized))))
+                        Ok(Rule::Preserve(ArgType::Unary(Box::new(optimized))))
                     }
                 }
             }
@@ -378,57 +378,57 @@ impl Rule {
                     // Arithmetic operators
                     "+" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Add, arg))
                     },
                     "*" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Multiply, arg))
                     },
                     "-" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Subtract, arg))
                     },
                     "/" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Divide, arg))
                     },
                     "%" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Modulo, arg))
                     },
                     "max" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Max, arg))
                     },
                     "min" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Arithmetic(ArithmeticType::Min, arg))
                     },
                     "preserve" => {
                         let arg = match args_raw {
-                            Value::Array(_) => ArgType::Array(args),
-                            _ => ArgType::Single(Box::new(args[0].clone())),
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::Preserve(arg))
                     },

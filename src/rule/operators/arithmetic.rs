@@ -31,7 +31,7 @@ impl ArithmeticOperator {
 
     fn apply_add(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
                     Value::Array(_) => {
@@ -44,7 +44,7 @@ impl ArithmeticOperator {
                     _ => Ok(value.coerce_to_number().to_value())
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Number(0.into())),
                     _ => {
@@ -60,7 +60,7 @@ impl ArithmeticOperator {
 
     fn apply_multiply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 match rule.as_ref() {
                     Rule::Array(rules) => {
                         match rules.len() {
@@ -77,7 +77,7 @@ impl ArithmeticOperator {
                     _ => unreachable!("Invalid rule type for multiply")
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Number(1.into())),
                     _ => {
@@ -93,7 +93,7 @@ impl ArithmeticOperator {
 
     fn apply_subtract(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
                     Value::Array(_) => {
@@ -112,7 +112,7 @@ impl ArithmeticOperator {
                     _ => Ok((-value.coerce_to_number()).to_value())
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Number(0.into())),
                     1 => {
@@ -133,7 +133,7 @@ impl ArithmeticOperator {
 
     fn apply_divide(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
                     Value::Array(_) => {
@@ -158,7 +158,7 @@ impl ArithmeticOperator {
                     }
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Number(1.into())),
                     1 => {
@@ -183,7 +183,7 @@ impl ArithmeticOperator {
 
     fn apply_modulo(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
                     Value::Array(_) => {
@@ -208,7 +208,7 @@ impl ArithmeticOperator {
                     }
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Number(0.into())),
                     1 => {
@@ -233,7 +233,7 @@ impl ArithmeticOperator {
 
     fn apply_max(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
                     Value::Array(_) => {
@@ -246,7 +246,7 @@ impl ArithmeticOperator {
                     _ => Ok(value.coerce_to_number().to_value())
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Null),
                     _ => {
@@ -262,7 +262,7 @@ impl ArithmeticOperator {
 
     fn apply_min(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Single(rule) => {
+            ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
                     Value::Array(_) => {
@@ -275,7 +275,7 @@ impl ArithmeticOperator {
                     _ => Ok(value.coerce_to_number().to_value())
                 }
             },
-            ArgType::Array(rules) => {
+            ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 => Ok(Value::Null),
                     _ => {
