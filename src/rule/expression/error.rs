@@ -6,11 +6,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Unknown operator: {0}")]
-    UnknownOperator(String),
+    #[error("Unknown Expression: {0}")]
+    UnknownExpression(String),
 
-    #[error("Invalid rule format: {0}")]
-    InvalidRule(String),
+    #[error("Invalid Expression format: {0}")]
+    InvalidExpression(String),
     
     #[error("Invalid arguments: {0}")]
     InvalidArguments(String),

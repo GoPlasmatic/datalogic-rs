@@ -1,487 +1,323 @@
-mod operators;
+pub mod expression;
+use std::str::FromStr;
+
+pub use expression::*;
 
 use serde_json::Value;
-use crate::{Error, JsonLogicResult};
+use smallvec::SmallVec;
 
-pub use operators::*;
-
-static VAR_OP: VarOperator = VarOperator;
-static LOGIC_OP: LogicOperator = LogicOperator;
-static COMPARE_OP: CompareOperator = CompareOperator;
-static ARITHMETIC_OP: ArithmeticOperator = ArithmeticOperator;
-
-static IF_OP: IfOperator = IfOperator;
-static TERNARY_OP: TernaryOperator = TernaryOperator;
-
-static MAP_OP: MapOperator = MapOperator;
-static FILTER_OP: FilterOperator = FilterOperator;
-static REDUCE_OP: ReduceOperator = ReduceOperator;
-static MERGE_OP: MergeOperator = MergeOperator;
-static ARRAY_PREDICATE_OP: ArrayPredicateOperator = ArrayPredicateOperator;
-
-static MISSING_OP: MissingOperator = MissingOperator;
-static MISSING_SOME_OP: MissingSomeOperator = MissingSomeOperator;
-
-static IN_OP: InOperator = InOperator;
-static CAT_OP: CatOperator = CatOperator;
-static SUBSTR_OP: SubstrOperator = SubstrOperator;
-
-static PRESERVE_OP: PreserveOperator = PreserveOperator;
-
-#[derive(Debug, Clone)]
-pub enum ArgType {
-    Unary(Box<Rule>),
-    Multiple(Vec<Rule>),
+#[derive(Debug)]
+pub enum ArrayItem {
+    Literal(Value),
+    Expression(Rule),
 }
 
-#[derive(Debug, Clone)]
-pub enum Rule {
-    Value(Value),
-    Array(Vec<Rule>),
+#[derive(Debug)]
+pub enum Instruction {
+    PushValue(Value),
+    Expr(Rule),
+    ArrayExpr(SmallVec<[ArrayItem; 8]>),
 
-    Var(Box<Rule>, Option<Box<Rule>>),
-    Compare(CompareType, Vec<Rule>),
-    Arithmetic(ArithmeticType, ArgType),
-    Logic(LogicType, Vec<Rule>),
-    
-    // Control operators
-    If(Vec<Rule>),
-    Ternary(Vec<Rule>),
-    
-    // String operators
-    In(Box<Rule>, Box<Rule>),
-    Cat(Vec<Rule>),
-    Substr(Box<Rule>, Box<Rule>, Option<Box<Rule>>),
-    
-    // Array operators
-    Map(Box<Rule>, Box<Rule>),
-    Filter(Box<Rule>, Box<Rule>),
-    Reduce(Box<Rule>, Box<Rule>, Box<Rule>),
-    Merge(Vec<Rule>),
-    ArrayPredicate(ArrayPredicateType, Box<Rule>, Box<Rule>),
+    CallOp { 
+        op: OpType, 
+        arg_count: usize,
+    },
+}
 
-    // Missing operators
-    Missing(Vec<Rule>),
-    MissingSome(Vec<Rule>),
-
-    // Special operators
-    Preserve(ArgType),
+#[derive(Debug)]
+pub struct Rule {
+    instructions: Box<SmallVec<[Instruction; 16]>>,
 }
 
 impl Rule {
-    #[inline(always)]
-    fn is_static(&self) -> bool {
-        match self {
-            Rule::Value(_) => true,
-            Rule::Missing(_) | Rule::MissingSome(_) => false,
-            Rule::Var(_, _) => false,
-
-            Rule::Map(array_rule, mapper) => {
-                array_rule.is_static() && mapper.is_static()
-            }
-            Rule::Reduce(array_rule, reducer, initial) => {
-                array_rule.is_static() && reducer.is_static() && initial.is_static()
-            }
-            Rule::Filter(array_rule, predicate) => {
-                array_rule.is_static() && predicate.is_static()
-            }
-            Rule::ArrayPredicate(_, array_rule, predicate) => {
-                array_rule.is_static() && predicate.is_static()
-            }
-
-            Rule::In(search, target) => {
-                search.is_static() && target.is_static()
-            }
-            Rule::Substr(string, start, length) => {
-                if length.is_none() {
-                    string.is_static() && start.is_static()
-                } else {
-                    string.is_static() && start.is_static() && length.as_deref().unwrap().is_static()
-                }
-            }
-
-            Rule::Compare(_, args) => {
-                args.iter().all(|r| r.is_static())
-            }
-            Rule::Logic(_, args) => {
-                args.iter().all(|r| r.is_static())
-            }
-            Rule::Arithmetic(_, args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
-            Rule::Preserve(args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
-
-            Rule::Array(args) |
-            Rule::If(args) | 
-            Rule::Ternary(args) |
-            Rule::Merge(args) |
-            Rule::Cat(args) => args.iter().all(|r| r.is_static()),
+    fn new() -> Self {
+        Self {
+            instructions: Box::new(SmallVec::new()),
         }
     }
 
-    #[inline]
-    fn optimize_args(args: &[Rule]) -> Result<Vec<Rule>, Error> {
-        args.iter()
-            .cloned()
-            .map(Self::optimize_rule)
-            .collect()
+    pub fn from_value(expr_json: &Value) -> Result<Rule, Error> {
+        let mut rule = Rule::new();
+        rule.parse_compile_value(expr_json);
+        Ok(rule)
     }
 
-    #[inline]
-    fn optimize_rule(rule: Rule) -> Result<Rule, Error> {
-        match rule {
-            // Never optimize these
-            Rule::Missing(_) | Rule::MissingSome(_) => Ok(rule),
-            Rule::Value(_) => Ok(rule),
-
-            // Handle static evaluation
-            rule if rule.is_static() => {
-                rule.apply(&Value::Null)
-                    .map(Rule::Value)
-                    .or(Ok(rule))
-            },
-
-            // Process arrays
-            Rule::Array(args) => {
-                let optimized = Self::optimize_args(&args)?;
-                Ok(Rule::Array(optimized))
-            },
-            Rule::Var(path, default) => {
-                let optimized_path = Self::optimize_rule(*path)?;
-                let optimized_default = default.map(|d| Self::optimize_rule(*d)).transpose()?;
-                Ok(Rule::Var(Box::new(optimized_path), optimized_default.map(Box::new)))
-            },
-            Rule::Arithmetic(op, args) => {
-                match args {
-                    ArgType::Multiple(arr) => {
-                        let optimized = Self::optimize_args(&arr)?;
-                        Ok(Rule::Arithmetic(op, ArgType::Multiple(optimized)))
-                    },
-                    ArgType::Unary(rule) => {
-                        let optimized = Self::optimize_rule(*rule)?;
-                        Ok(Rule::Arithmetic(op, ArgType::Unary(Box::new(optimized))))
-                    }
-                }
-            },
-            Rule::Map(array_rule, predicate) => {
-                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
-                let optimized_predicate = Self::optimize_rule(*predicate)?;
-                Ok(Rule::Map(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
-            },
-            Rule::ArrayPredicate(op, array_rule, predicate) => {
-                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
-                let optimized_predicate = Self::optimize_rule(*predicate)?;
-                Ok(Rule::ArrayPredicate(op, Box::new(optimized_array_rule), Box::new(optimized_predicate)))
-            },
-            Rule::Filter(array_rule, predicate) => {
-                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
-                let optimized_predicate = Self::optimize_rule(*predicate)?;
-                Ok(Rule::Filter(Box::new(optimized_array_rule), Box::new(optimized_predicate)))
-            },
-            Rule::Reduce(array_rule, predicate, initial) => {
-                let optimized_array_rule = Self::optimize_rule(*array_rule)?;
-                let optimized_initial = Self::optimize_rule(*initial)?;
-                let optimized_predicate = Self::optimize_rule(*predicate)?;
-                Ok(Rule::Reduce(Box::new(optimized_array_rule), Box::new(optimized_predicate), Box::new(optimized_initial)))
-            },
-
-            Rule::In(search, target) => {
-                let optimized_search = Self::optimize_rule(*search)?;
-                let optimized_target = Self::optimize_rule(*target)?;
-                Ok(Rule::In(Box::new(optimized_search), Box::new(optimized_target)))
-            },
-            Rule::Substr(string, start, length) => {
-                let optimized_string = Self::optimize_rule(*string)?;
-                let optimized_start = Self::optimize_rule(*start)?;
-                let optimized_length = length.map(|l| Self::optimize_rule(*l)).transpose()?;
-                Ok(Rule::Substr(Box::new(optimized_string), Box::new(optimized_start), optimized_length.map(Box::new)))
-            },
-            Rule::Preserve(args) => {
-                match args {
-                    ArgType::Multiple(arr) => {
-                        let optimized = Self::optimize_args(&arr)?;
-                        Ok(Rule::Preserve(ArgType::Multiple(optimized)))
-                    },
-                    ArgType::Unary(rule) => {
-                        let optimized = Self::optimize_rule(*rule)?;
-                        Ok(Rule::Preserve(ArgType::Unary(Box::new(optimized))))
-                    }
-                }
-            }
-            Rule::Compare(op, args) => {
-                let optimized = Self::optimize_args(&args)?;
-                Ok(Rule::Compare(op, optimized))
-            },
-            Rule::Logic(op, args) => {
-                let optimized = Self::optimize_args(&args)?;
-                Ok(Rule::Logic(op, optimized))
-            },
-            Rule::Merge(ref args) => {
-                let optimized = Self::optimize_args(args)?;
-                Ok(Rule::Merge(optimized))
-            }
-            Rule::Cat(ref args) => {
-                let optimized = Self::optimize_args(args)?;
-                Ok(Rule::Cat(optimized))
-            }
-            Rule::If(ref args) => {
-                let optimized = Self::optimize_args(args)?;
-                Ok(Rule::If(optimized))
-            }
-            Rule::Ternary(ref args) => {
-                let optimized = Self::optimize_args(args)?;
-                Ok(Rule::Ternary(optimized))
-            },
-        }
-    }
-
-    /// Creates a new `Rule` from a JSON Value
-    ///
-    /// Parses a serde_json::Value into a Rule that can be evaluated. The value must follow
-    /// the JSONLogic specification format.
-    ///
-    /// ## Arguments
-    /// * `value` - A JSON value representing the rule. Must be a valid JSONLogic expression.
-    ///
-    /// ## Returns
-    /// * `Result<Rule, Error>` - A Result containing either the parsed Rule or an error
-    ///
-    /// ## Examples
-    ///
-    /// Basic usage:
-    /// ```rust
-    /// use datalogic_rs::Rule;
-    /// use serde_json::json;
-    ///
-    /// let rule = Rule::from_value(&json!({"==": [1, 1]})).unwrap();
-    /// assert!(rule.apply(&json!(null)).unwrap().as_bool().unwrap());
-    /// ```
-    ///
-    /// Complex nested rules:
-    /// ```rust
-    /// use datalogic_rs::Rule;
-    /// use serde_json::json;
-    ///
-    /// let rule = Rule::from_value(&json!({
-    ///     "and": [
-    ///         {">": [{"var": "age"}, 18]},
-    ///         {"<": [{"var": "age"}, 65]}
-    ///     ]
-    /// })).unwrap();
-    /// ```
-    ///
-    /// Error handling:
-    /// ```rust
-    /// use datalogic_rs::Rule;
-    /// use serde_json::json;
-    ///
-    /// let result = Rule::from_value(&json!({"invalid_op": []}));
-    /// assert!(result.is_err());
-    /// ```
-    ///
-    /// See also: [`from_str`](Rule::from_str), [`apply`](Rule::apply)
-    pub fn from_value(value: &Value) -> Result<Self, Error> {
-        match value {
+    fn evaluate_static(expr_json: &Value) -> Option<Value> {
+        match expr_json {
             Value::Object(map) if map.len() == 1 => {
-                let (op, args_raw) = map.iter().next().unwrap();
-                let args = match args_raw {
-                    Value::Array(arr) => arr.iter()
-                        .map(Rule::from_value)
-                        .collect::<Result<Vec<_>, _>>()?,
-                    _ => vec![Rule::from_value(args_raw)?],
-                };
+                let (op, val) = map.into_iter().next().unwrap();
+                let optype = OpType::from_str(op).unwrap();
+                if optype == OpType::Var || optype == OpType::Missing || optype == OpType::MissingSome {
+                    return None;
+                }
                 
-                let rule = match op.as_str() {
-                    // Variable access
-                    "var" => Ok(Rule::Var(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        args.get(1).cloned().map(Box::new)
-                    )),
-                    
-                    // Comparison operators
-                    "==" => Ok(Rule::Compare(CompareType::Equals, args)),
-                    "===" => Ok(Rule::Compare(CompareType::StrictEquals, args)),
-                    "!=" => Ok(Rule::Compare(CompareType::NotEquals, args)),
-                    "!==" => Ok(Rule::Compare(CompareType::StrictNotEquals, args)),
-                    ">" => Ok(Rule::Compare(CompareType::GreaterThan, args)),
-                    "<" => Ok(Rule::Compare(CompareType::LessThan, args)),
-                    ">=" => Ok(Rule::Compare(CompareType::GreaterThanEqual, args)),
-                    "<=" => Ok(Rule::Compare(CompareType::LessThanEqual, args)),
-                    
-                    // Logical operators
-                    "and" => Ok(Rule::Logic(LogicType::And, args)),
-                    "or" => Ok(Rule::Logic(LogicType::Or, args)),
-                    "!" => Ok(Rule::Logic(LogicType::Not, args)),
-                    "!!" => Ok(Rule::Logic(LogicType::DoubleBang, args)),
-                    
-                    // Control operators
-                    "if" => Ok(Rule::If(args)),
-                    "?:" => Ok(Rule::Ternary(args)),
-                    
-                    // Array operators
-                    "map" => Ok(Rule::Map(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "filter" => Ok(Rule::Filter(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "reduce" => {
-                        Ok(Rule::Reduce(
-                            Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                            Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
-                            Box::new(args.get(2).cloned().unwrap_or(Rule::Value(Value::Null)))
-                        ))
-                    },
-                    "all" => Ok(Rule::ArrayPredicate(
-                        ArrayPredicateType::All,
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "none" => Ok(Rule::ArrayPredicate(
-                        ArrayPredicateType::None,
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "some" => Ok(Rule::ArrayPredicate(
-                        ArrayPredicateType::Some,
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "merge" => Ok(Rule::Merge(args)),
-                    
-                    // Missing operators
-                    "missing" => Ok(Rule::Missing(args)),
-                    "missing_some" => Ok(Rule::MissingSome(args)),
-                    
-                    // String operators
-                    "in" => Ok(Rule::In(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "cat" => Ok(Rule::Cat(args)),
-                    "substr" => Ok(Rule::Substr(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
-                        args.get(2).cloned().map(Box::new)
-                    )),
-                    
-                    // Arithmetic operators
-                    "+" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Add, arg))
-                    },
-                    "*" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Multiply, arg))
-                    },
-                    "-" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Subtract, arg))
-                    },
-                    "/" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Divide, arg))
-                    },
-                    "%" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Modulo, arg))
-                    },
-                    "max" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Max, arg))
-                    },
-                    "min" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Arithmetic(ArithmeticType::Min, arg))
-                    },
-                    "preserve" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Preserve(arg))
-                    },
-                    
-                    _ => Err(Error::UnknownOperator(op.to_string())),
-                };
-                Self::optimize_rule(rule?)
-            },
-            Value::Array(arr) => {
-                let rule = Rule::Array(
-                    arr.iter()
-                        .map(Rule::from_value)
-                        .collect::<Result<Vec<_>, _>>()?
-                );
-                Self::optimize_rule(rule)
-            },
-            _ => Ok(Rule::Value(value.clone())),
+                match val {
+                    Value::Array(items) => {
+                        let static_items: Option<Vec<Value>> = items.iter()
+                            .map(Self::evaluate_static)
+                            .collect();
+                        
+                        if let Some(static_items) = static_items {
+                            match optype {
+                                OpType::Add => evaluate_add(&static_items).ok(),
+                                OpType::Multiply => evaluate_mul(&static_items).ok(),
+                                OpType::Subtract => evaluate_sub(&static_items).ok(),
+                                OpType::Divide => evaluate_div(&static_items).ok(),
+                                OpType::Modulo => evaluate_mod(&static_items).ok(),
+                                OpType::Max => evaluate_max(&static_items).ok(),
+                                OpType::Min => evaluate_min(&static_items).ok(),
+
+                                OpType::Equals => Some(Value::Bool(evaluate_equals(&static_items))),
+                                OpType::NotEquals => Some(Value::Bool(evaluate_not_equals(&static_items))),
+                                OpType::StrictEquals => Some(Value::Bool(evaluate_strict_equals(&static_items))),
+                                OpType::StrictNotEquals => Some(Value::Bool(evaluate_strict_not_equals(&static_items))),
+                                OpType::GreaterThan => Some(Value::Bool(evaluate_greater_than(&static_items))),
+                                OpType::GreaterThanEqual => Some(Value::Bool(evaluate_greater_than_or_equals(&static_items))),
+                                OpType::LessThan => Some(Value::Bool(evaluate_less_than(&static_items))),
+                                OpType::LessThanEqual => Some(Value::Bool(evaluate_less_than_or_equals(&static_items))),
+
+                                OpType::And => evaluate_and(&static_items).ok(),
+                                OpType::Or => evaluate_or(&static_items).ok(),
+                                OpType::Not => Some(Value::Bool(evaluate_not(&static_items))),
+                                OpType::DoubleBang => Some(Value::Bool(evaluate_double_bang(&static_items))),
+
+                                OpType::If => evaluate_if(&static_items).ok(),
+                                OpType::Ternary => evaluate_ternary(&static_items).ok(),
+
+                                OpType::In => evaluate_in(&static_items).ok(),
+                                OpType::Cat => evaluate_cat(&static_items).ok(),
+                                OpType::Substr => evaluate_substr(&static_items).ok(),
+
+                                OpType::Map | OpType::Filter | OpType::All | OpType::Some | OpType::None => {
+                                    let predicate = Rule::from_value(&static_items[1]).unwrap();
+                                    match optype {
+                                        OpType::Map => evaluate_map(&static_items, &predicate).ok(),
+                                        OpType::Filter => evaluate_filter(&static_items, &predicate).ok(),
+                                        OpType::All | OpType::Some | OpType::None => evaluate_array_op(&optype, &static_items, &predicate).ok(),
+                                        _ => None
+                                    }
+                                }
+                                OpType::Merge => evaluate_merge(&static_items).ok(),
+
+                                _ => None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None
+                }
+            }
+            Value::Array(items) => {
+                let static_items: Option<Vec<Value>> = items.iter()
+                    .map(Self::evaluate_static)
+                    .collect();
+                
+                    static_items.map(Value::Array)
+            }
+            _ => Some(expr_json.clone())
         }
     }
 
-    pub fn apply(&self, data: &Value) -> JsonLogicResult {
-        match self {
-            Rule::Value(value) => {
-                Ok(value.clone())
-            },
-            Rule::Array(rules) => Ok(Value::Array(
-                rules.iter()
-                    .map(|rule| rule.apply(data))
-                    .collect::<Result<Vec<_>, _>>()?
-            )),
-            Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
+    fn is_flat_predicate(expr_json: &Value) -> (bool, OpType) {
+        let map = match expr_json {
+            Value::Object(map) => map,
+            _ => return (false, OpType::Invalid)
+        };
 
-            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
-            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
-            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
+        let (op, arr) = map.into_iter().next().unwrap();
+        let arr = match arr {
+            Value::Array(arr) => arr,
+            _ => return (false, OpType::Invalid)
+        };
 
-            Rule::If(args) => IF_OP.apply(args, data),
-            Rule::Ternary(args) => TERNARY_OP.apply(args, data),
-
-            Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
-            Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
-            Rule::Reduce(array_rule, reducer_rule, initial_rule) => REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, data),
-            Rule::Merge(args) => MERGE_OP.apply(args, data),
-            Rule::ArrayPredicate(op, array_rule, predicate) => ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op),
-
-            Rule::Missing(args) => MISSING_OP.apply(args, data),
-            Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
-            
-            Rule::In(search, target) => IN_OP.apply(search, target, data),
-            Rule::Cat(args) => CAT_OP.apply(args, data),
-            Rule::Substr(string, start, length) => SUBSTR_OP.apply(string, start, length.as_deref(), data),
-
-            Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
+        for item in arr {
+            match item {
+                Value::Object(map) => {
+                    let (_, val) = map.into_iter().next().unwrap();
+                    let val = val.as_str().unwrap();
+                    if val != "current" && val != "accumulator" {
+                        return (false, OpType::Invalid)
+                    }
+                }
+                _ => continue
+            }
         }
+
+        (true, OpType::from_str(op).unwrap())
+    }
+
+    fn parse_compile_value(&mut self, expr_json: &Value) {
+        if let Some(static_result) = Self::evaluate_static(expr_json) {
+            self.instructions.push(Instruction::PushValue(static_result));
+            return;
+        }
+
+        match expr_json {
+            Value::Object(map) if map.len() == 1 => {
+                let (op, val) = map.into_iter().next().unwrap();
+                let optype = OpType::from_str(op).unwrap();
+    
+                match val {
+                    Value::Array(items) => {
+                        match optype {
+                            OpType::Map | OpType::Filter | OpType::All | OpType::Some | OpType::None => {
+                                self.parse_compile_value(&items[0]);
+                                let expr = Rule::from_value(&items[1]).unwrap();
+                                self.instructions.push(Instruction::Expr(expr));
+                                self.instructions.push(Instruction::CallOp { op: optype, arg_count: 2 });
+                            }
+                            OpType::Reduce => {
+                                let (nested, nested_op) = Self::is_flat_predicate(&items[1]);
+                                if nested {
+                                    self.parse_compile_value(&items[0]);
+                                    self.instructions.push(Instruction::CallOp { op: nested_op.clone(), arg_count: 1 });
+                                    self.parse_compile_value(&items[2]);
+                                    self.instructions.push(Instruction::CallOp { op: nested_op, arg_count: 2 });
+                                } else {
+                                    self.parse_compile_value(&items[0]);
+                                    let expr = Rule::from_value(&items[1]).unwrap();
+                                    self.instructions.push(Instruction::Expr(expr));
+                                    self.parse_compile_value(&items[2]);
+                                    self.instructions.push(Instruction::CallOp { op: optype, arg_count: 2 });
+                                }
+                            }
+                            OpType::In => {
+                                self.parse_compile_value(&items[0]);
+                                self.parse_compile_value(&items[1]);
+                                self.instructions.push(Instruction::CallOp { op: optype, arg_count: 2 });
+                            }
+                            OpType::MissingSome => {
+                                self.parse_compile_value(&items[0]);
+                                self.parse_compile_value(&items[1]);
+                                self.instructions.push(Instruction::CallOp { op: optype, arg_count: 2 });
+                            }
+                            _ => {
+                                let arg_count = items.len();
+                                for item in items {
+                                    self.parse_compile_value(item);
+                                }
+                                self.instructions.push(Instruction::CallOp { op: optype, arg_count });
+                            }
+                        }
+                    }
+                    single => {
+                        self.parse_compile_value(single);
+                        self.instructions.push(Instruction::CallOp { op: optype, arg_count: 1 });
+                    }
+                }
+            }
+            Value::Array(items) => {
+                let mut array_items: SmallVec<[ArrayItem; 8]> = SmallVec::new();
+                for item in items {
+                    match item {
+                        Value::Object(_) => {
+                            let mut rule = Rule::new();
+                            rule.parse_compile_value(item);                            
+                            array_items.push(ArrayItem::Expression(rule));
+                        }
+                        _ => array_items.push(ArrayItem::Literal(item.clone()))
+                    }
+                }
+                self.instructions.push(Instruction::ArrayExpr(array_items));
+            }
+            other => {
+                self.instructions.push(Instruction::PushValue(other.clone()))
+            }
+        }
+    }
+
+    pub fn apply(&self, data: &Value) -> EvalResult {
+        let mut stack = SmallVec::<[Value; 24]>::with_capacity(12);
+        let mut predicate: Option<&Rule> = None;
+
+        for instr in self.instructions.iter() {
+            match instr {
+                Instruction::PushValue(val) => {
+                    stack.push(match val {
+                        Value::Null => Value::Null,
+                        Value::Bool(b) => Value::Bool(*b),
+                        Value::Number(n) => n.as_f64().unwrap().to_value(),
+                        Value::String(s) => Value::from(s.as_str()),
+                        _ => val.clone()
+                    });
+                }
+                Instruction::CallOp { op, arg_count } => {
+                    let start = stack.len().saturating_sub(*arg_count);
+                    let args = &stack[start..];
+
+                    let result = match op {
+                        OpType::Var => {
+                            let path = args.first().unwrap_or(&Value::Null);
+                            let default = args.get(1);
+                            evaluate_var(path, data, default)
+                        }
+                        OpType::Add => evaluate_add(&args),
+                        OpType::Subtract => evaluate_sub(&args),
+                        OpType::Multiply => evaluate_mul(&args),
+                        OpType::Divide => evaluate_div(&args),
+                        OpType::Modulo => evaluate_mod(&args),
+                        OpType::Max => evaluate_max(&args),
+                        OpType::Min => evaluate_min(&args),
+            
+                        OpType::Equals => Ok(Value::Bool(evaluate_equals(&args))),
+                        OpType::NotEquals => Ok(Value::Bool(evaluate_not_equals(&args))),
+                        OpType::StrictEquals => Ok(Value::Bool(evaluate_strict_equals(&args))),
+                        OpType::StrictNotEquals => Ok(Value::Bool(evaluate_strict_not_equals(&args))),
+                        OpType::GreaterThan => Ok(Value::Bool(evaluate_greater_than(&args))),
+                        OpType::GreaterThanEqual => Ok(Value::Bool(evaluate_greater_than_or_equals(&args))),
+                        OpType::LessThan => Ok(Value::Bool(evaluate_less_than(&args))),
+                        OpType::LessThanEqual => Ok(Value::Bool(evaluate_less_than_or_equals(&args))),
+                    
+                        OpType::And => evaluate_and(&args),
+                        OpType::Or => evaluate_or(&args),
+                        OpType::Not => Ok(Value::Bool(evaluate_not(&args))),
+                        OpType::DoubleBang => Ok(Value::Bool(evaluate_double_bang(&args))),
+            
+                        OpType::If => evaluate_if(&args),
+                        OpType::Ternary => evaluate_ternary(&args),
+            
+                        OpType::In => evaluate_in(&args),
+                        OpType::Cat => evaluate_cat(&args),
+                        OpType::Substr => evaluate_substr(&args),
+            
+                        OpType::Missing => evaluate_missing(&args, data),
+                        OpType::MissingSome => evaluate_missing_some(&args, data),
+                        OpType::Map | OpType::Filter | OpType::All | 
+                        OpType::Some | OpType::None => {
+                            match op {
+                                OpType::Map => evaluate_map(&args, predicate.unwrap()),
+                                OpType::Filter => evaluate_filter(&args, predicate.unwrap()),
+                                OpType::All | OpType::Some | OpType::None => evaluate_array_op(op, &args, predicate.unwrap()),
+                                _ => unreachable!()
+                            }
+                        },
+                        OpType::Reduce => {
+                            evaluate_reduce(&args, predicate.unwrap())
+                        },
+                        OpType::Merge => evaluate_merge(&args),
+                        _ => {
+                            println!("Invalid Expression: {:?}", op);
+                            Err(super::Error::InvalidExpression("Invalid Expression".to_string()))
+                        }
+                    };
+                    stack.truncate(start);
+                    stack.push(result?);
+                }
+                Instruction::ArrayExpr(items) => {
+                    let values: Vec<_> = items.iter()
+                        .map(|item| match item {
+                            ArrayItem::Expression(expr) => expr.apply(data).unwrap(),
+                            ArrayItem::Literal(val) => val.clone()
+                        })
+                        .collect();
+                    stack.push(Value::Array(values));
+                }
+                Instruction::Expr(expr) => {
+                    predicate = Some(expr);
+                }
+            }
+        }
+        Ok(stack.pop().unwrap())
     }
 }

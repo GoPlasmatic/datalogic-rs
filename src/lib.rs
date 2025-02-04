@@ -26,12 +26,9 @@
 //! assert_eq!(result, json!("too hot"));
 //! ```
 
-mod error;
 mod rule;
-
-use error::Error;
+pub use rule::*;
 use serde_json::Value;
-pub use rule::Rule;
 
 /// Result type for JSON Logic operations
 pub type JsonLogicResult = Result<Value, Error>;
