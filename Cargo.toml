@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "2.0.13"
+version = "2.0.16"
 edition = "2021"
 exclude = ["/xsd", "/xml", ".DS_Store", "/target", ".vscode", "generate.sh"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
@@ -20,7 +20,6 @@ smallvec = "1.13.2"
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false }
 lazy_static = "1.5"
-reqwest = { version = "0.11", features = ["blocking"] }
 
 [[bench]]
 name = "jsonlogic_bench"
