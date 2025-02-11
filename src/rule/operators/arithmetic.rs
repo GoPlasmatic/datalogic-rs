@@ -95,7 +95,7 @@ impl ArithmeticOperator {
                 match value {
                     Value::Array(arr) => {
                         if arr.is_empty() {
-                            return Err(Error::CustomError("Invalid Arguments".to_string()));
+                            return Err(Error::Custom("Invalid Arguments".to_string()));
                         } else if arr.len() == 1 {
                             let num = arr[0].coerce_to_number()?;
                             return Ok((-num).to_value());
@@ -127,7 +127,7 @@ impl ArithmeticOperator {
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
-                0 => Err(Error::CustomError("Invalid Arguments".to_string())),
+                0 => Err(Error::Custom("Invalid Arguments".to_string())),
                 1 => {
                     let value = rules[0].apply(data)?;
                     let num = value.coerce_to_number()?;
@@ -155,11 +155,11 @@ impl ArithmeticOperator {
                 match value {
                     Value::Array(arr) => {
                         if arr.is_empty() {
-                            return Err(Error::CustomError("Invalid Arguments".to_string()));
+                            return Err(Error::Custom("Invalid Arguments".to_string()));
                         } else if arr.len() == 1 {
                             let num = arr[0].coerce_to_number()?;
                             if num == 0.0 {
-                                return Err(Error::CustomError("NaN".to_string()));
+                                return Err(Error::Custom("NaN".to_string()));
                             }
                             return Ok((1.0 / num).to_value());
                         }
@@ -179,7 +179,7 @@ impl ArithmeticOperator {
                         let rest = iter.try_fold(1.0, |acc, v| {
                             let num = v.coerce_to_number()?;
                             if num == 0.0 {
-                                Err(Error::CustomError("NaN".to_string()))
+                                Err(Error::Custom("NaN".to_string()))
                             } else {
                                 Ok(acc * num)
                             }
@@ -191,7 +191,7 @@ impl ArithmeticOperator {
                     _ => {
                         let num = value.coerce_to_number()?;
                         if num == 0.0 {
-                            Err(Error::CustomError("NaN".to_string()))
+                            Err(Error::Custom("NaN".to_string()))
                         } else {
                             let result = 1.0 / num;
                             Ok(result.to_value())
@@ -200,12 +200,12 @@ impl ArithmeticOperator {
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
-                0 => Err(Error::CustomError("Invalid Arguments".to_string())),
+                0 => Err(Error::Custom("Invalid Arguments".to_string())),
                 1 => {
                     let value = rules[0].apply(data)?;
                     let num = value.coerce_to_number()?;
                     if num == 0.0 {
-                        Err(Error::CustomError("NaN".to_string()))
+                        Err(Error::Custom("NaN".to_string()))
                     } else {
                         let result = 1.0 / num;
                         Ok(result.to_value())
@@ -218,7 +218,7 @@ impl ArithmeticOperator {
                         let value = rule.apply(data)?;
                         let num = value.coerce_to_number()?;
                         if num == 0.0 {
-                            Err(Error::CustomError("NaN".to_string()))
+                            Err(Error::Custom("NaN".to_string()))
                         } else {
                             Ok(acc * num)
                         }
@@ -233,11 +233,11 @@ impl ArithmeticOperator {
 
     fn apply_modulo(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Unary(_) => Err(Error::CustomError("Invalid Arguments".to_string())),
+            ArgType::Unary(_) => Err(Error::Custom("Invalid Arguments".to_string())),
             ArgType::Multiple(rules) => {
                 match rules.len() {
                     0 | 1 => {
-                        Err(Error::CustomError("Invalid Arguments".to_string()))
+                        Err(Error::Custom("Invalid Arguments".to_string()))
                     }
                     _ => {
                         let first = rules[0].apply(data)?.coerce_to_number()?;
@@ -246,7 +246,7 @@ impl ArithmeticOperator {
                             let value = rule.apply(data)?;
                             let num = value.coerce_to_number()?;
                             if num == 0.0 {
-                                return Err(Error::CustomError("NaN".to_string()));
+                                return Err(Error::Custom("NaN".to_string()));
                             }
                             Ok(acc % num)
                         })?;

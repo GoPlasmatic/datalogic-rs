@@ -19,5 +19,5 @@ pub enum Error {
     Type(String),
 
     #[error("{0}")]
-    CustomError(String),
+    Custom(String),
 }

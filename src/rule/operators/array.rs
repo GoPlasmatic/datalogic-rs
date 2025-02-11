@@ -12,7 +12,7 @@ impl MapOperator {
         if let Rule::Value(arr_val) = array_rule {
             if let Rule::Value(mapper_val) = mapper {
                 if arr_val.is_null() && mapper_val.is_null() {
-                    return Err(Error::CustomError("Invalid Arguments".into()));
+                    return Err(Error::Custom("Invalid Arguments".into()));
                 }
             }
         }
@@ -36,7 +36,7 @@ impl FilterOperator {
         if let Rule::Value(arr_val) = array_rule {
             if let Rule::Value(predicate_val) = predicate {
                 if arr_val.is_null() && predicate_val.is_null() {
-                    return Err(Error::CustomError("Invalid Arguments".into()));
+                    return Err(Error::Custom("Invalid Arguments".into()));
                 }
             }
         }
@@ -50,7 +50,7 @@ impl FilterOperator {
                 
                 Ok(Value::Array(results))
             },
-            _ => Err(Error::CustomError("Invalid Arguments".into()))
+            _ => Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 }
@@ -90,7 +90,7 @@ impl ReduceOperator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArrayPredicateType {
     All,
     Some,
@@ -102,6 +102,10 @@ pub struct ArrayPredicateOperator;
 
 impl ArrayPredicateOperator {
     pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value, op_type: &ArrayPredicateType) -> JsonLogicResult {
+        if *op_type == ArrayPredicateType::Invalid {
+            return Err(Error::Custom("Invalid Arguments".into()));
+        }
+
         let array_value = array_rule.apply(data)?;
         
         match array_value {
@@ -131,10 +135,10 @@ impl ArrayPredicateOperator {
                             .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
                         Ok(Value::Bool(!result))
                     },
-                    _ => Err(Error::CustomError("Invalid Arguments".into()))
+                    _ => unreachable!()
                 }
             },
-            _ => Err(Error::CustomError("Invalid Arguments".into()))
+            _ => Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 }

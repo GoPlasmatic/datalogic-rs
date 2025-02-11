@@ -295,7 +295,7 @@ impl Rule {
             Rule::If(ref args) => {
                 match args {
                     ArgType::Multiple(arr) => {
-                        let optimized = Self::optimize_args(&arr)?;
+                        let optimized = Self::optimize_args(arr)?;
                         Ok(Rule::If(ArgType::Multiple(optimized)))
                     },
                     ArgType::Unary(rule) => {
@@ -647,7 +647,7 @@ impl Rule {
             Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
             Rule::Throw(rule) => {
                 let value = rule.apply(data)?;
-                Err(Error::CustomError(value.to_string()))
+                Err(Error::Custom(value.to_string()))
             }
             Rule::Try(args) => TRY_OP.apply(args, data),
         }

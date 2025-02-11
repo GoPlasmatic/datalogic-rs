@@ -52,7 +52,7 @@ impl IfOperator {
                     }
                 }        
             },
-            ArgType::Unary(_) => Err(Error::CustomError("Invalid Arguments".into())),
+            ArgType::Unary(_) => Err(Error::Custom("Invalid Arguments".into())),
         }
     }
 }

@@ -5,7 +5,7 @@ use std::fs;
 
 lazy_static::lazy_static! {
     static ref TEST_CASES: Vec<(Rule, Value, Value)> = {
-        let response = fs::read_to_string("tests/test-cases/legacy.json").unwrap();
+        let response = fs::read_to_string("tests/suites/compatible.json").unwrap();
         
         let json_data: Vec<Value> = serde_json::from_str(&response)
             .expect("Failed to parse test cases");
@@ -15,7 +15,7 @@ lazy_static::lazy_static! {
                 if let Value::Object(test_case) = entry {
                     // let description = test_case.get("description").unwrap();
                     let logic = test_case.get("rule").unwrap();
-                    let data = test_case.get("data").unwrap();
+                    let data = test_case.get("data").unwrap_or(&Value::Null);
                     let expected = test_case.get("result").unwrap_or(&Value::Null);
                     // let error_type = test_case.get("error").unwrap_or(&Value::Null);
 

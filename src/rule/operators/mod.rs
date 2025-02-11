@@ -56,10 +56,10 @@ impl ValueCoercion for Value {
         match self {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
             Value::String(s) if s.is_empty() => Ok(0.0),
-            Value::String(s) => s.parse::<f64>().map_err(|_| Error::CustomError("NaN".to_string())),
+            Value::String(s) => s.parse::<f64>().map_err(|_| Error::Custom("NaN".to_string())),
             Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
             Value::Null => Ok(0.0),
-            Value::Array(_) | Value::Object(_) => Err(Error::CustomError("NaN".to_string())),
+            Value::Array(_) | Value::Object(_) => Err(Error::Custom("NaN".to_string())),
         }
     }
 

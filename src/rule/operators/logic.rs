@@ -21,11 +21,11 @@ impl LogicOperator {
             match logic_type {
                 LogicType::Not => self.apply_not(std::slice::from_ref(arg), data),
                 LogicType::DoubleBang => self.apply_double_bang(std::slice::from_ref(arg), data),
-                _ => Err(Error::CustomError("Invalid Arguments".into()))
+                _ => Err(Error::Custom("Invalid Arguments".into()))
             }
             
         } else {
-            Err(Error::CustomError("Invalid Arguments".into()))
+            Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 

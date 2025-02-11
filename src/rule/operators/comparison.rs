@@ -15,20 +15,20 @@ impl CompareOperator {
                 let left = a.apply(data)?;
                 let right = b.apply(data)?;
                 
-                Ok(Value::Bool(self.compare(&left, &right, &compare_type)?))
+                Ok(Value::Bool(self.compare(&left, &right, compare_type)?))
             },
             args if args.len() > 2 => {
                 let mut prev = args[0].apply(data)?;
                 for arg in args.iter().skip(1) {
                     let curr = arg.apply(data)?;
-                    if !self.compare(&prev, &curr, &compare_type)? {
+                    if !self.compare(&prev, &curr, compare_type)? {
                         return Ok(Value::Bool(false));
                     }
                     prev = curr;
                 }
                 Ok(Value::Bool(true))
             }
-            _ => Err(Error::CustomError("Invalid Arguments".to_string()))
+            _ => Err(Error::Custom("Invalid Arguments".to_string()))
         }
     }
 
@@ -45,19 +45,16 @@ impl CompareOperator {
             _ => {}
         }
     
-        match (left, right) {
-            (Value::String(s1), Value::String(s2)) => {
-                return Ok(match compare_type {
-                    GreaterThan => s1 > s2,
-                    LessThan => s1 < s2,
-                    GreaterThanEqual => s1 >= s2,
-                    LessThanEqual => s1 <= s2,
-                    Equals => s1 == s2,
-                    NotEquals => s1 != s2,
-                    _ => unreachable!()
-                });
-            }
-            _ => {}
+        if let (Value::String(s1), Value::String(s2)) = (left, right) {
+            return Ok(match compare_type {
+                GreaterThan => s1 > s2,
+                LessThan => s1 < s2,
+                GreaterThanEqual => s1 >= s2,
+                LessThanEqual => s1 <= s2,
+                Equals => s1 == s2,
+                NotEquals => s1 != s2,
+                _ => unreachable!()
+            });
         }
         
         match compare_type {

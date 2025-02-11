@@ -124,7 +124,7 @@ fn access_value<'a>(data: &'a Value, key: &Value) -> Option<&'a Value> {
             }
         }
         (Value::Array(arr), Value::String(s)) => {
-            if let Some(idx) = s.parse::<f64>().ok() {
+            if let Ok(idx) = s.parse::<f64>() {
                 arr.get(idx as usize)
             } else {
                 None
