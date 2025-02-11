@@ -1,29 +1,30 @@
 use datalogic_rs::*;
-use reqwest::blocking::get;
 use serde_json::Value;
 use std::time::Instant;
+use std::fs;
 
 lazy_static::lazy_static! {
     static ref TEST_CASES: Vec<(Rule, Value, Value)> = {
-        let response = get("http://jsonlogic.com/tests.json")
-            .expect("Failed to fetch test cases")
-            .text()
-            .expect("Failed to read response");
+        let response = fs::read_to_string("tests/test-cases/legacy.json").unwrap();
         
         let json_data: Vec<Value> = serde_json::from_str(&response)
             .expect("Failed to parse test cases");
         
         json_data.into_iter()
             .filter_map(|entry| {
-                if let Value::Array(test_case) = entry {
-                    if test_case.len() == 3 {
-                        let rule = Rule::from_value(&test_case[0]).ok()?;
-                        return Some((
-                            rule,
-                            test_case[1].clone(),
-                            test_case[2].clone()
-                        ));
-                    }
+                if let Value::Object(test_case) = entry {
+                    // let description = test_case.get("description").unwrap();
+                    let logic = test_case.get("rule").unwrap();
+                    let data = test_case.get("data").unwrap();
+                    let expected = test_case.get("result").unwrap_or(&Value::Null);
+                    // let error_type = test_case.get("error").unwrap_or(&Value::Null);
+
+                    let rule = Rule::from_value(&logic).ok()?;
+                    return Some((
+                        rule,
+                        data.clone(),
+                        expected.clone()
+                    ));
                 }
                 None
             })
@@ -35,6 +36,7 @@ fn main() {
     let iterations = 1e5 as u32;
     let start = Instant::now();
     
+    println!("Running {} iterations for test cases {}", iterations, TEST_CASES.len());
     for (rule, data, _) in TEST_CASES.iter() {
         for _ in 0..iterations {
             let _ = JsonLogic::apply(rule, data);

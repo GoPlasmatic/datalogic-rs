@@ -1,5 +1,6 @@
 use serde_json::Value;
 use super::Rule;
+use super::Error;
 
 pub mod arithmetic;
 pub mod array;
@@ -10,6 +11,8 @@ pub mod preserve;
 pub mod string;
 pub mod var;
 pub mod control;
+pub mod val;
+pub mod tryop;
 
 pub use arithmetic::*;
 pub use array::*;
@@ -20,11 +23,14 @@ pub use preserve::*;
 pub use string::*;
 pub use var::*;
 pub use control::*;
+pub use val::*;
+pub use tryop::*;
 
 
 trait ValueCoercion {
+    fn is_null_value(&self) -> bool;
     fn coerce_to_bool(&self) -> bool;
-    fn coerce_to_number(&self) -> f64;
+    fn coerce_to_number(&self) -> Result<f64, Error>;
     fn coerce_to_string(&self) -> String;
     fn coerce_append(result: &mut String, value: &Value);
 }
@@ -40,19 +46,20 @@ impl ValueCoercion for Value {
             },
             Value::String(s) => !s.is_empty(),
             Value::Array(a) => !a.is_empty(),
-            Value::Object(o) => !o.is_empty(),
+            Value::Object(_) => true,
             Value::Null => false,
         }
     }
 
     #[inline(always)]
-    fn coerce_to_number(&self) -> f64 {
+    fn coerce_to_number(&self) -> Result<f64, Error> {
         match self {
-            Value::Number(n) => n.as_f64().unwrap_or(0.0),
-            Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
-            Value::Bool(true) => 1.0,
-            Value::Bool(false) => 0.0,
-            _ => 0.0,
+            Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
+            Value::String(s) if s.is_empty() => Ok(0.0),
+            Value::String(s) => s.parse::<f64>().map_err(|_| Error::CustomError("NaN".to_string())),
+            Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
+            Value::Null => Ok(0.0),
+            Value::Array(_) | Value::Object(_) => Err(Error::CustomError("NaN".to_string())),
         }
     }
 
@@ -90,6 +97,17 @@ impl ValueCoercion for Value {
         }
     }
 
+    #[inline(always)]
+    fn is_null_value(&self) -> bool {
+        match self {
+            Value::Bool(_) => false,
+            Value::Number(_) => false,
+            Value::String(s) => s.is_empty(),
+            Value::Array(a) => a.is_empty(),
+            Value::Object(o) => o.is_empty(),
+            Value::Null => true,
+        }
+    }
 }
 
 trait ValueConvert {

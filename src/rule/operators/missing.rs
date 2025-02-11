@@ -87,12 +87,12 @@ impl MissingSomeOperator {
                 // Get minimum required
                 let min_required = min_rule.apply(data)?
                     .as_u64()
-                    .ok_or_else(|| Error::InvalidRule(ERR_FIRST_ARG.into()))?;
+                    .ok_or_else(|| Error::InvalidExpression(ERR_FIRST_ARG.into()))?;
 
                 // Get keys array
                 let keys = keys_rule.apply(data)?;
                 let keys = keys.as_array()
-                    .ok_or_else(|| Error::InvalidRule(ERR_SECOND_ARG.into()))?;
+                    .ok_or_else(|| Error::InvalidExpression(ERR_SECOND_ARG.into()))?;
 
                 // Fast path: empty keys array
                 if keys.is_empty() {
@@ -117,7 +117,7 @@ impl MissingSomeOperator {
                                 }
                             }
                         }
-                        _ => return Err(Error::InvalidRule("Keys must be strings".into()))
+                        _ => return Err(Error::InvalidExpression("Keys must be strings".into()))
                     }
                 }
 

@@ -1,7 +1,8 @@
-use serde_json::Value;
-use crate::JsonLogicResult;
-use crate::rule::{Rule, ArgType};
 use super::{ValueCoercion, ValueConvert};
+use crate::rule::ArgType;
+use crate::Error;
+use crate::JsonLogicResult;
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArithmeticType {
@@ -11,7 +12,7 @@ pub enum ArithmeticType {
     Divide,
     Modulo,
     Max,
-    Min
+    Min,
 }
 
 pub struct ArithmeticOperator;
@@ -34,60 +35,56 @@ impl ArithmeticOperator {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
-                    Value::Array(_) => {
-                        let sum = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
-                            .sum::<f64>();
-                        Ok(sum.to_value())
-                    },
-                    _ => Ok(value.coerce_to_number().to_value())
-                }
-            },
-            ArgType::Multiple(rules) => {
-                match rules.len() {
-                    0 => Ok(Value::Number(0.into())),
-                    _ => {
-                        let sum = rules.iter()
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .sum::<f64>();
-                        Ok(sum.to_value())
-                    }
+                    Value::Array(arr) => arr
+                        .iter()
+                        .try_fold(0.0, |acc, v| Ok(acc + v.coerce_to_number()?))
+                        .map(|sum| sum.to_value()),
+                    _ => Ok(value.coerce_to_number()?.to_value()),
                 }
             }
+            ArgType::Multiple(rules) => match rules.len() {
+                0 => Ok(Value::Number(0.into())),
+                _ => {
+                    let sum = rules.iter().try_fold(0.0, |acc, rule| {
+                        let value = rule.apply(data)?;
+                        let num = value.coerce_to_number()?;
+                        Ok(acc + num)
+                    })?;
+                    Ok(sum.to_value())
+                }
+            },
         }
     }
 
     fn apply_multiply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {
-                match rule.as_ref() {
-                    Rule::Array(rules) => {
-                        match rules.len() {
-                            0 => Ok(Value::Number(1.into())),
-                            _ => {
-                                let product = rules.iter()
-                                    .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                                    .product::<f64>();
-                                Ok(product.to_value())
-                            }
-                        }
-                    },
-                    Rule::Value(value) => Ok(value.coerce_to_number().to_value()),
-                    _ => unreachable!("Invalid rule type for multiply")
-                }
-            },
-            ArgType::Multiple(rules) => {
-                match rules.len() {
-                    0 => Ok(Value::Number(1.into())),
+                let value = rule.apply(data)?;
+                match value {
+                    Value::Array(arr) => arr
+                        .iter()
+                        .try_fold(1.0, |acc, v| {
+                            let num = v.coerce_to_number()?;
+                            Ok(acc * num)
+                        })
+                        .map(|product| product.to_value()),
                     _ => {
-                        let product = rules.iter()
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .product::<f64>();
-                        Ok(product.to_value())
+                        let num = value.coerce_to_number()?;
+                        Ok(num.to_value())
                     }
                 }
             }
+            ArgType::Multiple(rules) => match rules.len() {
+                0 => Ok(Value::Number(1.into())),
+                _ => rules
+                    .iter()
+                    .try_fold(1.0, |acc, rule| {
+                        let value = rule.apply(data)?;
+                        let num = value.coerce_to_number()?;
+                        Ok(acc * num)
+                    })
+                    .map(|product| product.to_value()),
+            },
         }
     }
 
@@ -96,38 +93,58 @@ impl ArithmeticOperator {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
-                    Value::Array(_) => {
-                        let first = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
+                    Value::Array(arr) => {
+                        if arr.is_empty() {
+                            return Err(Error::CustomError("Invalid Arguments".to_string()));
+                        } else if arr.len() == 1 {
+                            let num = arr[0].coerce_to_number()?;
+                            return Ok((-num).to_value());
+                        }
+
+                        let mut iter = arr.iter();
+                        // Get first number
+                        let first = iter
                             .next()
-                            .unwrap_or(0.0);
-                        let rest = value.as_array().unwrap()
-                            .iter()
-                            .skip(1)
-                            .map(|v| v.coerce_to_number())
-                            .sum::<f64>();
-                        Ok((first - rest).to_value())
-                    },
-                    _ => Ok((-value.coerce_to_number()).to_value())
-                }
-            },
-            ArgType::Multiple(rules) => {
-                match rules.len() {
-                    0 => Ok(Value::Number(0.into())),
-                    1 => {
-                        let value = rules[0].apply(data)?;
-                        Ok((-value.coerce_to_number()).to_value())
-                    },
+                            .ok_or_else(|| {
+                                Error::InvalidArguments(
+                                    "Subtract operation requires at least one argument".to_string(),
+                                )
+                            })?
+                            .coerce_to_number()?;
+
+                        // Subtract remaining numbers
+                        let result = iter.try_fold(first, |acc, v| {
+                            let num = v.coerce_to_number()?;
+                            Ok(acc - num)
+                        })?;
+
+                        Ok(result.to_value())
+                    }
                     _ => {
-                        let first = rules[0].apply(data)?.coerce_to_number();
-                        let rest: f64 = rules.iter().skip(1)
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .sum();
-                        Ok((first - rest).to_value())
+                        let num = value.coerce_to_number()?;
+                        Ok((-num).to_value())
                     }
                 }
             }
+            ArgType::Multiple(rules) => match rules.len() {
+                0 => Err(Error::CustomError("Invalid Arguments".to_string())),
+                1 => {
+                    let value = rules[0].apply(data)?;
+                    let num = value.coerce_to_number()?;
+                    Ok((-num).to_value())
+                }
+                _ => {
+                    let first = rules[0].apply(data)?.coerce_to_number()?;
+
+                    let result = rules.iter().skip(1).try_fold(first, |acc, rule| {
+                        let value = rule.apply(data)?;
+                        let num = value.coerce_to_number()?;
+                        Ok(acc - num)
+                    })?;
+
+                    Ok(result.to_value())
+                }
+            },
         }
     }
 
@@ -136,95 +153,105 @@ impl ArithmeticOperator {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
-                    Value::Array(_) => {
-                        let first = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
+                    Value::Array(arr) => {
+                        if arr.is_empty() {
+                            return Err(Error::CustomError("Invalid Arguments".to_string()));
+                        } else if arr.len() == 1 {
+                            let num = arr[0].coerce_to_number()?;
+                            if num == 0.0 {
+                                return Err(Error::CustomError("NaN".to_string()));
+                            }
+                            return Ok((1.0 / num).to_value());
+                        }
+
+                        let mut iter = arr.iter();
+                        // Get first number
+                        let first = iter
                             .next()
-                            .unwrap_or(0.0);
-                        let rest = value.as_array().unwrap()
-                            .iter()
-                            .skip(1)
-                            .map(|v| v.coerce_to_number())
-                            .fold(1.0, |acc, x| acc * if x == 0.0 { 1.0 } else { x });
-                        Ok((first / rest).to_value())
-                    },
-                    _ => {
-                        let num = value.coerce_to_number();
-                        if num == 0.0 {
-                            return Ok(Value::Number(0.into()));
-                        }
-                        Ok((1.0 / num).to_value())
+                            .ok_or_else(|| {
+                                Error::InvalidArguments(
+                                    "Division requires at least one argument".to_string(),
+                                )
+                            })?
+                            .coerce_to_number()?;
+
+                        // Multiply remaining numbers
+                        let rest = iter.try_fold(1.0, |acc, v| {
+                            let num = v.coerce_to_number()?;
+                            if num == 0.0 {
+                                Err(Error::CustomError("NaN".to_string()))
+                            } else {
+                                Ok(acc * num)
+                            }
+                        })?;
+
+                        let result = first / rest;
+                        Ok(result.to_value())
                     }
-                }
-            },
-            ArgType::Multiple(rules) => {
-                match rules.len() {
-                    0 => Ok(Value::Number(1.into())),
-                    1 => {
-                        let value = rules[0].apply(data)?;
-                        let num = value.coerce_to_number();
-                        if num == 0.0 {
-                            return Ok(Value::Number(0.into()));
-                        }
-                        Ok((1.0 / num).to_value())
-                    },
                     _ => {
-                        let first = rules[0].apply(data)?.coerce_to_number();
-                        let rest = rules.iter().skip(1)
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .fold(1.0, |acc, x| acc * if x == 0.0 { 1.0 } else { x });
-                        Ok((first / rest).to_value())
+                        let num = value.coerce_to_number()?;
+                        if num == 0.0 {
+                            Err(Error::CustomError("NaN".to_string()))
+                        } else {
+                            let result = 1.0 / num;
+                            Ok(result.to_value())
+                        }
                     }
                 }
             }
+            ArgType::Multiple(rules) => match rules.len() {
+                0 => Err(Error::CustomError("Invalid Arguments".to_string())),
+                1 => {
+                    let value = rules[0].apply(data)?;
+                    let num = value.coerce_to_number()?;
+                    if num == 0.0 {
+                        Err(Error::CustomError("NaN".to_string()))
+                    } else {
+                        let result = 1.0 / num;
+                        Ok(result.to_value())
+                    }
+                }
+                _ => {
+                    let first = rules[0].apply(data)?.coerce_to_number()?;
+
+                    let rest = rules.iter().skip(1).try_fold(1.0, |acc, rule| {
+                        let value = rule.apply(data)?;
+                        let num = value.coerce_to_number()?;
+                        if num == 0.0 {
+                            Err(Error::CustomError("NaN".to_string()))
+                        } else {
+                            Ok(acc * num)
+                        }
+                    })?;
+
+                    let result = first / rest;
+                    Ok(result.to_value())
+                }
+            },
         }
     }
 
     fn apply_modulo(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
-            ArgType::Unary(rule) => {
-                let value = rule.apply(data)?;
-                match value {
-                    Value::Array(_) => {
-                        let first = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
-                            .next()
-                            .unwrap_or(0.0);
-                        let rest = value.as_array().unwrap()
-                            .iter()
-                            .skip(1)
-                            .map(|v| v.coerce_to_number())
-                            .fold(1.0, |acc, x| acc * if x == 0.0 { 1.0 } else { x });
-                        Ok((first % rest).to_value())
-                    },
-                    _ => {
-                        let num = value.coerce_to_number();
-                        if num == 0.0 {
-                            return Ok(Value::Number(0.into()));
-                        }
-                        Ok((1.0 % num).to_value())
-                    }
-                }
-            },
+            ArgType::Unary(_) => Err(Error::CustomError("Invalid Arguments".to_string())),
             ArgType::Multiple(rules) => {
                 match rules.len() {
-                    0 => Ok(Value::Number(0.into())),
-                    1 => {
-                        let value = rules[0].apply(data)?;
-                        let num = value.coerce_to_number();
-                        if num == 0.0 {
-                            return Ok(Value::Number(0.into()));
-                        }
-                        Ok((1.0 % num).to_value())
-                    },
+                    0 | 1 => {
+                        Err(Error::CustomError("Invalid Arguments".to_string()))
+                    }
                     _ => {
-                        let first = rules[0].apply(data)?.coerce_to_number();
-                        let rest = rules.iter().skip(1)
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .fold(1.0, |acc, x| acc * if x == 0.0 { 1.0 } else { x });
-                        Ok((first % rest).to_value())
+                        let first = rules[0].apply(data)?.coerce_to_number()?;
+
+                        let rest = rules.iter().skip(1).try_fold(first, |acc, rule| {
+                            let value = rule.apply(data)?;
+                            let num = value.coerce_to_number()?;
+                            if num == 0.0 {
+                                return Err(Error::CustomError("NaN".to_string()));
+                            }
+                            Ok(acc % num)
+                        })?;
+
+                        Ok(rest.to_value())
                     }
                 }
             }
@@ -236,27 +263,32 @@ impl ArithmeticOperator {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
-                    Value::Array(_) => {
-                        let max = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
-                            .fold(f64::NEG_INFINITY, f64::max);
-                        Ok(max.to_value())
-                    },
-                    _ => Ok(value.coerce_to_number().to_value())
-                }
-            },
-            ArgType::Multiple(rules) => {
-                match rules.len() {
-                    0 => Ok(Value::Null),
-                    _ => {
-                        let max = rules.iter()
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .fold(f64::NEG_INFINITY, f64::max);
-                        Ok(max.to_value())
+                    Value::Array(arr) => {
+                        if arr.is_empty() {
+                            return Ok(Value::Null);
+                        }
+
+                        arr.iter()
+                            .try_fold(f64::NEG_INFINITY, |max, v| {
+                                let num = v.coerce_to_number()?;
+                                Ok(max.max(num))
+                            })
+                            .map(|max| max.to_value())
                     }
+                    _ => value.coerce_to_number().map(|num| num.to_value()),
                 }
             }
+            ArgType::Multiple(rules) => match rules.len() {
+                0 => Ok(Value::Null),
+                _ => rules
+                    .iter()
+                    .try_fold(f64::NEG_INFINITY, |max, rule| {
+                        let value = rule.apply(data)?;
+                        let num = value.coerce_to_number()?;
+                        Ok(max.max(num))
+                    })
+                    .map(|max| max.to_value()),
+            },
         }
     }
 
@@ -265,27 +297,32 @@ impl ArithmeticOperator {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
                 match value {
-                    Value::Array(_) => {
-                        let min = value.as_array().unwrap()
-                            .iter()
-                            .map(|v| v.coerce_to_number())
-                            .fold(f64::INFINITY, f64::min);
-                        Ok(min.to_value())
-                    },
-                    _ => Ok(value.coerce_to_number().to_value())
-                }
-            },
-            ArgType::Multiple(rules) => {
-                match rules.len() {
-                    0 => Ok(Value::Null),
-                    _ => {
-                        let min = rules.iter()
-                            .map(|rule| rule.apply(data).unwrap().coerce_to_number())
-                            .fold(f64::INFINITY, f64::min);
-                        Ok(min.to_value())
+                    Value::Array(arr) => {
+                        if arr.is_empty() {
+                            return Ok(Value::Null);
+                        }
+
+                        arr.iter()
+                            .try_fold(f64::INFINITY, |min, v| {
+                                let num = v.coerce_to_number()?;
+                                Ok(min.min(num))
+                            })
+                            .map(|min| min.to_value())
                     }
+                    _ => value.coerce_to_number().map(|num| num.to_value()),
                 }
             }
+            ArgType::Multiple(rules) => match rules.len() {
+                0 => Ok(Value::Null),
+                _ => rules
+                    .iter()
+                    .try_fold(f64::INFINITY, |min, rule| {
+                        let value = rule.apply(data)?;
+                        let num = value.coerce_to_number()?;
+                        Ok(min.min(num))
+                    })
+                    .map(|min| min.to_value()),
+            },
         }
     }
 }

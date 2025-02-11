@@ -1,15 +1,12 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use datalogic_rs::*;
-use reqwest::blocking::get;
 use serde_json::Value;
+use std::fs;
 
 lazy_static::lazy_static! {
     static ref TEST_CASES: Vec<(Rule, Value, Value)> = {
-        let response = get("http://jsonlogic.com/tests.json")
-            .expect("Failed to fetch test cases")
-            .text()
-            .expect("Failed to read response");
-        
+        let response = fs::read_to_string("tests/test-cases/legacy.json").unwrap();
+       
         let json_data: Vec<Value> = serde_json::from_str(&response)
             .expect("Failed to parse test cases");
         

@@ -2,10 +2,10 @@ use datalogic_rs::*;
 use serde_json::json;
 
 fn main() {
-	let logic = json!({ "max": {"var": "data"} });
+	let logic = json!({ "if": { "preserve": [true, 1, 2] } });
 	println!("Logic: {:?}", logic);
 
-	let data = json!({ "data": [1, 2, 3] });
+	let data = json!({});
 
 	let rule = Rule::from_value(&logic).unwrap();
 	println!("Rule: {:#?}", rule);

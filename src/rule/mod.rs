@@ -5,6 +5,8 @@ use crate::{Error, JsonLogicResult};
 
 pub use operators::*;
 
+static VAL_OP: ValOperator = ValOperator;
+static EXISTS_OP: ExistsOperator = ExistsOperator;
 static VAR_OP: VarOperator = VarOperator;
 static LOGIC_OP: LogicOperator = LogicOperator;
 static COMPARE_OP: CompareOperator = CompareOperator;
@@ -12,6 +14,7 @@ static ARITHMETIC_OP: ArithmeticOperator = ArithmeticOperator;
 
 static IF_OP: IfOperator = IfOperator;
 static TERNARY_OP: TernaryOperator = TernaryOperator;
+static COALESCE_OP: CoalesceOperator = CoalesceOperator;
 
 static MAP_OP: MapOperator = MapOperator;
 static FILTER_OP: FilterOperator = FilterOperator;
@@ -27,6 +30,7 @@ static CAT_OP: CatOperator = CatOperator;
 static SUBSTR_OP: SubstrOperator = SubstrOperator;
 
 static PRESERVE_OP: PreserveOperator = PreserveOperator;
+static TRY_OP: TryOperator = TryOperator;
 
 #[derive(Debug, Clone)]
 pub enum ArgType {
@@ -39,14 +43,17 @@ pub enum Rule {
     Value(Value),
     Array(Vec<Rule>),
 
+    Val(ArgType),
     Var(Box<Rule>, Option<Box<Rule>>),
     Compare(CompareType, Vec<Rule>),
     Arithmetic(ArithmeticType, ArgType),
-    Logic(LogicType, Vec<Rule>),
+    Logic(LogicType, ArgType),
+    Exists(ArgType),
     
     // Control operators
-    If(Vec<Rule>),
+    If(ArgType),
     Ternary(Vec<Rule>),
+    Coalesce(Vec<Rule>),
     
     // String operators
     In(Box<Rule>, Box<Rule>),
@@ -66,6 +73,8 @@ pub enum Rule {
 
     // Special operators
     Preserve(ArgType),
+    Throw(Box<Rule>),
+    Try(ArgType),
 }
 
 impl Rule {
@@ -75,6 +84,8 @@ impl Rule {
             Rule::Value(_) => true,
             Rule::Missing(_) | Rule::MissingSome(_) => false,
             Rule::Var(_, _) => false,
+            Rule::Val(_) => false,
+            Rule::Exists(_) => false,
 
             Rule::Map(array_rule, mapper) => {
                 array_rule.is_static() && mapper.is_static()
@@ -104,7 +115,10 @@ impl Rule {
                 args.iter().all(|r| r.is_static())
             }
             Rule::Logic(_, args) => {
-                args.iter().all(|r| r.is_static())
+                match args {
+                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                    ArgType::Unary(r) => r.is_static(),
+                }
             }
             Rule::Arithmetic(_, args) => {
                 match args {
@@ -119,11 +133,25 @@ impl Rule {
                 }
             }
 
+            Rule::If(args) => {
+                match args {
+                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                    ArgType::Unary(r) => r.is_static(),
+                }
+            }
+
             Rule::Array(args) |
-            Rule::If(args) | 
             Rule::Ternary(args) |
+            Rule::Coalesce(args) |
             Rule::Merge(args) |
             Rule::Cat(args) => args.iter().all(|r| r.is_static()),
+            Rule::Throw(rule) => rule.is_static(),
+            Rule::Try(args) => {
+                match args {
+                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                    ArgType::Unary(r) => r.is_static(),
+                }
+            }
         }
     }
 
@@ -158,6 +186,30 @@ impl Rule {
                 let optimized_path = Self::optimize_rule(*path)?;
                 let optimized_default = default.map(|d| Self::optimize_rule(*d)).transpose()?;
                 Ok(Rule::Var(Box::new(optimized_path), optimized_default.map(Box::new)))
+            },
+            Rule::Val(path) => {
+                match path {
+                    ArgType::Multiple(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Val(ArgType::Multiple(optimized)))
+                    },
+                    ArgType::Unary(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Val(ArgType::Unary(Box::new(optimized))))
+                    }
+                }
+            },
+            Rule::Exists(path) => {
+                match path {
+                    ArgType::Multiple(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Exists(ArgType::Multiple(optimized)))
+                    },
+                    ArgType::Unary(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Exists(ArgType::Unary(Box::new(optimized))))
+                    }
+                }
             },
             Rule::Arithmetic(op, args) => {
                 match args {
@@ -221,8 +273,16 @@ impl Rule {
                 Ok(Rule::Compare(op, optimized))
             },
             Rule::Logic(op, args) => {
-                let optimized = Self::optimize_args(&args)?;
-                Ok(Rule::Logic(op, optimized))
+                match args {
+                    ArgType::Multiple(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Logic(op, ArgType::Multiple(optimized)))
+                    },
+                    ArgType::Unary(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Logic(op, ArgType::Unary(Box::new(optimized))))
+                    }
+                }
             },
             Rule::Merge(ref args) => {
                 let optimized = Self::optimize_args(args)?;
@@ -233,13 +293,42 @@ impl Rule {
                 Ok(Rule::Cat(optimized))
             }
             Rule::If(ref args) => {
-                let optimized = Self::optimize_args(args)?;
-                Ok(Rule::If(optimized))
+                match args {
+                    ArgType::Multiple(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::If(ArgType::Multiple(optimized)))
+                    },
+                    ArgType::Unary(rule) => {
+                        let r = rule.as_ref().clone();
+                        let optimized = Self::optimize_rule(r)?;
+                        Ok(Rule::If(ArgType::Unary(Box::new(optimized))))
+                    }
+                }
             }
             Rule::Ternary(ref args) => {
                 let optimized = Self::optimize_args(args)?;
                 Ok(Rule::Ternary(optimized))
             },
+            Rule::Coalesce(ref args) => {
+                let optimized = Self::optimize_args(args)?;
+                Ok(Rule::Coalesce(optimized))
+            },
+            Rule::Throw(rule) => {
+                let optimized = Self::optimize_rule(*rule)?;
+                Ok(Rule::Throw(Box::new(optimized)))
+            },
+            Rule::Try(args) => {
+                match args {
+                    ArgType::Multiple(arr) => {
+                        let optimized = Self::optimize_args(&arr)?;
+                        Ok(Rule::Try(ArgType::Multiple(optimized)))
+                    },
+                    ArgType::Unary(rule) => {
+                        let optimized = Self::optimize_rule(*rule)?;
+                        Ok(Rule::Try(ArgType::Unary(Box::new(optimized))))
+                    }
+                }
+            }
         }
     }
 
@@ -305,7 +394,20 @@ impl Rule {
                         Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         args.get(1).cloned().map(Box::new)
                     )),
-                    
+                    "val" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Val(arg))
+                    }
+                    "exists" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Exists(arg))
+                    },
                     // Comparison operators
                     "==" => Ok(Rule::Compare(CompareType::Equals, args)),
                     "===" => Ok(Rule::Compare(CompareType::StrictEquals, args)),
@@ -317,24 +419,67 @@ impl Rule {
                     "<=" => Ok(Rule::Compare(CompareType::LessThanEqual, args)),
                     
                     // Logical operators
-                    "and" => Ok(Rule::Logic(LogicType::And, args)),
-                    "or" => Ok(Rule::Logic(LogicType::Or, args)),
-                    "!" => Ok(Rule::Logic(LogicType::Not, args)),
-                    "!!" => Ok(Rule::Logic(LogicType::DoubleBang, args)),
+                    "and" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Logic(LogicType::And, arg))
+                    },
+                    "or" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Logic(LogicType::Or, arg))
+                    },
+                    "!" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Logic(LogicType::Not, arg))
+                    },
+                    "!!" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Logic(LogicType::DoubleBang, arg))
+                    },
                     
                     // Control operators
-                    "if" => Ok(Rule::If(args)),
+                    "if" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::If(arg))
+                    },
                     "?:" => Ok(Rule::Ternary(args)),
+                    "??" => Ok(Rule::Coalesce(args)),
                     
                     // Array operators
-                    "map" => Ok(Rule::Map(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
-                    "filter" => Ok(Rule::Filter(
-                        Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                        Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
-                    )),
+                    "map" => {
+                        if let Value::Array(_) = args_raw {
+                            Ok(Rule::Map(
+                                Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
+                                Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                            ))
+                        } else {
+                            Ok(Rule::Map(Box::new(Rule::Value(Value::Null)), Box::new(Rule::Value(Value::Null))))
+                        }
+                    },
+                    "filter" => {
+                        if let Value::Array(_) = args_raw {
+                            Ok(Rule::Filter(
+                                Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
+                                Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                            ))
+                        } else {
+                            Ok(Rule::Filter(Box::new(Rule::Value(Value::Null)), Box::new(Rule::Value(Value::Null))))
+                        }
+                    },
                     "reduce" => {
                         Ok(Rule::Reduce(
                             Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
@@ -342,20 +487,25 @@ impl Rule {
                             Box::new(args.get(2).cloned().unwrap_or(Rule::Value(Value::Null)))
                         ))
                     },
-                    "all" => Ok(Rule::ArrayPredicate(
+                    "all" if args_raw.is_array() => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::All,
                         Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
-                    "none" => Ok(Rule::ArrayPredicate(
+                    "none" if args_raw.is_array() => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::None,
                         Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
                     )),
-                    "some" => Ok(Rule::ArrayPredicate(
+                    "some" if args_raw.is_array() => Ok(Rule::ArrayPredicate(
                         ArrayPredicateType::Some,
                         Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
                         Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null)))
+                    )),
+                    "all" | "none" | "some" => Ok(Rule::ArrayPredicate(
+                        ArrayPredicateType::Invalid,
+                        Box::new(Rule::Value(Value::Null)),
+                        Box::new(Rule::Value(Value::Null))
                     )),
                     "merge" => Ok(Rule::Merge(args)),
                     
@@ -432,8 +582,16 @@ impl Rule {
                         };
                         Ok(Rule::Preserve(arg))
                     },
+                    "throw" => Ok(Rule::Throw(Box::new(args[0].clone()))),
+                    "try" => {
+                        let arg = match args_raw {
+                            Value::Array(_) => ArgType::Multiple(args),
+                            _ => ArgType::Unary(Box::new(args[0].clone())),
+                        };
+                        Ok(Rule::Try(arg))
+                    },
                     
-                    _ => Err(Error::UnknownOperator(op.to_string())),
+                    _ => Err(Error::InvalidArguments(op.to_string())),
                 };
                 Self::optimize_rule(rule?)
             },
@@ -460,13 +618,18 @@ impl Rule {
                     .collect::<Result<Vec<_>, _>>()?
             )),
             Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
+            Rule::Val(path) => VAL_OP.apply(path, data),
+            Rule::Exists(path) => EXISTS_OP.apply(path, data),
 
             Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
-            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
+            Rule::Logic(op, args) => {
+                LOGIC_OP.apply(args, data, op)
+            },
             Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
 
             Rule::If(args) => IF_OP.apply(args, data),
             Rule::Ternary(args) => TERNARY_OP.apply(args, data),
+            Rule::Coalesce(args) => COALESCE_OP.apply(args, data),
 
             Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
             Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
@@ -482,6 +645,11 @@ impl Rule {
             Rule::Substr(string, start, length) => SUBSTR_OP.apply(string, start, length.as_deref(), data),
 
             Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
+            Rule::Throw(rule) => {
+                let value = rule.apply(data)?;
+                Err(Error::CustomError(value.to_string()))
+            }
+            Rule::Try(args) => TRY_OP.apply(args, data),
         }
     }
 }

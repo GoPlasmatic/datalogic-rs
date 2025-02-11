@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::{rule::ArgType, Error, JsonLogicResult};
+use crate::{rule::ArgType, JsonLogicResult};
 
 pub struct PreserveOperator;
 
@@ -8,10 +8,11 @@ impl PreserveOperator {
         match arg {
             ArgType::Unary(rule) => rule.apply(data),
             ArgType::Multiple(rules) => {
-                if rules.is_empty() {
-                    return Err(Error::InvalidArguments("preserve requires 1 argument".to_string()));
+                let mut result_arr = Vec::with_capacity(rules.len());
+                for rule in rules {
+                    result_arr.push(rule.apply(data)?);
                 }
-                rules[0].apply(data)
+                Ok(Value::Array(result_arr))
             }
         }
     }

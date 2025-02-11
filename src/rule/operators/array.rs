@@ -9,6 +9,14 @@ pub struct MergeOperator;
 
 impl MapOperator {
     pub fn apply(&self, array_rule: &Rule, mapper: &Rule, data: &Value) -> JsonLogicResult {
+        if let Rule::Value(arr_val) = array_rule {
+            if let Rule::Value(mapper_val) = mapper {
+                if arr_val.is_null() && mapper_val.is_null() {
+                    return Err(Error::CustomError("Invalid Arguments".into()));
+                }
+            }
+        }
+
         match array_rule.apply(data)? {
             Value::Array(arr) => {
                 let results = arr
@@ -25,6 +33,14 @@ impl MapOperator {
 
 impl FilterOperator {
     pub fn apply(&self, array_rule: &Rule, predicate: &Rule, data: &Value) -> JsonLogicResult {
+        if let Rule::Value(arr_val) = array_rule {
+            if let Rule::Value(predicate_val) = predicate {
+                if arr_val.is_null() && predicate_val.is_null() {
+                    return Err(Error::CustomError("Invalid Arguments".into()));
+                }
+            }
+        }
+
         match array_rule.apply(data)? {
             Value::Array(arr) => {
                 let results = arr
@@ -34,7 +50,7 @@ impl FilterOperator {
                 
                 Ok(Value::Array(results))
             },
-            _ => Ok(Value::Array(Vec::new()))
+            _ => Err(Error::CustomError("Invalid Arguments".into()))
         }
     }
 }
@@ -78,7 +94,8 @@ impl ReduceOperator {
 pub enum ArrayPredicateType {
     All,
     Some,
-    None
+    None,
+    Invalid
 }
 
 pub struct ArrayPredicateOperator;
@@ -113,10 +130,11 @@ impl ArrayPredicateOperator {
                         let result = arr.iter()
                             .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
                         Ok(Value::Bool(!result))
-                    }
+                    },
+                    _ => Err(Error::CustomError("Invalid Arguments".into()))
                 }
             },
-            _ => Err(Error::InvalidRule("First argument must be array".into()))
+            _ => Err(Error::CustomError("Invalid Arguments".into()))
         }
     }
 }

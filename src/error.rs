@@ -4,17 +4,20 @@
 
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum Error {
-    #[error("Unknown operator: {0}")]
-    UnknownOperator(String),
+    #[error("Unknown Expression: {0}")]
+    UnknownExpression(String),
 
-    #[error("Invalid rule format: {0}")]
-    InvalidRule(String),
+    #[error("Invalid Expression format: {0}")]
+    InvalidExpression(String),
     
-    #[error("Invalid arguments: {0}")]
+    #[error("Invalid Arguments: {0}")]
     InvalidArguments(String),
     
     #[error("Type error: {0}")]
     Type(String),
+
+    #[error("{0}")]
+    CustomError(String),
 }
