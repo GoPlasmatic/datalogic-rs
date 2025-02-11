@@ -55,6 +55,12 @@
         "data": null
     },
     {
+        "description": "Plus Operator with zero operands is zero",
+        "rule": { "+": [] },
+        "result": 0,
+        "data": null
+    },
+    {
         "description": "Plus Operator with Single Operand, Direct (Number)",
         "rule": { "+": 1 },
         "result": 1,
@@ -93,11 +99,17 @@
         "decimal": true
     },
     {
-        "description": "Plus Operator with Single Operand, Direct (String .5)",
-        "rule": { "+": ".5" },
+        "description": "Plus Operator with Single Operand, Direct (String 0.5)",
+        "rule": { "+": "0.5" },
         "result": 0.5,
         "data": null,
         "decimal": true
+    },
+    {
+        "description": "Plus Operator with Single Operand, Direct (String 1e2)",
+        "rule": { "+": "1e2" },
+        "result": 100,
+        "data": null
     },
     {
         "description": "Plus Operator with Single Operand, Direct (String 0)",
@@ -131,8 +143,56 @@
     },
     {
         "description": "Addition with val",
-        "rule": { "+": [{ "var": "x" }, { "var": "y" }] },
-        "data": { "x": 1, "y": 2 },
-        "result": 3
+        "rule": { "+": [{ "val": "x" }, { "val": "y" }] },
+        "result": 3,
+        "data": { "x": 1, "y": 2 }
+    },
+    {
+        "description": "Addition with string produces NaN",
+        "rule": { "+": ["Hey", 1] },
+        "error": { "type": "NaN" },
+        "data": null
+    },
+    {
+        "description": "Addition with Array produces NaN",
+        "rule": { "+": [[1], 1] },
+        "error": { "type": "NaN" },
+        "data": null
+    },
+    {
+        "description": "Addition with Array from context produces NaN",
+        "rule": { "+": [{ "val": "x" }, 1] },
+        "error": { "type": "NaN" },
+        "data": { "x": [1] }
+    },
+    {
+        "description": "Addition with Object produces NaN",
+        "rule": { "+": [{ "val": "x" }, 1] },
+        "error": { "type": "NaN" },
+        "data": { "x": {} }
+    },
+    {
+        "description": "Plus Operator with Single Operand, Invalid String Produces NaN",
+        "rule": { "+": "Hello" },
+        "error": { "type": "NaN" },
+        "data": null
+    },
+    {
+        "description": "Plus Operator with Single Operand, Array Input Produces NaN",
+        "rule": { "+": [[1]] },
+        "error": { "type": "NaN" },
+        "data": null
+    },
+    {
+        "description": "Plus Operator with Single Operand, Object Input Produces NaN",
+        "rule": { "+": [{}] },
+        "error": { "type": "NaN" },
+        "data": null
+    },
+    {
+        "description": "Plus Operator with Single Operand, Direct Object Input Produces NaN",
+        "rule": { "+": {} },
+        "error": { "type": "NaN" },
+        "data": null
     }
 ]

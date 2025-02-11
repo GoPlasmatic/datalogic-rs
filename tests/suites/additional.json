@@ -1,0 +1,80 @@
+[
+    "# These are some tests from https://github.com/TotalTechGeek/json-logic-engine/commit/9125e91b5137938a8319de1103b0ebc5819e54e1",
+    [
+        [
+            1,
+            {
+                "val": "x"
+            },
+            3
+        ],
+        {
+            "x": 2
+        },
+        [
+            1,
+            2,
+            3
+        ]
+    ],
+    [
+        {
+            "if": [
+                {
+                    "val": "x"
+                },
+                [
+                    {
+                        "val": "y"
+                    }
+                ],
+                99
+            ]
+        },
+        {
+            "x": true,
+            "y": 42
+        },
+        [
+            42
+        ]
+    ],
+    [
+        {
+            "reduce": [
+                {
+                    "val": "integers"
+                },
+                {
+                    "+": [
+                        {
+                            "val": "current"
+                        },
+                        {
+                            "val": "accumulator"
+                        }
+                    ]
+                },
+                {
+                    "val": "start_with"
+                }
+            ]
+        },
+        {
+            "integers": [
+                1,
+                2,
+                3,
+                4
+            ],
+            "start_with": 59
+        },
+        69
+    ],
+    {
+        "description": "Simple Inlineable Val Chained",
+        "rule": { "val": { "cat": ["te", "st"] } },
+        "data": { "test": 1 },
+        "result": 1
+    }
+]

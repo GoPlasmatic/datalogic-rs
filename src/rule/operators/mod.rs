@@ -1,8 +1,36 @@
 use serde_json::Value;
+use super::Rule;
+use super::Error;
 
-pub trait ValueCoercion {
+pub mod arithmetic;
+pub mod array;
+pub mod comparison;
+pub mod logic;
+pub mod missing;
+pub mod preserve;
+pub mod string;
+pub mod var;
+pub mod control;
+pub mod val;
+pub mod tryop;
+
+pub use arithmetic::*;
+pub use array::*;
+pub use comparison::*;
+pub use logic::*;
+pub use missing::*;
+pub use preserve::*;
+pub use string::*;
+pub use var::*;
+pub use control::*;
+pub use val::*;
+pub use tryop::*;
+
+
+trait ValueCoercion {
+    fn is_null_value(&self) -> bool;
     fn coerce_to_bool(&self) -> bool;
-    fn coerce_to_number(&self) -> f64;
+    fn coerce_to_number(&self) -> Result<f64, Error>;
     fn coerce_to_string(&self) -> String;
     fn coerce_append(result: &mut String, value: &Value);
 }
@@ -12,34 +40,26 @@ impl ValueCoercion for Value {
     fn coerce_to_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
+            Value::Number(n) => {
+                let num = n.as_f64().unwrap_or(0.0);
+                num != 0.0
+            },
             Value::String(s) => !s.is_empty(),
             Value::Array(a) => !a.is_empty(),
-            Value::Object(o) => !o.is_empty(),
+            Value::Object(_) => true,
             Value::Null => false,
         }
     }
 
     #[inline(always)]
-    fn coerce_to_number(&self) -> f64 {
-        const TRUE_VAL: f64 = 1.0;
-        const FALSE_VAL: f64 = 0.0;
-        
+    fn coerce_to_number(&self) -> Result<f64, Error> {
         match self {
-            Value::Number(n) => n.as_f64().unwrap_or(FALSE_VAL),
-            Value::String(s) => {
-                if s.is_empty() { return FALSE_VAL; }
-                if let Some(c) = s.chars().next() {
-                    if c.is_ascii_digit() || c == '-' {
-                        return s.parse::<i64>()
-                            .map(|i| i as f64)
-                            .unwrap_or_else(|_| s.parse::<f64>().unwrap_or(FALSE_VAL));
-                    }
-                }
-                FALSE_VAL
-            }
-            Value::Bool(true) => TRUE_VAL,
-            _ => FALSE_VAL,
+            Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
+            Value::String(s) if s.is_empty() => Ok(0.0),
+            Value::String(s) => s.parse::<f64>().map_err(|_| Error::Custom("NaN".to_string())),
+            Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
+            Value::Null => Ok(0.0),
+            Value::Array(_) | Value::Object(_) => Err(Error::Custom("NaN".to_string())),
         }
     }
 
@@ -77,9 +97,20 @@ impl ValueCoercion for Value {
         }
     }
 
+    #[inline(always)]
+    fn is_null_value(&self) -> bool {
+        match self {
+            Value::Bool(_) => false,
+            Value::Number(_) => false,
+            Value::String(s) => s.is_empty(),
+            Value::Array(a) => a.is_empty(),
+            Value::Object(o) => o.is_empty(),
+            Value::Null => true,
+        }
+    }
 }
 
-pub trait ValueConvert {
+trait ValueConvert {
     fn to_value(&self) -> Value;
 }
 
@@ -88,9 +119,9 @@ impl ValueConvert for f64 {
     fn to_value(&self) -> Value {
         const ZERO_FRACT: f64 = 0.0;
         if self.fract() == ZERO_FRACT {
-            Value::from(*self as i64)
+            Value::Number(serde_json::Number::from(*self as i64))
         } else {
-            Value::from(*self)
+            Value::Number(serde_json::Number::from_f64(*self).unwrap())
         }
     }
 }
