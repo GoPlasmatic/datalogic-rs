@@ -481,10 +481,30 @@ impl Rule {
                         }
                     },
                     "reduce" => {
+                        let array = args.first().cloned().unwrap_or(Rule::Value(Value::Null));
+                        let predicate = args.get(1).cloned().unwrap_or(Rule::Value(Value::Null));
+                        let initial = args.get(2).cloned().unwrap_or(Rule::Value(Value::Null));
+
+                        // Try to desugar if predicate is a simple arithmetic operation
+                        if let Rule::Arithmetic(op, args ) = &predicate {
+                            if let ArgType::Multiple(args) = args {
+                                if args.len() == 2 && is_flat_arithmetic_predicate(&predicate) {
+                                    let merged = Rule::Merge(vec![initial, array]);
+
+                                    // Convert to direct arithmetic operation
+                                    return Ok(Rule::Arithmetic(
+                                        *op,
+                                        ArgType::Unary(Box::new(merged))
+                                    ));
+                                }
+                            }
+                        }
+
+                        // Fall back to regular reduce if desugaring not possible
                         Ok(Rule::Reduce(
-                            Box::new(args.first().cloned().unwrap_or(Rule::Value(Value::Null))),
-                            Box::new(args.get(1).cloned().unwrap_or(Rule::Value(Value::Null))),
-                            Box::new(args.get(2).cloned().unwrap_or(Rule::Value(Value::Null)))
+                            Box::new(array),
+                            Box::new(predicate),
+                            Box::new(initial)
                         ))
                     },
                     "all" if args_raw.is_array() => Ok(Rule::ArrayPredicate(

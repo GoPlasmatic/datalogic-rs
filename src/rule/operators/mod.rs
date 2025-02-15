@@ -1,4 +1,5 @@
 use serde_json::Value;
+use super::ArgType;
 use super::Rule;
 use super::Error;
 
@@ -124,4 +125,53 @@ impl ValueConvert for f64 {
             Value::Number(serde_json::Number::from_f64(*self).unwrap())
         }
     }
+}
+
+fn is_current_var(var_name: &Rule) -> bool {
+    match var_name {
+        Rule::Value(Value::String(name)) => name == "current",
+        Rule::Value(Value::Array(arr)) if !arr.is_empty() => {
+            if let Some(Value::String(first)) = arr.first() {
+                first == "current"
+            } else {
+                false
+            }
+        }
+        _ => false
+    }
+}
+
+pub fn is_flat_arithmetic_predicate(rule: &Rule) -> bool {
+    if let Rule::Arithmetic(op_type, args) = rule {
+        if let ArgType::Multiple(args) = args {
+            if args.len() == 2 {
+                // Check if operation is arithmetic
+                if !matches!(op_type, 
+                    ArithmeticType::Add | 
+                    ArithmeticType::Subtract | 
+                    ArithmeticType::Multiply | 
+                    ArithmeticType::Divide | 
+                    ArithmeticType::Modulo) {
+                    return false;
+                }
+
+                // Check if we have one current/current.* and one accumulator
+                let (has_current, has_accumulator) = args.iter().fold((false, false), |mut acc, arg| {
+                    if let Rule::Var(var_name, _) = arg {
+                        if is_current_var(var_name) {
+                            acc.0 = true;
+                        } else if let Rule::Value(Value::String(name)) = &**var_name {
+                            if name == "accumulator" {
+                                acc.1 = true;
+                            }
+                        }
+                    }
+                    acc
+                });
+
+                return has_current && has_accumulator;
+            }
+        }
+    }
+    false
 }
