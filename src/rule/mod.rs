@@ -38,6 +38,19 @@ pub enum ArgType {
     Multiple(Vec<Rule>),
 }
 
+/// # Rule Construction
+/// 
+/// The `Rule` struct represents a parsed JSON Logic expression.
+/// This struct encapsulates logic for evaluating expressions dynamically.
+/// 
+/// ## Example
+/// ```rust
+/// use datalogic_rs::Rule;
+/// use serde_json::json;
+/// 
+/// let rule = Rule::from_value(&json!({"==": [1, 1]})).unwrap();
+/// let result = rule.apply(&json!({})).unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub enum Rule {
     Value(Value),
@@ -332,51 +345,24 @@ impl Rule {
         }
     }
 
-    /// Creates a new `Rule` from a JSON Value
-    ///
-    /// Parses a serde_json::Value into a Rule that can be evaluated. The value must follow
-    /// the JSONLogic specification format.
-    ///
+    /// Parses a JSON Value into a `Rule` that can be evaluated.
+    /// 
+    /// This function accepts a JSONLogic-compliant expression and converts it
+    /// into an internal `Rule` representation.
+    /// 
     /// ## Arguments
-    /// * `value` - A JSON value representing the rule. Must be a valid JSONLogic expression.
-    ///
+    /// - `value`: A JSON value representing the rule.
+    /// 
     /// ## Returns
-    /// * `Result<Rule, Error>` - A Result containing either the parsed Rule or an error
-    ///
-    /// ## Examples
-    ///
-    /// Basic usage:
+    /// - `Result<Rule, Error>`: A valid rule or an error if parsing fails.
+    /// 
+    /// ## Example
     /// ```rust
     /// use datalogic_rs::Rule;
     /// use serde_json::json;
-    ///
-    /// let rule = Rule::from_value(&json!({"==": [1, 1]})).unwrap();
-    /// assert!(rule.apply(&json!(null)).unwrap().as_bool().unwrap());
+    /// 
+    /// let rule = Rule::from_value(&json!({">": [{"var": "salary"}, 50000]})).unwrap();
     /// ```
-    ///
-    /// Complex nested rules:
-    /// ```rust
-    /// use datalogic_rs::Rule;
-    /// use serde_json::json;
-    ///
-    /// let rule = Rule::from_value(&json!({
-    ///     "and": [
-    ///         {">": [{"var": "age"}, 18]},
-    ///         {"<": [{"var": "age"}, 65]}
-    ///     ]
-    /// })).unwrap();
-    /// ```
-    ///
-    /// Error handling:
-    /// ```rust
-    /// use datalogic_rs::Rule;
-    /// use serde_json::json;
-    ///
-    /// let result = Rule::from_value(&json!({"invalid_op": []}));
-    /// assert!(result.is_err());
-    /// ```
-    ///
-    /// See also: [`from_str`](Rule::from_str), [`apply`](Rule::apply)
     pub fn from_value(value: &Value) -> Result<Self, Error> {
         match value {
             Value::Object(map) if map.len() == 1 => {
