@@ -26,7 +26,7 @@ impl MapOperator {
                 
                 Ok(Value::Array(results))
             },
-            _ => Ok(Value::Array(Vec::new()))
+            _ => Ok(Value::Array(Vec::with_capacity(0)))
         }
     }
 }
@@ -106,39 +106,36 @@ impl ArrayPredicateOperator {
             return Err(Error::Custom("Invalid Arguments".into()));
         }
 
-        let array_value = array_rule.apply(data)?;
-        
-        match array_value {
-            Value::Array(arr) => {
-                match op_type {
-                    ArrayPredicateType::All => {
-                        if arr.is_empty() {
-                            return Ok(Value::Bool(false));
-                        }
-                        let result = arr.iter()
-                            .all(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                        Ok(Value::Bool(result))
-                    },
-                    ArrayPredicateType::Some => {
-                        if arr.is_empty() {
-                            return Ok(Value::Bool(false));
-                        }
-                        let result = arr.iter()
-                            .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                        Ok(Value::Bool(result))
-                    },
-                    ArrayPredicateType::None => {
-                        if arr.is_empty() {
-                            return Ok(Value::Bool(true));
-                        }
-                        let result = arr.iter()
-                            .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
-                        Ok(Value::Bool(!result))
-                    },
-                    _ => unreachable!()
-                }
-            },
-            _ => Err(Error::Custom("Invalid Arguments".into()))
+        if let Value::Array(arr) = &array_rule.apply(data)? {
+            match op_type {
+                ArrayPredicateType::All => {
+                    if arr.is_empty() {
+                        return Ok(Value::Bool(false));
+                    }
+                    let result = arr.iter()
+                        .all(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
+                    Ok(Value::Bool(result))
+                },
+                ArrayPredicateType::Some => {
+                    if arr.is_empty() {
+                        return Ok(Value::Bool(false));
+                    }
+                    let result = arr.iter()
+                        .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
+                    Ok(Value::Bool(result))
+                },
+                ArrayPredicateType::None => {
+                    if arr.is_empty() {
+                        return Ok(Value::Bool(true));
+                    }
+                    let result = arr.iter()
+                        .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()));
+                    Ok(Value::Bool(!result))
+                },
+                _ => unreachable!()
+            }
+        } else {
+            Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 }

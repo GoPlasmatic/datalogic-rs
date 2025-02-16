@@ -30,6 +30,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_add(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {
@@ -56,6 +57,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_multiply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {
@@ -88,6 +90,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_subtract(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {
@@ -148,6 +151,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_divide(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {
@@ -231,6 +235,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_modulo(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(_) => Err(Error::Custom("Invalid Arguments".to_string())),
@@ -258,6 +263,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_max(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {
@@ -292,6 +298,7 @@ impl ArithmeticOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_min(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
         match arg {
             ArgType::Unary(rule) => {

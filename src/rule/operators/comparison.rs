@@ -57,48 +57,37 @@ impl CompareOperator {
             });
         }
         
+        if matches!(compare_type, GreaterThan | LessThan | GreaterThanEqual | LessThanEqual) {
+            let l_num = left.coerce_to_number()?;
+            let r_num = right.coerce_to_number()?;
+            return Ok(match compare_type {
+                GreaterThan => l_num > r_num,
+                LessThan => l_num < r_num,
+                GreaterThanEqual => l_num >= r_num,
+                LessThanEqual => l_num <= r_num,
+                _ => unreachable!()
+            });
+        }
+
         match compare_type {
-            GreaterThan | LessThan | GreaterThanEqual | LessThanEqual => {
+            Equals | NotEquals => {
+                if let (Value::Number(n1), Value::Number(n2)) = (left, right) {
+                    return Ok(match compare_type {
+                        Equals => n1 == n2,
+                        NotEquals => n1 != n2,
+                        _ => unreachable!()
+                    });
+                }
+
                 let l_num = left.coerce_to_number()?;
                 let r_num = right.coerce_to_number()?;
                 return Ok(match compare_type {
-                    GreaterThan => l_num > r_num,
-                    LessThan => l_num < r_num,
-                    GreaterThanEqual => l_num >= r_num,
-                    LessThanEqual => l_num <= r_num,
+                    Equals => l_num == r_num,
+                    NotEquals => l_num != r_num,
                     _ => unreachable!()
                 });
             }
-            _ => {}
-        }
-    
-        match (left, right) {
-            (Value::Number(n1), Value::Number(n2)) => {
-                Ok(match compare_type {
-                    Equals => n1 == n2,
-                    NotEquals => n1 != n2,
-                    _ => unreachable!()
-                })
-            }
-            (Value::String(s1), Value::String(s2)) => {
-                Ok(match compare_type {
-                    Equals => s1 == s2,
-                    NotEquals => s1 != s2,
-                    _ => unreachable!()
-                })
-            }
-            (Value::Bool(b1), Value::Bool(b2)) => {
-                Ok(match compare_type {
-                    Equals => b1 == b2,
-                    NotEquals => b1 != b2,
-                    _ => unreachable!()
-                })
-            }
-            _ => match compare_type {
-                Equals => Ok(left.coerce_to_number()? == right.coerce_to_number()?),
-                NotEquals => Ok(left.coerce_to_number()? != right.coerce_to_number()?),
-                _ => unreachable!()
-            }
+            _ => unreachable!()
         }
     }
 }

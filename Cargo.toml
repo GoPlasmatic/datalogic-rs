@@ -1,8 +1,8 @@
 [package]
 name = "datalogic-rs"
-version = "2.0.16"
+version = "2.0.19"
 edition = "2021"
-exclude = ["/xsd", "/xml", ".DS_Store", "/target", ".vscode", "generate.sh"]
+exclude = [".DS_Store", "/target", ".vscode", ".github"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
