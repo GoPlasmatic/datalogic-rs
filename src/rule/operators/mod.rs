@@ -142,35 +142,39 @@ fn is_current_var(var_name: &Rule) -> bool {
 }
 
 pub fn is_flat_arithmetic_predicate(rule: &Rule) -> bool {
-    if let Rule::Arithmetic(op_type, args) = rule {
-        if let ArgType::Multiple(args) = args {
-            if args.len() == 2 {
-                // Check if operation is arithmetic
-                if !matches!(op_type, 
-                    ArithmeticType::Add | 
-                    ArithmeticType::Subtract | 
-                    ArithmeticType::Multiply | 
-                    ArithmeticType::Divide | 
-                    ArithmeticType::Modulo) {
-                    return false;
-                }
+    if let Rule::Arithmetic(op_type, ArgType::Multiple(args)) = rule {
+        if args.len() == 2 {
+            // Check if operation is arithmetic
+            if !matches!(op_type, 
+                ArithmeticType::Add | 
+                ArithmeticType::Subtract | 
+                ArithmeticType::Multiply | 
+                ArithmeticType::Divide | 
+                ArithmeticType::Modulo
+            ) {
+                return false;
+            }
 
-                // Check if we have one current/current.* and one accumulator
-                let (has_current, has_accumulator) = args.iter().fold((false, false), |mut acc, arg| {
+            // Check if we have one current/current.* and one accumulator using array_windows
+            let (has_current, has_accumulator) = args.iter().fold(
+                (false, false),
+                |mut acc, arg| {
                     if let Rule::Var(var_name, _) = arg {
-                        if is_current_var(var_name) {
-                            acc.0 = true;
-                        } else if let Rule::Value(Value::String(name)) = &**var_name {
-                            if name == "accumulator" {
+                        match &**var_name {
+                            Rule::Value(Value::String(name)) if name == "accumulator" => {
                                 acc.1 = true;
                             }
+                            _ if is_current_var(var_name) => {
+                                acc.0 = true;
+                            }
+                            _ => {}
                         }
                     }
                     acc
-                });
+                }
+            );
 
-                return has_current && has_accumulator;
-            }
+            return has_current && has_accumulator;
         }
     }
     false

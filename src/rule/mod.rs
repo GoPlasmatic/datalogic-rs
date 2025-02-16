@@ -486,17 +486,15 @@ impl Rule {
                         let initial = args.get(2).cloned().unwrap_or(Rule::Value(Value::Null));
 
                         // Try to desugar if predicate is a simple arithmetic operation
-                        if let Rule::Arithmetic(op, args ) = &predicate {
-                            if let ArgType::Multiple(args) = args {
-                                if args.len() == 2 && is_flat_arithmetic_predicate(&predicate) {
-                                    let merged = Rule::Merge(vec![initial, array]);
+                        if let Rule::Arithmetic(op, ArgType::Multiple(args)) = &predicate {
+                            if args.len() == 2 && is_flat_arithmetic_predicate(&predicate) {
+                                let merged = Rule::Merge(vec![initial, array]);
 
-                                    // Convert to direct arithmetic operation
-                                    return Ok(Rule::Arithmetic(
-                                        *op,
-                                        ArgType::Unary(Box::new(merged))
-                                    ));
-                                }
+                                // Convert to direct arithmetic operation
+                                return Ok(Rule::Arithmetic(
+                                    *op,
+                                    ArgType::Unary(Box::new(merged))
+                                ));
                             }
                         }
 
