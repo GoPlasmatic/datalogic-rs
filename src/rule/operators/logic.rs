@@ -29,6 +29,7 @@ impl LogicOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_and(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(false)),
@@ -45,6 +46,7 @@ impl LogicOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_or(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(false)),
@@ -61,6 +63,7 @@ impl LogicOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_not(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(true)),
@@ -71,6 +74,7 @@ impl LogicOperator {
         }
     }
 
+    #[inline(always)]
     fn apply_double_bang(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
         match args.len() {
             0 => Ok(Value::Bool(false)),

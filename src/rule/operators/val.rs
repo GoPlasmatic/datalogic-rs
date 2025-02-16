@@ -111,7 +111,7 @@ impl ExistsOperator {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn access_value<'a>(data: &'a Value, key: &Value) -> Option<&'a Value> {
     match (data, key) {
         (Value::Null, _) => None,

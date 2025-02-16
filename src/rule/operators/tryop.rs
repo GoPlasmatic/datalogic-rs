@@ -37,6 +37,7 @@ impl TryOperator {
         }
     }
 
+    #[inline(always)]
     fn normalize_error(&self, error: &Error) -> String {
         let error_str = error.to_string();
         

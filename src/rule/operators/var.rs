@@ -10,7 +10,6 @@ const ERR_INVALID_PATH: &str = "Invalid path";
 pub struct VarOperator;
 
 impl VarOperator {
-    #[inline]
     pub fn apply(&self, path: &Rule, default: Option<&Rule>, data: &Value) -> JsonLogicResult {
         let path_value = match path {
             Rule::Value(v) => v,
@@ -38,7 +37,7 @@ impl VarOperator {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn get_array_direct(&self, data: &Value, idx: usize) -> Result<Value, Error> {
         match data {
             Value::Array(arr) => arr.get(idx).cloned()
@@ -47,7 +46,7 @@ impl VarOperator {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn get_value_ref<'a>(&self, data: &'a Value, path: &str) -> Result<&'a Value, Error> {
         // Existing fast paths...
         if path.is_empty() {
@@ -72,7 +71,7 @@ impl VarOperator {
         Ok(current)
     }
 
-    #[inline]
+    #[inline(always)]
     fn get_array_index<'a>(&self, arr: &'a [Value], idx_str: &str) -> Result<&'a Value, Error> {
         idx_str.parse::<usize>()
             .map_err(|_| Error::InvalidArguments(ERR_INVALID_INDEX.into()))
@@ -80,7 +79,7 @@ impl VarOperator {
                 .ok_or_else(|| Error::InvalidArguments(ERR_OUT_OF_BOUNDS.into())))
     }
 
-    #[inline]
+    #[inline(always)]
     fn get_simple_key<'a>(&self, data: &'a Value, key: &str) -> Result<&'a Value, Error> {
         match data {
             Value::Object(obj) => obj.get(key)

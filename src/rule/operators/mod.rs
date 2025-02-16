@@ -127,6 +127,7 @@ impl ValueConvert for f64 {
     }
 }
 
+#[inline(always)]
 fn is_current_var(var_name: &Rule) -> bool {
     match var_name {
         Rule::Value(Value::String(name)) => name == "current",
@@ -141,6 +142,7 @@ fn is_current_var(var_name: &Rule) -> bool {
     }
 }
 
+#[inline]
 pub fn is_flat_arithmetic_predicate(rule: &Rule) -> bool {
     if let Rule::Arithmetic(op_type, ArgType::Multiple(args)) = rule {
         if args.len() == 2 {

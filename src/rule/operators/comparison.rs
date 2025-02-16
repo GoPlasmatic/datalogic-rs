@@ -32,6 +32,7 @@ impl CompareOperator {
         }
     }
 
+    #[inline]
     fn compare(&self, left: &Value, right: &Value, compare_type: &CompareType) -> Result<bool, Error> {
         use CompareType::*;
         
@@ -81,11 +82,11 @@ impl CompareOperator {
 
                 let l_num = left.coerce_to_number()?;
                 let r_num = right.coerce_to_number()?;
-                return Ok(match compare_type {
+                Ok(match compare_type {
                     Equals => l_num == r_num,
                     NotEquals => l_num != r_num,
                     _ => unreachable!()
-                });
+                })
             }
             _ => unreachable!()
         }

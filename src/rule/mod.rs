@@ -91,7 +91,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    #[inline(always)]
+    #[inline]
     fn is_static(&self) -> bool {
         match self {
             Rule::Value(_) => true,
@@ -613,9 +613,7 @@ impl Rule {
 
     pub fn apply(&self, data: &Value) -> JsonLogicResult {
         match self {
-            Rule::Value(value) => {
-                Ok(value.clone())
-            },
+            Rule::Value(value) => Ok(value.clone()),
             Rule::Array(rules) => Ok(Value::Array(
                 rules.iter()
                     .map(|rule| rule.apply(data))
@@ -626,9 +624,7 @@ impl Rule {
             Rule::Exists(path) => EXISTS_OP.apply(path, data),
 
             Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
-            Rule::Logic(op, args) => {
-                LOGIC_OP.apply(args, data, op)
-            },
+            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
             Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
 
             Rule::If(args) => IF_OP.apply(args, data),
@@ -649,10 +645,7 @@ impl Rule {
             Rule::Substr(string, start, length) => SUBSTR_OP.apply(string, start, length.as_deref(), data),
 
             Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
-            Rule::Throw(rule) => {
-                let value = rule.apply(data)?;
-                Err(Error::Custom(value.to_string()))
-            }
+            Rule::Throw(rule) => Err(Error::Custom(rule.apply(data)?.to_string())),
             Rule::Try(args) => TRY_OP.apply(args, data),
         }
     }
