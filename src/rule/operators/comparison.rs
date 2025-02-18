@@ -31,7 +31,6 @@ impl CompareOperator {
         }
     }
 
-    #[inline]
     fn compare<'a>(&self, left: &Value, right: &Value, compare_type: &CompareType) -> Result<bool, Error> {
         use CompareType::*;
         

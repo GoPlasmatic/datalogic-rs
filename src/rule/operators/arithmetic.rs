@@ -30,7 +30,6 @@ impl ArithmeticOperator {
         }
     }
 
-    #[inline]
     fn apply_add<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
@@ -57,7 +56,6 @@ impl ArithmeticOperator {
         }
     }
 
-    #[inline]
     fn apply_multiply<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
@@ -84,7 +82,6 @@ impl ArithmeticOperator {
         }
     }
 
-    #[inline]
     fn apply_subtract<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
@@ -139,7 +136,6 @@ impl ArithmeticOperator {
         }
     }
 
-    #[inline]
     fn apply_divide<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
@@ -220,7 +216,6 @@ impl ArithmeticOperator {
         }
     }
 
-    #[inline]
     fn apply_modulo<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(_) => Err(Error::Custom("Invalid Arguments".to_string())),
@@ -248,7 +243,6 @@ impl ArithmeticOperator {
         }
     }
     
-    #[inline]
     fn apply_max<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
@@ -284,7 +278,6 @@ impl ArithmeticOperator {
         }
     }
     
-    #[inline]
     fn apply_min<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {

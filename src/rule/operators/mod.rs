@@ -37,7 +37,6 @@ trait ValueCoercion {
 }
 
 impl ValueCoercion for Value {
-    #[inline(always)]
     fn coerce_to_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
@@ -52,7 +51,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn coerce_to_number(&self) -> Result<f64, Error> {
         match self {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
@@ -64,7 +62,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn coerce_to_string(&self) -> String {
         match self {
             Value::String(s) => s.clone(),
@@ -82,7 +79,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn coerce_append(result: &mut String, value: &Value) {
         match value {
             Value::String(s) => result.push_str(s),
@@ -98,7 +94,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn is_null_value(&self) -> bool {
         match self {
             Value::Bool(_) => false,
@@ -116,7 +111,6 @@ trait ValueConvert {
 }
 
 impl ValueConvert for f64 {
-    #[inline(always)]
     fn to_value(&self) -> Value {
         const ZERO_FRACT: f64 = 0.0;
         if self.fract() == ZERO_FRACT {

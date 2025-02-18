@@ -46,7 +46,6 @@ impl VarOperator {
         }
     }
 
-    #[inline(always)]
     fn get_value_ref<'a>(&self, data: &'a Value, path: &str) -> Result<&'a Value, Error> {
         // Existing fast paths...
         if path.is_empty() {
@@ -74,13 +73,11 @@ impl VarOperator {
         Ok(current)
     }
 
-    #[inline(always)]
     fn get_array_index<'a>(&self, arr: &'a [Value], idx: usize) -> Result<&'a Value, Error> {
         arr.get(idx)
             .ok_or_else(|| Error::InvalidArguments(ERR_OUT_OF_BOUNDS.into()))
     }
 
-    #[inline(always)]
     fn get_simple_key<'a>(&self, data: &'a Value, key: &str) -> Result<&'a Value, Error> {
         match data {
             Value::Object(obj) => obj.get(key)

@@ -75,7 +75,7 @@ impl ReduceOperator {
 
                 for current in arr {
                     let mut context = serde_json::Map::with_capacity(2);
-                    context.insert("current".to_string(), current.clone());
+                    context.insert("current".to_string(), current.to_owned());
                     context.insert("accumulator".to_string(), accumulator);
                     
                     accumulator = reducer_rule.apply(&Value::Object(context))?.into_owned();

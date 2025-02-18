@@ -14,7 +14,7 @@ impl TryOperator {
                     let current_data = if let Some(err) = &last_error {
                         json!({ "type": err })
                     } else {
-                        data.clone()
+                        data.to_owned()
                     };
     
                     match rule.apply(&current_data) {
@@ -38,7 +38,6 @@ impl TryOperator {
         }
     }
 
-    #[inline(always)]
     fn normalize_error(&self, error: &Error) -> String {
         let error_str = error.to_string();
         

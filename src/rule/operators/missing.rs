@@ -11,7 +11,6 @@ pub struct MissingOperator;
 pub struct MissingSomeOperator;
 
 impl MissingOperator {
-    #[inline(always)]
     fn process_keys<'a>(value: &'a Value) -> Vec<Cow<'a, str>> {
         match value {
             Value::String(s) => vec![Cow::Borrowed(s.as_str())],
@@ -31,7 +30,6 @@ impl MissingOperator {
         }
     }
 
-    #[inline(always)]
     fn check_path(data: &Value, path: &str) -> bool {
         let mut current = data;
         
@@ -103,7 +101,7 @@ impl MissingSomeOperator {
                 for key in keys {
                     if let Value::String(key_str) = key {
                         if MissingOperator::check_path(data, key_str) {
-                            missing.push(Value::String(key_str.clone()));
+                            missing.push(Value::String(key_str.to_owned()));
                         } else {
                             found_count += 1;
                             if found_count >= min_required {

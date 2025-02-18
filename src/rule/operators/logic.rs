@@ -29,7 +29,6 @@ impl LogicOperator {
         }
     }
 
-    #[inline(always)]
     fn apply_and<'a>(&self, args: &'a [Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match args.len() {
             0 => Ok(Cow::Owned(Value::Bool(false))),
@@ -46,7 +45,6 @@ impl LogicOperator {
         }
     }
 
-    #[inline(always)]
     fn apply_or<'a>(&self, args: &'a [Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match args.len() {
             0 => Ok(Cow::Owned(Value::Bool(false))),
@@ -63,7 +61,6 @@ impl LogicOperator {
         }
     }
 
-    #[inline(always)]
     fn apply_not<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match args.len() {
             0 => Ok(Cow::Owned(Value::Bool(true))),
@@ -74,7 +71,6 @@ impl LogicOperator {
         }
     }
 
-    #[inline(always)]
     fn apply_double_bang<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match args.len() {
             0 => Ok(Cow::Owned(Value::Bool(false))),

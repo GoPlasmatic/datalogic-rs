@@ -92,7 +92,6 @@ pub enum Rule {
 }
 
 impl Rule {
-    #[inline]
     fn is_static(&self) -> bool {
         match self {
             Rule::Value(_) => true,
@@ -169,7 +168,6 @@ impl Rule {
         }
     }
 
-    #[inline]
     fn optimize_args(args: &[Rule]) -> Result<Vec<Rule>, Error> {
         args.iter()
             .cloned()
@@ -177,7 +175,6 @@ impl Rule {
             .collect()
     }
 
-    #[inline]
     fn optimize_rule(rule: Rule) -> Result<Rule, Error> {
         match rule {
             // Never optimize these
