@@ -21,17 +21,13 @@ impl MapOperator {
         let array_value = array_rule.apply(data)?;
         match array_value.as_ref() {
             Value::Array(arr) => {
-                let results = arr
-                    .iter()
-                    .map(|item| mapper.apply(item))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter()
-                    .map(|cow| cow.into_owned())
-                    .collect();
-                
+                let mut results = Vec::with_capacity(arr.len());
+                for item in arr {
+                    results.push(mapper.apply(item)?.into_owned());
+                }
                 Ok(Cow::Owned(Value::Array(results)))
             },
-            _ => Ok(Cow::Owned(Value::Array(Vec::with_capacity(0))))
+            _ => Ok(Cow::Owned(Value::Array(Vec::new())))
         }
     }
 }

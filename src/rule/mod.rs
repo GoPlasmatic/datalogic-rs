@@ -611,28 +611,18 @@ impl Rule {
 
     pub fn apply<'a>(&'a self, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match self {
-            Rule::Value(value) => Ok(Cow::Borrowed(value)),
+            Rule::Value(value) => return Ok(Cow::Borrowed(value)),
             Rule::Array(rules) => {
-                let results = rules.iter()
-                    .map(|rule| rule.apply(data))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter()
-                    .map(|cow| cow.into_owned())
-                    .collect();
-                Ok(Cow::Owned(Value::Array(results)))
-            },
+                let mut results = Vec::with_capacity(rules.len());
+                for rule in rules {
+                    results.push(rule.apply(data)?.into_owned());
+                }
+                return Ok(Cow::Owned(Value::Array(results)));
+            }
             Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
             Rule::Val(path) => VAL_OP.apply(path, data),
             Rule::Exists(path) => EXISTS_OP.apply(path, data),
-    
-            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
-            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
-            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
-    
-            Rule::If(args) => IF_OP.apply(args, data),
-            Rule::Ternary(args) => TERNARY_OP.apply(args, data),
-            Rule::Coalesce(args) => COALESCE_OP.apply(args, data),
-    
+
             Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
             Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
             Rule::Reduce(array_rule, reducer_rule, initial_rule) => 
@@ -640,15 +630,23 @@ impl Rule {
             Rule::Merge(args) => MERGE_OP.apply(args, data),
             Rule::ArrayPredicate(op, array_rule, predicate) => 
                 ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op),
+
+            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
+            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
+            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
     
-            Rule::Missing(args) => MISSING_OP.apply(args, data),
-            Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
-            
+            Rule::If(args) => IF_OP.apply(args, data),
+            Rule::Ternary(args) => TERNARY_OP.apply(args, data),
+            Rule::Coalesce(args) => COALESCE_OP.apply(args, data),
+
             Rule::In(search, target) => IN_OP.apply(search, target, data),
             Rule::Cat(args) => CAT_OP.apply(args, data),
             Rule::Substr(string, start, length) => 
                 SUBSTR_OP.apply(string, start, length.as_deref(), data),
-    
+
+            Rule::Missing(args) => MISSING_OP.apply(args, data),
+            Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
+            
             Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
             Rule::Throw(rule) => {
                 let result = rule.apply(data)?;

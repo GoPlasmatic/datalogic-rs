@@ -12,6 +12,21 @@ pub struct VarOperator;
 
 impl VarOperator {
     pub fn apply<'a>(&'a self, path: &Rule, default: Option<&'a Rule>, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+        if let Rule::Value(Value::String(s)) = path {
+            if s.is_empty() {
+                return Ok(Cow::Borrowed(data));
+            }
+            // Optimize simple path lookup
+            if !s.contains('.') {
+                return self.get_simple_key(data, s)
+                    .map(Cow::Borrowed)
+                    .or_else(|_| match default {
+                        Some(d) => d.apply(data),
+                        None => Ok(Cow::Owned(Value::Null))
+                    });
+            }
+        }
+
         let path_value = path.apply(data)?;
 
         // Fast path for numbers - direct array access
@@ -28,11 +43,6 @@ impl VarOperator {
                 }
                 return Err(Error::InvalidArguments(ERR_INVALID_INDEX.into()));
             }
-        }
-
-        // Fast path for empty path
-        if matches!(&*path_value, Value::String(s) if s.is_empty()) {
-            return Ok(Cow::Borrowed(data));
         }
 
         // Main path resolution

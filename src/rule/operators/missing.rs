@@ -31,6 +31,18 @@ impl MissingOperator {
     }
 
     fn check_path(data: &Value, path: &str) -> bool {
+        if !path.contains('.') {
+            return match data {
+                Value::Object(obj) => !obj.contains_key(path),
+                Value::Array(arr) => {
+                    match path.parse::<usize>() {
+                        Ok(idx) => idx >= arr.len(),
+                        Err(_) => true
+                    }
+                }
+                _ => true
+            };
+        }
         let mut current = data;
         
         for part in path.split('.') {
