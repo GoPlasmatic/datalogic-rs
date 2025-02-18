@@ -19,30 +19,41 @@ impl VarOperator {
         // Fast path for numbers - direct array access
         if let Value::Number(n) = path_value {
             if let Some(idx) = n.as_u64() {
-                return self.get_array_direct(data, idx as usize)
-                    .or_else(|_| default.map_or(Ok(Value::Null), |d| d.apply(data)));
+                if let Value::Array(arr) = data {
+                    return match self.get_array_index(arr, &idx.to_string()) {
+                        Ok(value) => match value {
+                            Value::String(s) => Ok(Value::String(s.clone())),
+                            Value::Number(n) => Ok(Value::Number(n.clone())),
+                            Value::Bool(b) => Ok(Value::Bool(*b)),
+                            Value::Null => Ok(Value::Null),
+                            _ => Ok(value.clone())
+                        },
+                        Err(_) => default.map_or(Ok(Value::Null), |d| d.apply(data))
+                    };
+                }
+                return Err(Error::InvalidArguments(ERR_INVALID_INDEX.into()));
             }
         }
 
         // Fast path for empty path
         if matches!(path_value, Value::String(s) if s.is_empty()) {
-            return Ok(data.clone());
+            return match data {
+                Value::Object(_) | Value::Array(_) => Ok(data.clone()),
+                _ => Ok(data.to_owned()) // More efficient for primitive types
+            };
         }
 
         // Main path resolution
         let path_str = path_value.as_str().unwrap_or("");
         match self.get_value_ref(data, path_str) {
-            Ok(value) => Ok(value.clone()),
+            Ok(value) => match value {
+                Value::String(s) => Ok(Value::String(s.clone())),
+                Value::Number(n) => Ok(Value::Number(n.clone())),
+                Value::Bool(b) => Ok(Value::Bool(*b)),
+                Value::Null => Ok(Value::Null),
+                _ => Ok(value.clone()) // Fall back to clone for complex types
+            },
             Err(_) => default.map_or(Ok(Value::Null), |d| d.apply(data))
-        }
-    }
-
-    #[inline(always)]
-    fn get_array_direct(&self, data: &Value, idx: usize) -> Result<Value, Error> {
-        match data {
-            Value::Array(arr) => arr.get(idx).cloned()
-                .ok_or_else(|| Error::InvalidArguments(ERR_OUT_OF_BOUNDS.into())),
-            _ => Err(Error::InvalidArguments(ERR_INVALID_INDEX.into()))
         }
     }
 
