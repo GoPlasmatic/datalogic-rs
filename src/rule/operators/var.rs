@@ -1,6 +1,7 @@
-use crate::{Error, JsonLogicResult};
+use crate::Error;
 use super::Rule;
 use serde_json::Value;
+use std::borrow::Cow;
 
 const ERR_NOT_FOUND: &str = "Variable not found: ";
 const ERR_OUT_OF_BOUNDS: &str = "Index out of bounds: ";
@@ -10,25 +11,19 @@ const ERR_INVALID_PATH: &str = "Invalid path";
 pub struct VarOperator;
 
 impl VarOperator {
-    pub fn apply(&self, path: &Rule, default: Option<&Rule>, data: &Value) -> JsonLogicResult {
-        let path_value = match path {
-            Rule::Value(v) => v,
-            _ => &path.apply(data)?
-        };
+    pub fn apply<'a>(&'a self, path: &Rule, default: Option<&'a Rule>, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+        let path_value = path.apply(data)?;
 
         // Fast path for numbers - direct array access
-        if let Value::Number(n) = path_value {
+        if let Value::Number(n) = &*path_value {
             if let Some(idx) = n.as_u64() {
                 if let Value::Array(arr) = data {
-                    return match self.get_array_index(arr, &idx.to_string()) {
-                        Ok(value) => match value {
-                            Value::String(s) => Ok(Value::String(s.clone())),
-                            Value::Number(n) => Ok(Value::Number(n.clone())),
-                            Value::Bool(b) => Ok(Value::Bool(*b)),
-                            Value::Null => Ok(Value::Null),
-                            _ => Ok(value.clone())
-                        },
-                        Err(_) => default.map_or(Ok(Value::Null), |d| d.apply(data))
+                    return match self.get_array_index(arr, idx as usize) {
+                        Ok(value) => Ok(Cow::Borrowed(value)),
+                        Err(_) => match default {
+                            Some(d) => d.apply(data),
+                            None => Ok(Cow::Owned(Value::Null))
+                        }
                     };
                 }
                 return Err(Error::InvalidArguments(ERR_INVALID_INDEX.into()));
@@ -36,24 +31,18 @@ impl VarOperator {
         }
 
         // Fast path for empty path
-        if matches!(path_value, Value::String(s) if s.is_empty()) {
-            return match data {
-                Value::Object(_) | Value::Array(_) => Ok(data.clone()),
-                _ => Ok(data.to_owned()) // More efficient for primitive types
-            };
+        if matches!(&*path_value, Value::String(s) if s.is_empty()) {
+            return Ok(Cow::Borrowed(data));
         }
 
         // Main path resolution
-        let path_str = path_value.as_str().unwrap_or("");
+        let path_str = path_value.as_ref().as_str().unwrap_or("");
         match self.get_value_ref(data, path_str) {
-            Ok(value) => match value {
-                Value::String(s) => Ok(Value::String(s.clone())),
-                Value::Number(n) => Ok(Value::Number(n.clone())),
-                Value::Bool(b) => Ok(Value::Bool(*b)),
-                Value::Null => Ok(Value::Null),
-                _ => Ok(value.clone()) // Fall back to clone for complex types
-            },
-            Err(_) => default.map_or(Ok(Value::Null), |d| d.apply(data))
+            Ok(value) => Ok(Cow::Borrowed(value)),
+            Err(_) => match default {
+                Some(d) => d.apply(data),
+                None => Ok(Cow::Owned(Value::Null))
+            }
         }
     }
 
@@ -75,7 +64,10 @@ impl VarOperator {
             current = match current {
                 Value::Object(obj) => obj.get(part)
                     .ok_or_else(|| Error::InvalidArguments(ERR_NOT_FOUND.into()))?,
-                Value::Array(arr) => self.get_array_index(arr, part)?,
+                Value::Array(arr) => {
+                    let idx = part.parse::<usize>().map_err(|_| Error::InvalidArguments(ERR_INVALID_INDEX.into()))?;
+                    self.get_array_index(arr, idx)?
+                },
                 _ => return Err(Error::InvalidArguments(ERR_INVALID_PATH.into()))
             };
         }
@@ -83,11 +75,9 @@ impl VarOperator {
     }
 
     #[inline(always)]
-    fn get_array_index<'a>(&self, arr: &'a [Value], idx_str: &str) -> Result<&'a Value, Error> {
-        idx_str.parse::<usize>()
-            .map_err(|_| Error::InvalidArguments(ERR_INVALID_INDEX.into()))
-            .and_then(|idx| arr.get(idx)
-                .ok_or_else(|| Error::InvalidArguments(ERR_OUT_OF_BOUNDS.into())))
+    fn get_array_index<'a>(&self, arr: &'a [Value], idx: usize) -> Result<&'a Value, Error> {
+        arr.get(idx)
+            .ok_or_else(|| Error::InvalidArguments(ERR_OUT_OF_BOUNDS.into()))
     }
 
     #[inline(always)]
@@ -95,7 +85,10 @@ impl VarOperator {
         match data {
             Value::Object(obj) => obj.get(key)
                 .ok_or_else(|| Error::InvalidArguments(ERR_NOT_FOUND.into())),
-            Value::Array(arr) => self.get_array_index(arr, key),
+            Value::Array(arr) => {
+                let idx = key.parse::<usize>().map_err(|_| Error::InvalidArguments(ERR_INVALID_INDEX.into()))?;
+                self.get_array_index(arr, idx)
+            },
             _ => Err(Error::InvalidArguments(ERR_INVALID_PATH.into()))
         }
     }

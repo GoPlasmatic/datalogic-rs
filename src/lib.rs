@@ -71,6 +71,6 @@ impl JsonLogic {
     /// assert_eq!(result, json!(true));
     /// ```
     pub fn apply(rule: &Rule, data: &Value) -> JsonLogicResult {
-        rule.apply(data)
+        rule.apply(data).map(|cow| cow.into_owned())
     }
 }

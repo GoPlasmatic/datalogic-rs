@@ -1,8 +1,8 @@
 use super::{ValueCoercion, ValueConvert};
 use crate::rule::ArgType;
 use crate::Error;
-use crate::JsonLogicResult;
 use serde_json::Value;
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArithmeticType {
@@ -18,7 +18,7 @@ pub enum ArithmeticType {
 pub struct ArithmeticOperator;
 
 impl ArithmeticOperator {
-    pub fn apply(&self, arg: &ArgType, data: &Value, op_type: &ArithmeticType) -> JsonLogicResult {
+    pub fn apply<'a>(&self, arg: &ArgType, data: &'a Value, op_type: &ArithmeticType) -> Result<Cow<'a, Value>, Error> {
         match op_type {
             ArithmeticType::Add => self.apply_add(arg, data),
             ArithmeticType::Multiply => self.apply_multiply(arg, data),
@@ -31,53 +31,47 @@ impl ArithmeticOperator {
     }
 
     #[inline]
-    fn apply_add(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_add<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {  // Dereference Cow to get &Value
                     Value::Array(arr) => arr
                         .iter()
                         .try_fold(0.0, |acc, v| Ok(acc + v.coerce_to_number()?))
-                        .map(|sum| sum.to_value()),
-                    _ => Ok(value.coerce_to_number()?.to_value()),
+                        .map(|sum| Cow::Owned(sum.to_value())),
+                    _ => value.coerce_to_number().map(|n| Cow::Owned(n.to_value())),
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
-                0 => Ok(Value::Number(0.into())),
+                0 => Ok(Cow::Owned(Value::Number(0.into()))),
                 _ => {
                     let sum = rules.iter().try_fold(0.0, |acc, rule| {
                         let value = rule.apply(data)?;
                         let num = value.coerce_to_number()?;
                         Ok(acc + num)
                     })?;
-                    Ok(sum.to_value())
+                    Ok(Cow::Owned(sum.to_value()))
                 }
             },
         }
     }
 
     #[inline]
-    fn apply_multiply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_multiply<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => arr
                         .iter()
-                        .try_fold(1.0, |acc, v| {
-                            let num = v.coerce_to_number()?;
-                            Ok(acc * num)
-                        })
-                        .map(|product| product.to_value()),
-                    _ => {
-                        let num = value.coerce_to_number()?;
-                        Ok(num.to_value())
-                    }
+                        .try_fold(1.0, |acc, v| Ok(acc * v.coerce_to_number()?))
+                        .map(|product| Cow::Owned(product.to_value())),
+                    _ => value.coerce_to_number().map(|n| Cow::Owned(n.to_value())),
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
-                0 => Ok(Value::Number(1.into())),
+                0 => Ok(Cow::Owned(Value::Number(1.into()))),
                 _ => rules
                     .iter()
                     .try_fold(1.0, |acc, rule| {
@@ -85,78 +79,72 @@ impl ArithmeticOperator {
                         let num = value.coerce_to_number()?;
                         Ok(acc * num)
                     })
-                    .map(|product| product.to_value()),
+                    .map(|product| Cow::Owned(product.to_value())),
             },
         }
     }
 
     #[inline]
-    fn apply_subtract(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_subtract<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => {
                         if arr.is_empty() {
                             return Err(Error::Custom("Invalid Arguments".to_string()));
-                        } else if arr.len() == 1 {
-                            let num = arr[0].coerce_to_number()?;
-                            return Ok((-num).to_value());
                         }
-
+                        
+                        if arr.len() == 1 {
+                            let num = arr[0].coerce_to_number()?;
+                            return Ok(Cow::Owned((-num).to_value()));
+                        }
+    
                         let mut iter = arr.iter();
-                        // Get first number
-                        let first = iter
-                            .next()
-                            .ok_or_else(|| {
-                                Error::InvalidArguments(
-                                    "Subtract operation requires at least one argument".to_string(),
-                                )
-                            })?
+                        let first = iter.next()
+                            .ok_or_else(|| Error::InvalidArguments(
+                                "Subtract operation requires at least one argument".to_string()
+                            ))?
                             .coerce_to_number()?;
-
-                        // Subtract remaining numbers
-                        let result = iter.try_fold(first, |acc, v| {
+    
+                        iter.try_fold(first, |acc, v| {
                             let num = v.coerce_to_number()?;
                             Ok(acc - num)
-                        })?;
-
-                        Ok(result.to_value())
+                        })
+                        .map(|result| Cow::Owned(result.to_value()))
                     }
-                    _ => {
-                        let num = value.coerce_to_number()?;
-                        Ok((-num).to_value())
-                    }
+                    _ => value.coerce_to_number()
+                        .map(|num| Cow::Owned((-num).to_value()))
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
                 0 => Err(Error::Custom("Invalid Arguments".to_string())),
                 1 => {
                     let value = rules[0].apply(data)?;
-                    let num = value.coerce_to_number()?;
-                    Ok((-num).to_value())
+                    value.coerce_to_number()
+                        .map(|num| Cow::Owned((-num).to_value()))
                 }
                 _ => {
                     let first = rules[0].apply(data)?.coerce_to_number()?;
-
-                    let result = rules.iter().skip(1).try_fold(first, |acc, rule| {
-                        let value = rule.apply(data)?;
-                        let num = value.coerce_to_number()?;
-                        Ok(acc - num)
-                    })?;
-
-                    Ok(result.to_value())
+                    rules.iter()
+                        .skip(1)
+                        .try_fold(first, |acc, rule| {
+                            let value = rule.apply(data)?;
+                            let num = value.coerce_to_number()?;
+                            Ok(acc - num)
+                        })
+                        .map(|result| Cow::Owned(result.to_value()))
                 }
-            },
+            }
         }
     }
 
     #[inline]
-    fn apply_divide(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_divide<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => {
                         if arr.is_empty() {
                             return Err(Error::Custom("Invalid Arguments".to_string()));
@@ -165,21 +153,17 @@ impl ArithmeticOperator {
                             if num == 0.0 {
                                 return Err(Error::Custom("NaN".to_string()));
                             }
-                            return Ok((1.0 / num).to_value());
+                            return Ok(Cow::Owned((1.0 / num).to_value()));
                         }
-
+    
                         let mut iter = arr.iter();
-                        // Get first number
                         let first = iter
                             .next()
-                            .ok_or_else(|| {
-                                Error::InvalidArguments(
-                                    "Division requires at least one argument".to_string(),
-                                )
-                            })?
+                            .ok_or_else(|| Error::InvalidArguments(
+                                "Division requires at least one argument".to_string()
+                            ))?
                             .coerce_to_number()?;
-
-                        // Multiply remaining numbers
+    
                         let rest = iter.try_fold(1.0, |acc, v| {
                             let num = v.coerce_to_number()?;
                             if num == 0.0 {
@@ -188,17 +172,18 @@ impl ArithmeticOperator {
                                 Ok(acc * num)
                             }
                         })?;
-
-                        let result = first / rest;
-                        Ok(result.to_value())
+    
+                        if rest == 0.0 {
+                            return Err(Error::Custom("NaN".to_string()));
+                        }
+                        Ok(Cow::Owned((first / rest).to_value()))
                     }
                     _ => {
                         let num = value.coerce_to_number()?;
                         if num == 0.0 {
                             Err(Error::Custom("NaN".to_string()))
                         } else {
-                            let result = 1.0 / num;
-                            Ok(result.to_value())
+                            Ok(Cow::Owned((1.0 / num).to_value()))
                         }
                     }
                 }
@@ -211,13 +196,11 @@ impl ArithmeticOperator {
                     if num == 0.0 {
                         Err(Error::Custom("NaN".to_string()))
                     } else {
-                        let result = 1.0 / num;
-                        Ok(result.to_value())
+                        Ok(Cow::Owned((1.0 / num).to_value()))
                     }
                 }
                 _ => {
                     let first = rules[0].apply(data)?.coerce_to_number()?;
-
                     let rest = rules.iter().skip(1).try_fold(1.0, |acc, rule| {
                         let value = rule.apply(data)?;
                         let num = value.coerce_to_number()?;
@@ -227,16 +210,18 @@ impl ArithmeticOperator {
                             Ok(acc * num)
                         }
                     })?;
-
-                    let result = first / rest;
-                    Ok(result.to_value())
+    
+                    if rest == 0.0 {
+                        return Err(Error::Custom("NaN".to_string()));
+                    }
+                    Ok(Cow::Owned((first / rest).to_value()))
                 }
             },
         }
     }
 
     #[inline]
-    fn apply_modulo(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_modulo<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(_) => Err(Error::Custom("Invalid Arguments".to_string())),
             ArgType::Multiple(rules) => {
@@ -246,7 +231,7 @@ impl ArithmeticOperator {
                     }
                     _ => {
                         let first = rules[0].apply(data)?.coerce_to_number()?;
-
+    
                         let rest = rules.iter().skip(1).try_fold(first, |acc, rule| {
                             let value = rule.apply(data)?;
                             let num = value.coerce_to_number()?;
@@ -255,37 +240,38 @@ impl ArithmeticOperator {
                             }
                             Ok(acc % num)
                         })?;
-
-                        Ok(rest.to_value())
+    
+                        Ok(Cow::Owned(rest.to_value()))
                     }
                 }
             }
         }
     }
-
+    
     #[inline]
-    fn apply_max(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_max<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => {
                         if arr.is_empty() {
-                            return Ok(Value::Null);
+                            return Ok(Cow::Owned(Value::Null));
                         }
-
+    
                         arr.iter()
                             .try_fold(f64::NEG_INFINITY, |max, v| {
                                 let num = v.coerce_to_number()?;
                                 Ok(max.max(num))
                             })
-                            .map(|max| max.to_value())
+                            .map(|max| Cow::Owned(max.to_value()))
                     }
-                    _ => value.coerce_to_number().map(|num| num.to_value()),
+                    _ => value.coerce_to_number()
+                        .map(|num| Cow::Owned(num.to_value()))
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
-                0 => Ok(Value::Null),
+                0 => Ok(Cow::Owned(Value::Null)),
                 _ => rules
                     .iter()
                     .try_fold(f64::NEG_INFINITY, |max, rule| {
@@ -293,34 +279,35 @@ impl ArithmeticOperator {
                         let num = value.coerce_to_number()?;
                         Ok(max.max(num))
                     })
-                    .map(|max| max.to_value()),
+                    .map(|max| Cow::Owned(max.to_value()))
             },
         }
     }
-
+    
     #[inline]
-    fn apply_min(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    fn apply_min<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => {
                         if arr.is_empty() {
-                            return Ok(Value::Null);
+                            return Ok(Cow::Owned(Value::Null));
                         }
-
+    
                         arr.iter()
                             .try_fold(f64::INFINITY, |min, v| {
                                 let num = v.coerce_to_number()?;
                                 Ok(min.min(num))
                             })
-                            .map(|min| min.to_value())
+                            .map(|min| Cow::Owned(min.to_value()))
                     }
-                    _ => value.coerce_to_number().map(|num| num.to_value()),
+                    _ => value.coerce_to_number()
+                        .map(|num| Cow::Owned(num.to_value()))
                 }
             }
             ArgType::Multiple(rules) => match rules.len() {
-                0 => Ok(Value::Null),
+                0 => Ok(Cow::Owned(Value::Null)),
                 _ => rules
                     .iter()
                     .try_fold(f64::INFINITY, |min, rule| {
@@ -328,7 +315,7 @@ impl ArithmeticOperator {
                         let num = value.coerce_to_number()?;
                         Ok(min.min(num))
                     })
-                    .map(|min| min.to_value()),
+                    .map(|min| Cow::Owned(min.to_value()))
             },
         }
     }
