@@ -11,56 +11,28 @@ pub struct MissingOperator;
 pub struct MissingSomeOperator;
 
 impl MissingOperator {
-    fn process_keys<'a>(value: &'a Value) -> Vec<Cow<'a, str>> {
-        match value {
-            Value::String(s) => vec![Cow::Borrowed(s.as_str())],
-            Value::Array(arr) => {
-                let mut keys = Vec::with_capacity(arr.len());
-                for v in arr {
-                    match v {
-                        Value::String(s) => keys.push(Cow::Borrowed(s.as_str())),
-                        Value::Number(n) => keys.push(Cow::Owned(n.to_string())),
-                        _ => continue,
-                    }
-                }
-                keys
-            },
-            Value::Number(n) => vec![Cow::Owned(n.to_string())],
-            _ => Vec::new(),
-        }
-    }
-
     fn check_path(data: &Value, path: &str) -> bool {
-        if !path.contains('.') {
-            return match data {
-                Value::Object(obj) => !obj.contains_key(path),
-                Value::Array(arr) => {
-                    match path.parse::<usize>() {
-                        Ok(idx) => idx >= arr.len(),
-                        Err(_) => true
-                    }
-                }
-                _ => true
-            };
+        if !data.is_object() {
+            return true;
         }
+        if !path.contains('.') {
+            if let Value::Object(obj) = data {
+                return !obj.contains_key(path);
+            }
+            return true;
+        }
+
         let mut current = data;
         
         for part in path.split('.') {
-            match current {
-                Value::Object(obj) => {
-                    if let Some(val) = obj.get(part) {
-                        current = val;
-                    } else {
-                        return true;
-                    }
-                },
-                Value::Array(arr) => {
-                    match part.parse::<usize>() {
-                        Ok(index) if index < arr.len() => current = &arr[index],
-                        _ => return true,
-                    }
-                },
-                _ => return true,
+            if let Value::Object(obj) = current {
+                if let Some(val) = obj.get(part) {
+                    current = val;
+                } else {
+                    return true;
+                }
+            } else {
+                return true;
             }
         }
         false
@@ -75,13 +47,23 @@ impl MissingOperator {
         
         for arg in args {
             let key = arg.apply(data)?;
-            let key_list = Self::process_keys(&key);
-    
-            for key in key_list {
-                if Self::check_path(data, &key) {
-                    missing.push(Value::String(key.into_owned()));
-                }
-            }
+            match &*key {
+                Value::String(s) => {
+                    if Self::check_path(data, s) {
+                        missing.push(key.as_ref().clone());
+                    }
+                },
+                Value::Array(arr) => {
+                    for v in arr {
+                        if let Value::String(s) = v {
+                            if Self::check_path(data, s) {
+                                missing.push(v.clone());
+                            }
+                        }
+                    }
+                },
+                _ => continue,
+            };
         }
         
         Ok(Cow::Owned(Value::Array(missing)))
@@ -113,7 +95,7 @@ impl MissingSomeOperator {
                 for key in keys {
                     if let Value::String(key_str) = key {
                         if MissingOperator::check_path(data, key_str) {
-                            missing.push(Value::String(key_str.to_owned()));
+                            missing.push(key.clone());
                         } else {
                             found_count += 1;
                             if found_count >= min_required {
