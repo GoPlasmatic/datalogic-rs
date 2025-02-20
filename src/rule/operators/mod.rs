@@ -14,6 +14,7 @@ pub mod var;
 pub mod control;
 pub mod val;
 pub mod tryop;
+pub mod custom;
 
 pub use arithmetic::*;
 pub use array::*;
@@ -26,6 +27,7 @@ pub use var::*;
 pub use control::*;
 pub use val::*;
 pub use tryop::*;
+pub use custom::*;
 
 
 trait ValueCoercion {

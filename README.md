@@ -11,7 +11,8 @@ A **lightweight, high-performance** Rust implementation of [JSONLogic](http://js
 - 🏆 **Fully JSONLogic-compliant** (100% test coverage)
 - 🚀 **Fast & lightweight**: Zero-copy JSON parsing, minimal allocations
 - 🔒 **Thread-safe**: Designed for parallel execution
-- ⚡ **Optimized for production**: Static dispatch, caching, and rule optimization
+- ⚡ **Optimized for production**: Static dispatch and rule optimization
+- 🔌 **Extensible**: Support for custom operators
 
 ---
 
@@ -52,20 +53,58 @@ fn main() {
 
 ## **🛠️ Features**
 ### **✅ Supported Operations**
-| Category   | Operators |
-|------------|----------|
-| **Comparisons** | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=` |
-| **Logic**  | `and`, `or`, `if`, `!`, `!!` |
-| **Math**  | `+`, `-`, `*`, `/`, `%`, `min`, `max` |
-| **Arrays** | `map`, `filter`, `reduce`, `all`, `none`, `some`, `merge` |
+| Category | Operators |
+|----------|-----------|
+| **Comparison** | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=` |
+| **Logic** | `and`, `or`, `!`, `!!` |
+| **Arithmetic** | `+`, `-`, `*`, `/`, `%`, `min`, `max` |
+| **Control Flow** | `if`, `?:`, `??` |
+| **Arrays** | `map`, `filter`, `reduce`, `merge`, `all`, `none`, `some` |
 | **Strings** | `substr`, `cat`, `in` |
-| **Data Handling** | `var`, `missing`, `missing_some` |
+| **Data Access** | `var`, `val`, `exists`, `missing`, `missing_some` |
+| **Special** | `preserve`, `throw`, `try` |
+| **Custom** | Support for user-defined operators |
 
 ### **💡 Advanced Features**
-- **Static Optimization**: Rules are optimized at compile-time for faster execution.
-- **Error Handling**: The `try` operator prevents rule evaluation failures.
-- **Memory Efficiency**: Zero-copy JSON deserialization with **SmallVec**.
-- **Type Coercion**: JSONLogic-compliant automatic type conversions.
+- **Static Optimization**: Rules are optimized at compile-time
+- **Error Handling**: Built-in error handling with `try` operator
+- **Memory Efficiency**: Zero-copy JSON deserialization
+- **Type Coercion**: JSONLogic-compliant type conversions
+- **Thread Safety**: All operations are thread-safe
+- **Custom Operators**: Extend with your own operators
+
+### **🔌 Custom Operators**
+```rust
+use datalogic_rs::{JsonLogic, CustomOperator, Error};
+use serde_json::{json, Value};
+use std::borrow::Cow;
+
+// Define a custom power operator
+struct PowerOperator;
+
+impl CustomOperator for PowerOperator {
+    fn name(&self) -> &str {
+        "pow"
+    }
+    
+    fn apply<'a>(&self, args: &[Value], _data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+        if args.len() != 2 {
+            return Err(Error::InvalidArguments("pow requires 2 arguments".into()));
+        }
+        let base = args[0].as_f64().unwrap_or(0.0);
+        let exp = args[1].as_f64().unwrap_or(0.0);
+        Ok(Cow::Owned(json!(base.powf(exp))))
+    }
+}
+
+// Register the operator
+JsonLogic::global().add_operator(PowerOperator)?;
+
+// Use in rules
+let rule = Rule::from_value(&json!({"pow": [2, 3]}))?;
+let result = JsonLogic::apply(&rule, &json!({}))?;
+assert_eq!(result, json!(8.0));
+```
 
 ---
 
@@ -81,8 +120,9 @@ fn main() {
 ## **📊 Performance**
 **Benchmark results show** `datalogic-rs` is **2x faster** than other JSONLogic implementations, thanks to:
 - Static operator dispatch
-- Optimized rule execution
-- Smart caching for reusable expressions
+- Zero-copy deserialization
+- Optimized rule compilation
+
 
 To run benchmarks:
 ```bash

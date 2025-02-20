@@ -2,6 +2,7 @@ mod operators;
 
 use serde_json::Value;
 use crate::Error;
+use crate::JsonLogic;
 use std::borrow::Cow;
 
 pub use operators::*;
@@ -89,6 +90,8 @@ pub enum Rule {
     Preserve(ArgType),
     Throw(Box<Rule>),
     Try(ArgType),
+
+    Custom(String, Vec<Rule>),
 }
 
 impl Rule {
@@ -165,6 +168,7 @@ impl Rule {
                     ArgType::Unary(r) => r.is_static(),
                 }
             }
+            Rule::Custom(_, args) => args.iter().all(|r| r.is_static()),
         }
     }
 
@@ -339,7 +343,11 @@ impl Rule {
                         Ok(Rule::Try(ArgType::Unary(Box::new(optimized))))
                     }
                 }
-            }
+            },
+            Rule::Custom(name, args) => {
+                let optimized = Self::optimize_args(&args)?;
+                Ok(Rule::Custom(name, optimized))
+            },
         }
     }
 
@@ -592,8 +600,14 @@ impl Rule {
                         };
                         Ok(Rule::Try(arg))
                     },
-                    
-                    _ => Err(Error::InvalidArguments(op.to_string())),
+                    _ => {
+                        let json_logic = JsonLogic::global();
+                        if json_logic.get_operator(op).is_some() {
+                            Ok(Rule::Custom(op.to_string(), args))
+                        } else {
+                            Err(Error::InvalidArguments(op.to_string()))
+                        }
+                    },
                 };
                 Self::optimize_rule(rule?)
             },
@@ -653,6 +667,18 @@ impl Rule {
                 Err(Error::Custom(result.into_owned().to_string()))
             },
             Rule::Try(args) => TRY_OP.apply(args, data),
+            Rule::Custom(name, args) => {
+                let json_logic = JsonLogic::global();
+                if let Some(op) = json_logic.get_operator(name) {
+                    let mut evaluated_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        evaluated_args.push(arg.apply(data)?.into_owned());
+                    }
+                    op.apply(&evaluated_args, data)
+                } else {
+                    Err(Error::UnknownExpression(name.clone()))
+                }
+            }
         }
     }
 }
