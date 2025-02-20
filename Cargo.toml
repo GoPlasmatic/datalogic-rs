@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2021"
 exclude = [".DS_Store", "/target", ".vscode", ".github"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
