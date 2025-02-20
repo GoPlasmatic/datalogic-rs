@@ -123,7 +123,7 @@ impl JsonLogic {
     /// }
     /// 
     /// let logic = JsonLogic::global();
-    /// logic.add_operator(PowerOperator)?;
+    /// logic.add_operator(PowerOperator);
     /// ```
     pub fn add_operator<T: CustomOperator + 'static>(&self, operator: T) -> Result<(), Error> {
         let mut operators = self.custom_operators.write().unwrap();
