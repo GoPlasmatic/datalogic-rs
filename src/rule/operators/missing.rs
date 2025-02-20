@@ -1,6 +1,7 @@
 use serde_json::Value;
-use crate::{Error, JsonLogicResult};
+use crate::Error;
 use super::Rule;
+use std::borrow::Cow;
 
 const ERR_MISSING_SOME: &str = "missing_some requires 2 arguments";
 const ERR_FIRST_ARG: &str = "First argument must be a number";
@@ -10,118 +11,103 @@ pub struct MissingOperator;
 pub struct MissingSomeOperator;
 
 impl MissingOperator {
-    fn process_keys(value: Value) -> Vec<String> {
-        match value {
-            Value::String(s) => vec![s],
-            Value::Array(arr) => {
-                let mut keys = Vec::with_capacity(arr.len());
-                for v in arr {
-                    match v {
-                        Value::String(s) => keys.push(s),
-                        Value::Number(n) => keys.push(n.to_string()),
-                        _ => continue,
-                    }
-                }
-                keys
-            },
-            Value::Number(n) => vec![n.to_string()],
-            _ => Vec::new(),
-        }
-    }
-
     fn check_path(data: &Value, path: &str) -> bool {
+        if !data.is_object() {
+            return true;
+        }
+        if !path.contains('.') {
+            if let Value::Object(obj) = data {
+                return !obj.contains_key(path);
+            }
+            return true;
+        }
+
         let mut current = data;
         
         for part in path.split('.') {
-            match current {
-                Value::Object(obj) => {
-                    if let Some(val) = obj.get(part) {
-                        current = val;
-                    } else {
-                        return true;
-                    }
-                },
-                Value::Array(arr) => {
-                    match part.parse::<usize>() {
-                        Ok(index) if index < arr.len() => current = &arr[index],
-                        _ => return true,
-                    }
-                },
-                _ => return true,
+            if let Value::Object(obj) = current {
+                if let Some(val) = obj.get(part) {
+                    current = val;
+                } else {
+                    return true;
+                }
+            } else {
+                return true;
             }
         }
         false
     }
-}
 
-impl MissingOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        // Fast path for empty args
+    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         if args.is_empty() {
-            return Ok(Value::Array(Vec::new()));
+            return Ok(Cow::Owned(Value::Array(Vec::new())));
         }
-
-        // Pre-allocate with estimated capacity
+    
         let mut missing = Vec::with_capacity(args.len());
         
         for arg in args {
             let key = arg.apply(data)?;
-            let key_list = Self::process_keys(key);
-
-            for key_str in key_list {
-                if Self::check_path(data, &key_str) {
-                    missing.push(Value::String(key_str));
-                }
-            }
+            match &*key {
+                Value::String(s) => {
+                    if Self::check_path(data, s) {
+                        missing.push(key.as_ref().clone());
+                    }
+                },
+                Value::Array(arr) => {
+                    for v in arr {
+                        if let Value::String(s) = v {
+                            if Self::check_path(data, s) {
+                                missing.push(v.clone());
+                            }
+                        }
+                    }
+                },
+                _ => continue,
+            };
         }
         
-        Ok(Value::Array(missing))
+        Ok(Cow::Owned(Value::Array(missing)))
     }
 }
 
 impl MissingSomeOperator {
-    pub fn apply(&self, args: &[Rule], data: &Value) -> JsonLogicResult {
-        // Fast path: validate args
+    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match args {
             [min_rule, keys_rule] => {
-                // Get minimum required
                 let min_required = min_rule.apply(data)?
+                    .as_ref()
                     .as_u64()
                     .ok_or_else(|| Error::InvalidExpression(ERR_FIRST_ARG.into()))?;
 
-                // Get keys array
                 let keys = keys_rule.apply(data)?;
-                let keys = keys.as_array()
+                let keys = keys
+                    .as_ref()
+                    .as_array()
                     .ok_or_else(|| Error::InvalidExpression(ERR_SECOND_ARG.into()))?;
 
-                // Fast path: empty keys array
                 if keys.is_empty() {
-                    return Ok(Value::Array(Vec::new()));
+                    return Ok(Cow::Owned(Value::Array(Vec::new())));
                 }
 
-                // Pre-allocate missing array with estimated capacity
                 let mut missing = Vec::with_capacity(keys.len());
                 let mut found_count = 0;
 
-                // Single pass over keys
                 for key in keys {
-                    match key {
-                        Value::String(key_str) => {
-                            if MissingOperator::check_path(data, key_str.as_str()) {
-                                missing.push(Value::String(key_str.clone()));
-                            } else {
-                                found_count += 1;
-                                // Fast path: we found enough keys
-                                if found_count >= min_required {
-                                    return Ok(Value::Array(Vec::new()));
-                                }
+                    if let Value::String(key_str) = key {
+                        if MissingOperator::check_path(data, key_str) {
+                            missing.push(key.clone());
+                        } else {
+                            found_count += 1;
+                            if found_count >= min_required {
+                                return Ok(Cow::Owned(Value::Array(Vec::new())));
                             }
                         }
-                        _ => return Err(Error::InvalidExpression("Keys must be strings".into()))
+                    } else {
+                        return Err(Error::InvalidExpression("Keys must be strings".into()));
                     }
                 }
 
-                Ok(Value::Array(missing))
+                Ok(Cow::Owned(Value::Array(missing)))
             }
             _ => Err(Error::InvalidArguments(ERR_MISSING_SOME.into()))
         }

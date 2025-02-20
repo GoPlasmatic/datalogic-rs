@@ -1,7 +1,9 @@
 mod operators;
 
 use serde_json::Value;
-use crate::{Error, JsonLogicResult};
+use crate::Error;
+use crate::JsonLogic;
+use std::borrow::Cow;
 
 pub use operators::*;
 
@@ -88,10 +90,11 @@ pub enum Rule {
     Preserve(ArgType),
     Throw(Box<Rule>),
     Try(ArgType),
+
+    Custom(String, Vec<Rule>),
 }
 
 impl Rule {
-    #[inline(always)]
     fn is_static(&self) -> bool {
         match self {
             Rule::Value(_) => true,
@@ -165,10 +168,10 @@ impl Rule {
                     ArgType::Unary(r) => r.is_static(),
                 }
             }
+            Rule::Custom(_, args) => args.iter().all(|r| r.is_static()),
         }
     }
 
-    #[inline]
     fn optimize_args(args: &[Rule]) -> Result<Vec<Rule>, Error> {
         args.iter()
             .cloned()
@@ -176,7 +179,6 @@ impl Rule {
             .collect()
     }
 
-    #[inline]
     fn optimize_rule(rule: Rule) -> Result<Rule, Error> {
         match rule {
             // Never optimize these
@@ -186,7 +188,7 @@ impl Rule {
             // Handle static evaluation
             rule if rule.is_static() => {
                 rule.apply(&Value::Null)
-                    .map(Rule::Value)
+                    .map(|v| Rule::Value(v.into_owned()))
                     .or(Ok(rule))
             },
 
@@ -341,7 +343,11 @@ impl Rule {
                         Ok(Rule::Try(ArgType::Unary(Box::new(optimized))))
                     }
                 }
-            }
+            },
+            Rule::Custom(name, args) => {
+                let optimized = Self::optimize_args(&args)?;
+                Ok(Rule::Custom(name, optimized))
+            },
         }
     }
 
@@ -594,8 +600,14 @@ impl Rule {
                         };
                         Ok(Rule::Try(arg))
                     },
-                    
-                    _ => Err(Error::InvalidArguments(op.to_string())),
+                    _ => {
+                        let json_logic = JsonLogic::global();
+                        if json_logic.get_operator(op).is_some() {
+                            Ok(Rule::Custom(op.to_string(), args))
+                        } else {
+                            Err(Error::InvalidArguments(op.to_string()))
+                        }
+                    },
                 };
                 Self::optimize_rule(rule?)
             },
@@ -611,49 +623,62 @@ impl Rule {
         }
     }
 
-    pub fn apply(&self, data: &Value) -> JsonLogicResult {
+    pub fn apply<'a>(&'a self, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match self {
-            Rule::Value(value) => {
-                Ok(value.clone())
-            },
-            Rule::Array(rules) => Ok(Value::Array(
-                rules.iter()
-                    .map(|rule| rule.apply(data))
-                    .collect::<Result<Vec<_>, _>>()?
-            )),
+            Rule::Value(value) => return Ok(Cow::Borrowed(value)),
+            Rule::Array(rules) => {
+                let mut results = Vec::with_capacity(rules.len());
+                for rule in rules {
+                    results.push(rule.apply(data)?.into_owned());
+                }
+                return Ok(Cow::Owned(Value::Array(results)));
+            }
             Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
             Rule::Val(path) => VAL_OP.apply(path, data),
             Rule::Exists(path) => EXISTS_OP.apply(path, data),
 
-            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
-            Rule::Logic(op, args) => {
-                LOGIC_OP.apply(args, data, op)
-            },
-            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
+            Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
+            Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
+            Rule::Reduce(array_rule, reducer_rule, initial_rule) => 
+                REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, data),
+            Rule::Merge(args) => MERGE_OP.apply(args, data),
+            Rule::ArrayPredicate(op, array_rule, predicate) => 
+                ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op),
 
+            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
+            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
+            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
+    
             Rule::If(args) => IF_OP.apply(args, data),
             Rule::Ternary(args) => TERNARY_OP.apply(args, data),
             Rule::Coalesce(args) => COALESCE_OP.apply(args, data),
 
-            Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
-            Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
-            Rule::Reduce(array_rule, reducer_rule, initial_rule) => REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, data),
-            Rule::Merge(args) => MERGE_OP.apply(args, data),
-            Rule::ArrayPredicate(op, array_rule, predicate) => ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op),
+            Rule::In(search, target) => IN_OP.apply(search, target, data),
+            Rule::Cat(args) => CAT_OP.apply(args, data),
+            Rule::Substr(string, start, length) => 
+                SUBSTR_OP.apply(string, start, length.as_deref(), data),
 
             Rule::Missing(args) => MISSING_OP.apply(args, data),
             Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
             
-            Rule::In(search, target) => IN_OP.apply(search, target, data),
-            Rule::Cat(args) => CAT_OP.apply(args, data),
-            Rule::Substr(string, start, length) => SUBSTR_OP.apply(string, start, length.as_deref(), data),
-
             Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
             Rule::Throw(rule) => {
-                let value = rule.apply(data)?;
-                Err(Error::Custom(value.to_string()))
-            }
+                let result = rule.apply(data)?;
+                Err(Error::Custom(result.into_owned().to_string()))
+            },
             Rule::Try(args) => TRY_OP.apply(args, data),
+            Rule::Custom(name, args) => {
+                let json_logic = JsonLogic::global();
+                if let Some(op) = json_logic.get_operator(name) {
+                    let mut evaluated_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        evaluated_args.push(arg.apply(data)?.into_owned());
+                    }
+                    op.apply(&evaluated_args, data)
+                } else {
+                    Err(Error::UnknownExpression(name.clone()))
+                }
+            }
         }
     }
 }

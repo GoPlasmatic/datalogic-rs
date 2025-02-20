@@ -14,6 +14,7 @@ pub mod var;
 pub mod control;
 pub mod val;
 pub mod tryop;
+pub mod custom;
 
 pub use arithmetic::*;
 pub use array::*;
@@ -26,6 +27,7 @@ pub use var::*;
 pub use control::*;
 pub use val::*;
 pub use tryop::*;
+pub use custom::*;
 
 
 trait ValueCoercion {
@@ -37,7 +39,6 @@ trait ValueCoercion {
 }
 
 impl ValueCoercion for Value {
-    #[inline(always)]
     fn coerce_to_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
@@ -52,7 +53,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn coerce_to_number(&self) -> Result<f64, Error> {
         match self {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
@@ -64,7 +64,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn coerce_to_string(&self) -> String {
         match self {
             Value::String(s) => s.clone(),
@@ -82,7 +81,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn coerce_append(result: &mut String, value: &Value) {
         match value {
             Value::String(s) => result.push_str(s),
@@ -98,7 +96,6 @@ impl ValueCoercion for Value {
         }
     }
 
-    #[inline(always)]
     fn is_null_value(&self) -> bool {
         match self {
             Value::Bool(_) => false,
@@ -116,7 +113,6 @@ trait ValueConvert {
 }
 
 impl ValueConvert for f64 {
-    #[inline(always)]
     fn to_value(&self) -> Value {
         const ZERO_FRACT: f64 = 0.0;
         if self.fract() == ZERO_FRACT {
@@ -127,6 +123,7 @@ impl ValueConvert for f64 {
     }
 }
 
+#[inline(always)]
 fn is_current_var(var_name: &Rule) -> bool {
     match var_name {
         Rule::Value(Value::String(name)) => name == "current",
@@ -141,6 +138,7 @@ fn is_current_var(var_name: &Rule) -> bool {
     }
 }
 
+#[inline]
 pub fn is_flat_arithmetic_predicate(rule: &Rule) -> bool {
     if let Rule::Arithmetic(op_type, ArgType::Multiple(args)) = rule {
         if args.len() == 2 {

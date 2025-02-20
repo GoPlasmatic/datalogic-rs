@@ -1,10 +1,11 @@
 use serde_json::{json, Value};
-use crate::{JsonLogicResult, rule::ArgType, error::Error};
+use crate::{rule::ArgType, error::Error};
+use std::borrow::Cow;
 
 pub struct TryOperator;
 
 impl TryOperator {
-    pub fn apply(&self, args: &ArgType, data: &Value) -> JsonLogicResult {
+    pub fn apply<'a>(&self, args: &'a ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match args {
             ArgType::Multiple(rules) => {
                 let mut last_error = None;
@@ -13,11 +14,11 @@ impl TryOperator {
                     let current_data = if let Some(err) = &last_error {
                         json!({ "type": err })
                     } else {
-                        data.clone()
+                        data.to_owned()
                     };
     
                     match rule.apply(&current_data) {
-                        Ok(value) => return Ok(value),
+                        Ok(value) => return Ok(Cow::Owned(value.into_owned())),
                         Err(e) => {
                             let clean_error = self.normalize_error(&e);
                             last_error = Some(clean_error);
@@ -42,12 +43,12 @@ impl TryOperator {
         
         if error_str.starts_with('{') {
             if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&error_str) {
-                 if let Some(type_val) = map.get("type") {
-                     if let Some(type_str) = type_val.as_str() {
-                         return type_str.to_string();
-                     }
-                 }
-             }
+                if let Some(type_val) = map.get("type") {
+                    if let Some(type_str) = type_val.as_str() {
+                        return type_str.to_string();
+                    }
+                }
+            }
         }
         
         error_str.trim_matches('"').to_string()

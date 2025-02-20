@@ -1,54 +1,56 @@
 use serde_json::Value;
-use crate::{JsonLogicResult, rule::ArgType};
+use crate::{rule::ArgType, Error};
+use std::borrow::Cow;
 
 pub struct ValOperator;
 
 impl ValOperator {
-    pub fn apply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    pub fn apply<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => {
                         let mut current = data;
                         for key in arr {
-                            match access_value(current, &key) {
+                            match access_value(current, key) {
                                 Some(value) => current = value,
-                                None => return Ok(Value::Null)
+                                None => return Ok(Cow::Owned(Value::Null))
                             }
                         }
-                        Ok(current.clone())
+                        Ok(Cow::Borrowed(current))
                     },
                     _ => Ok(match access_value(data, &value) {
-                        Some(value) => value.clone(),
-                        None => Value::Null
+                        Some(value) => Cow::Borrowed(value),
+                        None => Cow::Owned(Value::Null)
                     })
                 }
             },
             ArgType::Multiple(rules) => {
                 match rules.len() {
-                    0 => Ok(data.clone()),
+                    0 => Ok(Cow::Borrowed(data)),
                     _ => {
                         let mut current = data;
                         for rule in rules {
-                            match rule.apply(current)? {
+                            let value = rule.apply(current)?;
+                            match &*value {
                                 Value::Array(arr) => {
                                     for key in arr {
-                                        match access_value(current, &key) {
+                                        match access_value(current, key) {
                                             Some(value) => current = value,
-                                            None => return Ok(Value::Null)
+                                            None => return Ok(Cow::Owned(Value::Null))
                                         }
                                     }
                                 },
-                                value => {
+                                _ => {
                                     match access_value(current, &value) {
                                         Some(value) => current = value,
-                                        None => return Ok(Value::Null)
+                                        None => return Ok(Cow::Owned(Value::Null))
                                     }
                                 }
                             }
                         }
-                        Ok(current.clone())
+                        Ok(Cow::Borrowed(current))
                     }
                 }
             }
@@ -59,51 +61,49 @@ impl ValOperator {
 pub struct ExistsOperator;
 
 impl ExistsOperator {
-    pub fn apply(&self, arg: &ArgType, data: &Value) -> JsonLogicResult {
+    pub fn apply<'a>(&self, arg: &ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
                 let value = rule.apply(data)?;
-                match value {
+                match &*value {
                     Value::Array(arr) => {
                         let mut current = data;
                         for key in arr {
-                            match access_value(current, &key) {
+                            match access_value(current, key) {
                                 Some(value) => current = value,
-                                None => return Ok(false.into()),
+                                None => return Ok(Cow::Owned(Value::Bool(false))),
                             }
                         }
-                        Ok(true.into())
+                        Ok(Cow::Owned(Value::Bool(true)))
                     },
-                    _ => Ok(match access_value(data, &value) {
-                        Some(_) => true.into(),
-                        None => false.into(),
-                    })
+                    _ => Ok(Cow::Owned(Value::Bool(access_value(data, &value).is_some())))
                 }
             },
             ArgType::Multiple(rules) => {
                 match rules.len() {
-                    0 => Ok(false.into()),
+                    0 => Ok(Cow::Owned(Value::Bool(false))),
                     _ => {
                         let mut current = data;
                         for rule in rules {
-                            match rule.apply(current)? {
+                            let value = rule.apply(current)?;
+                            match &*value {
                                 Value::Array(arr) => {
                                     for key in arr {
-                                        match access_value(current, &key) {
+                                        match access_value(current, key) {
                                             Some(value) => current = value,
-                                            None => return Ok(false.into())
+                                            None => return Ok(Cow::Owned(Value::Bool(false)))
                                         }
                                     }
                                 },
-                                value => {
+                                _ => {
                                     match access_value(current, &value) {
                                         Some(value) => current = value,
-                                        None => return Ok(false.into())
+                                        None => return Ok(Cow::Owned(Value::Bool(false)))
                                     }
                                 }
                             }
                         }
-                        Ok(true.into())
+                        Ok(Cow::Owned(Value::Bool(true)))
                     }
                 }
             }
@@ -111,7 +111,7 @@ impl ExistsOperator {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn access_value<'a>(data: &'a Value, key: &Value) -> Option<&'a Value> {
     match (data, key) {
         (Value::Null, _) => None,
