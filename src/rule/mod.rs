@@ -625,13 +625,13 @@ impl Rule {
 
     pub fn apply<'a>(&'a self, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         match self {
-            Rule::Value(value) => return Ok(Cow::Borrowed(value)),
+            Rule::Value(value) => Ok(Cow::Borrowed(value)),
             Rule::Array(rules) => {
                 let mut results = Vec::with_capacity(rules.len());
                 for rule in rules {
                     results.push(rule.apply(data)?.into_owned());
                 }
-                return Ok(Cow::Owned(Value::Array(results)));
+                Ok(Cow::Owned(Value::Array(results)))
             }
             Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
             Rule::Val(path) => VAL_OP.apply(path, data),

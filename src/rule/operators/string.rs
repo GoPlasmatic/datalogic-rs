@@ -77,7 +77,7 @@ impl SubstrOperator {
             None
         };
 
-        match length.as_ref().map(|v| &**v) {
+        match length.as_deref() {
             Some(Value::Number(n)) => {
                 let len = n.as_i64().unwrap_or(0);
                 let end_idx = if len < 0 {

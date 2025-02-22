@@ -11,10 +11,13 @@ pub struct MergeOperator;
 impl MapOperator {
     pub fn apply<'a>(&self, array_rule: &Rule, mapper: &Rule, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         if let Rule::Value(arr_val) = array_rule {
-            if let Rule::Value(mapper_val) = mapper {
-                if arr_val.is_null() && mapper_val.is_null() {
-                    return Err(Error::Custom("Invalid Arguments".into()));
-                }
+            if arr_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
+            }
+        }
+        if let Rule::Value(mapper_val) = mapper {
+            if mapper_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
             }
         }
 
@@ -35,10 +38,13 @@ impl MapOperator {
 impl FilterOperator {
     pub fn apply<'a>(&self, array_rule: &Rule, predicate: &Rule, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
         if let Rule::Value(arr_val) = array_rule {
-            if let Rule::Value(predicate_val) = predicate {
-                if arr_val.is_null() && predicate_val.is_null() {
-                    return Err(Error::Custom("Invalid Arguments".into()));
-                }
+            if arr_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
+            }
+        }
+        if let Rule::Value(predicate_val) = predicate {
+            if predicate_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
             }
         }
 
