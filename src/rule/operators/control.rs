@@ -3,8 +3,6 @@ use crate::{rule::ArgType, Error};
 use super::{Rule, ValueCoercion};
 use std::borrow::Cow;
 
-const ERR_TERNARY: &str = "?: requires 3 arguments";
-
 pub struct IfOperator;
 pub struct TernaryOperator;
 pub struct CoalesceOperator;
@@ -65,7 +63,7 @@ impl TernaryOperator {
                     alternative.apply(data)
                 }
             }
-            _ => Err(Error::InvalidArguments(ERR_TERNARY.into()))
+            _ => Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 }
