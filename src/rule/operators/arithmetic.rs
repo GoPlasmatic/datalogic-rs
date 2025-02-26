@@ -16,77 +16,119 @@ pub enum ArithmeticType {
     Min,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ArithmeticConfig {
+    acc_default: Option<f64>,
+    acc_single: f64,
+    min_args: usize,
+    operation: fn(f64, f64) -> Result<f64, Error>,
+}
+
 pub struct ArithmeticOperator;
 
 impl ArithmeticOperator {
-    pub fn apply<'a>(&self, arg: &ArgType, data: &'a Value, op_type: &ArithmeticType) -> Result<Cow<'a, Value>, Error> {
-        match op_type {
-            ArithmeticType::Add => self.apply_simple(arg, data, Some(0.0), 0.0, |a, b| Ok(a + b), 0),
-            ArithmeticType::Multiply => self.apply_simple(arg, data, Some(1.0), 1.0, |a, b| Ok(a * b), 0),
-            ArithmeticType::Subtract => self.apply_simple(arg, data, None, 0.0, |a, b| Ok(a - b), 1),
-            ArithmeticType::Divide => self.apply_simple(arg, data, None, 1.0, |a, b| {
-                if b == 0.0 {
+    pub fn apply<'a>(&self, arg: &ArgType, context: &Value, root: &Value, path: &str, op_type: &ArithmeticType) -> Result<Cow<'a, Value>, Error> {
+        let config = match op_type {
+            ArithmeticType::Add => ArithmeticConfig {
+                acc_default: Some(0.0),
+                acc_single: 0.0,
+                min_args: 0,
+                operation: |a, b| Ok(a + b),
+            },
+            ArithmeticType::Multiply => ArithmeticConfig {
+                acc_default: Some(1.0),
+                acc_single: 1.0,
+                min_args: 0,
+                operation: |a, b| Ok(a * b),
+            },
+            ArithmeticType::Subtract => ArithmeticConfig {
+                acc_default: None,
+                acc_single: 0.0,
+                min_args: 1,
+                operation: |a, b| Ok(a - b),
+            },
+            ArithmeticType::Divide => ArithmeticConfig {
+                acc_default: None,
+                acc_single: 1.0,
+                min_args: 1,
+                operation: |a, b| if b == 0.0 {
                     Err(Error::Custom("NaN".to_string()))
                 } else {
                     Ok(a / b)
-                }
-            }, 1),
-            ArithmeticType::Modulo => self.apply_simple(arg, data, None, 1.0, |a, b| Ok(a % b), 2),
-            ArithmeticType::Max => self.apply_simple(arg, data, Some(f64::NEG_INFINITY), 1.0, |a, b| Ok(a.max(b)), 0),
-            ArithmeticType::Min => self.apply_simple(arg, data, Some(f64::INFINITY), 1.0, |a, b| Ok(a.min(b)), 0),
-        }
+                },
+            },
+            ArithmeticType::Modulo => ArithmeticConfig {
+                acc_default: None,
+                acc_single: 1.0,
+                min_args: 2,
+                operation: |a, b| Ok(a % b),
+            },
+            ArithmeticType::Max => ArithmeticConfig {
+                acc_default: Some(f64::NEG_INFINITY),
+                acc_single: 1.0,
+                min_args: 0,
+                operation: |a, b| Ok(a.max(b)),
+            },
+            ArithmeticType::Min => ArithmeticConfig {
+                acc_default: Some(f64::INFINITY),
+                acc_single: 1.0,
+                min_args: 0,
+                operation: |a, b| Ok(a.min(b)),
+            },
+        };
+        self.apply_simple(arg, context, root, path, config)
     }
 
-    fn apply_simple<'a>(&self, arg: &ArgType, data: &'a Value, acc_default: Option<f64>, acc_single: f64, simple_func: fn(f64, f64) -> Result<f64, Error>, min_args: usize) -> Result<Cow<'a, Value>, Error> {
+    fn apply_simple<'a>(&self, arg: &ArgType, context: &Value, root: &Value, path: &str, config: ArithmeticConfig) -> Result<Cow<'a, Value>, Error> {
         match arg {
             ArgType::Unary(rule) => {
-                let value = rule.apply(data)?;
+                let value = rule.apply(context, root, path)?;
                 if let Value::Array(ref arr) = *value {
-                    if arr.len() < min_args {
+                    if arr.len() < config.min_args {
                         return Err(Error::Custom("Invalid Arguments".to_string()));
                     } else if arr.len() == 1 {
-                        let v = simple_func(acc_single, arr.first().unwrap().coerce_to_number()?)?;
+                        let v = (config.operation)(config.acc_single, arr.first().unwrap().coerce_to_number()?)?;
                         return Ok(Cow::Owned(v.to_value()))
                     }
                     let mut acc: f64;
-                    if acc_default.is_none() {
+                    if config.acc_default.is_none() {
                         acc = arr.first().unwrap().coerce_to_number()?;
                         for v in arr.iter().skip(1) {
-                            acc = simple_func(acc, v.coerce_to_number()?)?;
+                            acc = (config.operation)(acc, v.coerce_to_number()?)?;
                         }
                     } else {
-                        acc = acc_default.unwrap();
+                        acc = config.acc_default.unwrap();
                         for v in arr {
-                            acc = simple_func(acc, v.coerce_to_number()?)?;
+                            acc = (config.operation)(acc, v.coerce_to_number()?)?;
                         }
                     }
                     Ok(Cow::Owned(acc.to_value()))
-                } else if min_args <= 1 {
-                    let v = simple_func(acc_single, value.coerce_to_number()?)?;
+                } else if config.min_args <= 1 {
+                    let v = (config.operation)(config.acc_single, value.coerce_to_number()?)?;
                     Ok(Cow::Owned(v.to_value()))
                 } else {
                     Err(Error::Custom("Invalid Arguments".to_string()))
                 }
             }
             ArgType::Multiple(rules) => {
-                if rules.len() < min_args {
+                if rules.len() < config.min_args {
                     return Err(Error::Custom("Invalid Arguments".to_string()));
                 } else if rules.len() == 1 {
-                    let v = simple_func(acc_single, rules.first().unwrap().apply(data)?.coerce_to_number()?)?;
+                    let v = (config.operation)(config.acc_single, rules.first().unwrap().apply(context, root, path)?.coerce_to_number()?)?;
                     return Ok(Cow::Owned(v.to_value()));
                 }
                 let mut acc: f64;
-                if acc_default.is_none() {
-                    acc = rules.first().unwrap().apply(data)?.coerce_to_number()?;
+                if config.acc_default.is_none() {
+                    acc = rules.first().unwrap().apply(context, root, path)?.coerce_to_number()?;
                     for rule in rules.iter().skip(1) {
-                        let value = rule.apply(data)?;
-                        acc = simple_func(acc, value.coerce_to_number()?)?;
+                        let value = rule.apply(context, root, path)?;
+                        acc = (config.operation)(acc, value.coerce_to_number()?)?;
                         }
                 } else {
-                    acc = acc_default.unwrap();
+                    acc = config.acc_default.unwrap();
                     for rule in rules {
-                        let value = rule.apply(data)?;
-                        acc = simple_func(acc, value.coerce_to_number()?)?;
+                        let value = rule.apply(context, root, path)?;
+                        acc = (config.operation)(acc, value.coerce_to_number()?)?;
                     }
                 }
                 Ok(Cow::Owned(acc.to_value()))

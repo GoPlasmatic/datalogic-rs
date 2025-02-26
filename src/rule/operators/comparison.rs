@@ -8,27 +8,27 @@ pub enum CompareType { Equals, StrictEquals, NotEquals, StrictNotEquals, Greater
 pub struct CompareOperator;
 
 impl CompareOperator {
-    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value, compare_type: &CompareType) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str, compare_type: &CompareType) -> Result<Cow<'a, Value>, Error> {
         match args.len() {
             0 | 1 => Err(Error::Custom("Invalid Arguments".to_string())),
             2 => {
-                let left = args[0].apply(data)?;
-                let right = args[1].apply(data)?;
+                let left = args[0].apply(context, root, path)?;
+                let right = args[1].apply(context, root, path)?;
                 Ok(Cow::Owned(Value::Bool(self.compare(&left, &right, compare_type)?)))
             }
             3 => {
-                let first = args[0].apply(data)?;
-                let second = args[1].apply(data)?;
+                let first = args[0].apply(context, root, path)?;
+                let second = args[1].apply(context, root, path)?;
                 if !self.compare(&first, &second, compare_type)? {
                     return Ok(Cow::Owned(Value::Bool(false)));
                 }
-                let third = args[2].apply(data)?;
+                let third = args[2].apply(context, root, path)?;
                 Ok(Cow::Owned(Value::Bool(self.compare(&second, &third, compare_type)?)))
             }
             _ => {
-                let mut prev = args[0].apply(data)?;
+                let mut prev = args[0].apply(context, root, path)?;
                 for arg in args.iter().skip(1) {
-                    let curr = arg.apply(data)?;
+                    let curr = arg.apply(context, root, path)?;
                     if !self.compare(&prev, &curr, compare_type)? {
                         return Ok(Cow::Owned(Value::Bool(false)));
                     }

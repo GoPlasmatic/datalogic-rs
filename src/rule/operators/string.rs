@@ -8,9 +8,9 @@ pub struct CatOperator;
 pub struct SubstrOperator;
 
 impl InOperator {
-    pub fn apply<'a>(&self, search: &Rule, target: &Rule, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
-        let search = search.apply(data)?;
-        let target = target.apply(data)?;
+    pub fn apply<'a>(&self, search: &Rule, target: &Rule, context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
+        let search = search.apply(context, root, path)?;
+        let target = target.apply(context, root, path)?;
         
         Ok(Cow::Owned(Value::Bool(match (&*search, &*target) {
             (Value::String(s), Value::String(t)) => t.contains(s),
@@ -21,12 +21,12 @@ impl InOperator {
 }
 
 impl CatOperator {
-    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         // Fast paths
         match args.len() {
             0 => return Ok(Cow::Owned(Value::String(String::new()))),
             1 => {
-                let value = args[0].apply(data)?;
+                let value = args[0].apply(context, root, path)?;
                 return Ok(Cow::Owned(Value::String(value.coerce_to_string())));
             }
             _ => {}
@@ -37,7 +37,7 @@ impl CatOperator {
         let mut result = String::with_capacity(capacity);
 
         for arg in args {
-            let value = arg.apply(data)?;
+            let value = arg.apply(context, root, path)?;
             Value::coerce_append(&mut result, &value);
         }
 
@@ -46,10 +46,10 @@ impl CatOperator {
 }
 
 impl SubstrOperator {
-    pub fn apply<'a>(&self, string: &Rule, start: &Rule, length: Option<&Rule>, data: &'a Value) 
+    pub fn apply<'a>(&self, string: &Rule, start: &Rule, length: Option<&Rule>, context: &Value, root: &Value, path: &str) 
         -> Result<Cow<'a, Value>, Error> 
     {
-        let string = string.apply(data)?;
+        let string = string.apply(context, root, path)?;
         let string = match &*string {
             Value::String(s) => s,
             _ => return Ok(Cow::Owned(Value::String(String::new()))),
@@ -58,7 +58,7 @@ impl SubstrOperator {
         let chars: Vec<char> = string.chars().collect();
         let str_len = chars.len() as i64;
 
-        let start = start.apply(data)?;
+        let start = start.apply(context, root, path)?;
         let start_idx = match &*start {
             Value::Number(n) => {
                 let start = n.as_i64().unwrap_or(0);
@@ -72,7 +72,7 @@ impl SubstrOperator {
         };
 
         let length = if let Some(length_rule) = length {
-            Some(length_rule.apply(data)?)
+            Some(length_rule.apply(context, root, path)?)
         } else {
             None
         };

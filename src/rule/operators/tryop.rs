@@ -5,7 +5,7 @@ use std::borrow::Cow;
 pub struct TryOperator;
 
 impl TryOperator {
-    pub fn apply<'a>(&self, args: &'a ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &'a ArgType, context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         match args {
             ArgType::Multiple(rules) => {
                 let mut last_error = None;
@@ -14,10 +14,10 @@ impl TryOperator {
                     let current_data = if let Some(err) = &last_error {
                         json!({ "type": err })
                     } else {
-                        data.to_owned()
+                        context.to_owned()
                     };
     
-                    match rule.apply(&current_data) {
+                    match rule.apply(&current_data, root, path) {
                         Ok(value) => return Ok(Cow::Owned(value.into_owned())),
                         Err(e) => {
                             let clean_error = self.normalize_error(&e);
@@ -34,7 +34,7 @@ impl TryOperator {
                     Err(Error::Custom("No valid value found".to_string()))
                 }
             },
-            ArgType::Unary(rule) => rule.apply(data)
+            ArgType::Unary(rule) => rule.apply(context, root, path)
         }
     }
 

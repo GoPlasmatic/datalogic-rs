@@ -84,7 +84,8 @@ impl JsonLogic {
     /// assert_eq!(result, json!(true));
     /// ```
     pub fn apply(rule: &Rule, data: &Value) -> JsonLogicResult {
-        rule.apply(data).map(|cow| cow.into_owned())
+        let path = "$";
+        rule.apply(data, data, path).map(|cow| cow.into_owned())
     }
 
     /// Adds a custom operator to the JsonLogic evaluator.
@@ -112,7 +113,7 @@ impl JsonLogic {
     ///         "pow"
     ///     }
     ///     
-    ///     fn apply<'a>(&self, args: &[Value], _data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    ///     fn apply<'a>(&self, args: &[Value], _context: &'a Value, _root: &'a Value, _path: &str) -> Result<Cow<'a, Value>, Error> {
     ///         if args.len() != 2 {
     ///             return Err(Error::InvalidArguments("pow requires 2 arguments".into()));
     ///         }

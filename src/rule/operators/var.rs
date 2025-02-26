@@ -11,32 +11,32 @@ const ERR_INVALID_PATH: &str = "Invalid path";
 pub struct VarOperator;
 
 impl VarOperator {
-    pub fn apply<'a>(&'a self, path: &Rule, default: Option<&'a Rule>, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&'a self, path: &Rule, default: Option<&'a Rule>, context: &'a Value, root: &'a Value, rpath: &str) -> Result<Cow<'a, Value>, Error> {
         if let Rule::Value(Value::String(s)) = path {
             if s.is_empty() {
-                return Ok(Cow::Borrowed(data));
+                return Ok(Cow::Borrowed(context));
             }
             // Optimize simple path lookup
             if !s.contains('.') {
-                return self.get_simple_key(data, s)
+                return self.get_simple_key(context, s)
                     .map(Cow::Borrowed)
                     .or_else(|_| match default {
-                        Some(d) => d.apply(data),
+                        Some(d) => d.apply(context, root, rpath),
                         None => Ok(Cow::Owned(Value::Null))
                     });
             }
         }
 
-        let path_value = path.apply(data)?;
+        let path_value = path.apply(context, root, rpath)?;
 
         // Fast path for numbers - direct array access
         if let Value::Number(n) = &*path_value {
             if let Some(idx) = n.as_u64() {
-                if let Value::Array(arr) = data {
+                if let Value::Array(arr) = context {
                     return match self.get_array_index(arr, idx as usize) {
                         Ok(value) => Ok(Cow::Borrowed(value)),
                         Err(_) => match default {
-                            Some(d) => d.apply(data),
+                            Some(d) => d.apply(context, root, rpath),
                             None => Ok(Cow::Owned(Value::Null))
                         }
                     };
@@ -47,10 +47,10 @@ impl VarOperator {
 
         // Main path resolution
         let path_str = path_value.as_ref().as_str().unwrap_or("");
-        match self.get_value_ref(data, path_str) {
+        match self.get_value_ref(context, path_str) {
             Ok(value) => Ok(Cow::Borrowed(value)),
             Err(_) => match default {
-                Some(d) => d.apply(data),
+                Some(d) => d.apply(context, root, rpath),
                 None => Ok(Cow::Owned(Value::Null))
             }
         }
