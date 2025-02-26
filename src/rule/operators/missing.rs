@@ -38,7 +38,7 @@ impl MissingOperator {
         false
     }
 
-    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         if args.is_empty() {
             return Ok(Cow::Owned(Value::Array(Vec::new())));
         }
@@ -46,17 +46,17 @@ impl MissingOperator {
         let mut missing = Vec::with_capacity(args.len());
         
         for arg in args {
-            let key = arg.apply(data)?;
+            let key = arg.apply(context, root, path)?;
             match &*key {
                 Value::String(s) => {
-                    if Self::check_path(data, s) {
+                    if Self::check_path(context, s) {
                         missing.push(key.as_ref().clone());
                     }
                 },
                 Value::Array(arr) => {
                     for v in arr {
                         if let Value::String(s) = v {
-                            if Self::check_path(data, s) {
+                            if Self::check_path(context, s) {
                                 missing.push(v.clone());
                             }
                         }
@@ -71,15 +71,15 @@ impl MissingOperator {
 }
 
 impl MissingSomeOperator {
-    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         match args {
             [min_rule, keys_rule] => {
-                let min_required = min_rule.apply(data)?
+                let min_required = min_rule.apply(context, root, path)?
                     .as_ref()
                     .as_u64()
                     .ok_or_else(|| Error::InvalidExpression(ERR_FIRST_ARG.into()))?;
 
-                let keys = keys_rule.apply(data)?;
+                let keys = keys_rule.apply(context, root, path)?;
                 let keys = keys
                     .as_ref()
                     .as_array()
@@ -94,7 +94,7 @@ impl MissingSomeOperator {
 
                 for key in keys {
                     if let Value::String(key_str) = key {
-                        if MissingOperator::check_path(data, key_str) {
+                        if MissingOperator::check_path(context, key_str) {
                             missing.push(key.clone());
                         } else {
                             found_count += 1;

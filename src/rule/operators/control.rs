@@ -3,33 +3,31 @@ use crate::{rule::ArgType, Error};
 use super::{Rule, ValueCoercion};
 use std::borrow::Cow;
 
-const ERR_TERNARY: &str = "?: requires 3 arguments";
-
 pub struct IfOperator;
 pub struct TernaryOperator;
 pub struct CoalesceOperator;
 
 impl IfOperator {
-    pub fn apply<'a>(&self, args: &'a ArgType, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &'a ArgType, context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         match args {
             ArgType::Multiple(args) => {
                 match args.as_slice() {
                     [] => Ok(Cow::Owned(Value::Null)),
-                    [single] => single.apply(data),
+                    [single] => single.apply(context, root, path),
                     [condition, consequent] => {
-                        let cond = condition.apply(data)?;
+                        let cond = condition.apply(context, root, path)?;
                         if cond.coerce_to_bool() {
-                            consequent.apply(data)
+                            consequent.apply(context, root, path)
                         } else {
                             Ok(Cow::Owned(Value::Null))
                         }
                     }
                     [condition, consequent, alternative] => {
-                        let cond = condition.apply(data)?;
+                        let cond = condition.apply(context, root, path)?;
                         if cond.coerce_to_bool() {
-                            consequent.apply(data)
+                            consequent.apply(context, root, path)
                         } else {
-                            alternative.apply(data)
+                            alternative.apply(context, root, path)
                         }
                     }
                     _ => {
@@ -37,13 +35,13 @@ impl IfOperator {
                         let remainder = chunks.remainder();
 
                         for chunk in chunks {
-                            if chunk[0].apply(data)?.coerce_to_bool() {
-                                return chunk[1].apply(data);
+                            if chunk[0].apply(context, root, path)?.coerce_to_bool() {
+                                return chunk[1].apply(context, root, path);
                             }
                         }
 
                         match remainder {
-                            [default] => default.apply(data),
+                            [default] => default.apply(context, root, path),
                             _ => Ok(Cow::Owned(Value::Null)),
                         }
                     }
@@ -55,25 +53,25 @@ impl IfOperator {
 }
 
 impl TernaryOperator {
-    pub fn apply<'a>(&self, args: &'a [Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &'a [Rule], context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         match args {
             [condition, consequent, alternative] => {
-                let cond = condition.apply(data)?;
+                let cond = condition.apply(context, root, path)?;
                 if cond.coerce_to_bool() {
-                    consequent.apply(data)
+                    consequent.apply(context, root, path)
                 } else {
-                    alternative.apply(data)
+                    alternative.apply(context, root, path)
                 }
             }
-            _ => Err(Error::InvalidArguments(ERR_TERNARY.into()))
+            _ => Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 }
 
 impl CoalesceOperator {
-    pub fn apply<'a>(&self, args: &'a [Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &'a [Rule], context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         for arg in args {
-            let result = arg.apply(data)?;
+            let result = arg.apply(context, root, path)?;
             if !result.is_null_value() {
                 return Ok(result);
             }

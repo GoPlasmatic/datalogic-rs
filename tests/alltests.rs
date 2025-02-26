@@ -100,66 +100,34 @@ fn run_jsonlogic_test_suite(source: &str) -> Result<(usize, usize), Box<dyn std:
     Ok((passed_tests, total_tests))
 }
 
-fn extract_filename(url: &str) -> &str {
-    url.split('/').last().unwrap_or(url)
-}
 
 #[test]
 fn test_jsonlogic_all_test_suites() {
-    let test_sources = vec![
-        "tests/suites/additional.json",
-        "tests/suites/arithmetic/divide.extra.json",
-        "tests/suites/arithmetic/divide.json",
-        "tests/suites/arithmetic/minus.extra.json",
-        "tests/suites/arithmetic/minus.json",
-        "tests/suites/arithmetic/modulo.extra.json",
-        "tests/suites/arithmetic/modulo.json",
-        "tests/suites/arithmetic/multiply.extra.json",
-        "tests/suites/arithmetic/multiply.json",
-        "tests/suites/arithmetic/plus.extra.json",
-        "tests/suites/arithmetic/plus.json",
-        "tests/suites/chained.json",
-        "tests/suites/coalesce.json",
-        "tests/suites/comparison/greaterThan.json",
-        "tests/suites/comparison/greaterThanEquals.json",
-        "tests/suites/comparison/lessThan.json",
-        "tests/suites/comparison/lessThanEquals.json",
-        "tests/suites/comparison/softEquals.json",
-        "tests/suites/comparison/softNotEquals.json",
-        "tests/suites/comparison/strictEquals.json",
-        "tests/suites/comparison/strictNotEquals.json",
-        "tests/suites/compatible.json",
-        "tests/suites/control/and.json",
-        "tests/suites/control/if.json",
-        "tests/suites/control/or.json",
-        "tests/suites/exists.json",
-        "tests/suites/iterators.extra.json",
-        // "tests/suites/scopes.json",
-        "tests/suites/throw.json",
-        "tests/suites/truthiness.json",
-        "tests/suites/try.json",
-        "tests/suites/val-compat.json",
-        "tests/suites/val.json",
-    ];
+    // Read and parse index.json
+    let index_path = "tests/suites/index.json";
+    let index_content = fs::read_to_string(index_path)
+        .unwrap_or_else(|e| panic!("Failed to read index file {}: {}", index_path, e));
+    let test_paths: Vec<String> = serde_json::from_str(&index_content)
+        .unwrap_or_else(|e| panic!("Failed to parse index file {}: {}", index_path, e));
 
-
+    // Convert relative paths to full test paths
+    let test_sources: Vec<String> = test_paths.iter()
+        .map(|path| format!("tests/suites/{}", path))
+        .collect();
 
     let mut overall_passed = 0;
     let mut overall_total = 0;
 
     for source in &test_sources {
-        let name = if source.starts_with("http") {
-            extract_filename(source)
-        } else {
-            Path::new(source).file_name()
+        let name = Path::new(source).file_name()
                 .and_then(|n| n.to_str())
-                .unwrap_or(source)
-        };
+                .unwrap_or(source);
 
         match run_jsonlogic_test_suite(source) {
             Ok((passed, total)) => {
                 print!("Results for {} ", name);
-                println!("Passed: {}/{} tests {}", passed, total, if passed == total { "✅" } else { "❌" });
+                println!("Passed: {}/{} tests {}", passed, total, 
+                    if passed == total { "✅" } else { "❌" });
                 overall_passed += passed;
                 overall_total += total;
             },

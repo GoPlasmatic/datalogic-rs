@@ -56,11 +56,15 @@ impl ValueCoercion for Value {
     fn coerce_to_number(&self) -> Result<f64, Error> {
         match self {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
-            Value::String(s) if s.is_empty() => Ok(0.0),
-            Value::String(s) => s.parse::<f64>().map_err(|_| Error::Custom("NaN".to_string())),
-            Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
             Value::Null => Ok(0.0),
-            Value::Array(_) | Value::Object(_) => Err(Error::Custom("NaN".to_string())),
+            Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
+            Value::String(s) => {
+                if s.is_empty() {
+                    return Ok(0.0);
+                }
+                s.parse::<f64>().map_err(|_| Error::Custom("NaN".to_string()))
+            },
+            _ => Err(Error::Custom("NaN".to_string())),
         }
     }
 
@@ -119,6 +123,92 @@ impl ValueConvert for f64 {
             Value::Number(serde_json::Number::from(*self as i64))
         } else {
             Value::Number(serde_json::Number::from_f64(*self).unwrap())
+        }
+    }
+}
+
+trait ValueExt {
+    fn strict_equals(&self, other: &Value) -> Result<bool, Error>;
+    fn strict_not_equals(&self, other: &Value) -> Result<bool, Error>;
+    fn equals(&self, other: &Value) -> Result<bool, Error>;
+    fn not_equals(&self, other: &Value) -> Result<bool, Error>;
+    fn greater_than(&self, other: &Value) -> Result<bool, Error>;
+    fn greater_than_equal(&self, other: &Value) -> Result<bool, Error>;
+    fn less_than(&self, other: &Value) -> Result<bool, Error>;
+    fn less_than_equal(&self, other: &Value) -> Result<bool, Error>;
+}
+
+impl ValueExt for Value {
+    fn strict_equals(&self, other: &Value) -> Result<bool, Error> {
+        Ok(std::mem::discriminant(self) == std::mem::discriminant(other) && self.equals(other)?)
+    }
+
+    fn strict_not_equals(&self, other: &Value) -> Result<bool, Error> {
+        Ok(std::mem::discriminant(self) != std::mem::discriminant(other) || self.not_equals(other)?)
+    }
+
+    fn equals(&self, other: &Value) -> Result<bool, Error> {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => Ok(n1 == n2),
+            (Value::String(s1), Value::String(s2)) => Ok(s1 == s2),
+            (Value::Bool(b1), Value::Bool(b2)) => Ok(b1 == b2),
+            _ => {
+                let n1 = self.coerce_to_number()?;
+                let n2 = other.coerce_to_number()?;
+                Ok(n1 == n2)
+            },
+        }
+    }
+
+    fn not_equals(&self, other: &Value) -> Result<bool, Error> {
+        Ok(!self.equals(other)?)
+    }
+
+    fn greater_than(&self, other: &Value) -> Result<bool, Error> {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() > n2.as_f64()),
+            (Value::String(s1), Value::String(s2)) => Ok(s1 > s2),
+            _ => {
+                let n1 = self.coerce_to_number()?;
+                let n2 = other.coerce_to_number()?;
+                Ok(n1 > n2)
+            },
+        }
+    }
+
+    fn greater_than_equal(&self, other: &Value) -> Result<bool, Error> {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() >= n2.as_f64()),
+            (Value::String(s1), Value::String(s2)) => Ok(s1 >= s2),
+            _ => {
+                let n1 = self.coerce_to_number()?;
+                let n2 = other.coerce_to_number()?;
+                Ok(n1 >= n2)
+            },
+        }
+    }
+
+    fn less_than(&self, other: &Value) -> Result<bool, Error> {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() < n2.as_f64()),
+            (Value::String(s1), Value::String(s2)) => Ok(s1 < s2),
+            _ => {
+                let n1 = self.coerce_to_number()?;
+                let n2 = other.coerce_to_number()?;
+                Ok(n1 < n2)
+            },
+        }
+    }
+
+    fn less_than_equal(&self, other: &Value) -> Result<bool, Error> {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() <= n2.as_f64()),
+            (Value::String(s1), Value::String(s2)) => Ok(s1 <= s2),
+            _ => {
+                let n1 = self.coerce_to_number()?;
+                let n2 = other.coerce_to_number()?;
+                Ok(n1 <= n2)
+            },
         }
     }
 }

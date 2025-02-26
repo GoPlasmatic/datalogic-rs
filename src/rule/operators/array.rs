@@ -9,21 +9,25 @@ pub struct ReduceOperator;
 pub struct MergeOperator;
 
 impl MapOperator {
-    pub fn apply<'a>(&self, array_rule: &Rule, mapper: &Rule, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, array_rule: &Rule, mapper: &Rule, context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         if let Rule::Value(arr_val) = array_rule {
-            if let Rule::Value(mapper_val) = mapper {
-                if arr_val.is_null() && mapper_val.is_null() {
-                    return Err(Error::Custom("Invalid Arguments".into()));
-                }
+            if arr_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
+            }
+        }
+        if let Rule::Value(mapper_val) = mapper {
+            if mapper_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
             }
         }
 
-        let array_value = array_rule.apply(data)?;
+        let array_value = array_rule.apply(context, root, path)?;
         match array_value.as_ref() {
             Value::Array(arr) => {
                 let mut results = Vec::with_capacity(arr.len());
-                for item in arr {
-                    results.push(mapper.apply(item)?.into_owned());
+                for (index, item) in arr.iter().enumerate() {
+                    let path = &format!("{}[{}]", path, index);
+                    results.push(mapper.apply(item, root, path)?.into_owned());
                 }
                 Ok(Cow::Owned(Value::Array(results)))
             },
@@ -33,23 +37,29 @@ impl MapOperator {
 }
 
 impl FilterOperator {
-    pub fn apply<'a>(&self, array_rule: &Rule, predicate: &Rule, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, array_rule: &Rule, predicate: &Rule, context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         if let Rule::Value(arr_val) = array_rule {
-            if let Rule::Value(predicate_val) = predicate {
-                if arr_val.is_null() && predicate_val.is_null() {
-                    return Err(Error::Custom("Invalid Arguments".into()));
-                }
+            if arr_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
+            }
+        }
+        if let Rule::Value(predicate_val) = predicate {
+            if predicate_val.is_null() {
+                return Err(Error::Custom("Invalid Arguments".into()));
             }
         }
 
-        let array_value = array_rule.apply(data)?;
+        let array_value = array_rule.apply(context, root, path)?;
         match array_value.as_ref() {
             Value::Array(arr) => {
-                let results = arr
-                    .iter()
-                    .filter(|item| matches!(predicate.apply(item), Ok(cow) if cow.coerce_to_bool()))
-                    .cloned()
-                    .collect();
+                let mut results = Vec::with_capacity(arr.len());
+                for (index, item) in arr.iter().enumerate() {
+                    let path = &format!("{}[{}]", path, index);
+                    let result = predicate.apply(item, root, path)?;
+                    if result.coerce_to_bool() {
+                        results.push(item.to_owned());
+                    }
+                }
                 
                 Ok(Cow::Owned(Value::Array(results)))
             },
@@ -59,27 +69,28 @@ impl FilterOperator {
 }
 
 impl ReduceOperator {
-    pub fn apply<'a>(&self, array_rule: &Rule, reducer_rule: &Rule, initial_rule: &'a Rule, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
-        let array_value = array_rule.apply(data)?;
+    pub fn apply<'a>(&self, array_rule: &Rule, reducer_rule: &Rule, initial_rule: &'a Rule, context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
+        let array_value = array_rule.apply(context, root, path)?;
 
         match array_value.as_ref() {
             Value::Array(arr) if arr.is_empty() => {
-                initial_rule.apply(data)
+                initial_rule.apply(context, root, path)
             },
             Value::Array(arr) => {
-                let mut accumulator = initial_rule.apply(data)?.into_owned();
+                let mut accumulator = initial_rule.apply(context, root, path)?.into_owned();
 
-                for current in arr {
+                for (index, current) in arr.iter().enumerate() {
                     let mut context = serde_json::Map::with_capacity(2);
                     context.insert("current".to_string(), current.to_owned());
                     context.insert("accumulator".to_string(), accumulator);
                     
-                    accumulator = reducer_rule.apply(&Value::Object(context))?.into_owned();
+                    let path = &format!("{}[{}]", path, index);
+                    accumulator = reducer_rule.apply(&Value::Object(context), root, path)?.into_owned();
                 }
                 
                 Ok(Cow::Owned(accumulator))
             },
-            _ => initial_rule.apply(data),
+            _ => initial_rule.apply(context, root, path),
         }
     }
 }
@@ -95,14 +106,14 @@ pub enum ArrayPredicateType {
 pub struct ArrayPredicateOperator;
 
 impl ArrayPredicateOperator {
-    pub fn apply<'a>(&self, array_rule: &Rule, predicate: &Rule, data: &'a Value, op_type: &ArrayPredicateType) 
+    pub fn apply<'a>(&self, array_rule: &Rule, predicate: &Rule, context: &Value, root: &Value, path: &str, op_type: &ArrayPredicateType) 
         -> Result<Cow<'a, Value>, Error> 
     {
         if *op_type == ArrayPredicateType::Invalid {
             return Err(Error::Custom("Invalid Arguments".into()));
         }
 
-        let array_value = array_rule.apply(data)?;
+        let array_value = array_rule.apply(context, root, path)?;
 
         match array_value.as_ref() {
             Value::Array(arr) => {
@@ -111,24 +122,24 @@ impl ArrayPredicateOperator {
                         if arr.is_empty() {
                             false
                         } else {
-                            arr.iter()
-                                .all(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()))
+                            arr.iter().enumerate()
+                                .all(|(index, item)| matches!(predicate.apply(item, root, &format!("{}[{}]", path, index)), Ok(v) if v.coerce_to_bool()))
                         }
                     },
                     ArrayPredicateType::Some => {
                         if arr.is_empty() {
                             false
                         } else {
-                            arr.iter()
-                                .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()))
+                            arr.iter().enumerate()
+                                .any(|(index, item)| matches!(predicate.apply(item, root, &format!("{}[{}]", path, index)), Ok(v) if v.coerce_to_bool()))
                         }
                     },
                     ArrayPredicateType::None => {
                         if arr.is_empty() {
                             true
                         } else {
-                            !arr.iter()
-                                .any(|item| matches!(predicate.apply(item), Ok(v) if v.coerce_to_bool()))
+                            !arr.iter().enumerate()
+                                .any(|(index, item)| matches!(predicate.apply(item, root, &format!("{}[{}]", path, index)), Ok(v) if v.coerce_to_bool()))
                         }
                     },
                     _ => unreachable!()
@@ -141,7 +152,7 @@ impl ArrayPredicateOperator {
 }
 
 impl MergeOperator {
-    pub fn apply<'a>(&self, args: &[Rule], data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         if args.is_empty() {
             return Ok(Cow::Owned(Value::Array(Vec::new())));
         }
@@ -150,7 +161,7 @@ impl MergeOperator {
         let mut merged = Vec::with_capacity(capacity);
         
         for arg in args {
-            match arg.apply(data)? {
+            match arg.apply(context, root, path)? {
                 Cow::Owned(Value::Array(arr)) => merged.extend(arr),
                 Cow::Borrowed(Value::Array(arr)) => merged.extend(arr.iter().cloned()),
                 value => merged.push(value.into_owned()),

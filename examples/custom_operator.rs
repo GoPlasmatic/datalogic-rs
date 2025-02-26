@@ -10,7 +10,7 @@ impl CustomOperator for PowerOperator {
         "pow"
     }
     
-    fn apply<'a>(&self, args: &[Value], _data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    fn apply<'a>(&self, args: &[Value], _context: &'a Value, _root: &'a Value, _path: &str) -> Result<Cow<'a, Value>, Error> {
         // Validate number of arguments
         if args.len() != 2 {
             return Err(Error::InvalidArguments(

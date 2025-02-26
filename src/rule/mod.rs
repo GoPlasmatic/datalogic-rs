@@ -51,7 +51,7 @@ pub enum ArgType {
 /// use serde_json::json;
 /// 
 /// let rule = Rule::from_value(&json!({"==": [1, 1]})).unwrap();
-/// let result = rule.apply(&json!({})).unwrap();
+/// 
 /// ```
 #[derive(Debug, Clone)]
 pub enum Rule {
@@ -187,7 +187,7 @@ impl Rule {
 
             // Handle static evaluation
             rule if rule.is_static() => {
-                rule.apply(&Value::Null)
+                rule.apply(&Value::Null, &Value::Null, "")
                     .map(|v| Rule::Value(v.into_owned()))
                     .or(Ok(rule))
             },
@@ -623,58 +623,59 @@ impl Rule {
         }
     }
 
-    pub fn apply<'a>(&'a self, data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    pub fn apply<'a>(&'a self, context: &'a Value, root: &'a Value, rpath: &str) -> Result<Cow<'a, Value>, Error> {
         match self {
-            Rule::Value(value) => return Ok(Cow::Borrowed(value)),
+            Rule::Value(value) => Ok(Cow::Borrowed(value)),
             Rule::Array(rules) => {
                 let mut results = Vec::with_capacity(rules.len());
                 for rule in rules {
-                    results.push(rule.apply(data)?.into_owned());
+                    results.push(rule.apply(context, root, rpath)?.into_owned());
                 }
-                return Ok(Cow::Owned(Value::Array(results)));
+                Ok(Cow::Owned(Value::Array(results)))
             }
-            Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), data),
-            Rule::Val(path) => VAL_OP.apply(path, data),
-            Rule::Exists(path) => EXISTS_OP.apply(path, data),
+            Rule::Var(path, default) => VAR_OP.apply(path, default.as_deref(), context, root, rpath),
+            Rule::Val(path) => VAL_OP.apply(path, context, root, rpath),
+            Rule::Exists(path) => EXISTS_OP.apply(path, context, root, rpath),
 
-            Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, data),
-            Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, data),
+            Rule::Map(array_rule, predicate) => MAP_OP.apply(array_rule, predicate, context, root, rpath),
+            Rule::Filter(array_rule, predicate) => FILTER_OP.apply(array_rule, predicate, context, root, rpath),
             Rule::Reduce(array_rule, reducer_rule, initial_rule) => 
-                REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, data),
-            Rule::Merge(args) => MERGE_OP.apply(args, data),
+                REDUCE_OP.apply(array_rule, reducer_rule, initial_rule, context, root, rpath),
+            Rule::Merge(args) => MERGE_OP.apply(args, context, root, rpath),
             Rule::ArrayPredicate(op, array_rule, predicate) => 
-                ARRAY_PREDICATE_OP.apply(array_rule, predicate, data, op),
+                ARRAY_PREDICATE_OP.apply(array_rule, predicate, context, root, rpath, op),
 
-            Rule::Compare(op, args) => COMPARE_OP.apply(args, data, op),
-            Rule::Logic(op, args) => LOGIC_OP.apply(args, data, op),
-            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, data, op),
+            Rule::Compare(op, args) => COMPARE_OP.apply(args, context, root, rpath, op),
+            Rule::Logic(op, args) => LOGIC_OP.apply(args, context, root, rpath, op),
+            Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, context, root, rpath, op),
     
-            Rule::If(args) => IF_OP.apply(args, data),
-            Rule::Ternary(args) => TERNARY_OP.apply(args, data),
-            Rule::Coalesce(args) => COALESCE_OP.apply(args, data),
+            Rule::If(args) => IF_OP.apply(args, context, root, rpath),
+            Rule::Ternary(args) => TERNARY_OP.apply(args, context, root, rpath),
+            Rule::Coalesce(args) => COALESCE_OP.apply(args, context, root, rpath),
 
-            Rule::In(search, target) => IN_OP.apply(search, target, data),
-            Rule::Cat(args) => CAT_OP.apply(args, data),
+            Rule::In(search, target) => IN_OP.apply(search, target, context, root, rpath),
+            Rule::Cat(args) => CAT_OP.apply(args, context, root, rpath),
             Rule::Substr(string, start, length) => 
-                SUBSTR_OP.apply(string, start, length.as_deref(), data),
+                SUBSTR_OP.apply(string, start, length.as_deref(), context, root, rpath),
 
-            Rule::Missing(args) => MISSING_OP.apply(args, data),
-            Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, data),
+            Rule::Missing(args) => MISSING_OP.apply(args, context, root, rpath),
+            Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, context, root, rpath),
             
-            Rule::Preserve(args) => PRESERVE_OP.apply(args, data),
+            Rule::Preserve(args) => PRESERVE_OP.apply(args, context, root, rpath),
             Rule::Throw(rule) => {
-                let result = rule.apply(data)?;
+                let result = rule.apply(context, root, rpath)?;
                 Err(Error::Custom(result.into_owned().to_string()))
             },
-            Rule::Try(args) => TRY_OP.apply(args, data),
+            Rule::Try(args) => TRY_OP.apply(args, context, root, rpath),
             Rule::Custom(name, args) => {
+                println!("Custom operator: {}", name);
                 let json_logic = JsonLogic::global();
                 if let Some(op) = json_logic.get_operator(name) {
                     let mut evaluated_args = Vec::with_capacity(args.len());
                     for arg in args {
-                        evaluated_args.push(arg.apply(data)?.into_owned());
+                        evaluated_args.push(arg.apply(context, root, rpath)?.into_owned());
                     }
-                    op.apply(&evaluated_args, data)
+                    op.apply(&evaluated_args, context, root, rpath)
                 } else {
                     Err(Error::UnknownExpression(name.clone()))
                 }

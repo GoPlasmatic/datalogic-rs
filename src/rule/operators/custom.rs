@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 pub trait CustomOperator: Send + Sync {
     fn name(&self) -> &str;
-    fn apply<'a>(&self, args: &[Value], data: &'a Value) -> Result<Cow<'a, Value>, Error>;
+    fn apply<'a>(&self, args: &[Value], context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error>;
 }
 
 pub type CustomOperatorBox = Arc<dyn CustomOperator>;
