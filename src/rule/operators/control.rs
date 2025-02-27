@@ -4,7 +4,6 @@ use super::{Rule, ValueCoercion};
 use std::borrow::Cow;
 
 pub struct IfOperator;
-pub struct TernaryOperator;
 pub struct CoalesceOperator;
 
 impl IfOperator {
@@ -48,22 +47,6 @@ impl IfOperator {
                 }        
             },
             ArgType::Unary(_) => Err(Error::Custom("Invalid Arguments".into())),
-        }
-    }
-}
-
-impl TernaryOperator {
-    pub fn apply<'a>(&self, args: &'a [Rule], context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
-        match args {
-            [condition, consequent, alternative] => {
-                let cond = condition.apply(context, root, path)?;
-                if cond.coerce_to_bool() {
-                    consequent.apply(context, root, path)
-                } else {
-                    alternative.apply(context, root, path)
-                }
-            }
-            _ => Err(Error::Custom("Invalid Arguments".into()))
         }
     }
 }
