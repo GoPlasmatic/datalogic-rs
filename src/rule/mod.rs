@@ -15,7 +15,6 @@ static COMPARE_OP: CompareOperator = CompareOperator;
 static ARITHMETIC_OP: ArithmeticOperator = ArithmeticOperator;
 
 static IF_OP: IfOperator = IfOperator;
-static TERNARY_OP: TernaryOperator = TernaryOperator;
 static COALESCE_OP: CoalesceOperator = CoalesceOperator;
 
 static MAP_OP: MapOperator = MapOperator;
@@ -67,7 +66,6 @@ pub enum Rule {
     
     // Control operators
     If(ArgType),
-    Ternary(Vec<Rule>),
     Coalesce(Vec<Rule>),
     
     // String operators
@@ -157,7 +155,6 @@ impl Rule {
             }
 
             Rule::Array(args) |
-            Rule::Ternary(args) |
             Rule::Coalesce(args) |
             Rule::Merge(args) |
             Rule::Cat(args) => args.iter().all(|r| r.is_static()),
@@ -320,10 +317,6 @@ impl Rule {
                     }
                 }
             }
-            Rule::Ternary(ref args) => {
-                let optimized = Self::optimize_args(args)?;
-                Ok(Rule::Ternary(optimized))
-            },
             Rule::Coalesce(ref args) => {
                 let optimized = Self::optimize_args(args)?;
                 Ok(Rule::Coalesce(optimized))
@@ -441,14 +434,13 @@ impl Rule {
                     },
                     
                     // Control operators
-                    "if" => {
+                    "if" | "?:" => {
                         let arg = match args_raw {
                             Value::Array(_) => ArgType::Multiple(args),
                             _ => ArgType::Unary(Box::new(args[0].clone())),
                         };
                         Ok(Rule::If(arg))
                     },
-                    "?:" => Ok(Rule::Ternary(args)),
                     "??" => Ok(Rule::Coalesce(args)),
                     
                     // Array operators
@@ -650,7 +642,6 @@ impl Rule {
             Rule::Arithmetic(op, args) => ARITHMETIC_OP.apply(args, context, root, rpath, op),
     
             Rule::If(args) => IF_OP.apply(args, context, root, rpath),
-            Rule::Ternary(args) => TERNARY_OP.apply(args, context, root, rpath),
             Rule::Coalesce(args) => COALESCE_OP.apply(args, context, root, rpath),
 
             Rule::In(search, target) => IN_OP.apply(search, target, context, root, rpath),

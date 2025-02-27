@@ -134,7 +134,7 @@ impl ValOperator {
         // Handle paths like "$.foo.bar[1]" or "$.items[2].value"
         path.split(['.', '['])
             .filter(|s| !s.is_empty())
-            .last()
+            .next_back()
             .and_then(|s| {
                 if let Some(s) = s.strip_suffix(']') {
                     s.parse::<u64>().ok()

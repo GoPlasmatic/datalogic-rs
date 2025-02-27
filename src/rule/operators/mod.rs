@@ -90,7 +90,7 @@ impl ValueCoercion for Value {
             Value::String(s) => result.push_str(s),
             Value::Number(n) => result.push_str(&n.to_string()),
             Value::Bool(b) => result.push_str(if *b { "true" } else { "false" }),
-            Value::Null => result.push_str("null"),
+            Value::Null => result.push_str(""),
             Value::Array(arr) => {
                 for item in arr.iter() {
                     Self::coerce_append(result, item);
