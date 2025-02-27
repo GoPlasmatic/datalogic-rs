@@ -52,7 +52,7 @@ impl SubstrOperator {
         let string = string.apply(context, root, path)?;
         let string = match &*string {
             Value::String(s) => s,
-            _ => return Ok(Cow::Owned(Value::String(String::new()))),
+            v => &v.coerce_to_string(),
         };
 
         let chars: Vec<char> = string.chars().collect();

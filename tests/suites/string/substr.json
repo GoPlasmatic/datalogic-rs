@@ -73,6 +73,6 @@
         "description": "Substr with non-string input returns empty",
         "rule": { "substr": [42, 0, 1] },
         "data": null,
-        "result": ""
+        "result": "4"
     }
 ]
