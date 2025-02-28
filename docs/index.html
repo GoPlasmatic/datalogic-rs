@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Logic Evaluator</title>
+    
+    <!-- Material Design -->
+    <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+</head>
+<body class="mdc-typography">
+    <div class="container">
+        <header class="mdc-top-app-bar">
+            <div class="mdc-top-app-bar__row">
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
+                    <h1 class="mdc-typography--headline4">JSON Logic Evaluator</h1>
+                </section>
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end">
+                    <a href="https://github.com/codetiger/datalogic-rs" class="mdc-button" target="_blank">
+                        <span class="mdc-button__ripple"></span>
+                        <span class="mdc-button__label">GitHub</span>
+                    </a>
+                </section>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="description mdc-typography--body1">
+                <p>Enter JSON Logic rules and data to evaluate expressions. The evaluator uses Rust-based implementation compiled to WebAssembly.</p>
+            </div>
+
+            <div class="editors-container">
+                <!-- Rules Editor -->
+                <div class="editor-section">
+                    <div class="mdc-card">
+                        <div class="mdc-card__primary-action">
+                            <h2 class="mdc-typography--subtitle1">JSON Logic Rules</h2>
+                            <textarea id="rules-editor"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Editor -->
+                <div class="editor-section">
+                    <div class="mdc-card">
+                        <div class="mdc-card__primary-action">
+                            <h2 class="mdc-typography--subtitle1">JSON Data</h2>
+                            <textarea id="data-editor"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-container">
+                <button class="mdc-button mdc-button--outlined" id="sample-button">
+                    <span class="mdc-button__ripple"></span>
+                    <span class="mdc-button__label">Load Sample</span>
+                </button>
+                <button class="mdc-button mdc-button--raised" id="evaluate-button">
+                    <span class="mdc-button__ripple"></span>
+                    <span class="mdc-button__label">Evaluate</span>
+                </button>
+            </div>
+
+            <!-- Result Area -->
+            <div class="result-container mdc-card">
+                <h2 class="mdc-typography--subtitle1">Result</h2>
+                <pre id="result-area" class="result-output"></pre>
+            </div>
+
+            <!-- Footer -->
+            <footer class="footer mdc-typography--caption">
+                <p>Built with Rust + WebAssembly. View the 
+                    <a href="https://github.com/codetiger/datalogic-rs" target="_blank">source code</a>.
+                </p>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
