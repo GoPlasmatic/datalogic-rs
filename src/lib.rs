@@ -1,5 +1,6 @@
 mod error;
 mod rule;
+mod bindings;
 
 pub use error::Error;
 use serde_json::Value;
