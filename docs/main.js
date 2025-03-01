@@ -34,7 +34,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         lint: true
     });
 
-    const resultArea = document.getElementById('result-area');
+    // Initialize result editor as readonly
+    const resultEditor = CodeMirror.fromTextArea(document.getElementById('result-editor'), {
+        mode: { name: 'javascript', json: true },
+        theme: 'material',
+        lineNumbers: true,
+        matchBrackets: true,
+        readOnly: true,
+        tabSize: 2,
+        gutters: ["CodeMirror-linenumbers"]
+    });
+    
+    // Add readonly class to result editor
+    resultEditor.getWrapperElement().classList.add('CodeMirror-readonly');
+
+    const resultContainer = document.querySelector('.result-container');
     const evaluateButton = document.getElementById('evaluate-button');
     const sampleButton = document.getElementById('sample-button');
 
@@ -71,22 +85,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const result = await logic.apply(rules, data);
             
-            resultArea.classList.remove('error');
-            resultArea.classList.add('success');
-            resultArea.textContent = JSON.stringify(result, null, 2);
+            // Update the result editor with properly formatted JSON
+            resultEditor.setValue(JSON.stringify(result, null, 2));
+            resultEditor.refresh();
+            
+            // Update container classes
+            resultContainer.classList.remove('result-error');
+            resultContainer.classList.add('result-success');
         } catch (err) {
-            resultArea.classList.remove('success');
-            resultArea.classList.add('error');
-            resultArea.textContent = `Error: ${err.message}`;
+            // Display error in result editor
+            resultEditor.setValue(`Error: ${err.message}`);
+            resultEditor.refresh();
+            
+            // Update container classes
+            resultContainer.classList.remove('result-success');
+            resultContainer.classList.add('result-error');
         }
     });
 
     sampleButton.addEventListener('click', () => {
-        rulesEditor.value = JSON.stringify(sampleRules, null, 2);
-        dataEditor.value = JSON.stringify(sampleData, null, 2);
-        
-        // Notify Material text fields of value change
-        textFields.forEach(textField => textField.layout());
+        rulesEditor.setValue(JSON.stringify(sampleRules, null, 2));
+        dataEditor.setValue(JSON.stringify(sampleData, null, 2));
     });
 
     // Initial sample data
