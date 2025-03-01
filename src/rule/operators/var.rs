@@ -1,5 +1,5 @@
 use crate::Error;
-use super::Rule;
+use super::{Rule, StaticEvaluable};
 use serde_json::Value;
 use std::borrow::Cow;
 
@@ -98,5 +98,12 @@ impl VarOperator {
             },
             _ => Err(Error::InvalidArguments(ERR_INVALID_PATH.into()))
         }
+    }
+}
+
+impl StaticEvaluable for VarOperator {
+    fn is_static(&self, _rule: &Rule) -> bool {
+        // Var always requires context
+        false
     }
 }

@@ -27,6 +27,11 @@ pub use val::*;
 pub use tryop::*;
 pub use custom::*;
 
+/// Trait for determining if a rule can be statically evaluated
+pub trait StaticEvaluable {
+    /// Returns true if the rule can be evaluated without a context
+    fn is_static(&self, rule: &Rule) -> bool;
+}
 
 trait ValueCoercion {
     fn is_null_value(&self) -> bool;

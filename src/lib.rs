@@ -89,6 +89,58 @@ impl JsonLogic {
         rule.apply(data, data, path).map(|cow| cow.into_owned())
     }
 
+    /// Evaluates a JSON Logic rule from a JSON Value with optimization.
+    /// 
+    /// This method parses a JSON Value into a Rule, optimizes it, and then evaluates it.
+    /// 
+    /// ## Arguments
+    /// - `rule_value`: A JSON Value containing the rule
+    /// - `data`: The JSON data against which the rule will be evaluated
+    /// 
+    /// ## Returns
+    /// - `JsonLogicResult`: The evaluated output or an error if the rule fails.
+    /// 
+    /// ## Example
+    /// ```rust
+    /// use datalogic_rs::JsonLogic;
+    /// use serde_json::json;
+    /// 
+    /// let rule_value = json!({">": [{"var": "age"}, 18]});
+    /// let data = json!({"age": 21});
+    /// let result = JsonLogic::apply_optimized(&rule_value, &data).unwrap();
+    /// assert_eq!(result, json!(true));
+    /// ```
+    pub fn apply_optimized(rule_value: &Value, data: &Value) -> JsonLogicResult {
+        let rule = Rule::from_value_optimized(rule_value)?;
+        Self::apply(&rule, data)
+    }
+
+    /// Evaluates a JSON Logic rule from a JSON string with optimization.
+    /// 
+    /// This method parses a JSON string into a Rule, optimizes it, and then evaluates it.
+    /// 
+    /// ## Arguments
+    /// - `rule_json`: A JSON string containing the rule
+    /// - `data`: The JSON data against which the rule will be evaluated
+    /// 
+    /// ## Returns
+    /// - `JsonLogicResult`: The evaluated output or an error if the rule fails.
+    /// 
+    /// ## Example
+    /// ```rust
+    /// use datalogic_rs::JsonLogic;
+    /// use serde_json::json;
+    /// 
+    /// let rule_json = r#"{">":[{"var":"age"},18]}"#;
+    /// let data = json!({"age": 21});
+    /// let result = JsonLogic::apply_json_optimized(rule_json, &data).unwrap();
+    /// assert_eq!(result, json!(true));
+    /// ```
+    pub fn apply_json_optimized(rule_json: &str, data: &Value) -> JsonLogicResult {
+        let rule = Rule::from_json(rule_json)?;
+        Self::apply(&rule, data)
+    }
+
     /// Adds a custom operator to the JsonLogic evaluator.
     /// 
     /// This method registers a new custom operator that can be used in JSON Logic rules.

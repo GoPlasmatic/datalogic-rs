@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use crate::{rule::ArgType, error::Error};
+use super::{Rule, StaticEvaluable};
 use std::borrow::Cow;
 
 pub struct TryOperator;
@@ -52,5 +53,17 @@ impl TryOperator {
         }
         
         error_str.trim_matches('"').to_string()
+    }
+}
+
+impl StaticEvaluable for TryOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::Try(args) => match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            },
+            _ => false,
+        }
     }
 }

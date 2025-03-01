@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::{rule::ArgType, Error};
-use super::{Rule, ValueCoercion};
+use super::{Rule, ValueCoercion, StaticEvaluable};
 use std::borrow::Cow;
 
 pub struct IfOperator;
@@ -51,6 +51,18 @@ impl IfOperator {
     }
 }
 
+impl StaticEvaluable for IfOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::If(args) => match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            },
+            _ => false,
+        }
+    }
+}
+
 impl CoalesceOperator {
     pub fn apply<'a>(&self, args: &'a [Rule], context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         for arg in args {
@@ -60,5 +72,14 @@ impl CoalesceOperator {
             }
         }
         Ok(Cow::Owned(Value::Null))
+    }
+}
+
+impl StaticEvaluable for CoalesceOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::Coalesce(args) => args.iter().all(|r| r.is_static()),
+            _ => false,
+        }
     }
 }

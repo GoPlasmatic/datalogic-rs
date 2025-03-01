@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::rule::ArgType;
-use super::{Rule, ValueCoercion};
+use super::{Rule, ValueCoercion, StaticEvaluable};
 use crate::Error;
 use std::borrow::Cow;
 
@@ -76,6 +76,19 @@ impl LogicOperator {
                 let value = args[0].apply(context, root, path)?;
                 Ok(Cow::Owned(Value::Bool(value.coerce_to_bool())))
             }
+        }
+    }
+}
+
+impl StaticEvaluable for LogicOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Logic(_, args) = rule {
+            match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            }
+        } else {
+            false
         }
     }
 }

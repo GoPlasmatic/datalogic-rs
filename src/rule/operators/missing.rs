@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::Rule;
+use super::{Rule, StaticEvaluable};
 use std::borrow::Cow;
 
 const ERR_MISSING_SOME: &str = "missing_some requires 2 arguments";
@@ -70,6 +70,15 @@ impl MissingOperator {
     }
 }
 
+impl StaticEvaluable for MissingOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::Missing(_) => false, // Missing always requires context
+            _ => false,
+        }
+    }
+}
+
 impl MissingSomeOperator {
     pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         match args {
@@ -110,6 +119,15 @@ impl MissingSomeOperator {
                 Ok(Cow::Owned(Value::Array(missing)))
             }
             _ => Err(Error::InvalidArguments(ERR_MISSING_SOME.into()))
+        }
+    }
+}
+
+impl StaticEvaluable for MissingSomeOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::MissingSome(_) => false, // MissingSome always requires context
+            _ => false,
         }
     }
 }

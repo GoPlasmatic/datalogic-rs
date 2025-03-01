@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Rule, ValueCoercion};
+use super::{Rule, ValueCoercion, StaticEvaluable};
 use std::borrow::Cow;
 
 pub struct MapOperator;
@@ -32,6 +32,16 @@ impl MapOperator {
                 Ok(Cow::Owned(Value::Array(results)))
             },
             _ => Ok(Cow::Owned(Value::Array(Vec::new())))
+        }
+    }
+}
+
+impl StaticEvaluable for MapOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Map(array_rule, mapper) = rule {
+            array_rule.is_static() && mapper.is_static()
+        } else {
+            false
         }
     }
 }
@@ -68,6 +78,16 @@ impl FilterOperator {
     }
 }
 
+impl StaticEvaluable for FilterOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Filter(array_rule, predicate) = rule {
+            array_rule.is_static() && predicate.is_static()
+        } else {
+            false
+        }
+    }
+}
+
 impl ReduceOperator {
     pub fn apply<'a>(&self, array_rule: &Rule, reducer_rule: &Rule, initial_rule: &'a Rule, context: &'a Value, root: &'a Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         let array_value = array_rule.apply(context, root, path)?;
@@ -91,6 +111,16 @@ impl ReduceOperator {
                 Ok(Cow::Owned(accumulator))
             },
             _ => initial_rule.apply(context, root, path),
+        }
+    }
+}
+
+impl StaticEvaluable for ReduceOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Reduce(array_rule, reducer, initial) = rule {
+            array_rule.is_static() && reducer.is_static() && initial.is_static()
+        } else {
+            false
         }
     }
 }
@@ -151,6 +181,16 @@ impl ArrayPredicateOperator {
     }
 }
 
+impl StaticEvaluable for ArrayPredicateOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::ArrayPredicate(_, array_rule, predicate) = rule {
+            array_rule.is_static() && predicate.is_static()
+        } else {
+            false
+        }
+    }
+}
+
 impl MergeOperator {
     pub fn apply<'a>(&self, args: &[Rule], context: &Value, root: &Value, path: &str) -> Result<Cow<'a, Value>, Error> {
         if args.is_empty() {
@@ -169,5 +209,15 @@ impl MergeOperator {
         }
         
         Ok(Cow::Owned(Value::Array(merged)))
+    }
+}
+
+impl StaticEvaluable for MergeOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Merge(args) = rule {
+            args.iter().all(|r| r.is_static())
+        } else {
+            false
+        }
     }
 }
