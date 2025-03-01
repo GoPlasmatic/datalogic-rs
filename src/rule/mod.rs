@@ -91,6 +91,7 @@ pub enum Rule {
 }
 
 impl Rule {
+    #[inline]
     fn is_static(&self) -> bool {
         match self {
             Rule::Value(_) => true,
@@ -99,63 +100,42 @@ impl Rule {
             Rule::Val(_) => false,
             Rule::Exists(_) => false,
 
-            Rule::Map(array_rule, mapper) => {
-                array_rule.is_static() && mapper.is_static()
-            }
-            Rule::Reduce(array_rule, reducer, initial) => {
-                array_rule.is_static() && reducer.is_static() && initial.is_static()
-            }
-            Rule::Filter(array_rule, predicate) => {
-                array_rule.is_static() && predicate.is_static()
-            }
-            Rule::ArrayPredicate(_, array_rule, predicate) => {
-                array_rule.is_static() && predicate.is_static()
-            }
+            Rule::Map(array_rule, mapper) => array_rule.is_static() && mapper.is_static(),
+            Rule::Reduce(array_rule, reducer, initial) => 
+                array_rule.is_static() && reducer.is_static() && initial.is_static(),
+            Rule::Filter(array_rule, predicate) => 
+                array_rule.is_static() && predicate.is_static(),
+            Rule::ArrayPredicate(_, array_rule, predicate) => 
+                array_rule.is_static() && predicate.is_static(),
 
-            Rule::In(search, target) => {
-                search.is_static() && target.is_static()
-            }
-            Rule::Substr(string, start, length) => {
-                if length.is_none() {
-                    string.is_static() && start.is_static()
-                } else {
-                    string.is_static() && start.is_static() && length.as_deref().unwrap().is_static()
-                }
-            }
+            Rule::In(search, target) => search.is_static() && target.is_static(),
+            Rule::Substr(string, start, length) => 
+                string.is_static() && start.is_static() && 
+                length.as_ref().map_or(true, |l| l.is_static()),
 
-            Rule::Compare(_, args) => {
-                args.iter().all(|r| r.is_static())
-            }
-            Rule::Logic(_, args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
-            Rule::Arithmetic(_, args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
-            Rule::If(args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
+            Rule::Compare(_, args) => args.iter().all(|r| r.is_static()),
+            Rule::Logic(_, args) => match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            },
+            Rule::Arithmetic(_, args) => match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            },
+            Rule::If(args) => match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            },
 
             Rule::Array(args) |
             Rule::Coalesce(args) |
             Rule::Merge(args) |
             Rule::Cat(args) => args.iter().all(|r| r.is_static()),
             Rule::Throw(rule) => rule.is_static(),
-            Rule::Try(args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
+            Rule::Try(args) => match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            },
             Rule::Custom(_, args) => args.iter().all(|r| r.is_static()),
         }
     }
@@ -170,8 +150,7 @@ impl Rule {
     fn optimize_rule(rule: Rule) -> Result<Rule, Error> {
         match rule {
             // Never optimize these
-            Rule::Missing(_) | Rule::MissingSome(_) => Ok(rule),
-            Rule::Value(_) => Ok(rule),
+            Rule::Missing(_) | Rule::MissingSome(_) | Rule::Value(_) => Ok(rule),
 
             // Handle static evaluation
             rule if rule.is_static() => {
@@ -275,29 +254,28 @@ impl Rule {
                     }
                 }
             },
-            Rule::Merge(ref args) => {
-                let optimized = Self::optimize_args(args)?;
+            Rule::Merge(args) => {
+                let optimized = Self::optimize_args(&args)?;
                 Ok(Rule::Merge(optimized))
-            }
-            Rule::Cat(ref args) => {
-                let optimized = Self::optimize_args(args)?;
+            },
+            Rule::Cat(args) => {
+                let optimized = Self::optimize_args(&args)?;
                 Ok(Rule::Cat(optimized))
-            }
-            Rule::If(ref args) => {
+            },
+            Rule::If(args) => {
                 match args {
                     ArgType::Multiple(arr) => {
-                        let optimized = Self::optimize_args(arr)?;
+                        let optimized = Self::optimize_args(&arr)?;
                         Ok(Rule::If(ArgType::Multiple(optimized)))
                     },
                     ArgType::Unary(rule) => {
-                        let r = rule.as_ref().clone();
-                        let optimized = Self::optimize_rule(r)?;
+                        let optimized = Self::optimize_rule(*rule)?;
                         Ok(Rule::If(ArgType::Unary(Box::new(optimized))))
                     }
                 }
-            }
-            Rule::Coalesce(ref args) => {
-                let optimized = Self::optimize_args(args)?;
+            },
+            Rule::Coalesce(args) => {
+                let optimized = Self::optimize_args(&args)?;
                 Ok(Rule::Coalesce(optimized))
             },
             Rule::Throw(rule) => {
@@ -595,6 +573,7 @@ impl Rule {
         }
     }
 
+    #[inline]
     pub fn apply<'a>(&'a self, context: &'a Value, root: &'a Value, rpath: &str) -> Result<Cow<'a, Value>, Error> {
         match self {
             Rule::Value(value) => Ok(Cow::Borrowed(value)),
@@ -638,7 +617,6 @@ impl Rule {
             },
             Rule::Try(args) => TRY_OP.apply(args, context, root, rpath),
             Rule::Custom(name, args) => {
-                println!("Custom operator: {}", name);
                 let json_logic = JsonLogic::global();
                 if let Some(op) = json_logic.get_operator(name) {
                     let mut evaluated_args = Vec::with_capacity(args.len());

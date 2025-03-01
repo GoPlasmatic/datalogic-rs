@@ -37,6 +37,7 @@ trait ValueCoercion {
 }
 
 impl ValueCoercion for Value {
+    #[inline]
     fn coerce_to_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
@@ -51,6 +52,7 @@ impl ValueCoercion for Value {
         }
     }
 
+    #[inline]
     fn coerce_to_number(&self) -> Result<f64, Error> {
         match self {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0)),
@@ -83,6 +85,7 @@ impl ValueCoercion for Value {
         }
     }
 
+    #[inline]
     fn coerce_append(result: &mut String, value: &Value) {
         match value {
             Value::String(s) => result.push_str(s),
@@ -98,6 +101,7 @@ impl ValueCoercion for Value {
         }
     }
 
+    #[inline]
     fn is_null_value(&self) -> bool {
         match self {
             Value::Bool(_) => false,
@@ -137,14 +141,17 @@ trait ValueExt {
 }
 
 impl ValueExt for Value {
+    #[inline]
     fn strict_equals(&self, other: &Value) -> Result<bool, Error> {
         Ok(std::mem::discriminant(self) == std::mem::discriminant(other) && self.equals(other)?)
     }
 
+    #[inline]
     fn strict_not_equals(&self, other: &Value) -> Result<bool, Error> {
         Ok(std::mem::discriminant(self) != std::mem::discriminant(other) || self.not_equals(other)?)
     }
 
+    #[inline]
     fn equals(&self, other: &Value) -> Result<bool, Error> {
         match (self, other) {
             (Value::Number(n1), Value::Number(n2)) => Ok(n1 == n2),
@@ -158,10 +165,12 @@ impl ValueExt for Value {
         }
     }
 
+    #[inline]
     fn not_equals(&self, other: &Value) -> Result<bool, Error> {
         Ok(!self.equals(other)?)
     }
 
+    #[inline]
     fn greater_than(&self, other: &Value) -> Result<bool, Error> {
         match (self, other) {
             (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() > n2.as_f64()),
@@ -174,6 +183,7 @@ impl ValueExt for Value {
         }
     }
 
+    #[inline]
     fn greater_than_equal(&self, other: &Value) -> Result<bool, Error> {
         match (self, other) {
             (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() >= n2.as_f64()),
@@ -186,6 +196,7 @@ impl ValueExt for Value {
         }
     }
 
+    #[inline]
     fn less_than(&self, other: &Value) -> Result<bool, Error> {
         match (self, other) {
             (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() < n2.as_f64()),
@@ -198,6 +209,7 @@ impl ValueExt for Value {
         }
     }
 
+    #[inline]
     fn less_than_equal(&self, other: &Value) -> Result<bool, Error> {
         match (self, other) {
             (Value::Number(n1), Value::Number(n2)) => Ok(n1.as_f64() <= n2.as_f64()),
