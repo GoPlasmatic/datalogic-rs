@@ -96,6 +96,12 @@ body {
     margin-top: 24px;
 }
 
+.result-container .CodeMirror {
+    height: auto;
+    min-height: 100px;
+    max-height: 300px;
+}
+
 .result-output {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
     font-size: 14px;
@@ -118,6 +124,20 @@ body {
     color: #d32f2f;
     background-color: #ffebee;
     border: 1px solid #d32f2f;
+}
+
+.result-success .CodeMirror {
+    border-color: var(--mdc-theme-secondary);
+    background-color: #e8f5e9;
+}
+
+.result-error .CodeMirror {
+    border-color: #d32f2f;
+    background-color: #ffebee;
+}
+
+.result-error .CodeMirror-lines {
+    color: #d32f2f;
 }
 
 /* Footer Styles */
@@ -183,12 +203,4 @@ body {
 
 .editor-section .CodeMirror {
     margin-bottom: 16px;
-}
-
-.result-success .CodeMirror {
-    border-color: var(--mdc-theme-secondary);
-}
-
-.result-error .CodeMirror {
-    border-color: #d32f2f;
 }

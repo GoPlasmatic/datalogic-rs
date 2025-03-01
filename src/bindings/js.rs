@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use crate::{JsonLogic, Rule};
 use serde_json::Value;
+use js_sys;
 
 #[wasm_bindgen]
 pub struct JsJsonLogic(JsonLogic);
@@ -23,7 +24,20 @@ impl JsJsonLogic {
         
         let result = JsonLogic::apply(&rule, &data_value)
             .map_err(|e| JsError::new(&e.to_string()))?;
+        
+        // Convert the result to a JSON string
+        let result_string = serde_json::to_string(&result)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        
+        // Use JavaScript's JSON.parse to ensure proper object structure
+        let parse_fn = js_sys::Function::new_with_args(
+            "jsonString",
+            "return JSON.parse(jsonString);"
+        );
+        
+        let js_result = parse_fn.call1(&JsValue::NULL, &JsValue::from_str(&result_string))
+            .map_err(|e| JsError::new(&format!("Failed to parse JSON: {:?}", e)))?;
             
-        Ok(serde_wasm_bindgen::to_value(&result)?)
+        Ok(js_result)
     }
 }

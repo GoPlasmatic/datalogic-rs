@@ -2,23 +2,10 @@ use datalogic_rs::*;
 use serde_json::json;
 
 fn main() {
-    let logic = json!({
-		"reduce": [
-			[1, 2, 3, 4],
-			{"+": [{"var": "current"}, {"var": "accumulator"}]},
-			0
-		]
-    });
+    let logic = json!({ "preserve": [{ "a": 1 }, { "b": 2 }, { "a": 1, "b": 2 }] });
     println!("Logic: {:?}", logic);
 
-    let data = json!({
-        "cart": {
-            "total": 120.00
-        },
-        "user": {
-            "membership": "premium"
-        }
-    });
+    let data = json!({});
 
     let rule = Rule::from_value(&logic).unwrap();
     println!("Rule: {:#?}", rule);
