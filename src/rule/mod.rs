@@ -30,7 +30,6 @@ static IN_OP: InOperator = InOperator;
 static CAT_OP: CatOperator = CatOperator;
 static SUBSTR_OP: SubstrOperator = SubstrOperator;
 
-static PRESERVE_OP: PreserveOperator = PreserveOperator;
 static TRY_OP: TryOperator = TryOperator;
 
 #[derive(Debug, Clone)]
@@ -85,7 +84,6 @@ pub enum Rule {
     MissingSome(Vec<Rule>),
 
     // Special operators
-    Preserve(ArgType),
     Throw(Box<Rule>),
     Try(ArgType),
 
@@ -140,13 +138,6 @@ impl Rule {
                     ArgType::Unary(r) => r.is_static(),
                 }
             }
-            Rule::Preserve(args) => {
-                match args {
-                    ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
-                    ArgType::Unary(r) => r.is_static(),
-                }
-            }
-
             Rule::If(args) => {
                 match args {
                     ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
@@ -268,18 +259,6 @@ impl Rule {
                 let optimized_length = length.map(|l| Self::optimize_rule(*l)).transpose()?;
                 Ok(Rule::Substr(Box::new(optimized_string), Box::new(optimized_start), optimized_length.map(Box::new)))
             },
-            Rule::Preserve(args) => {
-                match args {
-                    ArgType::Multiple(arr) => {
-                        let optimized = Self::optimize_args(&arr)?;
-                        Ok(Rule::Preserve(ArgType::Multiple(optimized)))
-                    },
-                    ArgType::Unary(rule) => {
-                        let optimized = Self::optimize_rule(*rule)?;
-                        Ok(Rule::Preserve(ArgType::Unary(Box::new(optimized))))
-                    }
-                }
-            }
             Rule::Compare(op, args) => {
                 let optimized = Self::optimize_args(&args)?;
                 Ok(Rule::Compare(op, optimized))
@@ -366,11 +345,15 @@ impl Rule {
         match value {
             Value::Object(map) if map.len() == 1 => {
                 let (op, args_raw) = map.iter().next().unwrap();
-                let args = match args_raw {
-                    Value::Array(arr) => arr.iter()
-                        .map(Rule::from_value)
-                        .collect::<Result<Vec<_>, _>>()?,
-                    _ => vec![Rule::from_value(args_raw)?],
+                let args = if op != "preserve" {
+                    match args_raw {
+                        Value::Array(arr) => arr.iter()
+                            .map(Rule::from_value)
+                            .collect::<Result<Vec<_>, _>>()?,
+                        _ => vec![Rule::from_value(args_raw)?],
+                    }
+                } else {
+                    vec![]
                 };
                 
                 let rule = match op.as_str() {
@@ -578,11 +561,8 @@ impl Rule {
                         Ok(Rule::Arithmetic(ArithmeticType::Min, arg))
                     },
                     "preserve" => {
-                        let arg = match args_raw {
-                            Value::Array(_) => ArgType::Multiple(args),
-                            _ => ArgType::Unary(Box::new(args[0].clone())),
-                        };
-                        Ok(Rule::Preserve(arg))
+                        let arg = Rule::Value(args_raw.clone());
+                        Ok(arg)
                     },
                     "throw" => Ok(Rule::Throw(Box::new(args[0].clone()))),
                     "try" => {
@@ -652,7 +632,6 @@ impl Rule {
             Rule::Missing(args) => MISSING_OP.apply(args, context, root, rpath),
             Rule::MissingSome(args) => MISSING_SOME_OP.apply(args, context, root, rpath),
             
-            Rule::Preserve(args) => PRESERVE_OP.apply(args, context, root, rpath),
             Rule::Throw(rule) => {
                 let result = rule.apply(context, root, rpath)?;
                 Err(Error::Custom(result.into_owned().to_string()))
