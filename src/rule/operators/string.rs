@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::Error;
-use super::{Rule, ValueCoercion};
+use super::{Rule, ValueCoercion, StaticEvaluable};
 use std::borrow::Cow;
 
 pub struct InOperator;
@@ -17,6 +17,15 @@ impl InOperator {
             (_, Value::Array(arr)) => arr.contains(&*search),
             _ => false,
         })))
+    }
+}
+
+impl StaticEvaluable for InOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::In(search, target) => search.is_static() && target.is_static(),
+            _ => false,
+        }
     }
 }
 
@@ -42,6 +51,15 @@ impl CatOperator {
         }
 
         Ok(Cow::Owned(Value::String(result)))
+    }
+}
+
+impl StaticEvaluable for CatOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::Cat(args) => args.iter().all(|r| r.is_static()),
+            _ => false,
+        }
     }
 }
 
@@ -96,6 +114,17 @@ impl SubstrOperator {
                 Ok(Cow::Owned(Value::String(chars[start_idx..].iter().collect())))
             },
             _ => Ok(Cow::Owned(Value::String(String::new()))),
+        }
+    }
+}
+
+impl StaticEvaluable for SubstrOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        match rule {
+            Rule::Substr(string, start, length) => 
+                string.is_static() && start.is_static() && 
+                length.as_ref().map_or(true, |l| l.is_static()),
+            _ => false,
         }
     }
 }

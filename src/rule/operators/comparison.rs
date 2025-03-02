@@ -1,5 +1,5 @@
 use serde_json::Value;
-use super::{Rule, Error, ValueExt};
+use super::{Rule, Error, ValueExt, StaticEvaluable};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
@@ -51,6 +51,16 @@ impl CompareOperator {
             GreaterThanEqual => left.greater_than_equal(right),
             LessThan => left.less_than(right),
             LessThanEqual => left.less_than_equal(right),
+        }
+    }
+}
+
+impl StaticEvaluable for CompareOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Compare(_, args) = rule {
+            args.iter().all(|r| r.is_static())
+        } else {
+            false
         }
     }
 }

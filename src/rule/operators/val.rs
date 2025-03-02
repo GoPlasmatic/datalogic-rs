@@ -1,5 +1,6 @@
 use serde_json::Value;
 use crate::{rule::ArgType, Error};
+use super::{Rule, StaticEvaluable};
 use std::borrow::Cow;
 
 pub struct ValOperator;
@@ -145,6 +146,13 @@ impl ValOperator {
     }
 }
 
+impl StaticEvaluable for ValOperator {
+    fn is_static(&self, _rule: &Rule) -> bool {
+        // Val always requires context
+        false
+    }
+}
+
 pub struct ExistsOperator;
 
 impl ExistsOperator {
@@ -195,6 +203,13 @@ impl ExistsOperator {
                 }
             }
         }
+    }
+}
+
+impl StaticEvaluable for ExistsOperator {
+    fn is_static(&self, _rule: &Rule) -> bool {
+        // Exists always requires context
+        false
     }
 }
 

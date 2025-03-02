@@ -1,5 +1,6 @@
-use super::{ValueCoercion, ValueConvert};
+use super::{ValueCoercion, ValueConvert, StaticEvaluable};
 use crate::rule::ArgType;
+use crate::rule::Rule;
 use crate::Error;
 use serde_json::Value;
 use core::f64;
@@ -133,6 +134,19 @@ impl ArithmeticOperator {
                 }
                 Ok(Cow::Owned(acc.to_value()))
             }
+        }
+    }
+}
+
+impl StaticEvaluable for ArithmeticOperator {
+    fn is_static(&self, rule: &Rule) -> bool {
+        if let Rule::Arithmetic(_, args) = rule {
+            match args {
+                ArgType::Multiple(arr) => arr.iter().all(|r| r.is_static()),
+                ArgType::Unary(r) => r.is_static(),
+            }
+        } else {
+            false
         }
     }
 }
