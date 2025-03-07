@@ -150,13 +150,11 @@ impl<'a> DataValue<'a> {
     /// Coerces the value to a boolean according to JSONLogic rules.
     pub fn coerce_to_bool(&self) -> bool {
         match self {
-            DataValue::Null => false,
             DataValue::Bool(b) => *b,
-            DataValue::Number(n) => {
-                match n {
-                    NumberValue::Integer(i) => *i != 0,
-                    NumberValue::Float(f) => *f != 0.0 && !f.is_nan(),
-                }
+            DataValue::Null => false,
+            DataValue::Number(n) => match n {
+                NumberValue::Integer(i) => *i != 0,
+                NumberValue::Float(f) => *f != 0.0 && !f.is_nan(),
             },
             DataValue::String(s) => !s.is_empty(),
             DataValue::Array(a) => !a.is_empty(),
@@ -219,14 +217,9 @@ impl<'a> DataValue<'a> {
     /// Gets a value from an object by key.
     pub fn get(&self, key: &str) -> Option<&DataValue<'a>> {
         match self {
-            DataValue::Object(entries) => {
-                for (k, v) in *entries {
-                    if *k == key {
-                        return Some(v);
-                    }
-                }
-                None
-            },
+            DataValue::Object(entries) => entries.binary_search_by_key(&key, |&(k, _)| k)
+                .ok()
+                .map(|idx| &entries[idx].1),
             _ => None,
         }
     }
