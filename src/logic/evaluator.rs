@@ -5,7 +5,7 @@
 use crate::arena::DataArena;
 use crate::value::DataValue;
 use super::token::{Token, OperatorType};
-use super::error::{Result};
+use super::error::Result;
 use super::operators::{comparison, arithmetic, logical, string, missing, array, conditional, log, r#in, variable};
 
 /// Evaluates a logic expression.

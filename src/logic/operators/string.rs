@@ -8,7 +8,7 @@ use crate::value::DataValue;
 use crate::logic::token::Token;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
-use crate::value::{NumberValue};
+use crate::value::NumberValue;
 
 /// Enumeration of string operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
