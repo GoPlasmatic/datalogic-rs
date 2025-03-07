@@ -104,6 +104,17 @@ impl<'a> ValueAccess<'a> for DataValue<'a> {
 
 /// Parses a path string into a vector of path segments.
 pub fn parse_path<'a>(arena: &'a DataArena, path: &str) -> &'a [PathSegment<'a>] {
+    // Fast path for empty path
+    if path.is_empty() {
+        return &[];
+    }
+    
+    // Fast path for single segment (no dots)
+    if !path.contains('.') {
+        let segment = PathSegment::parse(arena, path);
+        return arena.alloc_slice_clone(&[segment]);
+    }
+    
     // Calculate the number of segments
     let segment_count = path.chars().filter(|&c| c == '.').count() + 1;
     

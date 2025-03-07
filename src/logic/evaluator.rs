@@ -125,8 +125,10 @@ fn evaluate_operator<'a>(
         
         // Array literal operator (evaluates each element and returns an array)
         OperatorType::ArrayLiteral => {
+            // Get a pre-allocated vector from the pool
+            let mut values = arena.get_data_value_vec();
+            
             // Evaluate each element
-            let mut values = Vec::with_capacity(args.len());
             for arg in args {
                 let value = evaluate(arg, data, arena)?;
                 values.push(value);
@@ -134,6 +136,10 @@ fn evaluate_operator<'a>(
             
             // Create the array
             let values_slice = arena.alloc_slice_clone(&values);
+            
+            // Release the vector back to the pool
+            arena.release_data_value_vec(values);
+            
             Ok(DataValue::Array(values_slice))
         },
     }

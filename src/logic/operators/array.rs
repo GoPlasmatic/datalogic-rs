@@ -218,7 +218,7 @@ pub fn eval_map<'a>(
         DataValue::Array(items) => items,
         DataValue::Null => {
             // Return an empty array if the input is null
-            return Ok(DataValue::Array(arena.alloc_slice_clone(&[])));
+            return Ok(DataValue::Array(&[]));
         },
         _ => return Err(LogicError::OperatorError {
             operator: "map".to_string(),
@@ -228,14 +228,14 @@ pub fn eval_map<'a>(
     
     // If the array is empty, return an empty array
     if items.is_empty() {
-        return Ok(DataValue::Array(arena.alloc_slice_clone(&[])));
+        return Ok(DataValue::Array(&[]));
     }
     
     // Create a temporary arena for intermediate allocations
     let _temp_arena = arena.create_temp_arena();
     
-    // Pre-allocate space for results
-    let mut results = Vec::with_capacity(items.len());
+    // Get a pre-allocated vector from the pool
+    let mut results = arena.get_data_value_vec();
     
     // Apply the function to each item in the array
     for item in items.iter() {
@@ -244,8 +244,13 @@ pub fn eval_map<'a>(
         results.push(result);
     }
     
-    // Return the mapped array
+    // Allocate the result array
     let mapped_slice = arena.alloc_slice_clone(&results);
+    
+    // Release the vector back to the pool
+    arena.release_data_value_vec(results);
+    
+    // Return the mapped array
     Ok(DataValue::Array(mapped_slice))
 }
 
@@ -280,21 +285,21 @@ pub fn eval_filter<'a>(
         DataValue::Array(items) => items,
         DataValue::Null => {
             // Return an empty array if the input is null
-            return Ok(DataValue::Array(arena.alloc_slice_clone(&[])));
+            return Ok(DataValue::Array(&[]));
         },
         _ => return Err(LogicError::operator_error("filter", format!("First argument must be an array, got {:?}", array))),
     };
     
     // If the array is empty, return an empty array
     if items.is_empty() {
-        return Ok(DataValue::Array(arena.alloc_slice_clone(&[])));
+        return Ok(DataValue::Array(&[]));
     }
     
     // Create a temporary arena for intermediate allocations
     let _temp_arena = arena.create_temp_arena();
     
-    // Pre-allocate space for the filtered array (worst case: all items pass the filter)
-    let mut filtered = Vec::with_capacity(items.len());
+    // Get a pre-allocated vector from the pool
+    let mut filtered = arena.get_data_value_vec();
     
     // Filter the array based on the condition
     for item in items.iter() {
@@ -307,8 +312,13 @@ pub fn eval_filter<'a>(
         }
     }
     
-    // Return the filtered array
+    // Allocate the result array
     let filtered_slice = arena.alloc_slice_clone(&filtered);
+    
+    // Release the vector back to the pool
+    arena.release_data_value_vec(filtered);
+    
+    // Return the filtered array
     Ok(DataValue::Array(filtered_slice))
 }
 
@@ -339,19 +349,44 @@ pub fn eval_reduce<'a>(
         });
     }
 
+    // Evaluate array and initial value
+    let array = evaluate(&args[0], data, arena)?;
+    let initial = evaluate(&args[2], data, arena)?;
+    
     // Fast path for common reduction patterns
     // If this is a simple sum or product reduction with constant initial value,
     // we can use specialized implementations
-    if let Ok(initial) = evaluate(&args[2], data, arena) {
-        // Check second arg (function) to see if it's a simple add/multiply
-        if let Token::Operator { op_type, args: _ } = &args[1] {
-            if let crate::logic::OperatorType::Arithmetic(op) = op_type {
-                if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
-                    // Fast path for sum reduction with any initial value
-                    return eval_reduce_sum(args, data, arena, initial);
-                } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
-                    // Fast path for product reduction with any initial value
-                    return eval_reduce_product(args, data, arena, initial);
+    if let Token::Operator { op_type, args: op_args } = &args[1] {
+        if let crate::logic::OperatorType::Arithmetic(op) = op_type {
+            // Check if this is a simple addition or multiplication
+            if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
+                // Check if it's a simple variable access pattern
+                if op_args.len() == 2 {
+                    if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
+                        // Check if it's the standard accumulator/current pattern
+                        if (acc_path == &"accumulator" && curr_path == &"current") ||
+                           (acc_path == &"current" && curr_path == &"accumulator") {
+                            // Fast path for sum reduction with any initial value
+                            return eval_reduce_sum(args, data, arena, initial);
+                        }
+                        // Check if it's accessing a property of current
+                        if acc_path == &"accumulator" && curr_path.starts_with("current.") {
+                            // This is a property access pattern, use the general implementation
+                            // as it needs to handle nested property access
+                        }
+                    }
+                }
+            } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
+                // Check if it's a simple variable access pattern
+                if op_args.len() == 2 {
+                    if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
+                        // Check if it's the standard accumulator/current pattern
+                        if (acc_path == &"accumulator" && curr_path == &"current") ||
+                           (acc_path == &"current" && curr_path == &"accumulator") {
+                            // Fast path for product reduction with any initial value
+                            return eval_reduce_product(args, data, arena, initial);
+                        }
+                    }
                 }
             }
         }
@@ -360,10 +395,6 @@ pub fn eval_reduce<'a>(
     // Initialize static keys only once - these are interned and reused
     let curr_key = arena.intern_str("current");
     let acc_key = arena.intern_str("accumulator");
-    
-    // Evaluate array and initial value
-    let array = evaluate(&args[0], data, arena)?;
-    let initial = evaluate(&args[2], data, arena)?;
     
     match array {
         DataValue::Array(items) => {
@@ -404,132 +435,172 @@ pub fn eval_reduce<'a>(
     }
 }
 
-/// Fast path for sum reduction
-#[inline]
+/// Fast path implementation for sum reduction.
 fn eval_reduce_sum<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
     initial: DataValue<'a>,
 ) -> Result<DataValue<'a>> {
-    // Get the array
+    // Evaluate the array
     let array = evaluate(&args[0], data, arena)?;
     
-    match array {
-        DataValue::Array(items) => {
-            // Fast case: all integers - most common case
-            if items.iter().all(|item| matches!(item, DataValue::Number(_))) {
-                // Get initial value as number
-                let initial_value = initial.as_f64().unwrap_or(0.0);
-                
-                // Sum using direct numeric operations
-                let sum = items.iter().fold(initial_value, |acc, item| {
-                    acc + item.as_f64().unwrap_or(0.0)
-                });
-                
-                // Create result number directly
-                if sum.fract() == 0.0 && sum >= i64::MIN as f64 && sum <= i64::MAX as f64 {
-                    return Ok(DataValue::Number(crate::value::NumberValue::Integer(sum as i64)));
+    // Handle the case where the array is null or not an array
+    let items = match &array {
+        DataValue::Array(items) => items,
+        DataValue::Null => return Ok(initial),
+        _ => return Err(LogicError::operator_error("reduce", format!("First argument must be an array, got {:?}", array))),
+    };
+    
+    // If the array is empty, return the initial value
+    if items.is_empty() {
+        return Ok(initial);
+    }
+    
+    // Fast path for numeric initial value
+    if let Some(mut sum) = initial.as_f64() {
+        // Directly sum all numeric values
+        for item in items.iter() {
+            if let Some(val) = item.as_f64() {
+                sum += val;
+            }
+        }
+        
+        // Return the sum as the appropriate numeric type
+        if sum.fract() == 0.0 && sum >= i64::MIN as f64 && sum <= i64::MAX as f64 {
+            return Ok(DataValue::integer(sum as i64));
+        } else {
+            return Ok(DataValue::float(sum));
+        }
+    }
+    
+    // Fast path for string initial value
+    if let Some(initial_str) = initial.as_str() {
+        // Get a pre-allocated vector from the pool
+        let mut parts = arena.get_data_value_vec();
+        
+        // Start with the initial string
+        parts.push(DataValue::String(arena.intern_str(initial_str)));
+        
+        // Add all string values
+        for item in items.iter() {
+            if let Some(s) = item.as_str() {
+                parts.push(DataValue::String(arena.intern_str(s)));
+            } else {
+                // For non-string values, convert to string
+                let s = format!("{}", item);
+                parts.push(DataValue::String(arena.intern_str(&s)));
+            }
+        }
+        
+        // Join all strings
+        let mut result = String::new();
+        for (i, part) in parts.iter().enumerate() {
+            if let Some(s) = part.as_str() {
+                if i > 0 {
+                    result.push_str(s);
                 } else {
-                    return Ok(DataValue::Number(crate::value::NumberValue::Float(sum)));
+                    result = s.to_string();
                 }
             }
-            
-            // Continue with general case implementation
-            let curr_key = arena.intern_str("current");
-            let acc_key = arena.intern_str("accumulator");
-            
-            let mut acc = initial; // Start with provided initial value
-            let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
-            
-            for item in items.iter() {
-                // Update entries in place with cloned values
-                entries[0].1 = item.clone();
-                entries[1].1 = acc.clone();
-                
-                // Allocate in arena for this iteration
-                let context_entries = arena.alloc_slice_clone(&entries);
-                // Create and store context in arena 
-                let context_obj = DataValue::Object(context_entries);
-                // Allocate context in arena to extend its lifetime
-                let context = arena.alloc(context_obj);
-                
-                // Evaluate and update accumulator
-                acc = evaluate(&args[1], context, arena)?;
-            }
-            
-            Ok(acc)
-        },
-        DataValue::Null => Ok(initial), // Return initial value for null
-        _ => Err(LogicError::OperatorError {
-            operator: "reduce".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        }
+        
+        // Release the vector back to the pool
+        arena.release_data_value_vec(parts);
+        
+        // Return the joined string
+        return Ok(DataValue::String(arena.intern_str(&result)));
     }
+    
+    // Fall back to the general case implementation
+    let curr_key = arena.intern_str("current");
+    let acc_key = arena.intern_str("accumulator");
+    
+    let mut acc = initial; // Start with provided initial value
+    let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
+    
+    for item in items.iter() {
+        // Update entries in place with cloned values
+        entries[0].1 = item.clone();
+        entries[1].1 = acc.clone();
+        
+        // Allocate in arena for this iteration
+        let context_entries = arena.alloc_slice_clone(&entries);
+        // Create and store context in arena
+        let context_obj = DataValue::Object(context_entries);
+        // Allocate context in arena to extend its lifetime
+        let context = arena.alloc(context_obj);
+        
+        // Evaluate and update accumulator
+        acc = evaluate(&args[1], context, arena)?;
+    }
+    
+    Ok(acc)
 }
 
-/// Fast path for product reduction
-#[inline]
+/// Fast path implementation for product reduction.
 fn eval_reduce_product<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
     initial: DataValue<'a>,
 ) -> Result<DataValue<'a>> {
-    // Get the array
+    // Evaluate the array
     let array = evaluate(&args[0], data, arena)?;
     
-    match array {
-        DataValue::Array(items) => {
-            // Fast case: all integers - most common case
-            if items.iter().all(|item| matches!(item, DataValue::Number(_))) {
-                // Get initial value as number
-                let initial_value = initial.as_f64().unwrap_or(1.0);
-                
-                // Product using direct numeric operations
-                let product = items.iter().fold(initial_value, |acc, item| {
-                    acc * item.as_f64().unwrap_or(1.0)
-                });
-                
-                // Create result number directly
-                if product.fract() == 0.0 && product >= i64::MIN as f64 && product <= i64::MAX as f64 {
-                    return Ok(DataValue::Number(crate::value::NumberValue::Integer(product as i64)));
-                } else {
-                    return Ok(DataValue::Number(crate::value::NumberValue::Float(product)));
-                }
-            }
-            
-            // Continue with general case implementation
-            let curr_key = arena.intern_str("current");
-            let acc_key = arena.intern_str("accumulator");
-            
-            let mut acc = initial; // Start with provided initial value
-            let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
-            
-            for item in items.iter() {
-                // Update entries in place with cloned values
-                entries[0].1 = item.clone();
-                entries[1].1 = acc.clone();
-                
-                // Allocate in arena for this iteration
-                let context_entries = arena.alloc_slice_clone(&entries);
-                // Create and store context in arena
-                let context_obj = DataValue::Object(context_entries);
-                // Allocate context in arena to extend its lifetime
-                let context = arena.alloc(context_obj);
-                
-                // Evaluate and update accumulator
-                acc = evaluate(&args[1], context, arena)?;
-            }
-            
-            Ok(acc)
-        },
-        DataValue::Null => Ok(initial), // Return initial value for null
-        _ => Err(LogicError::OperatorError {
-            operator: "reduce".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+    // Handle the case where the array is null or not an array
+    let items = match &array {
+        DataValue::Array(items) => items,
+        DataValue::Null => return Ok(initial),
+        _ => return Err(LogicError::operator_error("reduce", format!("First argument must be an array, got {:?}", array))),
+    };
+    
+    // If the array is empty, return the initial value
+    if items.is_empty() {
+        return Ok(initial);
     }
+    
+    // Fast path for numeric initial value
+    if let Some(mut product) = initial.as_f64() {
+        // Directly multiply all numeric values
+        for item in items.iter() {
+            if let Some(val) = item.as_f64() {
+                product *= val;
+            }
+        }
+        
+        // Return the product as the appropriate numeric type
+        if product.fract() == 0.0 && product >= i64::MIN as f64 && product <= i64::MAX as f64 {
+            return Ok(DataValue::integer(product as i64));
+        } else {
+            return Ok(DataValue::float(product));
+        }
+    }
+    
+    // Fall back to the general case implementation
+    let curr_key = arena.intern_str("current");
+    let acc_key = arena.intern_str("accumulator");
+    
+    let mut acc = initial; // Start with provided initial value
+    let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
+    
+    for item in items.iter() {
+        // Update entries in place with cloned values
+        entries[0].1 = item.clone();
+        entries[1].1 = acc.clone();
+        
+        // Allocate in arena for this iteration
+        let context_entries = arena.alloc_slice_clone(&entries);
+        // Create and store context in arena
+        let context_obj = DataValue::Object(context_entries);
+        // Allocate context in arena to extend its lifetime
+        let context = arena.alloc(context_obj);
+        
+        // Evaluate and update accumulator
+        acc = evaluate(&args[1], context, arena)?;
+    }
+    
+    Ok(acc)
 }
 
 /// Evaluates a merge operation.
@@ -540,11 +611,11 @@ pub fn eval_merge<'a>(
 ) -> Result<DataValue<'a>> {
     // If there are no arguments, return an empty array
     if args.is_empty() {
-        return Ok(DataValue::Array(arena.alloc_slice_clone(&[])));
+        return Ok(DataValue::Array(&[]));
     }
     
-    // Merge all arrays
-    let mut merged = Vec::new();
+    // Get a pre-allocated vector from the pool
+    let mut merged = arena.get_data_value_vec();
     
     for arg in args {
         // Evaluate the argument
@@ -565,8 +636,13 @@ pub fn eval_merge<'a>(
         }
     }
     
-    // Return the merged array
+    // Allocate the result array
     let merged_slice = arena.alloc_slice_clone(&merged);
+    
+    // Release the vector back to the pool
+    arena.release_data_value_vec(merged);
+    
+    // Return the merged array
     Ok(DataValue::Array(merged_slice))
 }
 

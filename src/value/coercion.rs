@@ -151,15 +151,11 @@ impl<'a> ValueComparison<'a> for DataValue<'a> {
     fn equals(&self, other: &DataValue<'a>) -> bool {
         match (self, other) {
             // Same types use strict equality
-            (DataValue::Null, DataValue::Null) => true,
-            (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
             (DataValue::Number(a), DataValue::Number(b)) => a == b,
             (DataValue::String(a), DataValue::String(b)) => a == b,
-            
-            // Different types need coercion
-            (DataValue::Null, DataValue::Bool(b)) => !b,
-            (DataValue::Bool(a), DataValue::Null) => !a,
-            
+            (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
+            (DataValue::Null, DataValue::Null) => true,
+
             (DataValue::Number(a), DataValue::String(b)) => {
                 if let Ok(num) = b.parse::<f64>() {
                     a.as_f64() == num
@@ -174,6 +170,10 @@ impl<'a> ValueComparison<'a> for DataValue<'a> {
                     false
                 }
             },
+
+            // Different types need coercion
+            (DataValue::Null, DataValue::Bool(b)) => !b,
+            (DataValue::Bool(a), DataValue::Null) => !a,
             
             // Arrays and objects use reference equality
             (DataValue::Array(_), DataValue::Array(_)) => self == other,

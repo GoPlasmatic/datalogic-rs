@@ -74,7 +74,7 @@ impl<'a> Logic<'a> {
         Self::from_token(token, arena)
     }
     
-    /// Creates a new custom operator logic expression.
+    /// Creates a custom operator logic expression.
     pub fn custom_operator(name: &str, args: Vec<Logic<'a>>, arena: &'a DataArena) -> Self {
         // Extract the root tokens from the arguments
         let mut arg_tokens = Vec::with_capacity(args.len());

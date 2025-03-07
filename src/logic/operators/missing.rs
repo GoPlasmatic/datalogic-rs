@@ -43,25 +43,10 @@ fn has_property<'a>(data: &'a DataValue<'a>, key: &str, arena: &'a DataArena) ->
                 return false;
             },
             DataValue::Array(arr) => {
-                // Fast path for numeric indices using a lookup table for common indices
-                match key {
-                    "0" => return arr.len() > 0,
-                    "1" => return arr.len() > 1,
-                    "2" => return arr.len() > 2,
-                    "3" => return arr.len() > 3,
-                    "4" => return arr.len() > 4,
-                    "5" => return arr.len() > 5,
-                    "6" => return arr.len() > 6,
-                    "7" => return arr.len() > 7,
-                    "8" => return arr.len() > 8,
-                    "9" => return arr.len() > 9,
-                    _ => {
-                        if let Ok(idx) = key.parse::<usize>() {
-                            return idx < arr.len();
-                        }
-                        return false;
-                    }
+                if let Ok(idx) = key.parse::<usize>() {
+                    return idx < arr.len();
                 }
+                return false;
             },
             _ => return false,
         }
@@ -120,25 +105,9 @@ fn has_property<'a>(data: &'a DataValue<'a>, key: &str, arena: &'a DataArena) ->
         },
         DataValue::Array(arr) => {
             // Fast path for numeric indices - most common case in array access
-            // Avoid parsing for common small indices
-            let index = match key {
-                "0" => 0,
-                "1" => 1,
-                "2" => 2,
-                "3" => 3,
-                "4" => 4,
-                "5" => 5,
-                "6" => 6,
-                "7" => 7,
-                "8" => 8,
-                "9" => 9,
-                _ => {
-                    // Try to parse as number for larger indices
-                    match key.parse::<usize>() {
-                        Ok(idx) => idx,
-                        Err(_) => return false // Early return for non-numeric keys
-                    }
-                }
+            let index = match key.parse::<usize>() {
+                Ok(idx) => idx,
+                Err(_) => return false // Early return for non-numeric keys
             };
             
             // Direct length check is faster than bounds check + access
@@ -159,84 +128,28 @@ pub fn eval_missing<'a>(
         return Ok(DataValue::Array(&[]));
     }
     
-    // Get the keys to check
-    let value = evaluate(&args[0], data, arena)?;
+    // Check if the first argument is an array or if we have multiple arguments
+    let first_arg = &args[0];
+    let is_array = match first_arg {
+        Token::Literal(DataValue::Array(_)) => true,
+        _ => false,
+    };
     
-    // Null data is a common special case - everything is missing
-    let is_data_null = matches!(data, DataValue::Null);
-    
-    // Create a single buffer for all cases to minimize allocations
-    // We'll reuse this buffer for all operations
-    let mut missing = Vec::new();
-    
-    // Early optimization for null data - everything is missing
-    if is_data_null {
-        match &value {
-            DataValue::Array(items) => {
-                // Reserve capacity to avoid reallocations
-                missing.reserve(items.len() + args.len() - 1);
-                
-                // Everything is missing when data is null
-                for item in items.iter() {
-                    if let Some(key) = item.as_str() {
-                        // Reuse the string reference if possible
-                        if let DataValue::String(s) = item {
-                            missing.push(DataValue::String(*s));
-                        } else {
-                            missing.push(DataValue::String(arena.intern_str(key)));
-                        }
-                    } else {
-                        return Err(LogicError::operator_error(
-                            "missing", 
-                            format!("Expected string keys, got {:?}", item)
-                        ));
-                    }
-                }
-            },
-            DataValue::String(key) => {
-                // Reserve for single key plus any additional args
-                missing.reserve(args.len());
-                
-                // Single key case
-                missing.push(DataValue::String(*key)); // Reuse the existing string reference
-            },
-            _ => {
-                return Err(LogicError::operator_error(
-                    "missing", 
-                    format!("Expected string or array, got {:?}", value)
-                ));
-            }
-        };
+    // If we have multiple arguments, treat them as individual keys to check
+    if args.len() > 1 || !is_array {
+        // Get a pre-allocated vector from the pool
+        let mut missing = arena.get_data_value_vec();
         
-        // Add additional arguments if any
-        for arg in &args[1..] {
+        // Check each argument
+        for arg in args {
             let value = evaluate(arg, data, arena)?;
-            if let Some(key) = value.as_str() {
-                // Reuse the string reference if possible
-                if let DataValue::String(s) = &value {
-                    missing.push(DataValue::String(*s));
-                } else {
-                    missing.push(DataValue::String(arena.intern_str(key)));
-                }
-            } else {
-                return Err(LogicError::operator_error(
-                    "missing", 
-                    format!("Expected string key, got {:?}", value)
-                ));
-            }
-        }
-    } else {
-        // Regular data case - need to check each key
-        match &value {
-            DataValue::Array(items) => {
-                // Reserve capacity to avoid reallocations - assuming ~50% might be missing
-                missing.reserve(items.len() / 2 + 1);
-                
+            
+            // Handle the case where the value is an array (e.g., from merge operator)
+            if let DataValue::Array(items) = &value {
                 for item in items.iter() {
                     if let Some(key) = item.as_str() {
-                        // Direct property check without creating intermediate strings
                         if !has_property(data, key, arena) {
-                            // Try to reuse string references when possible
+                            // Reuse the string reference directly
                             if let DataValue::String(s) = item {
                                 missing.push(DataValue::String(*s));
                             } else {
@@ -244,33 +157,17 @@ pub fn eval_missing<'a>(
                             }
                         }
                     } else {
+                        // Release the vector back to the pool before returning an error
+                        arena.release_data_value_vec(missing);
                         return Err(LogicError::operator_error(
                             "missing", 
-                            format!("Expected string keys, got {:?}", item)
+                            format!("Expected string key, got {:?}", item)
                         ));
                     }
                 }
-            },
-            DataValue::String(key) => {
-                // Single key case - optimize for the common case
+            } else if let Some(key) = value.as_str() {
                 if !has_property(data, key, arena) {
-                    missing.push(DataValue::String(*key));
-                }
-            },
-            _ => {
-                return Err(LogicError::operator_error(
-                    "missing", 
-                    format!("Expected string or array, got {:?}", value)
-                ));
-            }
-        };
-        
-        // Process additional arguments if any
-        for arg in &args[1..] {
-            let value = evaluate(arg, data, arena)?;
-            if let Some(key) = value.as_str() {
-                if !has_property(data, key, arena) {
-                    // Try to reuse the string reference when possible
+                    // Reuse the string reference directly
                     if let DataValue::String(s) = &value {
                         missing.push(DataValue::String(*s));
                     } else {
@@ -278,21 +175,181 @@ pub fn eval_missing<'a>(
                     }
                 }
             } else {
+                // Release the vector back to the pool before returning an error
+                arena.release_data_value_vec(missing);
                 return Err(LogicError::operator_error(
                     "missing", 
-                    format!("Expected string key, got {:?}", value)
+                    format!("Expected string key or array of string keys, got {:?}", value)
                 ));
             }
         }
+        
+        // Optimize the empty case - return a static empty array
+        if missing.is_empty() {
+            // Release the vector back to the pool
+            arena.release_data_value_vec(missing);
+            return Ok(DataValue::Array(&[]));
+        }
+        
+        // Allocate the result array only once at the end
+        let result = DataValue::Array(arena.alloc_slice_clone(&missing));
+        
+        // Release the vector back to the pool
+        arena.release_data_value_vec(missing);
+        
+        return Ok(result);
     }
     
-    // Optimize the empty case
+    // Get the keys to check from the first argument
+    let value = evaluate(&args[0], data, arena)?;
+    
+    // Null data is a common special case
+    let is_data_null = matches!(data, DataValue::Null);
+    
+    // Fast path for single string key with null data (common case)
+    if is_data_null {
+        if let DataValue::String(key) = &value {
+            // Single key case - direct reuse of string reference
+            return Ok(DataValue::Array(arena.alloc_slice_fill_with(1, |_| DataValue::String(*key))));
+        }
+    }
+    
+    // Fast path for single string key with non-null data (common case)
+    if let DataValue::String(key) = &value {
+        // Check if the key is missing
+        if !has_property(data, key, arena) {
+            // Key is missing - return array with single key
+            return Ok(DataValue::Array(arena.alloc_slice_fill_with(1, |_| DataValue::String(*key))));
+        } else {
+            // Key is present - return empty array
+            return Ok(DataValue::Array(&[]));
+        }
+    }
+    
+    // Get a pre-allocated vector from the pool
+    let mut missing = arena.get_data_value_vec();
+    
+    // Handle the case where the value is an array
+    if let DataValue::Array(items) = &value {
+        // Check if we need to flatten nested arrays
+        let mut has_array_items = false;
+        for item in items.iter() {
+            if let DataValue::Array(_) = item {
+                has_array_items = true;
+                break;
+            }
+        }
+        
+        if has_array_items {
+            // We have nested arrays, need to flatten
+            for item in items.iter() {
+                if let DataValue::Array(nested_items) = item {
+                    // Process each item in the nested array
+                    for nested_item in nested_items.iter() {
+                        if let Some(key) = nested_item.as_str() {
+                            if is_data_null || !has_property(data, key, arena) {
+                                // Reuse the string reference directly
+                                if let DataValue::String(s) = nested_item {
+                                    missing.push(DataValue::String(*s));
+                                } else {
+                                    missing.push(DataValue::String(arena.intern_str(key)));
+                                }
+                            }
+                        } else {
+                            // Release the vector back to the pool before returning an error
+                            arena.release_data_value_vec(missing);
+                            return Err(LogicError::operator_error(
+                                "missing", 
+                                format!("Expected string key, got {:?}", nested_item)
+                            ));
+                        }
+                    }
+                } else if let Some(key) = item.as_str() {
+                    if is_data_null || !has_property(data, key, arena) {
+                        // Reuse the string reference directly
+                        if let DataValue::String(s) = item {
+                            missing.push(DataValue::String(*s));
+                        } else {
+                            missing.push(DataValue::String(arena.intern_str(key)));
+                        }
+                    }
+                } else {
+                    // Release the vector back to the pool before returning an error
+                    arena.release_data_value_vec(missing);
+                    return Err(LogicError::operator_error(
+                        "missing", 
+                        format!("Expected string key or array of string keys, got {:?}", item)
+                    ));
+                }
+            }
+        } else {
+            // Regular array case - no nested arrays
+            if is_data_null {
+                // Everything is missing when data is null
+                for item in items.iter() {
+                    if let Some(key) = item.as_str() {
+                        // Reuse the string reference directly
+                        if let DataValue::String(s) = item {
+                            missing.push(DataValue::String(*s));
+                        } else {
+                            missing.push(DataValue::String(arena.intern_str(key)));
+                        }
+                    } else {
+                        // Release the vector back to the pool before returning an error
+                        arena.release_data_value_vec(missing);
+                        return Err(LogicError::operator_error(
+                            "missing", 
+                            format!("Expected string key, got {:?}", item)
+                        ));
+                    }
+                }
+            } else {
+                // Regular data case - need to check each key
+                for item in items.iter() {
+                    if let Some(key) = item.as_str() {
+                        // Direct property check without creating intermediate strings
+                        if !has_property(data, key, arena) {
+                            // Reuse the string reference directly
+                            if let DataValue::String(s) = item {
+                                missing.push(DataValue::String(*s));
+                            } else {
+                                missing.push(DataValue::String(arena.intern_str(key)));
+                            }
+                        }
+                    } else {
+                        // Release the vector back to the pool before returning an error
+                        arena.release_data_value_vec(missing);
+                        return Err(LogicError::operator_error(
+                            "missing", 
+                            format!("Expected string key, got {:?}", item)
+                        ));
+                    }
+                }
+            }
+        }
+    } else {
+        // Release the vector back to the pool before returning an error
+        arena.release_data_value_vec(missing);
+        return Err(LogicError::operator_error(
+            "missing", 
+            format!("Expected string or array, got {:?}", value)
+        ));
+    }
+    
+    // Optimize the empty case - return a static empty array
     if missing.is_empty() {
+        // Release the vector back to the pool
+        arena.release_data_value_vec(missing);
         return Ok(DataValue::Array(&[]));
     }
     
-    // Return the array of missing keys
-    Ok(DataValue::Array(arena.alloc_slice_clone(&missing)))
+    // Allocate the result array only once at the end
+    let result = DataValue::Array(arena.alloc_slice_clone(&missing));
+    
+    // Release the vector back to the pool
+    arena.release_data_value_vec(missing);
+    
+    Ok(result)
 }
 
 /// Evaluates a missing_some operation.
@@ -334,17 +391,55 @@ pub fn eval_missing_some<'a>(
     if is_data_null {
         match &keys_value {
             DataValue::Array(items) if !items.is_empty() => {
+                // Fast path for small arrays with all string keys (common case)
+                if items.len() <= 8 {
+                    let mut all_strings = true;
+                    // Get a pre-allocated vector from the pool for string references
+                    let mut string_refs = arena.get_data_value_vec();
+                    
+                    for item in items.iter() {
+                        if let Some(key) = item.as_str() {
+                            if let DataValue::String(s) = item {
+                                string_refs.push(DataValue::String(*s));
+                            } else {
+                                string_refs.push(DataValue::String(arena.intern_str(key)));
+                            }
+                        } else {
+                            all_strings = false;
+                            break;
+                        }
+                    }
+                    
+                    if all_strings {
+                        // All items are strings, create array directly
+                        let result = DataValue::Array(arena.alloc_slice_clone(&string_refs));
+                        
+                        // Release the vector back to the pool
+                        arena.release_data_value_vec(string_refs);
+                        
+                        return Ok(result);
+                    }
+                    
+                    // Release the vector back to the pool if we didn't return
+                    arena.release_data_value_vec(string_refs);
+                }
+                
+                // Fallback for mixed types or larger arrays
                 // With null data, all keys are missing
-                let mut missing = Vec::with_capacity(items.len());
+                // Get a pre-allocated vector from the pool
+                let mut missing = arena.get_data_value_vec();
+                
                 for item in items.iter() {
                     if let Some(key) = item.as_str() {
-                        // Try to reuse existing string references
+                        // Reuse the string reference directly
                         if let DataValue::String(s) = item {
                             missing.push(DataValue::String(*s));
                         } else {
                             missing.push(DataValue::String(arena.intern_str(key)));
                         }
                     } else {
+                        // Release the vector back to the pool before returning an error
+                        arena.release_data_value_vec(missing);
                         return Err(LogicError::operator_error(
                             "missing_some", 
                             format!("Expected string keys, got {:?}", item)
@@ -352,8 +447,14 @@ pub fn eval_missing_some<'a>(
                     }
                 }
                 
+                // Allocate the result array
+                let result = DataValue::Array(arena.alloc_slice_clone(&missing));
+                
+                // Release the vector back to the pool
+                arena.release_data_value_vec(missing);
+                
                 // Return the array of missing keys
-                return Ok(DataValue::Array(arena.alloc_slice_clone(&missing)));
+                return Ok(result);
             },
             _ => return Ok(DataValue::Array(&[])),
         }
@@ -366,19 +467,25 @@ pub fn eval_missing_some<'a>(
                 return Ok(DataValue::Array(&[]));
             }
             
-            // For small arrays, it's more efficient to check all keys 
-            // before deciding what to return rather than building the missing vector incrementally
-            if items.len() <= 8 {
+            // For small arrays, use a specialized fast path
+            if items.len() <= 16 {
+                // Get a pre-allocated vector from the pool
+                let mut missing = arena.get_data_value_vec();
                 let mut present_count = 0;
-                let mut missing = Vec::with_capacity(items.len());
                 
                 // First pass: count present keys and collect missing keys
                 for item in items.iter() {
                     if let Some(key) = item.as_str() {
                         if has_property(data, key, arena) {
                             present_count += 1;
+                            // Early exit if we have enough present keys
+                            if present_count >= min_required {
+                                // Release the vector back to the pool
+                                arena.release_data_value_vec(missing);
+                                return Ok(DataValue::Array(&[]));
+                            }
                         } else {
-                            // Try to reuse existing string references
+                            // Reuse the string reference directly
                             if let DataValue::String(s) = item {
                                 missing.push(DataValue::String(*s));
                             } else {
@@ -386,6 +493,8 @@ pub fn eval_missing_some<'a>(
                             }
                         }
                     } else {
+                        // Release the vector back to the pool before returning an error
+                        arena.release_data_value_vec(missing);
                         return Err(LogicError::operator_error(
                             "missing_some", 
                             format!("Expected string keys, got {:?}", item)
@@ -393,17 +502,19 @@ pub fn eval_missing_some<'a>(
                     }
                 }
                 
-                // If we have enough present keys, return empty array
-                if present_count >= min_required {
-                    return Ok(DataValue::Array(&[]));
-                }
+                // Allocate the result array
+                let result = DataValue::Array(arena.alloc_slice_clone(&missing));
+                
+                // Release the vector back to the pool
+                arena.release_data_value_vec(missing);
                 
                 // Return the array of missing keys
-                return Ok(DataValue::Array(arena.alloc_slice_clone(&missing)));
+                return Ok(result);
             }
             
-            // For larger arrays, use a direct approach
-            let mut missing = Vec::with_capacity(items.len() / 2 + 1);
+            // For larger arrays, use a direct approach with early exit
+            // Get a pre-allocated vector from the pool
+            let mut missing = arena.get_data_value_vec();
             let mut present_count = 0;
             
             // Check which keys are missing, stop early if we have enough present keys
@@ -413,10 +524,12 @@ pub fn eval_missing_some<'a>(
                         present_count += 1;
                         // Early exit if we have enough present keys
                         if present_count >= min_required {
+                            // Release the vector back to the pool
+                            arena.release_data_value_vec(missing);
                             return Ok(DataValue::Array(&[]));
                         }
                     } else {
-                        // Try to reuse existing string references
+                        // Reuse the string reference directly
                         if let DataValue::String(s) = item {
                             missing.push(DataValue::String(*s));
                         } else {
@@ -424,6 +537,8 @@ pub fn eval_missing_some<'a>(
                         }
                     }
                 } else {
+                    // Release the vector back to the pool before returning an error
+                    arena.release_data_value_vec(missing);
                     return Err(LogicError::operator_error(
                         "missing_some", 
                         format!("Expected string keys, got {:?}", item)
@@ -431,8 +546,14 @@ pub fn eval_missing_some<'a>(
                 }
             }
             
+            // Allocate the result array
+            let result = DataValue::Array(arena.alloc_slice_clone(&missing));
+            
+            // Release the vector back to the pool
+            arena.release_data_value_vec(missing);
+            
             // Return the array of missing keys
-            Ok(DataValue::Array(arena.alloc_slice_clone(&missing)))
+            Ok(result)
         },
         _ => Err(LogicError::operator_error(
             "missing_some", 
@@ -513,6 +634,31 @@ mod tests {
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0].as_str(), Some("a.b"));
+        
+        // Test with merge operator
+        let data_json = json!({
+            "vin": "123",
+            "financing": true
+        });
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Test with merge operator that returns an array of strings
+        let token = parse_str(r#"{"missing": {"merge": ["vin", {"if": [{"var": "financing"}, ["apr"], []]}]}}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        
+        assert!(result.is_array());
+        let arr = result.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0].as_str(), Some("apr"));
+        
+        // Test with merge operator that returns nested arrays
+        let token = parse_str(r#"{"missing": {"merge": [["vin"], {"if": [{"var": "financing"}, ["apr"], []]}]}}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        
+        assert!(result.is_array());
+        let arr = result.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0].as_str(), Some("apr"));
     }
     
     #[test]
