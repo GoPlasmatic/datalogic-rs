@@ -136,11 +136,11 @@ mod tests {
         let false_result = parse_str(r#""minor""#, &arena).unwrap();
         
         // Manually evaluate the ternary operation
-        let condition_value = evaluate(&condition, &data, &arena).unwrap();
+        let condition_value = evaluate(condition, &data, &arena).unwrap();
         let result = if condition_value.coerce_to_bool() {
-            evaluate(&true_result, &data, &arena).unwrap()
+            evaluate(true_result, &data, &arena).unwrap()
         } else {
-            evaluate(&false_result, &data, &arena).unwrap()
+            evaluate(false_result, &data, &arena).unwrap()
         };
         
         assert_eq!(result.as_str(), Some("adult"));

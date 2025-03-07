@@ -54,7 +54,7 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
     let arena = DataArena::new();
     
     // Parse the rule
-    let rule_logic = match test_case.rule.into_logic(&arena) {
+    let rule_logic = match test_case.rule.to_logic(&arena) {
         Ok(logic) => logic,
         Err(e) => return Err(format!("Failed to parse rule: {}", e)),
     };

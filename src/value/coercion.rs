@@ -80,7 +80,7 @@ impl<'a> ValueCoercion<'a> for DataValue<'a> {
             DataValue::Null => DataValue::String(arena.alloc_str("null")),
             DataValue::Bool(b) => DataValue::String(arena.alloc_str(if *b { "true" } else { "false" })),
             DataValue::Number(n) => DataValue::String(arena.alloc_str(&n.to_string())),
-            DataValue::String(s) => DataValue::String(*s),
+            DataValue::String(s) => DataValue::String(s),
             DataValue::Array(a) => {
                 let mut result = String::new();
                 for (i, v) in a.iter().enumerate() {
@@ -267,28 +267,28 @@ mod tests {
         let arena = DataArena::new();
         
         // Test null
-        assert_eq!(DataValue::null().coerce_to_bool(), false);
+        assert!(!DataValue::null().coerce_to_bool());
         
         // Test booleans
-        assert_eq!(DataValue::bool(true).coerce_to_bool(), true);
-        assert_eq!(DataValue::bool(false).coerce_to_bool(), false);
+        assert!(DataValue::bool(true).coerce_to_bool());
+        assert!(!DataValue::bool(false).coerce_to_bool());
         
         // Test numbers
-        assert_eq!(DataValue::integer(0).coerce_to_bool(), false);
-        assert_eq!(DataValue::integer(1).coerce_to_bool(), true);
-        assert_eq!(DataValue::integer(-1).coerce_to_bool(), true);
+        assert!(!DataValue::integer(0).coerce_to_bool());
+        assert!(DataValue::integer(1).coerce_to_bool());
+        assert!(DataValue::integer(-1).coerce_to_bool());
         
         // Test strings
-        assert_eq!(DataValue::string(&arena, "").coerce_to_bool(), false);
-        assert_eq!(DataValue::string(&arena, "hello").coerce_to_bool(), true);
+        assert!(!DataValue::string(&arena, "").coerce_to_bool());
+        assert!(DataValue::string(&arena, "hello").coerce_to_bool());
         
         // Test arrays
-        assert_eq!(DataValue::array(&arena, &[]).coerce_to_bool(), false);
-        assert_eq!(DataValue::array(&arena, &[DataValue::null()]).coerce_to_bool(), true);
+        assert!(!DataValue::array(&arena, &[]).coerce_to_bool());
+        assert!(DataValue::array(&arena, &[DataValue::null()]).coerce_to_bool());
         
         // Test objects
-        assert_eq!(DataValue::object(&arena, &[]).coerce_to_bool(), false);
-        assert_eq!(DataValue::object(&arena, &[(arena.intern_str("key"), DataValue::null())]).coerce_to_bool(), true);
+        assert!(!DataValue::object(&arena, &[]).coerce_to_bool());
+        assert!(DataValue::object(&arena, &[(arena.intern_str("key"), DataValue::null())]).coerce_to_bool());
     }
     
     #[test]

@@ -66,7 +66,7 @@ impl<'a> FromJson<'a> for DataValue<'a> {
     }
 }
 
-impl<'a> ToJson for DataValue<'a> {
+impl ToJson for DataValue<'_> {
     fn to_json(&self) -> JsonValue {
         match self {
             DataValue::Null => JsonValue::Null,
@@ -111,7 +111,7 @@ pub fn json_to_data_value<'a>(json: &JsonValue, arena: &'a DataArena) -> DataVal
 }
 
 /// Converts a DataValue to a JSON value.
-pub fn data_value_to_json<'a>(value: &DataValue<'a>) -> JsonValue {
+pub fn data_value_to_json(value: &DataValue<'_>) -> JsonValue {
     value.to_json()
 }
 

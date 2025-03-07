@@ -106,8 +106,8 @@ pub fn eval_greater_than<'a>(
     let mut prev = evaluate(&args[0], data, arena)?;
     
     // Check each pair of adjacent arguments
-    for i in 1..args.len() {
-        let current = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let current = evaluate(item, data, arena)?;
         
         // If any pair is not in the correct order, return false
         if !prev.greater_than(&current)? {
@@ -141,8 +141,8 @@ pub fn eval_greater_than_or_equal<'a>(
     let mut prev = evaluate(&args[0], data, arena)?;
     
     // Check each pair of adjacent arguments
-    for i in 1..args.len() {
-        let current = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let current = evaluate(item, data, arena)?;
         
         // If any pair is not in the correct order, return false
         if !prev.greater_than_equal(&current)? {
@@ -176,8 +176,8 @@ pub fn eval_less_than<'a>(
     let mut prev = evaluate(&args[0], data, arena)?;
     
     // Check each pair of adjacent arguments
-    for i in 1..args.len() {
-        let current = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let current = evaluate(item, data, arena)?;
         
         // If any pair is not in the correct order, return false
         if !prev.less_than(&current)? {
@@ -211,8 +211,8 @@ pub fn eval_less_than_or_equal<'a>(
     let mut prev = evaluate(&args[0], data, arena)?;
     
     // Check each pair of adjacent arguments
-    for i in 1..args.len() {
-        let current = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let current = evaluate(item, data, arena)?;
         
         // If any pair is not in the correct order, return false
         if !prev.less_than_equal(&current)? {

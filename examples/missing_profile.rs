@@ -55,7 +55,7 @@ fn main() {
         let start = Instant::now();
         
         for _ in 0..iterations {
-            let _ = evaluate(&rule_token, &data, &arena).unwrap();
+            let _ = evaluate(rule_token, &data, &arena).unwrap();
         }
         
         let elapsed = start.elapsed();

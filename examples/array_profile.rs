@@ -38,9 +38,9 @@ fn main() {
     let none_rule = parse_json(&none_rule_json, &arena).unwrap();
     
     // Profile each operator
-    profile_operator("all", &all_rule, &data, &arena, iterations);
-    profile_operator("some", &some_rule, &data, &arena, iterations);
-    profile_operator("none", &none_rule, &data, &arena, iterations);
+    profile_operator("all", all_rule, &data, &arena, iterations);
+    profile_operator("some", some_rule, &data, &arena, iterations);
+    profile_operator("none", none_rule, &data, &arena, iterations);
     
     // More complex cases
     let complex_all_json: serde_json::Value = serde_json::from_str(r#"{"all":[{"var":"objects"}, {">":[{"var":"value"}, 0]}]}"#).unwrap();
@@ -52,9 +52,9 @@ fn main() {
     let complex_none_json: serde_json::Value = serde_json::from_str(r#"{"none":[{"var":"objects"}, {">":[{"var":"value"}, 10]}]}"#).unwrap();
     let complex_none = parse_json(&complex_none_json, &arena).unwrap();
     
-    profile_operator("complex all", &complex_all, &data, &arena, iterations);
-    profile_operator("complex some", &complex_some, &data, &arena, iterations);
-    profile_operator("complex none", &complex_none, &data, &arena, iterations);
+    profile_operator("complex all", complex_all, &data, &arena, iterations);
+    profile_operator("complex some", complex_some, &data, &arena, iterations);
+    profile_operator("complex none", complex_none, &data, &arena, iterations);
 
     // Test cases for merge operator
     let test_cases = [

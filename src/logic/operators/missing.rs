@@ -130,10 +130,11 @@ pub fn eval_missing<'a>(
     
     // Check if the first argument is an array or if we have multiple arguments
     let first_arg = &args[0];
-    let is_array = match first_arg {
-        Token::Literal(DataValue::Array(_)) => true,
-        _ => false,
-    };
+    let is_array = matches!(first_arg, Token::Literal(DataValue::Array(_)));
+    //  match first_arg {
+    //     Token::Literal(DataValue::Array(_)) => true,
+    //     _ => false,
+    // };
     
     // If we have multiple arguments, treat them as individual keys to check
     if args.len() > 1 || !is_array {
@@ -151,7 +152,7 @@ pub fn eval_missing<'a>(
                         if !has_property(data, key, arena) {
                             // Reuse the string reference directly
                             if let DataValue::String(s) = item {
-                                missing.push(DataValue::String(*s));
+                                missing.push(DataValue::String(s));
                             } else {
                                 missing.push(DataValue::String(arena.intern_str(key)));
                             }
@@ -169,7 +170,7 @@ pub fn eval_missing<'a>(
                 if !has_property(data, key, arena) {
                     // Reuse the string reference directly
                     if let DataValue::String(s) = &value {
-                        missing.push(DataValue::String(*s));
+                        missing.push(DataValue::String(s));
                     } else {
                         missing.push(DataValue::String(arena.intern_str(key)));
                     }
@@ -210,7 +211,7 @@ pub fn eval_missing<'a>(
     if is_data_null {
         if let DataValue::String(key) = &value {
             // Single key case - direct reuse of string reference
-            return Ok(DataValue::Array(arena.alloc_slice_fill_with(1, |_| DataValue::String(*key))));
+            return Ok(DataValue::Array(arena.alloc_slice_fill_with(1, |_| DataValue::String(key))));
         }
     }
     
@@ -219,7 +220,7 @@ pub fn eval_missing<'a>(
         // Check if the key is missing
         if !has_property(data, key, arena) {
             // Key is missing - return array with single key
-            return Ok(DataValue::Array(arena.alloc_slice_fill_with(1, |_| DataValue::String(*key))));
+            return Ok(DataValue::Array(arena.alloc_slice_fill_with(1, |_| DataValue::String(key))));
         } else {
             // Key is present - return empty array
             return Ok(DataValue::Array(&[]));
@@ -250,7 +251,7 @@ pub fn eval_missing<'a>(
                             if is_data_null || !has_property(data, key, arena) {
                                 // Reuse the string reference directly
                                 if let DataValue::String(s) = nested_item {
-                                    missing.push(DataValue::String(*s));
+                                    missing.push(DataValue::String(s));
                                 } else {
                                     missing.push(DataValue::String(arena.intern_str(key)));
                                 }
@@ -268,7 +269,7 @@ pub fn eval_missing<'a>(
                     if is_data_null || !has_property(data, key, arena) {
                         // Reuse the string reference directly
                         if let DataValue::String(s) = item {
-                            missing.push(DataValue::String(*s));
+                            missing.push(DataValue::String(s));
                         } else {
                             missing.push(DataValue::String(arena.intern_str(key)));
                         }
@@ -290,7 +291,7 @@ pub fn eval_missing<'a>(
                     if let Some(key) = item.as_str() {
                         // Reuse the string reference directly
                         if let DataValue::String(s) = item {
-                            missing.push(DataValue::String(*s));
+                            missing.push(DataValue::String(s));
                         } else {
                             missing.push(DataValue::String(arena.intern_str(key)));
                         }
@@ -311,7 +312,7 @@ pub fn eval_missing<'a>(
                         if !has_property(data, key, arena) {
                             // Reuse the string reference directly
                             if let DataValue::String(s) = item {
-                                missing.push(DataValue::String(*s));
+                                missing.push(DataValue::String(s));
                             } else {
                                 missing.push(DataValue::String(arena.intern_str(key)));
                             }
@@ -400,7 +401,7 @@ pub fn eval_missing_some<'a>(
                     for item in items.iter() {
                         if let Some(key) = item.as_str() {
                             if let DataValue::String(s) = item {
-                                string_refs.push(DataValue::String(*s));
+                                string_refs.push(DataValue::String(s));
                             } else {
                                 string_refs.push(DataValue::String(arena.intern_str(key)));
                             }
@@ -433,7 +434,7 @@ pub fn eval_missing_some<'a>(
                     if let Some(key) = item.as_str() {
                         // Reuse the string reference directly
                         if let DataValue::String(s) = item {
-                            missing.push(DataValue::String(*s));
+                            missing.push(DataValue::String(s));
                         } else {
                             missing.push(DataValue::String(arena.intern_str(key)));
                         }
@@ -487,7 +488,7 @@ pub fn eval_missing_some<'a>(
                         } else {
                             // Reuse the string reference directly
                             if let DataValue::String(s) = item {
-                                missing.push(DataValue::String(*s));
+                                missing.push(DataValue::String(s));
                             } else {
                                 missing.push(DataValue::String(arena.intern_str(key)));
                             }
@@ -531,7 +532,7 @@ pub fn eval_missing_some<'a>(
                     } else {
                         // Reuse the string reference directly
                         if let DataValue::String(s) = item {
-                            missing.push(DataValue::String(*s));
+                            missing.push(DataValue::String(s));
                         } else {
                             missing.push(DataValue::String(arena.intern_str(key)));
                         }

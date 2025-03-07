@@ -60,8 +60,8 @@ pub fn eval_add<'a>(
     // For multiple arguments, add them all together
     let mut result = evaluate(&args[0], data, arena)?;
     
-    for i in 1..args.len() {
-        let next = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let next = evaluate(item, data, arena)?;
         result = add_values(result, next, arena)?;
     }
     
@@ -144,8 +144,8 @@ pub fn eval_subtract<'a>(
     // For multiple arguments, subtract them all from the first
     let mut result = evaluate(&args[0], data, arena)?;
     
-    for i in 1..args.len() {
-        let next = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let next = evaluate(item, data, arena)?;
         result = subtract_values(result, next)?;
     }
     
@@ -198,8 +198,8 @@ pub fn eval_multiply<'a>(
     // For multiple arguments, multiply them all together
     let mut result = evaluate(&args[0], data, arena)?;
     
-    for i in 1..args.len() {
-        let next = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let next = evaluate(item, data, arena)?;
         result = multiply_values(result, next)?;
     }
     
@@ -265,8 +265,8 @@ pub fn eval_divide<'a>(
     // For multiple arguments, divide the first by all the rest
     let mut result = evaluate(&args[0], data, arena)?;
     
-    for i in 1..args.len() {
-        let next = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let next = evaluate(item, data, arena)?;
         result = divide_values(result, next)?;
     }
     
@@ -280,10 +280,10 @@ fn divide_values<'a>(left: DataValue<'a>, right: DataValue<'a>) -> Result<DataVa
     if let (Some(left_num), Some(right_num)) = (left.coerce_to_number(), right.coerce_to_number()) {
         // Check for division by zero
         match right_num {
-            NumberValue::Integer(r) if r == 0 => {
+            NumberValue::Integer(0) => {
                 return Err(LogicError::operator_error("/", "Division by zero"));
             },
-            NumberValue::Float(r) if r == 0.0 => {
+            NumberValue::Float(0.0) => {
                 return Err(LogicError::operator_error("/", "Division by zero"));
             },
             _ => {}
@@ -316,8 +316,8 @@ pub fn eval_modulo<'a>(
     // For multiple arguments, apply modulo in sequence
     let mut result = evaluate(&args[0], data, arena)?;
     
-    for i in 1..args.len() {
-        let next = evaluate(&args[i], data, arena)?;
+    for item in args.iter().skip(1) {
+        let next = evaluate(item, data, arena)?;
         result = modulo_values(result, next)?;
     }
     
@@ -331,10 +331,10 @@ fn modulo_values<'a>(left: DataValue<'a>, right: DataValue<'a>) -> Result<DataVa
     if let (Some(left_num), Some(right_num)) = (left.coerce_to_number(), right.coerce_to_number()) {
         // Check for modulo by zero
         match right_num {
-            NumberValue::Integer(r) if r == 0 => {
+            NumberValue::Integer(0) => {
                 return Err(LogicError::operator_error("%", "Modulo by zero"));
             },
-            NumberValue::Float(r) if r == 0.0 => {
+            NumberValue::Float(0.0) => {
                 return Err(LogicError::operator_error("%", "Modulo by zero"));
             },
             _ => {}

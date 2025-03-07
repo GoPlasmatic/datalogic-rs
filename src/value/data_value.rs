@@ -197,7 +197,7 @@ impl<'a> DataValue<'a> {
             DataValue::Null => DataValue::String(arena.alloc_str("null")),
             DataValue::Bool(b) => DataValue::String(arena.alloc_str(if *b { "true" } else { "false" })),
             DataValue::Number(n) => DataValue::String(arena.alloc_str(&n.to_string())),
-            DataValue::String(s) => DataValue::String(*s),
+            DataValue::String(s) => DataValue::String(s),
             DataValue::Array(a) => {
                 let mut result = String::new();
                 for (i, v) in a.iter().enumerate() {
@@ -347,7 +347,7 @@ impl<'a> DataValue<'a> {
     }
 }
 
-impl<'a> PartialOrd for DataValue<'a> {
+impl PartialOrd for DataValue<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (DataValue::Null, DataValue::Null) => Some(Ordering::Equal),
@@ -386,7 +386,7 @@ impl<'a> PartialOrd for DataValue<'a> {
     }
 }
 
-impl<'a> fmt::Display for DataValue<'a> {
+impl fmt::Display for DataValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DataValue::Null => write!(f, "null"),
@@ -478,12 +478,12 @@ mod tests {
         let arena = DataArena::new();
         
         // Boolean coercion
-        assert_eq!(DataValue::null().coerce_to_bool(), false);
-        assert_eq!(DataValue::bool(true).coerce_to_bool(), true);
-        assert_eq!(DataValue::integer(0).coerce_to_bool(), false);
-        assert_eq!(DataValue::integer(1).coerce_to_bool(), true);
-        assert_eq!(DataValue::string(&arena, "").coerce_to_bool(), false);
-        assert_eq!(DataValue::string(&arena, "hello").coerce_to_bool(), true);
+        assert!(!DataValue::null().coerce_to_bool());
+        assert!(DataValue::bool(true).coerce_to_bool());
+        assert!(!DataValue::integer(0).coerce_to_bool());
+        assert!(DataValue::integer(1).coerce_to_bool());
+        assert!(!DataValue::string(&arena, "").coerce_to_bool());
+        assert!(DataValue::string(&arena, "hello").coerce_to_bool());
         
         // Number coercion
         assert_eq!(DataValue::null().coerce_to_number(), Some(NumberValue::Integer(0)));

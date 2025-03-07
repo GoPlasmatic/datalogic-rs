@@ -38,7 +38,7 @@ impl<'a> StringRef<'a> {
     }
 }
 
-impl<'a> PartialEq for StringRef<'a> {
+impl PartialEq for StringRef<'_> {
     fn eq(&self, other: &Self) -> bool {
         // Fast path: check hash first
         if self.hash != other.hash {
@@ -50,15 +50,15 @@ impl<'a> PartialEq for StringRef<'a> {
     }
 }
 
-impl<'a> Eq for StringRef<'a> {}
+impl Eq for StringRef<'_> {}
 
-impl<'a> Hash for StringRef<'a> {
+impl Hash for StringRef<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write_u64(self.hash);
     }
 }
 
-impl<'a> fmt::Debug for StringRef<'a> {
+impl fmt::Debug for StringRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "StringRef({:?}, hash={})", self.data, self.hash)
     }

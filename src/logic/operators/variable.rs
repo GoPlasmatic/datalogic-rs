@@ -56,9 +56,9 @@ pub fn evaluate_variable<'a>(
 
     // Navigate through the data without collecting into a Vec
     let mut current = data;
-    let mut path_iter = path.split('.');
+    let path_iter = path.split('.');
     
-    while let Some(component) = path_iter.next() {
+    for component in path_iter {
         match current {
             DataValue::Object(entries) => {
                 // Look for the component in the object

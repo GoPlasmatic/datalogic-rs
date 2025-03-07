@@ -61,10 +61,10 @@ fn main() {
     
     // Profile each operation
     println!("\nPerformance measurements:");
-    profile_operator("Sum with initial 0", &sum_rule_0, &data, &arena, iterations);
-    profile_operator("Sum with initial 10", &sum_rule_10, &data, &arena, iterations);
-    profile_operator("Product with initial 1", &product_rule_1, &data, &arena, iterations);
-    profile_operator("Product with initial 2", &product_rule_2, &data, &arena, iterations);
+    profile_operator("Sum with initial 0", sum_rule_0, &data, &arena, iterations);
+    profile_operator("Sum with initial 10", sum_rule_10, &data, &arena, iterations);
+    profile_operator("Product with initial 1", product_rule_1, &data, &arena, iterations);
+    profile_operator("Product with initial 2", product_rule_2, &data, &arena, iterations);
 }
 
 fn profile_operator(name: &str, rule: &Token, data: &DataValue, arena: &DataArena, iterations: usize) {

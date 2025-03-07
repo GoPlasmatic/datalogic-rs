@@ -5,6 +5,7 @@
 
 use crate::value::DataValue;
 use super::operators::{ComparisonOp, ArithmeticOp, LogicalOp, StringOp, ArrayOp, ConditionalOp};
+use std::str::FromStr;
 
 /// A token in a logic expression.
 ///
@@ -206,45 +207,48 @@ impl OperatorType {
             OperatorType::ArrayLiteral => "array",
         }
     }
-    
-    /// Returns the operator type for the given string, if it exists.
-    pub fn from_str(s: &str) -> Option<Self> {
+}
+
+impl FromStr for OperatorType {
+    type Err = &'static str;  // Or use a more descriptive error type
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "==" => Some(OperatorType::Comparison(ComparisonOp::Equal)),
-            "===" => Some(OperatorType::Comparison(ComparisonOp::StrictEqual)),
-            "!=" => Some(OperatorType::Comparison(ComparisonOp::NotEqual)),
-            "!==" => Some(OperatorType::Comparison(ComparisonOp::StrictNotEqual)),
-            ">" => Some(OperatorType::Comparison(ComparisonOp::GreaterThan)),
-            ">=" => Some(OperatorType::Comparison(ComparisonOp::GreaterThanOrEqual)),
-            "<" => Some(OperatorType::Comparison(ComparisonOp::LessThan)),
-            "<=" => Some(OperatorType::Comparison(ComparisonOp::LessThanOrEqual)),
-            "+" => Some(OperatorType::Arithmetic(ArithmeticOp::Add)),
-            "-" => Some(OperatorType::Arithmetic(ArithmeticOp::Subtract)),
-            "*" => Some(OperatorType::Arithmetic(ArithmeticOp::Multiply)),
-            "/" => Some(OperatorType::Arithmetic(ArithmeticOp::Divide)),
-            "%" => Some(OperatorType::Arithmetic(ArithmeticOp::Modulo)),
-            "min" => Some(OperatorType::Arithmetic(ArithmeticOp::Min)),
-            "max" => Some(OperatorType::Arithmetic(ArithmeticOp::Max)),
-            "and" => Some(OperatorType::Logical(LogicalOp::And)),
-            "or" => Some(OperatorType::Logical(LogicalOp::Or)),
-            "!" => Some(OperatorType::Logical(LogicalOp::Not)),
-            "cat" => Some(OperatorType::String(StringOp::Cat)),
-            "substr" => Some(OperatorType::String(StringOp::Substr)),
-            "map" => Some(OperatorType::Array(ArrayOp::Map)),
-            "filter" => Some(OperatorType::Array(ArrayOp::Filter)),
-            "reduce" => Some(OperatorType::Array(ArrayOp::Reduce)),
-            "all" => Some(OperatorType::Array(ArrayOp::All)),
-            "some" => Some(OperatorType::Array(ArrayOp::Some)),
-            "none" => Some(OperatorType::Array(ArrayOp::None)),
-            "merge" => Some(OperatorType::Array(ArrayOp::Merge)),
-            "if" => Some(OperatorType::Conditional(ConditionalOp::If)),
-            "?:" => Some(OperatorType::Conditional(ConditionalOp::Ternary)),
-            "log" => Some(OperatorType::Log),
-            "in" => Some(OperatorType::In),
-            "missing" => Some(OperatorType::Missing),
-            "missing_some" => Some(OperatorType::MissingSome),
-            "array" => Some(OperatorType::ArrayLiteral),
-            _ => None,
+            "==" => Ok(OperatorType::Comparison(ComparisonOp::Equal)),
+            "===" => Ok(OperatorType::Comparison(ComparisonOp::StrictEqual)),
+            "!=" => Ok(OperatorType::Comparison(ComparisonOp::NotEqual)),
+            "!==" => Ok(OperatorType::Comparison(ComparisonOp::StrictNotEqual)),
+            ">" => Ok(OperatorType::Comparison(ComparisonOp::GreaterThan)),
+            ">=" => Ok(OperatorType::Comparison(ComparisonOp::GreaterThanOrEqual)),
+            "<" => Ok(OperatorType::Comparison(ComparisonOp::LessThan)),
+            "<=" => Ok(OperatorType::Comparison(ComparisonOp::LessThanOrEqual)),
+            "+" => Ok(OperatorType::Arithmetic(ArithmeticOp::Add)),
+            "-" => Ok(OperatorType::Arithmetic(ArithmeticOp::Subtract)),
+            "*" => Ok(OperatorType::Arithmetic(ArithmeticOp::Multiply)),
+            "/" => Ok(OperatorType::Arithmetic(ArithmeticOp::Divide)),
+            "%" => Ok(OperatorType::Arithmetic(ArithmeticOp::Modulo)),
+            "min" => Ok(OperatorType::Arithmetic(ArithmeticOp::Min)),
+            "max" => Ok(OperatorType::Arithmetic(ArithmeticOp::Max)),
+            "and" => Ok(OperatorType::Logical(LogicalOp::And)),
+            "or" => Ok(OperatorType::Logical(LogicalOp::Or)),
+            "!" => Ok(OperatorType::Logical(LogicalOp::Not)),
+            "cat" => Ok(OperatorType::String(StringOp::Cat)),
+            "substr" => Ok(OperatorType::String(StringOp::Substr)),
+            "map" => Ok(OperatorType::Array(ArrayOp::Map)),
+            "filter" => Ok(OperatorType::Array(ArrayOp::Filter)),
+            "reduce" => Ok(OperatorType::Array(ArrayOp::Reduce)),
+            "all" => Ok(OperatorType::Array(ArrayOp::All)),
+            "some" => Ok(OperatorType::Array(ArrayOp::Some)),
+            "none" => Ok(OperatorType::Array(ArrayOp::None)),
+            "merge" => Ok(OperatorType::Array(ArrayOp::Merge)),
+            "if" => Ok(OperatorType::Conditional(ConditionalOp::If)),
+            "?:" => Ok(OperatorType::Conditional(ConditionalOp::Ternary)),
+            "log" => Ok(OperatorType::Log),
+            "in" => Ok(OperatorType::In),
+            "missing" => Ok(OperatorType::Missing),
+            "missing_some" => Ok(OperatorType::MissingSome),
+            "array" => Ok(OperatorType::ArrayLiteral),
+            _ => Err("unknown operator")
         }
     }
 }
@@ -288,14 +292,14 @@ mod tests {
     #[test]
     fn test_operator_type_conversion() {
         assert_eq!(OperatorType::Comparison(ComparisonOp::Equal).as_str(), "==");
-        assert_eq!(OperatorType::from_str("=="), Some(OperatorType::Comparison(ComparisonOp::Equal)));
+        assert_eq!(OperatorType::from_str("=="), Ok(OperatorType::Comparison(ComparisonOp::Equal)));
         
         assert_eq!(OperatorType::Arithmetic(ArithmeticOp::Add).as_str(), "+");
-        assert_eq!(OperatorType::from_str("+"), Some(OperatorType::Arithmetic(ArithmeticOp::Add)));
+        assert_eq!(OperatorType::from_str("+"), Ok(OperatorType::Arithmetic(ArithmeticOp::Add)));
         
         assert_eq!(OperatorType::Logical(LogicalOp::And).as_str(), "and");
-        assert_eq!(OperatorType::from_str("and"), Some(OperatorType::Logical(LogicalOp::And)));
+        assert_eq!(OperatorType::from_str("and"), Ok(OperatorType::Logical(LogicalOp::And)));
         
-        assert_eq!(OperatorType::from_str("unknown"), None);
+        assert_eq!(OperatorType::from_str("unknown"), Err("unknown operator"));
     }
 } 

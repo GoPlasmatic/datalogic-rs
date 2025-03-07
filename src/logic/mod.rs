@@ -28,19 +28,19 @@ pub use operators::logical::LogicalOp;
 /// Trait for types that can be converted into a Logic expression.
 pub trait IntoLogic {
     /// Converts the value into a Logic expression, allocating in the given arena.
-    fn into_logic<'a>(&self, arena: &'a crate::arena::DataArena) -> Result<Logic<'a>>;
+    fn to_logic<'a>(&self, arena: &'a crate::arena::DataArena) -> Result<Logic<'a>>;
 }
 
 // Implement IntoLogic for common types
 impl IntoLogic for serde_json::Value {
-    fn into_logic<'a>(&self, arena: &'a crate::arena::DataArena) -> Result<Logic<'a>> {
+    fn to_logic<'a>(&self, arena: &'a crate::arena::DataArena) -> Result<Logic<'a>> {
         let token = parse_json(self, arena)?;
         Ok(Logic::new(token, arena))
     }
 }
 
 impl IntoLogic for &str {
-    fn into_logic<'a>(&self, arena: &'a crate::arena::DataArena) -> Result<Logic<'a>> {
+    fn to_logic<'a>(&self, arena: &'a crate::arena::DataArena) -> Result<Logic<'a>> {
         let token = parse_str(self, arena)?;
         Ok(Logic::new(token, arena))
     }
@@ -59,7 +59,7 @@ mod tests {
         
         // Create a simple comparison logic
         let json_logic = json!({"==": [{"var": "a"}, 10]});
-        let logic = json_logic.into_logic(&arena).unwrap();
+        let logic = json_logic.to_logic(&arena).unwrap();
         
         // Create test data
         let data_json = json!({"a": 10});

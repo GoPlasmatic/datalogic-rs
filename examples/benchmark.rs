@@ -27,7 +27,7 @@ fn main() {
                 // For simple test cases, data might be missing
                 let data = test_case.get("data").unwrap_or(&Value::Null);
                 let data_value = DataValue::from_json(data, &arena);
-                if let Ok(rule) = logic.into_logic(&arena) {
+                if let Ok(rule) = logic.to_logic(&arena) {
                     test_cases.push((rule.root().clone(), data_value.clone()));
                 }
             }

@@ -2,6 +2,8 @@
 //!
 //! This module provides functions for parsing logic expressions from JSON.
 
+use std::str::FromStr;
+
 use serde_json::{Value as JsonValue, Map as JsonMap};
 use crate::arena::DataArena;
 use crate::value::{DataValue, FromJson};
@@ -108,7 +110,7 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         }
         
         // Check if it's a standard operator
-        if let Some(op_type) = OperatorType::from_str(key) {
+        if let Ok(op_type) = OperatorType::from_str(key) {
             return parse_operator(op_type, value, arena);
         }
         
@@ -223,7 +225,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
             let default_token = parse_json_internal(&arr[1], arena)?;
             let default = arena.alloc(default_token);
             
-            return Ok(Token::variable(path, Some(default)));
+            Ok(Token::variable(path, Some(default)))
         },
         
         // Handle numeric variable references (convert to string)

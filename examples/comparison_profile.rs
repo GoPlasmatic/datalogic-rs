@@ -94,7 +94,7 @@ fn main() {
         
         let start = Instant::now();
         for _ in 0..iterations {
-            let _ = evaluate(&expr, &data, &arena).unwrap();
+            let _ = evaluate(expr, &data, &arena).unwrap();
         }
         let elapsed = start.elapsed();
         

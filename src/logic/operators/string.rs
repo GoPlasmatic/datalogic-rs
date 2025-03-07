@@ -45,8 +45,8 @@ pub fn eval_cat<'a>(
             DataValue::Array(arr) => {
                 // Rough estimate for array: 2 chars for brackets, 2 chars per element for separator
                 total_length += 2 + arr.len() * 2;
-                for i in 0..arr.len() {
-                    match &arr[i] {
+                for item in arr {
+                    match item {
                         DataValue::String(s) => total_length += s.len() + 2, // +2 for quotes
                         DataValue::Number(_) => total_length += 10, // Rough estimate
                         DataValue::Bool(b) => total_length += if *b { 4 } else { 5 },
@@ -84,11 +84,11 @@ pub fn eval_cat<'a>(
             DataValue::Array(arr) => {
                 result.push('[');
                 let mut first = true;
-                for i in 0..arr.len() {
+                for item in arr {
                     if !first {
                         result.push_str(", ");
                     }
-                    match &arr[i] {
+                    match item {
                         DataValue::String(s) => {
                             result.push('"');
                             result.push_str(s);
@@ -210,11 +210,7 @@ pub fn eval_substr<'a>(
                     let start_idx = if start < 0 {
                         // Negative start means count from the end
                         let abs_start = (-start) as usize;
-                        if abs_start >= string_len {
-                            0 // If abs(start) > length, start from beginning
-                        } else {
-                            string_len - abs_start
-                        }
+                        string_len.saturating_sub(abs_start)
                     } else {
                         // Positive start
                         let start_usize = start as usize;
@@ -231,11 +227,7 @@ pub fn eval_substr<'a>(
                     let start_idx = if start < 0 {
                         // Negative start means count from the end
                         let abs_start = (-start) as usize;
-                        if abs_start >= string_len {
-                            0 // If abs(start) > length, start from beginning
-                        } else {
-                            string_len - abs_start
-                        }
+                        string_len.saturating_sub(abs_start)
                     } else {
                         // Positive start
                         let start_usize = start as usize;
@@ -308,7 +300,7 @@ impl<'a> SubstrOps<'a> for DataValue<'a> {
             let string_len = string.len();
             let start_idx = if start < 0 {
                 let abs_start = (-start) as usize;
-                if abs_start >= string_len { 0 } else { string_len - abs_start }
+                string_len.saturating_sub(abs_start)
             } else {
                 let start_usize = start as usize;
                 if start_usize >= string_len { return Ok(empty_str()); }
@@ -352,7 +344,7 @@ impl<'a> SubstrOps<'a> for DataValue<'a> {
             let string_len = string.chars().count();
             let start_idx = if start < 0 {
                 let abs_start = (-start) as usize;
-                if abs_start >= string_len { 0 } else { string_len - abs_start }
+                string_len.saturating_sub(abs_start)
             } else {
                 let start_usize = start as usize;
                 if start_usize >= string_len { return Ok(empty_str()); }
