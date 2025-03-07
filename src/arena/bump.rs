@@ -94,7 +94,7 @@ impl fmt::Debug for DataArena {
 impl DataArena {
     /// Creates a new arena with default settings.
     pub fn new() -> Self {
-        Self::with_chunk_size(1024 * 1024) // 1MB default chunk size
+        Self::with_chunk_size(8 * 1024 * 1024) // 8MB default chunk size
     }
     
     /// Creates a new arena with the specified chunk size.
@@ -104,13 +104,13 @@ impl DataArena {
     /// performance but may waste memory if not fully utilized.
     pub fn with_chunk_size(chunk_size: usize) -> Self {
         let bump = Bump::new();
-        bump.set_allocation_limit(Some(chunk_size * 1024)); // Safety limit
+        bump.set_allocation_limit(Some(chunk_size * 256)); // Safety limit
         
         Self {
             bump,
             interner: RefCell::new(StringInterner::new()),
             chunk_size,
-            data_value_pool: RefCell::new(VectorPool::new(8)), // Default capacity of 8 for DataValue vectors
+            data_value_pool: RefCell::new(VectorPool::new(16)), // Default capacity of 16 for DataValue vectors
         }
     }
     
