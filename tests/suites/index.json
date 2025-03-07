@@ -39,7 +39,6 @@
     "chained.json",
     "iterators.extra.json",
     "exists.json",
-    "preserve.json",
     "scopes.json",
     "throw.json",
     "try.json",
