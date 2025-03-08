@@ -8,7 +8,6 @@ use crate::value::DataValue;
 use crate::logic::token::Token;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
-use crate::value::NumberValue;
 
 /// Enumeration of string operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,464 +24,220 @@ pub fn eval_cat<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // If no arguments, return empty string
     if args.is_empty() {
-        return Ok(DataValue::String(arena.alloc_str("")));
+        return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
     }
 
-    // First pass: calculate total length to avoid reallocations
-    let mut total_length = 0;
-    
-    // Calculate the total length without creating temporary strings
-    for arg in args {
-        let value = evaluate(arg, data, arena)?;
-        match value {
-            DataValue::String(s) => total_length += s.len(),
-            DataValue::Number(_) => total_length += 20, // Conservative estimate for numbers
-            DataValue::Bool(b) => total_length += if b { 4 } else { 5 }, // "true" or "false"
-            DataValue::Null => total_length += 4, // "null"
-            DataValue::Array(arr) => {
-                // Rough estimate for array: 2 chars for brackets, 2 chars per element for separator
-                total_length += 2 + arr.len() * 2;
-                for item in arr {
-                    match item {
-                        DataValue::String(s) => total_length += s.len() + 2, // +2 for quotes
-                        DataValue::Number(_) => total_length += 10, // Rough estimate
-                        DataValue::Bool(b) => total_length += if *b { 4 } else { 5 },
-                        DataValue::Null => total_length += 4,
-                        _ => total_length += 15, // Rough estimate for complex values
-                    }
-                }
-            },
-            DataValue::Object(_) => total_length += 8, // "[object]"
+    // If only one argument, convert it to string directly
+    if args.len() == 1 {
+        let value = evaluate(&args[0], data, arena)?;
+        
+        // If it's already a string, return it directly
+        if let DataValue::String(_) = value {
+            return Ok(value);
         }
+        
+        // Otherwise, convert to string
+        let string_value = value.to_string();
+        return Ok(arena.alloc(DataValue::String(arena.alloc_str(&string_value))));
     }
     
-    // Second pass: build the string directly with pre-allocated capacity
-    let mut result = String::with_capacity(total_length);
+    // For multiple arguments, concatenate them
+    let mut result = String::new();
     
-    // Append each value directly to the result string
     for arg in args {
         let value = evaluate(arg, data, arena)?;
         match value {
             DataValue::String(s) => result.push_str(s),
-            DataValue::Number(n) => {
-                match n {
-                    NumberValue::Integer(i) => {
-                        use std::fmt::Write;
-                        write!(result, "{}", i).unwrap();
-                    },
-                    NumberValue::Float(f) => {
-                        use std::fmt::Write;
-                        write!(result, "{}", f).unwrap();
-                    }
-                }
-            },
-            DataValue::Bool(b) => result.push_str(if b { "true" } else { "false" }),
-            DataValue::Null => result.push_str("null"),
-            DataValue::Array(arr) => {
-                result.push('[');
-                let mut first = true;
-                for item in arr {
-                    if !first {
-                        result.push_str(", ");
-                    }
-                    match item {
-                        DataValue::String(s) => {
-                            result.push('"');
-                            result.push_str(s);
-                            result.push('"');
-                        },
-                        DataValue::Number(n) => {
-                            match n {
-                                NumberValue::Integer(i) => {
-                                    use std::fmt::Write;
-                                    write!(result, "{}", i).unwrap();
-                                },
-                                NumberValue::Float(f) => {
-                                    use std::fmt::Write;
-                                    write!(result, "{}", f).unwrap();
-                                }
-                            }
-                        },
-                        DataValue::Bool(b) => result.push_str(if *b { "true" } else { "false" }),
-                        DataValue::Null => result.push_str("null"),
-                        _ => result.push_str("[complex value]"),
-                    }
-                    first = false;
-                }
-                result.push(']');
-            },
-            DataValue::Object(_) => result.push_str("[object]"),
+            _ => {
+                let string_value = value.to_string();
+                result.push_str(&string_value);
+            }
         }
     }
     
-    // Return the concatenated string
-    Ok(DataValue::String(arena.alloc_str(&result)))
+    // Allocate the result string in the arena
+    Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
 
-/// Evaluates a substr operation.
-/// Gets a portion of a string based on start position and length.
+/// Evaluates a substr operation (substring extraction).
+/// Extracts a substring from a string based on start and length arguments.
 pub fn eval_substr<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
-    // Check that we have at least 1 argument (the string)
-    if args.is_empty() {
+) -> Result<&'a DataValue<'a>> {
+    // Check that we have at least 2 arguments
+    if args.len() < 2 {
         return Err(LogicError::OperatorError {
             operator: "substr".to_string(),
-            reason: "Expected at least 1 argument".to_string(),
+            reason: format!("Expected at least 2 arguments, got {}", args.len()),
         });
     }
-
-    // Fast path for empty string result
-    let empty_str = || DataValue::String(arena.alloc_str(""));
-
-    // Evaluate the string argument
+    
+    // Evaluate the first argument (the string)
     let string_value = evaluate(&args[0], data, arena)?;
+    
+    // Get the string from the value
     let string = match string_value {
         DataValue::String(s) => s,
-        DataValue::Number(n) => {
-            // Avoid allocating a new string if possible by checking for common cases
-            let num_str = arena.alloc_str(&n.to_string());
-            return if args.len() <= 2 {
-                // If only start is provided, use the whole string
-                match args.get(1) {
-                    Some(token) => {
-                        let start_value = evaluate(token, data, arena)?;
-                        if let DataValue::Number(n) = start_value {
-                            let start = n.as_i64().unwrap_or(0) as isize;
-                            if start <= 0 || start as usize >= num_str.len() {
-                                if start < 0 && (-start as usize) < num_str.len() {
-                                    // Negative index from end
-                                    let start_idx = num_str.len() - (-start as usize);
-                                    Ok(DataValue::String(arena.alloc_str(&num_str[start_idx..])))
-                                } else {
-                                    // Start is beyond the string bounds
-                                    Ok(empty_str())
-                                }
-                            } else {
-                                // Normal substring from start to end
-                                Ok(DataValue::String(arena.alloc_str(&num_str[start as usize..])))
-                            }
-                        } else {
-                            Err(LogicError::OperatorError {
-                                operator: "substr".to_string(),
-                                reason: format!("Expected number for start position, got {:?}", start_value),
-                            })
-                        }
-                    }
-                    None => Ok(DataValue::String(num_str)),
-                }
-            } else {
-                // Handle start and length case
-                DataValue::String(num_str).substr_with_args(&args[1..], data, arena, empty_str)
-            };
+        _ => {
+            // Convert to string
+            let s = string_value.to_string();
+            arena.alloc_str(&s)
         }
-        DataValue::Bool(b) => {
-            let bool_str = if b { "true" } else { "false" };
-            return Ok(DataValue::String(arena.alloc_str(bool_str)));
-        }
-        DataValue::Null => return Ok(DataValue::String(arena.alloc_str("null"))),
-        _ => return Err(LogicError::OperatorError {
-            operator: "substr".to_string(),
-            reason: format!("Expected string, got {:?}", string_value),
-        }),
     };
-
-    // If string is empty, return empty string
+    
+    // If the string is empty, return empty string
     if string.is_empty() {
-        return Ok(empty_str());
+        return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
     }
-
-    // If only start argument provided
-    if args.len() <= 2 {
-        return if let Some(start_token) = args.get(1) {
-            let start_value = evaluate(start_token, data, arena)?;
-            if let DataValue::Number(n) = start_value {
-                let start = n.as_i64().unwrap_or(0) as isize;
-                
-                // Fast path for ASCII-only strings
-                if string.is_ascii() {
-                    let string_len = string.len();
-                    let start_idx = if start < 0 {
-                        // Negative start means count from the end
-                        let abs_start = (-start) as usize;
-                        string_len.saturating_sub(abs_start)
-                    } else {
-                        // Positive start
-                        let start_usize = start as usize;
-                        if start_usize >= string_len {
-                            return Ok(empty_str()); // Start beyond end returns empty string
-                        }
-                        start_usize
-                    };
-                    
-                    Ok(DataValue::String(arena.alloc_str(&string[start_idx..])))
-                } else {
-                    // Non-ASCII path (Unicode) - need char indices
-                    let string_len = string.chars().count();
-                    let start_idx = if start < 0 {
-                        // Negative start means count from the end
-                        let abs_start = (-start) as usize;
-                        string_len.saturating_sub(abs_start)
-                    } else {
-                        // Positive start
-                        let start_usize = start as usize;
-                        if start_usize >= string_len {
-                            return Ok(empty_str()); // Start beyond end returns empty string
-                        }
-                        start_usize
-                    };
-                    
-                    // Convert from char index to byte index
-                    let byte_start = string.char_indices()
-                        .nth(start_idx)
-                        .map(|(i, _)| i)
-                        .unwrap_or(string.len());
-                    
-                    Ok(DataValue::String(arena.alloc_str(&string[byte_start..])))
-                }
+    
+    // Evaluate the second argument (start index)
+    let start_value = evaluate(&args[1], data, arena)?;
+    
+    // Get the start index
+    let start = match start_value {
+        DataValue::Number(n) => n.as_i64().unwrap_or(0),
+        _ => {
+            // Try to convert to number
+            if let Some(n) = start_value.coerce_to_number() {
+                n.as_i64().unwrap_or(0)
             } else {
-                Err(LogicError::OperatorError {
-                    operator: "substr".to_string(),
-                    reason: format!("Expected number for start position, got {:?}", start_value),
-                })
+                0
             }
-        } else {
-            // No start position provided, return entire string
-            Ok(DataValue::String(string))
-        };
-    }
-
-    // If we have both start and length, handle it with the helper
-    DataValue::String(string).substr_with_args(&args[1..], data, arena, empty_str)
-}
-
-// Extension trait for DataValue to handle substr operations
-trait SubstrOps<'a> {
-    fn substr_with_args(
-        &self,
-        args: &[Token<'a>],
-        data: &'a DataValue<'a>,
-        arena: &'a DataArena,
-        empty_str: impl Fn() -> DataValue<'a>
-    ) -> Result<DataValue<'a>>;
-}
-
-impl<'a> SubstrOps<'a> for DataValue<'a> {
-    fn substr_with_args(
-        &self,
-        args: &[Token<'a>],
-        data: &'a DataValue<'a>,
-        arena: &'a DataArena,
-        empty_str: impl Fn() -> DataValue<'a>
-    ) -> Result<DataValue<'a>> {
-        let string = self.as_str().unwrap();
-        if string.is_empty() {
-            return Ok(empty_str());
         }
+    };
+    
+    // Get the length argument if provided
+    let length = if args.len() > 2 {
+        let length_value = evaluate(&args[2], data, arena)?;
         
-        // Get start position
-        let start_value = evaluate(&args[0], data, arena)?;
-        let start = match start_value {
-            DataValue::Number(n) => n.as_i64().unwrap_or(0) as isize,
-            _ => return Err(LogicError::OperatorError {
-                operator: "substr".to_string(),
-                reason: format!("Expected number for start position, got {:?}", start_value),
-            }),
-        };
-        
-        // Fast path for ASCII strings
-        if string.is_ascii() {
-            let string_len = string.len();
-            let start_idx = if start < 0 {
-                let abs_start = (-start) as usize;
-                string_len.saturating_sub(abs_start)
-            } else {
-                let start_usize = start as usize;
-                if start_usize >= string_len { return Ok(empty_str()); }
-                start_usize
-            };
-            
-            // If no length provided
-            if args.len() <= 1 {
-                return Ok(DataValue::String(arena.alloc_str(&string[start_idx..])));
-            }
-            
-            // Get length
-            let length_value = evaluate(&args[1], data, arena)?;
-            let length = match length_value {
-                DataValue::Number(n) => n.as_i64().unwrap_or(0) as isize,
-                _ => return Err(LogicError::OperatorError {
-                    operator: "substr".to_string(),
-                    reason: format!("Expected number for length, got {:?}", length_value),
-                }),
-            };
-            
-            let end_idx = if length < 0 {
-                let abs_length = (-length) as usize;
-                if start_idx + abs_length >= string_len {
-                    start_idx // Negative length would go beyond start
+        // Get the length
+        match length_value {
+            DataValue::Number(n) => n.as_i64().unwrap_or(i64::MAX),
+            _ => {
+                // Try to convert to number
+                if let Some(n) = length_value.coerce_to_number() {
+                    n.as_i64().unwrap_or(i64::MAX)
                 } else {
-                    string_len - abs_length
+                    i64::MAX
                 }
-            } else {
-                let end = start_idx + length as usize;
-                if end > string_len { string_len } else { end }
-            };
-            
-            if end_idx <= start_idx {
-                return Ok(empty_str());
             }
-            
-            Ok(DataValue::String(arena.alloc_str(&string[start_idx..end_idx])))
+        }
+    } else {
+        // If no length provided, use the rest of the string
+        i64::MAX
+    };
+    
+    // Handle negative start index (count from end)
+    let string_len = string.chars().count() as i64;
+    let abs_start = if start < 0 { (-start).min(string_len) } else { start };
+    
+    let start_idx = if start < 0 {
+        // Negative start means count from end
+        string_len.saturating_sub(abs_start) as usize
+    } else {
+        // Positive start means count from beginning
+        abs_start as usize
+    };
+    
+    // If start is beyond the end of the string, return empty string
+    if start_idx >= string_len as usize {
+        return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
+    }
+    
+    // Handle negative length (count from end)
+    let end_idx = if length < 0 {
+        // Negative length means count from end
+        (string_len as i64 + length).max(start_idx as i64) as usize
+    } else {
+        // Positive length means count from start
+        (start_idx + length as usize).min(string_len as usize)
+    };
+    
+    // If end is before start, return empty string
+    if end_idx <= start_idx {
+        return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
+    }
+    
+    // Extract the substring
+    let mut char_iter = string.chars();
+    let mut result = String::new();
+    
+    // Skip characters before start
+    for _ in 0..start_idx {
+        char_iter.next();
+    }
+    
+    // Take characters until end
+    for _ in start_idx..end_idx {
+        if let Some(c) = char_iter.next() {
+            result.push(c);
         } else {
-            // Non-ASCII path (Unicode characters)
-            let string_len = string.chars().count();
-            let start_idx = if start < 0 {
-                let abs_start = (-start) as usize;
-                string_len.saturating_sub(abs_start)
-            } else {
-                let start_usize = start as usize;
-                if start_usize >= string_len { return Ok(empty_str()); }
-                start_usize
-            };
-            
-            // If no length provided
-            if args.len() <= 1 {
-                let byte_start = string.char_indices()
-                    .nth(start_idx)
-                    .map(|(i, _)| i)
-                    .unwrap_or(string.len());
-                
-                return Ok(DataValue::String(arena.alloc_str(&string[byte_start..])));
-            }
-            
-            // Get length
-            let length_value = evaluate(&args[1], data, arena)?;
-            let length = match length_value {
-                DataValue::Number(n) => n.as_i64().unwrap_or(0) as isize,
-                _ => return Err(LogicError::OperatorError {
-                    operator: "substr".to_string(),
-                    reason: format!("Expected number for length, got {:?}", length_value),
-                }),
-            };
-            
-            let end_idx = if length < 0 {
-                let abs_length = (-length) as usize;
-                if start_idx + abs_length >= string_len {
-                    start_idx // Negative length would go beyond start
-                } else {
-                    string_len - abs_length
-                }
-            } else {
-                let end = start_idx + length as usize;
-                if end > string_len { string_len } else { end }
-            };
-            
-            if end_idx <= start_idx {
-                return Ok(empty_str());
-            }
-            
-            // Convert char indices to byte indices efficiently
-            let mut char_indices = string.char_indices();
-            let byte_start = char_indices.nth(start_idx).map(|(i, _)| i).unwrap_or(0);
-            
-            // Skip ahead to end_idx - start_idx
-            let chars_to_skip = end_idx - start_idx - 1;
-            let byte_end = if chars_to_skip > 0 {
-                char_indices.nth(chars_to_skip).map(|(i, _)| i).unwrap_or(string.len())
-            } else {
-                string.len()
-            };
-            
-            Ok(DataValue::String(arena.alloc_str(&string[byte_start..byte_end])))
+            break;
         }
     }
+    
+    // Allocate the result string in the arena
+    Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::DataValue;
-    use crate::arena::DataArena;
-    use crate::logic::token::Token;
-
+    use crate::logic::parser::parse_str;
+    use serde_json::json;
+    use crate::value::FromJson;
+    
     #[test]
     fn test_cat() {
         let arena = DataArena::new();
+        let data_json = json!({"a": 10, "b": "hello", "c": true});
+        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
-        // Test with string literals
-        let args = &[
-            Token::literal(DataValue::String(arena.alloc_str("Hello"))),
-            Token::literal(DataValue::String(arena.alloc_str(", "))),
-            Token::literal(DataValue::String(arena.alloc_str("World"))),
-        ];
+        // Test concatenating strings
+        let token = parse_str(r#"{"cat": ["hello", " ", "world"]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("hello world"));
         
-        let result = eval_cat(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "Hello, World");
+        // Test concatenating different types
+        let token = parse_str(r#"{"cat": [{"var": "b"}, " ", {"var": "a"}, " ", {"var": "c"}]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("hello 10 true"));
         
-        // Test with mixed types
-        let args = &[
-            Token::literal(DataValue::String(arena.alloc_str("Count: "))),
-            Token::literal(DataValue::integer(42)),
-            Token::literal(DataValue::String(arena.alloc_str(", Boolean: "))),
-            Token::literal(DataValue::Bool(true)),
-        ];
-        
-        let result = eval_cat(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "Count: 42, Boolean: true");
-        
-        // Test with empty args
-        let args = &[];
-        let result = eval_cat(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "");
+        // Test empty cat
+        let token = parse_str(r#"{"cat": []}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some(""));
     }
     
     #[test]
     fn test_substr() {
         let arena = DataArena::new();
-        let test_string = "jsonlogic";
+        let data_json = json!({"text": "hello world"});
+        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
-        // Test with positive start, no length
-        let args = &[
-            Token::literal(DataValue::String(arena.alloc_str(test_string))),
-            Token::literal(DataValue::integer(4)),
-        ];
+        // Test basic substring
+        let token = parse_str(r#"{"substr": [{"var": "text"}, 0, 5]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("hello"));
         
-        let result = eval_substr(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "logic");
+        // Test negative start
+        let token = parse_str(r#"{"substr": [{"var": "text"}, -5]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("world"));
         
-        // Test with negative start, no length
-        let args = &[
-            Token::literal(DataValue::String(arena.alloc_str(test_string))),
-            Token::literal(DataValue::integer(-5)),
-        ];
+        // Test negative length
+        let token = parse_str(r#"{"substr": [{"var": "text"}, 0, -6]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("hello"));
         
-        let result = eval_substr(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "logic");
-        
-        // Test with positive start and positive length
-        let args = &[
-            Token::literal(DataValue::String(arena.alloc_str(test_string))),
-            Token::literal(DataValue::integer(1)),
-            Token::literal(DataValue::integer(3)),
-        ];
-        
-        let result = eval_substr(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "son");
-        
-        // Test with positive start and negative length
-        let args = &[
-            Token::literal(DataValue::String(arena.alloc_str(test_string))),
-            Token::literal(DataValue::integer(4)),
-            Token::literal(DataValue::integer(-2)),
-        ];
-        
-        let result = eval_substr(args, &DataValue::Null, &arena).unwrap();
-        assert_eq!(result.as_str().unwrap(), "log");
+        // Test out of bounds
+        let token = parse_str(r#"{"substr": [{"var": "text"}, 20]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some(""));
     }
 } 

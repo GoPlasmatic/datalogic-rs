@@ -15,17 +15,30 @@ pub enum ConditionalOp {
     If,
     /// Ternary operator
     Ternary,
+    /// Double negation operator (!!)
+    DoubleNegation,
 }
 
 /// Evaluates an if operation.
+#[inline]
 pub fn eval_if<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for common case: if with 3 arguments (condition, then, else)
+    if args.len() == 3 {
+        let condition = evaluate(&args[0], data, arena)?;
+        if condition.coerce_to_bool() {
+            return evaluate(&args[1], data, arena);
+        } else {
+            return evaluate(&args[2], data, arena);
+        }
+    }
+    
     // If no arguments, return null
     if args.is_empty() {
-        return Ok(DataValue::null());
+        return Ok(arena.null_value());
     }
     
     // If only one argument, evaluate it and return the result
@@ -40,7 +53,7 @@ pub fn eval_if<'a>(
         if condition.coerce_to_bool() {
             return evaluate(&args[1], data, arena);
         }
-        return Ok(DataValue::null());
+        return Ok(arena.null_value());
     }
     
     // Process condition-result pairs
@@ -49,7 +62,7 @@ pub fn eval_if<'a>(
         // Evaluate the condition
         let condition = evaluate(&args[i], data, arena)?;
         
-        // If the condition is truthy, return the result
+        // If the condition is truthy, evaluate and return the result
         if condition.coerce_to_bool() {
             return evaluate(&args[i + 1], data, arena);
         }
@@ -58,21 +71,21 @@ pub fn eval_if<'a>(
         i += 2;
     }
     
-    // If we have an odd number of arguments, the last one is the default result
-    if args.len() % 2 == 1 {
-        return evaluate(&args[args.len() - 1], data, arena);
+    // If there's an odd number of arguments, the last one is the else case
+    if i == args.len() - 1 {
+        return evaluate(&args[i], data, arena);
     }
     
-    // If no condition was truthy and there's no default, return null
-    Ok(DataValue::null())
+    // If no conditions matched and no else case, return null
+    Ok(arena.null_value())
 }
 
-/// Evaluates a ternary operation (?:).
+/// Evaluates a ternary operation.
 pub fn eval_ternary<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Check that we have exactly 3 arguments
     if args.len() != 3 {
         return Err(LogicError::OperatorError {
@@ -84,12 +97,37 @@ pub fn eval_ternary<'a>(
     // Evaluate the condition
     let condition = evaluate(&args[0], data, arena)?;
     
-    // If the condition is truthy, return the first result, otherwise return the second
+    // Return the appropriate result based on the condition
     if condition.coerce_to_bool() {
         evaluate(&args[1], data, arena)
     } else {
         evaluate(&args[2], data, arena)
     }
+}
+
+/// Evaluates a double negation operation (!!).
+/// Converts a value to its boolean representation.
+pub fn eval_double_negation<'a>(
+    args: &'a [Token<'a>],
+    data: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Check that we have exactly 1 argument
+    if args.len() != 1 {
+        return Err(LogicError::OperatorError {
+            operator: "!!".to_string(),
+            reason: format!("Expected 1 argument, got {}", args.len()),
+        });
+    }
+    
+    // Evaluate the argument
+    let value = evaluate(&args[0], data, arena)?;
+    
+    // Convert to boolean
+    let result = value.coerce_to_bool();
+    
+    // Return the preallocated boolean result
+    Ok(arena.bool_value(result))
 }
 
 #[cfg(test)]

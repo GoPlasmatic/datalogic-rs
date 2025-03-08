@@ -13,7 +13,7 @@ pub fn eval_log<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Check that we have exactly 1 argument
     if args.len() != 1 {
         return Err(LogicError::OperatorError {
@@ -28,7 +28,7 @@ pub fn eval_log<'a>(
     // Log the value
     println!("LOG: {:?}", value);
     
-    // Return the value
+    // Return the value (already a reference)
     Ok(value)
 }
 

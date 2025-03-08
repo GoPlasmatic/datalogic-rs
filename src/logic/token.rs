@@ -199,6 +199,7 @@ impl OperatorType {
             OperatorType::Conditional(op) => match op {
                 ConditionalOp::If => "if",
                 ConditionalOp::Ternary => "?:",
+                ConditionalOp::DoubleNegation => "!!",
             },
             OperatorType::Log => "log",
             OperatorType::In => "in",
@@ -243,6 +244,7 @@ impl FromStr for OperatorType {
             "merge" => Ok(OperatorType::Array(ArrayOp::Merge)),
             "if" => Ok(OperatorType::Conditional(ConditionalOp::If)),
             "?:" => Ok(OperatorType::Conditional(ConditionalOp::Ternary)),
+            "!!" => Ok(OperatorType::Conditional(ConditionalOp::DoubleNegation)),
             "log" => Ok(OperatorType::Log),
             "in" => Ok(OperatorType::In),
             "missing" => Ok(OperatorType::Missing),

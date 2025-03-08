@@ -33,7 +33,7 @@ pub fn eval_all<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::OperatorError {
@@ -42,18 +42,14 @@ pub fn eval_all<'a>(
         });
     }
     
-    // Reuse result objects
-    let true_result = DataValue::Bool(true);
-    let false_result = DataValue::Bool(false);
-    
     // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
     // Check that the first argument is an array
-    let items = match &array {
+    let items = match array {
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
-        DataValue::Null => return Ok(false_result),
+        DataValue::Null => return Ok(arena.false_value()),
         _ => return Err(LogicError::OperatorError {
             operator: "all".to_string(),
             reason: format!("First argument must be an array, got {:?}", array),
@@ -62,7 +58,7 @@ pub fn eval_all<'a>(
     
     // If the array is empty, return false (vacuously false)
     if items.is_empty() {
-        return Ok(false_result);
+        return Ok(arena.false_value());
     }
     
     // Cache the condition token
@@ -72,12 +68,12 @@ pub fn eval_all<'a>(
     for item in items.iter() {
         // Evaluate the function with the item as context
         if !evaluate(condition, item, arena)?.coerce_to_bool() {
-            return Ok(false_result);
+            return Ok(arena.false_value());
         }
     }
     
     // If all items satisfy the condition, return true
-    Ok(true_result)
+    Ok(arena.true_value())
 }
 
 /// Evaluates a some operation.
@@ -85,7 +81,7 @@ pub fn eval_some<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::OperatorError {
@@ -94,18 +90,14 @@ pub fn eval_some<'a>(
         });
     }
     
-    // Reuse result objects
-    let true_result = DataValue::Bool(true);
-    let false_result = DataValue::Bool(false);
-    
     // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
     // Check that the first argument is an array
-    let items = match &array {
+    let items = match array {
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
-        DataValue::Null => return Ok(false_result),
+        DataValue::Null => return Ok(arena.false_value()),
         _ => return Err(LogicError::OperatorError {
             operator: "some".to_string(),
             reason: format!("First argument must be an array, got {:?}", array),
@@ -114,7 +106,7 @@ pub fn eval_some<'a>(
     
     // If the array is empty, return false (vacuously false)
     if items.is_empty() {
-        return Ok(false_result);
+        return Ok(arena.false_value());
     }
     
     // Cache the condition token
@@ -124,12 +116,12 @@ pub fn eval_some<'a>(
     for item in items.iter() {
         // Evaluate the function with the item as context
         if evaluate(condition, item, arena)?.coerce_to_bool() {
-            return Ok(true_result);
+            return Ok(arena.true_value());
         }
     }
     
-    // If no item satisfies the condition, return false
-    Ok(false_result)
+    // If no items satisfy the condition, return false
+    Ok(arena.false_value())
 }
 
 /// Evaluates a none operation.
@@ -137,7 +129,7 @@ pub fn eval_none<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::OperatorError {
@@ -146,18 +138,14 @@ pub fn eval_none<'a>(
         });
     }
     
-    // Reuse result objects
-    let true_result = DataValue::Bool(true);
-    let false_result = DataValue::Bool(false);
-    
     // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
     // Check that the first argument is an array
-    let items = match &array {
+    let items = match array {
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
-        DataValue::Null => return Ok(true_result),
+        DataValue::Null => return Ok(arena.true_value()),
         _ => return Err(LogicError::OperatorError {
             operator: "none".to_string(),
             reason: format!("First argument must be an array, got {:?}", array),
@@ -166,22 +154,22 @@ pub fn eval_none<'a>(
     
     // If the array is empty, return true (vacuously true)
     if items.is_empty() {
-        return Ok(true_result);
+        return Ok(arena.true_value());
     }
     
     // Cache the condition token
     let condition = &args[1];
     
-    // Check if no item satisfies the condition
+    // Check if no items satisfy the condition
     for item in items.iter() {
         // Evaluate the function with the item as context
         if evaluate(condition, item, arena)?.coerce_to_bool() {
-            return Ok(false_result);
+            return Ok(arena.false_value());
         }
     }
     
-    // If no item satisfies the condition, return true
-    Ok(true_result)
+    // If no items satisfy the condition, return true
+    Ok(arena.true_value())
 }
 
 /// Evaluates a map operation.
@@ -201,8 +189,8 @@ pub fn eval_map<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
-    // Check that we have exactly 2 arguments
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::OperatorError {
             operator: "map".to_string(),
@@ -213,45 +201,40 @@ pub fn eval_map<'a>(
     // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
-    // Handle the case where the array is null or not an array
-    let items = match &array {
+    // Check that the first argument is an array
+    let items = match array {
         DataValue::Array(items) => items,
-        DataValue::Null => {
-            // Return an empty array if the input is null
-            return Ok(DataValue::Array(&[]));
-        },
+        // Fast path for common case of null (treat as empty array)
+        DataValue::Null => return Ok(arena.alloc(DataValue::Array(&[]))),
         _ => return Err(LogicError::OperatorError {
             operator: "map".to_string(),
             reason: format!("First argument must be an array, got {:?}", array),
         }),
     };
     
-    // If the array is empty, return an empty array
+    // Fast path for empty array
     if items.is_empty() {
-        return Ok(DataValue::Array(&[]));
+        return Ok(arena.alloc(DataValue::Array(&[])));
     }
     
-    // Create a temporary arena for intermediate allocations
-    let _temp_arena = arena.create_temp_arena();
+    // Cache the function token
+    let function = &args[1];
     
-    // Get a pre-allocated vector from the pool
+    // Map each item in the array
     let mut results = arena.get_data_value_vec();
+    results.reserve(items.len());
     
-    // Apply the function to each item in the array
     for item in items.iter() {
         // Evaluate the function with the item as context
-        let result = evaluate(&args[1], item, arena)?;
-        results.push(result);
+        let result = evaluate(function, item, arena)?;
+        results.push(result.clone());
     }
     
-    // Allocate the result array
-    let mapped_slice = arena.alloc_slice_clone(&results);
-    
-    // Release the vector back to the pool
+    // Create the result array
+    let result_array = DataValue::Array(arena.alloc_slice_clone(&results));
     arena.release_data_value_vec(results);
     
-    // Return the mapped array
-    Ok(DataValue::Array(mapped_slice))
+    Ok(arena.alloc(result_array))
 }
 
 /// Evaluates a filter operation.
@@ -271,55 +254,52 @@ pub fn eval_filter<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
-    // Check that we have exactly 2 arguments
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for invalid arguments
     if args.len() != 2 {
-        return Err(LogicError::operator_error("filter", format!("Expected 2 arguments, got {}", args.len())));
+        return Err(LogicError::OperatorError {
+            operator: "filter".to_string(),
+            reason: format!("Expected 2 arguments, got {}", args.len()),
+        });
     }
     
     // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
-    // Handle the case where the array is null or not an array
-    let items = match &array {
+    // Check that the first argument is an array
+    let items = match array {
         DataValue::Array(items) => items,
-        DataValue::Null => {
-            // Return an empty array if the input is null
-            return Ok(DataValue::Array(&[]));
-        },
-        _ => return Err(LogicError::operator_error("filter", format!("First argument must be an array, got {:?}", array))),
+        // Fast path for common case of null (treat as empty array)
+        DataValue::Null => return Ok(arena.alloc(DataValue::Array(&[]))),
+        _ => return Err(LogicError::OperatorError {
+            operator: "filter".to_string(),
+            reason: format!("First argument must be an array, got {:?}", array),
+        }),
     };
     
-    // If the array is empty, return an empty array
+    // Fast path for empty array
     if items.is_empty() {
-        return Ok(DataValue::Array(&[]));
+        return Ok(arena.alloc(DataValue::Array(&[])));
     }
     
-    // Create a temporary arena for intermediate allocations
-    let _temp_arena = arena.create_temp_arena();
+    // Cache the condition token
+    let condition = &args[1];
     
-    // Get a pre-allocated vector from the pool
-    let mut filtered = arena.get_data_value_vec();
+    // Filter the array
+    let mut results = arena.get_data_value_vec();
     
-    // Filter the array based on the condition
     for item in items.iter() {
         // Evaluate the condition with the item as context
-        let result = evaluate(&args[1], item, arena)?;
-        
-        // If the result is truthy, include the item in the filtered array
-        if result.coerce_to_bool() {
-            filtered.push(item.clone());
+        if evaluate(condition, item, arena)?.coerce_to_bool() {
+            results.push(item.clone());
         }
     }
     
-    // Allocate the result array
-    let filtered_slice = arena.alloc_slice_clone(&filtered);
+    // Create the result array
+    let result_array = DataValue::Array(arena.alloc_slice_clone(&results));
+    arena.release_data_value_vec(results);
     
-    // Release the vector back to the pool
-    arena.release_data_value_vec(filtered);
-    
-    // Return the filtered array
-    Ok(DataValue::Array(filtered_slice))
+    Ok(arena.alloc(result_array))
 }
 
 /// Evaluates a reduce operation.
@@ -340,52 +320,92 @@ pub fn eval_reduce<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
-    // Fast path for invalid argument counts
-    if args.len() < 3 {
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for invalid arguments
+    if args.len() < 2 || args.len() > 3 {
         return Err(LogicError::OperatorError {
             operator: "reduce".to_string(),
-            reason: format!("Expected at least 3 arguments, got {}", args.len()),
+            reason: format!("Expected 2 or 3 arguments, got {}", args.len()),
         });
     }
-
-    // Evaluate array and initial value
-    let array = evaluate(&args[0], data, arena)?;
-    let initial = evaluate(&args[2], data, arena)?;
     
-    // Fast path for common reduction patterns
-    // If this is a simple sum or product reduction with constant initial value,
-    // we can use specialized implementations
-    if let Token::Operator { 
-        op_type: crate::logic::OperatorType::Arithmetic(op), 
-        args: op_args 
-    } = &args[1] {
-        if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
-            // Check if this is a simple variable access pattern
-            if op_args.len() == 2 {
-                if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
-                    // Check if it's the standard accumulator/current pattern
-                    if (acc_path == &"accumulator" && curr_path == &"current") ||
-                       (acc_path == &"current" && curr_path == &"accumulator") {
-                        // Fast path for sum reduction with any initial value
-                        return eval_reduce_sum(args, data, arena, initial);
-                    }
-                    // Check if it's accessing a property of current
-                    if acc_path == &"accumulator" && curr_path.starts_with("current.") {
-                        // This is a property access pattern, use the general implementation
-                        // as it needs to handle nested property access
+    // Evaluate the first argument to get the array
+    let array = evaluate(&args[0], data, arena)?;
+    
+    // Check that the first argument is an array
+    let items = match array {
+        DataValue::Array(items) => items,
+        // Fast path for common case of null (treat as empty array)
+        DataValue::Null => {
+            // If we have an initial value, return it
+            if args.len() == 3 {
+                return evaluate(&args[2], data, arena);
+            }
+            return Err(LogicError::OperatorError {
+                operator: "reduce".to_string(),
+                reason: "Cannot reduce empty array without initial value".to_string(),
+            });
+        },
+        _ => return Err(LogicError::OperatorError {
+            operator: "reduce".to_string(),
+            reason: format!("First argument must be an array, got {:?}", array),
+        }),
+    };
+    
+    // Fast path for empty array
+    if items.is_empty() {
+        // If we have an initial value, return it
+        if args.len() == 3 {
+            return evaluate(&args[2], data, arena);
+        }
+        return Err(LogicError::OperatorError {
+            operator: "reduce".to_string(),
+            reason: "Cannot reduce empty array without initial value".to_string(),
+        });
+    }
+    
+    // Get the initial value
+    let initial = if args.len() == 3 {
+        evaluate(&args[2], data, arena)?
+    } else {
+        // If no initial value is provided, use the first item
+        &items[0]
+    };
+    
+    // Cache the function token
+    let function = &args[1];
+    
+    // Check for fast path optimizations
+    if let Token::Operator { op_type, args: op_args } = &args[1] {
+        if let crate::logic::OperatorType::Arithmetic(op) = op_type {
+            // Check if this is a simple addition or multiplication
+            if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
+                // Check if it's a simple variable access pattern
+                if op_args.len() == 2 {
+                    if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
+                        // Check if it's the standard accumulator/current pattern
+                        if (acc_path == &"accumulator" && curr_path == &"current") ||
+                           (acc_path == &"current" && curr_path == &"accumulator") {
+                            // Fast path for sum reduction with any initial value
+                            return eval_reduce_sum(args, data, arena, initial);
+                        }
+                        // Check if it's accessing a property of current
+                        if acc_path == &"accumulator" && curr_path.starts_with("current.") {
+                            // This is a property access pattern, use the general implementation
+                            // as it needs to handle nested property access
+                        }
                     }
                 }
-            }
-        } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
-            // Check if it's a simple variable access pattern
-            if op_args.len() == 2 {
-                if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
-                    // Check if it's the standard accumulator/current pattern
-                    if (acc_path == &"accumulator" && curr_path == &"current") ||
-                       (acc_path == &"current" && curr_path == &"accumulator") {
-                        // Fast path for product reduction with any initial value
-                        return eval_reduce_product(args, data, arena, initial);
+            } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
+                // Check if it's a simple variable access pattern
+                if op_args.len() == 2 {
+                    if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
+                        // Check if it's the standard accumulator/current pattern
+                        if (acc_path == &"accumulator" && curr_path == &"current") ||
+                           (acc_path == &"current" && curr_path == &"accumulator") {
+                            // Fast path for product reduction with any initial value
+                            return eval_reduce_product(args, data, arena, initial);
+                        }
                     }
                 }
             }
@@ -407,31 +427,26 @@ pub fn eval_reduce<'a>(
             let mut acc = initial;
             let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
             
-            // Process each item in the array
-            for item in items.iter() {
-                // Update context entries in place with cloned values
-                entries[0].1 = item.clone(); // Clone is necessary here
-                entries[1].1 = acc.clone();  // Clone is necessary here
+            // Start from the first item if no initial value was provided
+            let start_idx = if args.len() == 3 { 0 } else { 1 };
+            
+            // Reduce the array
+            for i in start_idx..items.len() {
+                // Update the context with the current item and accumulator
+                entries[0].1 = items[i].clone();
+                entries[1].1 = acc.clone();
                 
-                // Allocate in arena for this iteration
+                // Create the context object and allocate it in the arena
                 let context_entries = arena.alloc_slice_clone(&entries);
-                // Create and store context in arena
-                let context_obj = DataValue::Object(context_entries);
-                // Allocate context in arena to extend its lifetime
-                let context = arena.alloc(context_obj);
+                let context = arena.alloc(DataValue::Object(context_entries));
                 
-                // Evaluate and update accumulator
-                acc = evaluate(&args[1], context, arena)?;
+                // Evaluate the function with the context
+                acc = evaluate(function, context, arena)?;
             }
             
-            // Return the final result
             Ok(acc)
         },
-        DataValue::Null => Ok(initial),
-        _ => Err(LogicError::OperatorError {
-            operator: "reduce".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => unreachable!(), // We already checked that array is an array
     }
 }
 
@@ -440,102 +455,51 @@ fn eval_reduce_sum<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-    initial: DataValue<'a>,
-) -> Result<DataValue<'a>> {
-    // Evaluate the array
+    initial: &'a DataValue<'a>,
+) -> Result<&'a DataValue<'a>> {
+    // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
-    // Handle the case where the array is null or not an array
-    let items = match &array {
-        DataValue::Array(items) => items,
-        DataValue::Null => return Ok(initial),
-        _ => return Err(LogicError::operator_error("reduce", format!("First argument must be an array, got {:?}", array))),
-    };
-    
-    // If the array is empty, return the initial value
-    if items.is_empty() {
-        return Ok(initial);
-    }
-    
-    // Fast path for numeric initial value
-    if let Some(mut sum) = initial.as_f64() {
-        // Directly sum all numeric values
+    // We already checked that array is an array in the caller
+    if let DataValue::Array(items) = array {
+        // Fast path for empty arrays
+        if items.is_empty() {
+            return Ok(initial);
+        }
+        
+        // Initialize the accumulator with the initial value
+        let mut sum = initial.coerce_to_number().unwrap_or_else(|| {
+            // If initial value can't be coerced to a number, start with 0
+            crate::value::NumberValue::Integer(0)
+        });
+        
+        // Sum all items in the array
         for item in items.iter() {
-            if let Some(val) = item.as_f64() {
-                sum += val;
+            if let Some(num) = item.coerce_to_number() {
+                sum = match (sum, num) {
+                    (crate::value::NumberValue::Integer(a), crate::value::NumberValue::Integer(b)) => {
+                        // Check for overflow
+                        match a.checked_add(b) {
+                            Some(result) => crate::value::NumberValue::Integer(result),
+                            None => crate::value::NumberValue::Float(a as f64 + b as f64),
+                        }
+                    },
+                    _ => {
+                        // Use floating point for mixed or float types
+                        let a_f64 = sum.as_f64();
+                        let b_f64 = num.as_f64();
+                        crate::value::NumberValue::Float(a_f64 + b_f64)
+                    }
+                };
             }
         }
         
-        // Return the sum as the appropriate numeric type
-        if sum.fract() == 0.0 && sum >= i64::MIN as f64 && sum <= i64::MAX as f64 {
-            return Ok(DataValue::integer(sum as i64));
-        } else {
-            return Ok(DataValue::float(sum));
-        }
+        // Return the sum
+        Ok(arena.alloc(DataValue::Number(sum)))
+    } else {
+        // This should never happen as we already checked in the caller
+        unreachable!()
     }
-    
-    // Fast path for string initial value
-    if let Some(initial_str) = initial.as_str() {
-        // Get a pre-allocated vector from the pool
-        let mut parts = arena.get_data_value_vec();
-        
-        // Start with the initial string
-        parts.push(DataValue::String(arena.intern_str(initial_str)));
-        
-        // Add all string values
-        for item in items.iter() {
-            if let Some(s) = item.as_str() {
-                parts.push(DataValue::String(arena.intern_str(s)));
-            } else {
-                // For non-string values, convert to string
-                let s = format!("{}", item);
-                parts.push(DataValue::String(arena.intern_str(&s)));
-            }
-        }
-        
-        // Join all strings
-        let mut result = String::new();
-        for (i, part) in parts.iter().enumerate() {
-            if let Some(s) = part.as_str() {
-                if i > 0 {
-                    result.push_str(s);
-                } else {
-                    result = s.to_string();
-                }
-            }
-        }
-        
-        // Release the vector back to the pool
-        arena.release_data_value_vec(parts);
-        
-        // Return the joined string
-        return Ok(DataValue::String(arena.intern_str(&result)));
-    }
-    
-    // Fall back to the general case implementation
-    let curr_key = arena.intern_str("current");
-    let acc_key = arena.intern_str("accumulator");
-    
-    let mut acc = initial; // Start with provided initial value
-    let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
-    
-    for item in items.iter() {
-        // Update entries in place with cloned values
-        entries[0].1 = item.clone();
-        entries[1].1 = acc.clone();
-        
-        // Allocate in arena for this iteration
-        let context_entries = arena.alloc_slice_clone(&entries);
-        // Create and store context in arena
-        let context_obj = DataValue::Object(context_entries);
-        // Allocate context in arena to extend its lifetime
-        let context = arena.alloc(context_obj);
-        
-        // Evaluate and update accumulator
-        acc = evaluate(&args[1], context, arena)?;
-    }
-    
-    Ok(acc)
 }
 
 /// Fast path implementation for product reduction.
@@ -543,64 +507,51 @@ fn eval_reduce_product<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-    initial: DataValue<'a>,
-) -> Result<DataValue<'a>> {
-    // Evaluate the array
+    initial: &'a DataValue<'a>,
+) -> Result<&'a DataValue<'a>> {
+    // Evaluate the first argument to get the array
     let array = evaluate(&args[0], data, arena)?;
     
-    // Handle the case where the array is null or not an array
-    let items = match &array {
-        DataValue::Array(items) => items,
-        DataValue::Null => return Ok(initial),
-        _ => return Err(LogicError::operator_error("reduce", format!("First argument must be an array, got {:?}", array))),
-    };
-    
-    // If the array is empty, return the initial value
-    if items.is_empty() {
-        return Ok(initial);
-    }
-    
-    // Fast path for numeric initial value
-    if let Some(mut product) = initial.as_f64() {
-        // Directly multiply all numeric values
+    // We already checked that array is an array in the caller
+    if let DataValue::Array(items) = array {
+        // Fast path for empty arrays
+        if items.is_empty() {
+            return Ok(initial);
+        }
+        
+        // Initialize the accumulator with the initial value
+        let mut product = initial.coerce_to_number().unwrap_or_else(|| {
+            // If initial value can't be coerced to a number, start with 1
+            crate::value::NumberValue::Integer(1)
+        });
+        
+        // Multiply all items in the array
         for item in items.iter() {
-            if let Some(val) = item.as_f64() {
-                product *= val;
+            if let Some(num) = item.coerce_to_number() {
+                product = match (product, num) {
+                    (crate::value::NumberValue::Integer(a), crate::value::NumberValue::Integer(b)) => {
+                        // Check for overflow
+                        match a.checked_mul(b) {
+                            Some(result) => crate::value::NumberValue::Integer(result),
+                            None => crate::value::NumberValue::Float(a as f64 * b as f64),
+                        }
+                    },
+                    _ => {
+                        // Use floating point for mixed or float types
+                        let a_f64 = product.as_f64();
+                        let b_f64 = num.as_f64();
+                        crate::value::NumberValue::Float(a_f64 * b_f64)
+                    }
+                };
             }
         }
         
-        // Return the product as the appropriate numeric type
-        if product.fract() == 0.0 && product >= i64::MIN as f64 && product <= i64::MAX as f64 {
-            return Ok(DataValue::integer(product as i64));
-        } else {
-            return Ok(DataValue::float(product));
-        }
+        // Return the product
+        Ok(arena.alloc(DataValue::Number(product)))
+    } else {
+        // This should never happen as we already checked in the caller
+        unreachable!()
     }
-    
-    // Fall back to the general case implementation
-    let curr_key = arena.intern_str("current");
-    let acc_key = arena.intern_str("accumulator");
-    
-    let mut acc = initial; // Start with provided initial value
-    let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
-    
-    for item in items.iter() {
-        // Update entries in place with cloned values
-        entries[0].1 = item.clone();
-        entries[1].1 = acc.clone();
-        
-        // Allocate in arena for this iteration
-        let context_entries = arena.alloc_slice_clone(&entries);
-        // Create and store context in arena
-        let context_obj = DataValue::Object(context_entries);
-        // Allocate context in arena to extend its lifetime
-        let context = arena.alloc(context_obj);
-        
-        // Evaluate and update accumulator
-        acc = evaluate(&args[1], context, arena)?;
-    }
-    
-    Ok(acc)
 }
 
 /// Evaluates a merge operation.
@@ -608,42 +559,37 @@ pub fn eval_merge<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
-    // If there are no arguments, return an empty array
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for no arguments
     if args.is_empty() {
-        return Ok(DataValue::Array(&[]));
+        return Ok(arena.alloc(DataValue::Array(&[])));
     }
     
-    // Get a pre-allocated vector from the pool
-    let mut merged = arena.get_data_value_vec();
+    // Evaluate all arguments and collect arrays
+    let mut result = arena.get_data_value_vec();
     
     for arg in args {
-        // Evaluate the argument
         let value = evaluate(arg, data, arena)?;
         
-        // Check that the argument is an array
-        match &value {
+        match value {
             DataValue::Array(items) => {
-                // Add all items to the merged array
+                // Add all items from the array
                 for item in items.iter() {
-                    merged.push(item.clone());
+                    result.push(item.clone());
                 }
             },
             _ => {
-                // If the argument is not an array, add it as a single item
-                merged.push(value);
-            },
+                // Add non-array values directly
+                result.push(value.clone());
+            }
         }
     }
     
-    // Allocate the result array
-    let merged_slice = arena.alloc_slice_clone(&merged);
+    // Create the result array
+    let result_array = DataValue::Array(arena.alloc_slice_clone(&result));
+    arena.release_data_value_vec(result);
     
-    // Release the vector back to the pool
-    arena.release_data_value_vec(merged);
-    
-    // Return the merged array
-    Ok(DataValue::Array(merged_slice))
+    Ok(arena.alloc(result_array))
 }
 
 #[cfg(test)]

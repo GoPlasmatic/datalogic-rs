@@ -9,19 +9,27 @@ use super::error::Result;
 use super::operators::{comparison, arithmetic, logical, string, missing, array, conditional, log, r#in, variable};
 
 /// Evaluates a logic expression.
+#[inline]
 pub fn evaluate<'a>(
     token: &'a Token<'a>,
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for literals - most common case
+    if let Token::Literal(value) = token {
+        return Ok(value);
+    }
+    
+    // Fast path for variables - second most common case
+    if let Token::Variable { path, default } = token {
+        return variable::evaluate_variable(path, default, data, arena);
+    }
+    
+    // Handle other token types
     match token {
-        // Literals are returned as-is
-        Token::Literal(value) => Ok(value.clone()),
-        
-        // Variables are looked up in the data
-        Token::Variable { path, default } => {
-            variable::evaluate_variable(path, default, data, arena)
-        },
+        // Already handled above
+        Token::Literal(_) => unreachable!(),
+        Token::Variable { .. } => unreachable!(),
         
         // Dynamic variables evaluate the path expression first
         Token::DynamicVariable { path_expr, default } => {
@@ -30,10 +38,15 @@ pub fn evaluate<'a>(
             
             // Convert the path value to a string
             let path_str = match path_value {
+                // Fast path for strings - no allocation needed
                 DataValue::String(s) => s,
+                
+                // For null, use the preallocated empty string
+                DataValue::Null => arena.empty_string(),
+                
+                // For other types, convert to string
                 DataValue::Number(n) => arena.alloc_str(&n.to_string()),
-                DataValue::Bool(b) => arena.alloc_str(&b.to_string()),
-                DataValue::Null => arena.alloc_str(""),
+                DataValue::Bool(b) => if *b { "true" } else { "false" },
                 _ => return Err(super::error::LogicError::VariableError {
                     path: format!("{:?}", path_value),
                     reason: format!("Dynamic variable path must evaluate to a scalar value, got: {:?}", path_value),
@@ -57,12 +70,13 @@ pub fn evaluate<'a>(
 }
 
 /// Evaluates an operator application.
+#[inline]
 fn evaluate_operator<'a>(
     op_type: OperatorType,
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     match op_type {
         // Comparison operators
         OperatorType::Comparison(comp_op) => match comp_op {
@@ -115,67 +129,50 @@ fn evaluate_operator<'a>(
         OperatorType::Conditional(cond_op) => match cond_op {
             conditional::ConditionalOp::If => conditional::eval_if(args, data, arena),
             conditional::ConditionalOp::Ternary => conditional::eval_ternary(args, data, arena),
+            conditional::ConditionalOp::DoubleNegation => conditional::eval_double_negation(args, data, arena),
         },
         
-        // Special operators
+        // Log operator
         OperatorType::Log => log::eval_log(args, data, arena),
+        
+        // In operator
         OperatorType::In => r#in::eval_in(args, data, arena),
+        
+        // Missing operator
         OperatorType::Missing => missing::eval_missing(args, data, arena),
+        
+        // MissingSome operator
         OperatorType::MissingSome => missing::eval_missing_some(args, data, arena),
         
-        // Array literal operator (evaluates each element and returns an array)
+        // Array literal (for arrays with non-literal elements)
         OperatorType::ArrayLiteral => {
-            // Get a pre-allocated vector from the pool
-            let mut values = arena.get_data_value_vec();
-            
             // Evaluate each element
+            let mut values = arena.get_data_value_vec();
             for arg in args {
                 let value = evaluate(arg, data, arena)?;
-                values.push(value);
+                values.push(value.clone());
             }
             
-            // Create the array
-            let values_slice = arena.alloc_slice_clone(&values);
-            
-            // Release the vector back to the pool
+            // Create an array value
+            let result = DataValue::Array(arena.alloc_slice_clone(&values));
             arena.release_data_value_vec(values);
-            
-            Ok(DataValue::Array(values_slice))
+            Ok(arena.alloc(result))
         },
     }
 }
 
 /// Evaluates a custom operator application.
 fn evaluate_custom_operator<'a>(
-    name: &str,
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
-    match name {
-        // Double negation operator (!!) - converts a value to boolean
-        "!!" => {
-            // Check that we have exactly 1 argument
-            if args.len() != 1 {
-                return Err(super::error::LogicError::OperatorError {
-                    operator: "!!".to_string(),
-                    reason: format!("Expected 1 argument, got {}", args.len()),
-                });
-            }
-            
-            // Evaluate the argument
-            let value = evaluate(&args[0], data, arena)?;
-            
-            // Convert to boolean
-            Ok(DataValue::Bool(value.coerce_to_bool()))
-        },
-        
-        // Other custom operators are not yet implemented
-        _ => Err(super::error::LogicError::OperatorError {
-            operator: name.to_string(),
-            reason: "Custom operators are not yet implemented".to_string(),
-        }),
-    }
+    name: &'a str,
+    _args: &'a [Token<'a>],
+    _data: &'a DataValue<'a>,
+    _arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Custom operators are not yet implemented
+    Err(super::error::LogicError::OperatorError {
+        operator: format!("Custom operator '{}'", name),
+        reason: "Custom operators are not yet supported".to_string(),
+    })
 }
 
 #[cfg(test)]

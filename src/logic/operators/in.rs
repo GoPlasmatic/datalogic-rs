@@ -13,7 +13,7 @@ pub fn eval_in<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Check that we have exactly 2 arguments
     if args.len() != 2 {
         return Err(LogicError::OperatorError {
@@ -27,20 +27,20 @@ pub fn eval_in<'a>(
     let haystack = evaluate(&args[1], data, arena)?;
     
     // Check if the needle is in the haystack
-    match &haystack {
+    match haystack {
         // Check if the needle is in the array
         DataValue::Array(items) => {
             for item in items.iter() {
-                if item == &needle {
-                    return Ok(DataValue::Bool(true));
+                if item == needle {
+                    return Ok(arena.true_value());
                 }
             }
-            Ok(DataValue::Bool(false))
+            Ok(arena.false_value())
         },
         
         // Check if the needle is in the string
         DataValue::String(s) => {
-            let needle_str = match &needle {
+            let needle_str = match needle {
                 DataValue::String(s) => s,
                 _ => return Err(LogicError::OperatorError {
                     operator: "in".to_string(),
@@ -48,12 +48,12 @@ pub fn eval_in<'a>(
                 }),
             };
             
-            Ok(DataValue::Bool(s.contains(needle_str)))
+            Ok(arena.bool_value(s.contains(needle_str)))
         },
         
         // Check if the needle is a key in the object
         DataValue::Object(entries) => {
-            let needle_str = match &needle {
+            let needle_str = match needle {
                 DataValue::String(s) => s,
                 _ => return Err(LogicError::OperatorError {
                     operator: "in".to_string(),
@@ -63,10 +63,10 @@ pub fn eval_in<'a>(
             
             for (key, _) in entries.iter() {
                 if key == needle_str {
-                    return Ok(DataValue::Bool(true));
+                    return Ok(arena.true_value());
                 }
             }
-            Ok(DataValue::Bool(false))
+            Ok(arena.false_value())
         },
         
         // Other types are not supported

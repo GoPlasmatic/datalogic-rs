@@ -55,18 +55,36 @@ impl<'a> DataValue<'a> {
     }
     
     /// Creates a string value.
+    /// 
+    /// If the string is empty, returns a string value with the preallocated empty string.
     pub fn string(arena: &'a DataArena, value: &str) -> Self {
-        DataValue::String(arena.alloc_str(value))
+        if value.is_empty() {
+            // Use the preallocated empty string
+            DataValue::String(arena.empty_string())
+        } else {
+            DataValue::String(arena.alloc_str(value))
+        }
     }
     
     /// Creates an array value.
+    /// 
+    /// If the array is empty, returns a value with the preallocated empty array.
+    /// For small arrays (up to 8 elements), uses an optimized allocation method.
     pub fn array(arena: &'a DataArena, values: &[DataValue<'a>]) -> Self {
-        DataValue::Array(arena.alloc_slice_clone(values))
+        if values.len() <= 8 {
+            // Use the optimized small array allocation for common case
+            DataValue::Array(arena.alloc_small_data_value_array(values))
+        } else {
+            // Use the standard allocation for larger arrays
+            DataValue::Array(arena.alloc_data_value_slice(values))
+        }
     }
     
     /// Creates an object value.
+    /// 
+    /// If the entries array is empty, returns an object with an empty entries array.
     pub fn object(arena: &'a DataArena, entries: &[(&'a str, DataValue<'a>)]) -> Self {
-        DataValue::Object(arena.alloc_slice_clone(entries))
+        DataValue::Object(arena.alloc_object_entries(entries))
     }
     
     /// Returns true if the value is null.
@@ -163,13 +181,58 @@ impl<'a> DataValue<'a> {
     }
     
     /// Coerces the value to a number according to JSONLogic rules.
+    #[inline]
     pub fn coerce_to_number(&self) -> Option<NumberValue> {
         match self {
-            DataValue::Null => Some(NumberValue::Integer(0)),
-            DataValue::Bool(b) => Some(NumberValue::Integer(if *b { 1 } else { 0 })),
+            // Fast paths for common cases
             DataValue::Number(n) => Some(*n),
+            DataValue::Bool(b) => Some(NumberValue::Integer(if *b { 1 } else { 0 })),
+            DataValue::Null => Some(NumberValue::Integer(0)),
+            
             DataValue::String(s) => {
-                // Try to parse as integer first
+                // Fast path for empty strings
+                if s.is_empty() {
+                    return Some(NumberValue::Integer(0));
+                }
+                
+                // Fast path for simple integers
+                let mut is_integer = true;
+                let mut value: i64 = 0;
+                let mut negative = false;
+                let bytes = s.as_bytes();
+                
+                // Check for negative sign
+                let mut i = 0;
+                if bytes.len() > 0 && bytes[0] == b'-' {
+                    negative = true;
+                    i = 1;
+                }
+                
+                // Parse digits
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    if b >= b'0' && b <= b'9' {
+                        // Check for overflow
+                        if value > i64::MAX / 10 {
+                            is_integer = false;
+                            break;
+                        }
+                        value = value * 10 + (b - b'0') as i64;
+                    } else {
+                        is_integer = false;
+                        break;
+                    }
+                    i += 1;
+                }
+                
+                if is_integer {
+                    if negative {
+                        value = -value;
+                    }
+                    return Some(NumberValue::Integer(value));
+                }
+                
+                // Fall back to standard parsing for more complex cases
                 if let Ok(i) = s.parse::<i64>() {
                     Some(NumberValue::Integer(i))
                 } else if let Ok(f) = s.parse::<f64>() {
@@ -178,6 +241,7 @@ impl<'a> DataValue<'a> {
                     None
                 }
             },
+            
             DataValue::Array(a) => {
                 if a.is_empty() {
                     Some(NumberValue::Integer(0))
@@ -187,6 +251,7 @@ impl<'a> DataValue<'a> {
                     None
                 }
             },
+            
             DataValue::Object(_) => None,
         }
     }
@@ -251,23 +316,54 @@ impl<'a> DataValue<'a> {
             (DataValue::Null, DataValue::Null) => true,
             (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
             (DataValue::Number(a), DataValue::Number(b)) => a == b,
-            (DataValue::String(a), DataValue::String(b)) => a == b,
+            
+            // Fast path for string comparison - avoid unnecessary allocations
+            (DataValue::String(a), DataValue::String(b)) => {
+                // First check if the pointers are the same (interned strings)
+                if std::ptr::eq(*a as *const str, *b as *const str) {
+                    return true;
+                }
+                
+                // Then check if the lengths are different (quick rejection)
+                if a.len() != b.len() {
+                    return false;
+                }
+                
+                // Finally, compare the actual strings
+                a == b
+            },
             
             // Different types with coercion
             (DataValue::Null, DataValue::Bool(b)) => !b,
             (DataValue::Bool(a), DataValue::Null) => !a,
             
             (DataValue::Number(a), DataValue::String(b)) => {
+                // Try to parse the string as a number
                 if let Ok(b_num) = b.parse::<f64>() {
-                    return a.as_f64() == b_num;
+                    // Get the number as f64
+                    let a_f64 = match a {
+                        NumberValue::Integer(i) => *i as f64,
+                        NumberValue::Float(f) => *f,
+                    };
+                    // Compare with small epsilon for floating point
+                    (a_f64 - b_num).abs() < f64::EPSILON
+                } else {
+                    false
                 }
-                false
             },
             (DataValue::String(a), DataValue::Number(b)) => {
+                // Try to parse the string as a number
                 if let Ok(a_num) = a.parse::<f64>() {
-                    return a_num == b.as_f64();
+                    // Get the number as f64
+                    let b_f64 = match b {
+                        NumberValue::Integer(i) => *i as f64,
+                        NumberValue::Float(f) => *f,
+                    };
+                    // Compare with small epsilon for floating point
+                    (a_num - b_f64).abs() < f64::EPSILON
+                } else {
+                    false
                 }
-                false
             },
             
             // Arrays and objects are compared by reference
@@ -348,38 +444,82 @@ impl<'a> DataValue<'a> {
 }
 
 impl PartialOrd for DataValue<'_> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (DataValue::Null, DataValue::Null) => Some(Ordering::Equal),
-            (DataValue::Bool(a), DataValue::Bool(b)) => a.partial_cmp(b),
+            // Fast paths for common cases
             (DataValue::Number(a), DataValue::Number(b)) => a.partial_cmp(b),
-            (DataValue::String(a), DataValue::String(b)) => a.partial_cmp(b),
+            (DataValue::String(a), DataValue::String(b)) => {
+                // First check if the pointers are the same (interned strings)
+                if std::ptr::eq(*a as *const str, *b as *const str) {
+                    return Some(Ordering::Equal);
+                }
+                
+                // Then do the standard comparison
+                a.partial_cmp(b)
+            },
+            (DataValue::Bool(a), DataValue::Bool(b)) => a.partial_cmp(b),
+            (DataValue::Null, DataValue::Null) => Some(Ordering::Equal),
+            
             (DataValue::Array(a), DataValue::Array(b)) => {
+                // Fast path for empty arrays
+                if a.is_empty() && b.is_empty() {
+                    return Some(Ordering::Equal);
+                }
+                
+                // Fast path for different length arrays
+                if a.len() != b.len() {
+                    return a.len().partial_cmp(&b.len());
+                }
+                
                 // Compare arrays lexicographically
-                let min_len = a.len().min(b.len());
-                for i in 0..min_len {
+                for i in 0..a.len() {
                     match a[i].partial_cmp(&b[i]) {
                         Some(Ordering::Equal) => continue,
                         other => return other,
                     }
                 }
-                a.len().partial_cmp(&b.len())
+                Some(Ordering::Equal)
             },
+            
             // Mixed types: convert to common type for comparison
             (DataValue::Number(a), DataValue::String(b)) => {
                 if let Ok(b_num) = b.parse::<f64>() {
-                    a.as_f64().partial_cmp(&b_num)
+                    let a_f64 = match a {
+                        NumberValue::Integer(i) => *i as f64,
+                        NumberValue::Float(f) => *f,
+                    };
+                    
+                    if a_f64 > b_num {
+                        Some(Ordering::Greater)
+                    } else if a_f64 < b_num {
+                        Some(Ordering::Less)
+                    } else {
+                        Some(Ordering::Equal)
+                    }
                 } else {
                     None
                 }
             },
             (DataValue::String(a), DataValue::Number(b)) => {
                 if let Ok(a_num) = a.parse::<f64>() {
-                    a_num.partial_cmp(&b.as_f64())
+                    let b_f64 = match b {
+                        NumberValue::Integer(i) => *i as f64,
+                        NumberValue::Float(f) => *f,
+                    };
+                    
+                    if a_num > b_f64 {
+                        Some(Ordering::Greater)
+                    } else if a_num < b_f64 {
+                        Some(Ordering::Less)
+                    } else {
+                        Some(Ordering::Equal)
+                    }
                 } else {
                     None
                 }
             },
+            
             // Other combinations are not comparable
             _ => None,
         }

@@ -25,10 +25,13 @@ pub fn eval_and<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Check that we have at least 1 argument
     if args.is_empty() {
-        return Err(LogicError::operator_error("and", format!("Expected at least 1 argument, got {}", args.len())));
+        return Err(LogicError::OperatorError {
+            operator: "and".to_string(),
+            reason: format!("Expected at least 1 argument, got {}", args.len()),
+        });
     }
     
     // If there's only one argument, just evaluate and return it
@@ -37,13 +40,21 @@ pub fn eval_and<'a>(
     }
     
     // Evaluate arguments in order, short-circuiting if any is falsy
-    for arg in args {
+    for (i, arg) in args.iter().enumerate() {
         let value = evaluate(arg, data, arena)?;
+        
+        // If this value is falsy and it's not the last argument, return it
         if !value.coerce_to_bool() {
+            return Ok(value);
+        }
+        
+        // If this is the last value and it's truthy, return it
+        if i == args.len() - 1 {
             return Ok(value);
         }
     }
     
+    // This should never happen with the iterator approach, but just in case
     // If all arguments are truthy, return the last one
     evaluate(&args[args.len() - 1], data, arena)
 }
@@ -53,10 +64,13 @@ pub fn eval_or<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Check that we have at least 1 argument
     if args.is_empty() {
-        return Err(LogicError::operator_error("or", format!("Expected at least 1 argument, got {}", args.len())));
+        return Err(LogicError::OperatorError {
+            operator: "or".to_string(),
+            reason: format!("Expected at least 1 argument, got {}", args.len()),
+        });
     }
     
     // If there's only one argument, just evaluate and return it
@@ -65,13 +79,21 @@ pub fn eval_or<'a>(
     }
     
     // Evaluate arguments in order, short-circuiting if any is truthy
-    for arg in args {
+    for (i, arg) in args.iter().enumerate() {
         let value = evaluate(arg, data, arena)?;
+        
+        // If this value is truthy and it's not the last argument, return it
         if value.coerce_to_bool() {
+            return Ok(value);
+        }
+        
+        // If this is the last value and it's falsy, return it
+        if i == args.len() - 1 {
             return Ok(value);
         }
     }
     
+    // This should never happen with the iterator approach, but just in case
     // If all arguments are falsy, return the last one
     evaluate(&args[args.len() - 1], data, arena)
 }
@@ -81,15 +103,21 @@ pub fn eval_not<'a>(
     args: &'a [Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<DataValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Check that we have exactly 1 argument
     if args.len() != 1 {
-        return Err(LogicError::operator_error("not", format!("Expected 1 argument, got {}", args.len())));
+        return Err(LogicError::OperatorError {
+            operator: "not".to_string(),
+            reason: format!("Expected 1 argument, got {}", args.len()),
+        });
     }
     
     // Evaluate the argument and negate its boolean value
     let value = evaluate(&args[0], data, arena)?;
-    Ok(DataValue::bool(!value.coerce_to_bool()))
+    let result = !value.coerce_to_bool();
+    
+    // Return the negated result
+    Ok(arena.bool_value(result))
 }
 
 #[cfg(test)]
