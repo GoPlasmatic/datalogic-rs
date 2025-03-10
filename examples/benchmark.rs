@@ -11,7 +11,7 @@ fn main() {
     let json_data: Vec<Value> = serde_json::from_str(&response)
         .expect("Failed to parse test cases");
 
-    let arena = DataArena::new();
+    let logic_arena = DataArena::new();
 
     // Extract rules and data (just store the JSON values)
     let mut test_cases = Vec::new();
@@ -26,8 +26,8 @@ fn main() {
             if let Some(logic) = test_case.get("rule") {
                 // For simple test cases, data might be missing
                 let data = test_case.get("data").unwrap_or(&Value::Null);
-                let data_value = DataValue::from_json(data, &arena);
-                if let Ok(rule) = logic.to_logic(&arena) {
+                let data_value = DataValue::from_json(data, &logic_arena);
+                if let Ok(rule) = logic.to_logic(&logic_arena) {
                     test_cases.push((rule.root().clone(), data_value.clone()));
                 }
             }
@@ -38,15 +38,18 @@ fn main() {
     println!("Running {} iterations for {} test cases", iterations, test_cases.len());
     let start = Instant::now();
 
+    let mut eval_arena = DataArena::new();
+
     // Run benchmark
     for (rule, data_value) in &test_cases {
         for _ in 0..iterations {
-            let _ = evaluate(rule, data_value, &arena);
+            let _ = evaluate(rule, data_value, &eval_arena);
         }
+        eval_arena.reset();
     }
     
     let duration = start.elapsed();
-    println!("Memory usage: {:?}", arena.memory_usage());
+    println!("Memory usage: {:?}", eval_arena.memory_usage());
 
     let avg_iteration_time = duration / (iterations * test_cases.len() as u32);
     
