@@ -6,6 +6,7 @@
 use std::fmt;
 use std::cmp::Ordering;
 use crate::arena::DataArena;
+use crate::LogicError;
 use super::number::NumberValue;
 
 /// A memory-efficient value type that leverages arena allocation.
@@ -242,15 +243,7 @@ impl<'a> DataValue<'a> {
                 }
             },
             
-            DataValue::Array(a) => {
-                if a.is_empty() {
-                    Some(NumberValue::Integer(0))
-                } else if a.len() == 1 {
-                    a[0].coerce_to_number()
-                } else {
-                    None
-                }
-            },
+            DataValue::Array(_) => None,
             
             DataValue::Object(_) => None,
         }
@@ -337,33 +330,21 @@ impl<'a> DataValue<'a> {
             (DataValue::Null, DataValue::Bool(b)) => !b,
             (DataValue::Bool(a), DataValue::Null) => !a,
             
-            (DataValue::Number(a), DataValue::String(b)) => {
-                // Try to parse the string as a number
-                if let Ok(b_num) = b.parse::<f64>() {
-                    // Get the number as f64
-                    let a_f64 = match a {
-                        NumberValue::Integer(i) => *i as f64,
-                        NumberValue::Float(f) => *f,
-                    };
-                    // Compare with small epsilon for floating point
-                    (a_f64 - b_num).abs() < f64::EPSILON
-                } else {
-                    false
-                }
+            (DataValue::Number(a), DataValue::String(_)) => {
+                let b_value = other.coerce_to_number().ok_or(LogicError::InvalidArgumentsError).unwrap();
+                let b_num = b_value.as_f64();
+                let a_num = a.as_f64();
+
+                // Compare with small epsilon for floating point
+                (a_num - b_num).abs() < f64::EPSILON
             },
-            (DataValue::String(a), DataValue::Number(b)) => {
-                // Try to parse the string as a number
-                if let Ok(a_num) = a.parse::<f64>() {
-                    // Get the number as f64
-                    let b_f64 = match b {
-                        NumberValue::Integer(i) => *i as f64,
-                        NumberValue::Float(f) => *f,
-                    };
-                    // Compare with small epsilon for floating point
-                    (a_num - b_f64).abs() < f64::EPSILON
-                } else {
-                    false
-                }
+            (DataValue::String(_), DataValue::Number(b)) => {
+                let a_value = self.coerce_to_number().ok_or(LogicError::InvalidArgumentsError).unwrap();
+                let a_num = a_value.as_f64();
+                let b_num = b.as_f64();
+
+                // Compare with small epsilon for floating point
+                (a_num - b_num).abs() < f64::EPSILON
             },
             
             // Arrays and objects are compared by reference

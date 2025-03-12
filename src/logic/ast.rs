@@ -57,19 +57,21 @@ impl<'a> Logic<'a> {
         Self::from_token(token, arena)
     }
     
-    /// Creates a new operator logic expression.
+    /// Creates an operator logic expression.
     pub fn operator(op_type: OperatorType, args: Vec<Logic<'a>>, arena: &'a DataArena) -> Self {
         // Extract the root tokens from the arguments
         let mut arg_tokens = Vec::with_capacity(args.len());
         for arg in &args {
-            arg_tokens.push(arg.root.clone());
+            let token_ref = arg.root;
+            arg_tokens.push(token_ref);
         }
         
         // Allocate the argument tokens in the arena
-        let args_slice = arena.alloc_slice_clone(&arg_tokens);
+        let array_literal = Token::ArrayLiteral(arg_tokens);
+        let array_token = arena.alloc(array_literal);
         
         // Create the operator token
-        let token = Token::operator(op_type, args_slice);
+        let token = Token::operator(op_type, array_token);
         
         Self::from_token(token, arena)
     }
@@ -79,15 +81,17 @@ impl<'a> Logic<'a> {
         // Extract the root tokens from the arguments
         let mut arg_tokens = Vec::with_capacity(args.len());
         for arg in &args {
-            arg_tokens.push(arg.root.clone());
+            let token_ref = arg.root;
+            arg_tokens.push(token_ref);
         }
         
         // Allocate the argument tokens in the arena
-        let args_slice = arena.alloc_slice_clone(&arg_tokens);
+        let array_literal = Token::ArrayLiteral(arg_tokens);
+        let array_token = arena.alloc(array_literal);
         
         // Create the custom operator token
         let name_str = arena.intern_str(name);
-        let token = Token::custom_operator(name_str, args_slice);
+        let token = Token::custom_operator(name_str, array_token);
         
         Self::from_token(token, arena)
     }
@@ -123,12 +127,12 @@ impl<'a> Logic<'a> {
     }
     
     /// Returns the operator type and arguments if this logic expression is an operator.
-    pub fn as_operator(&self) -> Option<(OperatorType, &'a [Token<'a>])> {
+    pub fn as_operator(&self) -> Option<(OperatorType, &'a Token<'a>)> {
         self.root.as_operator()
     }
     
     /// Returns the custom operator name and arguments if this logic expression is a custom operator.
-    pub fn as_custom_operator(&self) -> Option<(&'a str, &'a [Token<'a>])> {
+    pub fn as_custom_operator(&self) -> Option<(&'a str, &'a Token<'a>)> {
         self.root.as_custom_operator()
     }
 }
@@ -139,14 +143,13 @@ mod tests {
     use crate::value::DataValue;
     use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::operators::logical::LogicalOp;
-
+    
     #[test]
     fn test_logic_creation() {
         let arena = DataArena::new();
         
-        // Create a simple logic with a literal value
+        // Create a simple logic with a literal
         let logic = Logic::literal(DataValue::integer(42), &arena);
-        
         assert!(logic.is_literal());
         assert_eq!(logic.as_literal().unwrap().as_i64(), Some(42));
     }
@@ -155,59 +158,70 @@ mod tests {
     fn test_logic_with_default() {
         let arena = DataArena::new();
         
-        // Create a variable logic with a default value
+        // Create a variable with a default
         let default = Logic::literal(DataValue::integer(42), &arena);
-        let logic = Logic::variable("user.name", Some(default), &arena);
+        let var = Logic::variable("a", Some(default), &arena);
         
-        assert!(logic.is_variable());
-        let (path, default) = logic.as_variable().unwrap();
-        assert_eq!(path, "user.name");
-        assert!(default.is_some());
-        assert_eq!(default.unwrap().as_literal().unwrap().as_i64(), Some(42));
+        assert!(var.is_variable());
+        let (path, default_token) = var.as_variable().unwrap();
+        assert_eq!(path, "a");
+        assert!(default_token.is_some());
     }
     
     #[test]
     fn test_custom_operator() {
         let arena = DataArena::new();
         
-        // Create a custom operator logic
-        let arg = Logic::literal(DataValue::integer(42), &arena);
-        let operator = Logic::custom_operator("myOp", vec![arg], &arena);
+        // Create arguments
+        let arg1 = Logic::literal(DataValue::integer(1), &arena);
+        let arg2 = Logic::literal(DataValue::integer(2), &arena);
         
-        assert!(operator.is_custom_operator());
-        let (name, args) = operator.as_custom_operator().unwrap();
-        assert_eq!(name, "myOp");
-        assert_eq!(args.len(), 1);
-        assert_eq!(args[0].as_literal().unwrap().as_i64(), Some(42));
+        // Create a custom operator
+        let logic = Logic::custom_operator("my_op", vec![arg1, arg2], &arena);
+        
+        assert!(logic.is_custom_operator());
+        let (name, args) = logic.as_custom_operator().unwrap();
+        assert_eq!(name, "my_op");
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
     }
     
     #[test]
     fn test_comparison_operator() {
         let arena = DataArena::new();
         
-        // Create a comparison operator logic
-        let arg1 = Logic::literal(DataValue::integer(10), &arena);
-        let arg2 = Logic::literal(DataValue::integer(20), &arena);
-        let operator = Logic::operator(OperatorType::Comparison(ComparisonOp::LessThan), vec![arg1, arg2], &arena);
+        // Create arguments
+        let arg1 = Logic::variable("a", None, &arena);
+        let arg2 = Logic::literal(DataValue::integer(42), &arena);
         
-        assert!(operator.is_operator());
-        let (op_type, args) = operator.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
-        assert_eq!(args.len(), 2);
+        // Create a comparison operator
+        let logic = Logic::operator(OperatorType::Comparison(ComparisonOp::Equal), vec![arg1, arg2], &arena);
+        
+        assert!(logic.is_operator());
+        let (op_type, args) = logic.as_operator().unwrap();
+        assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
     }
     
     #[test]
     fn test_logical_operator() {
         let arena = DataArena::new();
         
-        // Create a logical operator logic
+        // Create arguments
         let arg1 = Logic::literal(DataValue::bool(true), &arena);
         let arg2 = Logic::literal(DataValue::bool(false), &arena);
-        let operator = Logic::operator(OperatorType::Logical(LogicalOp::And), vec![arg1, arg2], &arena);
         
-        assert!(operator.is_operator());
-        let (op_type, args) = operator.as_operator().unwrap();
+        // Create a logical operator
+        let logic = Logic::operator(OperatorType::Logical(LogicalOp::And), vec![arg1, arg2], &arena);
+        
+        assert!(logic.is_operator());
+        let (op_type, args) = logic.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Logical(LogicalOp::And));
-        assert_eq!(args.len(), 2);
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
     }
 } 

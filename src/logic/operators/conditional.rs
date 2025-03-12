@@ -15,8 +15,6 @@ pub enum ConditionalOp {
     If,
     /// Ternary operator
     Ternary,
-    /// Double negation operator (!!)
-    DoubleNegation,
 }
 
 /// Evaluates an if operation.
@@ -103,31 +101,6 @@ pub fn eval_ternary<'a>(
     } else {
         evaluate(&args[2], data, arena)
     }
-}
-
-/// Evaluates a double negation operation (!!).
-/// Converts a value to its boolean representation.
-pub fn eval_double_negation<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    // Check that we have exactly 1 argument
-    if args.len() != 1 {
-        return Err(LogicError::OperatorError {
-            operator: "!!".to_string(),
-            reason: format!("Expected 1 argument, got {}", args.len()),
-        });
-    }
-    
-    // Evaluate the argument
-    let value = evaluate(&args[0], data, arena)?;
-    
-    // Convert to boolean
-    let result = value.coerce_to_bool();
-    
-    // Return the preallocated boolean result
-    Ok(arena.bool_value(result))
 }
 
 #[cfg(test)]

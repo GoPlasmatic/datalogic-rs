@@ -47,6 +47,10 @@ pub enum LogicError {
         /// The actual type found.
         found: String,
     },
+
+    NaNError,
+
+    InvalidArgumentsError,
     
     /// A custom error with a message.
     Custom(String),
@@ -69,6 +73,12 @@ impl fmt::Display for LogicError {
             }
             LogicError::TypeMismatch { expected, found } => {
                 write!(f, "Type mismatch: expected {}, found {}", expected, found)
+            }
+            LogicError::NaNError => {
+                write!(f, "NaN error")
+            }
+            LogicError::InvalidArgumentsError => {
+                write!(f, "Invalid arguments error")
             }
             LogicError::Custom(msg) => {
                 write!(f, "{}", msg)

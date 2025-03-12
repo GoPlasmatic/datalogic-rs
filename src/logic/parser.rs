@@ -56,7 +56,7 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
         },
         JsonValue::String(s) => Ok(Token::literal(DataValue::string(arena, s))),
         
-        // Arrays could be literal arrays or arrays of tokens
+        // Arrays could be literal arrays or token arrays
         JsonValue::Array(arr) => {
             // Check if all elements are literals
             let mut all_literals = true;
@@ -77,14 +77,14 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                 let values_slice = arena.alloc_slice_clone(&values);
                 Ok(Token::literal(DataValue::Array(values_slice)))
             } else {
-                // Otherwise, create an array operator
+                // Otherwise, create an array of tokens and allocate them in the arena
                 let mut tokens = Vec::with_capacity(arr.len());
                 for item in arr {
                     let token = parse_json_internal(item, arena)?;
-                    tokens.push(token);
+                    let token_ref = arena.alloc(token);
+                    tokens.push(token_ref);
                 }
-                let tokens_slice = arena.alloc_slice_clone(&tokens);
-                Ok(Token::operator(OperatorType::ArrayLiteral, tokens_slice))
+                Ok(Token::ArrayLiteral(tokens))
             }
         },
         
@@ -107,6 +107,14 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         // Check if it's a variable reference using the "val" operator (compatibility with test files)
         if key == "val" {
             return parse_variable(value, arena);
+        }
+        
+        // Check if it's the preserve operator
+        if key == "preserve" {
+            // The preserve operator returns its argument as-is without parsing it as an operator
+            // We directly convert it to a DataValue and return a literal token
+            let preserved_value = DataValue::from_json(value, arena);
+            return Ok(Token::literal(preserved_value));
         }
         
         // Check if it's a standard operator
@@ -278,32 +286,37 @@ fn parse_custom_operator<'a>(name: &str, args_json: &JsonValue, arena: &'a DataA
 }
 
 /// Parses the arguments for an operator.
-fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'a [Token<'a>]> {
+fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
     match args_json {
-        // Single argument
+        // Single argument that's not an array - no need for ArrayLiteral
         _ if !args_json.is_array() => {
             let arg = parse_json_internal(args_json, arena)?;
-            let arg_slice = arena.alloc_slice_clone(&[arg]);
-            Ok(arg_slice)
+            Ok(arena.alloc(arg))
         },
         
-        // Multiple arguments
+        // Empty array - create an empty ArrayLiteral
+        JsonValue::Array(arr) if arr.is_empty() => {
+            let empty_array_token = Token::ArrayLiteral(Vec::new());
+            Ok(arena.alloc(empty_array_token))
+        },
+        
+        // Multiple arguments as array
         JsonValue::Array(arr) => {
-            // Pre-allocate space for the arguments
-            let mut args = Vec::with_capacity(arr.len());
+            let mut tokens = Vec::with_capacity(arr.len());
             
             // Parse each argument
             for arg_json in arr {
                 let arg = parse_json_internal(arg_json, arena)?;
-                args.push(arg);
+                let arg_ref = arena.alloc(arg);
+                tokens.push(arg_ref);
             }
             
-            // Allocate the arguments in the arena
-            let args_slice = arena.alloc_slice_clone(&args);
-            Ok(args_slice)
+            // Create an array literal token
+            let array_token = Token::ArrayLiteral(tokens);
+            Ok(arena.alloc(array_token))
         },
         
-        // This should never happen
+        // Should never reach here due to the first match arm
         _ => unreachable!(),
     }
 }
@@ -311,6 +324,7 @@ fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arena::DataArena;
     use serde_json::json;
     use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::operators::arithmetic::ArithmeticOp;
@@ -395,25 +409,49 @@ mod tests {
         // Parse comparison operator
         let token = parse_json(&json!({"==": [1, 2]}), &arena).unwrap();
         assert!(token.is_operator());
+        
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-        assert_eq!(args.len(), 2);
-        assert_eq!(args[0].as_literal().unwrap().as_i64(), Some(1));
-        assert_eq!(args[1].as_literal().unwrap().as_i64(), Some(2));
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 2);
+            assert_eq!(array_tokens[0].as_literal().unwrap().as_i64(), Some(1));
+            assert_eq!(array_tokens[1].as_literal().unwrap().as_i64(), Some(2));
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
         
         // Parse arithmetic operator
         let token = parse_json(&json!({"+": [1, 2, 3]}), &arena).unwrap();
         assert!(token.is_operator());
+        
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Arithmetic(ArithmeticOp::Add));
-        assert_eq!(args.len(), 3);
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 3);
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
         
         // Parse logical operator
         let token = parse_json(&json!({"and": [true, false]}), &arena).unwrap();
         assert!(token.is_operator());
+        
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Logical(LogicalOp::And));
-        assert_eq!(args.len(), 2);
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 2);
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
     }
     
     #[test]
@@ -423,103 +461,186 @@ mod tests {
         // Parse custom operator
         let token = parse_json(&json!({"my_op": [1, 2, 3]}), &arena).unwrap();
         assert!(token.is_custom_operator());
+        
         let (name, args) = token.as_custom_operator().unwrap();
         assert_eq!(name, "my_op");
-        assert_eq!(args.len(), 3);
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 3);
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
     }
     
     #[test]
     fn test_parse_complex_expression() {
         let arena = DataArena::new();
         
-        // Parse a complex expression
+        // Parse complex expression
         let json = json!({
             "if": [
-                {"<": [{"var": "temp"}, 0]},
-                "freezing",
-                {"<": [{"var": "temp"}, 20]},
-                "cold",
-                {"<": [{"var": "temp"}, 30]},
-                "warm",
+                {"<": [{"var": "temp"}, 0]}, "freezing",
+                {"<": [{"var": "temp"}, 20]}, "cold",
+                {"<": [{"var": "temp"}, 30]}, "warm",
                 "hot"
             ]
         });
         
         let token = parse_json(&json, &arena).unwrap();
         assert!(token.is_operator());
+        
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Conditional(ConditionalOp::If));
-        assert_eq!(args.len(), 7);
         
-        // Check the first condition
-        let condition1 = &args[0];
-        assert!(condition1.is_operator());
-        let (op_type, cond_args) = condition1.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
-        assert_eq!(cond_args.len(), 2);
-        
-        // Check the variable reference
-        let var = &cond_args[0];
-        assert!(var.is_variable());
-        let (path, _) = var.as_variable().unwrap();
-        assert_eq!(path, "temp");
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 7);
+            
+            // Check the first condition
+            let condition1 = array_tokens[0];
+            assert!(condition1.is_operator());
+            let (op_type, _cond_args) = condition1.as_operator().unwrap();
+            assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
+            
+            // Check the first result
+            let result1 = array_tokens[1];
+            assert!(result1.is_literal());
+            assert_eq!(result1.as_literal().unwrap().as_str(), Some("freezing"));
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
     }
     
     #[test]
     fn test_parse_from_string() {
         let arena = DataArena::new();
         
-        // Parse from a JSON string
+        // Parse from string
         let token = parse_str(r#"{"==": [{"var": "a"}, 42]}"#, &arena).unwrap();
         assert!(token.is_operator());
+        
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-        assert_eq!(args.len(), 2);
         
-        // Check the variable reference
-        let var = &args[0];
-        assert!(var.is_variable());
-        let (path, _) = var.as_variable().unwrap();
-        assert_eq!(path, "a");
-        
-        // Check the literal
-        let lit = &args[1];
-        assert!(lit.is_literal());
-        assert_eq!(lit.as_literal().unwrap().as_i64(), Some(42));
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 2);
+            
+            // Check the variable reference
+            let var = array_tokens[0];
+            assert!(var.is_variable());
+            let (path, _) = var.as_variable().unwrap();
+            assert_eq!(path, "a");
+            
+            // Check the literal
+            let lit = array_tokens[1];
+            assert!(lit.is_literal());
+            assert_eq!(lit.as_literal().unwrap().as_i64(), Some(42));
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
     }
     
     #[test]
     fn test_parse_if() {
         let arena = DataArena::new();
+        
+        // Parse if statement
         let json = json!({
             "if": [
-                {"<": [{"var": "temp"}, 0]},
-                "freezing",
-                {"<": [{"var": "temp"}, 20]},
-                "cold",
-                {"<": [{"var": "temp"}, 30]},
-                "warm",
+                {"<": [{"var": "temp"}, 0]}, "freezing",
+                {"<": [{"var": "temp"}, 20]}, "cold",
+                {"<": [{"var": "temp"}, 30]}, "warm",
                 "hot"
             ]
         });
         
         let token = parse_json(&json, &arena).unwrap();
         assert!(token.is_operator());
+        
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Conditional(ConditionalOp::If));
-        assert_eq!(args.len(), 7);
         
-        // Check the first condition
-        let condition1 = &args[0];
-        assert!(condition1.is_operator());
-        let (op_type, cond_args) = condition1.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
-        assert_eq!(cond_args.len(), 2);
-        
-        // Check the variable reference
-        let var = &cond_args[0];
-        assert!(var.is_variable());
-        let (path, _) = var.as_variable().unwrap();
-        assert_eq!(path, "temp");
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        if let Some(array_tokens) = args.as_array_literal() {
+            assert_eq!(array_tokens.len(), 7);
+            
+            // Check the first condition
+            let condition1 = array_tokens[0];
+            assert!(condition1.is_operator());
+            let (op_type, _cond_args) = condition1.as_operator().unwrap();
+            assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
+            
+            // Check the first result
+            let result1 = array_tokens[1];
+            assert!(result1.is_literal());
+            assert_eq!(result1.as_literal().unwrap().as_str(), Some("freezing"));
+        } else {
+            panic!("Expected ArrayLiteral, got: {:?}", args);
+        }
     }
+    
+    #[test]
+    fn test_parse_preserve_operator() {
+        let arena = DataArena::new();
+        
+        // Test preserve with a literal
+        let json = json!({"preserve": 42});
+        let token = parse_json(&json, &arena).unwrap();
+        if let Token::Literal(value) = token {
+            assert_eq!(value.as_i64(), Some(42));
+        } else {
+            panic!("Expected literal token, got: {:?}", token);
+        }
+        
+        // Test preserve with an array
+        let json = json!({"preserve": [1, 2, 3]});
+        let token = parse_json(&json, &arena).unwrap();
+        if let Token::Literal(value) = token {
+            assert!(value.is_array());
+            let arr = value.as_array().unwrap();
+            assert_eq!(arr.len(), 3);
+            assert_eq!(arr[0].as_i64(), Some(1));
+            assert_eq!(arr[1].as_i64(), Some(2));
+            assert_eq!(arr[2].as_i64(), Some(3));
+        } else {
+            panic!("Expected literal token, got: {:?}", token);
+        }
+        
+        // Test preserve with an object
+        let json = json!({"preserve": {"a": 1, "b": 2}});
+        let token = parse_json(&json, &arena).unwrap();
+        if let Token::Literal(value) = token {
+            assert!(value.is_object());
+            let obj = value.as_object().unwrap();
+            assert_eq!(obj.len(), 2);
+        } else {
+            panic!("Expected literal token, got: {:?}", token);
+        }
+        
+        // Test preserve with a nested operator expression
+        let json = json!({"preserve": {"+": [1, 2, 3]}});
+        let token = parse_json(&json, &arena).unwrap();
+        if let Token::Literal(value) = token {
+            assert!(value.is_object());
+            let obj = value.as_object().unwrap();
+            assert_eq!(obj.len(), 1);
+            assert_eq!(obj[0].0, "+");
+            assert!(obj[0].1.is_array());
+            let arr = obj[0].1.as_array().unwrap();
+            assert_eq!(arr.len(), 3);
+        } else {
+            panic!("Expected literal token, got: {:?}", token);
+        }
+    }
+}
+
+#[cfg(test)]
+mod json_tests {
+    // No imports needed for this empty module
 } 

@@ -376,40 +376,23 @@ pub fn eval_reduce<'a>(
     let function = &args[1];
     
     // Check for fast path optimizations
-    if let Token::Operator { op_type, args: op_args } = &args[1] {
-        if let crate::logic::OperatorType::Arithmetic(op) = op_type {
-            // Check if this is a simple addition or multiplication
-            if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
-                // Check if it's a simple variable access pattern
-                if op_args.len() == 2 {
-                    if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
-                        // Check if it's the standard accumulator/current pattern
-                        if (acc_path == &"accumulator" && curr_path == &"current") ||
-                           (acc_path == &"current" && curr_path == &"accumulator") {
-                            // Fast path for sum reduction with any initial value
-                            return eval_reduce_sum(args, data, arena, initial);
-                        }
-                        // Check if it's accessing a property of current
-                        if acc_path == &"accumulator" && curr_path.starts_with("current.") {
-                            // This is a property access pattern, use the general implementation
-                            // as it needs to handle nested property access
-                        }
-                    }
-                }
-            } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
-                // Check if it's a simple variable access pattern
-                if op_args.len() == 2 {
-                    if let (Token::Variable { path: acc_path, .. }, Token::Variable { path: curr_path, .. }) = (&op_args[0], &op_args[1]) {
-                        // Check if it's the standard accumulator/current pattern
-                        if (acc_path == &"accumulator" && curr_path == &"current") ||
-                           (acc_path == &"current" && curr_path == &"accumulator") {
-                            // Fast path for product reduction with any initial value
-                            return eval_reduce_product(args, data, arena, initial);
-                        }
-                    }
+    if let Token::Operator { op_type: _op_type, args: _op_args } = &args[1] {
+        // Commenting out problematic code for now
+        /*
+        // Check if op_args is an ArrayLiteral
+        if let Token::ArrayLiteral(op_items) = op_args {
+            if let crate::logic::OperatorType::Arithmetic(op) = op_type {
+                // Check if this is a simple addition or multiplication
+                if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
+                    // Fast path for sum reduction with any initial value
+                    return eval_reduce_sum(args, data, arena, initial);
+                } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
+                    // Fast path for product reduction with any initial value
+                    return eval_reduce_product(args, data, arena, initial);
                 }
             }
         }
+        */
     }
 
     // Initialize static keys only once - these are interned and reused

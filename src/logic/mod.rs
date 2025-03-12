@@ -95,14 +95,18 @@ mod tests {
         // The second part of the AND should be optimized to a literal true
         let (op_type, args) = logic.root().as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Logical(LogicalOp::And));
-        assert_eq!(args.len(), 2);
+        
+        // Check that args is an ArrayLiteral
+        assert!(args.is_array_literal());
+        let array_tokens = args.as_array_literal().unwrap();
+        assert_eq!(array_tokens.len(), 2);
         
         // First argument should still be a comparison
-        assert!(args[0].is_operator());
-        
+        assert!(array_tokens[0].is_operator());
+
         // Second argument should be optimized to a literal
-        assert!(args[1].is_literal());
-        assert_eq!(args[1].as_literal().unwrap().as_bool(), Some(true));
+        assert!(array_tokens[1].is_literal());
+        assert_eq!(array_tokens[1].as_literal().unwrap().as_bool(), Some(true));
         
         // Create test data
         let data_json = json!({"a": 10});

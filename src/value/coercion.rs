@@ -311,10 +311,8 @@ mod tests {
         assert_eq!(DataValue::string(&arena, "not a number").coerce_to_number(), None);
         
         // Test arrays
-        assert_eq!(DataValue::array(&arena, &[]).coerce_to_number(), Some(NumberValue::Integer(0)));
-        assert_eq!(DataValue::array(&arena, &[DataValue::integer(42)]).coerce_to_number(), Some(NumberValue::Integer(42)));
-        assert_eq!(DataValue::array(&arena, &[DataValue::integer(1), DataValue::integer(2)]).coerce_to_number(), None);
-        
+        assert_eq!(DataValue::array(&arena, &[]).coerce_to_number(), None);
+
         // Test objects
         assert_eq!(DataValue::object(&arena, &[]).coerce_to_number(), None);
     }

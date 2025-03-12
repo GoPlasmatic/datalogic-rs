@@ -33,290 +33,289 @@ pub enum ComparisonOp {
 }
 
 /// Evaluates an equality comparison.
-pub fn eval_equal<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count("==", args, 2)?;
-    
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    Ok(arena.bool_value(left.equals(right)))
+pub fn eval_equal<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        match (left, right) {
+            (DataValue::Number(a), DataValue::Number(b)) => {
+                if a.as_f64() != b.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::String(a), DataValue::String(b)) => {
+                if a != b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Bool(a), DataValue::Bool(b)) => {
+                if a != b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Null, DataValue::Null) => {
+                return Ok(arena.true_value());
+            }
+            _ => {
+                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+                if left_num.as_f64() != right_num.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+        }
+    }
+
+    Ok(arena.true_value())
 }
 
 /// Evaluates a strict equality comparison.
-pub fn eval_strict_equal<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count("===", args, 2)?;
-    
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    Ok(arena.bool_value(left.strict_equals(right)))
+pub fn eval_strict_equal<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        if !left.strict_equals(right) {
+            return Ok(arena.false_value());
+        }
+    }
+    Ok(arena.true_value())
 }
 
 /// Evaluates a not-equal comparison.
-pub fn eval_not_equal<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count("!=", args, 2)?;
-    
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    Ok(arena.bool_value(!left.equals(right)))
+pub fn eval_not_equal<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        match (left, right) {
+            (DataValue::Number(a), DataValue::Number(b)) => {
+                if a.as_f64() == b.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::String(a), DataValue::String(b)) => {
+                if a == b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Bool(a), DataValue::Bool(b)) => {
+                if a == b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Null, DataValue::Null) => {
+                return Ok(arena.false_value());
+            }
+            _ => {
+                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+                if left_num.as_f64() == right_num.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+        }
+    }
+
+    Ok(arena.true_value())
 }
 
 /// Evaluates a strict not-equal comparison.
-pub fn eval_strict_not_equal<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count("!==", args, 2)?;
-    
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    Ok(arena.bool_value(!left.strict_equals(right)))
+pub fn eval_strict_not_equal<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        if left.strict_equals(right) {
+            return Ok(arena.false_value());
+        }
+    }
+    Ok(arena.true_value())
 }
 
 /// Evaluates a greater-than comparison.
-pub fn eval_greater_than<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count(">", args, 2)?;
+pub fn eval_greater_than<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
     
-    // If we have more than 2 arguments, check if each pair is in strictly descending order
-    if args.len() > 2 {
-        let mut prev = evaluate(&args[0], data, arena)?;
-        
-        for i in 1..args.len() {
-            let current = evaluate(&args[i], data, arena)?;
-            
-            // Check if prev > current
-            match compare_with_coercion(prev, current) {
-                Some(Ordering::Greater) => {
-                    // Continue to next pair
-                    prev = current;
-                },
-                _ => {
-                    // Not strictly greater than, return false
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        match (left, right) {
+            (DataValue::Number(a), DataValue::Number(b)) => {
+                if a.as_f64() <= b.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::String(a), DataValue::String(b)) => {
+                if a <= b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Bool(a), DataValue::Bool(b)) => {
+                if a <= b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Null, DataValue::Null) => {
+                return Ok(arena.false_value());
+            }
+            _ => {
+                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+                if left_num.as_f64() <= right_num.as_f64() {
                     return Ok(arena.false_value());
                 }
             }
         }
-        
-        // All pairs are in strictly descending order
-        return Ok(arena.true_value());
     }
-    
-    // Simple case with just 2 arguments
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    // Get the ordering between the values
-    match compare_with_coercion(left, right) {
-        Some(Ordering::Greater) => Ok(arena.true_value()),
-        _ => Ok(arena.false_value()),
-    }
+
+    Ok(arena.true_value())
 }
 
 /// Evaluates a greater-than-or-equal comparison.
-pub fn eval_greater_than_or_equal<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count(">=", args, 2)?;
+pub fn eval_greater_than_or_equal<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
     
-    // If we have more than 2 arguments, check if each pair is in non-ascending order
-    if args.len() > 2 {
-        let mut prev = evaluate(&args[0], data, arena)?;
-        
-        for i in 1..args.len() {
-            let current = evaluate(&args[i], data, arena)?;
-            
-            // Check if prev >= current
-            match compare_with_coercion(prev, current) {
-                Some(Ordering::Greater) | Some(Ordering::Equal) => {
-                    // Continue to next pair
-                    prev = current;
-                },
-                _ => {
-                    // Not greater than or equal, return false
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        match (left, right) {
+            (DataValue::Number(a), DataValue::Number(b)) => {
+                if a.as_f64() < b.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::String(a), DataValue::String(b)) => {
+                if a < b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Bool(a), DataValue::Bool(b)) => {
+                if a < b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Null, DataValue::Null) => {
+                return Ok(arena.false_value());
+            }
+            _ => {
+                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+                if left_num.as_f64() < right_num.as_f64() {
                     return Ok(arena.false_value());
                 }
             }
         }
-        
-        // All pairs are in non-ascending order
-        return Ok(arena.true_value());
     }
-    
-    // Simple case with just 2 arguments
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    // Get the ordering between the values
-    match compare_with_coercion(left, right) {
-        Some(Ordering::Greater) | Some(Ordering::Equal) => Ok(arena.true_value()),
-        _ => Ok(arena.false_value()),
-    }
+
+    Ok(arena.true_value())
 }
 
 /// Evaluates a less-than comparison.
-pub fn eval_less_than<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count("<", args, 2)?;
+pub fn eval_less_than<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
     
-    // If we have more than 2 arguments, check if each pair is in strictly ascending order
-    if args.len() > 2 {
-        let mut prev = evaluate(&args[0], data, arena)?;
-        
-        for i in 1..args.len() {
-            let current = evaluate(&args[i], data, arena)?;
-            
-            // Check if prev < current
-            match compare_with_coercion(prev, current) {
-                Some(Ordering::Less) => {
-                    // Continue to next pair
-                    prev = current;
-                },
-                _ => {
-                    // Not strictly less than, return false
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        match (left, right) {
+            (DataValue::Number(a), DataValue::Number(b)) => {
+                if a.as_f64() >= b.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::String(a), DataValue::String(b)) => {
+                if a >= b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Bool(a), DataValue::Bool(b)) => {
+                if a >= b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Null, DataValue::Null) => {
+                return Ok(arena.false_value());
+            }
+            _ => {
+                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+                if left_num.as_f64() >= right_num.as_f64() {
                     return Ok(arena.false_value());
                 }
             }
         }
-        
-        // All pairs are in strictly ascending order
-        return Ok(arena.true_value());
     }
-    
-    // Simple case with just 2 arguments
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    // Get the ordering between the values
-    match compare_with_coercion(left, right) {
-        Some(Ordering::Less) => Ok(arena.true_value()),
-        _ => Ok(arena.false_value()),
-    }
+
+    Ok(arena.true_value())
 }
 
 /// Evaluates a less-than-or-equal comparison.
-pub fn eval_less_than_or_equal<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    check_args_count("<=", args, 2)?;
+pub fn eval_less_than_or_equal<'a>(args: &'a [Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
     
-    // If we have more than 2 arguments, check if each pair is in non-descending order
-    if args.len() > 2 {
-        let mut prev = evaluate(&args[0], data, arena)?;
-        
-        for i in 1..args.len() {
-            let current = evaluate(&args[i], data, arena)?;
-            
-            // Check if prev <= current
-            match compare_with_coercion(prev, current) {
-                Some(Ordering::Less) | Some(Ordering::Equal) => {
-                    // Continue to next pair
-                    prev = current;
-                },
-                _ => {
-                    // Not less than or equal, return false
+    for i in 0..args.len() - 1 {
+        let left = evaluate(&args[i], data, arena)?;
+        let right = evaluate(&args[i + 1], data, arena)?;
+
+        match (left, right) {
+            (DataValue::Number(a), DataValue::Number(b)) => {
+                if a.as_f64() > b.as_f64() {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::String(a), DataValue::String(b)) => {
+                if a > b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Bool(a), DataValue::Bool(b)) => {
+                if a > b {
+                    return Ok(arena.false_value());
+                }
+            }
+            (DataValue::Null, DataValue::Null) => {
+                return Ok(arena.false_value());
+            }
+            _ => {
+                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+                if left_num.as_f64() > right_num.as_f64() {
                     return Ok(arena.false_value());
                 }
             }
         }
-        
-        // All pairs are in non-descending order
-        return Ok(arena.true_value());
     }
-    
-    // Simple case with just 2 arguments
-    let left = evaluate(&args[0], data, arena)?;
-    let right = evaluate(&args[1], data, arena)?;
-    
-    // Get the ordering between the values
-    match compare_with_coercion(left, right) {
-        Some(Ordering::Less) | Some(Ordering::Equal) => Ok(arena.true_value()),
-        _ => Ok(arena.false_value()),
-    }
-}
 
-/// Checks that the number of arguments is as expected.
-fn check_args_count(op: &str, args: &[Token], expected: usize) -> Result<()> {
-    if args.len() < expected {
-        return Err(LogicError::OperatorError {
-            operator: op.to_string(),
-            reason: format!("Expected at least {} arguments, got {}", expected, args.len()),
-        });
-    }
-    Ok(())
-}
-
-/// Helper function to compare values with type coercion
-#[inline]
-fn compare_with_coercion<'a>(left: &'a DataValue<'a>, right: &'a DataValue<'a>) -> Option<Ordering> {
-    // First try direct comparison
-    if let Some(ordering) = left.partial_cmp(right) {
-        return Some(ordering);
-    }
-    
-    // Handle mixed types
-    match (left, right) {
-        (DataValue::Number(a), DataValue::String(b)) => {
-            if let Ok(b_num) = b.parse::<f64>() {
-                let a_f64 = match a {
-                    NumberValue::Integer(i) => *i as f64,
-                    NumberValue::Float(f) => *f,
-                };
-                
-                if a_f64 > b_num {
-                    return Some(Ordering::Greater);
-                } else if a_f64 < b_num {
-                    return Some(Ordering::Less);
-                } else {
-                    return Some(Ordering::Equal);
-                }
-            }
-        },
-        (DataValue::String(a), DataValue::Number(b)) => {
-            if let Ok(a_num) = a.parse::<f64>() {
-                let b_f64 = match b {
-                    NumberValue::Integer(i) => *i as f64,
-                    NumberValue::Float(f) => *f,
-                };
-                
-                if a_num > b_f64 {
-                    return Some(Ordering::Greater);
-                } else if a_num < b_f64 {
-                    return Some(Ordering::Less);
-                } else {
-                    return Some(Ordering::Equal);
-                }
-            }
-        },
-        _ => {}
-    }
-    
-    None
+    Ok(arena.true_value())
 }
 
 #[cfg(test)]

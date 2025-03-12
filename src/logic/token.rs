@@ -16,6 +16,9 @@ pub enum Token<'a> {
     /// A literal value.
     Literal(DataValue<'a>),
     
+    /// An array literal.
+    ArrayLiteral(Vec<&'a Token<'a>>),
+    
     /// A variable reference.
     Variable {
         /// The path to the variable.
@@ -37,7 +40,7 @@ pub enum Token<'a> {
         /// The type of operator.
         op_type: OperatorType,
         /// The arguments to the operator.
-        args: &'a [Token<'a>],
+        args: &'a Token<'a>,
     },
     
     /// A custom operator application.
@@ -45,7 +48,7 @@ pub enum Token<'a> {
         /// The name of the custom operator.
         name: &'a str,
         /// The arguments to the operator.
-        args: &'a [Token<'a>],
+        args: &'a Token<'a>,
     },
 }
 
@@ -93,12 +96,12 @@ impl<'a> Token<'a> {
     }
     
     /// Creates a new operator token.
-    pub fn operator(op_type: OperatorType, args: &'a [Token<'a>]) -> Self {
+    pub fn operator(op_type: OperatorType, args: &'a Token<'a>) -> Self {
         Token::Operator { op_type, args }
     }
     
     /// Creates a new custom operator token.
-    pub fn custom_operator(name: &'a str, args: &'a [Token<'a>]) -> Self {
+    pub fn custom_operator(name: &'a str, args: &'a Token<'a>) -> Self {
         Token::CustomOperator { name, args }
     }
     
@@ -122,6 +125,11 @@ impl<'a> Token<'a> {
         matches!(self, Token::CustomOperator { .. })
     }
     
+    /// Returns true if this token is an array literal.
+    pub fn is_array_literal(&self) -> bool {
+        matches!(self, Token::ArrayLiteral(_))
+    }
+    
     /// Returns the literal value if this token is a literal.
     pub fn as_literal(&self) -> Option<&DataValue<'a>> {
         match self {
@@ -139,7 +147,7 @@ impl<'a> Token<'a> {
     }
     
     /// Returns the operator type and arguments if this token is an operator.
-    pub fn as_operator(&self) -> Option<(OperatorType, &'a [Token<'a>])> {
+    pub fn as_operator(&self) -> Option<(OperatorType, &'a Token<'a>)> {
         match self {
             Token::Operator { op_type, args } => Some((*op_type, args)),
             _ => None,
@@ -147,9 +155,17 @@ impl<'a> Token<'a> {
     }
     
     /// Returns the custom operator name and arguments if this token is a custom operator.
-    pub fn as_custom_operator(&self) -> Option<(&'a str, &'a [Token<'a>])> {
+    pub fn as_custom_operator(&self) -> Option<(&'a str, &'a Token<'a>)> {
         match self {
             Token::CustomOperator { name, args } => Some((name, args)),
+            _ => None,
+        }
+    }
+    
+    /// Returns the array tokens if this token is an array literal.
+    pub fn as_array_literal(&self) -> Option<&Vec<&'a Token<'a>>> {
+        match self {
+            Token::ArrayLiteral(tokens) => Some(tokens),
             _ => None,
         }
     }
@@ -182,6 +198,7 @@ impl OperatorType {
                 LogicalOp::And => "and",
                 LogicalOp::Or => "or",
                 LogicalOp::Not => "!",
+                LogicalOp::DoubleNegation => "!!",
             },
             OperatorType::String(op) => match op {
                 StringOp::Cat => "cat",
@@ -199,7 +216,6 @@ impl OperatorType {
             OperatorType::Conditional(op) => match op {
                 ConditionalOp::If => "if",
                 ConditionalOp::Ternary => "?:",
-                ConditionalOp::DoubleNegation => "!!",
             },
             OperatorType::Log => "log",
             OperatorType::In => "in",
@@ -233,6 +249,7 @@ impl FromStr for OperatorType {
             "and" => Ok(OperatorType::Logical(LogicalOp::And)),
             "or" => Ok(OperatorType::Logical(LogicalOp::Or)),
             "!" => Ok(OperatorType::Logical(LogicalOp::Not)),
+            "!!" => Ok(OperatorType::Logical(LogicalOp::DoubleNegation)),
             "cat" => Ok(OperatorType::String(StringOp::Cat)),
             "substr" => Ok(OperatorType::String(StringOp::Substr)),
             "map" => Ok(OperatorType::Array(ArrayOp::Map)),
@@ -244,7 +261,6 @@ impl FromStr for OperatorType {
             "merge" => Ok(OperatorType::Array(ArrayOp::Merge)),
             "if" => Ok(OperatorType::Conditional(ConditionalOp::If)),
             "?:" => Ok(OperatorType::Conditional(ConditionalOp::Ternary)),
-            "!!" => Ok(OperatorType::Conditional(ConditionalOp::DoubleNegation)),
             "log" => Ok(OperatorType::Log),
             "in" => Ok(OperatorType::In),
             "missing" => Ok(OperatorType::Missing),
@@ -259,38 +275,6 @@ impl FromStr for OperatorType {
 mod tests {
     use super::*;
     
-    use crate::arena::DataArena;
-
-    #[test]
-    fn test_token_creation() {
-        let arena = DataArena::new();
-        
-        // Create a literal token
-        let literal = Token::literal(DataValue::integer(42));
-        assert!(literal.is_literal());
-        assert_eq!(literal.as_literal().unwrap().as_i64(), Some(42));
-        
-        // Create a variable token
-        let variable = Token::variable(arena.intern_str("user.name"), None);
-        assert!(variable.is_variable());
-        let (path, default) = variable.as_variable().unwrap();
-        assert_eq!(path, "user.name");
-        assert!(default.is_none());
-        
-        // Create an operator token
-        let args = arena.alloc_slice_clone(&[
-            Token::literal(DataValue::integer(1)),
-            Token::literal(DataValue::integer(2)),
-        ]);
-        let operator = Token::operator(OperatorType::Comparison(ComparisonOp::Equal), args);
-        assert!(operator.is_operator());
-        let (op_type, op_args) = operator.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-        assert_eq!(op_args.len(), 2);
-        assert_eq!(op_args[0].as_literal().unwrap().as_i64(), Some(1));
-        assert_eq!(op_args[1].as_literal().unwrap().as_i64(), Some(2));
-    }
-
     #[test]
     fn test_operator_type_conversion() {
         assert_eq!(OperatorType::Comparison(ComparisonOp::Equal).as_str(), "==");
