@@ -24,127 +24,76 @@ pub enum LogicalOp {
 
 /// Evaluates a logical AND operation.
 pub fn eval_and<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have at least 1 argument
     if args.is_empty() {
-        return Err(LogicError::OperatorError {
-            operator: "and".to_string(),
-            reason: format!("Expected at least 1 argument, got {}", args.len()),
-        });
+        return Ok(arena.true_value());
     }
-    
-    // If there's only one argument, just evaluate and return it
-    if args.len() == 1 {
-        return evaluate(&args[0], data, arena);
-    }
-    
-    // Evaluate arguments in order, short-circuiting if any is falsy
-    for (i, arg) in args.iter().enumerate() {
-        let value = evaluate(arg, data, arena)?;
-        
-        // If this value is falsy and it's not the last argument, return it
-        if !value.coerce_to_bool() {
-            return Ok(value);
+
+    let mut last_result = arena.true_value();
+
+    for arg in args {
+        let result = evaluate(arg, data, arena)?;
+        if !result.coerce_to_bool() {
+            return Ok(result);
         }
-        
-        // If this is the last value and it's truthy, return it
-        if i == args.len() - 1 {
-            return Ok(value);
-        }
+        last_result = result;
     }
-    
-    // This should never happen with the iterator approach, but just in case
-    // If all arguments are truthy, return the last one
-    evaluate(&args[args.len() - 1], data, arena)
+
+    Ok(last_result)
 }
 
 /// Evaluates a logical OR operation.
 pub fn eval_or<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have at least 1 argument
     if args.is_empty() {
-        return Err(LogicError::OperatorError {
-            operator: "or".to_string(),
-            reason: format!("Expected at least 1 argument, got {}", args.len()),
-        });
+        return Ok(arena.false_value());
     }
-    
-    // If there's only one argument, just evaluate and return it
-    if args.len() == 1 {
-        return evaluate(&args[0], data, arena);
-    }
-    
-    // Evaluate arguments in order, short-circuiting if any is truthy
-    for (i, arg) in args.iter().enumerate() {
-        let value = evaluate(arg, data, arena)?;
-        
-        // If this value is truthy and it's not the last argument, return it
-        if value.coerce_to_bool() {
-            return Ok(value);
+
+    let mut last_result = arena.false_value();
+
+    for arg in args {
+        let result = evaluate(arg, data, arena)?;
+        if result.coerce_to_bool() {
+            return Ok(result);
         }
-        
-        // If this is the last value and it's falsy, return it
-        if i == args.len() - 1 {
-            return Ok(value);
-        }
+        last_result = result;
     }
-    
-    // This should never happen with the iterator approach, but just in case
-    // If all arguments are falsy, return the last one
-    evaluate(&args[args.len() - 1], data, arena)
+
+    Ok(last_result)
 }
 
 /// Evaluates a logical NOT operation.
 pub fn eval_not<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have exactly 1 argument
     if args.len() != 1 {
-        return Err(LogicError::OperatorError {
-            operator: "not".to_string(),
-            reason: format!("Expected 1 argument, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
-    
-    // Evaluate the argument and negate its boolean value
-    let value = evaluate(&args[0], data, arena)?;
-    let result = !value.coerce_to_bool();
-    
-    // Return the negated result
-    Ok(arena.bool_value(result))
+
+    let value = evaluate(args[0], data, arena)?;
+    Ok(arena.alloc(DataValue::Bool(!value.coerce_to_bool())))
 }
 
-/// Evaluates a double negation operation (!!).
-/// Converts a value to its boolean representation.
+/// Evaluates a logical double negation (!!).
 pub fn eval_double_negation<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have exactly 1 argument
     if args.len() != 1 {
-        return Err(LogicError::OperatorError {
-            operator: "!!".to_string(),
-            reason: format!("Expected 1 argument, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
-    
-    // Evaluate the argument
-    let value = evaluate(&args[0], data, arena)?;
-    
-    // Convert to boolean
-    let result = value.coerce_to_bool();
-    
-    // Return the preallocated boolean result
-    Ok(arena.bool_value(result))
+
+    let value = evaluate(args[0], data, arena)?;
+    Ok(arena.alloc(DataValue::Bool(value.coerce_to_bool())))
 }
 
 #[cfg(test)]

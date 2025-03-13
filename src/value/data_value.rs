@@ -6,7 +6,6 @@
 use std::fmt;
 use std::cmp::Ordering;
 use crate::arena::DataArena;
-use crate::LogicError;
 use super::number::NumberValue;
 
 /// A memory-efficient value type that leverages arena allocation.
@@ -331,20 +330,26 @@ impl<'a> DataValue<'a> {
             (DataValue::Bool(a), DataValue::Null) => !a,
             
             (DataValue::Number(a), DataValue::String(_)) => {
-                let b_value = other.coerce_to_number().ok_or(LogicError::InvalidArgumentsError).unwrap();
-                let b_num = b_value.as_f64();
-                let a_num = a.as_f64();
-
-                // Compare with small epsilon for floating point
-                (a_num - b_num).abs() < f64::EPSILON
+                match other.coerce_to_number() {
+                    Some(b_value) => {
+                        let b_num = b_value.as_f64();
+                        let a_num = a.as_f64();
+                        // Compare with small epsilon for floating point
+                        (a_num - b_num).abs() < f64::EPSILON
+                    },
+                    None => false, // If we can't convert string to number, they're not equal
+                }
             },
             (DataValue::String(_), DataValue::Number(b)) => {
-                let a_value = self.coerce_to_number().ok_or(LogicError::InvalidArgumentsError).unwrap();
-                let a_num = a_value.as_f64();
-                let b_num = b.as_f64();
-
-                // Compare with small epsilon for floating point
-                (a_num - b_num).abs() < f64::EPSILON
+                match self.coerce_to_number() {
+                    Some(a_value) => {
+                        let a_num = a_value.as_f64();
+                        let b_num = b.as_f64();
+                        // Compare with small epsilon for floating point
+                        (a_num - b_num).abs() < f64::EPSILON
+                    },
+                    None => false, // If we can't convert string to number, they're not equal
+                }
             },
             
             // Arrays and objects are compared by reference

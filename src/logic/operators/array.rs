@@ -6,6 +6,8 @@
 use crate::arena::DataArena;
 use crate::value::DataValue;
 use crate::logic::token::Token;
+use crate::logic::token::OperatorType;
+use crate::logic::operators::arithmetic::ArithmeticOp;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 
@@ -30,7 +32,7 @@ pub enum ArrayOp {
 
 /// Evaluates an all operation.
 pub fn eval_all<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -43,7 +45,7 @@ pub fn eval_all<'a>(
     }
     
     // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    let array = evaluate(args[0], data, arena)?;
     
     // Check that the first argument is an array
     let items = match array {
@@ -62,7 +64,7 @@ pub fn eval_all<'a>(
     }
     
     // Cache the condition token
-    let condition = &args[1];
+    let condition = args[1];
     
     // Check if all items satisfy the condition
     for item in items.iter() {
@@ -78,7 +80,7 @@ pub fn eval_all<'a>(
 
 /// Evaluates a some operation.
 pub fn eval_some<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -91,7 +93,7 @@ pub fn eval_some<'a>(
     }
     
     // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    let array = evaluate(args[0], data, arena)?;
     
     // Check that the first argument is an array
     let items = match array {
@@ -110,7 +112,7 @@ pub fn eval_some<'a>(
     }
     
     // Cache the condition token
-    let condition = &args[1];
+    let condition = args[1];
     
     // Check if any item satisfies the condition
     for item in items.iter() {
@@ -126,7 +128,7 @@ pub fn eval_some<'a>(
 
 /// Evaluates a none operation.
 pub fn eval_none<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -139,7 +141,7 @@ pub fn eval_none<'a>(
     }
     
     // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    let array = evaluate(args[0], data, arena)?;
     
     // Check that the first argument is an array
     let items = match array {
@@ -158,7 +160,7 @@ pub fn eval_none<'a>(
     }
     
     // Cache the condition token
-    let condition = &args[1];
+    let condition = args[1];
     
     // Check if no items satisfy the condition
     for item in items.iter() {
@@ -186,7 +188,7 @@ pub fn eval_none<'a>(
 /// {"map": [{"var": "integers"}, {"*": [{"var": ""}, 2]}]}
 /// ```
 pub fn eval_map<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -199,7 +201,7 @@ pub fn eval_map<'a>(
     }
     
     // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    let array = evaluate(args[0], data, arena)?;
     
     // Check that the first argument is an array
     let items = match array {
@@ -218,7 +220,7 @@ pub fn eval_map<'a>(
     }
     
     // Cache the function token
-    let function = &args[1];
+    let function = args[1];
     
     // Map each item in the array
     let mut results = arena.get_data_value_vec();
@@ -251,7 +253,7 @@ pub fn eval_map<'a>(
 /// {"filter": [{"var": "integers"}, {">": [{"var": ""}, 2]}]}
 /// ```
 pub fn eval_filter<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -264,7 +266,7 @@ pub fn eval_filter<'a>(
     }
     
     // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    let array = evaluate(args[0], data, arena)?;
     
     // Check that the first argument is an array
     let items = match array {
@@ -283,7 +285,7 @@ pub fn eval_filter<'a>(
     }
     
     // Cache the condition token
-    let condition = &args[1];
+    let condition = args[1];
     
     // Filter the array
     let mut results = arena.get_data_value_vec();
@@ -302,6 +304,164 @@ pub fn eval_filter<'a>(
     Ok(arena.alloc(result_array))
 }
 
+/// Helper function to check if a token is a variable with a specific path
+fn is_var_with_path(token: &Token, path: &str) -> bool {
+    match token {
+        Token::Variable { path: var_path, .. } => *var_path == path,
+        _ => false,
+    }
+}
+
+/// Performs a reduce operation with addition
+fn reduce_add<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut sum = initial_val;
+    
+    for i in start_idx..items.len() {
+        sum += items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    }
+    
+    Ok(arena.alloc(DataValue::float(sum)))
+}
+
+/// Performs a reduce operation with multiplication
+fn reduce_multiply<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut product = initial_val;
+    
+    for i in start_idx..items.len() {
+        product *= items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    }
+    
+    Ok(arena.alloc(DataValue::float(product)))
+}
+
+/// Performs a reduce operation with subtraction
+fn reduce_subtract<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut result = initial_val;
+    
+    for i in start_idx..items.len() {
+        result -= items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    }
+    
+    Ok(arena.alloc(DataValue::float(result)))
+}
+
+/// Performs a reduce operation with division
+fn reduce_divide<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut result = initial_val;
+    
+    for i in start_idx..items.len() {
+        let divisor = items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+        if divisor == 0.0 {
+            return Err(LogicError::NaNError);
+        }
+        result /= divisor;
+    }
+    
+    Ok(arena.alloc(DataValue::float(result)))
+}
+
+/// Performs a reduce operation with modulo
+fn reduce_modulo<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut result = initial_val;
+    
+    for i in start_idx..items.len() {
+        let divisor = items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+        if divisor == 0.0 {
+            return Err(LogicError::NaNError);
+        }
+        result %= divisor;
+    }
+    
+    Ok(arena.alloc(DataValue::float(result)))
+}
+
+/// Performs a reduce operation to find the minimum value
+fn reduce_min<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut min_val = initial_val;
+    
+    for i in start_idx..items.len() {
+        let val = items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+        min_val = min_val.min(val);
+    }
+    
+    Ok(arena.alloc(DataValue::float(min_val)))
+}
+
+/// Performs a reduce operation to find the maximum value
+fn reduce_max<'a>(
+    items: &'a [DataValue<'a>],
+    initial: &'a DataValue<'a>,
+    start_idx: usize,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    let initial_val = initial.coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+    let mut max_val = initial_val;
+    
+    for i in start_idx..items.len() {
+        let val = items[i].coerce_to_number().ok_or(LogicError::NaNError)?.as_f64();
+        max_val = max_val.max(val);
+    }
+    
+    Ok(arena.alloc(DataValue::float(max_val)))
+}
+
+/// Checks if an operator token matches the expected pattern for optimized arithmetic operations
+fn is_arithmetic_reduce_pattern<'a>(
+    function: &'a Token<'a>,
+) -> Option<ArithmeticOp> {
+    if let Token::Operator { op_type, args: fn_args } = function {
+        if let OperatorType::Arithmetic(arith_op) = op_type {
+            if let Token::ArrayLiteral(fn_args_tokens) = fn_args {
+                if fn_args_tokens.len() == 2 {
+                    let is_var_current = is_var_with_path(fn_args_tokens[0], "current");
+                    let is_var_acc = is_var_with_path(fn_args_tokens[1], "accumulator");
+                    
+                    if is_var_current && is_var_acc {
+                        return Some(*arith_op);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Evaluates a reduce operation.
 /// 
 /// The reduce operator applies a function to each element of an array and an accumulator,
@@ -316,11 +476,7 @@ pub fn eval_filter<'a>(
 /// ```json
 /// {"reduce": [{"var": "integers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 0]}
 /// ```
-pub fn eval_reduce<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_reduce<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() < 2 || args.len() > 3 {
         return Err(LogicError::OperatorError {
@@ -330,7 +486,7 @@ pub fn eval_reduce<'a>(
     }
     
     // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    let array = evaluate(args[0], data, arena)?;
     
     // Check that the first argument is an array
     let items = match array {
@@ -339,7 +495,7 @@ pub fn eval_reduce<'a>(
         DataValue::Null => {
             // If we have an initial value, return it
             if args.len() == 3 {
-                return evaluate(&args[2], data, arena);
+                return evaluate(args[2], data, arena);
             }
             return Err(LogicError::OperatorError {
                 operator: "reduce".to_string(),
@@ -356,7 +512,7 @@ pub fn eval_reduce<'a>(
     if items.is_empty() {
         // If we have an initial value, return it
         if args.len() == 3 {
-            return evaluate(&args[2], data, arena);
+            return evaluate(args[2], data, arena);
         }
         return Err(LogicError::OperatorError {
             operator: "reduce".to_string(),
@@ -366,180 +522,65 @@ pub fn eval_reduce<'a>(
     
     // Get the initial value
     let initial = if args.len() == 3 {
-        evaluate(&args[2], data, arena)?
+        evaluate(args[2], data, arena)?
     } else {
         // If no initial value is provided, use the first item
         &items[0]
     };
     
     // Cache the function token
-    let function = &args[1];
+    let function = args[1];
     
-    // Check for fast path optimizations
-    if let Token::Operator { op_type: _op_type, args: _op_args } = &args[1] {
-        // Commenting out problematic code for now
-        /*
-        // Check if op_args is an ArrayLiteral
-        if let Token::ArrayLiteral(op_items) = op_args {
-            if let crate::logic::OperatorType::Arithmetic(op) = op_type {
-                // Check if this is a simple addition or multiplication
-                if *op == crate::logic::operators::arithmetic::ArithmeticOp::Add {
-                    // Fast path for sum reduction with any initial value
-                    return eval_reduce_sum(args, data, arena, initial);
-                } else if *op == crate::logic::operators::arithmetic::ArithmeticOp::Multiply {
-                    // Fast path for product reduction with any initial value
-                    return eval_reduce_product(args, data, arena, initial);
-                }
-            }
-        }
-        */
+    // Start from the first item if no initial value was provided
+    let start_idx = if args.len() == 3 { 0 } else { 1 };
+    
+    // Optimization for arithmetic operators - desugar reduce to direct arithmetic operation
+    if let Some(arith_op) = is_arithmetic_reduce_pattern(function) {
+        // Use our specialized helper functions for each arithmetic operation
+        return match arith_op {
+            ArithmeticOp::Add => reduce_add(items, initial, start_idx, arena),
+            ArithmeticOp::Multiply => reduce_multiply(items, initial, start_idx, arena),
+            ArithmeticOp::Subtract => reduce_subtract(items, initial, start_idx, arena),
+            ArithmeticOp::Divide => reduce_divide(items, initial, start_idx, arena),
+            ArithmeticOp::Modulo => reduce_modulo(items, initial, start_idx, arena),
+            ArithmeticOp::Min => reduce_min(items, initial, start_idx, arena),
+            ArithmeticOp::Max => reduce_max(items, initial, start_idx, arena),
+        };
     }
-
+    
+    // NOTE: For the generic case, we still need to create a context object with the current item and accumulator
+    
     // Initialize static keys only once - these are interned and reused
     let curr_key = arena.intern_str("current");
     let acc_key = arena.intern_str("accumulator");
     
-    match array {
-        DataValue::Array(items) => {
-            // Fast path for empty arrays
-            if items.is_empty() {
-                return Ok(initial);
-            }
-            
-            // Pre-allocate the context entries array once and reuse it
-            let mut acc = initial;
-            let mut entries = [(curr_key, DataValue::Null), (acc_key, DataValue::Null)];
-            
-            // Start from the first item if no initial value was provided
-            let start_idx = if args.len() == 3 { 0 } else { 1 };
-            
-            // Reduce the array
-            for i in start_idx..items.len() {
-                // Update the context with the current item and accumulator
-                entries[0].1 = items[i].clone();
-                entries[1].1 = acc.clone();
-                
-                // Create the context object and allocate it in the arena
-                let context_entries = arena.alloc_slice_clone(&entries);
-                let context = arena.alloc(DataValue::Object(context_entries));
-                
-                // Evaluate the function with the context
-                acc = evaluate(function, context, arena)?;
-            }
-            
-            Ok(acc)
-        },
-        _ => unreachable!(), // We already checked that array is an array
-    }
-}
-
-/// Fast path implementation for sum reduction.
-fn eval_reduce_sum<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-    initial: &'a DataValue<'a>,
-) -> Result<&'a DataValue<'a>> {
-    // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
+    // The accumulator will be updated on each iteration
+    let mut acc = initial;
     
-    // We already checked that array is an array in the caller
-    if let DataValue::Array(items) = array {
-        // Fast path for empty arrays
-        if items.is_empty() {
-            return Ok(initial);
-        }
+    // Reduce the array using the generic approach
+    for i in start_idx..items.len() {
+        // Create object entries with references to the values
+        let entries = [
+            (curr_key, items[i].clone()),
+            (acc_key, acc.clone()),
+        ];
         
-        // Initialize the accumulator with the initial value
-        let mut sum = initial.coerce_to_number().unwrap_or_else(|| {
-            // If initial value can't be coerced to a number, start with 0
-            crate::value::NumberValue::Integer(0)
-        });
+        // Allocate the entries in the arena
+        let context_entries = arena.alloc_slice_clone(&entries);
         
-        // Sum all items in the array
-        for item in items.iter() {
-            if let Some(num) = item.coerce_to_number() {
-                sum = match (sum, num) {
-                    (crate::value::NumberValue::Integer(a), crate::value::NumberValue::Integer(b)) => {
-                        // Check for overflow
-                        match a.checked_add(b) {
-                            Some(result) => crate::value::NumberValue::Integer(result),
-                            None => crate::value::NumberValue::Float(a as f64 + b as f64),
-                        }
-                    },
-                    _ => {
-                        // Use floating point for mixed or float types
-                        let a_f64 = sum.as_f64();
-                        let b_f64 = num.as_f64();
-                        crate::value::NumberValue::Float(a_f64 + b_f64)
-                    }
-                };
-            }
-        }
+        // Create the context object
+        let context = arena.alloc(DataValue::Object(context_entries));
         
-        // Return the sum
-        Ok(arena.alloc(DataValue::Number(sum)))
-    } else {
-        // This should never happen as we already checked in the caller
-        unreachable!()
+        // Evaluate the function with the context
+        acc = evaluate(function, context, arena)?;
     }
-}
-
-/// Fast path implementation for product reduction.
-fn eval_reduce_product<'a>(
-    args: &'a [Token<'a>],
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-    initial: &'a DataValue<'a>,
-) -> Result<&'a DataValue<'a>> {
-    // Evaluate the first argument to get the array
-    let array = evaluate(&args[0], data, arena)?;
     
-    // We already checked that array is an array in the caller
-    if let DataValue::Array(items) = array {
-        // Fast path for empty arrays
-        if items.is_empty() {
-            return Ok(initial);
-        }
-        
-        // Initialize the accumulator with the initial value
-        let mut product = initial.coerce_to_number().unwrap_or_else(|| {
-            // If initial value can't be coerced to a number, start with 1
-            crate::value::NumberValue::Integer(1)
-        });
-        
-        // Multiply all items in the array
-        for item in items.iter() {
-            if let Some(num) = item.coerce_to_number() {
-                product = match (product, num) {
-                    (crate::value::NumberValue::Integer(a), crate::value::NumberValue::Integer(b)) => {
-                        // Check for overflow
-                        match a.checked_mul(b) {
-                            Some(result) => crate::value::NumberValue::Integer(result),
-                            None => crate::value::NumberValue::Float(a as f64 * b as f64),
-                        }
-                    },
-                    _ => {
-                        // Use floating point for mixed or float types
-                        let a_f64 = product.as_f64();
-                        let b_f64 = num.as_f64();
-                        crate::value::NumberValue::Float(a_f64 * b_f64)
-                    }
-                };
-            }
-        }
-        
-        // Return the product
-        Ok(arena.alloc(DataValue::Number(product)))
-    } else {
-        // This should never happen as we already checked in the caller
-        unreachable!()
-    }
+    Ok(acc)
 }
 
 /// Evaluates a merge operation.
 pub fn eval_merge<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -746,5 +787,44 @@ mod tests {
         
         // Check that the result is the sum of the quantities
         assert_eq!(qty_sum_result.as_i64(), Some(6));
+        
+        // Test case 6: Test arithmetic operator desugaring
+        // Here we test the specific optimization we implemented
+        let large_array_json = json!({
+            "numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        });
+        let large_array_data = DataValue::from_json(&large_array_json, &arena);
+        
+        // Test addition (should use the optimized path)
+        let add_rule_str = r#"{"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 0]}"#;
+        let add_token = parse_str(add_rule_str, &arena).unwrap();
+        let add_result = evaluate(add_token, &large_array_data, &arena).unwrap();
+        
+        // Result should be 55 (sum of 1 to 10)
+        assert_eq!(add_result.as_f64(), Some(55.0));
+        
+        // Test multiplication (should use the optimized path)
+        let mul_rule_str = r#"{"reduce": [{"var": "numbers"}, {"*": [{"var": "current"}, {"var": "accumulator"}]}, 1]}"#;
+        let mul_token = parse_str(mul_rule_str, &arena).unwrap();
+        let mul_result = evaluate(mul_token, &large_array_data, &arena).unwrap();
+        
+        // Result should be 3628800 (10!)
+        assert_eq!(mul_result.as_f64(), Some(3628800.0));
+        
+        // Test min operator (should use the optimized path)
+        let min_rule_str = r#"{"reduce": [{"var": "numbers"}, {"min": [{"var": "current"}, {"var": "accumulator"}]}, 100]}"#;
+        let min_token = parse_str(min_rule_str, &arena).unwrap();
+        let min_result = evaluate(min_token, &large_array_data, &arena).unwrap();
+        
+        // Result should be 1 (min of all numbers)
+        assert_eq!(min_result.as_i64(), Some(1));
+        
+        // Test max operator (should use the optimized path)
+        let max_rule_str = r#"{"reduce": [{"var": "numbers"}, {"max": [{"var": "current"}, {"var": "accumulator"}]}, 0]}"#;
+        let max_token = parse_str(max_rule_str, &arena).unwrap();
+        let max_result = evaluate(max_token, &large_array_data, &arena).unwrap();
+        
+        // Result should be 10 (max of all numbers)
+        assert_eq!(max_result.as_i64(), Some(10));
     }
 } 

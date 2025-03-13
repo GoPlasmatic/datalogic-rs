@@ -8,72 +8,57 @@ use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
 
-/// Evaluates an in operation.
+/// Evaluates an "in" operation.
 pub fn eval_in<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have exactly 2 arguments
     if args.len() != 2 {
         return Err(LogicError::OperatorError {
             operator: "in".to_string(),
             reason: format!("Expected 2 arguments, got {}", args.len()),
         });
     }
-    
-    // Evaluate the arguments
-    let needle = evaluate(&args[0], data, arena)?;
-    let haystack = evaluate(&args[1], data, arena)?;
-    
-    // Check if the needle is in the haystack
-    match haystack {
-        // Check if the needle is in the array
-        DataValue::Array(items) => {
-            for item in items.iter() {
-                if item == needle {
-                    return Ok(arena.true_value());
-                }
-            }
-            Ok(arena.false_value())
-        },
-        
-        // Check if the needle is in the string
+
+    let needle = evaluate(args[0], data, arena)?;
+    let haystack = evaluate(args[1], data, arena)?;
+
+    let result = match haystack {
         DataValue::String(s) => {
             let needle_str = match needle {
-                DataValue::String(s) => s,
-                _ => return Err(LogicError::OperatorError {
-                    operator: "in".to_string(),
-                    reason: format!("Expected string needle for string haystack, got {:?}", needle),
-                }),
+                DataValue::String(ns) => *ns,
+                _ => arena.alloc_str(&needle.to_string()),
             };
-            
-            Ok(arena.bool_value(s.contains(needle_str)))
-        },
-        
-        // Check if the needle is a key in the object
-        DataValue::Object(entries) => {
-            let needle_str = match needle {
-                DataValue::String(s) => s,
-                _ => return Err(LogicError::OperatorError {
-                    operator: "in".to_string(),
-                    reason: format!("Expected string needle for object haystack, got {:?}", needle),
-                }),
-            };
-            
-            for (key, _) in entries.iter() {
-                if key == needle_str {
-                    return Ok(arena.true_value());
+            s.contains(needle_str)
+        }
+        DataValue::Array(arr) => {
+            arr.iter().any(|item| {
+                match (item, needle) {
+                    (DataValue::Number(a), DataValue::Number(b)) => a == b,
+                    (DataValue::String(a), DataValue::String(b)) => a == b,
+                    (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
+                    _ => false,
                 }
+            })
+        }
+        DataValue::Object(obj) => {
+            // For objects, check if needle is a key in the object
+            if let DataValue::String(key) = needle {
+                obj.iter().any(|(k, _)| *k == *key)
+            } else {
+                // If needle is not a string, convert it to a string and check
+                let key_str = needle.to_string();
+                obj.iter().any(|(k, _)| *k == key_str)
             }
-            Ok(arena.false_value())
-        },
-        
-        // Other types are not supported
-        _ => Err(LogicError::OperatorError {
-            operator: "in".to_string(),
-            reason: format!("Expected array, string, or object haystack, got {:?}", haystack),
-        }),
+        }
+        _ => false,
+    };
+
+    if result {
+        Ok(arena.true_value())
+    } else {
+        Ok(arena.false_value())
     }
 }
 

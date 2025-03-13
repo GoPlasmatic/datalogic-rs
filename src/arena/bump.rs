@@ -115,7 +115,7 @@ impl fmt::Debug for DataArena {
 impl DataArena {
     /// Creates a new arena with default settings.
     pub fn new() -> Self {
-        Self::with_chunk_size(8 * 1024 * 1024) // 8MB default chunk size
+        Self::with_chunk_size(1 * 1024 * 1024) // 1MB chunks by default
     }
     
     /// Creates a new arena with the specified chunk size.
@@ -141,7 +141,7 @@ impl DataArena {
             bump,
             interner: RefCell::new(StringInterner::new()),
             chunk_size,
-            data_value_pool: RefCell::new(VectorPool::new(16)), // Default capacity of 16 for DataValue vectors
+            data_value_pool: RefCell::new(VectorPool::new(8)), // Smaller capacity for DataValue vectors
             null_value: &NULL_VALUE,
             true_value: &TRUE_VALUE,
             false_value: &FALSE_VALUE,

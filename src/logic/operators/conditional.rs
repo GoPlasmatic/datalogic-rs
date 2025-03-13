@@ -18,9 +18,8 @@ pub enum ConditionalOp {
 }
 
 /// Evaluates an if operation.
-#[inline]
 pub fn eval_if<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
@@ -80,26 +79,22 @@ pub fn eval_if<'a>(
 
 /// Evaluates a ternary operation.
 pub fn eval_ternary<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have exactly 3 arguments
     if args.len() != 3 {
         return Err(LogicError::OperatorError {
             operator: "?:".to_string(),
             reason: format!("Expected 3 arguments, got {}", args.len()),
         });
     }
-    
-    // Evaluate the condition
-    let condition = evaluate(&args[0], data, arena)?;
-    
-    // Return the appropriate result based on the condition
+
+    let condition = evaluate(args[0], data, arena)?;
     if condition.coerce_to_bool() {
-        evaluate(&args[1], data, arena)
+        evaluate(args[1], data, arena)
     } else {
-        evaluate(&args[2], data, arena)
+        evaluate(args[2], data, arena)
     }
 }
 

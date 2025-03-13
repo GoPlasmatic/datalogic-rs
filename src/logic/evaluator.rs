@@ -8,6 +8,20 @@ use super::token::{Token, OperatorType};
 use super::error::Result;
 use super::operators::{comparison, arithmetic, logical, string, missing, array, conditional, log, r#in, variable};
 
+/// Helper function to convert a token to a TokenRefs wrapper
+/// This avoids cloning tokens for lazy evaluation
+#[inline]
+fn convert_to_token_refs<'a>(args: &'a Token<'a>, arena: &'a DataArena) -> &'a [&'a Token<'a>] {
+    match args {
+        // Fast path for ArrayLiteral with 0 items
+        Token::ArrayLiteral(items) if items.is_empty() => &[],
+        // For ArrayLiteral with items, just use the references directly
+        Token::ArrayLiteral(items) => items.as_slice(),
+        // Fast path for the single argument case
+        _ => arena.alloc_slice_copy(&[args])
+    }
+}
+
 /// Evaluates a logic expression.
 #[inline]
 pub fn evaluate<'a>(
@@ -118,41 +132,13 @@ fn evaluate_custom_operator<'a>(
     }
 }
 
-fn evaluate_arguments<'a>(
-    args: &'a Token<'a>,
-    data: &'a DataValue<'a>,
-    arena: &'a DataArena,
-) -> &'a [DataValue<'a>] {
+fn evaluate_arguments<'a>(args: &'a Token<'a>, data: &'a DataValue<'a>, arena: &'a DataArena) -> &'a [DataValue<'a>] {
     let arg = evaluate(args, data, arena).unwrap();
     let args = match arg {
         DataValue::Array(items) => items,
         _ => arena.alloc_slice_clone(&[arg.clone()]),
     };
     return args;
-}
-
-/// Helper function to convert a token to a slice of tokens
-fn convert_to_token_slice<'a>(args: &'a Token<'a>, arena: &'a DataArena) -> &'a [Token<'a>] {
-    match args {
-        // Fast path for ArrayLiteral with 0 items
-        Token::ArrayLiteral(items) if items.is_empty() => {
-            &[]
-        },
-        // For ArrayLiteral with items, clone the tokens
-        Token::ArrayLiteral(items) => {
-            // Pre-allocate capacity to avoid reallocations
-            let mut token_vec = Vec::with_capacity(items.len());
-            
-            // Clone the tokens efficiently - collect them all at once
-            token_vec.extend(items.iter().map(|&item| (*item).clone()));
-            
-            arena.alloc_slice_clone(&token_vec)
-        },
-        // Fast path for the single argument case
-        _ => {
-            arena.alloc_slice_clone(&[args.clone()])
-        }
-    }
 }
 
 /// Helper function to evaluate an operator with a token argument
@@ -162,33 +148,34 @@ fn evaluate_operator<'a>(
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
+    // Get token references for lazy evaluation
+    let token_refs = convert_to_token_refs(args, arena);
+    
     match op_type {
         // Comparison operators
         OperatorType::Comparison(comp_op) => {
-            let tokens = convert_to_token_slice(args, arena);
             match comp_op {
-                comparison::ComparisonOp::Equal => comparison::eval_equal(tokens, data, arena),
-                comparison::ComparisonOp::StrictEqual => comparison::eval_strict_equal(tokens, data, arena),
-                comparison::ComparisonOp::NotEqual => comparison::eval_not_equal(tokens, data, arena),
-                comparison::ComparisonOp::StrictNotEqual => comparison::eval_strict_not_equal(tokens, data, arena),
-                comparison::ComparisonOp::GreaterThan => comparison::eval_greater_than(tokens, data, arena),
-                comparison::ComparisonOp::GreaterThanOrEqual => comparison::eval_greater_than_or_equal(tokens, data, arena),
-                comparison::ComparisonOp::LessThan => comparison::eval_less_than(tokens, data, arena),
-                comparison::ComparisonOp::LessThanOrEqual => comparison::eval_less_than_or_equal(tokens, data, arena),
+                comparison::ComparisonOp::Equal => comparison::eval_equal(token_refs, data, arena),
+                comparison::ComparisonOp::StrictEqual => comparison::eval_strict_equal(token_refs, data, arena),
+                comparison::ComparisonOp::NotEqual => comparison::eval_not_equal(token_refs, data, arena),
+                comparison::ComparisonOp::StrictNotEqual => comparison::eval_strict_not_equal(token_refs, data, arena),
+                comparison::ComparisonOp::GreaterThan => comparison::eval_greater_than(token_refs, data, arena),
+                comparison::ComparisonOp::GreaterThanOrEqual => comparison::eval_greater_than_or_equal(token_refs, data, arena),
+                comparison::ComparisonOp::LessThan => comparison::eval_less_than(token_refs, data, arena),
+                comparison::ComparisonOp::LessThanOrEqual => comparison::eval_less_than_or_equal(token_refs, data, arena),
             }
         },
         
         // Array operators
         OperatorType::Array(array_op) => {
-            let tokens = convert_to_token_slice(args, arena);
             match array_op {
-                array::ArrayOp::Map => array::eval_map(tokens, data, arena),
-                array::ArrayOp::Filter => array::eval_filter(tokens, data, arena),
-                array::ArrayOp::Reduce => array::eval_reduce(tokens, data, arena),
-                array::ArrayOp::All => array::eval_all(tokens, data, arena),
-                array::ArrayOp::Some => array::eval_some(tokens, data, arena),
-                array::ArrayOp::None => array::eval_none(tokens, data, arena),
-                array::ArrayOp::Merge => array::eval_merge(tokens, data, arena),
+                array::ArrayOp::Map => array::eval_map(token_refs, data, arena),
+                array::ArrayOp::Filter => array::eval_filter(token_refs, data, arena),
+                array::ArrayOp::Reduce => array::eval_reduce(token_refs, data, arena),
+                array::ArrayOp::All => array::eval_all(token_refs, data, arena),
+                array::ArrayOp::Some => array::eval_some(token_refs, data, arena),
+                array::ArrayOp::None => array::eval_none(token_refs, data, arena),
+                array::ArrayOp::Merge => array::eval_merge(token_refs, data, arena),
             }
         },
         
@@ -205,52 +192,45 @@ fn evaluate_operator<'a>(
         
         // Logical operators
         OperatorType::Logical(logic_op) => {
-            let tokens = convert_to_token_slice(args, arena);
             match logic_op {
-                logical::LogicalOp::And => logical::eval_and(tokens, data, arena),
-                logical::LogicalOp::Or => logical::eval_or(tokens, data, arena),
-                logical::LogicalOp::Not => logical::eval_not(tokens, data, arena),
-                logical::LogicalOp::DoubleNegation => logical::eval_double_negation(tokens, data, arena),
+                logical::LogicalOp::And => logical::eval_and(token_refs, data, arena),
+                logical::LogicalOp::Or => logical::eval_or(token_refs, data, arena),
+                logical::LogicalOp::Not => logical::eval_not(token_refs, data, arena),
+                logical::LogicalOp::DoubleNegation => logical::eval_double_negation(token_refs, data, arena),
             }
         },
         
         // Conditional operators
         OperatorType::Conditional(cond_op) => {
-            let tokens = convert_to_token_slice(args, arena);
             match cond_op {
-                conditional::ConditionalOp::If => conditional::eval_if(tokens, data, arena),
-                conditional::ConditionalOp::Ternary => conditional::eval_ternary(tokens, data, arena),
+                conditional::ConditionalOp::If => conditional::eval_if(token_refs, data, arena),
+                conditional::ConditionalOp::Ternary => conditional::eval_ternary(token_refs, data, arena),
             }
         },
         
         // String operators
         OperatorType::String(string_op) => {
-            let tokens = convert_to_token_slice(args, arena);
             match string_op {
-                string::StringOp::Cat => string::eval_cat(tokens, data, arena),
-                string::StringOp::Substr => string::eval_substr(tokens, data, arena),
+                string::StringOp::Cat => string::eval_cat(token_refs, data, arena),
+                string::StringOp::Substr => string::eval_substr(token_refs, data, arena),
             }
         },
         
         // Other operators
         OperatorType::Log => {
-            let tokens = convert_to_token_slice(args, arena);
-            log::eval_log(tokens, data, arena)
+            log::eval_log(token_refs, data, arena)
         },
         
         OperatorType::In => {
-            let tokens = convert_to_token_slice(args, arena);
-            r#in::eval_in(tokens, data, arena)
+            r#in::eval_in(token_refs, data, arena)
         },
         
         OperatorType::Missing => {
-            let tokens = convert_to_token_slice(args, arena);
-            missing::eval_missing(tokens, data, arena)
+            missing::eval_missing(token_refs, data, arena)
         },
         
         OperatorType::MissingSome => {
-            let tokens = convert_to_token_slice(args, arena);
-            missing::eval_missing_some(tokens, data, arena)
+            missing::eval_missing_some(token_refs, data, arena)
         },
         
         OperatorType::ArrayLiteral => {

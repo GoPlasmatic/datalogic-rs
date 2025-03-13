@@ -10,25 +10,23 @@ use crate::value::DataValue;
 
 /// Evaluates a log operation.
 pub fn eval_log<'a>(
-    args: &'a [Token<'a>],
+    args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Check that we have exactly 1 argument
-    if args.len() != 1 {
+    if args.is_empty() {
         return Err(LogicError::OperatorError {
             operator: "log".to_string(),
-            reason: format!("Expected 1 argument, got {}", args.len()),
+            reason: "Expected at least 1 argument, got 0".to_string(),
         });
     }
+
+    let value = evaluate(args[0], data, arena)?;
     
-    // Evaluate the argument
-    let value = evaluate(&args[0], data, arena)?;
+    // Debug logging - can be customized or controlled via feature flags
+    // For now, just print to stderr
+    eprintln!("LOG: {:?}", value);
     
-    // Log the value
-    println!("LOG: {:?}", value);
-    
-    // Return the value (already a reference)
     Ok(value)
 }
 
