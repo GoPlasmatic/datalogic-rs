@@ -3,49 +3,57 @@ use serde_json::Value;
 use std::time::Instant;
 use std::fs;
 
-lazy_static::lazy_static! {
-    static ref TEST_CASES: Vec<(Rule, Value, Value)> = {
-        let response = fs::read_to_string("tests/suites/compatible.json").unwrap();
-        
-        let json_data: Vec<Value> = serde_json::from_str(&response)
-            .expect("Failed to parse test cases");
-        
-        json_data.into_iter()
-            .filter_map(|entry| {
-                if let Value::Object(test_case) = entry {
-                    // let description = test_case.get("description").unwrap();
-                    let logic = test_case.get("rule").unwrap();
-                    let data = test_case.get("data").unwrap_or(&Value::Null);
-                    let expected = test_case.get("result").unwrap_or(&Value::Null);
-                    // let error_type = test_case.get("error").unwrap_or(&Value::Null);
-
-                    let rule = Rule::from_value(&logic).ok()?;
-                    return Some((
-                        rule,
-                        data.clone(),
-                        expected.clone()
-                    ));
-                }
-                None
-            })
-            .collect()
-    };
-}
-
 fn main() {
-    let iterations = 1e5 as u32;
-    let start = Instant::now();
+    // Load test cases from JSON file
+    let response = fs::read_to_string("tests/suites/compatible.json")
+        .expect("Failed to read test cases file");
     
-    println!("Running {} iterations for test cases {}", iterations, TEST_CASES.len());
-    for (rule, data, _) in TEST_CASES.iter() {
-        for _ in 0..iterations {
-            let _ = JsonLogic::apply(rule, data);
+    let json_data: Vec<Value> = serde_json::from_str(&response)
+        .expect("Failed to parse test cases");
+
+    let logic_arena = DataArena::new();
+
+    // Extract rules and data (just store the JSON values)
+    let mut test_cases = Vec::new();
+    for entry in json_data {
+        // Skip string entries (comments)
+        if entry.is_string() {
+            continue;
+        }
+        
+        if let Value::Object(test_case) = entry {
+            // Get rule and data
+            if let Some(logic) = test_case.get("rule") {
+                // For simple test cases, data might be missing
+                let data = test_case.get("data").unwrap_or(&Value::Null);
+                let data_value = DataValue::from_json(data, &logic_arena);
+                if let Ok(rule) = logic.to_logic(&logic_arena) {
+                    test_cases.push((rule.root().clone(), data_value.clone()));
+                }
+            }
         }
     }
+    
+    let iterations = 1e5 as u32; // Reduced iterations to avoid OOM
+    println!("Running {} iterations for {} test cases", iterations, test_cases.len());
+    let start = Instant::now();
+
+    let mut eval_arena = DataArena::new();
+
+    // Run benchmark
+    for (rule, data_value) in &test_cases {
+        for _ in 0..iterations {
+            let _ = evaluate(rule, data_value, &eval_arena);
+        }
+        eval_arena.reset();
+    }
+    
     let duration = start.elapsed();
-    let avg_iteration_time = duration / iterations as u32;
+    println!("Memory usage: {:?}", eval_arena.memory_usage());
+
+    let avg_iteration_time = duration / (iterations * test_cases.len() as u32);
     
     println!("Total time: {:?}", duration);
     println!("Average iteration time: {:?}", avg_iteration_time);
-    println!("Iterations per second: {:.2}", iterations as f64 / duration.as_secs_f64());
-}
+    println!("Iterations per second: {:.2}", (iterations * test_cases.len() as u32) as f64 / duration.as_secs_f64());
+} 

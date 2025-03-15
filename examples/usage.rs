@@ -1,15 +1,21 @@
-use datalogic_rs::*;
+use datalogic_rs::arena::DataArena;
+use datalogic_rs::logic::{evaluate, parse_json};
+use datalogic_rs::value::{DataValue, FromJson};
 use serde_json::json;
 
 fn main() {
-    let logic = json!({ "preserve": [{ "a": 1 }, { "b": 2 }, { "a": 1, "b": 2 }] });
-    println!("Logic: {:?}", logic);
-
-    let data = json!({});
-
-    let rule = Rule::from_value(&logic).unwrap();
-    println!("Rule: {:#?}", rule);
-
-    let result = JsonLogic::apply(&rule, &data).unwrap();
-    println!("Result: {}", result);
-}
+    // Create test data
+    let data_json = json!({"a": 10, "b": "10", "c": 20});
+    
+    // Convert to DataValue
+    let arena = DataArena::new();
+    let data = DataValue::from_json(&data_json, &arena);
+    
+    // Parse rule
+    let rule_json: serde_json::Value = serde_json::from_str(r#"{"==": [{"var": "a"}, {"var": "b"}]}"#).unwrap();
+    let rule_token = parse_json(&rule_json, &arena).unwrap();
+    println!("rule_token: {:?}", rule_token);
+            
+    let result = evaluate(rule_token, &data, &arena).unwrap();
+    println!("result: {:?}", result);
+} 
