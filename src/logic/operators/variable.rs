@@ -196,4 +196,31 @@ mod tests {
         let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
         assert_eq!(result.as_str(), Some("bob@example.com"));
     }
+    
+    #[test]
+    fn test_evaluate_variable_with_array_path() {
+        let arena = DataArena::new();
+        let data_json = json!({
+            "person": {
+                "name": "John"
+            },
+            "name": "Jane"
+        });
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Test with array path
+        let token = parse_str(r#"{"var": ["person", "name"]}"#, &arena).unwrap();
+        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("John"));
+        
+        // Test with array path that doesn't exist
+        let token = parse_str(r#"{"var": ["nonexistent", "name"]}"#, &arena).unwrap();
+        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
+        assert!(result.is_null());
+        
+        // Test with val operator
+        let token = parse_str(r#"{"val": ["person", "name"]}"#, &arena).unwrap();
+        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("John"));
+    }
 } 

@@ -31,10 +31,27 @@ pub fn eval_cat<'a>(
     // For a single argument, convert directly to string
     if args.len() == 1 {
         let value = evaluate(args[0], data, arena)?;
+        
         // If it's already a string, return it directly
         if let DataValue::String(_) = value {
             return Ok(value);
         }
+        
+        // If it's an array, concatenate all elements
+        if let DataValue::Array(arr) = value {
+            let mut result = String::new();
+            for item in *arr {
+                match item {
+                    DataValue::String(s) => result.push_str(s),
+                    _ => {
+                        let string_value = item.to_string();
+                        result.push_str(&string_value);
+                    }
+                }
+            }
+            return Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))));
+        }
+        
         // Otherwise, convert to string
         let string_value = value.to_string();
         return Ok(arena.alloc(DataValue::String(arena.alloc_str(&string_value))));
@@ -47,6 +64,18 @@ pub fn eval_cat<'a>(
         let value = evaluate(arg, data, arena)?;
         match value {
             DataValue::String(s) => result.push_str(s),
+            DataValue::Array(arr) => {
+                // If we get an array from a chained operation, concatenate all elements
+                for item in *arr {
+                    match item {
+                        DataValue::String(s) => result.push_str(s),
+                        _ => {
+                            let string_value = item.to_string();
+                            result.push_str(&string_value);
+                        }
+                    }
+                }
+            },
             _ => {
                 let string_value = value.to_string();
                 result.push_str(&string_value);

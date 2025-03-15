@@ -24,6 +24,12 @@
     "comparison/lessThanEquals.json",
     "control/if.json",
     "control/and.json",
-    "control/or.json"
-   
+    "control/or.json",
+    "coalesce.json",
+    "additional.json",
+    "chained.json",
+    "empty-objects.json",
+    "iterators.extra.json",
+    "truthiness.json",
+    "val.json"
 ]

@@ -283,11 +283,40 @@ fn evaluate_operator<'a>(
             missing::eval_missing_some(token_refs, data, arena)
         },
         
+        OperatorType::Coalesce => {
+            eval_coalesce(token_refs, data, arena)
+        },
+        
         OperatorType::ArrayLiteral => {
             // This should be handled by the Token::ArrayLiteral case in evaluate()
             Err(super::error::LogicError::InvalidArgumentsError)
         }
     }
+}
+
+/// Evaluates a coalesce operation, which returns the first non-null value.
+fn eval_coalesce<'a>(
+    args: &'a [&'a Token<'a>], 
+    data: &'a DataValue<'a>, 
+    arena: &'a DataArena
+) -> Result<&'a DataValue<'a>> {
+    // If no arguments, return null
+    if args.is_empty() {
+        return Ok(arena.null_value());
+    }
+    
+    // Return the first non-null value
+    for arg in args {
+        let value = evaluate(arg, data, arena)?;
+        
+        // Check if the value is null
+        if !value.is_null() {
+            return Ok(value);
+        }
+    }
+    
+    // If all values are null, return null
+    Ok(arena.null_value())
 }
 
 #[cfg(test)]
@@ -323,5 +352,42 @@ mod tests {
         let token = parse_str(r#"{"==": [{"var": "foo"}, 42]}"#, &arena).unwrap();
         let result = evaluate(token, &data, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn test_evaluate_coalesce() {
+        let arena = DataArena::new();
+        let data_json = json!({"person": {"name": "John"}, "name": "Jane"});
+        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
+        
+        // Simple coalesce with one value
+        let token = parse_str(r#"{"??": ["hello"]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("hello"));
+        
+        // Coalesce with null first
+        let token = parse_str(r#"{"??": [null, "hello"]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("hello"));
+        
+        // Coalesce with multiple values
+        let token = parse_str(r#"{"??": [null, false, "hello"]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(false));
+        
+        // Coalesce with variables
+        let token = parse_str(r#"{"??": [{"var": "missing"}, {"var": "person.name"}, "default"]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("John"));
+        
+        // Coalesce with all nulls
+        let token = parse_str(r#"{"??": [null, null]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert!(result.is_null());
+        
+        // Empty coalesce
+        let token = parse_str(r#"{"??": []}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert!(result.is_null());
     }
 }
