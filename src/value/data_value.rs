@@ -168,18 +168,41 @@ impl<'a> DataValue<'a> {
         }
     }
     
-    /// Coerces the value to a boolean according to JSONLogic rules.
+    /// Coerces the value to a boolean.
+    ///
+    /// The coercion follows JSON Logic rules:
+    /// - `null` is `false`
+    /// - `false` is `false`
+    /// - Empty string is `false`
+    /// - Empty array is `false`
+    /// - Empty object is `false`
+    /// - `0` is `false`
+    /// - Everything else is `true`
+    #[inline]
     pub fn coerce_to_bool(&self) -> bool {
         match self {
+            // Fast path for common cases
             DataValue::Bool(b) => *b,
             DataValue::Null => false,
-            DataValue::Number(n) => match n {
-                NumberValue::Integer(i) => *i != 0,
-                NumberValue::Float(f) => *f != 0.0 && !f.is_nan(),
+            
+            // Number case - only 0 is false
+            DataValue::Number(n) => {
+                // Fast path for integers
+                if let NumberValue::Integer(i) = n {
+                    *i != 0
+                } else {
+                    n.as_f64() != 0.0
+                }
             },
+            
+            // String case - only empty string is false
             DataValue::String(s) => !s.is_empty(),
-            DataValue::Array(a) => !a.is_empty(),
-            DataValue::Object(o) => !o.is_empty(),
+            
+            // Array case - only empty array is false
+            DataValue::Array(items) => !items.is_empty(),
+            
+            // Object case - only empty object is false
+            DataValue::Object(entries) => !entries.is_empty(),
         }
     }
     

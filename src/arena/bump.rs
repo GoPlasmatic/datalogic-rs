@@ -564,8 +564,42 @@ impl DataArena {
             return self.empty_array();
         }
         
-        // For small arrays, allocate directly in the arena
-        self.alloc_slice_clone(values)
+        // For very small arrays, use specialized methods
+        match values.len() {
+            1 => {
+                let ptr = self.bump.alloc(values[0].clone());
+                std::slice::from_ref(ptr)
+            },
+            2 => {
+                // Allocate both elements at once for better locality
+                let ptr = self.bump.alloc_layout(std::alloc::Layout::array::<DataValue<'a>>(2).unwrap())
+                    .cast::<DataValue<'a>>();
+                
+                unsafe {
+                    // Clone elements directly
+                    std::ptr::write(ptr.as_ptr(), values[0].clone());
+                    std::ptr::write(ptr.as_ptr().add(1), values[1].clone());
+                    
+                    std::slice::from_raw_parts(ptr.as_ptr(), 2)
+                }
+            },
+            3 => {
+                // Allocate all three elements at once for better locality
+                let ptr = self.bump.alloc_layout(std::alloc::Layout::array::<DataValue<'a>>(3).unwrap())
+                    .cast::<DataValue<'a>>();
+                
+                unsafe {
+                    // Clone elements directly
+                    std::ptr::write(ptr.as_ptr(), values[0].clone());
+                    std::ptr::write(ptr.as_ptr().add(1), values[1].clone());
+                    std::ptr::write(ptr.as_ptr().add(2), values[2].clone());
+                    
+                    std::slice::from_raw_parts(ptr.as_ptr(), 3)
+                }
+            },
+            // For 4-8 elements, use the standard allocation approach
+            _ => self.alloc_slice_clone(values),
+        }
     }
 }
 

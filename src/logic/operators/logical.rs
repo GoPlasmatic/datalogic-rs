@@ -22,50 +22,66 @@ pub enum LogicalOp {
     DoubleNegation,
 }
 
-/// Evaluates a logical AND operation.
+/// Evaluates an AND operation.
 pub fn eval_and<'a>(
     args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
+    // Fast path for empty arguments
     if args.is_empty() {
         return Ok(arena.true_value());
     }
-
-    let mut last_result = arena.true_value();
-
-    for arg in args {
-        let result = evaluate(arg, data, arena)?;
-        if !result.coerce_to_bool() {
-            return Ok(result);
-        }
-        last_result = result;
+    
+    // Fast path for single argument
+    if args.len() == 1 {
+        let value = evaluate(args[0], data, arena)?;
+        return Ok(arena.bool_value(value.coerce_to_bool()));
     }
-
-    Ok(last_result)
+    
+    // Evaluate each argument with short-circuit evaluation
+    for arg in args {
+        let value = evaluate(arg, data, arena)?;
+        
+        // If any argument is false, the result is false
+        if !value.coerce_to_bool() {
+            return Ok(arena.false_value());
+        }
+    }
+    
+    // All arguments are true
+    Ok(arena.true_value())
 }
 
-/// Evaluates a logical OR operation.
+/// Evaluates an OR operation.
 pub fn eval_or<'a>(
     args: &'a [&'a Token<'a>],
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
+    // Fast path for empty arguments
     if args.is_empty() {
         return Ok(arena.false_value());
     }
-
-    let mut last_result = arena.false_value();
-
-    for arg in args {
-        let result = evaluate(arg, data, arena)?;
-        if result.coerce_to_bool() {
-            return Ok(result);
-        }
-        last_result = result;
+    
+    // Fast path for single argument
+    if args.len() == 1 {
+        let value = evaluate(args[0], data, arena)?;
+        return Ok(arena.bool_value(value.coerce_to_bool()));
     }
-
-    Ok(last_result)
+    
+    // Evaluate each argument with short-circuit evaluation
+    for arg in args {
+        let value = evaluate(arg, data, arena)?;
+        
+        // If any argument is true, the result is true
+        if value.coerce_to_bool() {
+            return Ok(arena.true_value());
+        }
+    }
+    
+    // All arguments are false
+    Ok(arena.false_value())
 }
 
 /// Evaluates a logical NOT operation.

@@ -131,16 +131,58 @@ fn evaluate_custom_operator<'a>(
     }
 }
 
-fn evaluate_arguments<'a>(args: &'a Token<'a>, data: &'a DataValue<'a>, arena: &'a DataArena) -> &'a [DataValue<'a>] {
-    let arg = evaluate(args, data, arena).unwrap();
-    let args = match arg {
-        DataValue::Array(items) => items,
-        _ => arena.alloc_slice_clone(&[arg.clone()]),
-    };
-    return args;
+/// Evaluates arguments and returns them as a slice of DataValues
+/// This function is optimized to avoid unnecessary allocations
+#[inline]
+fn evaluate_arguments<'a>(args: &'a Token<'a>, data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a [DataValue<'a>]> {
+    match args {
+        // Fast path for array literals - evaluate each item
+        Token::ArrayLiteral(items) => {
+            // Fast path for empty arrays
+            if items.is_empty() {
+                return Ok(arena.empty_array());
+            }
+            
+            // Get a vector from the arena's pool
+            let mut values = arena.get_data_value_vec();
+            values.reserve(items.len());
+            
+            // Evaluate each item in the array
+            for item in items {
+                let value = evaluate(item, data, arena)?;
+                values.push(value.clone());
+            }
+            
+            // Create the array slice
+            let result = arena.alloc_data_value_slice(&values);
+            
+            // Return the vector to the pool
+            arena.release_data_value_vec(values);
+            
+            // Return the array slice
+            Ok(result)
+        },
+        
+        // For other token types, evaluate to a single value and wrap in a slice
+        _ => {
+            let value = evaluate(args, data, arena)?;
+            match value {
+                // If the result is already an array, use it directly
+                DataValue::Array(items) => Ok(items),
+                
+                // For single values, create a one-element slice
+                _ => {
+                    // For single values, use a more efficient allocation method
+                    let slice = arena.alloc_slice_fill_with(1, |_| value.clone());
+                    Ok(slice)
+                }
+            }
+        }
+    }
 }
 
 /// Helper function to evaluate an operator with a token argument
+#[inline]
 fn evaluate_operator<'a>(
     op_type: OperatorType,
     args: &'a Token<'a>,
@@ -179,14 +221,18 @@ fn evaluate_operator<'a>(
         },
         
         // Arithmetic operators
-        OperatorType::Arithmetic(arith_op) => match arith_op {
-            arithmetic::ArithmeticOp::Add => arithmetic::eval_add(evaluate_arguments(args, data, arena), arena),
-            arithmetic::ArithmeticOp::Subtract => arithmetic::eval_sub(evaluate_arguments(args, data, arena), arena),
-            arithmetic::ArithmeticOp::Multiply => arithmetic::eval_mul(evaluate_arguments(args, data, arena), arena),
-            arithmetic::ArithmeticOp::Divide => arithmetic::eval_div(evaluate_arguments(args, data, arena), arena),
-            arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(evaluate_arguments(args, data, arena), arena),
-            arithmetic::ArithmeticOp::Min => arithmetic::eval_min(evaluate_arguments(args, data, arena)),
-            arithmetic::ArithmeticOp::Max => arithmetic::eval_max(evaluate_arguments(args, data, arena)),
+        OperatorType::Arithmetic(arith_op) => {
+            // Evaluate arguments once and pass to the appropriate function
+            let args_result = evaluate_arguments(args, data, arena)?;
+            match arith_op {
+                arithmetic::ArithmeticOp::Add => arithmetic::eval_add(args_result, arena),
+                arithmetic::ArithmeticOp::Subtract => arithmetic::eval_sub(args_result, arena),
+                arithmetic::ArithmeticOp::Multiply => arithmetic::eval_mul(args_result, arena),
+                arithmetic::ArithmeticOp::Divide => arithmetic::eval_div(args_result, arena),
+                arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(args_result, arena),
+                arithmetic::ArithmeticOp::Min => arithmetic::eval_min(args_result),
+                arithmetic::ArithmeticOp::Max => arithmetic::eval_max(args_result),
+            }
         },
         
         // Logical operators

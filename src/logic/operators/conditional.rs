@@ -23,57 +23,32 @@ pub fn eval_if<'a>(
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Fast path for common case: if with 3 arguments (condition, then, else)
-    if args.len() == 3 {
-        let condition = evaluate(&args[0], data, arena)?;
-        if condition.coerce_to_bool() {
-            return evaluate(&args[1], data, arena);
-        } else {
-            return evaluate(&args[2], data, arena);
-        }
-    }
-    
-    // If no arguments, return null
+    // Fast path for invalid arguments
     if args.is_empty() {
         return Ok(arena.null_value());
     }
     
-    // If only one argument, evaluate it and return the result
-    if args.len() == 1 {
-        return evaluate(&args[0], data, arena);
-    }
-    
-    // If only two arguments (condition and result), evaluate condition
-    // and return result if truthy, otherwise return null
-    if args.len() == 2 {
-        let condition = evaluate(&args[0], data, arena)?;
-        if condition.coerce_to_bool() {
-            return evaluate(&args[1], data, arena);
-        }
-        return Ok(arena.null_value());
-    }
-    
-    // Process condition-result pairs
+    // Process arguments in pairs (condition, value)
     let mut i = 0;
-    while i < args.len() - 1 {
+    while i + 1 < args.len() {
         // Evaluate the condition
-        let condition = evaluate(&args[i], data, arena)?;
+        let condition = evaluate(args[i], data, arena)?;
         
-        // If the condition is truthy, evaluate and return the result
+        // If the condition is true, return the value
         if condition.coerce_to_bool() {
-            return evaluate(&args[i + 1], data, arena);
+            return evaluate(args[i + 1], data, arena);
         }
         
-        // Move to the next condition-result pair
+        // Move to the next pair
         i += 2;
     }
     
-    // If there's an odd number of arguments, the last one is the else case
-    if i == args.len() - 1 {
-        return evaluate(&args[i], data, arena);
+    // If there's an odd number of arguments, the last one is the "else" value
+    if i < args.len() {
+        return evaluate(args[i], data, arena);
     }
     
-    // If no conditions matched and no else case, return null
+    // No conditions matched and no else value
     Ok(arena.null_value())
 }
 
@@ -83,14 +58,18 @@ pub fn eval_ternary<'a>(
     data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
+    // Fast path for invalid arguments
     if args.len() != 3 {
         return Err(LogicError::OperatorError {
             operator: "?:".to_string(),
             reason: format!("Expected 3 arguments, got {}", args.len()),
         });
     }
-
+    
+    // Evaluate the condition
     let condition = evaluate(args[0], data, arena)?;
+    
+    // Return the appropriate branch based on the condition
     if condition.coerce_to_bool() {
         evaluate(args[1], data, arena)
     } else {

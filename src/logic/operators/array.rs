@@ -276,7 +276,7 @@ pub fn eval_filter<'a>(
     let items = match array {
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
-        DataValue::Null => return Ok(arena.alloc(DataValue::Array(&[]))),
+        DataValue::Null => return Ok(arena.empty_array_value()),
         _ => return Err(LogicError::OperatorError {
             operator: "filter".to_string(),
             reason: format!("First argument must be an array, got {:?}", array),
@@ -285,15 +285,43 @@ pub fn eval_filter<'a>(
     
     // Fast path for empty array
     if items.is_empty() {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(arena.empty_array_value());
     }
     
     // Cache the condition token
     let condition = args[1];
     
-    // Filter the array
-    let mut results = arena.get_data_value_vec();
+    // Optimization: Pre-scan to estimate result size
+    // For small arrays (<=16 items), just use the array length as capacity
+    // For larger arrays, sample a few items to estimate selectivity
+    let estimated_capacity = if items.len() <= 16 {
+        items.len()
+    } else {
+        // Sample up to 8 items to estimate selectivity
+        let sample_size = std::cmp::min(8, items.len());
+        let mut sample_count = 0;
+        
+        for i in 0..sample_size {
+            // Use evenly distributed indices for better sampling
+            let idx = (i * items.len()) / sample_size;
+            let item = &items[idx];
+            
+            // Evaluate the condition with the item as context
+            if evaluate(condition, item, arena)?.coerce_to_bool() {
+                sample_count += 1;
+            }
+        }
+        
+        // Estimate capacity based on sample selectivity
+        let selectivity = sample_count as f64 / sample_size as f64;
+        std::cmp::max(4, (items.len() as f64 * selectivity).ceil() as usize)
+    };
     
+    // Get a vector from the arena's pool with the estimated capacity
+    let mut results = arena.get_data_value_vec();
+    results.reserve(estimated_capacity);
+    
+    // Filter the array
     for item in items.iter() {
         // Evaluate the condition with the item as context
         if evaluate(condition, item, arena)?.coerce_to_bool() {
@@ -302,10 +330,13 @@ pub fn eval_filter<'a>(
     }
     
     // Create the result array
-    let result_array = DataValue::Array(arena.alloc_slice_clone(&results));
+    let result = DataValue::Array(arena.alloc_slice_clone(&results));
+    
+    // Return the vector to the pool
     arena.release_data_value_vec(results);
     
-    Ok(arena.alloc(result_array))
+    // Return the result array
+    Ok(arena.alloc(result))
 }
 
 /// Helper function to check if a token is a variable with a specific path

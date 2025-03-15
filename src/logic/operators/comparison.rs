@@ -40,6 +40,11 @@ pub fn eval_equal<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena:
         let left = evaluate(args[i], data, arena)?;
         let right = evaluate(args[i + 1], data, arena)?;
 
+        // Fast path for identical references
+        if std::ptr::eq(left as *const DataValue, right as *const DataValue) {
+            continue;
+        }
+
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
                 if a.as_f64() != b.as_f64() {
@@ -57,12 +62,26 @@ pub fn eval_equal<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena:
                 }
             }
             (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.true_value());
+                continue;
             }
             _ => {
-                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
-                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
-                if left_num.as_f64() != right_num.as_f64() {
+                // Try numeric coercion first
+                if let (Some(a), Some(b)) = (left.coerce_to_number(), right.coerce_to_number()) {
+                    if a.as_f64() != b.as_f64() {
+                        return Ok(arena.false_value());
+                    }
+                    continue;
+                }
+                
+                // Fall back to string comparison
+                let left_str = left.coerce_to_string(arena);
+                let right_str = right.coerce_to_string(arena);
+                
+                if let (DataValue::String(a), DataValue::String(b)) = (&left_str, &right_str) {
+                    if a != b {
+                        return Ok(arena.false_value());
+                    }
+                } else {
                     return Ok(arena.false_value());
                 }
             }
