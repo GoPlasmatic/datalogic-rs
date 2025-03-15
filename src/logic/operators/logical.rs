@@ -35,22 +35,24 @@ pub fn eval_and<'a>(
     
     // Fast path for single argument
     if args.len() == 1 {
-        let value = evaluate(args[0], data, arena)?;
-        return Ok(arena.bool_value(value.coerce_to_bool()));
+        return evaluate(args[0], data, arena);
     }
     
     // Evaluate each argument with short-circuit evaluation
+    let mut last_value = arena.true_value();
+    
     for arg in args {
         let value = evaluate(arg, data, arena)?;
+        last_value = value;
         
-        // If any argument is false, the result is false
+        // If any argument is false, short-circuit and return that value
         if !value.coerce_to_bool() {
-            return Ok(arena.false_value());
+            return Ok(value);
         }
     }
     
-    // All arguments are true
-    Ok(arena.true_value())
+    // All arguments are true, return the last value
+    Ok(last_value)
 }
 
 /// Evaluates an OR operation.
@@ -66,22 +68,24 @@ pub fn eval_or<'a>(
     
     // Fast path for single argument
     if args.len() == 1 {
-        let value = evaluate(args[0], data, arena)?;
-        return Ok(arena.bool_value(value.coerce_to_bool()));
+        return evaluate(args[0], data, arena);
     }
     
     // Evaluate each argument with short-circuit evaluation
+    let mut last_value = arena.false_value();
+    
     for arg in args {
         let value = evaluate(arg, data, arena)?;
+        last_value = value;
         
-        // If any argument is true, the result is true
+        // If any argument is true, short-circuit and return that value
         if value.coerce_to_bool() {
-            return Ok(arena.true_value());
+            return Ok(value);
         }
     }
     
-    // All arguments are false
-    Ok(arena.false_value())
+    // All arguments are false, return the last value
+    Ok(last_value)
 }
 
 /// Evaluates a logical NOT operation.

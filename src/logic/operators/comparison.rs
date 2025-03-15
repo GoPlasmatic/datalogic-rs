@@ -64,25 +64,60 @@ pub fn eval_equal<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena:
             (DataValue::Null, DataValue::Null) => {
                 continue;
             }
+            (DataValue::Number(_), DataValue::String(s)) => {
+                // Try to parse the string as a number
+                if let Ok(num) = s.parse::<f64>() {
+                    let left_num = left.coerce_to_number().unwrap();
+                    if left_num.as_f64() != num {
+                        return Ok(arena.false_value());
+                    }
+                } else {
+                    // String is not a valid number
+                    return Err(LogicError::NaNError);
+                }
+            }
+            (DataValue::String(s), DataValue::Number(_)) => {
+                // Try to parse the string as a number
+                if let Ok(num) = s.parse::<f64>() {
+                    let right_num = right.coerce_to_number().unwrap();
+                    if num != right_num.as_f64() {
+                        return Ok(arena.false_value());
+                    }
+                } else {
+                    // String is not a valid number
+                    return Err(LogicError::NaNError);
+                }
+            }
+            (DataValue::Array(_), DataValue::Array(_)) => {
+                // Arrays should be compared by reference, not by value
+                return Err(LogicError::NaNError);
+            }
+            (DataValue::Array(_), _) | (_, DataValue::Array(_)) => {
+                // Arrays can't be compared with non-arrays
+                return Err(LogicError::NaNError);
+            }
+            (DataValue::Object(_), _) | (_, DataValue::Object(_)) => {
+                // Objects can't be compared with anything else
+                return Err(LogicError::NaNError);
+            }
             _ => {
-                // Try numeric coercion first
+                // Try numeric coercion for other cases
                 if let (Some(a), Some(b)) = (left.coerce_to_number(), right.coerce_to_number()) {
                     if a.as_f64() != b.as_f64() {
                         return Ok(arena.false_value());
                     }
-                    continue;
-                }
-                
-                // Fall back to string comparison
-                let left_str = left.coerce_to_string(arena);
-                let right_str = right.coerce_to_string(arena);
-                
-                if let (DataValue::String(a), DataValue::String(b)) = (&left_str, &right_str) {
-                    if a != b {
+                } else {
+                    // If numeric coercion fails, fall back to string comparison
+                    let left_str = left.coerce_to_string(arena);
+                    let right_str = right.coerce_to_string(arena);
+                    
+                    if let (DataValue::String(a), DataValue::String(b)) = (&left_str, &right_str) {
+                        if a != b {
+                            return Ok(arena.false_value());
+                        }
+                    } else {
                         return Ok(arena.false_value());
                     }
-                } else {
-                    return Ok(arena.false_value());
                 }
             }
         }
