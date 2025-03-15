@@ -43,7 +43,10 @@ impl<T> VectorPool<T> {
     fn release(&mut self, vec: Vec<T>) {
         // Only keep vectors that have a reasonable capacity to avoid memory bloat
         if vec.capacity() <= self.default_capacity * 4 {
-            self.vectors.push(vec);
+            // Limit the pool size to avoid excessive memory usage
+            if self.vectors.len() < 32 {
+                self.vectors.push(vec);
+            }
         }
     }
 }

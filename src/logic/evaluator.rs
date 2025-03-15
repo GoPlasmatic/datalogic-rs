@@ -41,6 +41,9 @@ pub fn evaluate<'a>(
     
     // Handle other token types
     match token {
+        // Already handled above
+        Token::Literal(_) | Token::Variable { .. } => unreachable!(),
+        
         // Dynamic variables evaluate the path expression first
         Token::DynamicVariable { path_expr, default } => {
             // Evaluate the path expression
@@ -107,10 +110,6 @@ pub fn evaluate<'a>(
             // Pass the tokens to the custom operator evaluator
             evaluate_custom_operator(name, tokens_refs, data, arena)
         },
-
-        // Already handled above
-        Token::Literal(_) => unreachable!(),
-        Token::Variable { .. } => unreachable!(),
     }
 }
 

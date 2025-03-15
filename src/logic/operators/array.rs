@@ -207,7 +207,7 @@ pub fn eval_map<'a>(
     let items = match array {
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
-        DataValue::Null => return Ok(arena.alloc(DataValue::Array(&[]))),
+        DataValue::Null => return Ok(arena.empty_array_value()),
         _ => return Err(LogicError::OperatorError {
             operator: "map".to_string(),
             reason: format!("First argument must be an array, got {:?}", array),
@@ -216,27 +216,31 @@ pub fn eval_map<'a>(
     
     // Fast path for empty array
     if items.is_empty() {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(arena.empty_array_value());
     }
     
     // Cache the function token
     let function = args[1];
     
-    // Map each item in the array
-    let mut results = arena.get_data_value_vec();
-    results.reserve(items.len());
+    // Get a vector from the arena's pool to avoid allocation
+    let mut result_values = arena.get_data_value_vec();
+    result_values.reserve(items.len()); // Pre-allocate for expected size
     
+    // Apply the function to each item
     for item in items.iter() {
         // Evaluate the function with the item as context
         let result = evaluate(function, item, arena)?;
-        results.push(result.clone());
+        result_values.push(result.clone());
     }
     
     // Create the result array
-    let result_array = DataValue::Array(arena.alloc_slice_clone(&results));
-    arena.release_data_value_vec(results);
+    let result = DataValue::Array(arena.alloc_slice_clone(&result_values));
     
-    Ok(arena.alloc(result_array))
+    // Return the vector to the pool
+    arena.release_data_value_vec(result_values);
+    
+    // Return the result array
+    Ok(arena.alloc(result))
 }
 
 /// Evaluates a filter operation.

@@ -39,7 +39,8 @@ pub fn evaluate_variable<'a>(
             .map(|pos| start + pos)
             .unwrap_or(path_bytes.len());
         
-        // Extract the current component
+        // Extract the current component - we know the input is valid UTF-8
+        // Use from_utf8_unchecked to avoid validation overhead
         let component = unsafe { std::str::from_utf8_unchecked(&path_bytes[start..end]) };
         
         // Process this component
@@ -117,60 +118,20 @@ fn evaluate_simple_path<'a>(
 #[inline]
 fn find_in_object<'a>(obj: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue<'a>> {
     if let DataValue::Object(entries) = obj {
-        // Fast path for small objects (common case)
-        if entries.len() <= 8 {
-            for (k, v) in *entries {
-                // First check if the pointers are the same (interned strings)
-                if std::ptr::eq(*k as *const str, key as *const str) {
-                    return Some(v);
-                }
-                
-                // Then check if the lengths are different (quick rejection)
-                if k.len() != key.len() {
-                    continue;
-                }
-                
-                // For short keys, compare bytes directly instead of using string comparison
-                if k.len() <= 16 {
-                    let k_bytes = k.as_bytes();
-                    let key_bytes = key.as_bytes();
-                    let mut equal = true;
-                    
-                    // Manual byte-by-byte comparison
-                    for i in 0..k.len() {
-                        if k_bytes[i] != key_bytes[i] {
-                            equal = false;
-                            break;
-                        }
-                    }
-                    
-                    if equal {
-                        return Some(v);
-                    }
-                } else {
-                    // For longer keys, use the standard string comparison
-                    if *k == key {
-                        return Some(v);
-                    }
-                }
+        // If the object has more than 8 entries, use binary search
+        // This assumes entries are sorted by key, which should be enforced elsewhere
+        if entries.len() > 8 {
+            // Binary search for the key
+            match entries.binary_search_by_key(&key, |&(k, _)| k) {
+                Ok(idx) => return Some(&entries[idx].1),
+                Err(_) => return None,
             }
-        } else {
-            // For larger objects, use the standard approach
-            for (k, v) in *entries {
-                // First check if the pointers are the same (interned strings)
-                if std::ptr::eq(*k as *const str, key as *const str) {
-                    return Some(v);
-                }
-                
-                // Then check if the lengths are different (quick rejection)
-                if k.len() != key.len() {
-                    continue;
-                }
-                
-                // Finally, compare the actual strings
-                if *k == key {
-                    return Some(v);
-                }
+        }
+        
+        // For small objects, linear search is faster due to cache locality
+        for &(k, ref v) in *entries {
+            if k == key {
+                return Some(v);
             }
         }
     }

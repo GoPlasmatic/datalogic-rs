@@ -71,7 +71,10 @@ impl<'a> DataValue<'a> {
     /// If the array is empty, returns a value with the preallocated empty array.
     /// For small arrays (up to 8 elements), uses an optimized allocation method.
     pub fn array(arena: &'a DataArena, values: &[DataValue<'a>]) -> Self {
-        if values.len() <= 8 {
+        if values.is_empty() {
+            // Use the preallocated empty array
+            return DataValue::Array(arena.empty_array());
+        } else if values.len() <= 8 {
             // Use the optimized small array allocation for common case
             DataValue::Array(arena.alloc_small_data_value_array(values))
         } else {
