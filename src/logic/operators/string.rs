@@ -65,10 +65,7 @@ pub fn eval_substr<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 || args.len() > 3 {
-        return Err(LogicError::OperatorError {
-            operator: "substr".to_string(),
-            reason: format!("Expected 2 or 3 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
 
     let string = evaluate(args[0], data, arena)?;

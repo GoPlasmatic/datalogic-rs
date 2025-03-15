@@ -15,10 +15,7 @@ pub fn eval_log<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(LogicError::OperatorError {
-            operator: "log".to_string(),
-            reason: "Expected at least 1 argument, got 0".to_string(),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
 
     let value = evaluate(args[0], data, arena)?;

@@ -73,10 +73,7 @@ pub fn eval_missing_some<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "missing_some".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
 
     // Evaluate the first argument (minimum number of required fields)

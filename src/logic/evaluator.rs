@@ -123,10 +123,7 @@ fn evaluate_custom_operator<'a>(
     match name {
         _ => {
             // Custom operators are not yet implemented
-            Err(super::error::LogicError::OperatorError {
-                operator: format!("Custom operator '{}'", name),
-                reason: "Custom operators are not yet supported".to_string(),
-            })
+            Err(super::error::LogicError::InvalidArgumentsError)
         }
     }
 }
@@ -280,11 +277,8 @@ fn evaluate_operator<'a>(
         
         OperatorType::ArrayLiteral => {
             // This should be handled by the Token::ArrayLiteral case in evaluate()
-            Err(super::error::LogicError::OperatorError {
-                operator: "ArrayLiteral".to_string(),
-                reason: "ArrayLiteral operator should be handled by Token::ArrayLiteral".to_string(),
-            })
-        },
+            Err(super::error::LogicError::InvalidArgumentsError)
+        }
     }
 }
 

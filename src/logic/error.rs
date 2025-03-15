@@ -18,20 +18,6 @@ pub enum LogicError {
         reason: String,
     },
     
-    /// Error evaluating a logic expression.
-    EvaluationError {
-        /// The reason for the evaluation failure.
-        reason: String,
-    },
-    
-    /// Error with an operator.
-    OperatorError {
-        /// The name of the operator.
-        operator: String,
-        /// The reason for the operator failure.
-        reason: String,
-    },
-    
     /// Error accessing a variable.
     VariableError {
         /// The variable path that caused the error.
@@ -40,14 +26,6 @@ pub enum LogicError {
         reason: String,
     },
     
-    /// Error with a type mismatch.
-    TypeMismatch {
-        /// The expected type.
-        expected: String,
-        /// The actual type found.
-        found: String,
-    },
-
     NaNError,
 
     InvalidArgumentsError,
@@ -62,17 +40,8 @@ impl fmt::Display for LogicError {
             LogicError::ParseError { reason } => {
                 write!(f, "Parse error: {}", reason)
             }
-            LogicError::EvaluationError { reason } => {
-                write!(f, "Evaluation error: {}", reason)
-            }
-            LogicError::OperatorError { operator, reason } => {
-                write!(f, "Operator '{}' error: {}", operator, reason)
-            }
             LogicError::VariableError { path, reason } => {
                 write!(f, "Variable '{}' error: {}", path, reason)
-            }
-            LogicError::TypeMismatch { expected, found } => {
-                write!(f, "Type mismatch: expected {}, found {}", expected, found)
             }
             LogicError::NaNError => {
                 write!(f, "NaN error")
@@ -117,21 +86,6 @@ impl LogicError {
         }
     }
     
-    /// Creates an evaluation error with the given reason.
-    pub fn evaluation_error(reason: impl Into<String>) -> Self {
-        LogicError::EvaluationError {
-            reason: reason.into(),
-        }
-    }
-    
-    /// Creates an operator error with the given operator name and reason.
-    pub fn operator_error(operator: impl Into<String>, reason: impl Into<String>) -> Self {
-        LogicError::OperatorError {
-            operator: operator.into(),
-            reason: reason.into(),
-        }
-    }
-    
     /// Creates a variable error with the given path and reason.
     pub fn variable_error(path: impl Into<String>, reason: impl Into<String>) -> Self {
         LogicError::VariableError {
@@ -139,26 +93,10 @@ impl LogicError {
             reason: reason.into(),
         }
     }
-    
-    /// Creates a type mismatch error with the expected and found types.
-    pub fn type_mismatch(expected: impl Into<String>, found: impl Into<String>) -> Self {
-        LogicError::TypeMismatch {
-            expected: expected.into(),
-            found: found.into(),
-        }
-    }
-    
+       
     /// Creates a custom error with the given message.
     pub fn custom(message: impl Into<String>) -> Self {
         LogicError::Custom(message.into())
-    }
-    
-    /// Creates an argument count error for an operator.
-    pub fn argument_count_error(operator: impl Into<String>, expected: usize, got: usize) -> Self {
-        LogicError::OperatorError {
-            operator: operator.into(),
-            reason: format!("Expected {} argument(s), got {}", expected, got),
-        }
     }
 }
 
@@ -175,38 +113,12 @@ mod tests {
     }
 
     #[test]
-    fn test_evaluation_error() {
-        let err = LogicError::EvaluationError {
-            reason: "division by zero".to_string(),
-        };
-        assert_eq!(err.to_string(), "Evaluation error: division by zero");
-    }
-
-    #[test]
-    fn test_operator_error() {
-        let err = LogicError::OperatorError {
-            operator: "+".to_string(),
-            reason: "invalid operands".to_string(),
-        };
-        assert_eq!(err.to_string(), "Operator '+' error: invalid operands");
-    }
-
-    #[test]
     fn test_variable_error() {
         let err = LogicError::VariableError {
             path: "user.age".to_string(),
             reason: "not found".to_string(),
         };
         assert_eq!(err.to_string(), "Variable 'user.age' error: not found");
-    }
-
-    #[test]
-    fn test_type_mismatch() {
-        let err = LogicError::TypeMismatch {
-            expected: "number".to_string(),
-            found: "string".to_string(),
-        };
-        assert_eq!(err.to_string(), "Type mismatch: expected number, found string");
     }
 
     #[test]

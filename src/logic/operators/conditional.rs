@@ -60,10 +60,7 @@ pub fn eval_ternary<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 3 {
-        return Err(LogicError::OperatorError {
-            operator: "?:".to_string(),
-            reason: format!("Expected 3 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the condition

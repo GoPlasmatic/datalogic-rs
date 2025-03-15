@@ -196,9 +196,9 @@ impl<'a> ValueComparison<'a> for DataValue<'a> {
             // Coerce to numbers for comparison
             (a, b) => {
                 let a_num = a.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", a.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 let b_num = b.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", b.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 
                 Ok(a_num.as_f64() > b_num.as_f64())
             }
@@ -213,9 +213,9 @@ impl<'a> ValueComparison<'a> for DataValue<'a> {
             // Coerce to numbers for comparison
             (a, b) => {
                 let a_num = a.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", a.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 let b_num = b.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", b.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 
                 Ok(a_num.as_f64() >= b_num.as_f64())
             }
@@ -230,9 +230,9 @@ impl<'a> ValueComparison<'a> for DataValue<'a> {
             // Coerce to numbers for comparison
             (a, b) => {
                 let a_num = a.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", a.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 let b_num = b.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", b.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 
                 Ok(a_num.as_f64() < b_num.as_f64())
             }
@@ -247,9 +247,9 @@ impl<'a> ValueComparison<'a> for DataValue<'a> {
             // Coerce to numbers for comparison
             (a, b) => {
                 let a_num = a.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", a.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 let b_num = b.coerce_to_number().ok_or_else(|| 
-                    LogicError::type_mismatch("number", b.type_name().to_string()))?;
+                    LogicError::NaNError)?;
                 
                 Ok(a_num.as_f64() <= b_num.as_f64())
             }

@@ -15,10 +15,7 @@ pub fn eval_in<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "in".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
 
     let needle = evaluate(args[0], data, arena)?;

@@ -38,10 +38,7 @@ pub fn eval_all<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "all".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the first argument to get the array
@@ -52,10 +49,7 @@ pub fn eval_all<'a>(
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
         DataValue::Null => return Ok(arena.false_value()),
-        _ => return Err(LogicError::OperatorError {
-            operator: "all".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => return Err(LogicError::InvalidArgumentsError),
     };
     
     // If the array is empty, return false (vacuously false)
@@ -86,10 +80,7 @@ pub fn eval_some<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "some".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the first argument to get the array
@@ -100,10 +91,7 @@ pub fn eval_some<'a>(
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
         DataValue::Null => return Ok(arena.false_value()),
-        _ => return Err(LogicError::OperatorError {
-            operator: "some".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => return Err(LogicError::InvalidArgumentsError),
     };
     
     // If the array is empty, return false (vacuously false)
@@ -134,10 +122,7 @@ pub fn eval_none<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "none".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the first argument to get the array
@@ -148,10 +133,7 @@ pub fn eval_none<'a>(
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
         DataValue::Null => return Ok(arena.true_value()),
-        _ => return Err(LogicError::OperatorError {
-            operator: "none".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => return Err(LogicError::InvalidArgumentsError),
     };
     
     // If the array is empty, return true (vacuously true)
@@ -194,10 +176,7 @@ pub fn eval_map<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "map".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the first argument to get the array
@@ -208,10 +187,7 @@ pub fn eval_map<'a>(
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
         DataValue::Null => return Ok(arena.empty_array_value()),
-        _ => return Err(LogicError::OperatorError {
-            operator: "map".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => return Err(LogicError::InvalidArgumentsError),
     };
     
     // Fast path for empty array
@@ -263,10 +239,7 @@ pub fn eval_filter<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
-        return Err(LogicError::OperatorError {
-            operator: "filter".to_string(),
-            reason: format!("Expected 2 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the first argument to get the array
@@ -277,10 +250,7 @@ pub fn eval_filter<'a>(
         DataValue::Array(items) => items,
         // Fast path for common case of null (treat as empty array)
         DataValue::Null => return Ok(arena.empty_array_value()),
-        _ => return Err(LogicError::OperatorError {
-            operator: "filter".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => return Err(LogicError::InvalidArgumentsError),
     };
     
     // Fast path for empty array
@@ -514,10 +484,7 @@ fn is_arithmetic_reduce_pattern<'a>(
 pub fn eval_reduce<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() < 2 || args.len() > 3 {
-        return Err(LogicError::OperatorError {
-            operator: "reduce".to_string(),
-            reason: format!("Expected 2 or 3 arguments, got {}", args.len()),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Evaluate the first argument to get the array
@@ -532,15 +499,9 @@ pub fn eval_reduce<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena
             if args.len() == 3 {
                 return evaluate(args[2], data, arena);
             }
-            return Err(LogicError::OperatorError {
-                operator: "reduce".to_string(),
-                reason: "Cannot reduce empty array without initial value".to_string(),
-            });
+            return Err(LogicError::InvalidArgumentsError);
         },
-        _ => return Err(LogicError::OperatorError {
-            operator: "reduce".to_string(),
-            reason: format!("First argument must be an array, got {:?}", array),
-        }),
+        _ => return Err(LogicError::InvalidArgumentsError),
     };
     
     // Fast path for empty array
@@ -549,10 +510,7 @@ pub fn eval_reduce<'a>(args: &'a [&'a Token<'a>], data: &'a DataValue<'a>, arena
         if args.len() == 3 {
             return evaluate(args[2], data, arena);
         }
-        return Err(LogicError::OperatorError {
-            operator: "reduce".to_string(),
-            reason: "Cannot reduce empty array without initial value".to_string(),
-        });
+        return Err(LogicError::InvalidArgumentsError);
     }
     
     // Get the initial value
