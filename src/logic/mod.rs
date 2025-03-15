@@ -20,7 +20,7 @@ pub use error::{LogicError, Result};
 // Re-export operator types
 pub use operators::comparison::ComparisonOp;
 pub use operators::arithmetic::ArithmeticOp;
-pub use operators::logical::LogicalOp;
+pub use operators::control::ControlOp;
 // TODO: Fix ownership issues in array operators
 // pub use operators::array::ArrayOp;
 // TODO: Implement string operators
@@ -94,7 +94,7 @@ mod tests {
         
         // The second part of the AND should be optimized to a literal true
         let (op_type, args) = logic.root().as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Logical(LogicalOp::And));
+        assert_eq!(op_type, OperatorType::Control(ControlOp::And));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());

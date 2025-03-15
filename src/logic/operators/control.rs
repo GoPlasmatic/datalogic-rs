@@ -11,7 +11,7 @@ use crate::logic::evaluator::evaluate;
 
 /// Enumeration of logical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogicalOp {
+pub enum ControlOp {
     /// If operator
     If,
     /// Logical AND

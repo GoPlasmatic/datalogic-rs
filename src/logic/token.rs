@@ -4,7 +4,7 @@
 //! optimized for memory efficiency and evaluation performance.
 
 use crate::value::DataValue;
-use super::operators::{ComparisonOp, ArithmeticOp, LogicalOp, StringOp, ArrayOp};
+use super::operators::{ComparisonOp, ArithmeticOp, ControlOp, StringOp, ArrayOp};
 use std::str::FromStr;
 
 /// A token in a logic expression.
@@ -60,7 +60,7 @@ pub enum OperatorType {
     /// Arithmetic operator
     Arithmetic(ArithmeticOp),
     /// Logical operator
-    Logical(LogicalOp),
+    Control(ControlOp),
     /// String operator
     String(StringOp),
     /// Array operator
@@ -192,12 +192,12 @@ impl OperatorType {
                 ArithmeticOp::Min => "min",
                 ArithmeticOp::Max => "max",
             },
-            OperatorType::Logical(op) => match op {
-                LogicalOp::If => "if",
-                LogicalOp::And => "and",
-                LogicalOp::Or => "or",
-                LogicalOp::Not => "!",
-                LogicalOp::DoubleNegation => "!!",
+            OperatorType::Control(op) => match op {
+                ControlOp::If => "if",
+                ControlOp::And => "and",
+                ControlOp::Or => "or",
+                ControlOp::Not => "!",
+                ControlOp::DoubleNegation => "!!",
             },
             OperatorType::String(op) => match op {
                 StringOp::Cat => "cat",
@@ -241,12 +241,12 @@ impl FromStr for OperatorType {
             "%" => Ok(OperatorType::Arithmetic(ArithmeticOp::Modulo)),
             "min" => Ok(OperatorType::Arithmetic(ArithmeticOp::Min)),
             "max" => Ok(OperatorType::Arithmetic(ArithmeticOp::Max)),
-            "and" => Ok(OperatorType::Logical(LogicalOp::And)),
-            "or" => Ok(OperatorType::Logical(LogicalOp::Or)),
-            "!" => Ok(OperatorType::Logical(LogicalOp::Not)),
-            "!!" => Ok(OperatorType::Logical(LogicalOp::DoubleNegation)),
-            "if" => Ok(OperatorType::Logical(LogicalOp::If)),
-            "?:" => Ok(OperatorType::Logical(LogicalOp::If)),
+            "and" => Ok(OperatorType::Control(ControlOp::And)),
+            "or" => Ok(OperatorType::Control(ControlOp::Or)),
+            "!" => Ok(OperatorType::Control(ControlOp::Not)),
+            "!!" => Ok(OperatorType::Control(ControlOp::DoubleNegation)),
+            "if" => Ok(OperatorType::Control(ControlOp::If)),
+            "?:" => Ok(OperatorType::Control(ControlOp::If)),
             "cat" => Ok(OperatorType::String(StringOp::Cat)),
             "substr" => Ok(OperatorType::String(StringOp::Substr)),
             "map" => Ok(OperatorType::Array(ArrayOp::Map)),
@@ -278,8 +278,8 @@ mod tests {
         assert_eq!(OperatorType::Arithmetic(ArithmeticOp::Add).as_str(), "+");
         assert_eq!(OperatorType::from_str("+"), Ok(OperatorType::Arithmetic(ArithmeticOp::Add)));
         
-        assert_eq!(OperatorType::Logical(LogicalOp::And).as_str(), "and");
-        assert_eq!(OperatorType::from_str("and"), Ok(OperatorType::Logical(LogicalOp::And)));
+        assert_eq!(OperatorType::Control(ControlOp::And).as_str(), "and");
+        assert_eq!(OperatorType::from_str("and"), Ok(OperatorType::Control(ControlOp::And)));
         
         assert_eq!(OperatorType::from_str("unknown"), Err("unknown operator"));
     }

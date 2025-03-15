@@ -6,7 +6,7 @@ use crate::arena::DataArena;
 use crate::value::DataValue;
 use super::token::{Token, OperatorType};
 use super::error::Result;
-use super::operators::{comparison, arithmetic, logical, string, missing, array, log, r#in, variable};
+use super::operators::{comparison, arithmetic, control, string, missing, array, log, r#in, variable};
 
 /// Helper function to convert a token to a TokenRefs wrapper
 /// This avoids cloning tokens for lazy evaluation
@@ -233,28 +233,28 @@ fn evaluate_operator<'a>(
         },
         
         // Logical operators
-        OperatorType::Logical(logic_op) => {
-            match logic_op {
-                logical::LogicalOp::If => {
+        OperatorType::Control(control_op) => {
+            match control_op {
+                control::ControlOp::If => {
                     if !args.is_array_literal() {
                         return Err(super::error::LogicError::InvalidArgumentsError);
                     }
-                    logical::eval_if(token_refs, data, arena)
+                    control::eval_if(token_refs, data, arena)
                 },
-                logical::LogicalOp::And => {
+                control::ControlOp::And => {
                     if !args.is_array_literal() {
                         return Err(super::error::LogicError::InvalidArgumentsError);
                     }
-                    logical::eval_and(token_refs, data, arena)
+                    control::eval_and(token_refs, data, arena)
                 },
-                logical::LogicalOp::Or => {
+                control::ControlOp::Or => {
                     if !args.is_array_literal() {
                         return Err(super::error::LogicError::InvalidArgumentsError);
                     }
-                    logical::eval_or(token_refs, data, arena)
+                    control::eval_or(token_refs, data, arena)
                 },
-                logical::LogicalOp::Not => logical::eval_not(token_refs, data, arena),
-                logical::LogicalOp::DoubleNegation => logical::eval_double_negation(token_refs, data, arena),
+                control::ControlOp::Not => control::eval_not(token_refs, data, arena),
+                control::ControlOp::DoubleNegation => control::eval_double_negation(token_refs, data, arena),
             }
         },
         

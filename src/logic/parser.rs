@@ -328,7 +328,7 @@ mod tests {
     use serde_json::json;
     use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::operators::arithmetic::ArithmeticOp;
-    use crate::logic::operators::logical::LogicalOp;
+    use crate::logic::operators::control::ControlOp;
     
     #[test]
     fn test_parse_literals() {
@@ -442,7 +442,7 @@ mod tests {
         assert!(token.is_operator());
         
         let (op_type, args) = token.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Logical(LogicalOp::And));
+        assert_eq!(op_type, OperatorType::Control(ControlOp::And));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
@@ -491,7 +491,7 @@ mod tests {
         assert!(token.is_operator());
         
         let (op_type, args) = token.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Logical(LogicalOp::If));
+        assert_eq!(op_type, OperatorType::Control(ControlOp::If));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
@@ -562,7 +562,7 @@ mod tests {
         assert!(token.is_operator());
         
         let (op_type, args) = token.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Logical(LogicalOp::If));
+        assert_eq!(op_type, OperatorType::Control(ControlOp::If));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());

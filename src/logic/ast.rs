@@ -142,7 +142,7 @@ mod tests {
     use super::*;
     use crate::value::DataValue;
     use crate::logic::operators::comparison::ComparisonOp;
-    use crate::logic::operators::logical::LogicalOp;
+    use crate::logic::operators::control::ControlOp;
     
     #[test]
     fn test_logic_creation() {
@@ -215,11 +215,11 @@ mod tests {
         let arg2 = Logic::literal(DataValue::bool(false), &arena);
         
         // Create a logical operator
-        let logic = Logic::operator(OperatorType::Logical(LogicalOp::And), vec![arg1, arg2], &arena);
+        let logic = Logic::operator(OperatorType::Control(ControlOp::And), vec![arg1, arg2], &arena);
         
         assert!(logic.is_operator());
         let (op_type, args) = logic.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Logical(LogicalOp::And));
+        assert_eq!(op_type, OperatorType::Control(ControlOp::And));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());

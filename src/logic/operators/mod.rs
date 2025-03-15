@@ -4,7 +4,7 @@
 
 pub mod comparison;
 pub mod arithmetic;
-pub mod logical;
+pub mod control;
 pub mod string;
 pub mod missing;
 pub mod array;
@@ -15,6 +15,6 @@ pub mod variable;
 // Re-export operator types
 pub use comparison::ComparisonOp;
 pub use arithmetic::ArithmeticOp;
-pub use logical::LogicalOp;
+pub use control::ControlOp;
 pub use string::StringOp;
 pub use array::ArrayOp;
