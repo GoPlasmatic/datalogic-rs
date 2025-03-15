@@ -264,7 +264,6 @@ impl FromStr for OperatorType {
             "missing" => Ok(OperatorType::Missing),
             "missing_some" => Ok(OperatorType::MissingSome),
             "??" => Ok(OperatorType::Coalesce),
-            "array" => Ok(OperatorType::ArrayLiteral),
             _ => Err("unknown operator")
         }
     }

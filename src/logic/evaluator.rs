@@ -123,7 +123,7 @@ fn evaluate_custom_operator<'a>(
     match name {
         _ => {
             // Custom operators are not yet implemented
-            Err(super::error::LogicError::InvalidArgumentsError)
+            Err(super::error::LogicError::OperatorNotFoundError { operator: name.to_string() })
         }
     }
 }

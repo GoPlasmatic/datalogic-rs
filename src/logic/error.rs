@@ -26,6 +26,12 @@ pub enum LogicError {
         reason: String,
     },
     
+    /// Error indicating that an operator is not found.
+    OperatorNotFoundError {
+        /// The operator that was not found.
+        operator: String,
+    },
+    
     NaNError,
 
     InvalidArgumentsError,
@@ -51,6 +57,9 @@ impl fmt::Display for LogicError {
             }
             LogicError::Custom(msg) => {
                 write!(f, "{}", msg)
+            }
+            LogicError::OperatorNotFoundError { operator } => {
+                write!(f, "Operator '{}' not found", operator)
             }
         }
     }

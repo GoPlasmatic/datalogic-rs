@@ -91,9 +91,12 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
                             if let LogicError::NaNError = e {
                                 return Ok(());
                             }
-                        }
-                        if error_type.as_str() == Some("Invalid Arguments") {
+                        } else if error_type.as_str() == Some("Invalid Arguments") {
                             if let LogicError::InvalidArgumentsError = e {
+                                return Ok(());
+                            }
+                        } else if error_type.as_str() == Some("Unknown Operator") {
+                            if let LogicError::OperatorNotFoundError { operator: _ } = e {
                                 return Ok(());
                             }
                         }

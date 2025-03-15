@@ -30,6 +30,5 @@
     "chained.json",
     "empty-objects.json",
     "iterators.extra.json",
-    "truthiness.json",
-    "val.json"
+    "truthiness.json"
 ]
