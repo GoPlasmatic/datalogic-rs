@@ -329,7 +329,6 @@ mod tests {
     use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::operators::arithmetic::ArithmeticOp;
     use crate::logic::operators::logical::LogicalOp;
-    use crate::logic::operators::conditional::ConditionalOp;
     
     #[test]
     fn test_parse_literals() {
@@ -492,7 +491,7 @@ mod tests {
         assert!(token.is_operator());
         
         let (op_type, args) = token.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Conditional(ConditionalOp::If));
+        assert_eq!(op_type, OperatorType::Logical(LogicalOp::If));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
@@ -563,7 +562,7 @@ mod tests {
         assert!(token.is_operator());
         
         let (op_type, args) = token.as_operator().unwrap();
-        assert_eq!(op_type, OperatorType::Conditional(ConditionalOp::If));
+        assert_eq!(op_type, OperatorType::Logical(LogicalOp::If));
         
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());

@@ -6,7 +6,7 @@ use crate::arena::DataArena;
 use crate::value::DataValue;
 use super::token::{Token, OperatorType};
 use super::error::Result;
-use super::operators::{comparison, arithmetic, logical, string, missing, array, conditional, log, r#in, variable};
+use super::operators::{comparison, arithmetic, logical, string, missing, array, log, r#in, variable};
 
 /// Helper function to convert a token to a TokenRefs wrapper
 /// This avoids cloning tokens for lazy evaluation
@@ -235,18 +235,26 @@ fn evaluate_operator<'a>(
         // Logical operators
         OperatorType::Logical(logic_op) => {
             match logic_op {
-                logical::LogicalOp::And => logical::eval_and(token_refs, data, arena),
-                logical::LogicalOp::Or => logical::eval_or(token_refs, data, arena),
+                logical::LogicalOp::If => {
+                    if !args.is_array_literal() {
+                        return Err(super::error::LogicError::InvalidArgumentsError);
+                    }
+                    logical::eval_if(token_refs, data, arena)
+                },
+                logical::LogicalOp::And => {
+                    if !args.is_array_literal() {
+                        return Err(super::error::LogicError::InvalidArgumentsError);
+                    }
+                    logical::eval_and(token_refs, data, arena)
+                },
+                logical::LogicalOp::Or => {
+                    if !args.is_array_literal() {
+                        return Err(super::error::LogicError::InvalidArgumentsError);
+                    }
+                    logical::eval_or(token_refs, data, arena)
+                },
                 logical::LogicalOp::Not => logical::eval_not(token_refs, data, arena),
                 logical::LogicalOp::DoubleNegation => logical::eval_double_negation(token_refs, data, arena),
-            }
-        },
-        
-        // Conditional operators
-        OperatorType::Conditional(cond_op) => {
-            match cond_op {
-                conditional::ConditionalOp::If => conditional::eval_if(token_refs, data, arena),
-                conditional::ConditionalOp::Ternary => conditional::eval_ternary(token_refs, data, arena),
             }
         },
         

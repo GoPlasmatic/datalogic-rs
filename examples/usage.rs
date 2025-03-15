@@ -12,7 +12,7 @@ fn main() {
     let data = DataValue::from_json(&data_json, &arena);
     
     // Parse rule
-    let rule_json: serde_json::Value = serde_json::from_str(r#"{"==": [{"var": "a"}, {"var": "b"}]}"#).unwrap();
+    let rule_json: serde_json::Value = serde_json::from_str(r#"{ "if": "apple" }"#).unwrap();
     let rule_token = parse_json(&rule_json, &arena).unwrap();
     println!("rule_token: {:?}", rule_token);
             

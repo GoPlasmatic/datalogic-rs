@@ -12,6 +12,8 @@ use crate::logic::evaluator::evaluate;
 /// Enumeration of logical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogicalOp {
+    /// If operator
+    If,
     /// Logical AND
     And,
     /// Logical OR
@@ -22,6 +24,42 @@ pub enum LogicalOp {
     DoubleNegation,
 }
 
+/// Evaluates an if operation.
+pub fn eval_if<'a>(
+    args: &'a [&'a Token<'a>],
+    data: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Fast path for invalid arguments
+    if args.is_empty() {
+        return Ok(arena.null_value());
+    }
+    
+    // Process arguments in pairs (condition, value)
+    let mut i = 0;
+    while i + 1 < args.len() {
+        // Evaluate the condition
+        let condition = evaluate(args[i], data, arena)?;
+        
+        // If the condition is true, return the value
+        if condition.coerce_to_bool() {
+            return evaluate(args[i + 1], data, arena);
+        }
+        
+        // Move to the next pair
+        i += 2;
+    }
+    
+    // If there's an odd number of arguments, the last one is the "else" value
+    if i < args.len() {
+        return evaluate(args[i], data, arena);
+    }
+    
+    // No conditions matched and no else value
+    Ok(arena.null_value())
+}
+
+
 /// Evaluates an AND operation.
 pub fn eval_and<'a>(
     args: &'a [&'a Token<'a>],
@@ -30,7 +68,7 @@ pub fn eval_and<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
     if args.is_empty() {
-        return Ok(arena.true_value());
+        return Ok(arena.null_value());
     }
     
     // Fast path for single argument
@@ -39,7 +77,7 @@ pub fn eval_and<'a>(
     }
     
     // Evaluate each argument with short-circuit evaluation
-    let mut last_value = arena.true_value();
+    let mut last_value = arena.null_value();
     
     for arg in args {
         let value = evaluate(arg, data, arena)?;

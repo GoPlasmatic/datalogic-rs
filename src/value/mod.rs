@@ -8,13 +8,11 @@ mod data_value;
 mod number;
 mod access;
 mod convert;
-mod coercion;
 
 pub use data_value::DataValue;
 pub use number::NumberValue;
 pub use access::{ValueAccess, PathSegment, parse_path};
 pub use convert::{FromJson, ToJson, json_to_data_value, data_value_to_json, hash_map_to_data_value};
-pub use coercion::{ValueCoercion, ValueComparison};
 
 use crate::arena::DataArena;
 

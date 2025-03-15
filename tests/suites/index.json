@@ -21,5 +21,9 @@
     "comparison/greaterThan.json",
     "comparison/greaterThanEquals.json",
     "comparison/lessThan.json",
-    "comparison/lessThanEquals.json"
+    "comparison/lessThanEquals.json",
+    "control/if.json",
+    "control/and.json",
+    "control/or.json"
+   
 ]

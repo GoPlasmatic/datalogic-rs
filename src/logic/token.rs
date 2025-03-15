@@ -4,7 +4,7 @@
 //! optimized for memory efficiency and evaluation performance.
 
 use crate::value::DataValue;
-use super::operators::{ComparisonOp, ArithmeticOp, LogicalOp, StringOp, ArrayOp, ConditionalOp};
+use super::operators::{ComparisonOp, ArithmeticOp, LogicalOp, StringOp, ArrayOp};
 use std::str::FromStr;
 
 /// A token in a logic expression.
@@ -65,8 +65,6 @@ pub enum OperatorType {
     String(StringOp),
     /// Array operator
     Array(ArrayOp),
-    /// Conditional operator
-    Conditional(ConditionalOp),
     /// Log operator
     Log,
     /// In operator
@@ -195,6 +193,7 @@ impl OperatorType {
                 ArithmeticOp::Max => "max",
             },
             OperatorType::Logical(op) => match op {
+                LogicalOp::If => "if",
                 LogicalOp::And => "and",
                 LogicalOp::Or => "or",
                 LogicalOp::Not => "!",
@@ -212,10 +211,6 @@ impl OperatorType {
                 ArrayOp::Some => "some",
                 ArrayOp::None => "none",
                 ArrayOp::Merge => "merge",
-            },
-            OperatorType::Conditional(op) => match op {
-                ConditionalOp::If => "if",
-                ConditionalOp::Ternary => "?:",
             },
             OperatorType::Log => "log",
             OperatorType::In => "in",
@@ -250,6 +245,8 @@ impl FromStr for OperatorType {
             "or" => Ok(OperatorType::Logical(LogicalOp::Or)),
             "!" => Ok(OperatorType::Logical(LogicalOp::Not)),
             "!!" => Ok(OperatorType::Logical(LogicalOp::DoubleNegation)),
+            "if" => Ok(OperatorType::Logical(LogicalOp::If)),
+            "?:" => Ok(OperatorType::Logical(LogicalOp::If)),
             "cat" => Ok(OperatorType::String(StringOp::Cat)),
             "substr" => Ok(OperatorType::String(StringOp::Substr)),
             "map" => Ok(OperatorType::Array(ArrayOp::Map)),
@@ -259,8 +256,6 @@ impl FromStr for OperatorType {
             "some" => Ok(OperatorType::Array(ArrayOp::Some)),
             "none" => Ok(OperatorType::Array(ArrayOp::None)),
             "merge" => Ok(OperatorType::Array(ArrayOp::Merge)),
-            "if" => Ok(OperatorType::Conditional(ConditionalOp::If)),
-            "?:" => Ok(OperatorType::Conditional(ConditionalOp::Ternary)),
             "log" => Ok(OperatorType::Log),
             "in" => Ok(OperatorType::In),
             "missing" => Ok(OperatorType::Missing),
