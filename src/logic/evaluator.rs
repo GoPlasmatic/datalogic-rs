@@ -6,7 +6,9 @@ use crate::arena::DataArena;
 use crate::value::DataValue;
 use super::token::{Token, OperatorType};
 use super::error::Result;
-use super::operators::{comparison, arithmetic, control, string, missing, array, log, r#in, variable, val};
+use super::operators::{
+    comparison, arithmetic, control, string, missing, array, log, r#in, variable, val, throw
+};
 
 /// Helper function to convert a token to a TokenRefs wrapper
 /// This avoids cloning tokens for lazy evaluation
@@ -291,6 +293,9 @@ fn evaluate_operator<'a>(
         OperatorType::Coalesce => {
             eval_coalesce(token_refs, data, arena)
         },
+        
+        // Throw operator
+        OperatorType::Throw => throw::eval_throw(token_refs, data, arena),
         
         // Val operator
         OperatorType::Val => val::eval_val(token_refs, data, arena),

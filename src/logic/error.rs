@@ -36,6 +36,12 @@ pub enum LogicError {
 
     InvalidArgumentsError,
     
+    /// Error thrown by the throw operator.
+    ThrownError {
+        /// The type or value of the error.
+        r#type: String,
+    },
+    
     /// A custom error with a message.
     Custom(String),
 }
@@ -54,6 +60,9 @@ impl fmt::Display for LogicError {
             }
             LogicError::InvalidArgumentsError => {
                 write!(f, "Invalid arguments error")
+            }
+            LogicError::ThrownError { r#type } => {
+                write!(f, "Thrown error: {}", r#type)
             }
             LogicError::Custom(msg) => {
                 write!(f, "{}", msg)
@@ -100,6 +109,13 @@ impl LogicError {
         LogicError::VariableError {
             path: path.into(),
             reason: reason.into(),
+        }
+    }
+
+    /// Creates a thrown error with the given type.
+    pub fn thrown_error(r#type: impl Into<String>) -> Self {
+        LogicError::ThrownError {
+            r#type: r#type.into(),
         }
     }
        

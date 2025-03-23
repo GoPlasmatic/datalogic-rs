@@ -94,6 +94,11 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
                         if error_type.as_str() == Some("NaN") {
                             if let LogicError::NaNError = e {
                                 return Ok(());
+                            } else if let LogicError::ThrownError { r#type } = &e {
+                                // Special case for thrown "NaN" errors
+                                if r#type == "NaN" {
+                                    return Ok(());
+                                }
                             }
                         } else if error_type.as_str() == Some("Invalid Arguments") {
                             if let LogicError::InvalidArgumentsError = e {
@@ -102,6 +107,13 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
                         } else if error_type.as_str() == Some("Unknown Operator") {
                             if let LogicError::OperatorNotFoundError { operator: _ } = e {
                                 return Ok(());
+                            }
+                        } else if let LogicError::ThrownError { r#type } = &e {
+                            // This is from the throw operator - check if the error type matches
+                            if let Some(expected_type) = error_type.as_str() {
+                                if expected_type == r#type {
+                                    return Ok(());
+                                }
                             }
                         }
                     }

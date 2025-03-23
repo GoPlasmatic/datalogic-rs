@@ -12,6 +12,7 @@ pub mod log;
 pub mod r#in;
 pub mod variable;
 pub mod val;
+pub mod throw;
 
 // Re-export operator types
 pub use comparison::ComparisonOp;

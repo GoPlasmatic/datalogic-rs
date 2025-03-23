@@ -79,6 +79,8 @@ pub enum OperatorType {
     Coalesce,
     /// Val operator (replacement for Var)
     Val,
+    /// Throw operator
+    Throw,
     /// Array operator (for arrays with non-literal elements)
     ArrayLiteral,
 }
@@ -225,6 +227,7 @@ impl OperatorType {
             OperatorType::Exists => "exists",
             OperatorType::Coalesce => "??",
             OperatorType::Val => "val",
+            OperatorType::Throw => "throw",
             OperatorType::ArrayLiteral => "array",
         }
     }
@@ -272,6 +275,7 @@ impl FromStr for OperatorType {
             "exists" => Ok(OperatorType::Exists),
             "??" => Ok(OperatorType::Coalesce),
             "val" => Ok(OperatorType::Val),
+            "throw" => Ok(OperatorType::Throw),
             _ => Err("unknown operator"),
         }
     }

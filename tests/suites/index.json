@@ -33,5 +33,6 @@
     "val.json",
     "empty-objects.json",
     "preserve.json",
-    "unknown-operators.json"
+    "unknown-operators.json",
+    "throw.json"
 ]
