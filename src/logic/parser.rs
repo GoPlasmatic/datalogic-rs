@@ -126,22 +126,13 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         
         // If it's not a standard operator, treat it as a custom operator
         return parse_custom_operator(key, value, arena);
+    } else if obj.len() == 0 {
+        return Ok(Token::literal(DataValue::Object(arena.alloc_slice_clone(&[]))));
+    } else {
+        return Err(LogicError::OperatorNotFoundError { 
+            operator: "Multiple keys in object".to_string()
+        });
     }
-    
-    // If it has more than one key, it's a literal object
-    let mut entries = Vec::with_capacity(obj.len());
-    for (key, value) in obj {
-        let token = parse_json_internal(value, arena)?;
-        if let Token::Literal(value) = token {
-            entries.push((arena.intern_str(key), value));
-        } else {
-            return Err(LogicError::ParseError {
-                reason: format!("Object values must be literals, found: {:?}", token),
-            });
-        }
-    }
-    let entries_slice = arena.alloc_slice_clone(&entries);
-    Ok(Token::literal(DataValue::Object(entries_slice)))
 }
 
 /// Parses a variable reference.
@@ -427,16 +418,6 @@ mod tests {
         assert_eq!(array[0].as_i64(), Some(1));
         assert_eq!(array[1].as_i64(), Some(2));
         assert_eq!(array[2].as_i64(), Some(3));
-        
-        // Parse object
-        let token = parse_json(&json!({"a": 1, "b": 2}), &arena).unwrap();
-        assert!(token.is_literal());
-        let object = token.as_literal().unwrap().as_object().unwrap();
-        assert_eq!(object.len(), 2);
-        assert_eq!(object[0].0, "a");
-        assert_eq!(object[0].1.as_i64(), Some(1));
-        assert_eq!(object[1].0, "b");
-        assert_eq!(object[1].1.as_i64(), Some(2));
     }
     
     #[test]
@@ -701,7 +682,7 @@ mod tests {
     #[test]
     fn test_parse_val_operator() {
         use crate::arena::DataArena;
-        use crate::logic::token::{Token, OperatorType};
+        use crate::logic::token::OperatorType;
         use crate::value::DataValue;
         
         let arena = DataArena::new();

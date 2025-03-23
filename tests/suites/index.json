@@ -32,5 +32,6 @@
     "exists.json",
     "val.json",
     "empty-objects.json",
-    "preserve.json"
+    "preserve.json",
+    "unknown-operators.json"
 ]

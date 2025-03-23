@@ -208,8 +208,6 @@ fn navigate_nested_path<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::NumberValue;
-    use std::borrow::Cow;
 
     #[test]
     fn test_eval_val_simple() {

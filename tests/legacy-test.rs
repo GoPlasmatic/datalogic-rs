@@ -66,6 +66,10 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
                     if let Some(error_type) = error_obj.get("type") {
                         if error_type.as_str() == Some("NaN") && e.to_string().contains("NaN") {
                             return Ok(());
+                        } else if error_type.as_str() == Some("Unknown Operator") {
+                            if let LogicError::OperatorNotFoundError { operator: _ } = e {
+                                return Ok(());
+                            }
                         }
                     }
                 }

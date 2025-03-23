@@ -414,7 +414,7 @@ mod tests {
     fn test_evaluate_val() {
         use crate::arena::DataArena;
         use crate::logic::token::{Token, OperatorType};
-        use crate::value::{DataValue, NumberValue};
+        use crate::value::DataValue;
         use super::evaluate;
         
         let arena = DataArena::new();
