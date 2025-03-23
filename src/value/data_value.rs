@@ -202,7 +202,7 @@ impl<'a> DataValue<'a> {
             DataValue::Array(items) => !items.is_empty(),
             
             // Object case - only empty object is false
-            DataValue::Object(_) => true,
+            DataValue::Object(items) => !items.is_empty(),
         }
     }
     
