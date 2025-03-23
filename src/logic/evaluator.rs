@@ -7,7 +7,7 @@ use crate::value::DataValue;
 use super::token::{Token, OperatorType};
 use super::error::Result;
 use super::operators::{
-    comparison, arithmetic, control, string, missing, array, log, r#in, variable, val, throw
+    comparison, arithmetic, control, string, missing, array, log, r#in, variable, val, throw, r#try
 };
 
 /// Helper function to convert a token to a TokenRefs wrapper
@@ -296,6 +296,9 @@ fn evaluate_operator<'a>(
         
         // Throw operator
         OperatorType::Throw => throw::eval_throw(token_refs, data, arena),
+        
+        // Try operator
+        OperatorType::Try => r#try::eval_try(token_refs, data, arena),
         
         // Val operator
         OperatorType::Val => val::eval_val(token_refs, data, arena),

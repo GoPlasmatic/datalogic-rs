@@ -34,5 +34,6 @@
     "empty-objects.json",
     "preserve.json",
     "unknown-operators.json",
-    "throw.json"
+    "throw.json",
+    "try.json"
 ]

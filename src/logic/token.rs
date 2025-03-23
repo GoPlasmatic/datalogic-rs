@@ -81,6 +81,8 @@ pub enum OperatorType {
     Val,
     /// Throw operator
     Throw,
+    /// Try operator (for error handling)
+    Try,
     /// Array operator (for arrays with non-literal elements)
     ArrayLiteral,
 }
@@ -228,6 +230,7 @@ impl OperatorType {
             OperatorType::Coalesce => "??",
             OperatorType::Val => "val",
             OperatorType::Throw => "throw",
+            OperatorType::Try => "try",
             OperatorType::ArrayLiteral => "array",
         }
     }
@@ -276,6 +279,7 @@ impl FromStr for OperatorType {
             "??" => Ok(OperatorType::Coalesce),
             "val" => Ok(OperatorType::Val),
             "throw" => Ok(OperatorType::Throw),
+            "try" => Ok(OperatorType::Try),
             _ => Err("unknown operator"),
         }
     }
