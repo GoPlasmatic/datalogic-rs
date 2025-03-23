@@ -9,7 +9,6 @@ pub mod string;
 pub mod missing;
 pub mod array;
 pub mod log;
-pub mod r#in;
 pub mod variable;
 pub mod val;
 pub mod throw;

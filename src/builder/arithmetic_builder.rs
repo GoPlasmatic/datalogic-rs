@@ -18,37 +18,37 @@ impl<'a> ArithmeticBuilder<'a> {
     }
 
     /// Creates an addition operation.
-    pub fn add(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn addOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Add)
     }
 
     /// Creates a subtraction operation.
-    pub fn subtract(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn subtractOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Subtract)
     }
 
     /// Creates a multiplication operation.
-    pub fn multiply(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn multiplyOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Multiply)
     }
 
     /// Creates a division operation.
-    pub fn divide(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn divideOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Divide)
     }
 
     /// Creates a modulo operation.
-    pub fn modulo(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn moduloOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Modulo)
     }
 
     /// Creates a minimum operation.
-    pub fn min(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn minOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Min)
     }
 
     /// Creates a maximum operation.
-    pub fn max(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn maxOp(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Max)
     }
 }
@@ -74,7 +74,7 @@ impl<'a> ArithmeticOperationBuilder<'a> {
     }
 
     /// Adds an operand to the arithmetic operation.
-    pub fn add(mut self, operand: Logic<'a>) -> Self {
+    pub fn operand(mut self, operand: Logic<'a>) -> Self {
         self.operands.push(operand);
         self
     }
@@ -82,13 +82,13 @@ impl<'a> ArithmeticOperationBuilder<'a> {
     /// Adds a variable as an operand to the arithmetic operation.
     pub fn var(self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.add(var)
+        self.operand(var)
     }
 
     /// Adds a literal value as an operand to the arithmetic operation.
     pub fn value<T: Into<crate::value::DataValue<'a>>>(self, value: T) -> Self {
         let val = Logic::literal(value.into(), self.arena);
-        self.add(val)
+        self.operand(val)
     }
 
     /// Builds the arithmetic operation with the collected operands.

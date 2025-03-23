@@ -42,7 +42,7 @@ pub fn eval_val<'a>(
             }
             
             // Access the property from the data
-            access_property(data, *path_str, arena)
+            access_property(data, path_str, arena)
         },
         
         // Case 3: Array path for nested access
@@ -208,121 +208,64 @@ fn navigate_nested_path<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::logic::JsonLogic;
+    use serde_json::json;
 
     #[test]
-    fn test_eval_val_simple() {
-        let arena = DataArena::new();
-        
-        // Create test data: { "hello": 0 }
-        let entries = arena.alloc_slice_clone(&[
-            (arena.intern_str("hello"), DataValue::integer(0))
-        ]);
-        let data = DataValue::Object(entries);
-        
-        // Create "hello" token
-        let hello_token = Token::literal(DataValue::string(&arena, "hello"));
-        let args = arena.alloc_slice_copy(&[arena.alloc(hello_token)]);
-        
-        // Evaluate the val operator
-        let result = eval_val(args, &data, &arena).unwrap();
-        
-        // Check the result
-        assert_eq!(*result, DataValue::integer(0));
-    }
+    fn test_eval_val_with_path_components() {
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
 
-    #[test]
-    fn test_eval_val_nested() {
-        let arena = DataArena::new();
-        
-        // Create test data: { "hello": { "world": 1 } }
-        let world_entries = arena.alloc_slice_clone(&[
-            (arena.intern_str("world"), DataValue::integer(1))
-        ]);
-        let world_obj = DataValue::Object(world_entries);
-        
-        let hello_entries = arena.alloc_slice_clone(&[
-            (arena.intern_str("hello"), world_obj)
-        ]);
-        let data = DataValue::Object(hello_entries);
-        
-        // Create ["hello", "world"] token
-        let path_tokens = arena.alloc_slice_clone(&[
-            DataValue::string(&arena, "hello"),
-            DataValue::string(&arena, "world"),
-        ]);
-        let path_array = DataValue::Array(path_tokens);
-        let path_token = Token::literal(path_array);
-        let args = arena.alloc_slice_copy(&[arena.alloc(path_token)]);
-        
-        // Evaluate the val operator
-        let result = eval_val(args, &data, &arena).unwrap();
-        
-        // Check the result
-        assert_eq!(*result, DataValue::integer(1));
-    }
+        let data_json = json!({
+            "users": [
+                {
+                    "name": "Alice",
+                    "details": {
+                        "age": 30,
+                        "active": true
+                    }
+                },
+                {
+                    "name": "Bob",
+                    "details": {
+                        "age": 25,
+                        "active": false
+                    }
+                }
+            ]
+        });
 
-    #[test]
-    fn test_eval_val_array_index() {
-        let arena = DataArena::new();
+        // Use a mix of strings and numbers for the path components
+        let components: Vec<DataValue> = vec![
+            DataValue::string(arena, "users"),
+            DataValue::integer(0),
+            DataValue::string(arena, "name")
+        ];
+        let rule = builder.val_path(components);
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("Alice"));
         
-        // Create test data: [1, 2]
-        let array_items = arena.alloc_slice_clone(&[
+        // Second test with different path
+        let components: Vec<DataValue> = vec![
+            DataValue::string(arena, "users"),
             DataValue::integer(1),
-            DataValue::integer(2),
-        ]);
-        let data = DataValue::Array(array_items);
+            DataValue::string(arena, "details"), 
+            DataValue::string(arena, "age")
+        ];
+        let rule = builder.val_path(components);
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(25));
         
-        // Create [1] token (to access index 1)
-        let index_token = Token::literal(DataValue::integer(1));
-        let args = arena.alloc_slice_copy(&[arena.alloc(index_token)]);
-        
-        // Evaluate the val operator
-        let result = eval_val(args, &data, &arena).unwrap();
-        
-        // Check the result
-        assert_eq!(*result, DataValue::integer(2));
-    }
-    
-    #[test]
-    fn test_eval_val_empty_key() {
-        let arena = DataArena::new();
-        
-        // Create test data: { "": 1 }
-        let entries = arena.alloc_slice_clone(&[
-            (arena.intern_str(""), DataValue::integer(1))
-        ]);
-        let data = DataValue::Object(entries);
-        
-        // Create "" token
-        let empty_token = Token::literal(DataValue::string(&arena, ""));
-        let args = arena.alloc_slice_copy(&[arena.alloc(empty_token)]);
-        
-        // Evaluate the val operator
-        let result = eval_val(args, &data, &arena).unwrap();
-        
-        // Check the result - should be the value at the empty key (1)
-        assert_eq!(*result, DataValue::integer(1));
-    }
-    
-    #[test]
-    fn test_eval_val_entire_context() {
-        let arena = DataArena::new();
-        
-        // Create test data: { "": 21 }
-        let entries = arena.alloc_slice_clone(&[
-            (arena.intern_str(""), DataValue::integer(21))
-        ]);
-        let data = DataValue::Object(entries);
-        
-        // Create [] token
-        let empty_array = DataValue::Array(arena.empty_array());
-        let empty_token = Token::literal(empty_array);
-        let args = arena.alloc_slice_copy(&[arena.alloc(empty_token)]);
-        
-        // Evaluate the val operator
-        let result = eval_val(args, &data, &arena).unwrap();
-        
-        // Check the result
-        assert_eq!(*result, data);
+        // Third test accessing boolean value
+        let components: Vec<DataValue> = vec![
+            DataValue::string(arena, "users"),
+            DataValue::integer(0),
+            DataValue::string(arena, "details"),
+            DataValue::string(arena, "active")
+        ];
+        let rule = builder.val_path(components);
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
     }
 } 

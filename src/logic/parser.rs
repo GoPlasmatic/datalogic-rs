@@ -125,8 +125,8 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         }
         
         // If it's not a standard operator, treat it as a custom operator
-        return parse_custom_operator(key, value, arena);
-    } else if obj.len() == 0 {
+        parse_custom_operator(key, value, arena)
+    } else if obj.is_empty() {
         return Ok(Token::literal(DataValue::Object(arena.alloc_slice_clone(&[]))));
     } else {
         return Err(LogicError::OperatorNotFoundError { 
@@ -182,46 +182,14 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 return Ok(Token::dynamic_variable(path_token, default));
             }
             
-            // Special check for test cases with path + default value
-            if arr.len() == 2 && arr[0].is_string() {
-                let path_str = arr[0].as_str().unwrap();
-                
-                // Handle ["user.name", "Anonymous"] as a variable path with default value
-                if path_str.contains('.') || path_str == "user.name" {
-                    let path = arena.intern_str(path_str);
-                    let default_token = parse_json_internal(&arr[1], arena)?;
-                    let default = arena.alloc(default_token);
-                    return Ok(Token::variable(path, Some(default)));
-                }
-                
-                // Check if this looks like a path with components rather than a variable with default
-                let is_path_components = arr[1].is_string() && 
-                                        // Path components should not look like default values
-                                        !arr[1].as_str().unwrap().parse::<f64>().is_ok() && 
-                                        arr[1].as_str().unwrap() != "true" && 
-                                        arr[1].as_str().unwrap() != "false" && 
-                                        arr[1].as_str().unwrap() != "null";
-                
-                if is_path_components {
-                    // This is a path with components (e.g., ["person", "name"])
-                    let path = format!("{}.{}", 
-                                     arr[0].as_str().unwrap(),
-                                     arr[1].as_str().unwrap());
-                    return Ok(Token::variable(arena.intern_str(&path), None));
-                }
-            }
-            
-            // If we have exactly two elements and the second looks like a default value
-            if arr.len() == 2 {
-                // Parse the path from the first element
+            // If we have exactly two elements, it's likely a path with a default value
+            if arr.len() == 2 && (arr[0].is_string() || arr[0].is_number() || arr[0].is_boolean() || arr[0].is_null()) {
                 let path = match &arr[0] {
                     JsonValue::String(s) => arena.intern_str(s),
                     JsonValue::Number(n) => arena.intern_str(&n.to_string()),
                     JsonValue::Bool(b) => arena.intern_str(&b.to_string()),
                     JsonValue::Null => arena.intern_str(""),
-                    _ => return Err(LogicError::ParseError {
-                        reason: format!("Variable path must be a scalar value, found: {:?}", arr[0]),
-                    }),
+                    _ => unreachable!(),
                 };
                 
                 // Parse the default value

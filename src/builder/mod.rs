@@ -28,6 +28,6 @@ use crate::arena::DataArena;
 /// Creates a new rule builder that allocates in the provided arena.
 ///
 /// This is the main entry point for the builder API.
-pub fn rule_builder<'a>(arena: &'a DataArena) -> RuleBuilder<'a> {
+pub fn rule_builder(arena: &DataArena) -> RuleBuilder<'_> {
     RuleBuilder::new(arena)
 } 

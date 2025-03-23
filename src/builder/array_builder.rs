@@ -18,36 +18,36 @@ impl<'a> ArrayBuilder<'a> {
     }
 
     /// Creates a map operation.
-    pub fn map(&self) -> MapBuilder<'a> {
+    pub fn mapOp(&self) -> MapBuilder<'a> {
         MapBuilder::new(self.arena)
     }
 
     /// Creates a filter operation.
-    pub fn filter(&self) -> FilterBuilder<'a> {
+    pub fn filterOp(&self) -> FilterBuilder<'a> {
         FilterBuilder::new(self.arena)
     }
 
     /// Creates a reduce operation.
-    pub fn reduce(&self) -> ReduceBuilder<'a> {
+    pub fn reduceOp(&self) -> ReduceBuilder<'a> {
         ReduceBuilder::new(self.arena)
     }
 
     /// Creates a merge operation.
-    pub fn merge(&self) -> ArrayOperationBuilder<'a> {
+    pub fn mergeOp(&self) -> ArrayOperationBuilder<'a> {
         ArrayOperationBuilder::new(self.arena, ArrayOp::Merge)
     }
 
     /// Creates an in-array check operation.
-    pub fn in_array(&self, value: Logic<'a>, array: Logic<'a>) -> Logic<'a> {
+    pub fn inOp(&self, value: Logic<'a>, array: Logic<'a>) -> Logic<'a> {
         Logic::operator(
-            OperatorType::In,
+            OperatorType::Array(ArrayOp::In),
             vec![value, array],
             self.arena,
         )
     }
 
     /// Creates an array literal.
-    pub fn array_literal(&self, elements: Vec<Logic<'a>>) -> Logic<'a> {
+    pub fn arrayLiteralOp(&self, elements: Vec<Logic<'a>>) -> Logic<'a> {
         Logic::operator(
             OperatorType::ArrayLiteral,
             elements,
@@ -248,32 +248,31 @@ impl<'a> ArrayOperationBuilder<'a> {
             operands: Vec::new(),
         }
     }
-
-    /// Adds an operand to the array operation.
-    pub fn add(mut self, operand: Logic<'a>) -> Self {
+    
+    /// Adds an element to the array operation.
+    pub fn element(mut self, operand: Logic<'a>) -> Self {
         self.operands.push(operand);
         self
     }
-
-    /// Adds a variable as an operand to the array operation.
+    
+    /// Adds a variable as an element to the array operation.
     pub fn var(self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.add(var)
+        self.element(var)
     }
-
-    /// Adds a literal value as an operand to the array operation.
+    
+    /// Adds a literal value as an element to the array operation.
     pub fn value<T: Into<crate::value::DataValue<'a>>>(self, value: T) -> Self {
         let val = Logic::literal(value.into(), self.arena);
-        self.add(val)
+        self.element(val)
     }
-
-    /// Builds the array operation with the collected operands.
+    
+    /// Builds the array operation with the collected elements.
     pub fn build(self) -> Logic<'a> {
         if self.operands.is_empty() {
-            // Default for array operations is an empty array
             return Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena);
         }
-
+        
         Logic::operator(
             OperatorType::Array(self.operation),
             self.operands,

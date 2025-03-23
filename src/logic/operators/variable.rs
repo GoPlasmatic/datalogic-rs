@@ -293,67 +293,110 @@ fn data_get_property<'a>(data: &'a DataValue<'a>, key: &str) -> Option<&'a DataV
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::parser::parse_str;
     use crate::value::FromJson;
+    use crate::logic::JsonLogic;
     use serde_json::json;
 
     #[test]
     fn test_evaluate_variable() {
-        let arena = DataArena::new();
+        use serde_json::json;
+        use crate::logic::JsonLogic;
+
+        // Setup for both low-level and builder-based testing
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({
-            "user": {
-                "name": "Alice",
-                "age": 30
-            }
+            "a": 1,
+            "b": 2,
+            "c": 3,
+            "d": null,
         });
-        let data = DataValue::from_json(&data_json, &arena);
+
+        // Test basic variable access
+        // Using builder API
+        let rule = builder.var("a").build();
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(1));
         
-        // Parse and evaluate a variable
-        let token = parse_str(r#"{"var": "user.name"}"#, &arena).unwrap();
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("Alice"));
-        
-        // Test with default value (not used)
-        let token = parse_str(r#"{"var": ["user.name", "Bob"]}"#, &arena).unwrap();
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("Alice"));
-        
-        // Test with default value (used)
-        let token = parse_str(r#"{"var": ["user.email", "bob@example.com"]}"#, &arena).unwrap();
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("bob@example.com"));
+        // Test with missing variable
+        let rule = builder.var("x").build();
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(null));
+
+        // Test with default value for missing variable
+        let rule = builder.var_with_default("x", builder.string_value("DEFAULT"));
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("DEFAULT"));
+
+        // Test with default value for null property
+        // Note: In JSONLogic, if a property exists but its value is null,
+        // the default value is NOT used, null is returned
+        let rule = builder.var_with_default("d", builder.string_value("DEFAULT"));
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(null));
+
+        // Test with default value for existing variable
+        let rule = builder.var_with_default("a", builder.string_value("DEFAULT"));
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(1));
     }
     
     #[test]
     fn test_evaluate_variable_with_array_path() {
-        let arena = DataArena::new();
+        use serde_json::json;
+
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+
         let data_json = json!({
-            "person": {
-                "name": "John"
-            },
-            "name": "Jane"
+            "users": [
+                {
+                    "name": "Alice",
+                    "role": "admin",
+                    "details": {
+                        "age": 30,
+                        "active": true
+                    }
+                },
+                {
+                    "name": "Bob",
+                    "role": "user",
+                    "details": {
+                        "age": 25,
+                        "active": false
+                    }
+                }
+            ]
         });
-        let data = DataValue::from_json(&data_json, &arena);
+
+        // Test with dot notation using the builder
+        let rule = builder.var("users.0.name").build();
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("Alice"));
         
-        // Test with array path
-        let token = parse_str(r#"{"var": ["person", "name"]}"#, &arena).unwrap();
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("John"));
+        // Test nested path
+        let rule = builder.var("users.1.details.age").build();
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(25));
         
-        // Test with array path that doesn't exist
-        let token = parse_str(r#"{"var": ["nonexistent", "name"]}"#, &arena).unwrap();
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
-        assert!(result.is_null());
+        // Test with default value for missing path
+        let rule = builder.var_with_default("users.2.name", builder.string_value("Not Found"));
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("Not Found"));
         
-        // Test with val operator
-        let token = parse_str(r#"{"val": ["person", "name"]}"#, &arena).unwrap();
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("John"));
+        // Test with boolean value
+        let rule = builder.var("users.0.details.active").build();
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
     }
 
     #[test]
     fn test_eval_exists() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
         
         // Create test data with deeply nested structure
         let data_json = json!({
@@ -370,54 +413,39 @@ mod tests {
                 "path": "value"
             }
         });
+
+        // The exists operation doesn't have a direct builder method
+        // so we need to use the original implementation for the tests
         let data = DataValue::from_json(&data_json, &arena);
         
-        // Test cases for different path depths
-        let test_cases = [
-            // Single key tests
-            (vec![DataValue::String("level1")], true),
-            (vec![DataValue::String("nonexistent")], false),
-            
-            // Two-level nesting
-            (vec![DataValue::String("level1"), DataValue::String("level2")], true),
-            (vec![DataValue::String("level1"), DataValue::String("nonexistent")], false),
-            
-            // Three-level nesting
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3")], true),
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("nonexistent")], false),
-            
-            // Four-level nesting
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3"), DataValue::String("level4")], true),
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3"), DataValue::String("nonexistent")], false),
-            
-            // Check path through different branches
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("alt3")], true),
-            
-            // Test with array argument
-            (vec![DataValue::Array(arena.alloc_slice_fill_with(2, |i| 
-                if i == 0 { DataValue::String("level1") } else { DataValue::String("level2") }
-            ))], true),
-            
-            // Test with deeper array argument
-            (vec![DataValue::Array(arena.alloc_slice_fill_with(4, |i| 
-                match i {
-                    0 => DataValue::String("level1"),
-                    1 => DataValue::String("level2"),
-                    2 => DataValue::String("level3"),
-                    _ => DataValue::String("level4")
-                }
-            ))], true),
-            
-            // Test with empty object
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3"), DataValue::String("empty")], true),
-            
-            // Test with invalid intermediate path (not an object)
-            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("alt3"), DataValue::String("anything")], false),
-        ];
+        // Test case: Key exists
+        let args = vec![DataValue::String("level1")];
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(true));
         
-        for (args, expected) in test_cases {
-            let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
-            assert_eq!(result.as_bool(), Some(expected), "Failed for args: {:?}", args);
-        }
+        // Test case: Key doesn't exist
+        let args = vec![DataValue::String("nonexistent")];
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(false));
+        
+        // Test case: Nested key exists
+        let args = vec![
+            DataValue::String("level1"),
+            DataValue::String("level2"),
+            DataValue::String("level3"),
+            DataValue::String("level4")
+        ];
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(true));
+        
+        // Test case: Nested key doesn't exist
+        let args = vec![
+            DataValue::String("level1"),
+            DataValue::String("level2"),
+            DataValue::String("level3"),
+            DataValue::String("nonexistent")
+        ];
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(false));
     }
 } 

@@ -116,11 +116,7 @@ pub fn eval_substr<'a>(
     // Handle negative start index (count from end)
     let start_pos = if start_idx_signed < 0 {
         let abs_idx = (-start_idx_signed) as usize;
-        if abs_idx >= char_count {
-            0 // If negative index is too large, start from beginning
-        } else {
-            char_count - abs_idx
-        }
+        char_count.saturating_sub(abs_idx)
     } else if start_idx_signed as usize >= char_count {
         // If start is beyond the string length, return empty string
         return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
@@ -162,57 +158,99 @@ pub fn eval_substr<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::logic::parser::parse_str;
     use serde_json::json;
-    use crate::value::FromJson;
+    use crate::JsonLogic;
     
     #[test]
     fn test_cat() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 10, "b": "hello", "c": true});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test concatenating strings
-        let token = parse_str(r#"{"cat": ["hello", " ", "world"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello world"));
+        // Use StringBuilder's concat method (note: it's called concat not cat in the builder)
+        let rule = builder.string_ops()
+            .concatOp()
+            .string("hello")
+            .string(" ")
+            .string("world")
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello world"));
         
         // Test concatenating different types
-        let token = parse_str(r#"{"cat": [{"var": "b"}, " ", {"var": "a"}, " ", {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello 10 true"));
+        let rule = builder.string_ops()
+            .concatOp()
+            .var("b")
+            .string(" ")
+            .var("a")
+            .string(" ")
+            .var("c")
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello 10 true"));
         
         // Test empty cat
-        let token = parse_str(r#"{"cat": []}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some(""));
+        let rule = builder.string_ops()
+            .concatOp()
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(""));
     }
     
     #[test]
     fn test_substr() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"text": "hello world"});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test basic substring
-        let token = parse_str(r#"{"substr": [{"var": "text"}, 0, 5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello"));
+        let rule = builder.string_ops()
+            .substrOp()
+            .var("text")
+            .start_at(0)
+            .take(5)
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello"));
         
         // Test negative start
-        let token = parse_str(r#"{"substr": [{"var": "text"}, -5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("world"));
+        let rule = builder.string_ops()
+            .substrOp()
+            .var("text")
+            .start_at(-5)
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("world"));
         
         // Test negative length
-        let token = parse_str(r#"{"substr": [{"var": "text"}, 0, -6]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello"));
+        let rule = builder.string_ops()
+            .substrOp()
+            .var("text")
+            .start_at(0)
+            .take(-6)
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello"));
         
         // Test out of bounds
-        let token = parse_str(r#"{"substr": [{"var": "text"}, 20]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some(""));
+        let rule = builder.string_ops()
+            .substrOp()
+            .var("text")
+            .start_at(20)
+            .build();
+        
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(""));
     }
 } 

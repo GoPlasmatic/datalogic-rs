@@ -73,7 +73,7 @@ impl<'a> DataValue<'a> {
     pub fn array(arena: &'a DataArena, values: &[DataValue<'a>]) -> Self {
         if values.is_empty() {
             // Use the preallocated empty array
-            return DataValue::Array(arena.empty_array());
+            DataValue::Array(arena.empty_array())
         } else if values.len() <= 8 {
             // Use the optimized small array allocation for common case
             DataValue::Array(arena.alloc_small_data_value_array(values))
@@ -229,7 +229,7 @@ impl<'a> DataValue<'a> {
                 
                 // Check for negative sign
                 let mut i = 0;
-                if bytes.len() > 0 && bytes[0] == b'-' {
+                if !bytes.is_empty() && bytes[0] == b'-' {
                     negative = true;
                     i = 1;
                 }
@@ -237,7 +237,7 @@ impl<'a> DataValue<'a> {
                 // Parse digits
                 while i < bytes.len() {
                     let b = bytes[i];
-                    if b >= b'0' && b <= b'9' {
+                    if b.is_ascii_digit() {
                         // Check for overflow
                         if value > i64::MAX / 10 {
                             is_integer = false;

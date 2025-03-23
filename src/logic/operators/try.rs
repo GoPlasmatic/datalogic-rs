@@ -28,7 +28,7 @@ pub fn eval_try<'a>(
 
     // Special case for a single argument - just evaluate it
     if args.len() == 1 {
-        return evaluate(args[0], data, &arena);
+        return evaluate(args[0], data, arena);
     }
 
     // Try each expression in sequence
@@ -37,7 +37,7 @@ pub fn eval_try<'a>(
     for (i, arg) in args.iter().enumerate() {
         // For the first expression, use the original data context
         if i == 0 {
-            match evaluate(arg, data, &arena) {
+            match evaluate(arg, data, arena) {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     last_error = Some(e);
@@ -50,21 +50,21 @@ pub fn eval_try<'a>(
                 Some(LogicError::ThrownError { r#type: error_type }) => {
                     // Create a context with the error type
                     let entries = arena.alloc_slice_clone(&[
-                        (arena.intern_str("type"), DataValue::string(&arena, error_type)),
+                        (arena.intern_str("type"), DataValue::string(arena, error_type)),
                     ]);
                     arena.alloc(DataValue::Object(entries))
                 },
                 Some(LogicError::NaNError) => {
                     // Create a context for NaN errors
                     let entries = arena.alloc_slice_clone(&[
-                        (arena.intern_str("type"), DataValue::string(&arena, "NaN")),
+                        (arena.intern_str("type"), DataValue::string(arena, "NaN")),
                     ]);
                     arena.alloc(DataValue::Object(entries))
                 },
                 Some(err) => {
                     // For other errors, just include a generic error message
                     let entries = arena.alloc_slice_clone(&[
-                        (arena.intern_str("type"), DataValue::string(&arena, &err.to_string())),
+                        (arena.intern_str("type"), DataValue::string(arena, &err.to_string())),
                     ]);
                     arena.alloc(DataValue::Object(entries))
                 },
@@ -75,7 +75,7 @@ pub fn eval_try<'a>(
             };
 
             // Evaluate with the error context
-            match evaluate(arg, error_context, &arena) {
+            match evaluate(arg, error_context, arena) {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     last_error = Some(e);
@@ -92,28 +92,60 @@ pub fn eval_try<'a>(
 mod tests {
     use super::*;
     use crate::logic::parser::parse_str;
+    use crate::value::FromJson;
+    use crate::logic::JsonLogic;
+    use serde_json::json;
 
     #[test]
-    fn test_try_coalesce_error() {
-        let arena = DataArena::new();
-        let data = DataValue::null();
+    pub fn test_try_coalesce_error() {
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
         
-        // Test successful coalescing
+        let data_json = json!(null);
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Test with parse_str
         let token = parse_str(r#"{"try": [{"throw": "Some error"}, 1]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_i64(), Some(1));
         
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
+        // Test with builder API
+        let rule = builder.tryOp([
+            builder.throwOp(builder.string_value("Some error")),
+            builder.int(1)
+        ]);
+        let result = evaluate(rule.root(), &data, &arena).unwrap();
         assert_eq!(result.as_i64(), Some(1));
     }
 
     #[test]
-    fn test_try_propagate_error() {
-        let arena = DataArena::new();
-        let data = DataValue::null();
+    pub fn test_try_propagate_error() {
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
         
-        // Test error propagation
+        let data_json = json!(null);
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Test with parse_str
         let token = parse_str(r#"{"try": [{"throw": "Some error"}, {"throw": "Another error"}]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena);
+        assert!(result.is_err());
+        if let Err(LogicError::ThrownError { r#type: error_type }) = result {
+            assert_eq!(error_type, "Another error");
+        } else {
+            panic!("Expected ThrownError, got: {:?}", result);
+        }
         
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena);
+        // Test with builder API
+        let rule = builder.tryOp([
+            builder.throwOp(builder.string_value("Some error")),
+            builder.throwOp(builder.string_value("Another error"))
+        ]);
+        let result = evaluate(rule.root(), &data, &arena);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "Another error");
@@ -123,14 +155,26 @@ mod tests {
     }
 
     #[test]
-    fn test_try_error_context() {
-        let arena = DataArena::new();
-        let data = DataValue::null();
+    pub fn test_try_error_context() {
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
         
-        // Test accessing error info in the fallback
+        let data_json = json!(null);
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Test with parse_str
         let token = parse_str(r#"{"try": [{"throw": "Some error"}, {"val": "type"}]}"#, &arena).unwrap();
+        let result = evaluate(token, &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("Some error"));
         
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
+        // Test with builder API
+        let rule = builder.tryOp([
+            builder.throwOp(builder.string_value("Some error")),
+            builder.val_str("type")
+        ]);
+        let result = evaluate(rule.root(), &data, &arena).unwrap();
         assert_eq!(result.as_str(), Some("Some error"));
     }
 } 

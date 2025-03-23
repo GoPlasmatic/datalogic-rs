@@ -18,42 +18,42 @@ impl<'a> ComparisonBuilder<'a> {
     }
 
     /// Creates an equality comparison.
-    pub fn equal(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn equalOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::Equal)
     }
 
     /// Creates a strict equality comparison.
-    pub fn strict_equal(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn strictEqualOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::StrictEqual)
     }
 
     /// Creates an inequality comparison.
-    pub fn not_equal(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn notEqualOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::NotEqual)
     }
 
     /// Creates a strict inequality comparison.
-    pub fn strict_not_equal(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn strictNotEqualOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::StrictNotEqual)
     }
 
     /// Creates a greater than comparison.
-    pub fn greater_than(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn greaterThanOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::GreaterThan)
     }
 
     /// Creates a greater than or equal comparison.
-    pub fn greater_than_or_equal(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn greaterThanOrEqualOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::GreaterThanOrEqual)
     }
 
     /// Creates a less than comparison.
-    pub fn less_than(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn lessThanOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::LessThan)
     }
 
     /// Creates a less than or equal comparison.
-    pub fn less_than_or_equal(&self) -> ComparisonOperationBuilder<'a> {
+    pub fn lessThanOrEqualOp(&self) -> ComparisonOperationBuilder<'a> {
         ComparisonOperationBuilder::new(self.arena, ComparisonOp::LessThanOrEqual)
     }
 }

@@ -156,74 +156,150 @@ pub fn eval_double_negation<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::logic::parser::parse_str;
-    use crate::value::FromJson;
+    use crate::JsonLogic;
     use serde_json::json;
-    
+
     #[test]
     fn test_and() {
-        let arena = DataArena::new();
-        let data_json = json!({"a": true, "b": false, "c": 42});
-        let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test and with all truthy values
-        let token = parse_str(r#"{"and": [{"var": "a"}, {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_i64(), Some(42));
-        
-        // Test and with a falsy value
-        let token = parse_str(r#"{"and": [{"var": "a"}, {"var": "b"}, {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
-        
-        // Test and with short-circuit
-        let token = parse_str(r#"{"and": [{"var": "b"}, {"var": "nonexistent"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+
+        let data = json!({
+            "a": 1,
+            "b": 0
+        });
+
+        // Test for true AND true
+        let rule = builder.control()
+            .andOp()
+            .operand(builder.bool(true))
+            .operand(builder.bool(true))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test for true AND false
+        let rule = builder.control()
+            .andOp()
+            .operand(builder.bool(true))
+            .operand(builder.bool(false))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test with variables
+        let rule = builder.control()
+            .andOp()
+            .var("a")
+            .var("b")
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(0));
+
+        // Test with multiple values - should return last truthy value or first falsy
+        let rule = builder.control()
+            .andOp()
+            .operand(builder.int(1))
+            .operand(builder.int(2))
+            .operand(builder.int(3))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(3));
     }
-    
+
     #[test]
     fn test_or() {
-        let arena = DataArena::new();
-        let data_json = json!({"a": true, "b": false, "c": 42});
-        let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test or with a truthy value
-        let token = parse_str(r#"{"or": [{"var": "b"}, {"var": "a"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
-        
-        // Test or with all falsy values
-        let token = parse_str(r#"{"or": [{"var": "b"}, false, null, 0]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_i64(), Some(0));
-        
-        // Test or with short-circuit
-        let token = parse_str(r#"{"or": [{"var": "a"}, {"var": "nonexistent"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+
+        let data = json!({
+            "a": 1,
+            "b": 0
+        });
+
+        // Test for true OR true
+        let rule = builder.control()
+            .orOp()
+            .operand(builder.bool(true))
+            .operand(builder.bool(true))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test for true OR false
+        let rule = builder.control()
+            .orOp()
+            .operand(builder.bool(true))
+            .operand(builder.bool(false))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test for false OR true
+        let rule = builder.control()
+            .orOp()
+            .operand(builder.bool(false))
+            .operand(builder.bool(true))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test for false OR false
+        let rule = builder.control()
+            .orOp()
+            .operand(builder.bool(false))
+            .operand(builder.bool(false))
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test with variables
+        let rule = builder.control()
+            .orOp()
+            .var("a")
+            .var("b")
+            .build();
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(1));
     }
-    
+
     #[test]
     fn test_not() {
-        let arena = DataArena::new();
-        let data_json = json!({"a": true, "b": false, "c": 42});
-        let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test not with a truthy value
-        let token = parse_str(r#"{"!": [{"var": "a"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
-        
-        // Test not with a falsy value
-        let token = parse_str(r#"{"!": [{"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
-        
-        // Test not with a number
-        let token = parse_str(r#"{"!": [{"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+
+        let data = json!({
+            "a": 1,
+            "b": 0
+        });
+
+        // Test for NOT true
+        let rule = builder.control()
+            .notOp(builder.bool(true));
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test for NOT false
+        let rule = builder.control()
+            .notOp(builder.bool(false));
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test with variables
+        let var_a = builder.var("a").build();
+        let rule = builder.control()
+            .notOp(var_a);
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test with falsy variable
+        let var_b = builder.var("b").build();
+        let rule = builder.control()
+            .notOp(var_b);
+        let result = logic.apply_logic(&rule, &data).unwrap();
+        assert_eq!(result, json!(true));
     }
 } 

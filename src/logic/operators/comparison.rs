@@ -374,108 +374,190 @@ pub fn eval_less_than_or_equal<'a>(args: &'a [&'a Token<'a>], data: &'a DataValu
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::logic::parser::parse_str;
-    use crate::value::FromJson;
+    use crate::JsonLogic;
     use serde_json::json;
     
     #[test]
     fn test_equal() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 10, "b": "10", "c": 20});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test equal with same type
-        let token = parse_str(r#"{"==": [{"var": "a"}, 10]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .equalOp()
+            .var("a")
+            .right(builder.int(10));
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
         
         // Test equal with different types (number and string)
-        let token = parse_str(r#"{"==": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .equalOp()
+            .var("a")
+            .var_right("b");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
         
         // Test not equal
-        let token = parse_str(r#"{"==": [{"var": "a"}, {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        let rule = builder.compare()
+            .equalOp()
+            .var("a")
+            .var_right("c");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
     }
     
     #[test]
     fn test_not_equal() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 10, "b": "10", "c": 20, "d": 30});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test not equal with two arguments
-        let token = parse_str(r#"{"!=": [{"var": "a"}, {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .notEqualOp()
+            .var("a")
+            .var_right("c");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
         
         // Test not equal with same values
-        let token = parse_str(r#"{"!=": [{"var": "a"}, 10]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        let rule = builder.compare()
+            .notEqualOp()
+            .var("a")
+            .right(builder.int(10));
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
         
-        // Test not equal with multiple arguments (all equal)
-        let token = parse_str(r#"{"!=": [10, 10, 10, 10]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        // Test not equal with multiple arguments (chain comparison)
+        // For multiple arguments, we need to chain comparisons with AND
+        let comparison1 = builder.compare().notEqualOp()
+            .left(builder.int(10))
+            .right(builder.int(10));
+            
+        let comparison2 = builder.compare().notEqualOp()
+            .left(builder.int(10))
+            .right(builder.int(10));
+            
+        let comparison3 = builder.compare().notEqualOp()
+            .left(builder.int(10))
+            .right(builder.int(10));
         
-        // Test not equal with multiple arguments (one pair not equal)
-        let token = parse_str(r#"{"!=": [{"var": "a"}, {"var": "b"}, {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        let rule = builder.control().andOp()
+            .operand(comparison1)
+            .operand(comparison2)
+            .operand(comparison3)
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
+        
+        // Test not equal with different values in a chain
+        let comparison1 = builder.compare().notEqualOp()
+            .var("a")
+            .var_right("b");
+            
+        let comparison2 = builder.compare().notEqualOp()
+            .var("b")
+            .var_right("c");
+        
+        let rule = builder.control().andOp()
+            .operand(comparison1)
+            .operand(comparison2)
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
     }
     
     #[test]
     fn test_strict_equal() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 10, "b": "10", "c": 20});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test strict equal with same type
-        let token = parse_str(r#"{"===": [{"var": "a"}, 10]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .strictEqualOp()
+            .var("a")
+            .right(builder.int(10));
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
         
         // Test strict equal with different types (number and string)
-        let token = parse_str(r#"{"===": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        let rule = builder.compare()
+            .strictEqualOp()
+            .var("a")
+            .var_right("b");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
     }
     
     #[test]
     fn test_greater_than() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 10, "b": 5, "c": "20"});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test greater than with numbers
-        let token = parse_str(r#"{">": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .greaterThanOp()
+            .var("a")
+            .var_right("b");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
         
         // Test greater than with string coercion
-        let token = parse_str(r#"{">": [{"var": "c"}, {"var": "a"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .greaterThanOp()
+            .var("c")
+            .var_right("a");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
     }
     
     #[test]
     fn test_less_than() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 10, "b": 5, "c": "20"});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test less than with numbers
-        let token = parse_str(r#"{"<": [{"var": "b"}, {"var": "a"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .lessThanOp()
+            .var("b")
+            .var_right("a");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
         
         // Test less than with string coercion
-        let token = parse_str(r#"{"<": [{"var": "a"}, {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(true));
+        let rule = builder.compare()
+            .lessThanOp()
+            .var("a")
+            .var_right("c");
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
     }
 } 

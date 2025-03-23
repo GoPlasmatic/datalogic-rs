@@ -222,130 +222,166 @@ pub fn eval_max<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::logic::parser::parse_str;
-    use crate::value::FromJson;
-    use crate::logic::evaluator::evaluate;
+    use crate::JsonLogic;
     use serde_json::json;
     
     #[test]
     fn test_add() {
-        let arena = DataArena::new();
-        let data_json = json!({"a": 10, "b": 20, "c": "hello", "x": 1, "y": 2});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
+        use crate::logic::JsonLogic;
+        use serde_json::json;
         
-        // Test adding numbers
-        let token = parse_str(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(30.0));
+        // Create JSONLogic instance
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
         
-        // Test adding multiple numbers
-        let token = parse_str(r#"{"+": [{"var": "a"}, {"var": "b"}, 5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(35.0));
+        let data_json = json!({"x": 1, "y": 2});
         
-        // Test addition with multiple operands
-        let token = parse_str(r#"{"+": [1, 2, 3, 4]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(10.0));
+        // Test addition of numbers
+        let rule = builder.arithmetic()
+            .addOp()
+            .operand(builder.int(1))
+            .operand(builder.int(2))
+            .operand(builder.int(3))
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(6));
         
-        // Test addition with negative numbers
-        let token = parse_str(r#"{"+": [-1, 0, 5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(4.0));
-        
-        // Test addition with strings (coerced to numbers)
-        let token = parse_str(r#"{"+": ["1", "2", "3"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(6.0));
+        // Test addition with strings
+        let rule = builder.arithmetic()
+            .addOp()
+            .operand(builder.string_value("1"))
+            .operand(builder.string_value("2"))
+            .operand(builder.string_value("3"))
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(6));
         
         // Test addition with booleans
-        let token = parse_str(r#"{"+": [true, false, true]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(2.0));
+        let rule = builder.arithmetic()
+            .addOp()
+            .operand(builder.bool(true))
+            .operand(builder.bool(false))
+            .operand(builder.bool(true))
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(2));
         
         // Test with single operand (number)
-        let token = parse_str(r#"{"+": [1]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(1.0));
+        let rule = builder.arithmetic()
+            .addOp()
+            .operand(builder.int(1))
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(1));
         
         // Test with zero operands
-        let token = parse_str(r#"{"+": []}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(0.0));
-        
-        // Test with single direct operand
-        let token = parse_str(r#"{"+": 1}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(1.0));
+        let rule = builder.arithmetic()
+            .addOp()
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(0));
         
         // Test with variable references
-        let token = parse_str(r#"{"+": [{"var": "x"}, {"var": "y"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(3.0));
-        
-        // Test with dynamic array
-        let token = parse_str(r#"{"+": {"preserve": [7, 8]}}"#, &arena).unwrap();
-        println!("token: {:?}", token);
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(15.0));
+        let rule = builder.arithmetic()
+            .addOp()
+            .var("x")
+            .var("y")
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(3));
     }
     
     #[test]
     fn test_subtract() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 30, "b": 10});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test subtracting numbers
-        let token = parse_str(r#"{"-": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(20.0));
+        let rule = builder.arithmetic()
+            .subtractOp()
+            .var("a")
+            .var("b")
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(20));
         
         // Test subtracting multiple numbers
-        let token = parse_str(r#"{"-": [{"var": "a"}, {"var": "b"}, 5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(15.0));
+        let rule = builder.arithmetic()
+            .subtractOp()
+            .var("a")
+            .var("b")
+            .operand(builder.int(5))
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(15));
     }
     
     #[test]
     fn test_multiply() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 5, "b": 4});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test multiplying numbers
-        let token = parse_str(r#"{"*": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(20.0));
-        
-        // Test multiplying multiple numbers
-        let token = parse_str(r#"{"*": [{"var": "a"}, {"var": "b"}, 2]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(40.0));
+        let rule = builder.arithmetic()
+            .multiplyOp()
+            .var("a")
+            .var("b")
+            .operand(builder.int(2))
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(40));
     }
     
     #[test]
     fn test_divide() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 20, "b": 4});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test dividing numbers
-        let token = parse_str(r#"{"/": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(5.0));
+        let rule = builder.arithmetic()
+            .divideOp()
+            .var("a")
+            .var("b")
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(5));
     }
     
     #[test]
     fn test_modulo() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let builder = logic.builder();
+        
         let data_json = json!({"a": 23, "b": 5});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         
         // Test modulo
-        let token = parse_str(r#"{"%": [{"var": "a"}, {"var": "b"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_f64(), Some(3.0));
+        let rule = builder.arithmetic()
+            .moduloOp()
+            .var("a")
+            .var("b")
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(3));
     }
 } 

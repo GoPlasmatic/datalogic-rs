@@ -67,8 +67,6 @@ pub enum OperatorType {
     Array(ArrayOp),
     /// Log operator
     Log,
-    /// In operator
-    In,
     /// Missing operator
     Missing,
     /// Missing Some operator
@@ -221,9 +219,9 @@ impl OperatorType {
                 ArrayOp::Some => "some",
                 ArrayOp::None => "none",
                 ArrayOp::Merge => "merge",
+                ArrayOp::In => "in",
             },
             OperatorType::Log => "log",
-            OperatorType::In => "in",
             OperatorType::Missing => "missing",
             OperatorType::MissingSome => "missing_some",
             OperatorType::Exists => "exists",
@@ -271,8 +269,8 @@ impl FromStr for OperatorType {
             "some" => Ok(OperatorType::Array(ArrayOp::Some)),
             "none" => Ok(OperatorType::Array(ArrayOp::None)),
             "merge" => Ok(OperatorType::Array(ArrayOp::Merge)),
+            "in" => Ok(OperatorType::Array(ArrayOp::In)),
             "log" => Ok(OperatorType::Log),
-            "in" => Ok(OperatorType::In),
             "missing" => Ok(OperatorType::Missing),
             "missing_some" => Ok(OperatorType::MissingSome),
             "exists" => Ok(OperatorType::Exists),

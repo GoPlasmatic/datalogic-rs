@@ -18,17 +18,17 @@ impl<'a> ControlBuilder<'a> {
     }
 
     /// Creates an 'and' operation.
-    pub fn and(&self) -> LogicalOperationBuilder<'a> {
+    pub fn andOp(&self) -> LogicalOperationBuilder<'a> {
         LogicalOperationBuilder::new(self.arena, ControlOp::And)
     }
 
     /// Creates an 'or' operation.
-    pub fn or(&self) -> LogicalOperationBuilder<'a> {
+    pub fn orOp(&self) -> LogicalOperationBuilder<'a> {
         LogicalOperationBuilder::new(self.arena, ControlOp::Or)
     }
 
     /// Creates a 'not' operation.
-    pub fn not(&self, value: Logic<'a>) -> Logic<'a> {
+    pub fn notOp(&self, value: Logic<'a>) -> Logic<'a> {
         Logic::operator(
             OperatorType::Control(ControlOp::Not),
             vec![value],
@@ -37,7 +37,7 @@ impl<'a> ControlBuilder<'a> {
     }
 
     /// Creates an 'if' operation builder.
-    pub fn if_then(&self) -> IfBuilder<'a> {
+    pub fn ifOp(&self) -> IfBuilder<'a> {
         IfBuilder::new(self.arena)
     }
 }
@@ -63,7 +63,7 @@ impl<'a> LogicalOperationBuilder<'a> {
     }
 
     /// Adds an operand to the logical operation.
-    pub fn add(mut self, operand: Logic<'a>) -> Self {
+    pub fn operand(mut self, operand: Logic<'a>) -> Self {
         self.operands.push(operand);
         self
     }
@@ -71,13 +71,13 @@ impl<'a> LogicalOperationBuilder<'a> {
     /// Adds a variable as an operand to the logical operation.
     pub fn var(self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.add(var)
+        self.operand(var)
     }
 
     /// Adds a literal value as an operand to the logical operation.
     pub fn value<T: Into<crate::value::DataValue<'a>>>(self, value: T) -> Self {
         let val = Logic::literal(value.into(), self.arena);
-        self.add(val)
+        self.operand(val)
     }
 
     /// Builds the logical operation with the collected operands.

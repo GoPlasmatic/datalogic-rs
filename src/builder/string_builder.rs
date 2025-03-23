@@ -18,12 +18,12 @@ impl<'a> StringBuilder<'a> {
     }
 
     /// Creates a concatenation operation.
-    pub fn concat(&self) -> StringOperationBuilder<'a> {
+    pub fn concatOp(&self) -> StringOperationBuilder<'a> {
         StringOperationBuilder::new(self.arena, StringOp::Cat)
     }
 
     /// Creates a substring operation.
-    pub fn substr(&self) -> SubstringBuilder<'a> {
+    pub fn substrOp(&self) -> SubstringBuilder<'a> {
         SubstringBuilder::new(self.arena)
     }
 }
@@ -48,25 +48,25 @@ impl<'a> StringOperationBuilder<'a> {
         }
     }
 
-    /// Adds an operand to the string operation.
-    pub fn add(mut self, operand: Logic<'a>) -> Self {
+    /// Adds a part to the string operation.
+    pub fn part(mut self, operand: Logic<'a>) -> Self {
         self.operands.push(operand);
         self
     }
 
-    /// Adds a variable as an operand to the string operation.
+    /// Adds a variable as a part to the string operation.
     pub fn var(self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.add(var)
+        self.part(var)
     }
 
-    /// Adds a literal string value as an operand to the string operation.
+    /// Adds a literal string value as a part to the string operation.
     pub fn string(self, value: &str) -> Self {
         let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
-        self.add(val)
+        self.part(val)
     }
 
-    /// Builds the string operation with the collected operands.
+    /// Builds the string operation with the collected parts.
     pub fn build(self) -> Logic<'a> {
         if self.operands.is_empty() {
             // Default for string operations is an empty string

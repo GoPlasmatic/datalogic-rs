@@ -62,16 +62,32 @@ mod tests {
     use crate::logic::parser::parse_str;
     use crate::value::FromJson;
     use serde_json::json;
+    use crate::logic::JsonLogic;
 
     #[test]
     fn test_evaluate_throw_string() {
-        let arena = DataArena::new();
-        let data = DataValue::null();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
         
-        // Parse and evaluate a throw expression with a string
+        let data_json = json!(null);
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Using parse_str since we need to debug the throw builder
         let token = parse_str(r#"{"throw": "hello"}"#, &arena).unwrap();
         
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena);
+        let result = evaluate(token, &data, &arena);
+        assert!(result.is_err());
+        if let Err(LogicError::ThrownError { r#type: error_type }) = result {
+            assert_eq!(error_type, "hello");
+        } else {
+            panic!("Expected ThrownError, got: {:?}", result);
+        }
+        
+        // Now test using the builder API
+        let rule = builder.throwOp(builder.string_value("hello"));
+        let result = evaluate(rule.root(), &data, &arena);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "hello");
@@ -82,16 +98,30 @@ mod tests {
 
     #[test]
     fn test_evaluate_throw_object() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
+        
         let data_json = json!({
             "x": {"type": "Some error"}
         });
         let data = DataValue::from_json(&data_json, &arena);
         
-        // Parse and evaluate a throw expression with an object
+        // First test with parse_str
         let token = parse_str(r#"{"throw": {"val": "x"}}"#, &arena).unwrap();
         
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena);
+        let result = evaluate(token, &data, &arena);
+        assert!(result.is_err());
+        if let Err(LogicError::ThrownError { r#type: error_type }) = result {
+            assert_eq!(error_type, "Some error");
+        } else {
+            panic!("Expected ThrownError, got: {:?}", result);
+        }
+        
+        // Now test using the builder API
+        let rule = builder.throwOp(builder.val_str("x"));
+        let result = evaluate(rule.root(), &data, &arena);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "Some error");

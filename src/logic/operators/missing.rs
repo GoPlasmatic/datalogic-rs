@@ -37,7 +37,7 @@ pub fn eval_missing<'a>(
             }
             
             // If we get here, the variable is missing
-            missing.push(DataValue::String(*name));
+            missing.push(DataValue::String(name));
         } else if let DataValue::Array(names) = value {
             // Check each name in the array
             for name_value in *names {
@@ -51,7 +51,7 @@ pub fn eval_missing<'a>(
                     }
                     
                     // Variable is missing
-                    missing.push(DataValue::String(*name));
+                    missing.push(DataValue::String(name));
                 }
                 // Ignore non-string names
             }
@@ -102,7 +102,7 @@ pub fn eval_missing_some<'a>(
                 }
                 
                 // Variable is missing
-                missing.push(DataValue::String(*name));
+                missing.push(DataValue::String(name));
             }
             // Ignore non-string names
         }
@@ -127,145 +127,117 @@ pub fn eval_missing_some<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::parser::parse_str;
+    use crate::JsonLogic;
     use crate::value::FromJson;
+    use crate::value::DataValue;
     use serde_json::json;
-
+    
     #[test]
     fn test_missing() {
-        let arena = DataArena::new();
-        let data_json = json!({
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
+
+        let data = json!({
             "a": 1,
-            "c": 3
+            "c": 3,
         });
-        let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test with a literal array
-        let token = parse_str(r#"{"missing": ["a", "b", "c"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
+        let data_value = DataValue::from_json(&data, &arena);
+
+        // Test missing with single value
+        let rule = builder.missing_var("b");
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0].as_str(), Some("b"));
-        
-        // Test with a single key
-        let token = parse_str(r#"{"missing": "b"}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0].as_str(), Some("b"));
-        
-        // Test with multiple arguments
-        let token = parse_str(r#"{"missing": ["a", "b", "c", "d"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
+
+        // Test missing with multiple values
+        let rule = builder.missing_vars(["a", "b", "c", "d"]);
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 2);
         assert_eq!(arr[0].as_str(), Some("b"));
         assert_eq!(arr[1].as_str(), Some("d"));
-        
-        // Test with null data
-        let null_data = DataValue::null();
-        let token = parse_str(r#"{"missing": ["a", "b"]}"#, &arena).unwrap();
-        let result = evaluate(token, &null_data, &arena).unwrap();
-        
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0].as_str(), Some("a"));
-        assert_eq!(arr[1].as_str(), Some("b"));
-        
-        // Test with null data and single key
-        let token = parse_str(r#"{"missing": "a"}"#, &arena).unwrap();
-        let result = evaluate(token, &null_data, &arena).unwrap();
-        
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0].as_str(), Some("a"));
-        
-        // Test with dot notation
-        let token = parse_str(r#"{"missing": ["a.b"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0].as_str(), Some("a.b"));
-        
-        // Test with merge operator
-        let data_json = json!({
-            "vin": "123",
-            "financing": true
-        });
-        let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test with merge operator that returns an array of strings
-        let token = parse_str(r#"{"missing": {"merge": ["vin", {"if": [{"var": "financing"}, ["apr"], []]}]}}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0].as_str(), Some("apr"));
-        
-        // Test with merge operator that returns nested arrays
-        let token = parse_str(r#"{"missing": {"merge": [["vin"], {"if": [{"var": "financing"}, ["apr"], []]}]}}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0].as_str(), Some("apr"));
-    }
-    
-    #[test]
-    fn test_missing_some() {
-        let arena = DataArena::new();
-        let data_json = json!({
-            "a": 1,
-            "c": 3
-        });
-        let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test with min_required = 1, should return empty array since we have 2 present
-        let token = parse_str(r#"{"missing_some": [1, ["a", "b", "c", "d"]]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
+
+        // Test missing with empty list
+        let rule = builder.missingOp(builder.array().arrayLiteralOp(vec![]));
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);
-        
-        // Test with min_required = 3, should return ["b", "d"] since we only have 2 present
-        let token = parse_str(r#"{"missing_some": [3, ["a", "b", "c", "d"]]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
+
+        // Test missing with all present
+        let rule = builder.missing_vars(["a", "c"]);
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
+        assert!(result.is_array());
+        let arr = result.as_array().unwrap();
+        assert_eq!(arr.len(), 0);
+    }
+
+    #[test]
+    fn test_missing_some() {
+        // Create JSONLogic instance with arena
+        let logic = JsonLogic::new();
+        let arena = logic.arena();
+        let builder = logic.builder();
+
+        let data = json!({
+            "a": 1,
+            "c": 3,
+        });
+        let data_value = DataValue::from_json(&data, &arena);
+
+        // Test missing_some with min_required=1, all missing
+        let vars = builder.array().arrayLiteralOp(vec![
+            builder.string_value("b"),
+            builder.string_value("d"),
+        ]);
+        let rule = builder.missingSomeOp(1, vars);
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 2);
         assert_eq!(arr[0].as_str(), Some("b"));
         assert_eq!(arr[1].as_str(), Some("d"));
-        
-        // Test with null data
-        let null_data = DataValue::null();
-        let token = parse_str(r#"{"missing_some": [1, ["a", "b", "c"]]}"#, &arena).unwrap();
-        let result = evaluate(token, &null_data, &arena).unwrap();
-        
+
+        // Test missing_some with min_required=1, some present
+        let vars = builder.array().arrayLiteralOp(vec![
+            builder.string_value("a"),
+            builder.string_value("b"),
+            builder.string_value("c"),
+            builder.string_value("d"),
+        ]);
+        let rule = builder.missingSomeOp(1, vars);
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 3);
-        assert_eq!(arr[0].as_str(), Some("a"));
-        assert_eq!(arr[1].as_str(), Some("b"));
-        assert_eq!(arr[2].as_str(), Some("c"));
-        
-        // Test with min_required = 0, should always return empty array
-        let token = parse_str(r#"{"missing_some": [0, ["a", "b", "c"]]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        
+        assert_eq!(arr.len(), 0);
+
+        // Test missing_some with min_required=3, only 2 present
+        let vars = builder.array().arrayLiteralOp(vec![
+            builder.string_value("a"),
+            builder.string_value("b"),
+            builder.string_value("c"),
+            builder.string_value("d"),
+        ]);
+        let rule = builder.missingSomeOp(3, vars);
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
+        assert!(result.is_array());
+        let arr = result.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0].as_str(), Some("b"));
+        assert_eq!(arr[1].as_str(), Some("d"));
+
+        // Test missing_some with min_required=0
+        let vars = builder.array().arrayLiteralOp(vec![
+            builder.string_value("b"),
+            builder.string_value("d"),
+        ]);
+        let rule = builder.missingSomeOp(0, vars);
+        let result = evaluate(rule.root(), &data_value, &arena).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);

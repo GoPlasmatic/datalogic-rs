@@ -26,9 +26,9 @@ impl<'a> RuleFactory<'a> {
         
         builder
             .control()
-            .and()
-            .add(builder.compare().greater_than().left(var.clone()).right(min))
-            .add(builder.compare().less_than().left(var).right(max))
+            .andOp()
+            .operand(builder.compare().greaterThanOp().left(var.clone()).right(min))
+            .operand(builder.compare().lessThanOp().left(var).right(max))
             .build()
     }
     
@@ -41,9 +41,9 @@ impl<'a> RuleFactory<'a> {
         
         builder
             .control()
-            .and()
-            .add(builder.compare().greater_than_or_equal().left(var.clone()).right(min))
-            .add(builder.compare().less_than_or_equal().left(var).right(max))
+            .andOp()
+            .operand(builder.compare().greaterThanOrEqualOp().left(var.clone()).right(min))
+            .operand(builder.compare().lessThanOrEqualOp().left(var).right(max))
             .build()
     }
     
@@ -59,9 +59,9 @@ impl<'a> RuleFactory<'a> {
             .map(|opt| builder.value(opt.into()))
             .collect::<Vec<_>>();
         
-        let array = builder.array().array_literal(options_array);
+        let array = builder.array().arrayLiteralOp(options_array);
         
-        builder.array().in_array(var, array)
+        builder.array().inOp(var, array)
     }
     
     /// Creates a conditional assignment rule.
@@ -77,7 +77,7 @@ impl<'a> RuleFactory<'a> {
         
         builder
             .control()
-            .if_then()
+            .ifOp()
             .condition(condition)
             .then(builder.value(true_value))
             .else_branch(builder.value(false_value))
@@ -99,87 +99,104 @@ impl<'a> RuleFactory<'a> {
         // Start building a chain of if-then-else
         let mut current_rule = None;
         
-        // Process mapping in reverse to build the nested if-then-else
+        let var = builder.var(var_path).build();
+        
+        // Build the chain in reverse (from last to first)
         for (key, value) in mapping.iter().rev() {
-            // For each mapping entry, build the components separately 
-            let var_node = builder.var(var_path).build();
-            let key_node = builder.value(key.clone());
-            
-            // Create an equality comparison
-            let comparison_op = Logic::operator(
-                crate::logic::OperatorType::Comparison(crate::ComparisonOp::Equal),
-                vec![var_node, key_node],
-                self.arena
-            );
-            
-            // Build an if-then-else using the comparison as condition
-            let next_rule = builder
-                .control()
-                .if_then()
-                .condition(comparison_op)
-                .then(builder.value(value.clone()))
-                .else_branch(current_rule.unwrap_or_else(|| {
-                    // For the innermost else, use the default or null
-                    if let Some(ref default) = default_value {
-                        builder.value(default.clone())
-                    } else {
-                        builder.null()
-                    }
-                }))
-                .build();
+            let comparison = builder
+                .compare()
+                .equalOp()
+                .left(var.clone())
+                .right(builder.value(key.clone()));
                 
-            current_rule = Some(next_rule);
+            if let Some(else_rule) = current_rule {
+                current_rule = Some(
+                    builder
+                        .control()
+                        .ifOp()
+                        .condition(comparison)
+                        .then(builder.value(value.clone()))
+                        .else_branch(else_rule)
+                        .build()
+                );
+            } else {
+                // This is the last mapping pair, so use default if provided
+                let else_value = if let Some(ref default) = default_value {
+                    builder.value(default.clone())
+                } else {
+                    var.clone() // If no default, return the original value
+                };
+                
+                current_rule = Some(
+                    builder
+                        .control()
+                        .ifOp()
+                        .condition(comparison)
+                        .then(builder.value(value.clone()))
+                        .else_branch(else_value)
+                        .build()
+                );
+            }
         }
         
-        current_rule.unwrap_or_else(|| {
-            // If no mapping was provided, return the default or null
-            if let Some(default) = default_value {
-                builder.value(default)
-            } else {
-                builder.null()
-            }
-        })
+        current_rule.unwrap_or_else(|| var)
     }
     
     /// Creates a string template rule.
     ///
-    /// This creates a rule that builds a string from a template,
-    /// replacing placeholders with variable values.
+    /// This creates a rule that concatenates strings and variable values according to a template.
+    /// The template_parts parameter is a vector of (is_var, value) pairs, where is_var indicates
+    /// whether the value is a variable path (true) or a literal string (false).
     pub fn string_template(&self, template_parts: Vec<(bool, &str)>) -> Logic<'a> {
         let builder = super::rule_builder(self.arena);
-        let concat = builder.string_builder().concat();
         
-        // Build the concatenation rule
-        let mut concat_builder = concat;
-        for (is_var, part) in template_parts {
+        if template_parts.is_empty() {
+            return builder.string_value("");
+        }
+        
+        let mut concat = builder.string_ops().concatOp();
+        
+        for (is_var, value) in template_parts {
             if is_var {
-                // This part is a variable reference
-                concat_builder = concat_builder.var(part);
+                concat = concat.part(builder.var(value).build());
             } else {
-                // This part is a literal string
-                concat_builder = concat_builder.string(part);
+                concat = concat.part(builder.string_value(value));
             }
         }
         
-        concat_builder.build()
+        concat.build()
     }
     
-    /// Creates a null coalescing rule.
+    /// Creates a coalesce rule.
     ///
-    /// This creates a rule that returns the first non-null value from a list.
+    /// This creates a rule that returns the first non-missing variable value from a list.
     pub fn coalesce(&self, vars: Vec<&str>) -> Logic<'a> {
         let builder = super::rule_builder(self.arena);
         
-        // Create variable references
-        let var_refs = vars.into_iter()
-            .map(|path| builder.var(path).build())
-            .collect::<Vec<_>>();
-            
-        // Build the operator directly since there's no dedicated builder for it
-        Logic::operator(
-            crate::logic::OperatorType::Coalesce,
-            var_refs,
-            self.arena,
-        )
+        if vars.is_empty() {
+            return builder.null();
+        }
+        
+        if vars.len() == 1 {
+            return builder.var(vars[0]).build();
+        }
+        
+        // For multiple variables, we need to create a chain of if-else checks
+        let var_path = vars[0];
+        let var = builder.var(var_path).build();
+        
+        // Check if the first variable is missing
+        let is_missing = builder.missingOp(builder.string_value(var_path));
+        
+        // If it's missing, coalesce the rest of the variables
+        let rest_coalesce = self.coalesce(vars[1..].to_vec());
+        
+        builder
+            .control()
+            .ifOp()
+            .condition(is_missing)
+            .then(rest_coalesce)
+            .else_branch(var)
+            .build()
     }
 } 

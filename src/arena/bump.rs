@@ -118,7 +118,7 @@ impl fmt::Debug for DataArena {
 impl DataArena {
     /// Creates a new arena with default settings.
     pub fn new() -> Self {
-        Self::with_chunk_size(1 * 1024 * 1024) // 1MB chunks by default
+        Self::with_chunk_size(1024 * 1024) // 1MB chunks by default
     }
     
     /// Creates a new arena with the specified chunk size.
@@ -135,7 +135,7 @@ impl DataArena {
         static NULL_VALUE: DataValue<'static> = DataValue::Null;
         static TRUE_VALUE: DataValue<'static> = DataValue::Bool(true);
         static FALSE_VALUE: DataValue<'static> = DataValue::Bool(false);
-        static EMPTY_STRING: &'static str = "";
+        static EMPTY_STRING: &str = "";
         static EMPTY_STRING_VALUE: DataValue<'static> = DataValue::String(EMPTY_STRING);
         static EMPTY_ARRAY: [DataValue<'static>; 0] = [];
         static EMPTY_ARRAY_VALUE: DataValue<'static> = DataValue::Array(&EMPTY_ARRAY);

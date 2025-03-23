@@ -7,7 +7,7 @@ use crate::value::DataValue;
 use super::token::{Token, OperatorType};
 use super::error::Result;
 use super::operators::{
-    comparison, arithmetic, control, string, missing, array, log, r#in, variable, val, throw, r#try
+    comparison, arithmetic, control, string, missing, array, log, variable, val, throw, r#try
 };
 
 /// Helper function to convert a token to a TokenRefs wrapper
@@ -122,12 +122,7 @@ fn evaluate_custom_operator<'a>(
     _data: &'a DataValue<'a>,
     _arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    match name {
-        _ => {
-            // Custom operators are not yet implemented
-            Err(super::error::LogicError::OperatorNotFoundError { operator: name.to_string() })
-        }
-    }
+    Err(super::error::LogicError::OperatorNotFoundError { operator: name.to_string() })
 }
 
 /// Evaluates arguments and returns them as a slice of DataValues
@@ -216,6 +211,7 @@ fn evaluate_operator<'a>(
                 array::ArrayOp::Some => array::eval_some(token_refs, data, arena),
                 array::ArrayOp::None => array::eval_none(token_refs, data, arena),
                 array::ArrayOp::Merge => array::eval_merge(token_refs, data, arena),
+                array::ArrayOp::In => array::eval_in(token_refs, data, arena),
             }
         },
         
@@ -271,10 +267,6 @@ fn evaluate_operator<'a>(
         // Other operators
         OperatorType::Log => {
             log::eval_log(token_refs, data, arena)
-        },
-        
-        OperatorType::In => {
-            r#in::eval_in(token_refs, data, arena)
         },
         
         OperatorType::Missing => {
