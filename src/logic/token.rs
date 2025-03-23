@@ -77,6 +77,8 @@ pub enum OperatorType {
     Exists,
     /// Coalesce operator
     Coalesce,
+    /// Val operator (replacement for Var)
+    Val,
     /// Array operator (for arrays with non-literal elements)
     ArrayLiteral,
 }
@@ -222,6 +224,7 @@ impl OperatorType {
             OperatorType::MissingSome => "missing_some",
             OperatorType::Exists => "exists",
             OperatorType::Coalesce => "??",
+            OperatorType::Val => "val",
             OperatorType::ArrayLiteral => "array",
         }
     }
@@ -268,7 +271,8 @@ impl FromStr for OperatorType {
             "missing_some" => Ok(OperatorType::MissingSome),
             "exists" => Ok(OperatorType::Exists),
             "??" => Ok(OperatorType::Coalesce),
-            _ => Err("unknown operator")
+            "val" => Ok(OperatorType::Val),
+            _ => Err("unknown operator"),
         }
     }
 }

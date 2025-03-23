@@ -104,9 +104,11 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
             return parse_variable(value, arena);
         }
         
-        // Check if it's a variable reference using the "val" operator (compatibility with test files)
+        // Handle the val operator
         if key == "val" {
-            return parse_variable(value, arena);
+            let token = parse_json_internal(value, arena)?;
+            let args_token = arena.alloc(token);
+            return Ok(Token::operator(OperatorType::Val, args_token));
         }
         
         // Check if it's the preserve operator
@@ -133,7 +135,6 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         if let Token::Literal(value) = token {
             entries.push((arena.intern_str(key), value));
         } else {
-            // If it's not a literal, we need to convert it to a data value
             return Err(LogicError::ParseError {
                 reason: format!("Object values must be literals, found: {:?}", token),
             });
@@ -694,6 +695,55 @@ mod tests {
             assert_eq!(arr.len(), 3);
         } else {
             panic!("Expected literal token, got: {:?}", token);
+        }
+    }
+    
+    #[test]
+    fn test_parse_val_operator() {
+        use crate::arena::DataArena;
+        use crate::logic::token::{Token, OperatorType};
+        use crate::value::DataValue;
+        
+        let arena = DataArena::new();
+        
+        // Test simple val operator: {"val": "hello"}
+        let json_str = r#"{"val": "hello"}"#;
+        let token = super::parse_str(json_str, &arena).unwrap();
+        
+        // Check that it's a Val operator
+        let (op_type, args) = token.as_operator().unwrap();
+        assert_eq!(op_type, OperatorType::Val);
+        
+        // Check that the argument is a literal string "hello"
+        let literal = args.as_literal().unwrap();
+        match literal {
+            DataValue::String(s) => assert_eq!(*s, "hello"),
+            _ => panic!("Expected string literal"),
+        }
+        
+        // Test nested val operator: {"val": ["hello", "world"]}
+        let json_str = r#"{"val": ["hello", "world"]}"#;
+        let token = super::parse_str(json_str, &arena).unwrap();
+        
+        // Check that it's a Val operator
+        let (op_type, args) = token.as_operator().unwrap();
+        assert_eq!(op_type, OperatorType::Val);
+        
+        // Check that the argument is an array with "hello" and "world"
+        let array = args.as_literal().unwrap();
+        match array {
+            DataValue::Array(items) => {
+                assert_eq!(items.len(), 2);
+                match &items[0] {
+                    DataValue::String(s) => assert_eq!(*s, "hello"),
+                    _ => panic!("Expected string literal"),
+                }
+                match &items[1] {
+                    DataValue::String(s) => assert_eq!(*s, "world"),
+                    _ => panic!("Expected string literal"),
+                }
+            },
+            _ => panic!("Expected array literal"),
         }
     }
 }

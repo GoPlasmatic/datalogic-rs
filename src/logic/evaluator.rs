@@ -6,7 +6,7 @@ use crate::arena::DataArena;
 use crate::value::DataValue;
 use super::token::{Token, OperatorType};
 use super::error::Result;
-use super::operators::{comparison, arithmetic, control, string, missing, array, log, r#in, variable};
+use super::operators::{comparison, arithmetic, control, string, missing, array, log, r#in, variable, val};
 
 /// Helper function to convert a token to a TokenRefs wrapper
 /// This avoids cloning tokens for lazy evaluation
@@ -292,10 +292,24 @@ fn evaluate_operator<'a>(
             eval_coalesce(token_refs, data, arena)
         },
         
+        // Val operator
+        OperatorType::Val => val::eval_val(token_refs, data, arena),
+        
+        // Array literal operator
         OperatorType::ArrayLiteral => {
-            // This should be handled by the Token::ArrayLiteral case in evaluate()
-            Err(super::error::LogicError::InvalidArgumentsError)
-        }
+            // Just evaluate all elements as an array
+            let mut values = arena.get_data_value_vec();
+            
+            for token in token_refs {
+                let value = evaluate(token, data, arena)?;
+                values.push(value.clone());
+            }
+            
+            let result = DataValue::Array(arena.alloc_slice_clone(&values));
+            arena.release_data_value_vec(values);
+            
+            Ok(arena.alloc(result))
+        },
     }
 }
 
@@ -394,5 +408,54 @@ mod tests {
         let token = parse_str(r#"{"??": []}"#, &arena).unwrap();
         let result = evaluate(token, &data, &arena).unwrap();
         assert!(result.is_null());
+    }
+
+    #[test]
+    fn test_evaluate_val() {
+        use crate::arena::DataArena;
+        use crate::logic::token::{Token, OperatorType};
+        use crate::value::{DataValue, NumberValue};
+        use super::evaluate;
+        
+        let arena = DataArena::new();
+        
+        // Create test data: { "hello": 0, "nested": { "world": 1 } }
+        let world_entries = arena.alloc_slice_clone(&[
+            (arena.intern_str("world"), DataValue::integer(1))
+        ]);
+        let nested_obj = DataValue::Object(world_entries);
+        
+        let entries = arena.alloc_slice_clone(&[
+            (arena.intern_str("hello"), DataValue::integer(0)),
+            (arena.intern_str("nested"), nested_obj),
+        ]);
+        let data = DataValue::Object(entries);
+        
+        // Test simple val: { "val": "hello" }
+        let val_arg = Token::literal(DataValue::string(&arena, "hello"));
+        let val_token = Token::operator(OperatorType::Val, arena.alloc(val_arg));
+        
+        let result = evaluate(arena.alloc(val_token), &data, &arena).unwrap();
+        assert_eq!(*result, DataValue::integer(0));
+        
+        // Test nested val: { "val": ["nested", "world"] }
+        let nested_args = arena.alloc_slice_clone(&[
+            DataValue::string(&arena, "nested"),
+            DataValue::string(&arena, "world"),
+        ]);
+        let nested_array = DataValue::Array(nested_args);
+        let nested_val_arg = Token::literal(nested_array);
+        let nested_val_token = Token::operator(OperatorType::Val, arena.alloc(nested_val_arg));
+        
+        let result = evaluate(arena.alloc(nested_val_token), &data, &arena).unwrap();
+        assert_eq!(*result, DataValue::integer(1));
+        
+        // Test val with empty array (should return the entire data)
+        let empty_array = DataValue::Array(arena.alloc_slice_clone(&[]));
+        let empty_val_arg = Token::literal(empty_array);
+        let empty_val_token = Token::operator(OperatorType::Val, arena.alloc(empty_val_arg));
+        
+        let result = evaluate(arena.alloc(empty_val_token), &data, &arena).unwrap();
+        assert_eq!(*result, data);
     }
 }

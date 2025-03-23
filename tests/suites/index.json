@@ -29,5 +29,8 @@
     "coalesce.json",
     "chained.json",
     "iterators.extra.json",
-    "exists.json"
+    "exists.json",
+    "val.json",
+    "empty-objects.json",
+    "preserve.json"
 ]
