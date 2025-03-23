@@ -21,10 +21,8 @@ pub use error::{LogicError, Result};
 pub use operators::comparison::ComparisonOp;
 pub use operators::arithmetic::ArithmeticOp;
 pub use operators::control::ControlOp;
-// TODO: Fix ownership issues in array operators
-// pub use operators::array::ArrayOp;
-// TODO: Implement string operators
-// pub use operators::string::StringOp;
+pub use operators::array::ArrayOp;
+pub use operators::string::StringOp;
 
 /// Trait for types that can be converted into a Logic expression.
 pub trait IntoLogic {

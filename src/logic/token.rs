@@ -73,6 +73,8 @@ pub enum OperatorType {
     Missing,
     /// Missing Some operator
     MissingSome,
+    /// Exists operator
+    Exists,
     /// Coalesce operator
     Coalesce,
     /// Array operator (for arrays with non-literal elements)
@@ -218,6 +220,7 @@ impl OperatorType {
             OperatorType::In => "in",
             OperatorType::Missing => "missing",
             OperatorType::MissingSome => "missing_some",
+            OperatorType::Exists => "exists",
             OperatorType::Coalesce => "??",
             OperatorType::ArrayLiteral => "array",
         }
@@ -263,6 +266,7 @@ impl FromStr for OperatorType {
             "in" => Ok(OperatorType::In),
             "missing" => Ok(OperatorType::Missing),
             "missing_some" => Ok(OperatorType::MissingSome),
+            "exists" => Ok(OperatorType::Exists),
             "??" => Ok(OperatorType::Coalesce),
             _ => Err("unknown operator")
         }

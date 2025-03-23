@@ -28,5 +28,6 @@
     "additional.json",
     "coalesce.json",
     "chained.json",
-    "iterators.extra.json"
+    "iterators.extra.json",
+    "exists.json"
 ]

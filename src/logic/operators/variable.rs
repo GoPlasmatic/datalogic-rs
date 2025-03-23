@@ -3,7 +3,7 @@
 //! This module provides the implementation of the variable operator.
 
 use crate::arena::DataArena;
-use crate::logic::error::Result;
+use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
@@ -80,6 +80,109 @@ pub fn evaluate_variable<'a>(
     
     // Successfully traversed the entire path
     Ok(current)
+}
+
+/// Evaluates an exists operation.
+/// Checks whether the specified variable(s) exist in the data.
+pub fn eval_exists<'a>(
+    args: &'a [DataValue<'a>],
+    data: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let result = if args.len() == 1 {
+        match &args[0] {
+            // Case 1: Single string argument (simple key)
+            DataValue::String(key) => data_has_property(data, key),
+            
+            // Case 2: Single array argument (array of path components)
+            DataValue::Array(path_components) => {
+                // Convert array elements to a slice of string references
+                let string_components: Vec<&str> = collect_string_components(path_components);
+                if string_components.len() != path_components.len() {
+                    // Not all components were strings
+                    false
+                } else {
+                    check_nested_path_exists(data, &string_components)
+                }
+            },
+            
+            // Invalid argument type
+            _ => false
+        }
+    } else {
+        // Case 3: Multiple arguments (each arg is a path component)
+        // Convert arguments to a slice of string references
+        let string_components: Vec<&str> = collect_string_components(args);
+        if string_components.len() != args.len() {
+            // Not all arguments were strings
+            false
+        } else {
+            check_nested_path_exists(data, &string_components)
+        }
+    };
+
+    Ok(arena.alloc(DataValue::Bool(result)))
+}
+
+/// Collects string components from DataValue array or slice
+/// Returns a vector of string references, or empty vector if any non-string values are found
+#[inline]
+fn collect_string_components<'a>(values: &'a [DataValue<'a>]) -> Vec<&'a str> {
+    let mut result = Vec::with_capacity(values.len());
+    
+    for value in values {
+        if let DataValue::String(s) = value {
+            result.push(*s);
+        } else {
+            return Vec::new(); // Return empty vec if any non-string value
+        }
+    }
+    
+    result
+}
+
+/// Check if a nested path exists in the data
+/// Takes a slice of path components and verifies if the path exists
+#[inline]
+fn check_nested_path_exists<'a>(data: &'a DataValue<'a>, path_components: &[&str]) -> bool {
+    // Empty path is always false
+    if path_components.is_empty() {
+        return false;
+    }
+    
+    // Single component - simple property check
+    if path_components.len() == 1 {
+        return data_has_property(data, path_components[0]);
+    }
+    
+    // Navigate through multiple components
+    let mut current = data;
+    
+    // Process all but the last component
+    for (i, &key) in path_components.iter().enumerate() {
+        // For all but the last component, navigate through the object
+        if i < path_components.len() - 1 {
+            if let Some(next) = data_get_property(current, key) {
+                if let DataValue::Object(_) = next {
+                    current = next;
+                    continue;
+                }
+            }
+            // If any intermediate path component doesn't exist or isn't an object,
+            // the full path doesn't exist
+            return false;
+        } else {
+            // For the last component, just check if the key exists
+            return data_has_property(current, key);
+        }
+    }
+    
+    // This should never be reached given the logic above
+    false
 }
 
 /// Helper function to evaluate a simple path (no dots)
@@ -163,6 +266,30 @@ fn use_default_or_null<'a>(
     }
 }
 
+/// Helper function to check if a property exists in the data
+#[inline]
+fn data_has_property<'a>(data: &'a DataValue<'a>, key: &str) -> bool {
+    match data {
+        DataValue::Object(obj) => {
+            // Check if the key exists in the object
+            obj.iter().any(|(k, _v)| *k == key)
+        },
+        _ => false,
+    }
+}
+
+/// Helper function to get a property from the data
+#[inline]
+fn data_get_property<'a>(data: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue<'a>> {
+    match data {
+        DataValue::Object(obj) => {
+            // Find the key in the object
+            obj.iter().find_map(|(k, v)| if *k == key { Some(v) } else { None })
+        },
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +349,75 @@ mod tests {
         let token = parse_str(r#"{"val": ["person", "name"]}"#, &arena).unwrap();
         let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
         assert_eq!(result.as_str(), Some("John"));
+    }
+
+    #[test]
+    fn test_eval_exists() {
+        let arena = DataArena::new();
+        
+        // Create test data with deeply nested structure
+        let data_json = json!({
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "level4": 42,
+                        "empty": {}
+                    },
+                    "alt3": true
+                }
+            },
+            "sibling": {
+                "path": "value"
+            }
+        });
+        let data = DataValue::from_json(&data_json, &arena);
+        
+        // Test cases for different path depths
+        let test_cases = [
+            // Single key tests
+            (vec![DataValue::String("level1")], true),
+            (vec![DataValue::String("nonexistent")], false),
+            
+            // Two-level nesting
+            (vec![DataValue::String("level1"), DataValue::String("level2")], true),
+            (vec![DataValue::String("level1"), DataValue::String("nonexistent")], false),
+            
+            // Three-level nesting
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3")], true),
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("nonexistent")], false),
+            
+            // Four-level nesting
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3"), DataValue::String("level4")], true),
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3"), DataValue::String("nonexistent")], false),
+            
+            // Check path through different branches
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("alt3")], true),
+            
+            // Test with array argument
+            (vec![DataValue::Array(arena.alloc_slice_fill_with(2, |i| 
+                if i == 0 { DataValue::String("level1") } else { DataValue::String("level2") }
+            ))], true),
+            
+            // Test with deeper array argument
+            (vec![DataValue::Array(arena.alloc_slice_fill_with(4, |i| 
+                match i {
+                    0 => DataValue::String("level1"),
+                    1 => DataValue::String("level2"),
+                    2 => DataValue::String("level3"),
+                    _ => DataValue::String("level4")
+                }
+            ))], true),
+            
+            // Test with empty object
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("level3"), DataValue::String("empty")], true),
+            
+            // Test with invalid intermediate path (not an object)
+            (vec![DataValue::String("level1"), DataValue::String("level2"), DataValue::String("alt3"), DataValue::String("anything")], false),
+        ];
+        
+        for (args, expected) in test_cases {
+            let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+            assert_eq!(result.as_bool(), Some(expected), "Failed for args: {:?}", args);
+        }
     }
 } 

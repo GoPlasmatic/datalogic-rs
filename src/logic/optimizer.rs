@@ -28,7 +28,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
         // Operators might be optimizable if their arguments are static
         Token::Operator { op_type, args } => {
             // Special case: missing and missing_some operators always need data
-            if *op_type == OperatorType::Missing || *op_type == OperatorType::MissingSome {
+            if *op_type == OperatorType::Missing || *op_type == OperatorType::MissingSome || *op_type == OperatorType::Exists {
                 // Just optimize the arguments
                 let optimized_args = optimize(args, arena)?;
                 return Ok(arena.alloc(Token::operator(*op_type, optimized_args)));

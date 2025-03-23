@@ -283,6 +283,11 @@ fn evaluate_operator<'a>(
             missing::eval_missing_some(token_refs, data, arena)
         },
         
+        OperatorType::Exists => {
+            let args_result = evaluate_arguments(args, data, arena)?;
+            variable::eval_exists(args_result, data, arena)
+        },
+        
         OperatorType::Coalesce => {
             eval_coalesce(token_refs, data, arena)
         },
