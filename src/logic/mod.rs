@@ -10,12 +10,14 @@ mod evaluator;
 pub mod error;
 mod operators;
 mod optimizer;
+mod jsonlogic;
 
 pub use ast::Logic;
 pub use token::{Token, OperatorType};
 pub use parser::{parse_json, parse_str};
 pub use evaluator::evaluate;
 pub use error::{LogicError, Result};
+pub use jsonlogic::JsonLogic;
 
 // Re-export operator types
 pub use operators::comparison::ComparisonOp;

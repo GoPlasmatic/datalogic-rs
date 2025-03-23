@@ -14,6 +14,132 @@ A **lightweight, high-performance** Rust implementation of [JSONLogic](http://js
 - ⚡ **Optimized for production**: Static dispatch and rule optimization
 - 🔌 **Extensible**: Support for custom operators
 
+## Overview
+
+datalogic-rs provides a robust implementation of JSONLogic rules with arena-based memory management for optimal performance. The library provides both a parser for JSON-based rules and a fluent builder API for constructing rules in a type-safe manner.
+
+## Features
+
+- Arena-based memory management for optimal performance
+- Comprehensive JSONLogic operator support
+- Fluent builder API for type-safe rule construction
+- Factory methods for common rule patterns
+- Optimizations for static rule components
+- Zero copy rule creation and evaluation
+- High test coverage and compatibility with standard JSONLogic
+
+## Using the Builder API
+
+The builder API provides a fluent interface for creating JSONLogic rules in a type-safe manner. All memory allocations happen directly in the arena for maximum performance.
+
+```rust
+use datalogic_rs::JsonLogic;
+use serde_json::json;
+
+// Create a new JSONLogic instance with its own arena
+let logic = JsonLogic::new();
+
+// Get a builder that uses the arena
+let builder = logic.builder();
+
+// Build a rule using the fluent API
+let rule = builder
+    .compare()
+    .greater_than()
+    .var("score")
+    .value(50)
+    .build();
+
+// Evaluate the rule with data
+let data = json!({"score": 75});
+let result = logic.apply_logic(&rule, &data).unwrap();
+assert_eq!(result, json!(true));
+```
+
+### Building More Complex Rules
+
+You can build complex rules by composing simpler ones:
+
+```rust
+// Create a rule that checks if a person is an adult of working age
+let rule = builder
+    .control()
+    .and()
+    .add(
+        builder
+            .compare()
+            .greater_than_or_equal()
+            .var("age")
+            .value(18)
+            .build()
+    )
+    .add(
+        builder
+            .compare()
+            .less_than()
+            .var("age")
+            .value(65)
+            .build()
+    )
+    .build();
+```
+
+### Using the Factory
+
+For common rule patterns, you can use the factory methods:
+
+```rust
+// Create a factory
+let factory = logic.factory();
+
+// Create a between rule (inclusive)
+let between_rule = factory.between_inclusive("age", 18, 65);
+
+// Create an "is one of" rule
+let is_one_of_rule = factory.is_one_of("status", vec!["active", "pending"]);
+```
+
+### Working with Arrays
+
+The library provides builders for array operations like map, filter, and reduce:
+
+```rust
+// Filter users by age and get their names
+let adult_names = builder
+    .array()
+    .map()
+    .array(
+        builder
+            .array()
+            .filter()
+            .array(builder.var("users"))
+            .condition(
+                builder
+                    .compare()
+                    .greater_than_or_equal()
+                    .var("age")
+                    .value(18)
+                    .build()
+            )
+            .build()
+    )
+    .mapper(builder.var("name"))
+    .build();
+```
+
+## Performance Benefits
+
+The builder API leverages arena allocation for all rule components, providing several performance benefits:
+
+1. Zero-copy rule construction
+2. Reduced memory allocations
+3. Improved cache locality
+4. Optimization opportunities during construction
+
+## License
+
+Licensed under Apache License, Version 2.0
+
 ---
 
 ## **📦 Installation**
