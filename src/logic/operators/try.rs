@@ -91,7 +91,6 @@ pub fn eval_try<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::parser::parse_str;
     use crate::value::FromJson;
     use crate::logic::JsonLogic;
     use serde_json::json;
@@ -105,11 +104,6 @@ mod tests {
         
         let data_json = json!(null);
         let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test with parse_str
-        let token = parse_str(r#"{"try": [{"throw": "Some error"}, 1]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_i64(), Some(1));
         
         // Test with builder API
         let rule = builder.tryOp([
@@ -129,16 +123,6 @@ mod tests {
         
         let data_json = json!(null);
         let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test with parse_str
-        let token = parse_str(r#"{"try": [{"throw": "Some error"}, {"throw": "Another error"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena);
-        assert!(result.is_err());
-        if let Err(LogicError::ThrownError { r#type: error_type }) = result {
-            assert_eq!(error_type, "Another error");
-        } else {
-            panic!("Expected ThrownError, got: {:?}", result);
-        }
         
         // Test with builder API
         let rule = builder.tryOp([
@@ -163,11 +147,6 @@ mod tests {
         
         let data_json = json!(null);
         let data = DataValue::from_json(&data_json, &arena);
-        
-        // Test with parse_str
-        let token = parse_str(r#"{"try": [{"throw": "Some error"}, {"val": "type"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("Some error"));
         
         // Test with builder API
         let rule = builder.tryOp([

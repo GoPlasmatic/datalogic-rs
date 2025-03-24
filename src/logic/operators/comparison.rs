@@ -383,13 +383,14 @@ mod tests {
         let logic = JsonLogic::new();
         let builder = logic.builder();
         
-        let data_json = json!({"a": 10, "b": "10", "c": 20});
+        let data_json = json!({"a": 10, "b": "10", "c": 20, "d": 10});
         
-        // Test equal with same type
+        // Test equal with same type (using left/right for backward compatibility)
         let rule = builder.compare()
             .equalOp()
             .var("a")
-            .right(builder.int(10));
+            .int(10)
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
@@ -398,7 +399,8 @@ mod tests {
         let rule = builder.compare()
             .equalOp()
             .var("a")
-            .var_right("b");
+            .var("b")
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
@@ -407,7 +409,30 @@ mod tests {
         let rule = builder.compare()
             .equalOp()
             .var("a")
-            .var_right("c");
+            .var("c")
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test variadic equal (a = d = 10)
+        let rule = builder.compare()
+            .equalOp()
+            .var("a")
+            .var("d")
+            .int(10)
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
+        
+        // Test variadic equal failing (a = c = 10)
+        let rule = builder.compare()
+            .equalOp()
+            .var("a")
+            .var("c")
+            .int(10)
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -425,7 +450,8 @@ mod tests {
         let rule = builder.compare()
             .notEqualOp()
             .var("a")
-            .var_right("c");
+            .var("c")
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
@@ -434,7 +460,8 @@ mod tests {
         let rule = builder.compare()
             .notEqualOp()
             .var("a")
-            .right(builder.int(10));
+            .int(10)
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -442,16 +469,19 @@ mod tests {
         // Test not equal with multiple arguments (chain comparison)
         // For multiple arguments, we need to chain comparisons with AND
         let comparison1 = builder.compare().notEqualOp()
-            .left(builder.int(10))
-            .right(builder.int(10));
+            .var("a")
+            .int(10)
+            .build();
             
         let comparison2 = builder.compare().notEqualOp()
-            .left(builder.int(10))
-            .right(builder.int(10));
+            .var("b")
+            .int(10)
+            .build();
             
         let comparison3 = builder.compare().notEqualOp()
-            .left(builder.int(10))
-            .right(builder.int(10));
+            .var("c")
+            .int(10)
+            .build();
         
         let rule = builder.control().andOp()
             .operand(comparison1)
@@ -465,11 +495,13 @@ mod tests {
         // Test not equal with different values in a chain
         let comparison1 = builder.compare().notEqualOp()
             .var("a")
-            .var_right("b");
+            .var("b")
+            .build();
             
         let comparison2 = builder.compare().notEqualOp()
             .var("b")
-            .var_right("c");
+            .var("c")
+            .build();
         
         let rule = builder.control().andOp()
             .operand(comparison1)
@@ -492,7 +524,8 @@ mod tests {
         let rule = builder.compare()
             .strictEqualOp()
             .var("a")
-            .right(builder.int(10));
+            .int(10)
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
@@ -501,7 +534,8 @@ mod tests {
         let rule = builder.compare()
             .strictEqualOp()
             .var("a")
-            .var_right("b");
+            .var("b")
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -513,25 +547,51 @@ mod tests {
         let logic = JsonLogic::new();
         let builder = logic.builder();
         
-        let data_json = json!({"a": 10, "b": 5, "c": "20"});
+        let data_json = json!({"a": 10, "b": 5, "c": "20", "d": 30, "e": 3});
         
-        // Test greater than with numbers
+        // Test greater than with numbers (using legacy left/right)
         let rule = builder.compare()
             .greaterThanOp()
             .var("a")
-            .var_right("b");
+            .var("b")
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
         
-        // Test greater than with string coercion
+        // Test greater than with string coercion (using legacy left/right)
         let rule = builder.compare()
             .greaterThanOp()
             .var("c")
-            .var_right("a");
+            .var("a")
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
+        
+        // Test variadic greater than (d > a > b > e), which should be true
+        let rule = builder.compare()
+            .greaterThanOp()
+            .var("d")  // 30
+            .var("a")  // 10
+            .var("b")  // 5
+            .var("e")  // 3
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
+        
+        // Test variadic greater than (a > b > c) which should be false
+        // because "c" is "20" which is greater than "a" (10)
+        let rule = builder.compare()
+            .greaterThanOp()
+            .var("a")  // 10
+            .var("b")  // 5
+            .var("c")  // "20"
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
     }
     
     #[test]
@@ -546,7 +606,8 @@ mod tests {
         let rule = builder.compare()
             .lessThanOp()
             .var("b")
-            .var_right("a");
+            .int(10)
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
@@ -555,7 +616,8 @@ mod tests {
         let rule = builder.compare()
             .lessThanOp()
             .var("a")
-            .var_right("c");
+            .var("c")
+            .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));

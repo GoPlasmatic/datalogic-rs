@@ -173,8 +173,8 @@ mod tests {
         // Test for true AND true
         let rule = builder.control()
             .andOp()
-            .operand(builder.bool(true))
-            .operand(builder.bool(true))
+            .bool(true)
+            .bool(true)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
@@ -182,8 +182,8 @@ mod tests {
         // Test for true AND false
         let rule = builder.control()
             .andOp()
-            .operand(builder.bool(true))
-            .operand(builder.bool(false))
+            .bool(true)
+            .bool(false)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
@@ -200,9 +200,9 @@ mod tests {
         // Test with multiple values - should return last truthy value or first falsy
         let rule = builder.control()
             .andOp()
-            .operand(builder.int(1))
-            .operand(builder.int(2))
-            .operand(builder.int(3))
+            .int(1)
+            .int(2)
+            .int(3)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(3));
@@ -222,8 +222,8 @@ mod tests {
         // Test for true OR true
         let rule = builder.control()
             .orOp()
-            .operand(builder.bool(true))
-            .operand(builder.bool(true))
+            .bool(true)
+            .bool(true)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
@@ -231,8 +231,8 @@ mod tests {
         // Test for true OR false
         let rule = builder.control()
             .orOp()
-            .operand(builder.bool(true))
-            .operand(builder.bool(false))
+            .bool(true)
+            .bool(false)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
@@ -240,8 +240,8 @@ mod tests {
         // Test for false OR true
         let rule = builder.control()
             .orOp()
-            .operand(builder.bool(false))
-            .operand(builder.bool(true))
+            .bool(false)
+            .bool(true)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
@@ -249,8 +249,8 @@ mod tests {
         // Test for false OR false
         let rule = builder.control()
             .orOp()
-            .operand(builder.bool(false))
-            .operand(builder.bool(false))
+            .bool(false)
+            .bool(false)
             .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
@@ -278,27 +278,33 @@ mod tests {
 
         // Test for NOT true
         let rule = builder.control()
-            .notOp(builder.bool(true));
+            .notOp()
+            .bool(true)
+            .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test for NOT false
         let rule = builder.control()
-            .notOp(builder.bool(false));
+            .notOp()
+            .bool(false)
+            .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test with variables
-        let var_a = builder.var("a").build();
         let rule = builder.control()
-            .notOp(var_a);
+            .notOp()
+            .var("a")
+            .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with falsy variable
-        let var_b = builder.var("b").build();
         let rule = builder.control()
-            .notOp(var_b);
+            .notOp()
+            .var("b")
+            .build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
     }

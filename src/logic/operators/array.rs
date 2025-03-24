@@ -684,8 +684,8 @@ mod tests {
             .mapper(
                 builder.arithmetic()
                     .multiplyOp()
-                    .operand(builder.var("").into())
-                    .operand(builder.int(2))
+                    .var("")
+                    .int(2)
                     .build()
             )
             .build();
@@ -718,14 +718,15 @@ mod tests {
             .condition(
                 builder.compare()
                     .equalOp()
-                    .left(
-                        builder.arithmetic()
-                            .moduloOp()
-                            .operand(builder.var("").into())
-                            .operand(builder.int(2))
-                            .build()
+                    .var("numbers")
+                    .operand(builder.arithmetic()
+                        .moduloOp()
+                        .var("")
+                        .int(2)
+                        .build()
                     )
-                    .right(builder.int(0))
+                    .int(0)
+                    .build()
             )
             .build();
         
@@ -757,8 +758,8 @@ mod tests {
             .reducer(
                 builder.arithmetic()
                     .addOp()
-                    .operand(builder.var("current").into())
-                    .operand(builder.var("accumulator").into())
+                    .var("current")
+                    .var("accumulator")
                     .build()
             )
             .initial(builder.int(0))
@@ -781,8 +782,8 @@ mod tests {
             .reducer(
                 builder.arithmetic()
                     .addOp()
-                    .operand(builder.var("current").into())
-                    .operand(builder.var("accumulator").into())
+                    .var("current")
+                    .var("accumulator")
                     .build()
             )
             .initial(builder.int(10))

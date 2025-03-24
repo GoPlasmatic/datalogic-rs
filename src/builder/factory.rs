@@ -22,13 +22,12 @@ impl<'a> RuleFactory<'a> {
     /// This creates a rule that checks if a value is between min and max (exclusive).
     pub fn between_exclusive(&self, var_path: &str, min: Logic<'a>, max: Logic<'a>) -> Logic<'a> {
         let builder = super::rule_builder(self.arena);
-        let var = builder.var(var_path).build();
         
         builder
             .control()
             .andOp()
-            .operand(builder.compare().greaterThanOp().left(var.clone()).right(min))
-            .operand(builder.compare().lessThanOp().left(var).right(max))
+            .operand(builder.compare().greaterThanOp().var(var_path).operand(min).build())
+            .operand(builder.compare().lessThanOp().var(var_path).operand(max).build())
             .build()
     }
     
@@ -37,13 +36,12 @@ impl<'a> RuleFactory<'a> {
     /// This creates a rule that checks if a value is between min and max (inclusive).
     pub fn between_inclusive(&self, var_path: &str, min: Logic<'a>, max: Logic<'a>) -> Logic<'a> {
         let builder = super::rule_builder(self.arena);
-        let var = builder.var(var_path).build();
         
         builder
             .control()
             .andOp()
-            .operand(builder.compare().greaterThanOrEqualOp().left(var.clone()).right(min))
-            .operand(builder.compare().lessThanOrEqualOp().left(var).right(max))
+            .operand(builder.compare().greaterThanOrEqualOp().var(var_path).operand(min).build())
+            .operand(builder.compare().lessThanOrEqualOp().var(var_path).operand(max).build())
             .build()
     }
     
@@ -106,8 +104,9 @@ impl<'a> RuleFactory<'a> {
             let comparison = builder
                 .compare()
                 .equalOp()
-                .left(var.clone())
-                .right(builder.value(key.clone()));
+                .var(var_path)
+                .operand(builder.value(key.clone()))
+                .build();
                 
             if let Some(else_rule) = current_rule {
                 current_rule = Some(

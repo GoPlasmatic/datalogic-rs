@@ -64,8 +64,8 @@ pub struct ComparisonOperationBuilder<'a> {
     arena: &'a DataArena,
     /// The comparison operator to use.
     operation: ComparisonOp,
-    /// The left operand, if set.
-    left: Option<Logic<'a>>,
+    /// The operands of the comparison.
+    operands: Vec<Logic<'a>>,
 }
 
 impl<'a> ComparisonOperationBuilder<'a> {
@@ -74,62 +74,77 @@ impl<'a> ComparisonOperationBuilder<'a> {
         Self {
             arena,
             operation,
-            left: None,
+            operands: Vec::new(),
         }
     }
 
-    /// Sets the left operand of the comparison.
-    pub fn left(mut self, value: Logic<'a>) -> Self {
-        self.left = Some(value);
+    /// Adds an operand to the comparison.
+    pub fn operand(mut self, value: Logic<'a>) -> Self {
+        self.operands.push(value);
         self
     }
 
-    /// Sets the left operand of the comparison to a variable.
+    /// Adds a variable operand to the comparison.
     pub fn var(self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.left(var)
+        self.operand(var)
     }
 
-    /// Sets the right operand and builds the comparison operation.
-    pub fn right(self, right: Logic<'a>) -> Logic<'a> {
-        let left = self.left.unwrap_or_else(|| {
-            Logic::literal(crate::value::DataValue::null(), self.arena)
-        });
-        
-        Logic::operator(
-            OperatorType::Comparison(self.operation),
-            vec![left, right],
-            self.arena,
-        )
+    /// Adds a literal value operand to the comparison.
+    pub fn value<T: Into<crate::value::DataValue<'a>>>(mut self, value: T) -> Self {
+        let val = Logic::literal(value.into(), self.arena);
+        self.operands.push(val);
+        self
     }
 
-    /// Sets the right operand to a variable and builds the comparison operation.
-    pub fn var_right(self, path: &str) -> Logic<'a> {
-        let right = Logic::variable(path, None, self.arena);
-        self.right(right)
+    /// Adds an integer value operand to the comparison.
+    pub fn int(mut self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.operands.push(val);
+        self
     }
 
-    /// Sets the right operand to a literal value and builds the comparison operation.
-    pub fn value<T: Into<crate::value::DataValue<'a>>>(self, value: T) -> Logic<'a> {
-        let right = Logic::literal(value.into(), self.arena);
-        self.right(right)
+    /// Adds a float value operand to the comparison.
+    pub fn float(mut self, value: f64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
+        self.operands.push(val);
+        self
+    }
+
+    /// Adds a string value operand to the comparison.
+    pub fn string(mut self, value: &str) -> Self {
+        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        self.operands.push(val);
+        self
+    }
+
+    /// Adds a boolean value operand to the comparison.
+    pub fn bool(mut self, value: bool) -> Self {
+        let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
+        self.operands.push(val);
+        self
     }
 
     /// Builds the comparison operation with the current operands.
     ///
-    /// If left operand is not set, it will use null as the default.
-    /// If right operand is not set, it will create an "is truthy" check.
+    /// If no operands are set, it will use null as the default.
+    /// If only one operand is set, it will create an "is truthy" check by comparing with true.
     pub fn build(self) -> Logic<'a> {
-        let left = self.left.unwrap_or_else(|| {
-            Logic::literal(crate::value::DataValue::null(), self.arena)
-        });
+        let mut final_operands = self.operands;
         
-        // For unary operations, we compare with true for a "is truthy" check
-        let right = Logic::literal(crate::value::DataValue::bool(true), self.arena);
+        // If no operands are set, use null as the default
+        if final_operands.is_empty() {
+            final_operands.push(Logic::literal(crate::value::DataValue::null(), self.arena));
+        }
+        
+        // If only one operand is set, add true as second operand for a "is truthy" check
+        if final_operands.len() == 1 {
+            final_operands.push(Logic::literal(crate::value::DataValue::bool(true), self.arena));
+        }
         
         Logic::operator(
             OperatorType::Comparison(self.operation),
-            vec![left, right],
+            final_operands,
             self.arena,
         )
     }

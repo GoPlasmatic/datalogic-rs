@@ -55,15 +55,38 @@ impl<'a> StringOperationBuilder<'a> {
     }
 
     /// Adds a variable as a part to the string operation.
-    pub fn var(self, path: &str) -> Self {
+    pub fn var(mut self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.part(var)
+        self.operands.push(var);
+        self
     }
 
     /// Adds a literal string value as a part to the string operation.
-    pub fn string(self, value: &str) -> Self {
+    pub fn string(mut self, value: &str) -> Self {
         let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
-        self.part(val)
+        self.operands.push(val);
+        self
+    }
+
+    /// Adds an integer as a part to the string operation.
+    pub fn int(mut self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.operands.push(val);
+        self
+    }
+
+    /// Adds a float as a part to the string operation.
+    pub fn float(mut self, value: f64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
+        self.operands.push(val);
+        self
+    }
+
+    /// Adds a boolean as a part to the string operation.
+    pub fn bool(mut self, value: bool) -> Self {
+        let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
+        self.operands.push(val);
+        self
     }
 
     /// Builds the string operation with the collected parts.

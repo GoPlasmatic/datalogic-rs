@@ -236,43 +236,43 @@ mod tests {
         
         let data_json = json!({"x": 1, "y": 2});
         
-        // Test addition of numbers
+        // Test addition of numbers using int() method instead of operand()
         let rule = builder.arithmetic()
             .addOp()
-            .operand(builder.int(1))
-            .operand(builder.int(2))
-            .operand(builder.int(3))
+            .int(1)
+            .int(2)
+            .int(3)
             .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(6));
         
-        // Test addition with strings
+        // Test addition with strings using string() method
         let rule = builder.arithmetic()
             .addOp()
-            .operand(builder.string_value("1"))
-            .operand(builder.string_value("2"))
-            .operand(builder.string_value("3"))
+            .string("1")
+            .string("2")
+            .string("3")
             .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(6));
         
-        // Test addition with booleans
+        // Test addition with booleans using bool() method
         let rule = builder.arithmetic()
             .addOp()
-            .operand(builder.bool(true))
-            .operand(builder.bool(false))
-            .operand(builder.bool(true))
+            .bool(true)
+            .bool(false)
+            .bool(true)
             .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(2));
         
-        // Test with single operand (number)
+        // Test with single operand (number) using int() method
         let rule = builder.arithmetic()
             .addOp()
-            .operand(builder.int(1))
+            .int(1)
             .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
@@ -335,16 +335,26 @@ mod tests {
         
         let data_json = json!({"a": 5, "b": 4});
         
-        // Test multiplying numbers
+        // Test multiplying numbers using direct var and int methods
         let rule = builder.arithmetic()
             .multiplyOp()
             .var("a")
             .var("b")
-            .operand(builder.int(2))
+            .int(2)
             .build();
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(40));
+        
+        // Test with float values
+        let rule = builder.arithmetic()
+            .multiplyOp()
+            .var("a")
+            .float(1.5)
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(7.5));
     }
     
     #[test]
@@ -355,7 +365,7 @@ mod tests {
         
         let data_json = json!({"a": 20, "b": 4});
         
-        // Test dividing numbers
+        // Test basic division with variables
         let rule = builder.arithmetic()
             .divideOp()
             .var("a")
@@ -364,6 +374,26 @@ mod tests {
             
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(5));
+        
+        // Test division with mixed types (int and float)
+        let rule = builder.arithmetic()
+            .divideOp()
+            .int(10)
+            .float(2.5)
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(4));
+        
+        // Test division with string conversion
+        let rule = builder.arithmetic()
+            .divideOp()
+            .string("9")
+            .int(3)
+            .build();
+            
+        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(3));
     }
     
     #[test]

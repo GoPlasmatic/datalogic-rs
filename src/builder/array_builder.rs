@@ -82,10 +82,32 @@ impl<'a> MapBuilder<'a> {
         self
     }
 
+    /// Sets the array to map over using a literal array of Logic values.
+    pub fn array_literal(self, elements: Vec<Logic<'a>>) -> Self {
+        let array = Logic::operator(
+            OperatorType::ArrayLiteral,
+            elements,
+            self.arena,
+        );
+        self.array(array)
+    }
+
+    /// Sets the array to map over using a variable reference.
+    pub fn array_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.array(var)
+    }
+
     /// Sets the mapping function.
     pub fn mapper(mut self, mapper: Logic<'a>) -> Self {
         self.mapper = Some(mapper);
         self
+    }
+
+    /// Sets the mapping function using a variable reference.
+    pub fn mapper_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.mapper(var)
     }
 
     /// Builds the map operation.
@@ -133,10 +155,32 @@ impl<'a> FilterBuilder<'a> {
         self
     }
 
+    /// Sets the array to filter using a literal array of Logic values.
+    pub fn array_literal(self, elements: Vec<Logic<'a>>) -> Self {
+        let array = Logic::operator(
+            OperatorType::ArrayLiteral,
+            elements,
+            self.arena,
+        );
+        self.array(array)
+    }
+
+    /// Sets the array to filter using a variable reference.
+    pub fn array_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.array(var)
+    }
+
     /// Sets the filter condition.
     pub fn condition(mut self, condition: Logic<'a>) -> Self {
         self.condition = Some(condition);
         self
+    }
+
+    /// Sets the filter condition using a variable reference.
+    pub fn condition_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.condition(var)
     }
 
     /// Builds the filter operation.
@@ -187,16 +231,68 @@ impl<'a> ReduceBuilder<'a> {
         self
     }
 
+    /// Sets the array to reduce using a literal array of Logic values.
+    pub fn array_literal(self, elements: Vec<Logic<'a>>) -> Self {
+        let array = Logic::operator(
+            OperatorType::ArrayLiteral,
+            elements,
+            self.arena,
+        );
+        self.array(array)
+    }
+
+    /// Sets the array to reduce using a variable reference.
+    pub fn array_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.array(var)
+    }
+
     /// Sets the reducer function.
     pub fn reducer(mut self, reducer: Logic<'a>) -> Self {
         self.reducer = Some(reducer);
         self
     }
 
+    /// Sets the reducer function using a variable reference.
+    pub fn reducer_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.reducer(var)
+    }
+
     /// Sets the initial value.
     pub fn initial(mut self, initial: Logic<'a>) -> Self {
         self.initial = Some(initial);
         self
+    }
+
+    /// Sets the initial value using a variable reference.
+    pub fn initial_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.initial(var)
+    }
+
+    /// Sets the initial value as an integer.
+    pub fn initial_int(self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.initial(val)
+    }
+
+    /// Sets the initial value as a float.
+    pub fn initial_float(self, value: f64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
+        self.initial(val)
+    }
+
+    /// Sets the initial value as a string.
+    pub fn initial_string(self, value: &str) -> Self {
+        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        self.initial(val)
+    }
+
+    /// Sets the initial value as a boolean.
+    pub fn initial_bool(self, value: bool) -> Self {
+        let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
+        self.initial(val)
     }
 
     /// Builds the reduce operation.
@@ -256,15 +352,45 @@ impl<'a> ArrayOperationBuilder<'a> {
     }
     
     /// Adds a variable as an element to the array operation.
-    pub fn var(self, path: &str) -> Self {
+    pub fn var(mut self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
-        self.element(var)
+        self.operands.push(var);
+        self
     }
     
     /// Adds a literal value as an element to the array operation.
-    pub fn value<T: Into<crate::value::DataValue<'a>>>(self, value: T) -> Self {
+    pub fn value<T: Into<crate::value::DataValue<'a>>>(mut self, value: T) -> Self {
         let val = Logic::literal(value.into(), self.arena);
-        self.element(val)
+        self.operands.push(val);
+        self
+    }
+    
+    /// Adds an integer as an element to the array operation.
+    pub fn int(mut self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.operands.push(val);
+        self
+    }
+    
+    /// Adds a float as an element to the array operation.
+    pub fn float(mut self, value: f64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
+        self.operands.push(val);
+        self
+    }
+    
+    /// Adds a string as an element to the array operation.
+    pub fn string(mut self, value: &str) -> Self {
+        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        self.operands.push(val);
+        self
+    }
+    
+    /// Adds a boolean as an element to the array operation.
+    pub fn bool(mut self, value: bool) -> Self {
+        let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
+        self.operands.push(val);
+        self
     }
     
     /// Builds the array operation with the collected elements.
