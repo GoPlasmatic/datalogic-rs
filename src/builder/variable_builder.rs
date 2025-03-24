@@ -41,4 +41,4 @@ impl<'a> From<VariableBuilder<'a>> for Logic<'a> {
     fn from(builder: VariableBuilder<'a>) -> Self {
         builder.build()
     }
-} 
+}

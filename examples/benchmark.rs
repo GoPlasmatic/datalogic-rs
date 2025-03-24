@@ -1,15 +1,15 @@
 use datalogic_rs::*;
 use serde_json::Value;
-use std::time::Instant;
 use std::fs;
+use std::time::Instant;
 
 fn main() {
     // Load test cases from JSON file
-    let response = fs::read_to_string("tests/suites/compatible.json")
-        .expect("Failed to read test cases file");
-    
-    let json_data: Vec<Value> = serde_json::from_str(&response)
-        .expect("Failed to parse test cases");
+    let response =
+        fs::read_to_string("tests/suites/compatible.json").expect("Failed to read test cases file");
+
+    let json_data: Vec<Value> =
+        serde_json::from_str(&response).expect("Failed to parse test cases");
 
     let logic_arena = DataArena::new();
 
@@ -20,7 +20,7 @@ fn main() {
         if entry.is_string() {
             continue;
         }
-        
+
         if let Value::Object(test_case) = entry {
             // Get rule and data
             if let Some(logic) = test_case.get("rule") {
@@ -33,9 +33,13 @@ fn main() {
             }
         }
     }
-    
+
     let iterations = 1e5 as u32; // Reduced iterations to avoid OOM
-    println!("Running {} iterations for {} test cases", iterations, test_cases.len());
+    println!(
+        "Running {} iterations for {} test cases",
+        iterations,
+        test_cases.len()
+    );
     let start = Instant::now();
 
     let mut eval_arena = DataArena::new();
@@ -47,13 +51,16 @@ fn main() {
         }
         eval_arena.reset();
     }
-    
+
     let duration = start.elapsed();
     println!("Memory usage: {:?}", eval_arena.memory_usage());
 
     let avg_iteration_time = duration / (iterations * test_cases.len() as u32);
-    
+
     println!("Total time: {:?}", duration);
     println!("Average iteration time: {:?}", avg_iteration_time);
-    println!("Iterations per second: {:.2}", (iterations * test_cases.len() as u32) as f64 / duration.as_secs_f64());
-} 
+    println!(
+        "Iterations per second: {:.2}",
+        (iterations * test_cases.len() as u32) as f64 / duration.as_secs_f64()
+    );
+}

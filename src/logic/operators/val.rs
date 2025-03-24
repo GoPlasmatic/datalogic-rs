@@ -25,14 +25,12 @@ pub fn eval_val<'a>(
 
     // Evaluate the first argument to get the path
     let path_value = evaluate(args[0], data, arena)?;
-    
+
     // Handle different path types
     match path_value {
         // Case 1: Empty array means return the entire data context
-        DataValue::Array(items) if items.is_empty() => {
-            Ok(data)
-        },
-        
+        DataValue::Array([]) => Ok(data),
+
         // Case 2: String path for direct property access
         DataValue::String(path_str) => {
             // Handle empty string as a reference to the property with empty key
@@ -40,16 +38,14 @@ pub fn eval_val<'a>(
                 // For empty path, access property with empty key
                 return access_property(data, "", arena);
             }
-            
+
             // Access the property from the data
             access_property(data, path_str, arena)
-        },
-        
+        }
+
         // Case 3: Array path for nested access
-        DataValue::Array(path_components) => {
-            navigate_nested_path(data, path_components, arena)
-        },
-        
+        DataValue::Array(path_components) => navigate_nested_path(data, path_components, arena),
+
         // Case 4: Number path for array index access
         DataValue::Number(n) => {
             if let Some(idx) = n.as_i64() {
@@ -63,8 +59,8 @@ pub fn eval_val<'a>(
                 // Not a valid index
                 Ok(arena.null_value())
             }
-        },
-        
+        }
+
         // Any other type is not supported
         _ => Ok(arena.null_value()),
     }
@@ -87,7 +83,7 @@ fn access_property<'a>(
             }
             // Key not found
             Ok(arena.null_value())
-        },
+        }
         DataValue::Array(items) => {
             // Try to parse the key as an array index
             if let Ok(index) = key.parse::<usize>() {
@@ -97,7 +93,7 @@ fn access_property<'a>(
             }
             // Invalid index or out of bounds
             Ok(arena.null_value())
-        },
+        }
         // Not an object or array
         _ => Ok(arena.null_value()),
     }
@@ -128,7 +124,7 @@ fn navigate_nested_path<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Start with the current data
     let mut current = data;
-    
+
     // Navigate through each path component
     for component in path_components {
         match component {
@@ -148,7 +144,7 @@ fn navigate_nested_path<'a>(
                             // Property not found
                             return Ok(arena.null_value());
                         }
-                    },
+                    }
                     DataValue::Array(items) => {
                         // Try to parse the key as an array index
                         if let Ok(index) = key.parse::<usize>() {
@@ -162,13 +158,13 @@ fn navigate_nested_path<'a>(
                             // Not a valid index
                             return Ok(arena.null_value());
                         }
-                    },
+                    }
                     _ => {
                         // Not an object or array
                         return Ok(arena.null_value());
                     }
                 }
-            },
+            }
             DataValue::Number(n) => {
                 // Number component - access an array element by index
                 if let Some(idx) = n.as_i64() {
@@ -193,14 +189,14 @@ fn navigate_nested_path<'a>(
                     // Not a valid index
                     return Ok(arena.null_value());
                 }
-            },
+            }
             _ => {
                 // Unsupported path component type
                 return Ok(arena.null_value());
             }
         }
     }
-    
+
     // Successfully navigated through all components
     Ok(current)
 }
@@ -240,32 +236,32 @@ mod tests {
         let components: Vec<DataValue> = vec![
             DataValue::string(arena, "users"),
             DataValue::integer(0),
-            DataValue::string(arena, "name")
+            DataValue::string(arena, "name"),
         ];
         let rule = builder.val_path(components);
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Alice"));
-        
+
         // Second test with different path
         let components: Vec<DataValue> = vec![
             DataValue::string(arena, "users"),
             DataValue::integer(1),
-            DataValue::string(arena, "details"), 
-            DataValue::string(arena, "age")
+            DataValue::string(arena, "details"),
+            DataValue::string(arena, "age"),
         ];
         let rule = builder.val_path(components);
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(25));
-        
+
         // Third test accessing boolean value
         let components: Vec<DataValue> = vec![
             DataValue::string(arena, "users"),
             DataValue::integer(0),
             DataValue::string(arena, "details"),
-            DataValue::string(arena, "active")
+            DataValue::string(arena, "active"),
         ];
         let rule = builder.val_path(components);
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
     }
-} 
+}

@@ -19,11 +19,11 @@ pub fn eval_log<'a>(
     }
 
     let value = evaluate(args[0], data, arena)?;
-    
+
     // Debug logging - can be customized or controlled via feature flags
     // For now, just print to stderr
     eprintln!("LOG: {:?}", value);
-    
+
     Ok(value)
 }
 
@@ -40,21 +40,21 @@ mod tests {
         // Create JSONLogic instance with arena
         let logic = JsonLogic::new();
         let arena = logic.arena();
-        
+
         let data_json = json!({
             "value": "test message"
         });
-        
+
         // Create a custom log operation with a variable operand
         // Since there's no direct builder method for custom operations,
         // we'll use the parse_str function
-        let token = parse_str(r#"{"log": [{"var": "value"}]}"#, &arena).unwrap();
-        
+        let token = parse_str(r#"{"log": [{"var": "value"}]}"#, arena).unwrap();
+
         // Evaluate directly with the token
-        let data = DataValue::from_json(&data_json, &arena);
-        let result = crate::logic::evaluator::evaluate(token, &data, &arena).unwrap();
+        let data = DataValue::from_json(&data_json, arena);
+        let result = crate::logic::evaluator::evaluate(token, &data, arena).unwrap();
         assert_eq!(result.as_str(), Some("test message"));
-        
+
         // Alternative: with the builder pattern, create an array of args
         // and a custom operation
         // Note: This would work if RuleBuilder had a custom_op method
@@ -66,4 +66,4 @@ mod tests {
         assert_eq!(result, json!("test message"));
         */
     }
-} 
+}

@@ -1,6 +1,6 @@
 use crate::arena::DataArena;
-use crate::logic::{Logic, OperatorType};
 use crate::logic::StringOp;
+use crate::logic::{Logic, OperatorType};
 
 /// Builder for string operations.
 ///
@@ -18,12 +18,12 @@ impl<'a> StringBuilder<'a> {
     }
 
     /// Creates a concatenation operation.
-    pub fn concatOp(&self) -> StringOperationBuilder<'a> {
+    pub fn concat_op(&self) -> StringOperationBuilder<'a> {
         StringOperationBuilder::new(self.arena, StringOp::Cat)
     }
 
     /// Creates a substring operation.
-    pub fn substrOp(&self) -> SubstringBuilder<'a> {
+    pub fn substr_op(&self) -> SubstringBuilder<'a> {
         SubstringBuilder::new(self.arena)
     }
 }
@@ -48,48 +48,51 @@ impl<'a> StringOperationBuilder<'a> {
         }
     }
 
-    /// Adds a part to the string operation.
-    pub fn part(mut self, operand: Logic<'a>) -> Self {
+    /// Adds an operand to the string operation.
+    pub fn operand(mut self, operand: Logic<'a>) -> Self {
         self.operands.push(operand);
         self
     }
 
-    /// Adds a variable as a part to the string operation.
+    /// Adds a variable as an operand to the string operation.
     pub fn var(mut self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
         self.operands.push(var);
         self
     }
 
-    /// Adds a literal string value as a part to the string operation.
+    /// Adds a literal string value as an operand to the string operation.
     pub fn string(mut self, value: &str) -> Self {
-        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        let val = Logic::literal(
+            crate::value::DataValue::string(self.arena, value),
+            self.arena,
+        );
         self.operands.push(val);
         self
     }
 
-    /// Adds an integer as a part to the string operation.
+    /// Adds an integer as an operand to the string operation.
     pub fn int(mut self, value: i64) -> Self {
         let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
         self.operands.push(val);
         self
     }
 
-    /// Adds a float as a part to the string operation.
+    /// Adds a float as an operand to the string operation.
     pub fn float(mut self, value: f64) -> Self {
         let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
         self.operands.push(val);
         self
     }
 
-    /// Adds a boolean as a part to the string operation.
+    /// Adds a boolean as an operand to the string operation.
     pub fn bool(mut self, value: bool) -> Self {
         let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
         self.operands.push(val);
         self
     }
 
-    /// Builds the string operation with the collected parts.
+    /// Builds the string operation with the collected operands.
     pub fn build(self) -> Logic<'a> {
         if self.operands.is_empty() {
             // Default for string operations is an empty string
@@ -141,7 +144,10 @@ impl<'a> SubstringBuilder<'a> {
 
     /// Sets the string to extract from using a literal string.
     pub fn literal(self, value: &str) -> Self {
-        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        let val = Logic::literal(
+            crate::value::DataValue::string(self.arena, value),
+            self.arena,
+        );
         self.string(val)
     }
 
@@ -178,21 +184,17 @@ impl<'a> SubstringBuilder<'a> {
         let string = self.string.unwrap_or_else(|| {
             Logic::literal(crate::value::DataValue::string(self.arena, ""), self.arena)
         });
-        
-        let start = self.start.unwrap_or_else(|| {
-            Logic::literal(crate::value::DataValue::integer(0), self.arena)
-        });
-        
+
+        let start = self
+            .start
+            .unwrap_or_else(|| Logic::literal(crate::value::DataValue::integer(0), self.arena));
+
         let mut operands = vec![string, start];
-        
+
         if let Some(length) = self.length {
             operands.push(length);
         }
-        
-        Logic::operator(
-            OperatorType::String(StringOp::Substr),
-            operands,
-            self.arena,
-        )
+
+        Logic::operator(OperatorType::String(StringOp::Substr), operands, self.arena)
     }
-} 
+}

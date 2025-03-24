@@ -4,10 +4,10 @@
 //! such as and, or, not, etc.
 
 use crate::arena::DataArena;
-use crate::value::DataValue;
-use crate::logic::token::Token;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
+use crate::logic::token::Token;
+use crate::value::DataValue;
 
 /// Enumeration of logical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,31 +34,30 @@ pub fn eval_if<'a>(
     if args.is_empty() {
         return Ok(arena.null_value());
     }
-    
+
     // Process arguments in pairs (condition, value)
     let mut i = 0;
     while i + 1 < args.len() {
         // Evaluate the condition
         let condition = evaluate(args[i], data, arena)?;
-        
+
         // If the condition is true, return the value
         if condition.coerce_to_bool() {
             return evaluate(args[i + 1], data, arena);
         }
-        
+
         // Move to the next pair
         i += 2;
     }
-    
+
     // If there's an odd number of arguments, the last one is the "else" value
     if i < args.len() {
         return evaluate(args[i], data, arena);
     }
-    
+
     // No conditions matched and no else value
     Ok(arena.null_value())
 }
-
 
 /// Evaluates an AND operation.
 pub fn eval_and<'a>(
@@ -70,25 +69,25 @@ pub fn eval_and<'a>(
     if args.is_empty() {
         return Ok(arena.null_value());
     }
-    
+
     // Fast path for single argument
     if args.len() == 1 {
         return evaluate(args[0], data, arena);
     }
-    
+
     // Evaluate each argument with short-circuit evaluation
     let mut last_value = arena.null_value();
-    
+
     for arg in args {
         let value = evaluate(arg, data, arena)?;
         last_value = value;
-        
+
         // If any argument is false, short-circuit and return that value
         if !value.coerce_to_bool() {
             return Ok(value);
         }
     }
-    
+
     // All arguments are true, return the last value
     Ok(last_value)
 }
@@ -103,25 +102,25 @@ pub fn eval_or<'a>(
     if args.is_empty() {
         return Ok(arena.false_value());
     }
-    
+
     // Fast path for single argument
     if args.len() == 1 {
         return evaluate(args[0], data, arena);
     }
-    
+
     // Evaluate each argument with short-circuit evaluation
     let mut last_value = arena.false_value();
-    
+
     for arg in args {
         let value = evaluate(arg, data, arena)?;
         last_value = value;
-        
+
         // If any argument is true, short-circuit and return that value
         if value.coerce_to_bool() {
             return Ok(value);
         }
     }
-    
+
     // All arguments are false, return the last value
     Ok(last_value)
 }
@@ -171,39 +170,22 @@ mod tests {
         });
 
         // Test for true AND true
-        let rule = builder.control()
-            .andOp()
-            .bool(true)
-            .bool(true)
-            .build();
+        let rule = builder.control().and_op().bool(true).bool(true).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for true AND false
-        let rule = builder.control()
-            .andOp()
-            .bool(true)
-            .bool(false)
-            .build();
+        let rule = builder.control().and_op().bool(true).bool(false).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with variables
-        let rule = builder.control()
-            .andOp()
-            .var("a")
-            .var("b")
-            .build();
+        let rule = builder.control().and_op().var("a").var("b").build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(0));
 
         // Test with multiple values - should return last truthy value or first falsy
-        let rule = builder.control()
-            .andOp()
-            .int(1)
-            .int(2)
-            .int(3)
-            .build();
+        let rule = builder.control().and_op().int(1).int(2).int(3).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(3));
     }
@@ -220,47 +202,27 @@ mod tests {
         });
 
         // Test for true OR true
-        let rule = builder.control()
-            .orOp()
-            .bool(true)
-            .bool(true)
-            .build();
+        let rule = builder.control().or_op().bool(true).bool(true).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for true OR false
-        let rule = builder.control()
-            .orOp()
-            .bool(true)
-            .bool(false)
-            .build();
+        let rule = builder.control().or_op().bool(true).bool(false).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for false OR true
-        let rule = builder.control()
-            .orOp()
-            .bool(false)
-            .bool(true)
-            .build();
+        let rule = builder.control().or_op().bool(false).bool(true).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for false OR false
-        let rule = builder.control()
-            .orOp()
-            .bool(false)
-            .bool(false)
-            .build();
+        let rule = builder.control().or_op().bool(false).bool(false).build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with variables
-        let rule = builder.control()
-            .orOp()
-            .var("a")
-            .var("b")
-            .build();
+        let rule = builder.control().or_op().var("a").var("b").build();
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(1));
     }
@@ -277,35 +239,23 @@ mod tests {
         });
 
         // Test for NOT true
-        let rule = builder.control()
-            .notOp()
-            .bool(true)
-            .build();
+        let rule = builder.control().not_op(builder.bool(true));
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test for NOT false
-        let rule = builder.control()
-            .notOp()
-            .bool(false)
-            .build();
+        let rule = builder.control().not_op(builder.bool(false));
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test with variables
-        let rule = builder.control()
-            .notOp()
-            .var("a")
-            .build();
+        let rule = builder.control().not_op(builder.var("a").build());
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with falsy variable
-        let rule = builder.control()
-            .notOp()
-            .var("b")
-            .build();
+        let rule = builder.control().not_op(builder.var("b").build());
         let result = logic.apply_logic(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
     }
-} 
+}

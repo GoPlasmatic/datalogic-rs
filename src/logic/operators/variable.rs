@@ -20,29 +20,30 @@ pub fn evaluate_variable<'a>(
     if path.is_empty() {
         return Ok(data);
     }
-    
+
     // Fast path for direct property access (no dots)
     if !path.contains('.') {
         return evaluate_simple_path(path, default, data, arena);
     }
-    
+
     // For paths with dots, traverse the object tree without creating a Vec
     let mut current = data;
     let mut start = 0;
     let path_bytes = path.as_bytes();
-    
+
     // Iterate through path components without allocating a Vec
     while start < path_bytes.len() {
         // Find the next dot or end of string
-        let end = path_bytes[start..].iter()
+        let end = path_bytes[start..]
+            .iter()
             .position(|&b| b == b'.')
             .map(|pos| start + pos)
             .unwrap_or(path_bytes.len());
-        
+
         // Extract the current component - we know the input is valid UTF-8
         // Use from_utf8_unchecked to avoid validation overhead
         let component = unsafe { std::str::from_utf8_unchecked(&path_bytes[start..end]) };
-        
+
         // Process this component
         match current {
             DataValue::Object(_) => {
@@ -53,7 +54,7 @@ pub fn evaluate_variable<'a>(
                     // Component not found, use default
                     return use_default_or_null(default, data, arena);
                 }
-            },
+            }
             DataValue::Array(_) => {
                 // Try to parse the component as an index
                 if let Ok(index) = component.parse::<usize>() {
@@ -67,17 +68,17 @@ pub fn evaluate_variable<'a>(
                     // Not a valid index, use default
                     return use_default_or_null(default, data, arena);
                 }
-            },
+            }
             _ => {
                 // Not an object or array, use default
                 return use_default_or_null(default, data, arena);
             }
         }
-        
+
         // Move to the next component
         start = end + 1;
     }
-    
+
     // Successfully traversed the entire path
     Ok(current)
 }
@@ -97,7 +98,7 @@ pub fn eval_exists<'a>(
         match &args[0] {
             // Case 1: Single string argument (simple key)
             DataValue::String(key) => data_has_property(data, key),
-            
+
             // Case 2: Single array argument (array of path components)
             DataValue::Array(path_components) => {
                 // Convert array elements to a slice of string references
@@ -108,10 +109,10 @@ pub fn eval_exists<'a>(
                 } else {
                     check_nested_path_exists(data, &string_components)
                 }
-            },
-            
+            }
+
             // Invalid argument type
-            _ => false
+            _ => false,
         }
     } else {
         // Case 3: Multiple arguments (each arg is a path component)
@@ -133,7 +134,7 @@ pub fn eval_exists<'a>(
 #[inline]
 fn collect_string_components<'a>(values: &'a [DataValue<'a>]) -> Vec<&'a str> {
     let mut result = Vec::with_capacity(values.len());
-    
+
     for value in values {
         if let DataValue::String(s) = value {
             result.push(*s);
@@ -141,7 +142,7 @@ fn collect_string_components<'a>(values: &'a [DataValue<'a>]) -> Vec<&'a str> {
             return Vec::new(); // Return empty vec if any non-string value
         }
     }
-    
+
     result
 }
 
@@ -153,15 +154,15 @@ fn check_nested_path_exists<'a>(data: &'a DataValue<'a>, path_components: &[&str
     if path_components.is_empty() {
         return false;
     }
-    
+
     // Single component - simple property check
     if path_components.len() == 1 {
         return data_has_property(data, path_components[0]);
     }
-    
+
     // Navigate through multiple components
     let mut current = data;
-    
+
     // Process all but the last component
     for (i, &key) in path_components.iter().enumerate() {
         // For all but the last component, navigate through the object
@@ -180,7 +181,7 @@ fn check_nested_path_exists<'a>(data: &'a DataValue<'a>, path_components: &[&str
             return data_has_property(current, key);
         }
     }
-    
+
     // This should never be reached given the logic above
     false
 }
@@ -200,7 +201,7 @@ fn evaluate_simple_path<'a>(
                 return Ok(&items[index]);
             }
         }
-        
+
         // Not found, use default
         return use_default_or_null(default, data, arena);
     }
@@ -212,7 +213,7 @@ fn evaluate_simple_path<'a>(
             }
         }
     }
-    
+
     // Not found, use default
     use_default_or_null(default, data, arena)
 }
@@ -230,7 +231,7 @@ fn find_in_object<'a>(obj: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue
                 Err(_) => return None,
             }
         }
-        
+
         // For small objects, linear search is faster due to cache locality
         for &(k, ref v) in *entries {
             if k == key {
@@ -273,7 +274,7 @@ fn data_has_property<'a>(data: &'a DataValue<'a>, key: &str) -> bool {
         DataValue::Object(obj) => {
             // Check if the key exists in the object
             obj.iter().any(|(k, _v)| *k == key)
-        },
+        }
         _ => false,
     }
 }
@@ -284,8 +285,9 @@ fn data_get_property<'a>(data: &'a DataValue<'a>, key: &str) -> Option<&'a DataV
     match data {
         DataValue::Object(obj) => {
             // Find the key in the object
-            obj.iter().find_map(|(k, v)| if *k == key { Some(v) } else { None })
-        },
+            obj.iter()
+                .find_map(|(k, v)| if *k == key { Some(v) } else { None })
+        }
         _ => None,
     }
 }
@@ -293,19 +295,19 @@ fn data_get_property<'a>(data: &'a DataValue<'a>, key: &str) -> Option<&'a DataV
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::FromJson;
     use crate::logic::JsonLogic;
+    use crate::value::FromJson;
     use serde_json::json;
 
     #[test]
     fn test_evaluate_variable() {
-        use serde_json::json;
         use crate::logic::JsonLogic;
+        use serde_json::json;
 
         // Setup for both low-level and builder-based testing
         let logic = JsonLogic::new();
         let builder = logic.builder();
-        
+
         let data_json = json!({
             "a": 1,
             "b": 2,
@@ -318,7 +320,7 @@ mod tests {
         let rule = builder.var("a").build();
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(1));
-        
+
         // Test with missing variable
         let rule = builder.var("x").build();
         let result = logic.apply_logic(&rule, &data_json).unwrap();
@@ -341,7 +343,7 @@ mod tests {
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(1));
     }
-    
+
     #[test]
     fn test_evaluate_variable_with_array_path() {
         use serde_json::json;
@@ -375,17 +377,17 @@ mod tests {
         let rule = builder.var("users.0.name").build();
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Alice"));
-        
+
         // Test nested path
         let rule = builder.var("users.1.details.age").build();
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(25));
-        
+
         // Test with default value for missing path
         let rule = builder.var_with_default("users.2.name", builder.string_value("Not Found"));
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Not Found"));
-        
+
         // Test with boolean value
         let rule = builder.var("users.0.details.active").build();
         let result = logic.apply_logic(&rule, &data_json).unwrap();
@@ -397,7 +399,7 @@ mod tests {
         // Create JSONLogic instance with arena
         let logic = JsonLogic::new();
         let arena = logic.arena();
-        
+
         // Create test data with deeply nested structure
         let data_json = json!({
             "level1": {
@@ -416,36 +418,36 @@ mod tests {
 
         // The exists operation doesn't have a direct builder method
         // so we need to use the original implementation for the tests
-        let data = DataValue::from_json(&data_json, &arena);
-        
+        let data = DataValue::from_json(&data_json, arena);
+
         // Test case: Key exists
         let args = vec![DataValue::String("level1")];
-        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
-        
+
         // Test case: Key doesn't exist
         let args = vec![DataValue::String("nonexistent")];
-        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
-        
+
         // Test case: Nested key exists
         let args = vec![
             DataValue::String("level1"),
             DataValue::String("level2"),
             DataValue::String("level3"),
-            DataValue::String("level4")
+            DataValue::String("level4"),
         ];
-        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
-        
+
         // Test case: Nested key doesn't exist
         let args = vec![
             DataValue::String("level1"),
             DataValue::String("level2"),
             DataValue::String("level3"),
-            DataValue::String("nonexistent")
+            DataValue::String("nonexistent"),
         ];
-        let result = eval_exists(arena.alloc_slice_clone(&args), &data, &arena).unwrap();
+        let result = eval_exists(arena.alloc_slice_clone(&args), &data, arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
     }
-} 
+}

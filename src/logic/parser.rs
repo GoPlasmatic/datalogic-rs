@@ -4,11 +4,11 @@
 
 use std::str::FromStr;
 
-use serde_json::{Value as JsonValue, Map as JsonMap};
+use super::error::{LogicError, Result};
+use super::token::{OperatorType, Token};
 use crate::arena::DataArena;
 use crate::value::{DataValue, FromJson};
-use super::token::{Token, OperatorType};
-use super::error::{LogicError, Result};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
 /// Checks if a JSON value is a literal.
 fn is_json_literal(value: &JsonValue) -> bool {
@@ -17,7 +17,7 @@ fn is_json_literal(value: &JsonValue) -> bool {
         JsonValue::Array(arr) => {
             // Nested arrays are allowed if they only contain literals
             arr.iter().all(is_json_literal)
-        },
+        }
         JsonValue::Object(_) => false,
     }
 }
@@ -30,10 +30,9 @@ pub fn parse_json<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<&'a Toke
 
 /// Parses a logic expression from a JSON string.
 pub fn parse_str<'a>(json_str: &str, arena: &'a DataArena) -> Result<&'a Token<'a>> {
-    let json: JsonValue = serde_json::from_str(json_str)
-        .map_err(|e| LogicError::ParseError {
-            reason: format!("Invalid JSON: {}", e),
-        })?;
+    let json: JsonValue = serde_json::from_str(json_str).map_err(|e| LogicError::ParseError {
+        reason: format!("Invalid JSON: {}", e),
+    })?;
     parse_json(&json, arena)
 }
 
@@ -53,9 +52,9 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                     reason: format!("Invalid number: {}", n),
                 })
             }
-        },
+        }
         JsonValue::String(s) => Ok(Token::literal(DataValue::string(arena, s))),
-        
+
         // Arrays could be literal arrays or token arrays
         JsonValue::Array(arr) => {
             // Check if all elements are literals
@@ -66,7 +65,7 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                     break;
                 }
             }
-            
+
             // If all elements are literals, create a literal array
             if all_literals {
                 let mut values = Vec::with_capacity(arr.len());
@@ -86,8 +85,8 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                 }
                 Ok(Token::ArrayLiteral(tokens))
             }
-        },
-        
+        }
+
         // Objects could be operators or literal objects
         JsonValue::Object(obj) => parse_object(obj, arena),
     }
@@ -98,19 +97,19 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
     // If the object has exactly one key, it might be an operator
     if obj.len() == 1 {
         let (key, value) = obj.iter().next().unwrap();
-        
+
         // Check if it's a variable reference
         if key == "var" {
             return parse_variable(value, arena);
         }
-        
+
         // Handle the val operator
         if key == "val" {
             let token = parse_json_internal(value, arena)?;
             let args_token = arena.alloc(token);
             return Ok(Token::operator(OperatorType::Val, args_token));
         }
-        
+
         // Check if it's the preserve operator
         if key == "preserve" {
             // The preserve operator returns its argument as-is without parsing it as an operator
@@ -118,19 +117,21 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
             let preserved_value = DataValue::from_json(value, arena);
             return Ok(Token::literal(preserved_value));
         }
-        
+
         // Check if it's a standard operator
         if let Ok(op_type) = OperatorType::from_str(key) {
             return parse_operator(op_type, value, arena);
         }
-        
+
         // If it's not a standard operator, treat it as a custom operator
         parse_custom_operator(key, value, arena)
     } else if obj.is_empty() {
-        return Ok(Token::literal(DataValue::Object(arena.alloc_slice_clone(&[]))));
+        return Ok(Token::literal(DataValue::Object(
+            arena.alloc_slice_clone(&[]),
+        )));
     } else {
-        return Err(LogicError::OperatorNotFoundError { 
-            operator: "Multiple keys in object".to_string()
+        return Err(LogicError::OperatorNotFoundError {
+            operator: "Multiple keys in object".to_string(),
         });
     }
 }
@@ -148,28 +149,32 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 for part in parts {
                     path_parts.push(part.to_string());
                 }
-                
+
                 let path = path_parts.join(".");
                 return Ok(Token::variable(arena.intern_str(&path), None));
             }
-            
+
             Ok(Token::variable(arena.intern_str(path), None))
-        },
-        
+        }
+
         // Variable reference with default value
         JsonValue::Array(arr) => {
             // Handle empty array - treat it as a reference to the data itself
             if arr.is_empty() {
                 return Ok(Token::variable(arena.intern_str(""), None));
             }
-            
+
             // For complex expressions in the path, we need to create a special token
             // that will evaluate the path at runtime
-            if !arr[0].is_string() && !arr[0].is_number() && !arr[0].is_boolean() && !arr[0].is_null() {
+            if !arr[0].is_string()
+                && !arr[0].is_number()
+                && !arr[0].is_boolean()
+                && !arr[0].is_null()
+            {
                 // Parse the path expression
                 let path_expr = parse_json_internal(&arr[0], arena)?;
                 let path_token = arena.alloc(path_expr);
-                
+
                 // If there's a default value, parse it
                 let default = if arr.len() >= 2 {
                     let default_token = parse_json_internal(&arr[1], arena)?;
@@ -177,13 +182,18 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 } else {
                     None
                 };
-                
+
                 // Create a special token for dynamic variable paths
                 return Ok(Token::dynamic_variable(path_token, default));
             }
-            
+
             // If we have exactly two elements, it's likely a path with a default value
-            if arr.len() == 2 && (arr[0].is_string() || arr[0].is_number() || arr[0].is_boolean() || arr[0].is_null()) {
+            if arr.len() == 2
+                && (arr[0].is_string()
+                    || arr[0].is_number()
+                    || arr[0].is_boolean()
+                    || arr[0].is_null())
+            {
                 let path = match &arr[0] {
                     JsonValue::String(s) => arena.intern_str(s),
                     JsonValue::Number(n) => arena.intern_str(&n.to_string()),
@@ -191,60 +201,71 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                     JsonValue::Null => arena.intern_str(""),
                     _ => unreachable!(),
                 };
-                
+
                 // Parse the default value
                 let default_token = parse_json_internal(&arr[1], arena)?;
                 let default = arena.alloc(default_token);
-                
+
                 return Ok(Token::variable(path, Some(default)));
             }
-            
+
             // Handle array of strings as a path with dots
             // For example: ["person", "name", "first"] -> "person.name.first"
-            if arr.iter().all(|item| item.is_string() || item.is_number() || item.is_boolean() || item.is_null()) {
+            if arr.iter().all(|item| {
+                item.is_string() || item.is_number() || item.is_boolean() || item.is_null()
+            }) {
                 // Convert all elements to strings and join with dots
                 let mut path_parts = Vec::with_capacity(arr.len());
                 for item in arr {
-                    let part = match item {
-                        JsonValue::String(s) => s.clone(),
-                        JsonValue::Number(n) => n.to_string(),
-                        JsonValue::Bool(b) => b.to_string(),
-                        JsonValue::Null => "".to_string(),
-                        _ => return Err(LogicError::ParseError {
-                            reason: format!("Variable path component must be a scalar value, found: {:?}", item),
-                        }),
-                    };
+                    let part =
+                        match item {
+                            JsonValue::String(s) => s.clone(),
+                            JsonValue::Number(n) => n.to_string(),
+                            JsonValue::Bool(b) => b.to_string(),
+                            JsonValue::Null => "".to_string(),
+                            _ => return Err(LogicError::ParseError {
+                                reason: format!(
+                                    "Variable path component must be a scalar value, found: {:?}",
+                                    item
+                                ),
+                            }),
+                        };
                     path_parts.push(part);
                 }
-                
+
                 let path = path_parts.join(".");
                 return Ok(Token::variable(arena.intern_str(&path), None));
             }
-            
+
             // Parse the path
             let path = match &arr[0] {
                 JsonValue::String(s) => arena.intern_str(s),
                 JsonValue::Number(n) => arena.intern_str(&n.to_string()),
                 JsonValue::Bool(b) => arena.intern_str(&b.to_string()),
                 JsonValue::Null => arena.intern_str(""),
-                _ => return Err(LogicError::ParseError {
-                    reason: format!("Variable path must be a scalar value, found: {:?}", arr[0]),
-                }),
+                _ => {
+                    return Err(LogicError::ParseError {
+                        reason: format!(
+                            "Variable path must be a scalar value, found: {:?}",
+                            arr[0]
+                        ),
+                    })
+                }
             };
-            
+
             // If there's only one element, there's no default
             if arr.len() == 1 {
                 return Ok(Token::variable(path, None));
             }
-            
+
             // If there are two or more elements, the second is the default
             // Parse the default value
             let default_token = parse_json_internal(&arr[1], arena)?;
             let default = arena.alloc(default_token);
-            
+
             Ok(Token::variable(path, Some(default)))
-        },
-        
+        }
+
         // Handle numeric variable references (convert to string)
         JsonValue::Number(n) => {
             // For compatibility with the test suite, if the number contains a decimal point,
@@ -256,29 +277,27 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 for part in parts {
                     path_parts.push(part.to_string());
                 }
-                
+
                 let path = path_parts.join(".");
                 return Ok(Token::variable(arena.intern_str(&path), None));
             }
-            
+
             Ok(Token::variable(arena.intern_str(&n_str), None))
-        },
-        
+        }
+
         // Handle null variable reference (reference to the data itself)
-        JsonValue::Null => {
-            Ok(Token::variable(arena.intern_str(""), None))
-        },
-        
+        JsonValue::Null => Ok(Token::variable(arena.intern_str(""), None)),
+
         // Handle object as variable path (e.g., {"cat": ["te", "st"]})
         JsonValue::Object(_) => {
             // Parse the object as a regular expression
             let path_expr = parse_json_internal(var_json, arena)?;
             let path_token = arena.alloc(path_expr);
-            
+
             // Create a dynamic variable reference where the path will be evaluated at runtime
             Ok(Token::dynamic_variable(path_token, None))
-        },
-        
+        }
+
         // Invalid variable reference
         _ => Err(LogicError::ParseError {
             reason: format!("Invalid variable reference: {:?}", var_json),
@@ -287,19 +306,27 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
 }
 
 /// Parses an operator application.
-fn parse_operator<'a>(op_type: OperatorType, args_json: &JsonValue, arena: &'a DataArena) -> Result<Token<'a>> {
+fn parse_operator<'a>(
+    op_type: OperatorType,
+    args_json: &JsonValue,
+    arena: &'a DataArena,
+) -> Result<Token<'a>> {
     // Parse the arguments
     let args = parse_arguments(args_json, arena)?;
-    
+
     // Create the operator token
     Ok(Token::operator(op_type, args))
 }
 
 /// Parses a custom operator application.
-fn parse_custom_operator<'a>(name: &str, args_json: &JsonValue, arena: &'a DataArena) -> Result<Token<'a>> {
+fn parse_custom_operator<'a>(
+    name: &str,
+    args_json: &JsonValue,
+    arena: &'a DataArena,
+) -> Result<Token<'a>> {
     // Parse the arguments
     let args = parse_arguments(args_json, arena)?;
-    
+
     // Create the custom operator token
     Ok(Token::custom_operator(arena.intern_str(name), args))
 }
@@ -311,30 +338,30 @@ fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'
         _ if !args_json.is_array() => {
             let arg = parse_json_internal(args_json, arena)?;
             Ok(arena.alloc(arg))
-        },
-        
+        }
+
         // Empty array - create an empty ArrayLiteral
         JsonValue::Array(arr) if arr.is_empty() => {
             let empty_array_token = Token::ArrayLiteral(Vec::new());
             Ok(arena.alloc(empty_array_token))
-        },
-        
+        }
+
         // Multiple arguments as array
         JsonValue::Array(arr) => {
             let mut tokens = Vec::with_capacity(arr.len());
-            
+
             // Parse each argument
             for arg_json in arr {
                 let arg = parse_json_internal(arg_json, arena)?;
                 let arg_ref = arena.alloc(arg);
                 tokens.push(arg_ref);
             }
-            
+
             // Create an array literal token
             let array_token = Token::ArrayLiteral(tokens);
             Ok(arena.alloc(array_token))
-        },
-        
+        }
+
         // Should never reach here due to the first match arm
         _ => unreachable!(),
     }
@@ -344,40 +371,40 @@ fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'
 mod tests {
     use super::*;
     use crate::arena::DataArena;
-    use serde_json::json;
-    use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::operators::arithmetic::ArithmeticOp;
+    use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::operators::control::ControlOp;
-    
+    use serde_json::json;
+
     #[test]
     fn test_parse_literals() {
         let arena = DataArena::new();
-        
+
         // Parse null
         let token = parse_json(&json!(null), &arena).unwrap();
         assert!(token.is_literal());
         assert!(token.as_literal().unwrap().is_null());
-        
+
         // Parse boolean
         let token = parse_json(&json!(true), &arena).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_bool(), Some(true));
-        
+
         // Parse integer
         let token = parse_json(&json!(42), &arena).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_i64(), Some(42));
-        
+
         // Parse float
         let token = parse_json(&json!(3.14), &arena).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_f64(), Some(3.14));
-        
+
         // Parse string
         let token = parse_json(&json!("hello"), &arena).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_str(), Some("hello"));
-        
+
         // Parse array
         let token = parse_json(&json!([1, 2, 3]), &arena).unwrap();
         assert!(token.is_literal());
@@ -387,18 +414,18 @@ mod tests {
         assert_eq!(array[1].as_i64(), Some(2));
         assert_eq!(array[2].as_i64(), Some(3));
     }
-    
+
     #[test]
     fn test_parse_variable() {
         let arena = DataArena::new();
-        
+
         // Parse simple variable
         let token = parse_json(&json!({"var": "user.name"}), &arena).unwrap();
         assert!(token.is_variable());
         let (path, default) = token.as_variable().unwrap();
         assert_eq!(path, "user.name");
         assert!(default.is_none());
-        
+
         // Parse variable with default
         let token = parse_json(&json!({"var": ["user.name", "Anonymous"]}), &arena).unwrap();
         assert!(token.is_variable());
@@ -407,20 +434,23 @@ mod tests {
         assert!(default.is_some());
         let default_token = default.unwrap();
         assert!(default_token.is_literal());
-        assert_eq!(default_token.as_literal().unwrap().as_str(), Some("Anonymous"));
+        assert_eq!(
+            default_token.as_literal().unwrap().as_str(),
+            Some("Anonymous")
+        );
     }
-    
+
     #[test]
     fn test_parse_operator() {
         let arena = DataArena::new();
-        
+
         // Parse comparison operator
         let token = parse_json(&json!({"==": [1, 2]}), &arena).unwrap();
         assert!(token.is_operator());
-        
+
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
@@ -430,14 +460,14 @@ mod tests {
         } else {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
-        
+
         // Parse arithmetic operator
         let token = parse_json(&json!({"+": [1, 2, 3]}), &arena).unwrap();
         assert!(token.is_operator());
-        
+
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Arithmetic(ArithmeticOp::Add));
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
@@ -445,14 +475,14 @@ mod tests {
         } else {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
-        
+
         // Parse logical operator
         let token = parse_json(&json!({"and": [true, false]}), &arena).unwrap();
         assert!(token.is_operator());
-        
+
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Control(ControlOp::And));
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
@@ -461,18 +491,18 @@ mod tests {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
     }
-    
+
     #[test]
     fn test_parse_custom_operator() {
         let arena = DataArena::new();
-        
+
         // Parse custom operator
         let token = parse_json(&json!({"my_op": [1, 2, 3]}), &arena).unwrap();
         assert!(token.is_custom_operator());
-        
+
         let (name, args) = token.as_custom_operator().unwrap();
         assert_eq!(name, "my_op");
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
@@ -481,11 +511,11 @@ mod tests {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
     }
-    
+
     #[test]
     fn test_parse_complex_expression() {
         let arena = DataArena::new();
-        
+
         // Parse complex expression
         let json = json!({
             "if": [
@@ -495,24 +525,24 @@ mod tests {
                 "hot"
             ]
         });
-        
+
         let token = parse_json(&json, &arena).unwrap();
         assert!(token.is_operator());
-        
+
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Control(ControlOp::If));
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
             assert_eq!(array_tokens.len(), 7);
-            
+
             // Check the first condition
             let condition1 = array_tokens[0];
             assert!(condition1.is_operator());
             let (op_type, _cond_args) = condition1.as_operator().unwrap();
             assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
-            
+
             // Check the first result
             let result1 = array_tokens[1];
             assert!(result1.is_literal());
@@ -521,29 +551,29 @@ mod tests {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
     }
-    
+
     #[test]
     fn test_parse_from_string() {
         let arena = DataArena::new();
-        
+
         // Parse from string
         let token = parse_str(r#"{"==": [{"var": "a"}, 42]}"#, &arena).unwrap();
         assert!(token.is_operator());
-        
+
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
             assert_eq!(array_tokens.len(), 2);
-            
+
             // Check the variable reference
             let var = array_tokens[0];
             assert!(var.is_variable());
             let (path, _) = var.as_variable().unwrap();
             assert_eq!(path, "a");
-            
+
             // Check the literal
             let lit = array_tokens[1];
             assert!(lit.is_literal());
@@ -552,11 +582,11 @@ mod tests {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
     }
-    
+
     #[test]
     fn test_parse_if() {
         let arena = DataArena::new();
-        
+
         // Parse if statement
         let json = json!({
             "if": [
@@ -566,24 +596,24 @@ mod tests {
                 "hot"
             ]
         });
-        
+
         let token = parse_json(&json, &arena).unwrap();
         assert!(token.is_operator());
-        
+
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Control(ControlOp::If));
-        
+
         // Check that args is an ArrayLiteral
         assert!(args.is_array_literal());
         if let Some(array_tokens) = args.as_array_literal() {
             assert_eq!(array_tokens.len(), 7);
-            
+
             // Check the first condition
             let condition1 = array_tokens[0];
             assert!(condition1.is_operator());
             let (op_type, _cond_args) = condition1.as_operator().unwrap();
             assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::LessThan));
-            
+
             // Check the first result
             let result1 = array_tokens[1];
             assert!(result1.is_literal());
@@ -592,11 +622,11 @@ mod tests {
             panic!("Expected ArrayLiteral, got: {:?}", args);
         }
     }
-    
+
     #[test]
     fn test_parse_preserve_operator() {
         let arena = DataArena::new();
-        
+
         // Test preserve with a literal
         let json = json!({"preserve": 42});
         let token = parse_json(&json, &arena).unwrap();
@@ -605,7 +635,7 @@ mod tests {
         } else {
             panic!("Expected literal token, got: {:?}", token);
         }
-        
+
         // Test preserve with an array
         let json = json!({"preserve": [1, 2, 3]});
         let token = parse_json(&json, &arena).unwrap();
@@ -619,7 +649,7 @@ mod tests {
         } else {
             panic!("Expected literal token, got: {:?}", token);
         }
-        
+
         // Test preserve with an object
         let json = json!({"preserve": {"a": 1, "b": 2}});
         let token = parse_json(&json, &arena).unwrap();
@@ -630,7 +660,7 @@ mod tests {
         } else {
             panic!("Expected literal token, got: {:?}", token);
         }
-        
+
         // Test preserve with a nested operator expression
         let json = json!({"preserve": {"+": [1, 2, 3]}});
         let token = parse_json(&json, &arena).unwrap();
@@ -646,38 +676,38 @@ mod tests {
             panic!("Expected literal token, got: {:?}", token);
         }
     }
-    
+
     #[test]
     fn test_parse_val_operator() {
         use crate::arena::DataArena;
         use crate::logic::token::OperatorType;
         use crate::value::DataValue;
-        
+
         let arena = DataArena::new();
-        
+
         // Test simple val operator: {"val": "hello"}
         let json_str = r#"{"val": "hello"}"#;
         let token = super::parse_str(json_str, &arena).unwrap();
-        
+
         // Check that it's a Val operator
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Val);
-        
+
         // Check that the argument is a literal string "hello"
         let literal = args.as_literal().unwrap();
         match literal {
             DataValue::String(s) => assert_eq!(*s, "hello"),
             _ => panic!("Expected string literal"),
         }
-        
+
         // Test nested val operator: {"val": ["hello", "world"]}
         let json_str = r#"{"val": ["hello", "world"]}"#;
         let token = super::parse_str(json_str, &arena).unwrap();
-        
+
         // Check that it's a Val operator
         let (op_type, args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Val);
-        
+
         // Check that the argument is an array with "hello" and "world"
         let array = args.as_literal().unwrap();
         match array {
@@ -691,7 +721,7 @@ mod tests {
                     DataValue::String(s) => assert_eq!(*s, "world"),
                     _ => panic!("Expected string literal"),
                 }
-            },
+            }
             _ => panic!("Expected array literal"),
         }
     }
@@ -700,4 +730,4 @@ mod tests {
 #[cfg(test)]
 mod json_tests {
     // No imports needed for this empty module
-} 
+}

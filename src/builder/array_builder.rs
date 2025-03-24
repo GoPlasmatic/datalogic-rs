@@ -1,6 +1,6 @@
 use crate::arena::DataArena;
-use crate::logic::{Logic, OperatorType};
 use crate::logic::ArrayOp;
+use crate::logic::{Logic, OperatorType};
 
 /// Builder for array operations.
 ///
@@ -18,27 +18,27 @@ impl<'a> ArrayBuilder<'a> {
     }
 
     /// Creates a map operation.
-    pub fn mapOp(&self) -> MapBuilder<'a> {
+    pub fn map_op(&self) -> MapBuilder<'a> {
         MapBuilder::new(self.arena)
     }
 
     /// Creates a filter operation.
-    pub fn filterOp(&self) -> FilterBuilder<'a> {
+    pub fn filter_op(&self) -> FilterBuilder<'a> {
         FilterBuilder::new(self.arena)
     }
 
     /// Creates a reduce operation.
-    pub fn reduceOp(&self) -> ReduceBuilder<'a> {
+    pub fn reduce_op(&self) -> ReduceBuilder<'a> {
         ReduceBuilder::new(self.arena)
     }
 
     /// Creates a merge operation.
-    pub fn mergeOp(&self) -> ArrayOperationBuilder<'a> {
+    pub fn merge_op(&self) -> ArrayOperationBuilder<'a> {
         ArrayOperationBuilder::new(self.arena, ArrayOp::Merge)
     }
 
     /// Creates an in-array check operation.
-    pub fn inOp(&self, value: Logic<'a>, array: Logic<'a>) -> Logic<'a> {
+    pub fn in_op(&self, value: Logic<'a>, array: Logic<'a>) -> Logic<'a> {
         Logic::operator(
             OperatorType::Array(ArrayOp::In),
             vec![value, array],
@@ -47,12 +47,8 @@ impl<'a> ArrayBuilder<'a> {
     }
 
     /// Creates an array literal.
-    pub fn arrayLiteralOp(&self, elements: Vec<Logic<'a>>) -> Logic<'a> {
-        Logic::operator(
-            OperatorType::ArrayLiteral,
-            elements,
-            self.arena,
-        )
+    pub fn array_literal_op(&self, elements: Vec<Logic<'a>>) -> Logic<'a> {
+        Logic::operator(OperatorType::ArrayLiteral, elements, self.arena)
     }
 }
 
@@ -84,11 +80,7 @@ impl<'a> MapBuilder<'a> {
 
     /// Sets the array to map over using a literal array of Logic values.
     pub fn array_literal(self, elements: Vec<Logic<'a>>) -> Self {
-        let array = Logic::operator(
-            OperatorType::ArrayLiteral,
-            elements,
-            self.arena,
-        );
+        let array = Logic::operator(OperatorType::ArrayLiteral, elements, self.arena);
         self.array(array)
     }
 
@@ -115,12 +107,12 @@ impl<'a> MapBuilder<'a> {
         let array = self.array.unwrap_or_else(|| {
             Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena)
         });
-        
+
         let mapper = self.mapper.unwrap_or_else(|| {
             // Default mapper is identity function
             Logic::variable("", None, self.arena)
         });
-        
+
         Logic::operator(
             OperatorType::Array(ArrayOp::Map),
             vec![array, mapper],
@@ -157,11 +149,7 @@ impl<'a> FilterBuilder<'a> {
 
     /// Sets the array to filter using a literal array of Logic values.
     pub fn array_literal(self, elements: Vec<Logic<'a>>) -> Self {
-        let array = Logic::operator(
-            OperatorType::ArrayLiteral,
-            elements,
-            self.arena,
-        );
+        let array = Logic::operator(OperatorType::ArrayLiteral, elements, self.arena);
         self.array(array)
     }
 
@@ -188,12 +176,12 @@ impl<'a> FilterBuilder<'a> {
         let array = self.array.unwrap_or_else(|| {
             Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena)
         });
-        
+
         let condition = self.condition.unwrap_or_else(|| {
             // Default condition is truthy check
             Logic::variable("", None, self.arena)
         });
-        
+
         Logic::operator(
             OperatorType::Array(ArrayOp::Filter),
             vec![array, condition],
@@ -233,11 +221,7 @@ impl<'a> ReduceBuilder<'a> {
 
     /// Sets the array to reduce using a literal array of Logic values.
     pub fn array_literal(self, elements: Vec<Logic<'a>>) -> Self {
-        let array = Logic::operator(
-            OperatorType::ArrayLiteral,
-            elements,
-            self.arena,
-        );
+        let array = Logic::operator(OperatorType::ArrayLiteral, elements, self.arena);
         self.array(array)
     }
 
@@ -285,7 +269,10 @@ impl<'a> ReduceBuilder<'a> {
 
     /// Sets the initial value as a string.
     pub fn initial_string(self, value: &str) -> Self {
-        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        let val = Logic::literal(
+            crate::value::DataValue::string(self.arena, value),
+            self.arena,
+        );
         self.initial(val)
     }
 
@@ -300,7 +287,7 @@ impl<'a> ReduceBuilder<'a> {
         let array = self.array.unwrap_or_else(|| {
             Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena)
         });
-        
+
         let reducer = self.reducer.unwrap_or_else(|| {
             // Default reducer is sum
             let var_a = Logic::variable("current", None, self.arena);
@@ -311,12 +298,12 @@ impl<'a> ReduceBuilder<'a> {
                 self.arena,
             )
         });
-        
+
         let initial = self.initial.unwrap_or_else(|| {
             // Default initial value is 0
             Logic::literal(crate::value::DataValue::integer(0), self.arena)
         });
-        
+
         Logic::operator(
             OperatorType::Array(ArrayOp::Reduce),
             vec![array, reducer, initial],
@@ -344,65 +331,68 @@ impl<'a> ArrayOperationBuilder<'a> {
             operands: Vec::new(),
         }
     }
-    
-    /// Adds an element to the array operation.
-    pub fn element(mut self, operand: Logic<'a>) -> Self {
+
+    /// Adds an operand to the array operation.
+    pub fn operand(mut self, operand: Logic<'a>) -> Self {
         self.operands.push(operand);
         self
     }
-    
-    /// Adds a variable as an element to the array operation.
+
+    /// Adds a variable as an operand to the array operation.
     pub fn var(mut self, path: &str) -> Self {
         let var = Logic::variable(path, None, self.arena);
         self.operands.push(var);
         self
     }
-    
-    /// Adds a literal value as an element to the array operation.
+
+    /// Adds a literal value as an operand to the array operation.
     pub fn value<T: Into<crate::value::DataValue<'a>>>(mut self, value: T) -> Self {
         let val = Logic::literal(value.into(), self.arena);
         self.operands.push(val);
         self
     }
-    
-    /// Adds an integer as an element to the array operation.
+
+    /// Adds an integer as an operand to the array operation.
     pub fn int(mut self, value: i64) -> Self {
         let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
         self.operands.push(val);
         self
     }
-    
-    /// Adds a float as an element to the array operation.
+
+    /// Adds a float as an operand to the array operation.
     pub fn float(mut self, value: f64) -> Self {
         let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
         self.operands.push(val);
         self
     }
-    
-    /// Adds a string as an element to the array operation.
+
+    /// Adds a string as an operand to the array operation.
     pub fn string(mut self, value: &str) -> Self {
-        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        let val = Logic::literal(
+            crate::value::DataValue::string(self.arena, value),
+            self.arena,
+        );
         self.operands.push(val);
         self
     }
-    
-    /// Adds a boolean as an element to the array operation.
+
+    /// Adds a boolean as an operand to the array operation.
     pub fn bool(mut self, value: bool) -> Self {
         let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
         self.operands.push(val);
         self
     }
-    
-    /// Builds the array operation with the collected elements.
+
+    /// Builds the array operation with the collected operands.
     pub fn build(self) -> Logic<'a> {
         if self.operands.is_empty() {
             return Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena);
         }
-        
+
         Logic::operator(
             OperatorType::Array(self.operation),
             self.operands,
             self.arena,
         )
     }
-} 
+}

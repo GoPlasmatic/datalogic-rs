@@ -23,12 +23,12 @@ pub fn eval_throw<'a>(
 
     // Evaluate the first argument to get the error value/type
     let error_value = evaluate(args[0], data, arena)?;
-    
+
     // For string values, use them directly as the error type
     if let Some(error_str) = error_value.as_str() {
         return Err(LogicError::thrown_error(error_str));
     }
-    
+
     // Handle object values with a "type" field
     if let Some(obj) = error_value.as_object() {
         for (key, value) in obj {
@@ -39,7 +39,7 @@ pub fn eval_throw<'a>(
             }
         }
     }
-    
+
     // For other values, convert to string
     let error_str = if let Some(i) = error_value.as_i64() {
         i.to_string()
@@ -52,16 +52,16 @@ pub fn eval_throw<'a>(
     } else {
         "Unknown error".to_string()
     };
-    
+
     Err(LogicError::thrown_error(error_str))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::logic::JsonLogic;
     use crate::value::FromJson;
     use serde_json::json;
-    use crate::logic::JsonLogic;
 
     #[test]
     fn test_evaluate_throw_string() {
@@ -69,13 +69,13 @@ mod tests {
         let logic = JsonLogic::new();
         let arena = logic.arena();
         let builder = logic.builder();
-        
+
         let data_json = json!(null);
-        let data = DataValue::from_json(&data_json, &arena);
-        
+        let data = DataValue::from_json(&data_json, arena);
+
         // Now test using the builder API
-        let rule = builder.throwOp(builder.string_value("hello"));
-        let result = evaluate(rule.root(), &data, &arena);
+        let rule = builder.throw_op(builder.string_value("hello"));
+        let result = evaluate(rule.root(), &data, arena);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "hello");
@@ -90,15 +90,15 @@ mod tests {
         let logic = JsonLogic::new();
         let arena = logic.arena();
         let builder = logic.builder();
-        
+
         let data_json = json!({
             "x": {"type": "Some error"}
         });
-        let data = DataValue::from_json(&data_json, &arena);
-        
+        let data = DataValue::from_json(&data_json, arena);
+
         // Now test using the builder API
-        let rule = builder.throwOp(builder.val_str("x"));
-        let result = evaluate(rule.root(), &data, &arena);
+        let rule = builder.throw_op(builder.val_str("x"));
+        let result = evaluate(rule.root(), &data, arena);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "Some error");
@@ -106,4 +106,4 @@ mod tests {
             panic!("Expected ThrownError, got: {:?}", result);
         }
     }
-} 
+}

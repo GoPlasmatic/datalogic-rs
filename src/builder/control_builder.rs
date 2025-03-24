@@ -18,22 +18,26 @@ impl<'a> ControlBuilder<'a> {
     }
 
     /// Creates an 'and' operation.
-    pub fn andOp(&self) -> LogicalOperationBuilder<'a> {
+    pub fn and_op(&self) -> LogicalOperationBuilder<'a> {
         LogicalOperationBuilder::new(self.arena, ControlOp::And)
     }
 
     /// Creates an 'or' operation.
-    pub fn orOp(&self) -> LogicalOperationBuilder<'a> {
+    pub fn or_op(&self) -> LogicalOperationBuilder<'a> {
         LogicalOperationBuilder::new(self.arena, ControlOp::Or)
     }
 
     /// Creates a 'not' operation.
-    pub fn notOp(&self) -> LogicalOperationBuilder<'a> {
-        LogicalOperationBuilder::new(self.arena, ControlOp::Not)
+    pub fn not_op(&self, value: Logic<'a>) -> Logic<'a> {
+        Logic::operator(
+            OperatorType::Control(ControlOp::Not),
+            vec![value],
+            self.arena,
+        )
     }
 
     /// Creates an 'if' operation builder.
-    pub fn ifOp(&self) -> IfBuilder<'a> {
+    pub fn if_op(&self) -> IfBuilder<'a> {
         IfBuilder::new(self.arena)
     }
 }
@@ -94,7 +98,10 @@ impl<'a> LogicalOperationBuilder<'a> {
 
     /// Adds a string as an operand to the logical operation.
     pub fn string(mut self, value: &str) -> Self {
-        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        let val = Logic::literal(
+            crate::value::DataValue::string(self.arena, value),
+            self.arena,
+        );
         self.operands.push(val);
         self
     }
@@ -176,18 +183,18 @@ impl<'a> IfBuilder<'a> {
     /// If then branch is not set, it will use a literal true.
     /// If else branch is not set, it will use a literal false.
     pub fn build(self) -> Logic<'a> {
-        let condition = self.condition.unwrap_or_else(|| {
-            Logic::literal(crate::value::DataValue::bool(false), self.arena)
-        });
-        
-        let then_branch = self.then_branch.unwrap_or_else(|| {
-            Logic::literal(crate::value::DataValue::bool(true), self.arena)
-        });
-        
-        let else_branch = self.else_branch.unwrap_or_else(|| {
-            Logic::literal(crate::value::DataValue::bool(false), self.arena)
-        });
-        
+        let condition = self
+            .condition
+            .unwrap_or_else(|| Logic::literal(crate::value::DataValue::bool(false), self.arena));
+
+        let then_branch = self
+            .then_branch
+            .unwrap_or_else(|| Logic::literal(crate::value::DataValue::bool(true), self.arena));
+
+        let else_branch = self
+            .else_branch
+            .unwrap_or_else(|| Logic::literal(crate::value::DataValue::bool(false), self.arena));
+
         // If-then-else is represented as an array where the first element is the condition,
         // the second is the then branch, and the third is the else branch.
         Logic::operator(
@@ -196,4 +203,4 @@ impl<'a> IfBuilder<'a> {
             self.arena,
         )
     }
-} 
+}

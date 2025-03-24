@@ -4,10 +4,10 @@
 //! such as cat, substr, etc.
 
 use crate::arena::DataArena;
-use crate::value::DataValue;
-use crate::logic::token::Token;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
+use crate::logic::token::Token;
+use crate::value::DataValue;
 
 /// Enumeration of string operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,12 +31,12 @@ pub fn eval_cat<'a>(
     // For a single argument, convert directly to string
     if args.len() == 1 {
         let value = evaluate(args[0], data, arena)?;
-        
+
         // If it's already a string, return it directly
         if let DataValue::String(_) = value {
             return Ok(value);
         }
-        
+
         // If it's an array, concatenate all elements
         if let DataValue::Array(arr) = value {
             let mut result = String::new();
@@ -51,7 +51,7 @@ pub fn eval_cat<'a>(
             }
             return Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))));
         }
-        
+
         // Otherwise, convert to string
         let string_value = value.to_string();
         return Ok(arena.alloc(DataValue::String(arena.alloc_str(&string_value))));
@@ -59,7 +59,7 @@ pub fn eval_cat<'a>(
 
     // For multiple arguments, concatenate them
     let mut result = String::new();
-    
+
     for arg in args {
         let value = evaluate(arg, data, arena)?;
         match value {
@@ -75,14 +75,14 @@ pub fn eval_cat<'a>(
                         }
                     }
                 }
-            },
+            }
             _ => {
                 let string_value = value.to_string();
                 result.push_str(&string_value);
             }
         }
     }
-    
+
     // Allocate the result string in the arena
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
@@ -132,10 +132,8 @@ pub fn eval_substr<'a>(
                 if len_signed < 0 {
                     // Negative length means "leave this many characters off the end"
                     let chars_to_remove = (-len_signed) as usize;
-                    if chars_to_remove >= char_count {
-                        0 // If we'd remove all characters, return empty string
-                    } else if chars_to_remove > char_count - start_pos {
-                        0 // If we'd remove more than we have after start_pos, return empty
+                    if chars_to_remove >= char_count || chars_to_remove > char_count - start_pos {
+                        0 // If we'd remove all characters or more than we have after start_pos, return empty
                     } else {
                         char_count - start_pos - chars_to_remove
                     }
@@ -152,105 +150,109 @@ pub fn eval_substr<'a>(
 
     // Extract the substring (note: using chars to handle multi-byte characters)
     let result: String = chars.iter().skip(start_pos).take(length).collect();
-    
+
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
     use crate::JsonLogic;
-    
+    use serde_json::json;
+
     #[test]
     fn test_cat() {
         // Create JSONLogic instance
         let logic = JsonLogic::new();
         let builder = logic.builder();
-        
+
         let data_json = json!({"a": 10, "b": "hello", "c": true});
-        
+
         // Test concatenating strings
         // Use StringBuilder's concat method (note: it's called concat not cat in the builder)
-        let rule = builder.string_ops()
-            .concatOp()
+        let rule = builder
+            .string_ops()
+            .concat_op()
             .string("hello")
             .string(" ")
             .string("world")
             .build();
-        
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello world"));
-        
+
         // Test concatenating different types
-        let rule = builder.string_ops()
-            .concatOp()
+        let rule = builder
+            .string_ops()
+            .concat_op()
             .var("b")
             .string(" ")
             .var("a")
             .string(" ")
             .var("c")
             .build();
-        
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello 10 true"));
-        
+
         // Test empty cat
-        let rule = builder.string_ops()
-            .concatOp()
-            .build();
-        
+        let rule = builder.string_ops().concat_op().build();
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
     }
-    
+
     #[test]
     fn test_substr() {
         // Create JSONLogic instance
         let logic = JsonLogic::new();
         let builder = logic.builder();
-        
+
         let data_json = json!({"text": "hello world"});
-        
+
         // Test basic substring
-        let rule = builder.string_ops()
-            .substrOp()
+        let rule = builder
+            .string_ops()
+            .substr_op()
             .var("text")
             .start_at(0)
             .take(5)
             .build();
-        
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello"));
-        
+
         // Test negative start
-        let rule = builder.string_ops()
-            .substrOp()
+        let rule = builder
+            .string_ops()
+            .substr_op()
             .var("text")
             .start_at(-5)
             .build();
-        
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("world"));
-        
+
         // Test negative length
-        let rule = builder.string_ops()
-            .substrOp()
+        let rule = builder
+            .string_ops()
+            .substr_op()
             .var("text")
             .start_at(0)
             .take(-6)
             .build();
-        
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello"));
-        
+
         // Test out of bounds
-        let rule = builder.string_ops()
-            .substrOp()
+        let rule = builder
+            .string_ops()
+            .substr_op()
             .var("text")
             .start_at(20)
             .build();
-        
+
         let result = logic.apply_logic(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
     }
-} 
+}

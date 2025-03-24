@@ -3,8 +3,8 @@
 //! This module provides a compact token representation for logic expressions,
 //! optimized for memory efficiency and evaluation performance.
 
+use super::operators::{ArithmeticOp, ArrayOp, ComparisonOp, ControlOp, StringOp};
 use crate::value::DataValue;
-use super::operators::{ComparisonOp, ArithmeticOp, ControlOp, StringOp, ArrayOp};
 use std::str::FromStr;
 
 /// A token in a logic expression.
@@ -15,10 +15,10 @@ use std::str::FromStr;
 pub enum Token<'a> {
     /// A literal value.
     Literal(DataValue<'a>),
-    
+
     /// An array literal.
     ArrayLiteral(Vec<&'a Token<'a>>),
-    
+
     /// A variable reference.
     Variable {
         /// The path to the variable.
@@ -26,7 +26,7 @@ pub enum Token<'a> {
         /// An optional default value if the variable is not found.
         default: Option<&'a Token<'a>>,
     },
-    
+
     /// A variable reference with a dynamic path.
     DynamicVariable {
         /// The token that evaluates to the path.
@@ -34,7 +34,7 @@ pub enum Token<'a> {
         /// An optional default value if the variable is not found.
         default: Option<&'a Token<'a>>,
     },
-    
+
     /// An operator application.
     Operator {
         /// The type of operator.
@@ -42,7 +42,7 @@ pub enum Token<'a> {
         /// The arguments to the operator.
         args: &'a Token<'a>,
     },
-    
+
     /// A custom operator application.
     CustomOperator {
         /// The name of the custom operator.
@@ -90,52 +90,52 @@ impl<'a> Token<'a> {
     pub fn literal(value: DataValue<'a>) -> Self {
         Token::Literal(value)
     }
-    
+
     /// Creates a new variable token.
     pub fn variable(path: &'a str, default: Option<&'a Token<'a>>) -> Self {
         Token::Variable { path, default }
     }
-    
+
     /// Creates a new dynamic variable token.
     pub fn dynamic_variable(path_expr: &'a Token<'a>, default: Option<&'a Token<'a>>) -> Self {
         Token::DynamicVariable { path_expr, default }
     }
-    
+
     /// Creates a new operator token.
     pub fn operator(op_type: OperatorType, args: &'a Token<'a>) -> Self {
         Token::Operator { op_type, args }
     }
-    
+
     /// Creates a new custom operator token.
     pub fn custom_operator(name: &'a str, args: &'a Token<'a>) -> Self {
         Token::CustomOperator { name, args }
     }
-    
+
     /// Returns true if this token is a literal.
     pub fn is_literal(&self) -> bool {
         matches!(self, Token::Literal(_))
     }
-    
+
     /// Returns true if this token is a variable.
     pub fn is_variable(&self) -> bool {
         matches!(self, Token::Variable { .. })
     }
-    
+
     /// Returns true if this token is an operator.
     pub fn is_operator(&self) -> bool {
         matches!(self, Token::Operator { .. })
     }
-    
+
     /// Returns true if this token is a custom operator.
     pub fn is_custom_operator(&self) -> bool {
         matches!(self, Token::CustomOperator { .. })
     }
-    
+
     /// Returns true if this token is an array literal.
     pub fn is_array_literal(&self) -> bool {
         matches!(self, Token::ArrayLiteral(_))
     }
-    
+
     /// Returns the literal value if this token is a literal.
     pub fn as_literal(&self) -> Option<&DataValue<'a>> {
         match self {
@@ -143,7 +143,7 @@ impl<'a> Token<'a> {
             _ => None,
         }
     }
-    
+
     /// Returns the variable path if this token is a variable.
     pub fn as_variable(&self) -> Option<(&'a str, Option<&'a Token<'a>>)> {
         match self {
@@ -151,7 +151,7 @@ impl<'a> Token<'a> {
             _ => None,
         }
     }
-    
+
     /// Returns the operator type and arguments if this token is an operator.
     pub fn as_operator(&self) -> Option<(OperatorType, &'a Token<'a>)> {
         match self {
@@ -159,7 +159,7 @@ impl<'a> Token<'a> {
             _ => None,
         }
     }
-    
+
     /// Returns the custom operator name and arguments if this token is a custom operator.
     pub fn as_custom_operator(&self) -> Option<(&'a str, &'a Token<'a>)> {
         match self {
@@ -167,7 +167,7 @@ impl<'a> Token<'a> {
             _ => None,
         }
     }
-    
+
     /// Returns the array tokens if this token is an array literal.
     pub fn as_array_literal(&self) -> Option<&Vec<&'a Token<'a>>> {
         match self {
@@ -235,7 +235,7 @@ impl OperatorType {
 }
 
 impl FromStr for OperatorType {
-    type Err = &'static str;  // Or use a more descriptive error type
+    type Err = &'static str; // Or use a more descriptive error type
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -286,18 +286,27 @@ impl FromStr for OperatorType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_operator_type_conversion() {
         assert_eq!(OperatorType::Comparison(ComparisonOp::Equal).as_str(), "==");
-        assert_eq!(OperatorType::from_str("=="), Ok(OperatorType::Comparison(ComparisonOp::Equal)));
-        
+        assert_eq!(
+            OperatorType::from_str("=="),
+            Ok(OperatorType::Comparison(ComparisonOp::Equal))
+        );
+
         assert_eq!(OperatorType::Arithmetic(ArithmeticOp::Add).as_str(), "+");
-        assert_eq!(OperatorType::from_str("+"), Ok(OperatorType::Arithmetic(ArithmeticOp::Add)));
-        
+        assert_eq!(
+            OperatorType::from_str("+"),
+            Ok(OperatorType::Arithmetic(ArithmeticOp::Add))
+        );
+
         assert_eq!(OperatorType::Control(ControlOp::And).as_str(), "and");
-        assert_eq!(OperatorType::from_str("and"), Ok(OperatorType::Control(ControlOp::And)));
-        
+        assert_eq!(
+            OperatorType::from_str("and"),
+            Ok(OperatorType::Control(ControlOp::And))
+        );
+
         assert_eq!(OperatorType::from_str("unknown"), Err("unknown operator"));
     }
-} 
+}

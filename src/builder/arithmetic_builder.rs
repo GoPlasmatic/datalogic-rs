@@ -18,37 +18,37 @@ impl<'a> ArithmeticBuilder<'a> {
     }
 
     /// Creates an addition operation.
-    pub fn addOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn add_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Add)
     }
 
     /// Creates a subtraction operation.
-    pub fn subtractOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn subtract_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Subtract)
     }
 
     /// Creates a multiplication operation.
-    pub fn multiplyOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn multiply_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Multiply)
     }
 
     /// Creates a division operation.
-    pub fn divideOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn divide_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Divide)
     }
 
     /// Creates a modulo operation.
-    pub fn moduloOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn modulo_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Modulo)
     }
 
     /// Creates a minimum operation.
-    pub fn minOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn min_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Min)
     }
 
     /// Creates a maximum operation.
-    pub fn maxOp(&self) -> ArithmeticOperationBuilder<'a> {
+    pub fn max_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Max)
     }
 }
@@ -92,28 +92,31 @@ impl<'a> ArithmeticOperationBuilder<'a> {
         self.operands.push(val);
         self
     }
-    
+
     /// Adds an integer value as an operand to the arithmetic operation.
     pub fn int(mut self, value: i64) -> Self {
         let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
         self.operands.push(val);
         self
     }
-    
+
     /// Adds a float value as an operand to the arithmetic operation.
     pub fn float(mut self, value: f64) -> Self {
         let val = Logic::literal(crate::value::DataValue::float(value), self.arena);
         self.operands.push(val);
         self
     }
-    
+
     /// Adds a string value as an operand to the arithmetic operation.
     pub fn string(mut self, value: &str) -> Self {
-        let val = Logic::literal(crate::value::DataValue::string(self.arena, value), self.arena);
+        let val = Logic::literal(
+            crate::value::DataValue::string(self.arena, value),
+            self.arena,
+        );
         self.operands.push(val);
         self
     }
-    
+
     /// Adds a boolean value as an operand to the arithmetic operation.
     pub fn bool(mut self, value: bool) -> Self {
         let val = Logic::literal(crate::value::DataValue::bool(value), self.arena);
@@ -149,7 +152,7 @@ impl<'a> ArithmeticOperationBuilder<'a> {
                         vec![zero, self.operands[0].clone()],
                         self.arena,
                     );
-                },
+                }
                 _ => {
                     // For other operations, just return the operand for unary case
                     return self.operands[0].clone();
@@ -163,4 +166,4 @@ impl<'a> ArithmeticOperationBuilder<'a> {
             self.arena,
         )
     }
-} 
+}

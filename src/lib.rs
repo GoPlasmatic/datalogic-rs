@@ -1,10 +1,10 @@
 pub mod arena;
-pub mod value;
-pub mod logic;
 pub mod builder;
 pub mod error;
+pub mod logic;
+pub mod value;
 
 pub use arena::*;
-pub use value::*;
-pub use logic::*;
 pub use builder::*;
+pub use logic::*;
+pub use value::*;

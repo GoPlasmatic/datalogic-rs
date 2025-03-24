@@ -28,7 +28,7 @@ impl<T> VectorPool<T> {
             default_capacity,
         }
     }
-    
+
     /// Gets a vector from the pool or creates a new one
     fn get(&mut self) -> Vec<T> {
         if let Some(mut vec) = self.vectors.pop() {
@@ -38,7 +38,7 @@ impl<T> VectorPool<T> {
             Vec::with_capacity(self.default_capacity)
         }
     }
-    
+
     /// Returns a vector to the pool for reuse
     fn release(&mut self, vec: Vec<T>) {
         // Only keep vectors that have a reasonable capacity to avoid memory bloat
@@ -69,34 +69,34 @@ impl<T> VectorPool<T> {
 pub struct DataArena {
     /// The underlying bump allocator
     bump: Bump,
-    
+
     /// String interner for efficient string storage
     interner: RefCell<StringInterner>,
-    
+
     /// Chunk size for allocations (in bytes)
     chunk_size: usize,
-    
+
     /// Pool of DataValue vectors for reuse
     data_value_pool: RefCell<VectorPool<DataValue<'static>>>,
-    
+
     /// Preallocated null value
     null_value: &'static DataValue<'static>,
-    
+
     /// Preallocated true value
     true_value: &'static DataValue<'static>,
-    
+
     /// Preallocated false value
     false_value: &'static DataValue<'static>,
-    
+
     /// Preallocated empty string
     empty_string: &'static str,
-    
+
     /// Preallocated empty string value
     empty_string_value: &'static DataValue<'static>,
-    
+
     /// Preallocated empty array
     empty_array: &'static [DataValue<'static>],
-    
+
     /// Preallocated empty array value
     empty_array_value: &'static DataValue<'static>,
 }
@@ -120,7 +120,7 @@ impl DataArena {
     pub fn new() -> Self {
         Self::with_chunk_size(1024 * 1024) // 1MB chunks by default
     }
-    
+
     /// Creates a new arena with the specified chunk size.
     ///
     /// The chunk size determines how much memory is allocated at once
@@ -129,7 +129,7 @@ impl DataArena {
     pub fn with_chunk_size(chunk_size: usize) -> Self {
         let bump = Bump::new();
         bump.set_allocation_limit(Some(chunk_size * 256)); // Safety limit
-        
+
         // Create static references to common values
         // SAFETY: These are static and never change, so it's safe to cast them
         static NULL_VALUE: DataValue<'static> = DataValue::Null;
@@ -139,7 +139,7 @@ impl DataArena {
         static EMPTY_STRING_VALUE: DataValue<'static> = DataValue::String(EMPTY_STRING);
         static EMPTY_ARRAY: [DataValue<'static>; 0] = [];
         static EMPTY_ARRAY_VALUE: DataValue<'static> = DataValue::Array(&EMPTY_ARRAY);
-        
+
         Self {
             bump,
             interner: RefCell::new(StringInterner::new()),
@@ -154,7 +154,7 @@ impl DataArena {
             empty_array_value: &EMPTY_ARRAY_VALUE,
         }
     }
-    
+
     /// Allocates a value in the arena.
     ///
     /// # Examples
@@ -169,7 +169,7 @@ impl DataArena {
     pub fn alloc<T>(&self, val: T) -> &T {
         self.bump.alloc(val)
     }
-    
+
     /// Allocates a slice in the arena by copying from a slice.
     ///
     /// # Examples
@@ -185,7 +185,7 @@ impl DataArena {
     pub fn alloc_slice_copy<T: Copy>(&self, vals: &[T]) -> &[T] {
         self.bump.alloc_slice_copy(vals)
     }
-    
+
     /// Allocates a slice in the arena by cloning each element.
     ///
     /// If the slice is empty, returns a reference to the preallocated empty slice.
@@ -210,31 +210,34 @@ impl DataArena {
         if vals.is_empty() {
             return &[];
         }
-        
+
         // Fast path for single element slices (very common)
         if vals.len() == 1 {
             let ptr = self.bump.alloc(vals[0].clone());
             return std::slice::from_ref(ptr);
         }
-        
+
         // Fast path for two element slices (common)
         if vals.len() == 2 {
             // Allocate both elements at once for better locality
-            let ptr = self.bump.alloc_layout(std::alloc::Layout::array::<T>(2).unwrap()).cast::<T>();
-            
+            let ptr = self
+                .bump
+                .alloc_layout(std::alloc::Layout::array::<T>(2).unwrap())
+                .cast::<T>();
+
             unsafe {
                 // Clone elements directly
                 std::ptr::write(ptr.as_ptr(), vals[0].clone());
                 std::ptr::write(ptr.as_ptr().add(1), vals[1].clone());
-                
+
                 return std::slice::from_raw_parts(ptr.as_ptr(), 2);
             }
         }
-        
+
         // For larger slices, use the standard allocation approach
         let layout = std::alloc::Layout::array::<T>(vals.len()).unwrap();
         let ptr = self.bump.alloc_layout(layout).cast::<T>();
-        
+
         // Clone each element into the allocated memory
         let slice = unsafe {
             let mut dst = ptr.as_ptr();
@@ -244,10 +247,10 @@ impl DataArena {
             }
             std::slice::from_raw_parts(ptr.as_ptr(), vals.len())
         };
-        
+
         slice
     }
-    
+
     /// Allocates a string in the arena.
     ///
     /// If the string is empty, returns a reference to the preallocated empty string.
@@ -267,7 +270,7 @@ impl DataArena {
         }
         self.bump.alloc_str(s)
     }
-    
+
     /// Interns a string, returning a reference to a unique instance.
     ///
     /// If the string has been interned before, returns a reference to
@@ -297,7 +300,7 @@ impl DataArena {
         }
         self.interner.borrow_mut().intern(s, &self.bump)
     }
-    
+
     /// Resets the arena, freeing all allocations.
     ///
     /// This method resets the arena to its initial state, freeing all
@@ -319,12 +322,12 @@ impl DataArena {
         self.interner = RefCell::new(StringInterner::new());
         // No need to reset the preallocated values as they are static
     }
-    
+
     /// Returns the current memory usage of the arena in bytes.
     pub fn memory_usage(&self) -> usize {
         self.bump.allocated_bytes()
     }
-    
+
     /// Creates a new temporary arena for short-lived allocations.
     ///
     /// This method creates a new arena that can be used for temporary
@@ -347,7 +350,7 @@ impl DataArena {
         // We can reuse the same chunk size and preallocated values
         DataArena::with_chunk_size(self.chunk_size)
     }
-    
+
     /// Gets a pre-allocated vector of DataValues from the pool.
     ///
     /// This is useful for building up collections that will be converted to arena-allocated
@@ -371,11 +374,11 @@ impl DataArena {
         // and we ensure it's cleared before reuse
         unsafe {
             std::mem::transmute::<Vec<DataValue<'static>>, Vec<DataValue<'a>>>(
-                self.data_value_pool.borrow_mut().get()
+                self.data_value_pool.borrow_mut().get(),
             )
         }
     }
-    
+
     /// Returns a vector of DataValues to the pool for reuse.
     ///
     /// This should be called when you're done with a vector obtained from `get_data_value_vec`.
@@ -397,20 +400,23 @@ impl DataArena {
     pub fn release_data_value_vec<'a>(&self, vec: Vec<DataValue<'a>>) {
         // SAFETY: This is safe because we're only using the vector for the lifetime of the arena
         // and we ensure it's cleared before reuse
-        
+
         // Only keep vectors with a reasonable capacity to avoid memory bloat
         // Also, don't bother with the overhead of returning very small vectors to the pool
         let capacity = vec.capacity();
         if capacity >= 8 && capacity <= self.data_value_pool.borrow().default_capacity * 4 {
             unsafe {
-                self.data_value_pool.borrow_mut().release(
-                    std::mem::transmute::<Vec<DataValue<'a>>, Vec<DataValue<'static>>>(vec)
-                );
+                self.data_value_pool
+                    .borrow_mut()
+                    .release(std::mem::transmute::<
+                        Vec<DataValue<'a>>,
+                        Vec<DataValue<'static>>,
+                    >(vec));
             }
         }
         // Otherwise, let the vector be dropped normally
     }
-    
+
     /// Allocates a slice in the arena and fills it with values generated by a function.
     ///
     /// This is more efficient than creating a temporary vector and then cloning it.
@@ -431,11 +437,11 @@ impl DataArena {
         if len == 0 {
             return &[];
         }
-        
+
         // Allocate memory for the slice
         let layout = std::alloc::Layout::array::<T>(len).unwrap();
         let ptr = self.bump.alloc_layout(layout).cast::<T>();
-        
+
         // Fill the slice with values generated by the function
         unsafe {
             let mut dst = ptr.as_ptr();
@@ -446,25 +452,25 @@ impl DataArena {
             std::slice::from_raw_parts(ptr.as_ptr(), len)
         }
     }
-    
+
     /// Returns a reference to the preallocated null value.
     pub fn null_value(&self) -> &DataValue {
         // SAFETY: The lifetime is tied to self, which is safe because the static value lives forever
         unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.null_value) }
     }
-    
+
     /// Returns a reference to the preallocated true value.
     pub fn true_value(&self) -> &DataValue {
         // SAFETY: The lifetime is tied to self, which is safe because the static value lives forever
         unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.true_value) }
     }
-    
+
     /// Returns a reference to the preallocated false value.
     pub fn false_value(&self) -> &DataValue {
         // SAFETY: The lifetime is tied to self, which is safe because the static value lives forever
         unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.false_value) }
     }
-    
+
     /// Returns a reference to a boolean value (either true or false).
     pub fn bool_value(&self, value: bool) -> &DataValue {
         if value {
@@ -473,30 +479,36 @@ impl DataArena {
             self.false_value()
         }
     }
-    
+
     /// Returns a reference to the preallocated empty string.
     pub fn empty_string(&self) -> &str {
         self.empty_string
     }
-    
+
     /// Returns a reference to the preallocated empty string value.
     pub fn empty_string_value(&self) -> &DataValue {
         // SAFETY: The lifetime is tied to self, which is safe because the static value lives forever
-        unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.empty_string_value) }
+        unsafe {
+            std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.empty_string_value)
+        }
     }
-    
+
     /// Returns a reference to the preallocated empty array.
     pub fn empty_array(&self) -> &[DataValue] {
         // SAFETY: The lifetime is tied to self, which is safe because the static value lives forever
-        unsafe { std::mem::transmute::<&'static [DataValue<'static>], &[DataValue]>(self.empty_array) }
+        unsafe {
+            std::mem::transmute::<&'static [DataValue<'static>], &[DataValue]>(self.empty_array)
+        }
     }
-    
+
     /// Returns a reference to the preallocated empty array value.
     pub fn empty_array_value(&self) -> &DataValue {
         // SAFETY: The lifetime is tied to self, which is safe because the static value lives forever
-        unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.empty_array_value) }
+        unsafe {
+            std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.empty_array_value)
+        }
     }
-    
+
     /// Allocates a slice of DataValues in the arena by cloning each element.
     ///
     /// If the slice is empty, returns a reference to the preallocated empty array.
@@ -515,10 +527,10 @@ impl DataArena {
         if vals.is_empty() {
             return self.empty_array();
         }
-        
+
         self.alloc_slice_clone(vals)
     }
-    
+
     /// Allocates a slice of object entries in the arena by cloning each element.
     ///
     /// If the slice is empty, returns a reference to an empty slice.
@@ -534,14 +546,17 @@ impl DataArena {
     /// let entries = vec![(key, DataValue::integer(42))];
     /// let slice = arena.alloc_object_entries(&entries);
     /// ```
-    pub fn alloc_object_entries<'a>(&'a self, entries: &[(&'a str, DataValue<'a>)]) -> &'a [(&'a str, DataValue<'a>)] {
+    pub fn alloc_object_entries<'a>(
+        &'a self,
+        entries: &[(&'a str, DataValue<'a>)],
+    ) -> &'a [(&'a str, DataValue<'a>)] {
         if entries.is_empty() {
             return &[];
         }
-        
+
         self.alloc_slice_clone(entries)
     }
-    
+
     /// Allocates a small array of DataValues (up to 8 elements) in the arena.
     ///
     /// This is optimized for the common case of small arrays in JSON Logic expressions.
@@ -557,46 +572,53 @@ impl DataArena {
     /// let values = [DataValue::integer(1), DataValue::integer(2)];
     /// let slice = arena.alloc_small_data_value_array(&values);
     /// ```
-    pub fn alloc_small_data_value_array<'a>(&'a self, values: &[DataValue<'a>]) -> &'a [DataValue<'a>] {
+    pub fn alloc_small_data_value_array<'a>(
+        &'a self,
+        values: &[DataValue<'a>],
+    ) -> &'a [DataValue<'a>] {
         debug_assert!(values.len() <= 8, "This method is only for small arrays");
-        
+
         if values.is_empty() {
             return self.empty_array();
         }
-        
+
         // For very small arrays, use specialized methods
         match values.len() {
             1 => {
                 let ptr = self.bump.alloc(values[0].clone());
                 std::slice::from_ref(ptr)
-            },
+            }
             2 => {
                 // Allocate both elements at once for better locality
-                let ptr = self.bump.alloc_layout(std::alloc::Layout::array::<DataValue<'a>>(2).unwrap())
+                let ptr = self
+                    .bump
+                    .alloc_layout(std::alloc::Layout::array::<DataValue<'a>>(2).unwrap())
                     .cast::<DataValue<'a>>();
-                
+
                 unsafe {
                     // Clone elements directly
                     std::ptr::write(ptr.as_ptr(), values[0].clone());
                     std::ptr::write(ptr.as_ptr().add(1), values[1].clone());
-                    
+
                     std::slice::from_raw_parts(ptr.as_ptr(), 2)
                 }
-            },
+            }
             3 => {
                 // Allocate all three elements at once for better locality
-                let ptr = self.bump.alloc_layout(std::alloc::Layout::array::<DataValue<'a>>(3).unwrap())
+                let ptr = self
+                    .bump
+                    .alloc_layout(std::alloc::Layout::array::<DataValue<'a>>(3).unwrap())
                     .cast::<DataValue<'a>>();
-                
+
                 unsafe {
                     // Clone elements directly
                     std::ptr::write(ptr.as_ptr(), values[0].clone());
                     std::ptr::write(ptr.as_ptr().add(1), values[1].clone());
                     std::ptr::write(ptr.as_ptr().add(2), values[2].clone());
-                    
+
                     std::slice::from_raw_parts(ptr.as_ptr(), 3)
                 }
-            },
+            }
             // For 4-8 elements, use the standard allocation approach
             _ => self.alloc_slice_clone(values),
         }
@@ -632,21 +654,21 @@ mod tests {
     #[test]
     fn test_reset() {
         let mut arena = DataArena::new();
-        
+
         // Allocate a significant amount of data
         for i in 0..1000 {
             let _ = arena.alloc_str(&format!("test string {}", i));
         }
-        
+
         arena.reset();
-        
+
         // After reset, the memory is still allocated to the arena but marked as free
         // So we need to check that we can reuse it without increasing usage significantly
-        
+
         // Allocate some data again
         let s = arena.alloc_str("hello");
         assert_eq!(s, "hello");
-        
+
         // The key behavior to test is that we can reuse the arena after reset
         // Not necessarily that the memory usage decreases
     }
