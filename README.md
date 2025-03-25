@@ -133,7 +133,7 @@ Add `datalogic-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-datalogic-rs = "2.0.17"
+datalogic-rs = "3.0.0"
 ```
 
 ---
