@@ -1,9 +1,9 @@
 // Core types and functionality
-pub use datalogic::DataLogic;
-pub use value::{DataValue, FromJson, ToJson, IntoDataValue, FromDataValue};
-pub use logic::{Logic, Result};
-pub use error::LogicError;
 pub use builder::RuleBuilder;
+pub use datalogic::DataLogic;
+pub use error::LogicError;
+pub use logic::{Logic, Result};
+pub use value::{DataValue, FromDataValue, FromJson, IntoDataValue, ToJson};
 
 // Internal modules with implementation details
 mod arena;

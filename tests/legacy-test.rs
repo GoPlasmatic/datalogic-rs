@@ -83,7 +83,7 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
     // Parse the data (or use empty object if not provided)
     let empty_json = json!({});
     let data_json = test_case.data.as_ref().unwrap_or(&empty_json);
-    
+
     // Use DataLogic to parse the data
     let data = match dl.parse_data(&data_json.to_string()) {
         Ok(data) => data,

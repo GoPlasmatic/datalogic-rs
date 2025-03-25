@@ -18,7 +18,7 @@ pub fn eval_missing<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(arena.empty_array_value());
     }
 
     let mut missing = arena.get_data_value_vec();
@@ -112,7 +112,7 @@ pub fn eval_missing_some<'a>(
         // If we have enough fields, return an empty array
         if found_count >= min_count {
             arena.release_data_value_vec(missing);
-            return Ok(arena.alloc(DataValue::Array(&[])));
+            return Ok(arena.empty_array_value());
         }
 
         // Otherwise return the missing fields
@@ -122,7 +122,7 @@ pub fn eval_missing_some<'a>(
         Ok(arena.alloc(result))
     } else {
         // If the second argument is not an array, return an empty array
-        Ok(arena.alloc(DataValue::Array(&[])))
+        Ok(arena.empty_array_value())
     }
 }
 

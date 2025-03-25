@@ -263,35 +263,9 @@ pub fn eval_filter<'a>(
     // Cache the condition token
     let condition = args[1];
 
-    // Optimization: Pre-scan to estimate result size
-    // For small arrays (<=16 items), just use the array length as capacity
-    // For larger arrays, sample a few items to estimate selectivity
-    let estimated_capacity = if items.len() <= 16 {
-        items.len()
-    } else {
-        // Sample up to 8 items to estimate selectivity
-        let sample_size = std::cmp::min(8, items.len());
-        let mut sample_count = 0;
-
-        for i in 0..sample_size {
-            // Use evenly distributed indices for better sampling
-            let idx = (i * items.len()) / sample_size;
-            let item = &items[idx];
-
-            // Evaluate the condition with the item as context
-            if evaluate(condition, item, arena)?.coerce_to_bool() {
-                sample_count += 1;
-            }
-        }
-
-        // Estimate capacity based on sample selectivity
-        let selectivity = sample_count as f64 / sample_size as f64;
-        std::cmp::max(4, (items.len() as f64 * selectivity).ceil() as usize)
-    };
-
     // Get a vector from the arena's pool with the estimated capacity
     let mut results = arena.get_data_value_vec();
-    results.reserve(estimated_capacity);
+    results.reserve(items.len());
 
     // Filter the array
     for item in items.iter() {
@@ -622,7 +596,7 @@ pub fn eval_merge<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for no arguments
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(arena.empty_array_value());
     }
 
     // Evaluate all arguments and collect arrays

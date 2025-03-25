@@ -77,7 +77,7 @@ impl DataLogic {
     pub fn builder(&self) -> RuleBuilder {
         RuleBuilder::new(&self.arena)
     }
-    
+
     /// Parse a logic expression using the specified parser format
     pub fn parse_logic(&self, source: &str, format: Option<&str>) -> Result<Logic> {
         let token = self.parsers.parse(source, format, &self.arena)?;
@@ -106,13 +106,18 @@ impl DataLogic {
     }
 
     /// Parse and evaluate in one step, returning JSON
-    pub fn apply(&self, logic_source: &str, data_source: &str, format: Option<&str>) -> Result<JsonValue> {
+    pub fn apply(
+        &self,
+        logic_source: &str,
+        data_source: &str,
+        format: Option<&str>,
+    ) -> Result<JsonValue> {
         let rule = self.parse_logic(logic_source, format)?;
         let data_value = self.parse_data(data_source)?;
         let result = self.evaluate(&rule, &data_value)?;
         Ok(result.to_json())
     }
-    
+
     /// Parse and evaluate in one step, returning a DataValue
     pub fn evaluate_str(
         &self,
