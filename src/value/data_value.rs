@@ -74,9 +74,6 @@ impl<'a> DataValue<'a> {
         if values.is_empty() {
             // Use the preallocated empty array
             DataValue::Array(arena.empty_array())
-        } else if values.len() <= 8 {
-            // Use the optimized small array allocation for common case
-            DataValue::Array(arena.alloc_small_data_value_array(values))
         } else {
             // Use the standard allocation for larger arrays
             DataValue::Array(arena.alloc_data_value_slice(values))

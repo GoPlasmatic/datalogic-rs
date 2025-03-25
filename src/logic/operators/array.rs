@@ -200,7 +200,7 @@ pub fn eval_map<'a>(
     // Cache the function token
     let function = args[1];
 
-    // Get a vector from the arena's pool to avoid allocation
+    // Get a vector from the arena's pool
     let mut result_values = arena.get_data_value_vec();
     result_values.reserve(items.len()); // Pre-allocate for expected size
 
@@ -212,10 +212,7 @@ pub fn eval_map<'a>(
     }
 
     // Create the result array
-    let result = DataValue::Array(arena.alloc_slice_clone(&result_values));
-
-    // Return the vector to the pool
-    arena.release_data_value_vec(result_values);
+    let result = DataValue::Array(arena.bump_vec_into_slice(result_values));
 
     // Return the result array
     Ok(arena.alloc(result))
@@ -276,10 +273,7 @@ pub fn eval_filter<'a>(
     }
 
     // Create the result array
-    let result = DataValue::Array(arena.alloc_slice_clone(&results));
-
-    // Return the vector to the pool
-    arena.release_data_value_vec(results);
+    let result = DataValue::Array(arena.bump_vec_into_slice(results));
 
     // Return the result array
     Ok(arena.alloc(result))
@@ -573,10 +567,12 @@ pub fn eval_reduce<'a>(
     // Reduce the array using the generic approach
     for i in start_idx..items.len() {
         // Create object entries with references to the values
-        let entries = [(curr_key, items[i].clone()), (acc_key, acc.clone())];
+        let mut entries = Vec::with_capacity(2);
+        entries.push((curr_key, items[i].clone()));
+        entries.push((acc_key, acc.clone()));
 
         // Allocate the entries in the arena
-        let context_entries = arena.alloc_slice_clone(&entries);
+        let context_entries = arena.vec_into_slice(entries);
 
         // Create the context object
         let context = arena.alloc(DataValue::Object(context_entries));
@@ -600,7 +596,7 @@ pub fn eval_merge<'a>(
     }
 
     // Evaluate all arguments and collect arrays
-    let mut result = arena.get_data_value_vec();
+    let mut result = Vec::with_capacity(args.len());
 
     for arg in args {
         let value = evaluate(arg, data, arena)?;
@@ -620,8 +616,7 @@ pub fn eval_merge<'a>(
     }
 
     // Create the result array
-    let result_array = DataValue::Array(arena.alloc_slice_clone(&result));
-    arena.release_data_value_vec(result);
+    let result_array = DataValue::Array(arena.vec_into_slice(result));
 
     Ok(arena.alloc(result_array))
 }

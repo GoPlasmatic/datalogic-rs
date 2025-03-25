@@ -84,7 +84,7 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                     let value = DataValue::from_json(item, arena);
                     values.push(value);
                 }
-                let values_slice = arena.alloc_slice_clone(&values);
+                let values_slice = arena.vec_into_slice(values);
                 Ok(Token::literal(DataValue::Array(values_slice)))
             } else {
                 // Otherwise, create an array of tokens and allocate them in the arena
@@ -135,7 +135,7 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
     } else if obj.is_empty() {
         // Empty object literal
         Ok(Token::literal(DataValue::Object(
-            arena.alloc_slice_clone(&[]),
+            arena.vec_into_slice(vec![]),
         )))
     } else {
         // For multi-key objects, treat the first key as an unknown operator

@@ -49,26 +49,29 @@ pub fn eval_try<'a>(
             let error_context = match &last_error {
                 Some(LogicError::ThrownError { r#type: error_type }) => {
                     // Create a context with the error type
-                    let entries = arena.alloc_slice_clone(&[(
+                    let mut entries = Vec::with_capacity(1);
+                    entries.push((
                         arena.intern_str("type"),
                         DataValue::string(arena, error_type),
-                    )]);
+                    ));
+                    let entries = arena.vec_into_slice(entries);
                     arena.alloc(DataValue::Object(entries))
                 }
                 Some(LogicError::NaNError) => {
                     // Create a context for NaN errors
-                    let entries = arena.alloc_slice_clone(&[(
-                        arena.intern_str("type"),
-                        DataValue::string(arena, "NaN"),
-                    )]);
+                    let mut entries = Vec::with_capacity(1);
+                    entries.push((arena.intern_str("type"), DataValue::string(arena, "NaN")));
+                    let entries = arena.vec_into_slice(entries);
                     arena.alloc(DataValue::Object(entries))
                 }
                 Some(err) => {
                     // For other errors, just include a generic error message
-                    let entries = arena.alloc_slice_clone(&[(
+                    let mut entries = Vec::with_capacity(1);
+                    entries.push((
                         arena.intern_str("type"),
                         DataValue::string(arena, &err.to_string()),
-                    )]);
+                    ));
+                    let entries = arena.vec_into_slice(entries);
                     arena.alloc(DataValue::Object(entries))
                 }
                 None => {

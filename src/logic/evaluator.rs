@@ -86,7 +86,7 @@ pub fn evaluate<'a>(
         // Array literals evaluate each element
         Token::ArrayLiteral(items) => {
             // Get a vector from the arena's pool
-            let mut values = arena.get_data_value_vec();
+            let mut values = arena.get_data_value_vec_with_capacity(items.len());
 
             // Evaluate each item in the array
             for item in items {
@@ -94,13 +94,9 @@ pub fn evaluate<'a>(
                 values.push(value.clone());
             }
 
-            // Create the array DataValue
-            let result = DataValue::Array(arena.alloc_slice_clone(&values));
-
-            // Return the vector to the pool
-            arena.release_data_value_vec(values);
-
-            // Return the array DataValue
+            // Create the array DataValue and allocate it
+            let array_slice = arena.bump_vec_into_slice(values);
+            let result = DataValue::Array(array_slice);
             Ok(arena.alloc(result))
         }
 
@@ -153,8 +149,7 @@ fn evaluate_arguments<'a>(
             }
 
             // Get a vector from the arena's pool
-            let mut values = arena.get_data_value_vec();
-            values.reserve(items.len());
+            let mut values = arena.get_data_value_vec_with_capacity(items.len());
 
             // Evaluate each item in the array
             for item in items {
@@ -163,13 +158,7 @@ fn evaluate_arguments<'a>(
             }
 
             // Create the array slice
-            let result = arena.alloc_data_value_slice(&values);
-
-            // Return the vector to the pool
-            arena.release_data_value_vec(values);
-
-            // Return the array slice
-            Ok(result)
+            Ok(arena.bump_vec_into_slice(values))
         }
 
         // For other token types, evaluate to a single value and wrap in a slice
@@ -317,9 +306,8 @@ fn evaluate_operator<'a>(
                 values.push(value.clone());
             }
 
-            let result = DataValue::Array(arena.alloc_slice_clone(&values));
-            arena.release_data_value_vec(values);
-
+            let array_slice = arena.bump_vec_into_slice(values);
+            let result = DataValue::Array(array_slice);
             Ok(arena.alloc(result))
         }
     }
@@ -412,10 +400,10 @@ mod tests {
 
         // Create test data: { "hello": 0, "nested": { "world": 1 } }
         let world_entries =
-            arena.alloc_slice_clone(&[(arena.intern_str("world"), DataValue::integer(1))]);
+            arena.vec_into_slice(vec![(arena.intern_str("world"), DataValue::integer(1))]);
         let nested_obj = DataValue::Object(world_entries);
 
-        let entries = arena.alloc_slice_clone(&[
+        let entries = arena.vec_into_slice(vec![
             (arena.intern_str("hello"), DataValue::integer(0)),
             (arena.intern_str("nested"), nested_obj),
         ]);
@@ -429,7 +417,7 @@ mod tests {
         assert_eq!(*result, DataValue::integer(0));
 
         // Test nested val: { "val": ["nested", "world"] }
-        let nested_args = arena.alloc_slice_clone(&[
+        let nested_args = arena.vec_into_slice(vec![
             DataValue::string(&arena, "nested"),
             DataValue::string(&arena, "world"),
         ]);
@@ -441,7 +429,7 @@ mod tests {
         assert_eq!(*result, DataValue::integer(1));
 
         // Test val with empty array (should return the entire data)
-        let empty_array = DataValue::Array(arena.alloc_slice_clone(&[]));
+        let empty_array = DataValue::Array(arena.vec_into_slice(vec![]));
         let empty_val_arg = Token::literal(empty_array);
         let empty_val_token = Token::operator(OperatorType::Val, arena.alloc(empty_val_arg));
 

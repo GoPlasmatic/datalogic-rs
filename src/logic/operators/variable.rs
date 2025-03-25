@@ -287,6 +287,7 @@ mod tests {
     use crate::arena::DataArena;
     use crate::logic::{DataLogicCore, Logic, OperatorType};
     use crate::value::{DataValue, FromJson};
+
     use serde_json::json;
 
     #[test]
@@ -411,14 +412,14 @@ mod tests {
         let data = DataValue::from_json(&data_json, &arena);
 
         // Create a list of paths as DataValues
-        let paths = [
+        let paths = vec![
             DataValue::string(&arena, "a"),
             DataValue::string(&arena, "b.c"),
             DataValue::string(&arena, "d"),
         ];
 
         // Allocate in the arena
-        let paths_slice = arena.alloc_slice_clone(&paths);
+        let paths_slice = arena.vec_into_slice(paths);
 
         // Test exists with existing paths
         let result = eval_exists(paths_slice, &data, &arena).unwrap();
@@ -427,12 +428,12 @@ mod tests {
         assert_eq!(result.as_bool(), Some(true));
 
         // Test with only missing paths
-        let missing_paths = [
+        let missing_paths = vec![
             DataValue::string(&arena, "d"),
             DataValue::string(&arena, "e.f"),
         ];
 
-        let missing_paths_slice = arena.alloc_slice_clone(&missing_paths);
+        let missing_paths_slice = arena.vec_into_slice(missing_paths);
         let result = eval_exists(missing_paths_slice, &data, &arena).unwrap();
 
         // The result should be false because none of the paths exist

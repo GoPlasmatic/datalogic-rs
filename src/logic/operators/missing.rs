@@ -60,9 +60,7 @@ pub fn eval_missing<'a>(
         // Ignore non-string, non-array values
     }
 
-    let result = DataValue::Array(arena.alloc_slice_clone(&missing));
-    arena.release_data_value_vec(missing);
-
+    let result = DataValue::Array(arena.bump_vec_into_slice(missing));
     Ok(arena.alloc(result))
 }
 
@@ -111,14 +109,11 @@ pub fn eval_missing_some<'a>(
 
         // If we have enough fields, return an empty array
         if found_count >= min_count {
-            arena.release_data_value_vec(missing);
             return Ok(arena.empty_array_value());
         }
 
         // Otherwise return the missing fields
-        let result = DataValue::Array(arena.alloc_slice_clone(&missing));
-        arena.release_data_value_vec(missing);
-
+        let result = DataValue::Array(arena.bump_vec_into_slice(missing));
         Ok(arena.alloc(result))
     } else {
         // If the second argument is not an array, return an empty array

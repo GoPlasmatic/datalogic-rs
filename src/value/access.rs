@@ -108,7 +108,7 @@ pub fn parse_path<'a>(arena: &'a DataArena, path: &str) -> &'a [PathSegment<'a>]
     // Fast path for single segment (no dots)
     if !path.contains('.') {
         let segment = PathSegment::parse(arena, path);
-        return arena.alloc_slice_clone(&[segment]);
+        return arena.vec_into_slice(vec![segment]);
     }
 
     // Calculate the number of segments
@@ -123,7 +123,7 @@ pub fn parse_path<'a>(arena: &'a DataArena, path: &str) -> &'a [PathSegment<'a>]
     }
 
     // Return a slice from the arena
-    arena.alloc_slice_clone(&segments)
+    arena.vec_into_slice(segments)
 }
 
 #[cfg(test)]

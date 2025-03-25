@@ -87,7 +87,7 @@ impl<'a> RuleBuilder<'a> {
         for component in components {
             path_components.push(component.into());
         }
-        let array_value = DataValue::Array(self.arena.alloc_slice_clone(&path_components));
+        let array_value = DataValue::Array(self.arena.vec_into_slice(path_components));
         self.val_op(array_value)
     }
 
