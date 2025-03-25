@@ -1,11 +1,11 @@
 //! JSONLogic parser implementation
-//! 
+//!
 //! This module provides the parser for JSONLogic expressions.
 
 use std::str::FromStr;
 
 use crate::arena::DataArena;
-use crate::logic::{LogicError, Result, Token, OperatorType};
+use crate::logic::{LogicError, OperatorType, Result, Token};
 use crate::parser::ExpressionParser;
 use crate::value::{DataValue, FromJson};
 use serde_json::{Map as JsonMap, Value as JsonValue};
@@ -19,11 +19,11 @@ impl ExpressionParser for JsonLogicParser {
         let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
             reason: format!("Invalid JSON: {}", e),
         })?;
-        
+
         // Use the JSONLogic parsing logic
         parse_json(&json, arena)
     }
-    
+
     fn format_name(&self) -> &'static str {
         "jsonlogic"
     }
@@ -110,18 +110,18 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         let (key, value) = obj.iter().next().unwrap();
 
         match key.as_str() {
-            "var" => return parse_variable(value, arena),
+            "var" => parse_variable(value, arena),
             "val" => {
                 let token = parse_json_internal(value, arena)?;
                 let args_token = arena.alloc(token);
-                return Ok(Token::operator(OperatorType::Val, args_token));
-            },
-            "exists" => return parse_exists_operator(value, arena),
+                Ok(Token::operator(OperatorType::Val, args_token))
+            }
+            "exists" => parse_exists_operator(value, arena),
             "preserve" => {
                 // The preserve operator returns its argument as-is without parsing it as an operator
                 let preserved_value = DataValue::from_json(value, arena);
-                return Ok(Token::literal(preserved_value));
-            },
+                Ok(Token::literal(preserved_value))
+            }
             _ => {
                 // Check if it's a standard operator
                 if let Ok(op_type) = OperatorType::from_str(key) {
@@ -129,7 +129,7 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
                 }
 
                 // Otherwise, treat it as a custom operator
-                return parse_custom_operator(key, value, arena);
+                parse_custom_operator(key, value, arena)
             }
         }
     } else if obj.is_empty() {
@@ -139,10 +139,10 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
         )))
     } else {
         // For multi-key objects, treat the first key as an unknown operator
-        // This matches the JSONLogic behavior where multi-key objects should 
+        // This matches the JSONLogic behavior where multi-key objects should
         // fail as unknown operators rather than parse errors
         let (key, _) = obj.iter().next().unwrap();
-        
+
         // Return an OperatorNotFoundError instead of a ParseError
         Err(LogicError::OperatorNotFoundError {
             operator: key.clone(),
@@ -231,19 +231,20 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 // Convert all elements to strings and join with dots
                 let mut path_parts = Vec::with_capacity(arr.len());
                 for item in arr {
-                    let part =
-                        match item {
-                            JsonValue::String(s) => s.clone(),
-                            JsonValue::Number(n) => n.to_string(),
-                            JsonValue::Bool(b) => b.to_string(),
-                            JsonValue::Null => "".to_string(),
-                            _ => return Err(LogicError::ParseError {
+                    let part = match item {
+                        JsonValue::String(s) => s.clone(),
+                        JsonValue::Number(n) => n.to_string(),
+                        JsonValue::Bool(b) => b.to_string(),
+                        JsonValue::Null => "".to_string(),
+                        _ => {
+                            return Err(LogicError::ParseError {
                                 reason: format!(
                                     "Variable path component must be a scalar value, found: {:?}",
                                     item
                                 ),
-                            }),
-                        };
+                            })
+                        }
+                    };
                     path_parts.push(part);
                 }
 
@@ -382,13 +383,10 @@ fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'
 }
 
 /// Parses the exists operator application.
-fn parse_exists_operator<'a>(
-    value: &JsonValue,
-    arena: &'a DataArena,
-) -> Result<Token<'a>> {
+fn parse_exists_operator<'a>(value: &JsonValue, arena: &'a DataArena) -> Result<Token<'a>> {
     // Parse the arguments for exists operator
     let args = parse_arguments(value, arena)?;
-    
+
     // Create the exists operator token
     Ok(Token::operator(OperatorType::Exists, args))
 }
@@ -527,16 +525,16 @@ mod tests {
     fn test_parser_interface() {
         let arena = DataArena::new();
         let parser = JsonLogicParser;
-        
+
         // Test the parser interface
         let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
         let token = parser.parse(json_str, &arena).unwrap();
-        
+
         // Verify the token
         assert!(token.is_operator());
         let (op_type, _args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-        
+
         // Check the format name
         assert_eq!(parser.format_name(), "jsonlogic");
     }
@@ -600,4 +598,4 @@ mod tests {
         let (op_type, _args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Val);
     }
-} 
+}

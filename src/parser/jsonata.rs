@@ -16,7 +16,7 @@ impl ExpressionParser for JsonataParser {
             reason: "JSONata parser not yet implemented".to_string(),
         })
     }
-    
+
     fn format_name(&self) -> &'static str {
         "jsonata"
     }
@@ -25,4 +25,4 @@ impl ExpressionParser for JsonataParser {
 // Future implementation would include:
 // 1. Lexer for JSONata syntax
 // 2. Parser to convert JSONata to Tokens
-// 3. Helper functions for specific JSONata constructs 
+// 3. Helper functions for specific JSONata constructs

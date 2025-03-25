@@ -1,9 +1,9 @@
 use datalogic_rs::arena::DataArena;
 use datalogic_rs::logic::evaluate;
-use datalogic_rs::value::{DataValue, FromJson};
-use datalogic_rs::LogicError;
 use datalogic_rs::parser::jsonlogic::JsonLogicParser;
 use datalogic_rs::parser::ExpressionParser;
+use datalogic_rs::value::{DataValue, FromJson};
+use datalogic_rs::LogicError;
 use serde_json::{json, Value as JsonValue};
 use std::fs;
 use std::path::Path;

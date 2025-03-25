@@ -601,23 +601,13 @@ mod tests {
         let data_json = json!({"a": 10, "b": 5, "c": "20"});
 
         // Test less than with numbers
-        let rule = builder
-            .compare()
-            .less_than_op()
-            .var("b")
-            .var("a")
-            .build();
+        let rule = builder.compare().less_than_op().var("b").var("a").build();
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test less than with string coercion
-        let rule = builder
-            .compare()
-            .less_than_op()
-            .var("a")
-            .var("c")
-            .build();
+        let rule = builder.compare().less_than_op().var("a").var("c").build();
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));

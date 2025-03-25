@@ -493,7 +493,7 @@ fn reduce_max<'a>(
 /// Checks if an operator token matches the expected pattern for optimized arithmetic operations
 fn is_arithmetic_reduce_pattern<'a>(function: &'a Token<'a>) -> Option<ArithmeticOp> {
     if let Token::Operator {
-        op_type:OperatorType::Arithmetic(arith_op),
+        op_type: OperatorType::Arithmetic(arith_op),
         args: Token::ArrayLiteral(fn_args_tokens),
     } = function
     {

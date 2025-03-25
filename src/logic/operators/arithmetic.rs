@@ -211,8 +211,8 @@ pub fn eval_max<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
     use crate::DataLogicCore;
+    use serde_json::json;
 
     #[test]
     fn test_add() {

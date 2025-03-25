@@ -287,7 +287,6 @@ fn evaluate_operator<'a>(
             string::StringOp::Substr => string::eval_substr(token_refs, data, arena),
         },
 
-
         OperatorType::Missing => missing::eval_missing(token_refs, data, arena),
 
         OperatorType::MissingSome => missing::eval_missing_some(token_refs, data, arena),
@@ -367,12 +366,12 @@ mod tests {
 
         // Null
         let token = builder.null();
-        let result = evaluate(&token.root(), &null, &arena).unwrap();
+        let result = evaluate(token.root(), &null, &arena).unwrap();
         assert!(result.is_null());
 
         // Boolean
         let token = builder.bool(true);
-        let result = evaluate(&token.root(), &null, &arena).unwrap();
+        let result = evaluate(token.root(), &null, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -384,11 +383,8 @@ mod tests {
         let builder = RuleBuilder::new(&arena);
 
         // Equal
-        let token = builder.compare().equal_op()
-            .var("foo")
-            .int(42)
-            .build();
-        let result = evaluate(&token.root(), &data, &arena).unwrap();
+        let token = builder.compare().equal_op().var("foo").int(42).build();
+        let result = evaluate(token.root(), &data, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -401,7 +397,7 @@ mod tests {
 
         // Simple coalesce with one value
         let token = factory.coalesce(vec!["name"]);
-        let result = evaluate(&token.root(), &data, &arena).unwrap();
+        let result = evaluate(token.root(), &data, &arena).unwrap();
         assert_eq!(result.as_str(), Some("Jane"));
     }
 

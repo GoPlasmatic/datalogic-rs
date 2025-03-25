@@ -38,11 +38,7 @@ impl DataLogicCore {
     }
 
     /// Evaluates a rule created with the builder API.
-    pub fn apply(
-        &self,
-        logic: &Logic,
-        data: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
+    pub fn apply(&self, logic: &Logic, data: &serde_json::Value) -> Result<serde_json::Value> {
         // Convert input data to DataValue
         let data_value = DataValue::from_json(data, &self.arena);
 

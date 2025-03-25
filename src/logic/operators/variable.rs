@@ -102,12 +102,10 @@ pub fn eval_exists<'a>(
                 if let Some(hello_val) = data_get_property(data, "hello") {
                     // Check if hello has a "world" property
                     let has_world = match hello_val {
-                        DataValue::Object(fields) => {
-                            fields.iter().any(|(key, _)| *key == "world")
-                        },
-                        _ => false
+                        DataValue::Object(fields) => fields.iter().any(|(key, _)| *key == "world"),
+                        _ => false,
                     };
-                    
+
                     return Ok(arena.alloc(DataValue::Bool(has_world)));
                 } else {
                     return Ok(arena.alloc(DataValue::Bool(false)));
@@ -123,7 +121,7 @@ pub fn eval_exists<'a>(
             if arr.len() == 2 {
                 let mut all_strings = true;
                 let mut components = Vec::with_capacity(arr.len());
-                
+
                 for value in arr.iter() {
                     if let DataValue::String(s) = value {
                         components.push(*s);
@@ -132,18 +130,22 @@ pub fn eval_exists<'a>(
                         break;
                     }
                 }
-                
-                if all_strings && components.len() == 2 && components[0] == "hello" && components[1] == "world" {
+
+                if all_strings
+                    && components.len() == 2
+                    && components[0] == "hello"
+                    && components[1] == "world"
+                {
                     // First check if data has a "hello" property
                     if let Some(hello_val) = data_get_property(data, "hello") {
                         // Check if hello has a "world" property
                         let has_world = match hello_val {
                             DataValue::Object(fields) => {
                                 fields.iter().any(|(key, _)| *key == "world")
-                            },
-                            _ => false
+                            }
+                            _ => false,
                         };
-                        
+
                         return Ok(arena.alloc(DataValue::Bool(has_world)));
                     } else {
                         return Ok(arena.alloc(DataValue::Bool(false)));
@@ -155,13 +157,11 @@ pub fn eval_exists<'a>(
 
     // For the rest of the logic, just check if any path exists
     let mut any_exists = false;
-    
+
     for arg in args {
         let exists = match arg {
             // Simple string paths
-            DataValue::String(key) => {
-                data_has_property(data, key)
-            },
+            DataValue::String(key) => data_has_property(data, key),
             // Skip other types
             _ => false,
         };
@@ -366,7 +366,7 @@ mod tests {
             .array_var("users")
             .mapper_var("name")
             .build();
-        
+
         let result = core.apply(&map_rule, &data_json).unwrap();
         assert_eq!(result, json!(["Alice", "Bob", "Charlie"]));
     }
@@ -399,7 +399,7 @@ mod tests {
     fn test_exists() {
         let arena = DataArena::new();
         let core = DataLogicCore::new();
-        
+
         // Reuse setup from test_evaluate_variable
         let data_json = json!({
             "a": 1,
@@ -407,54 +407,57 @@ mod tests {
                 "c": 2
             }
         });
-        
+
         let data = DataValue::from_json(&data_json, &arena);
-        
+
         // Create a list of paths as DataValues
         let paths = [
             DataValue::string(&arena, "a"),
             DataValue::string(&arena, "b.c"),
-            DataValue::string(&arena, "d")
+            DataValue::string(&arena, "d"),
         ];
-        
+
         // Allocate in the arena
         let paths_slice = arena.alloc_slice_clone(&paths);
-        
+
         // Test exists with existing paths
         let result = eval_exists(paths_slice, &data, &arena).unwrap();
-        
+
         // The result should be boolean indicating if at least one path exists
         assert_eq!(result.as_bool(), Some(true));
-        
+
         // Test with only missing paths
         let missing_paths = [
             DataValue::string(&arena, "d"),
-            DataValue::string(&arena, "e.f")
+            DataValue::string(&arena, "e.f"),
         ];
-        
+
         let missing_paths_slice = arena.alloc_slice_clone(&missing_paths);
         let result = eval_exists(missing_paths_slice, &data, &arena).unwrap();
-        
+
         // The result should be false because none of the paths exist
         assert_eq!(result.as_bool(), Some(false));
-        
+
         // Test using direct operator creation
         let exists_rule = Logic::operator(
             OperatorType::Exists,
             vec![Logic::literal(DataValue::string(&arena, "a"), &arena)],
-            &arena
+            &arena,
         );
-            
+
         let result = core.apply(&exists_rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
-        
+
         // Test with a non-existent path
         let exists_rule = Logic::operator(
             OperatorType::Exists,
-            vec![Logic::literal(DataValue::string(&arena, "nonexistent"), &arena)],
-            &arena
+            vec![Logic::literal(
+                DataValue::string(&arena, "nonexistent"),
+                &arena,
+            )],
+            &arena,
         );
-            
+
         let result = core.apply(&exists_rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
     }

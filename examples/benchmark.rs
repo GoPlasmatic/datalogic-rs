@@ -27,7 +27,7 @@ fn main() {
             if let Some(logic) = test_case.get("rule") {
                 let data = test_case.get("data").unwrap_or(&Value::Null);
                 let data_value = parse_logic.parse_data(data.to_string().as_str()).unwrap();
-                
+
                 // Use JsonLogicParser to parse the rule
                 let rule_json_str = logic.to_string();
                 if let Ok(rule) = parse_logic.parse_logic(&rule_json_str, None) {

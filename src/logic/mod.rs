@@ -4,9 +4,9 @@
 //! logic expressions using arena allocation for improved performance.
 
 mod ast;
+mod datalogic_core;
 pub mod error;
 mod evaluator;
-mod datalogic_core;
 mod operators;
 mod optimizer;
 pub mod token;
@@ -24,6 +24,13 @@ pub use operators::comparison::ComparisonOp;
 pub use operators::control::ControlOp;
 pub use operators::string::StringOp;
 
+/// Make optimizer function public
+pub fn optimize<'a>(
+    token: &'a Token<'a>,
+    arena: &'a crate::arena::DataArena,
+) -> Result<&'a Token<'a>> {
+    optimizer::optimize(token, arena)
+}
 
 // Implement IntoLogic for common types is now handled through the DataLogic interface
 
@@ -41,7 +48,7 @@ mod tests {
 
         // Create a simple comparison logic
         let rule_json = json!({"==": [{"var": "a"}, 10]});
-        
+
         // Use the parser from the parser module
         let token = jsonlogic::parse_json(&rule_json, &arena).unwrap();
         let logic = Logic::new(token, &arena);
@@ -66,7 +73,7 @@ mod tests {
             {"==": [{"var": "a"}, 10]},
             {"==": [{"+":[1, 2]}, 3]}
         ]});
-        
+
         // Use the parser from the parser module
         let token = jsonlogic::parse_json(&rule_json, &arena).unwrap();
         let optimized_token = optimizer::optimize(token, &arena).unwrap();
@@ -98,9 +105,4 @@ mod tests {
         // Verify result
         assert_eq!(result.as_bool(), Some(true));
     }
-}
-
-/// Make optimizer function public
-pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a crate::arena::DataArena) -> Result<&'a Token<'a>> {
-    optimizer::optimize(token, arena)
 }
