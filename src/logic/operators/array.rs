@@ -701,14 +701,13 @@ pub fn eval_in<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::JsonLogic;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
     fn test_map_with_op_syntax() {
-        // Create JSONLogic instance
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4]
@@ -722,22 +721,21 @@ mod tests {
             .mapper(builder.arithmetic().multiply_op().var("").int(2).build())
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([2, 4, 6, 8]));
 
         // Test with empty array
         let data_json = json!({
             "numbers": []
         });
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([]));
     }
 
     #[test]
     fn test_filter_with_op_syntax() {
-        // Create JSONLogic instance
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4, 5, 6, 7, 8]
@@ -758,22 +756,21 @@ mod tests {
             )
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([2, 4, 6, 8]));
 
         // Test with empty array
         let data_json = json!({
             "numbers": []
         });
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([]));
     }
 
     #[test]
     fn test_reduce_with_op_syntax() {
-        // Create JSONLogic instance
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4]
@@ -795,14 +792,14 @@ mod tests {
             .initial(builder.int(0))
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(10)); // 1 + 2 + 3 + 4 = 10
 
         // Test with empty array - should return initial value
         let data_json = json!({
             "numbers": []
         });
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(0));
 
         // Test with different initial value
@@ -824,7 +821,7 @@ mod tests {
         let data_json = json!({
             "numbers": [1, 2, 3, 4]
         });
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(20)); // 10 + 1 + 2 + 3 + 4 = 20
     }
 }

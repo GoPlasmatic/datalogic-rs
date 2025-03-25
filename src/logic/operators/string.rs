@@ -156,14 +156,14 @@ pub fn eval_substr<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::JsonLogic;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
     fn test_cat() {
         // Create JSONLogic instance
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 10, "b": "hello", "c": true});
 
@@ -177,7 +177,7 @@ mod tests {
             .string("world")
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello world"));
 
         // Test concatenating different types
@@ -191,21 +191,21 @@ mod tests {
             .var("c")
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello 10 true"));
 
         // Test empty cat
         let rule = builder.string_ops().concat_op().build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
     }
 
     #[test]
     fn test_substr() {
         // Create JSONLogic instance
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"text": "hello world"});
 
@@ -218,7 +218,7 @@ mod tests {
             .take(5)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello"));
 
         // Test negative start
@@ -229,7 +229,7 @@ mod tests {
             .start_at(-5)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("world"));
 
         // Test negative length
@@ -241,7 +241,7 @@ mod tests {
             .take(-6)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello"));
 
         // Test out of bounds
@@ -252,7 +252,7 @@ mod tests {
             .start_at(20)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
     }
 }

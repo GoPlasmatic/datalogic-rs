@@ -1,7 +1,9 @@
 use datalogic_rs::arena::DataArena;
-use datalogic_rs::logic::{evaluate, IntoLogic};
+use datalogic_rs::logic::evaluate;
 use datalogic_rs::value::{DataValue, FromJson};
 use datalogic_rs::LogicError;
+use datalogic_rs::parser::jsonlogic::JsonLogicParser;
+use datalogic_rs::parser::ExpressionParser;
 use serde_json::{json, Value as JsonValue};
 use std::fs;
 use std::path::Path;
@@ -55,9 +57,11 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
 
 fn run_test_case(test_case: &TestCase) -> Result<(), String> {
     let arena = DataArena::new();
+    let parser = JsonLogicParser;
 
-    // Parse the rule
-    let rule_logic = match test_case.rule.to_logic(&arena) {
+    // Parse the rule using JsonLogicParser
+    let rule_json_str = test_case.rule.to_string();
+    let rule_logic = match parser.parse(&rule_json_str, &arena) {
         Ok(logic) => logic,
         Err(e) => {
             // If we expect an error, check if it's the right type
@@ -84,7 +88,7 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
     let data = <DataValue as FromJson>::from_json(data_json, &arena);
 
     // Evaluate the rule
-    let result = match evaluate(rule_logic.root(), &data, &arena) {
+    let result = match evaluate(rule_logic, &data, &arena) {
         Ok(value) => value,
         Err(e) => {
             // If we expect an error, check if it's the right type

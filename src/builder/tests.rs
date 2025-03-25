@@ -1,45 +1,41 @@
 #[cfg(test)]
 mod tests {
-    use crate::JsonLogic;
-    use serde_json::json;
+    use crate::DataLogic;
+    use crate::value::DataValue;
 
     #[test]
     fn test_basic_builder() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-
-        // We don't actually need these variables - just keeping them to show
-        // what could be done with the builder
-        let _builder = logic.builder();
+        let logic = DataLogic::new();
 
         // Just parse a rule directly from JSON
-        let ten_lt_twenty = logic.parse(&json!({"<": [10, 20]})).unwrap();
+        let ten_lt_twenty = logic.parse_logic(r#"{"<": [10, 20]}"#, None).unwrap();
 
         // Test the rule
-        let data = json!({});
-        let result = logic.apply_logic(&ten_lt_twenty, &data).unwrap();
-        assert_eq!(result, json!(true));
+        let data = logic.parse_data(r#"{}"#).unwrap();
+        let result = logic.evaluate(&ten_lt_twenty, &data).unwrap();
+        assert_eq!(result, &DataValue::Bool(true));
     }
 
     #[test]
     fn test_logic_builder() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
+        let logic = DataLogic::new();
 
         // Create a JSON rule to verify against
         let json_str = r#"{"if": [{"==": [{"var": "status"}, "gold"]}, "Premium", "Basic"]}"#;
 
         // Parse it
-        let rule_from_json = logic.parse(&json_str).unwrap();
+        let rule_from_json = logic.parse_logic(json_str, None).unwrap();
 
         // Test the rule
-        let gold_data = json!({"status": "gold"});
-        let normal_data = json!({"status": "silver"});
+        let gold_data = logic.parse_data(r#"{"status": "gold"}"#).unwrap();
+        let normal_data = logic.parse_data(r#"{"status": "silver"}"#).unwrap();
 
-        let result1 = logic.apply_logic(&rule_from_json, &gold_data).unwrap();
-        let result2 = logic.apply_logic(&rule_from_json, &normal_data).unwrap();
+        let result1 = logic.evaluate(&rule_from_json, &gold_data).unwrap();
+        let result2 = logic.evaluate(&rule_from_json, &normal_data).unwrap();
 
-        assert_eq!(result1, json!("Premium"));
-        assert_eq!(result2, json!("Basic"));
+        assert_eq!(result1, &DataValue::String("Premium"));
+        assert_eq!(result2, &DataValue::String("Basic"));
     }
 }

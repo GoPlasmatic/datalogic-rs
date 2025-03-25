@@ -59,23 +59,21 @@ pub fn eval_throw<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::JsonLogic;
+    use crate::DataLogicCore;
     use crate::value::FromJson;
     use serde_json::json;
 
     #[test]
     fn test_evaluate_throw_string() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!(null);
-        let data = DataValue::from_json(&data_json, arena);
 
         // Now test using the builder API
         let rule = builder.throw_op(builder.string_value("hello"));
-        let result = evaluate(rule.root(), &data, arena);
+        let result = core.apply(&rule, &data_json);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "hello");
@@ -87,18 +85,16 @@ mod tests {
     #[test]
     fn test_evaluate_throw_object() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({
             "x": {"type": "Some error"}
         });
-        let data = DataValue::from_json(&data_json, arena);
 
         // Now test using the builder API
         let rule = builder.throw_op(builder.val_str("x"));
-        let result = evaluate(rule.root(), &data, arena);
+        let result = core.apply(&rule, &data_json);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "Some error");

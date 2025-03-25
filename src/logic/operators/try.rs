@@ -94,45 +94,40 @@ pub fn eval_try<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::JsonLogic;
-    use crate::value::FromJson;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
     pub fn test_try_coalesce_error() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!(null);
-        let data = DataValue::from_json(&data_json, arena);
 
         // Test with builder API
         let rule = builder.try_op([
             builder.throw_op(builder.string_value("Some error")),
             builder.int(1),
         ]);
-        let result = evaluate(rule.root(), &data, arena).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result.as_i64(), Some(1));
     }
 
     #[test]
     pub fn test_try_propagate_error() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!(null);
-        let data = DataValue::from_json(&data_json, arena);
 
         // Test with builder API
         let rule = builder.try_op([
             builder.throw_op(builder.string_value("Some error")),
             builder.throw_op(builder.string_value("Another error")),
         ]);
-        let result = evaluate(rule.root(), &data, arena);
+        let result = core.apply(&rule, &data_json);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "Another error");
@@ -144,19 +139,17 @@ mod tests {
     #[test]
     pub fn test_try_error_context() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!(null);
-        let data = DataValue::from_json(&data_json, arena);
 
         // Test with builder API
         let rule = builder.try_op([
             builder.throw_op(builder.string_value("Some error")),
             builder.val_str("type"),
         ]);
-        let result = evaluate(rule.root(), &data, arena).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result.as_str(), Some("Some error"));
     }
 }

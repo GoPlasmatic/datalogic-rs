@@ -6,7 +6,6 @@ pub mod arithmetic;
 pub mod array;
 pub mod comparison;
 pub mod control;
-pub mod log;
 pub mod missing;
 pub mod string;
 pub mod throw;

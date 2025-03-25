@@ -1,5 +1,6 @@
 use datalogic_rs::arena::DataArena;
-use datalogic_rs::logic::{evaluate, parse_json};
+use datalogic_rs::logic::evaluate;
+use datalogic_rs::parser::jsonlogic::parse_json;
 use datalogic_rs::value::{DataValue, FromJson};
 use serde_json::json;
 

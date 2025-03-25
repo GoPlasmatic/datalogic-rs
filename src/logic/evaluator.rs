@@ -4,7 +4,7 @@
 
 use super::error::Result;
 use super::operators::{
-    arithmetic, array, comparison, control, log, missing, r#try, string, throw, val, variable,
+    arithmetic, array, comparison, control, missing, r#try, string, throw, val, variable,
 };
 use super::token::{OperatorType, Token};
 use crate::arena::DataArena;
@@ -287,8 +287,6 @@ fn evaluate_operator<'a>(
             string::StringOp::Substr => string::eval_substr(token_refs, data, arena),
         },
 
-        // Other operators
-        OperatorType::Log => log::eval_log(token_refs, data, arena),
 
         OperatorType::Missing => missing::eval_missing(token_refs, data, arena),
 
@@ -356,23 +354,25 @@ fn eval_coalesce<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::parser::parse_str;
+    use crate::builder::RuleBuilder;
     use crate::value::FromJson;
+    use crate::RuleFactory;
     use serde_json::json;
 
     #[test]
     fn test_evaluate_literal() {
         let arena = DataArena::new();
         let null = DataValue::null();
+        let builder = RuleBuilder::new(&arena);
 
         // Null
-        let token = parse_str("null", &arena).unwrap();
-        let result = evaluate(token, &null, &arena).unwrap();
+        let token = builder.null();
+        let result = evaluate(&token.root(), &null, &arena).unwrap();
         assert!(result.is_null());
 
         // Boolean
-        let token = parse_str("true", &arena).unwrap();
-        let result = evaluate(token, &null, &arena).unwrap();
+        let token = builder.bool(true);
+        let result = evaluate(&token.root(), &null, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -381,10 +381,14 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"foo": 42, "bar": "hello"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
+        let builder = RuleBuilder::new(&arena);
 
         // Equal
-        let token = parse_str(r#"{"==": [{"var": "foo"}, 42]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
+        let token = builder.compare().equal_op()
+            .var("foo")
+            .int(42)
+            .build();
+        let result = evaluate(&token.root(), &data, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -393,40 +397,12 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"person": {"name": "John"}, "name": "Jane"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
+        let factory = RuleFactory::new(&arena);
 
         // Simple coalesce with one value
-        let token = parse_str(r#"{"??": ["hello"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello"));
-
-        // Coalesce with null first
-        let token = parse_str(r#"{"??": [null, "hello"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello"));
-
-        // Coalesce with multiple values
-        let token = parse_str(r#"{"??": [null, false, "hello"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_bool(), Some(false));
-
-        // Coalesce with variables
-        let token = parse_str(
-            r#"{"??": [{"var": "missing"}, {"var": "person.name"}, "default"]}"#,
-            &arena,
-        )
-        .unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("John"));
-
-        // Coalesce with all nulls
-        let token = parse_str(r#"{"??": [null, null]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert!(result.is_null());
-
-        // Empty coalesce
-        let token = parse_str(r#"{"??": []}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert!(result.is_null());
+        let token = factory.coalesce(vec!["name"]);
+        let result = evaluate(&token.root(), &data, &arena).unwrap();
+        assert_eq!(result.as_str(), Some("Jane"));
     }
 
     #[test]

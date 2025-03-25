@@ -128,28 +128,22 @@ pub fn eval_missing_some<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::value::DataValue;
-    use crate::value::FromJson;
-    use crate::JsonLogic;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
     fn test_missing() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data = json!({
             "a": 1,
             "c": 3,
         });
-        let data_value = DataValue::from_json(&data, arena);
 
         // Test missing with single value
         let rule = builder.missing_var("b");
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 1);
@@ -157,7 +151,7 @@ mod tests {
 
         // Test missing with multiple values
         let rule = builder.missing_vars(["a", "b", "c", "d"]);
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 2);
@@ -166,14 +160,14 @@ mod tests {
 
         // Test missing with empty list
         let rule = builder.missing_op(builder.array().array_literal_op(vec![]));
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);
 
         // Test missing with all present
         let rule = builder.missing_vars(["a", "c"]);
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);
@@ -181,23 +175,20 @@ mod tests {
 
     #[test]
     fn test_missing_some() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data = json!({
             "a": 1,
             "c": 3,
         });
-        let data_value = DataValue::from_json(&data, arena);
 
         // Test missing_some with min_required=1, all missing
         let vars = builder
             .array()
             .array_literal_op(vec![builder.string_value("b"), builder.string_value("d")]);
         let rule = builder.missing_some_op(1, vars);
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 2);
@@ -212,7 +203,7 @@ mod tests {
             builder.string_value("d"),
         ]);
         let rule = builder.missing_some_op(1, vars);
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);
@@ -225,7 +216,7 @@ mod tests {
             builder.string_value("d"),
         ]);
         let rule = builder.missing_some_op(3, vars);
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 2);
@@ -237,7 +228,7 @@ mod tests {
             .array()
             .array_literal_op(vec![builder.string_value("b"), builder.string_value("d")]);
         let rule = builder.missing_some_op(0, vars);
-        let result = evaluate(rule.root(), &data_value, arena).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);

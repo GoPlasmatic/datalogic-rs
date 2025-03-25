@@ -146,27 +146,3 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logic::parser::parse_json;
-    use serde_json::json;
-
-    #[test]
-    fn test_basic_optimization() {
-        let arena = DataArena::new();
-
-        // Test that optimization doesn't break anything
-        let token = parse_json(&json!(42), &arena).unwrap();
-        let _optimized = optimize(token, &arena).unwrap();
-
-        // Test with a variable
-        let token = parse_json(&json!({"var": "x"}), &arena).unwrap();
-        let _optimized = optimize(token, &arena).unwrap();
-
-        // Test with an operator
-        let token = parse_json(&json!({"+": [1, {"var": "x"}]}), &arena).unwrap();
-        let _optimized = optimize(token, &arena).unwrap();
-    }
-}

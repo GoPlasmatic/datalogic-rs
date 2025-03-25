@@ -211,24 +211,20 @@ pub fn eval_max<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::JsonLogic;
     use serde_json::json;
+    use crate::DataLogicCore;
 
     #[test]
     fn test_add() {
-        use crate::logic::JsonLogic;
-        use serde_json::json;
-
-        // Create JSONLogic instance
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"x": 1, "y": 2});
 
         // Test addition of numbers using int() method instead of operand()
         let rule = builder.arithmetic().add_op().int(1).int(2).int(3).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(6));
 
         // Test addition with strings using string() method
@@ -240,7 +236,7 @@ mod tests {
             .string("3")
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(6));
 
         // Test addition with booleans using bool() method
@@ -252,40 +248,39 @@ mod tests {
             .bool(true)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(2));
 
         // Test with single operand (number) using int() method
         let rule = builder.arithmetic().add_op().int(1).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(1));
 
         // Test with zero operands
         let rule = builder.arithmetic().add_op().build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(0));
 
         // Test with variable references
         let rule = builder.arithmetic().add_op().var("x").var("y").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(3));
     }
 
     #[test]
     fn test_subtract() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 30, "b": 10});
 
         // Test subtracting numbers
         let rule = builder.arithmetic().subtract_op().var("a").var("b").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(20));
 
         // Test subtracting multiple numbers
@@ -297,15 +292,14 @@ mod tests {
             .operand(builder.int(5))
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(15));
     }
 
     #[test]
     fn test_multiply() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 5, "b": 4});
 
@@ -318,7 +312,7 @@ mod tests {
             .int(2)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(40));
 
         // Test with float values
@@ -329,49 +323,47 @@ mod tests {
             .float(1.5)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(7.5));
     }
 
     #[test]
     fn test_divide() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 20, "b": 4});
 
         // Test basic division with variables
         let rule = builder.arithmetic().divide_op().var("a").var("b").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(5));
 
         // Test division with mixed types (int and float)
         let rule = builder.arithmetic().divide_op().int(10).float(2.5).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(4));
 
         // Test division with string conversion
         let rule = builder.arithmetic().divide_op().string("9").int(3).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(3));
     }
 
     #[test]
     fn test_modulo() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 23, "b": 5});
 
         // Test modulo
         let rule = builder.arithmetic().modulo_op().var("a").var("b").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(3));
     }
 }

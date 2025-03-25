@@ -155,14 +155,14 @@ pub fn eval_double_negation<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::JsonLogic;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
     fn test_and() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data = json!({
             "a": 1,
@@ -171,30 +171,30 @@ mod tests {
 
         // Test for true AND true
         let rule = builder.control().and_op().bool(true).bool(true).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for true AND false
         let rule = builder.control().and_op().bool(true).bool(false).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with variables
         let rule = builder.control().and_op().var("a").var("b").build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(0));
 
         // Test with multiple values - should return last truthy value or first falsy
         let rule = builder.control().and_op().int(1).int(2).int(3).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(3));
     }
 
     #[test]
     fn test_or() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data = json!({
             "a": 1,
@@ -203,35 +203,35 @@ mod tests {
 
         // Test for true OR true
         let rule = builder.control().or_op().bool(true).bool(true).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for true OR false
         let rule = builder.control().or_op().bool(true).bool(false).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for false OR true
         let rule = builder.control().or_op().bool(false).bool(true).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for false OR false
         let rule = builder.control().or_op().bool(false).bool(false).build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with variables
         let rule = builder.control().or_op().var("a").var("b").build();
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(1));
     }
 
     #[test]
     fn test_not() {
         // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data = json!({
             "a": 1,
@@ -240,22 +240,22 @@ mod tests {
 
         // Test for NOT true
         let rule = builder.control().not_op(builder.bool(true));
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test for NOT false
         let rule = builder.control().not_op(builder.bool(false));
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test with variables
         let rule = builder.control().not_op(builder.var("a").build());
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with falsy variable
         let rule = builder.control().not_op(builder.var("b").build());
-        let result = logic.apply_logic(&rule, &data).unwrap();
+        let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
     }
 }

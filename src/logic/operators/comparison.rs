@@ -406,33 +406,32 @@ pub fn eval_less_than_or_equal<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::JsonLogic;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
-    fn test_equal() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+    fn test_equality() {
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 10, "b": "10", "c": 20, "d": 10});
 
-        // Test equal with same type (using left/right for backward compatibility)
+        // Test equal with same type
         let rule = builder.compare().equal_op().var("a").int(10).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test equal with different types (number and string)
         let rule = builder.compare().equal_op().var("a").var("b").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test not equal
         let rule = builder.compare().equal_op().var("a").var("c").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
         // Test variadic equal (a = d = 10)
@@ -444,7 +443,7 @@ mod tests {
             .int(10)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test variadic equal failing (a = c = 10)
@@ -456,28 +455,27 @@ mod tests {
             .int(10)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
     }
 
     #[test]
     fn test_not_equal() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 10, "b": "10", "c": 20, "d": 30});
 
         // Test not equal with two arguments
         let rule = builder.compare().not_equal_op().var("a").var("c").build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test not equal with same values
         let rule = builder.compare().not_equal_op().var("a").int(10).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
         // Test not equal with multiple arguments (chain comparison)
@@ -496,7 +494,7 @@ mod tests {
             .operand(comparison3)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
         // Test not equal with different values in a chain
@@ -511,22 +509,21 @@ mod tests {
             .operand(comparison2)
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
     }
 
     #[test]
     fn test_strict_equal() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 10, "b": "10", "c": 20});
 
         // Test strict equal with same type
         let rule = builder.compare().strict_equal_op().var("a").int(10).build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test strict equal with different types (number and string)
@@ -537,19 +534,18 @@ mod tests {
             .var("b")
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
     }
 
     #[test]
     fn test_greater_than() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 10, "b": 5, "c": "20", "d": 30, "e": 3});
 
-        // Test greater than with numbers (using legacy left/right)
+        // Test greater than with numbers
         let rule = builder
             .compare()
             .greater_than_op()
@@ -557,10 +553,10 @@ mod tests {
             .var("b")
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
-        // Test greater than with string coercion (using legacy left/right)
+        // Test greater than with string coercion
         let rule = builder
             .compare()
             .greater_than_op()
@@ -568,7 +564,7 @@ mod tests {
             .var("a")
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test variadic greater than (d > a > b > e), which should be true
@@ -581,11 +577,10 @@ mod tests {
             .var("e") // 3
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test variadic greater than (a > b > c) which should be false
-        // because "c" is "20" which is greater than "a" (10)
         let rule = builder
             .compare()
             .greater_than_op()
@@ -594,28 +589,49 @@ mod tests {
             .var("c") // "20"
             .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
     }
 
     #[test]
     fn test_less_than() {
-        // Create JSONLogic instance with arena
-        let logic = JsonLogic::new();
-        let builder = logic.builder();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({"a": 10, "b": 5, "c": "20"});
 
         // Test less than with numbers
-        let rule = builder.compare().less_than_op().var("b").int(10).build();
+        let rule = builder
+            .compare()
+            .less_than_op()
+            .var("b")
+            .var("a")
+            .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test less than with string coercion
-        let rule = builder.compare().less_than_op().var("a").var("c").build();
+        let rule = builder
+            .compare()
+            .less_than_op()
+            .var("a")
+            .var("c")
+            .build();
 
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test variadic less than (b < a < c)
+        let rule = builder
+            .compare()
+            .less_than_op()
+            .var("b") // 5
+            .var("a") // 10
+            .var("c") // "20"
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
     }
 }

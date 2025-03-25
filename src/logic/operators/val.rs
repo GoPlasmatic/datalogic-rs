@@ -204,14 +204,14 @@ fn navigate_nested_path<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::JsonLogic;
+    use crate::DataLogicCore;
     use serde_json::json;
 
     #[test]
     fn test_eval_val_with_path_components() {
-        let logic = JsonLogic::new();
-        let arena = logic.arena();
-        let builder = logic.builder();
+        let arena = DataArena::new();
+        let core = DataLogicCore::new();
+        let builder = core.builder();
 
         let data_json = json!({
             "users": [
@@ -234,34 +234,34 @@ mod tests {
 
         // Use a mix of strings and numbers for the path components
         let components: Vec<DataValue> = vec![
-            DataValue::string(arena, "users"),
+            DataValue::string(&arena, "users"),
             DataValue::integer(0),
-            DataValue::string(arena, "name"),
+            DataValue::string(&arena, "name"),
         ];
         let rule = builder.val_path(components);
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Alice"));
 
         // Second test with different path
         let components: Vec<DataValue> = vec![
-            DataValue::string(arena, "users"),
+            DataValue::string(&arena, "users"),
             DataValue::integer(1),
-            DataValue::string(arena, "details"),
-            DataValue::string(arena, "age"),
+            DataValue::string(&arena, "details"),
+            DataValue::string(&arena, "age"),
         ];
         let rule = builder.val_path(components);
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(25));
 
         // Third test accessing boolean value
         let components: Vec<DataValue> = vec![
-            DataValue::string(arena, "users"),
+            DataValue::string(&arena, "users"),
             DataValue::integer(0),
-            DataValue::string(arena, "details"),
-            DataValue::string(arena, "active"),
+            DataValue::string(&arena, "details"),
+            DataValue::string(&arena, "active"),
         ];
         let rule = builder.val_path(components);
-        let result = logic.apply_logic(&rule, &data_json).unwrap();
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
     }
 }
