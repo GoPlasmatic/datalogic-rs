@@ -94,7 +94,7 @@ pub fn eval_try<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DataLogicCore;
+    use crate::logic::datalogic_core::DataLogicCore;
     use serde_json::json;
 
     #[test]

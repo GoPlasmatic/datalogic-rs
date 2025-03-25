@@ -1,6 +1,6 @@
 use crate::arena::DataArena;
 use crate::logic::{Logic, OperatorType};
-use crate::ArithmeticOp;
+use crate::logic::ArithmeticOp;
 
 /// Builder for arithmetic operations.
 ///

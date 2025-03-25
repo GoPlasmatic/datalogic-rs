@@ -1,15 +1,17 @@
-pub mod arena;
+// Core types and functionality
+pub use datalogic::DataLogic;
+pub use value::{DataValue, FromJson, ToJson, IntoDataValue, FromDataValue};
+pub use logic::{Logic, Result};
+pub use error::LogicError;
+pub use builder::RuleBuilder;
+
+// Internal modules with implementation details
+mod arena;
+mod parser;
+
+// Public modules
 pub mod builder;
 pub mod datalogic;
 pub mod error;
-pub mod examples;
 pub mod logic;
-pub mod parser;
 pub mod value;
-
-pub use arena::*;
-pub use builder::*;
-pub use datalogic::*;
-pub use logic::*;
-pub use parser::*;
-pub use value::*;

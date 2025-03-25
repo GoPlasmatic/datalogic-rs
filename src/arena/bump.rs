@@ -51,21 +51,8 @@ impl<T> VectorPool<T> {
     }
 }
 
-/// A memory arena for efficient allocation of data structures.
+/// An arena allocator for efficient data allocation.
 ///
-/// The `DataArena` uses a bump allocator to provide fast allocation
-/// with minimal overhead. All allocations are freed at once when the
-/// arena is reset or dropped.
-///
-/// # Examples
-///
-/// ```
-/// use datalogic_rs::arena::DataArena;
-///
-/// let arena = DataArena::new();
-/// let value = arena.alloc(42);
-/// assert_eq!(*value, 42);
-/// ```
 pub struct DataArena {
     /// The underlying bump allocator
     bump: Bump,
@@ -116,7 +103,8 @@ impl fmt::Debug for DataArena {
 }
 
 impl DataArena {
-    /// Creates a new arena with default settings.
+    /// Creates a new empty arena.
+    ///
     pub fn new() -> Self {
         Self::with_chunk_size(1024 * 1024) // 1MB chunks by default
     }
@@ -157,33 +145,14 @@ impl DataArena {
 
     /// Allocates a value in the arena.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// let value = arena.alloc(42);
-    /// assert_eq!(*value, 42);
-    /// ```
-    pub fn alloc<T>(&self, val: T) -> &T {
-        self.bump.alloc(val)
+    pub fn alloc<T>(&self, value: T) -> &T {
+        self.bump.alloc(value)
     }
 
     /// Allocates a slice in the arena by copying from a slice.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// let original = &[1, 2, 3, 4, 5];
-    /// let slice = arena.alloc_slice_copy(original);
-    /// assert_eq!(slice, original);
-    /// ```
-    pub fn alloc_slice_copy<T: Copy>(&self, vals: &[T]) -> &[T] {
-        self.bump.alloc_slice_copy(vals)
+    pub fn alloc_slice_copy<T: Copy>(&self, slice: &[T]) -> &[T] {
+        self.bump.alloc_slice_copy(slice)
     }
 
     /// Allocates a slice in the arena by cloning each element.
@@ -193,32 +162,21 @@ impl DataArena {
     ///
     /// This is useful for types that don't implement Copy but do implement Clone.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// let original = vec![String::from("hello"), String::from("world")];
-    /// let slice = arena.alloc_slice_clone(&original);
-    /// assert_eq!(slice[0], "hello");
-    /// assert_eq!(slice[1], "world");
-    /// ```
     #[inline]
-    pub fn alloc_slice_clone<T: Clone>(&self, vals: &[T]) -> &[T] {
+    pub fn alloc_slice_clone<T: Clone>(&self, slice: &[T]) -> &[T] {
         // Fast path for empty slices
-        if vals.is_empty() {
+        if slice.is_empty() {
             return &[];
         }
 
         // Fast path for single element slices (very common)
-        if vals.len() == 1 {
-            let ptr = self.bump.alloc(vals[0].clone());
+        if slice.len() == 1 {
+            let ptr = self.bump.alloc(slice[0].clone());
             return std::slice::from_ref(ptr);
         }
 
         // Fast path for two element slices (common)
-        if vals.len() == 2 {
+        if slice.len() == 2 {
             // Allocate both elements at once for better locality
             let ptr = self
                 .bump
@@ -227,25 +185,25 @@ impl DataArena {
 
             unsafe {
                 // Clone elements directly
-                std::ptr::write(ptr.as_ptr(), vals[0].clone());
-                std::ptr::write(ptr.as_ptr().add(1), vals[1].clone());
+                std::ptr::write(ptr.as_ptr(), slice[0].clone());
+                std::ptr::write(ptr.as_ptr().add(1), slice[1].clone());
 
                 return std::slice::from_raw_parts(ptr.as_ptr(), 2);
             }
         }
 
         // For larger slices, use the standard allocation approach
-        let layout = std::alloc::Layout::array::<T>(vals.len()).unwrap();
+        let layout = std::alloc::Layout::array::<T>(slice.len()).unwrap();
         let ptr = self.bump.alloc_layout(layout).cast::<T>();
 
         // Clone each element into the allocated memory
         let slice = unsafe {
             let mut dst = ptr.as_ptr();
-            for val in vals {
+            for val in slice {
                 std::ptr::write(dst, val.clone());
                 dst = dst.add(1);
             }
-            std::slice::from_raw_parts(ptr.as_ptr(), vals.len())
+            std::slice::from_raw_parts(ptr.as_ptr(), slice.len())
         };
 
         slice
@@ -255,15 +213,6 @@ impl DataArena {
     ///
     /// If the string is empty, returns a reference to the preallocated empty string.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// let s = arena.alloc_str("hello");
-    /// assert_eq!(s, "hello");
-    /// ```
     pub fn alloc_str(&self, s: &str) -> &str {
         if s.is_empty() {
             return self.empty_string();
@@ -282,18 +231,6 @@ impl DataArena {
     /// This is particularly useful for strings that are likely to be
     /// repeated, such as object keys.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// let s1 = arena.intern_str("hello");
-    /// let s2 = arena.intern_str("hello");
-    ///
-    /// // Both references point to the same string
-    /// assert_eq!(s1, s2);
-    /// ```
     pub fn intern_str(&self, s: &str) -> &str {
         if s.is_empty() {
             return self.empty_string();
@@ -307,16 +244,6 @@ impl DataArena {
     /// allocations at once. This is much faster than freeing each
     /// allocation individually.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let mut arena = DataArena::new();
-    /// let s = arena.alloc_str("hello");
-    /// arena.reset();
-    /// // s is no longer valid after reset
-    /// ```
     pub fn reset(&mut self) {
         self.bump.reset();
         self.interner = RefCell::new(StringInterner::new());
@@ -333,19 +260,6 @@ impl DataArena {
     /// This method creates a new arena that can be used for temporary
     /// allocations that are freed all at once when the arena is dropped.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// {
-    ///     let temp_arena = arena.create_temp_arena();
-    ///     let temp = temp_arena.alloc(42);
-    ///     assert_eq!(*temp, 42);
-    /// }
-    /// // temp is no longer valid here
-    /// ```
     pub fn create_temp_arena(&self) -> DataArena {
         // We can reuse the same chunk size and preallocated values
         DataArena::with_chunk_size(self.chunk_size)
@@ -356,19 +270,6 @@ impl DataArena {
     /// This is useful for building up collections that will be converted to arena-allocated
     /// slices. It avoids the overhead of heap allocations for temporary vectors.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    /// use datalogic_rs::value::DataValue;
-    ///
-    /// let arena = DataArena::new();
-    /// let mut vec = arena.get_data_value_vec();
-    /// vec.push(DataValue::integer(1));
-    /// vec.push(DataValue::integer(2));
-    /// let slice = arena.alloc_slice_clone(&vec);
-    /// arena.release_data_value_vec(vec); // Return to pool when done
-    /// ```
     pub fn get_data_value_vec<'a>(&'a self) -> Vec<DataValue<'a>> {
         // SAFETY: This is safe because we're only using the vector for the lifetime of the arena
         // and we ensure it's cleared before reuse
@@ -384,19 +285,6 @@ impl DataArena {
     /// This should be called when you're done with a vector obtained from `get_data_value_vec`.
     /// The function is optimized to avoid excessive memory retention and reduce overhead.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    /// use datalogic_rs::value::DataValue;
-    ///
-    /// let arena = DataArena::new();
-    /// let mut vec = arena.get_data_value_vec();
-    /// vec.push(DataValue::integer(1));
-    /// vec.push(DataValue::integer(2));
-    /// let slice = arena.alloc_slice_clone(&vec);
-    /// arena.release_data_value_vec(vec); // Return to pool when done
-    /// ```
     pub fn release_data_value_vec<'a>(&self, vec: Vec<DataValue<'a>>) {
         // SAFETY: This is safe because we're only using the vector for the lifetime of the arena
         // and we ensure it's cleared before reuse
@@ -421,15 +309,6 @@ impl DataArena {
     ///
     /// This is more efficient than creating a temporary vector and then cloning it.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    ///
-    /// let arena = DataArena::new();
-    /// let slice = arena.alloc_slice_fill_with(5, |i| i * 2);
-    /// assert_eq!(slice, &[0, 2, 4, 6, 8]);
-    /// ```
     pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &[T]
     where
         F: FnMut(usize) -> T,
@@ -513,16 +392,6 @@ impl DataArena {
     ///
     /// If the slice is empty, returns a reference to the preallocated empty array.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    /// use datalogic_rs::value::DataValue;
-    ///
-    /// let arena = DataArena::new();
-    /// let original = vec![DataValue::integer(1), DataValue::integer(2)];
-    /// let slice = arena.alloc_data_value_slice(&original);
-    /// ```
     pub fn alloc_data_value_slice<'a>(&'a self, vals: &[DataValue<'a>]) -> &'a [DataValue<'a>] {
         if vals.is_empty() {
             return self.empty_array();
@@ -535,17 +404,6 @@ impl DataArena {
     ///
     /// If the slice is empty, returns a reference to an empty slice.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    /// use datalogic_rs::value::DataValue;
-    ///
-    /// let arena = DataArena::new();
-    /// let key = arena.intern_str("key");
-    /// let entries = vec![(key, DataValue::integer(42))];
-    /// let slice = arena.alloc_object_entries(&entries);
-    /// ```
     pub fn alloc_object_entries<'a>(
         &'a self,
         entries: &[(&'a str, DataValue<'a>)],
@@ -562,16 +420,6 @@ impl DataArena {
     /// This is optimized for the common case of small arrays in JSON Logic expressions.
     /// It avoids the overhead of allocating a Vec and then converting it to a slice.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::DataArena;
-    /// use datalogic_rs::value::DataValue;
-    ///
-    /// let arena = DataArena::new();
-    /// let values = [DataValue::integer(1), DataValue::integer(2)];
-    /// let slice = arena.alloc_small_data_value_array(&values);
-    /// ```
     pub fn alloc_small_data_value_array<'a>(
         &'a self,
         values: &[DataValue<'a>],

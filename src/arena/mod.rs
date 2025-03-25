@@ -8,13 +8,6 @@ mod bump;
 mod interner;
 
 pub use bump::DataArena;
-pub use interner::StringInterner;
-
-/// A trait for types that can be allocated in an arena.
-pub trait ArenaAllocatable<'a> {
-    /// Allocates the value in the given arena.
-    fn allocate_in(self, arena: &'a DataArena) -> Self;
-}
 
 #[cfg(test)]
 mod tests {

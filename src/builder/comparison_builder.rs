@@ -1,6 +1,6 @@
 use crate::arena::DataArena;
 use crate::logic::{Logic, OperatorType};
-use crate::ComparisonOp;
+use crate::logic::ComparisonOp;
 
 /// Builder for comparison operations.
 ///

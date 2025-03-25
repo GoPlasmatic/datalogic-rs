@@ -1,12 +1,10 @@
-use datalogic_rs::arena::DataArena;
-use datalogic_rs::logic::evaluate;
-use datalogic_rs::parser::jsonlogic::JsonLogicParser;
-use datalogic_rs::parser::ExpressionParser;
-use datalogic_rs::value::{DataValue, FromJson};
-use datalogic_rs::LogicError;
+// use datalogic_rs::DataArena;
+use datalogic_rs::{DataLogic, LogicError};
 use serde_json::{json, Value as JsonValue};
 use std::fs;
 use std::path::Path;
+
+type TestResult<T> = Result<T, String>;
 
 #[derive(Debug)]
 struct TestCase {
@@ -55,13 +53,13 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
     test_cases
 }
 
-fn run_test_case(test_case: &TestCase) -> Result<(), String> {
-    let arena = DataArena::new();
-    let parser = JsonLogicParser;
+fn run_test_case(test_case: &TestCase) -> TestResult<()> {
+    // Create a DataLogic instance which manages the arena and parsers
+    let dl = DataLogic::new();
 
-    // Parse the rule using JsonLogicParser
+    // Parse the rule using DataLogic's parse_logic method
     let rule_json_str = test_case.rule.to_string();
-    let rule_logic = match parser.parse(&rule_json_str, &arena) {
+    let rule_logic = match dl.parse_logic(&rule_json_str, None) {
         Ok(logic) => logic,
         Err(e) => {
             // If we expect an error, check if it's the right type
@@ -85,10 +83,15 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
     // Parse the data (or use empty object if not provided)
     let empty_json = json!({});
     let data_json = test_case.data.as_ref().unwrap_or(&empty_json);
-    let data = <DataValue as FromJson>::from_json(data_json, &arena);
+    
+    // Use DataLogic to parse the data
+    let data = match dl.parse_data(&data_json.to_string()) {
+        Ok(data) => data,
+        Err(e) => return Err(format!("Failed to parse data: {}", e)),
+    };
 
-    // Evaluate the rule
-    let result = match evaluate(rule_logic, &data, &arena) {
+    // Evaluate the rule using DataLogic's evaluate method
+    let result = match dl.evaluate(&rule_logic, &data) {
         Ok(value) => value,
         Err(e) => {
             // If we expect an error, check if it's the right type
@@ -133,7 +136,10 @@ fn run_test_case(test_case: &TestCase) -> Result<(), String> {
     }
 
     // Convert the expected result to DataValue for comparison
-    let expected = <DataValue as FromJson>::from_json(&test_case.result, &arena);
+    let expected = match dl.parse_data(&test_case.result.to_string()) {
+        Ok(value) => value,
+        Err(e) => return Err(format!("Failed to parse expected result: {}", e)),
+    };
 
     // Compare the results
     if result.equals(&expected) {

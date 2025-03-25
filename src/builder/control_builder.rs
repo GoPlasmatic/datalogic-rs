@@ -1,6 +1,6 @@
 use crate::arena::DataArena;
 use crate::logic::{Logic, OperatorType};
-use crate::ControlOp;
+use crate::logic::ControlOp;
 
 /// Builder for control flow operations.
 ///

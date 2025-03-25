@@ -59,7 +59,7 @@ pub fn eval_throw<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DataLogicCore;
+    use crate::logic::datalogic_core::DataLogicCore;
 
     use serde_json::json;
 

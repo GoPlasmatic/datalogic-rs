@@ -66,21 +66,6 @@ impl fmt::Debug for StringRef<'_> {
 /// The `StringInterner` deduplicates strings, reducing memory usage
 /// for repeated strings such as object keys.
 ///
-/// # Examples
-///
-/// ```
-/// use datalogic_rs::arena::{DataArena, StringInterner};
-/// use bumpalo::Bump;
-///
-/// let bump = Bump::new();
-/// let mut interner = StringInterner::new();
-///
-/// let s1 = interner.intern("hello", &bump);
-/// let s2 = interner.intern("hello", &bump);
-///
-/// // Both references point to the same string
-/// assert_eq!(s1, s2);
-/// ```
 #[derive(Default)]
 pub struct StringInterner {
     /// Map of interned strings
@@ -109,21 +94,6 @@ impl StringInterner {
     /// the existing instance. Otherwise, allocates the string in the
     /// provided arena and returns a reference to it.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::arena::{DataArena, StringInterner};
-    /// use bumpalo::Bump;
-    ///
-    /// let bump = Bump::new();
-    /// let mut interner = StringInterner::new();
-    ///
-    /// let s1 = interner.intern("hello", &bump);
-    /// let s2 = interner.intern("hello", &bump);
-    ///
-    /// // Both references point to the same string
-    /// assert_eq!(s1, s2);
-    /// ```
     pub fn intern<'a>(&mut self, s: &str, arena: &'a Bump) -> &'a str {
         // Create a temporary StringRef for lookup
         let temp_ref = StringRef::new(s);
@@ -161,17 +131,17 @@ impl StringInterner {
     }
 
     /// Returns the number of interned strings.
-    pub fn len(&self) -> usize {
+    fn _len(&self) -> usize {
         self.strings.len()
     }
 
     /// Returns true if no strings have been interned.
-    pub fn is_empty(&self) -> bool {
+    fn _is_empty(&self) -> bool {
         self.strings.is_empty()
     }
 
     /// Clears the interner, removing all interned strings.
-    pub fn clear(&mut self) {
+    fn _clear(&mut self) {
         self.strings.clear();
     }
 }
@@ -201,7 +171,7 @@ mod tests {
         assert_ne!(s1.as_ptr(), s3.as_ptr());
 
         // Interner should have 2 strings
-        assert_eq!(interner.len(), 2);
+        assert_eq!(interner._len(), 2);
     }
 
     #[test]
@@ -212,12 +182,12 @@ mod tests {
         interner.intern("hello", &bump);
         interner.intern("world", &bump);
 
-        assert_eq!(interner.len(), 2);
+        assert_eq!(interner._len(), 2);
 
-        interner.clear();
+        interner._clear();
 
-        assert_eq!(interner.len(), 0);
-        assert!(interner.is_empty());
+        assert_eq!(interner._len(), 0);
+        assert!(interner._is_empty());
     }
 
     #[test]

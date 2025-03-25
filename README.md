@@ -33,11 +33,11 @@ datalogic-rs provides a robust implementation of JSONLogic rules with arena-base
 The builder API provides a fluent interface for creating JSONLogic rules in a type-safe manner. All memory allocations happen directly in the arena for maximum performance.
 
 ```rust
-use datalogic_rs::JsonLogic;
+use datalogic_rs::DataLogic;
 use serde_json::json;
 
-// Create a new JSONLogic instance with its own arena
-let logic = JsonLogic::new();
+// Create a new DataLogic instance with its own arena
+let logic = DataLogic::new();
 
 // Get a builder that uses the arena
 let builder = logic.builder();
@@ -52,8 +52,8 @@ let rule = builder
 
 // Evaluate the rule with data
 let data = json!({"score": 75});
-let result = logic.apply_logic(&rule, &data).unwrap();
-assert_eq!(result, json!(true));
+let result = logic.evaluate(&rule, &logic.parse_data(&data.to_string()).unwrap()).unwrap();
+assert!(result.to_json().as_bool().unwrap());
 ```
 
 ### Building More Complex Rules
@@ -82,21 +82,6 @@ let rule = builder
             .build()
     )
     .build();
-```
-
-### Using the Factory
-
-For common rule patterns, you can use the factory methods:
-
-```rust
-// Create a factory
-let factory = logic.factory();
-
-// Create a between rule (inclusive)
-let between_rule = factory.between_inclusive("age", 18, 65);
-
-// Create an "is one of" rule
-let is_one_of_rule = factory.is_one_of("status", vec!["active", "pending"]);
 ```
 
 ### Working with Arrays
@@ -156,22 +141,27 @@ datalogic-rs = "2.0.17"
 ## **🚀 Quick Start: Evaluating JSONLogic Rules**
 
 ```rust
-use datalogic_rs::{JsonLogic, Rule};
+use datalogic_rs::DataLogic;
 use serde_json::json;
 
 fn main() {
-    let rule = Rule::from_value(&json!({
-        "if": [
-            {">": [{"var": "cart.total"}, 100]},
-            "Eligible for discount",
-            "No discount"
-        ]
-    })).unwrap();
-
-    let data = json!({"cart": {"total": 120}});
-    let result = JsonLogic::apply(&rule, &data).unwrap();
+    // Create a DataLogic instance
+    let dl = DataLogic::new();
     
-    assert_eq!(result, json!("Eligible for discount"));
+    // Parse and evaluate a rule in one step
+    let result = dl.evaluate_str(
+        r#"{
+            "if": [
+                {">": [{"var": "cart.total"}, 100]},
+                "Eligible for discount",
+                "No discount"
+            ]
+        }"#,
+        r#"{"cart": {"total": 120}}"#,
+        None
+    ).unwrap();
+    
+    assert_eq!(result.as_str().unwrap(), "Eligible for discount");
 }
 ```
 
@@ -201,7 +191,7 @@ fn main() {
 
 ### **🔌 Custom Operators**
 ```rust
-use datalogic_rs::{JsonLogic, CustomOperator, Error};
+use datalogic_rs::{DataLogic, CustomOperator, LogicError};
 use serde_json::{json, Value};
 use std::borrow::Cow;
 
@@ -213,9 +203,11 @@ impl CustomOperator for PowerOperator {
         "pow"
     }
     
-    fn apply<'a>(&self, args: &[Value], _data: &'a Value) -> Result<Cow<'a, Value>, Error> {
+    fn apply<'a>(&self, args: &[Value], _data: &'a Value) -> Result<Cow<'a, Value>, LogicError> {
         if args.len() != 2 {
-            return Err(Error::InvalidArguments("pow requires 2 arguments".into()));
+            return Err(LogicError::InvalidArguments {
+                reason: "pow requires 2 arguments".into()
+            });
         }
         let base = args[0].as_f64().unwrap_or(0.0);
         let exp = args[1].as_f64().unwrap_or(0.0);
@@ -223,13 +215,20 @@ impl CustomOperator for PowerOperator {
     }
 }
 
+// Create a DataLogic instance
+let mut dl = DataLogic::new();
+
 // Register the operator
-JsonLogic::global().add_operator(PowerOperator)?;
+dl.register_custom_operator(Box::new(PowerOperator));
 
 // Use in rules
-let rule = Rule::from_value(&json!({"pow": [2, 3]}))?;
-let result = JsonLogic::apply(&rule, &json!({}))?;
-assert_eq!(result, json!(8.0));
+let result = dl.evaluate_str(
+    r#"{"pow": [2, 3]}"#,
+    r#"{}"#,
+    None
+).unwrap();
+
+assert_eq!(result.as_f64().unwrap(), 8.0);
 ```
 
 ---
@@ -240,20 +239,17 @@ assert_eq!(result, json!(8.0));
 - **Dynamic pricing** (Apply discounts or surge pricing based on conditions)
 - **Fraud detection** (Evaluate transaction risk using JSON-based rules)
 - **Form validation** (Check field dependencies dynamically)
+- **Authorization rules** (Implement complex access control policies)
+- **Business rule engines** (Enforce business policies with configurable rules)
 
 ---
 
 ## **📊 Performance**
-**Benchmark results show** `datalogic-rs` is **2x faster** than other JSONLogic implementations, thanks to:
+**Benchmark results show** `datalogic-rs` is **30% faster** than the next fastest JSONLogic implementations, thanks to:
+- Arena-based memory management
 - Static operator dispatch
 - Zero-copy deserialization
 - Optimized rule compilation
-
-
-To run benchmarks:
-```bash
-cargo bench
-```
 
 ---
 
@@ -266,6 +262,7 @@ We welcome contributions! See the [CONTRIBUTING.md](./CONTRIBUTING.md) for detai
 
 ### **🚀 Next Steps**
 ✅ Try out `datalogic-rs` today!  
-📖 Check out the [docs.rs documentation](https://docs.rs/datalogic-rs)  
+📖 Check out the [API documentation](./API.md) for detailed usage instructions  
+📚 See the [docs.rs documentation](https://docs.rs/datalogic-rs) for comprehensive reference  
 ⭐ Star the [GitHub repository](https://github.com/json-logic/datalogic-rs) if you find it useful!
 

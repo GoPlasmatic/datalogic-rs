@@ -406,7 +406,7 @@ pub fn eval_less_than_or_equal<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::DataLogicCore;
+    use crate::logic::datalogic_core::DataLogicCore;
     use serde_json::json;
 
     #[test]

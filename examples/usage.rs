@@ -1,22 +1,47 @@
-use datalogic_rs::arena::DataArena;
-use datalogic_rs::logic::evaluate;
-use datalogic_rs::parser::jsonlogic::parse_json;
-use datalogic_rs::value::{DataValue, FromJson};
-use serde_json::json;
+use datalogic_rs::{DataLogic, Result};
 
-fn main() {
-    // Create test data
-    let data_json = json!({ "hello" : 1 });
+fn main() -> Result<()> {
+    // Basic usage
+    basic_example()?;
+    
+    // Step-by-step usage
+    step_by_step_example()?;
+    
+    Ok(())
+}
 
-    // Convert to DataValue
-    let arena = DataArena::new();
-    let data = DataValue::from_json(&data_json, &arena);
+fn basic_example() -> Result<()> {
+    println!("Basic example:");
+    
+    let dl = DataLogic::new();
+    
+    // Parse and evaluate in one step
+    let result = dl.evaluate_str(
+        r#"{ ">": [{"var": "temp"}, 100] }"#,
+        r#"{"temp": 110, "name": "user"}"#,
+        None
+    )?;
+    
+    println!("Is temperature > 100? {}\n", result);
+    
+    Ok(())
+}
 
-    // Parse rule
-    let rule_json: serde_json::Value = serde_json::from_str(r#"{ "exists": "hello" }"#).unwrap();
-    let rule_token = parse_json(&rule_json, &arena).unwrap();
-    println!("rule_token: {:?}", rule_token);
-
-    let result = evaluate(rule_token, &data, &arena).unwrap();
-    println!("result: {:?}", result);
+fn step_by_step_example() -> Result<()> {
+    println!("Step-by-step example:");
+    
+    let dl = DataLogic::new();
+    
+    // 1. Parse the data
+    let data = dl.parse_data(r#"{"temp": 110, "name": "user"}"#)?;
+    println!("Parsed data: {}", data);
+    
+    // 2. Parse the logic rule
+    let rule = dl.parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#, None)?;
+    
+    // 3. Evaluate the rule with the data
+    let result = dl.evaluate(&rule, &data)?;
+    println!("Rule evaluation result: {}", result);
+    
+    Ok(())
 }

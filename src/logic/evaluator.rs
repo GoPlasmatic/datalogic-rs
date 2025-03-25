@@ -354,8 +354,8 @@ fn eval_coalesce<'a>(
 mod tests {
     use super::*;
     use crate::builder::RuleBuilder;
+    use crate::builder::RuleFactory;
     use crate::value::FromJson;
-    use crate::RuleFactory;
     use serde_json::json;
 
     #[test]
