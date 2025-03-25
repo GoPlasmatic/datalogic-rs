@@ -6,7 +6,6 @@
 mod tests {
     use crate::arena::DataArena;
     use crate::logic::{ComparisonOp, OperatorType, Token};
-    use crate::parser::jsonlogic::JsonLogicParser;
     use crate::parser::{ExpressionParser, ParserRegistry};
 
     #[test]
