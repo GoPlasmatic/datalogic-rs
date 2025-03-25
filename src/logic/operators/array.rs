@@ -567,9 +567,7 @@ pub fn eval_reduce<'a>(
     // Reduce the array using the generic approach
     for i in start_idx..items.len() {
         // Create object entries with references to the values
-        let mut entries = Vec::with_capacity(2);
-        entries.push((curr_key, items[i].clone()));
-        entries.push((acc_key, acc.clone()));
+        let entries = vec![(curr_key, items[i].clone()), (acc_key, acc.clone())];
 
         // Allocate the entries in the arena
         let context_entries = arena.vec_into_slice(entries);

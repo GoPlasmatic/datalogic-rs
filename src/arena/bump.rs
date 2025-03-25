@@ -104,35 +104,41 @@ impl DataArena {
 
     /// Gets a new BumpVec for DataValues with default capacity.
     #[inline]
-    pub fn get_data_value_vec(&self) -> BumpVec<DataValue> {
+    pub fn get_data_value_vec(&self) -> BumpVec<'_, DataValue<'_>> {
         BumpVec::with_capacity_in(8, &self.bump)
     }
 
     /// Gets a new BumpVec with specified capacity.
     #[inline]
-    pub fn get_data_value_vec_with_capacity(&self, capacity: usize) -> BumpVec<DataValue> {
+    pub fn get_data_value_vec_with_capacity(&self, capacity: usize) -> BumpVec<'_, DataValue<'_>> {
+        BumpVec::with_capacity_in(capacity, &self.bump)
+    }
+
+    /// Gets a new BumpVec for object entries with specified capacity.
+    #[inline]
+    pub fn get_object_entries_vec(&self, capacity: usize) -> BumpVec<'_, (&str, DataValue<'_>)> {
         BumpVec::with_capacity_in(capacity, &self.bump)
     }
 
     /// Converts a BumpVec into a slice allocated in the arena.
     /// This is more efficient than cloning as it reuses the BumpVec's memory.
     #[inline]
-    pub fn bump_vec_into_slice<'a, T>(&'a self, vec: BumpVec<T>) -> &'a [T] {
+    pub fn bump_vec_into_slice<'a, T>(&'a self, vec: BumpVec<'a, T>) -> &'a [T] {
         if vec.is_empty() {
             return &[];
         }
 
-        // Get the raw parts of the vector
         let ptr = vec.as_ptr();
         let len = vec.len();
 
         // Forget the vector to prevent double-free (memory is owned by the arena)
         std::mem::forget(vec);
 
-        // Create a slice from the raw parts
         unsafe { std::slice::from_raw_parts(ptr, len) }
     }
 
+    /// Converts a Vec into a slice allocated in the arena.
+    #[inline]
     pub fn vec_into_slice<T>(&self, vec: Vec<T>) -> &[T] {
         if vec.is_empty() {
             return &[];
@@ -155,13 +161,13 @@ impl DataArena {
 
     /// Allocates a slice in the arena by copying from a slice.
     ///
-    pub fn alloc_slice_copy<T: Copy>(&self, slice: &[T]) -> &[T] {
+    pub fn alloc_slice_copy<'a, T: Copy>(&'a self, slice: &[T]) -> &'a [T] {
         self.bump.alloc_slice_copy(slice)
     }
 
     /// Allocates a string in the arena.
     ///
-    pub fn alloc_str(&self, s: &str) -> &str {
+    pub fn alloc_str<'a>(&'a self, s: &str) -> &'a str {
         if s.is_empty() {
             return self.empty_string();
         }
@@ -170,7 +176,7 @@ impl DataArena {
 
     /// Interns a string, returning a reference to a unique instance.
     ///
-    pub fn intern_str(&self, s: &str) -> &str {
+    pub fn intern_str<'a>(&'a self, s: &str) -> &'a str {
         if s.is_empty() {
             return self.empty_string();
         }
@@ -214,52 +220,55 @@ impl DataArena {
     }
 
     /// Returns a reference to the preallocated null value.
-    pub fn null_value(&self) -> &DataValue {
-        unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.null_value) }
+    pub fn null_value<'a>(&'a self) -> &'a DataValue<'a> {
+        unsafe {
+            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(self.null_value)
+        }
     }
 
     /// Returns a reference to the preallocated true value.
-    pub fn true_value(&self) -> &DataValue {
-        unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.true_value) }
+    pub fn true_value<'a>(&'a self) -> &'a DataValue<'a> {
+        unsafe {
+            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(self.true_value)
+        }
     }
 
     /// Returns a reference to the preallocated false value.
-    pub fn false_value(&self) -> &DataValue {
-        unsafe { std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.false_value) }
-    }
-
-    /// Returns a reference to a boolean value (either true or false).
-    pub fn bool_value(&self, value: bool) -> &DataValue {
-        if value {
-            self.true_value()
-        } else {
-            self.false_value()
+    pub fn false_value<'a>(&'a self) -> &'a DataValue<'a> {
+        unsafe {
+            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(self.false_value)
         }
     }
 
     /// Returns a reference to the preallocated empty string.
-    pub fn empty_string(&self) -> &str {
-        self.empty_string
+    pub fn empty_string<'a>(&'a self) -> &'a str {
+        unsafe { std::mem::transmute::<&'static str, &'a str>(self.empty_string) }
     }
 
     /// Returns a reference to the preallocated empty string value.
-    pub fn empty_string_value(&self) -> &DataValue {
+    pub fn empty_string_value<'a>(&'a self) -> &'a DataValue<'a> {
         unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.empty_string_value)
+            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(
+                self.empty_string_value,
+            )
         }
     }
 
     /// Returns a reference to the preallocated empty array.
-    pub fn empty_array(&self) -> &[DataValue] {
+    pub fn empty_array<'a>(&'a self) -> &'a [DataValue<'a>] {
         unsafe {
-            std::mem::transmute::<&'static [DataValue<'static>], &[DataValue]>(self.empty_array)
+            std::mem::transmute::<&'static [DataValue<'static>], &'a [DataValue<'a>]>(
+                self.empty_array,
+            )
         }
     }
 
     /// Returns a reference to the preallocated empty array value.
-    pub fn empty_array_value(&self) -> &DataValue {
+    pub fn empty_array_value<'a>(&'a self) -> &'a DataValue<'a> {
         unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &DataValue>(self.empty_array_value)
+            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(
+                self.empty_array_value,
+            )
         }
     }
 
