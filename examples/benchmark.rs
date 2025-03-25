@@ -12,7 +12,7 @@ fn main() {
         serde_json::from_str(&response).expect("Failed to parse test cases");
 
     // Instance for parsing
-    let parse_logic = DataLogic::with_chunk_size(128 * 1024 * 1024);
+    let parse_logic = DataLogic::new();
 
     // Extract rules and data (just store the JSON values)
     let mut test_cases = Vec::new();
@@ -46,7 +46,7 @@ fn main() {
     let start = Instant::now();
 
     // Separate instance for evaluation
-    let mut eval_logic = DataLogic::with_chunk_size(16 * 1024 * 1024);
+    let mut eval_logic = DataLogic::new();
 
     // Run benchmark
     for (rule, data_value) in &test_cases {

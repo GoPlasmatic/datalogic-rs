@@ -106,7 +106,7 @@ impl DataArena {
     /// Creates a new empty arena.
     ///
     pub fn new() -> Self {
-        Self::with_chunk_size(1024 * 1024) // 1MB chunks by default
+        Self::with_chunk_size(0) // No limit
     }
 
     /// Creates a new arena with the specified chunk size.
@@ -116,7 +116,9 @@ impl DataArena {
     /// performance but may waste memory if not fully utilized.
     pub fn with_chunk_size(chunk_size: usize) -> Self {
         let bump = Bump::new();
-        bump.set_allocation_limit(Some(chunk_size * 256)); // Safety limit
+        if chunk_size > 0 {
+            bump.set_allocation_limit(Some(chunk_size)); // Safety limit
+        }
 
         // Create static references to common values
         // SAFETY: These are static and never change, so it's safe to cast them
