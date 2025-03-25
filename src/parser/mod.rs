@@ -2,7 +2,6 @@ use crate::arena::DataArena;
 use crate::logic::{LogicError, Result, Token};
 use std::collections::HashMap;
 
-pub mod jsonata;
 pub mod jsonlogic;
 #[cfg(test)]
 mod tests;
