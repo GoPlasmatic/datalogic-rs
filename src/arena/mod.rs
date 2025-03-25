@@ -8,13 +8,6 @@ mod bump;
 mod interner;
 
 pub use bump::DataArena;
-pub use interner::StringInterner;
-
-/// A trait for types that can be allocated in an arena.
-pub trait ArenaAllocatable<'a> {
-    /// Allocates the value in the given arena.
-    fn allocate_in(self, arena: &'a DataArena) -> Self;
-}
 
 #[cfg(test)]
 mod tests {
@@ -25,10 +18,10 @@ mod tests {
         let arena = DataArena::new();
         let s1 = arena.alloc_str("hello");
         let s2 = arena.alloc_str("world");
-        
+
         assert_eq!(s1, "hello");
         assert_eq!(s2, "world");
-        
+
         // Different allocations should yield different references
         assert_ne!(s1.as_ptr(), s2.as_ptr());
     }
@@ -39,10 +32,10 @@ mod tests {
         let s1 = arena.intern_str("hello");
         let s2 = arena.intern_str("hello");
         let s3 = arena.intern_str("world");
-        
+
         // Same strings should yield same references
         assert_eq!(s1.as_ptr(), s2.as_ptr());
-        
+
         // Different strings should yield different references
         assert_ne!(s1.as_ptr(), s3.as_ptr());
     }

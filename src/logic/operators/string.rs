@@ -4,10 +4,10 @@
 //! such as cat, substr, etc.
 
 use crate::arena::DataArena;
-use crate::value::DataValue;
-use crate::logic::token::Token;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
+use crate::logic::token::Token;
+use crate::value::DataValue;
 
 /// Enumeration of string operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,10 +31,27 @@ pub fn eval_cat<'a>(
     // For a single argument, convert directly to string
     if args.len() == 1 {
         let value = evaluate(args[0], data, arena)?;
+
         // If it's already a string, return it directly
         if let DataValue::String(_) = value {
             return Ok(value);
         }
+
+        // If it's an array, concatenate all elements
+        if let DataValue::Array(arr) = value {
+            let mut result = String::new();
+            for item in *arr {
+                match item {
+                    DataValue::String(s) => result.push_str(s),
+                    _ => {
+                        let string_value = item.to_string();
+                        result.push_str(&string_value);
+                    }
+                }
+            }
+            return Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))));
+        }
+
         // Otherwise, convert to string
         let string_value = value.to_string();
         return Ok(arena.alloc(DataValue::String(arena.alloc_str(&string_value))));
@@ -42,18 +59,30 @@ pub fn eval_cat<'a>(
 
     // For multiple arguments, concatenate them
     let mut result = String::new();
-    
+
     for arg in args {
         let value = evaluate(arg, data, arena)?;
         match value {
             DataValue::String(s) => result.push_str(s),
+            DataValue::Array(arr) => {
+                // If we get an array from a chained operation, concatenate all elements
+                for item in *arr {
+                    match item {
+                        DataValue::String(s) => result.push_str(s),
+                        _ => {
+                            let string_value = item.to_string();
+                            result.push_str(&string_value);
+                        }
+                    }
+                }
+            }
             _ => {
                 let string_value = value.to_string();
                 result.push_str(&string_value);
             }
         }
     }
-    
+
     // Allocate the result string in the arena
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
@@ -87,11 +116,7 @@ pub fn eval_substr<'a>(
     // Handle negative start index (count from end)
     let start_pos = if start_idx_signed < 0 {
         let abs_idx = (-start_idx_signed) as usize;
-        if abs_idx >= char_count {
-            0 // If negative index is too large, start from beginning
-        } else {
-            char_count - abs_idx
-        }
+        char_count.saturating_sub(abs_idx)
     } else if start_idx_signed as usize >= char_count {
         // If start is beyond the string length, return empty string
         return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
@@ -107,10 +132,8 @@ pub fn eval_substr<'a>(
                 if len_signed < 0 {
                     // Negative length means "leave this many characters off the end"
                     let chars_to_remove = (-len_signed) as usize;
-                    if chars_to_remove >= char_count {
-                        0 // If we'd remove all characters, return empty string
-                    } else if chars_to_remove > char_count - start_pos {
-                        0 // If we'd remove more than we have after start_pos, return empty
+                    if chars_to_remove >= char_count || chars_to_remove > char_count - start_pos {
+                        0 // If we'd remove all characters or more than we have after start_pos, return empty
                     } else {
                         char_count - start_pos - chars_to_remove
                     }
@@ -127,63 +150,109 @@ pub fn eval_substr<'a>(
 
     // Extract the substring (note: using chars to handle multi-byte characters)
     let result: String = chars.iter().skip(start_pos).take(length).collect();
-    
+
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::logic::parser::parse_str;
+    use crate::logic::datalogic_core::DataLogicCore;
     use serde_json::json;
-    use crate::value::FromJson;
-    
+
     #[test]
     fn test_cat() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
         let data_json = json!({"a": 10, "b": "hello", "c": true});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        
+
         // Test concatenating strings
-        let token = parse_str(r#"{"cat": ["hello", " ", "world"]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello world"));
-        
+        // Use StringBuilder's concat method (note: it's called concat not cat in the builder)
+        let rule = builder
+            .string_ops()
+            .concat_op()
+            .string("hello")
+            .string(" ")
+            .string("world")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello world"));
+
         // Test concatenating different types
-        let token = parse_str(r#"{"cat": [{"var": "b"}, " ", {"var": "a"}, " ", {"var": "c"}]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello 10 true"));
-        
+        let rule = builder
+            .string_ops()
+            .concat_op()
+            .var("b")
+            .string(" ")
+            .var("a")
+            .string(" ")
+            .var("c")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello 10 true"));
+
         // Test empty cat
-        let token = parse_str(r#"{"cat": []}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some(""));
+        let rule = builder.string_ops().concat_op().build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(""));
     }
-    
+
     #[test]
     fn test_substr() {
-        let arena = DataArena::new();
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
         let data_json = json!({"text": "hello world"});
-        let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        
+
         // Test basic substring
-        let token = parse_str(r#"{"substr": [{"var": "text"}, 0, 5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello"));
-        
+        let rule = builder
+            .string_ops()
+            .substr_op()
+            .var("text")
+            .start_at(0)
+            .take(5)
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello"));
+
         // Test negative start
-        let token = parse_str(r#"{"substr": [{"var": "text"}, -5]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("world"));
-        
+        let rule = builder
+            .string_ops()
+            .substr_op()
+            .var("text")
+            .start_at(-5)
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("world"));
+
         // Test negative length
-        let token = parse_str(r#"{"substr": [{"var": "text"}, 0, -6]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some("hello"));
-        
+        let rule = builder
+            .string_ops()
+            .substr_op()
+            .var("text")
+            .start_at(0)
+            .take(-6)
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello"));
+
         // Test out of bounds
-        let token = parse_str(r#"{"substr": [{"var": "text"}, 20]}"#, &arena).unwrap();
-        let result = evaluate(token, &data, &arena).unwrap();
-        assert_eq!(result.as_str(), Some(""));
+        let rule = builder
+            .string_ops()
+            .substr_op()
+            .var("text")
+            .start_at(20)
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(""));
     }
-} 
+}

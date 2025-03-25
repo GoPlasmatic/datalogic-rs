@@ -1,6 +1,5 @@
 [
     "compatible.json",
-    "preserve.json",
     "arithmetic/plus.json",
     "arithmetic/plus.extra.json",
     "arithmetic/multiply.json",
@@ -21,5 +20,20 @@
     "comparison/greaterThan.json",
     "comparison/greaterThanEquals.json",
     "comparison/lessThan.json",
-    "comparison/lessThanEquals.json"
+    "comparison/lessThanEquals.json",
+    "control/if.json",
+    "control/and.json",
+    "control/or.json",
+    "truthiness.json",
+    "additional.json",
+    "coalesce.json",
+    "chained.json",
+    "iterators.extra.json",
+    "exists.json",
+    "val.json",
+    "empty-objects.json",
+    "preserve.json",
+    "unknown-operators.json",
+    "throw.json",
+    "try.json"
 ]

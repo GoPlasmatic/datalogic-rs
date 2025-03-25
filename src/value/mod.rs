@@ -4,17 +4,17 @@
 //! It replaces direct dependency on `serde_json::Value` with a custom implementation
 //! optimized for rule evaluation.
 
-mod data_value;
-mod number;
 mod access;
 mod convert;
-mod coercion;
+mod data_value;
+mod number;
 
+pub use access::{parse_path, PathSegment, ValueAccess};
+pub use convert::{
+    data_value_to_json, hash_map_to_data_value, json_to_data_value, FromJson, ToJson,
+};
 pub use data_value::DataValue;
 pub use number::NumberValue;
-pub use access::{ValueAccess, PathSegment, parse_path};
-pub use convert::{FromJson, ToJson, json_to_data_value, data_value_to_json, hash_map_to_data_value};
-pub use coercion::{ValueCoercion, ValueComparison};
 
 use crate::arena::DataArena;
 
@@ -38,19 +38,19 @@ mod tests {
     #[test]
     fn test_data_value_creation() {
         let arena = DataArena::new();
-        
+
         // Create different types of values
         let null = DataValue::null();
         let boolean = DataValue::bool(true);
         let number = DataValue::integer(42);
         let string = DataValue::string(&arena, "hello");
-        
+
         // Test basic properties
         assert!(null.is_null());
         assert!(boolean.is_bool());
         assert!(number.is_number());
         assert!(string.is_string());
-        
+
         // Test value extraction
         assert_eq!(boolean.as_bool(), Some(true));
         assert_eq!(number.as_i64(), Some(42));
@@ -60,23 +60,29 @@ mod tests {
     #[test]
     fn test_array_and_object() {
         let arena = DataArena::new();
-        
+
         // Create array using the array constructor method
-        let array = DataValue::array(&arena, &[
-            DataValue::integer(1),
-            DataValue::integer(2),
-            DataValue::integer(3),
-        ]);
-        
+        let array = DataValue::array(
+            &arena,
+            &[
+                DataValue::integer(1),
+                DataValue::integer(2),
+                DataValue::integer(3),
+            ],
+        );
+
         assert!(array.is_array());
         assert_eq!(array.as_array().unwrap().len(), 3);
-        
+
         // Create object using the object constructor method
-        let object = DataValue::object(&arena, &[
-            (arena.intern_str("a"), DataValue::integer(1)),
-            (arena.intern_str("b"), DataValue::integer(2)),
-        ]);
-        
+        let object = DataValue::object(
+            &arena,
+            &[
+                (arena.intern_str("a"), DataValue::integer(1)),
+                (arena.intern_str("b"), DataValue::integer(2)),
+            ],
+        );
+
         assert!(object.is_object());
         assert_eq!(object.as_object().unwrap().len(), 2);
     }

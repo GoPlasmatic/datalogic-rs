@@ -17,7 +17,7 @@ pub enum LogicError {
         /// The reason for the parsing failure.
         reason: String,
     },
-    
+
     /// Error accessing a variable.
     VariableError {
         /// The variable path that caused the error.
@@ -25,11 +25,23 @@ pub enum LogicError {
         /// The reason for the variable access failure.
         reason: String,
     },
-    
+
+    /// Error indicating that an operator is not found.
+    OperatorNotFoundError {
+        /// The operator that was not found.
+        operator: String,
+    },
+
     NaNError,
 
     InvalidArgumentsError,
-    
+
+    /// Error thrown by the throw operator.
+    ThrownError {
+        /// The type or value of the error.
+        r#type: String,
+    },
+
     /// A custom error with a message.
     Custom(String),
 }
@@ -49,8 +61,14 @@ impl fmt::Display for LogicError {
             LogicError::InvalidArgumentsError => {
                 write!(f, "Invalid arguments error")
             }
+            LogicError::ThrownError { r#type } => {
+                write!(f, "Thrown error: {}", r#type)
+            }
             LogicError::Custom(msg) => {
                 write!(f, "{}", msg)
+            }
+            LogicError::OperatorNotFoundError { operator } => {
+                write!(f, "Operator '{}' not found", operator)
             }
         }
     }
@@ -85,7 +103,7 @@ impl LogicError {
             reason: reason.into(),
         }
     }
-    
+
     /// Creates a variable error with the given path and reason.
     pub fn variable_error(path: impl Into<String>, reason: impl Into<String>) -> Self {
         LogicError::VariableError {
@@ -93,7 +111,14 @@ impl LogicError {
             reason: reason.into(),
         }
     }
-       
+
+    /// Creates a thrown error with the given type.
+    pub fn thrown_error(r#type: impl Into<String>) -> Self {
+        LogicError::ThrownError {
+            r#type: r#type.into(),
+        }
+    }
+
     /// Creates a custom error with the given message.
     pub fn custom(message: impl Into<String>) -> Self {
         LogicError::Custom(message.into())
@@ -126,16 +151,20 @@ mod tests {
         let result: Result<()> = Err(LogicError::ParseError {
             reason: "unexpected token".to_string(),
         });
-        
-        let result_with_context = result.with_context(|| "Failed to parse logic expression".to_string());
-        
+
+        let result_with_context =
+            result.with_context(|| "Failed to parse logic expression".to_string());
+
         assert!(result_with_context.is_err());
         if let Err(err) = result_with_context {
             if let LogicError::Custom(msg) = err {
-                assert_eq!(msg, "Failed to parse logic expression: Parse error: unexpected token");
+                assert_eq!(
+                    msg,
+                    "Failed to parse logic expression: Parse error: unexpected token"
+                );
             } else {
                 panic!("Expected Custom error variant");
             }
         }
     }
-} 
+}
