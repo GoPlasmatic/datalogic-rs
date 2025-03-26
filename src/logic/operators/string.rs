@@ -21,7 +21,6 @@ pub enum StringOp {
 /// Evaluates a string concatenation operation.
 pub fn eval_cat<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -30,7 +29,7 @@ pub fn eval_cat<'a>(
 
     // For a single argument, convert directly to string
     if args.len() == 1 {
-        let value = evaluate(args[0], data, arena)?;
+        let value = evaluate(args[0], arena)?;
 
         // If it's already a string, return it directly
         if let DataValue::String(_) = value {
@@ -61,7 +60,7 @@ pub fn eval_cat<'a>(
     let mut result = String::new();
 
     for arg in args {
-        let value = evaluate(arg, data, arena)?;
+        let value = evaluate(arg, arena)?;
         match value {
             DataValue::String(s) => result.push_str(s),
             DataValue::Array(arr) => {
@@ -90,14 +89,13 @@ pub fn eval_cat<'a>(
 /// Evaluates a substring operation.
 pub fn eval_substr<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 || args.len() > 3 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], data, arena)?;
+    let string = evaluate(args[0], arena)?;
     let string_str = match string {
         DataValue::String(s) => *s,
         _ => arena.alloc_str(&string.to_string()),
@@ -107,7 +105,7 @@ pub fn eval_substr<'a>(
     let chars: Vec<char> = string_str.chars().collect();
     let char_count = chars.len();
 
-    let start = evaluate(args[1], data, arena)?;
+    let start = evaluate(args[1], arena)?;
     let start_idx_signed = match start.coerce_to_number() {
         Some(num) => num.as_i64().unwrap_or(0),
         None => 0,
@@ -125,7 +123,7 @@ pub fn eval_substr<'a>(
     };
 
     let length = if args.len() == 3 {
-        let len = evaluate(args[2], data, arena)?;
+        let len = evaluate(args[2], arena)?;
         match len.coerce_to_number() {
             Some(num) => {
                 let len_signed = num.as_i64().unwrap_or(0);

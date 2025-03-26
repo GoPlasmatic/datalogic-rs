@@ -44,6 +44,9 @@ pub struct DataArena {
 
     /// Preallocated empty array value
     empty_array_value: &'static DataValue<'static>,
+
+    /// Current context
+    current_context: RefCell<Option<&'static DataValue<'static>>>,
 }
 
 impl Default for DataArena {
@@ -99,6 +102,7 @@ impl DataArena {
             empty_string_value: &EMPTY_STRING_VALUE,
             empty_array: &EMPTY_ARRAY,
             empty_array_value: &EMPTY_ARRAY_VALUE,
+            current_context: RefCell::new(None),
         }
     }
 
@@ -318,6 +322,18 @@ impl DataArena {
             2..=8 => self.vec_into_slice(values.to_vec()),
             _ => unreachable!("This method is only for arrays up to 8 elements"),
         }
+    }
+
+    /// Sets the current context for the arena.
+    pub fn set_current_context<'a>(&self, context: &'a DataValue<'a>) {
+        self.current_context.replace(Some(unsafe {
+            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context)
+        }));
+    }
+
+    /// Returns the current context for the arena.
+    pub fn current_context(&self) -> Option<&DataValue> {
+        *self.current_context.borrow()
     }
 }
 

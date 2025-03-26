@@ -13,7 +13,6 @@ use crate::value::DataValue;
 #[inline]
 pub fn eval_throw<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Check if we have the right number of arguments
@@ -22,7 +21,7 @@ pub fn eval_throw<'a>(
     }
 
     // Evaluate the first argument to get the error value/type
-    let error_value = evaluate(args[0], data, arena)?;
+    let error_value = evaluate(args[0], arena)?;
 
     // For string values, use them directly as the error type
     if let Some(error_str) = error_value.as_str() {

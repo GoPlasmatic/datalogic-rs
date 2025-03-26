@@ -35,7 +35,6 @@ pub enum ArrayOp {
 /// Evaluates an all operation.
 pub fn eval_all<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -44,7 +43,7 @@ pub fn eval_all<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], data, arena)?;
+    let array = evaluate(args[0], arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -64,8 +63,9 @@ pub fn eval_all<'a>(
 
     // Check if all items satisfy the condition
     for item in items.iter() {
+        arena.set_current_context(&item);
         // Evaluate the function with the item as context
-        if !evaluate(condition, item, arena)?.coerce_to_bool() {
+        if !evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
     }
@@ -77,7 +77,6 @@ pub fn eval_all<'a>(
 /// Evaluates a some operation.
 pub fn eval_some<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -86,7 +85,7 @@ pub fn eval_some<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], data, arena)?;
+    let array = evaluate(args[0], arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -106,8 +105,9 @@ pub fn eval_some<'a>(
 
     // Check if any item satisfies the condition
     for item in items.iter() {
+        arena.set_current_context(&item);
         // Evaluate the function with the item as context
-        if evaluate(condition, item, arena)?.coerce_to_bool() {
+        if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.true_value());
         }
     }
@@ -119,7 +119,6 @@ pub fn eval_some<'a>(
 /// Evaluates a none operation.
 pub fn eval_none<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -128,7 +127,7 @@ pub fn eval_none<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], data, arena)?;
+    let array = evaluate(args[0], arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -148,8 +147,9 @@ pub fn eval_none<'a>(
 
     // Check if no items satisfy the condition
     for item in items.iter() {
+        arena.set_current_context(&item);
         // Evaluate the function with the item as context
-        if evaluate(condition, item, arena)?.coerce_to_bool() {
+        if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
     }
@@ -173,7 +173,6 @@ pub fn eval_none<'a>(
 /// ```
 pub fn eval_map<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -182,7 +181,7 @@ pub fn eval_map<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], data, arena)?;
+    let array = evaluate(args[0], arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -207,7 +206,8 @@ pub fn eval_map<'a>(
     // Apply the function to each item
     for item in items.iter() {
         // Evaluate the function with the item as context
-        let result = evaluate(function, item, arena)?;
+        arena.set_current_context(&item);
+        let result = evaluate(function, arena)?;
         result_values.push(result.clone());
     }
 
@@ -233,7 +233,6 @@ pub fn eval_map<'a>(
 /// ```
 pub fn eval_filter<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -242,7 +241,7 @@ pub fn eval_filter<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], data, arena)?;
+    let array = evaluate(args[0], arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -267,7 +266,8 @@ pub fn eval_filter<'a>(
     // Filter the array
     for item in items.iter() {
         // Evaluate the condition with the item as context
-        if evaluate(condition, item, arena)?.coerce_to_bool() {
+        arena.set_current_context(&item);
+        if evaluate(condition, arena)?.coerce_to_bool() {
             results.push(item.clone());
         }
     }
@@ -493,7 +493,6 @@ fn is_arithmetic_reduce_pattern<'a>(function: &'a Token<'a>) -> Option<Arithmeti
 /// ```
 pub fn eval_reduce<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -502,7 +501,7 @@ pub fn eval_reduce<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], data, arena)?;
+    let array = evaluate(args[0], arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -511,7 +510,7 @@ pub fn eval_reduce<'a>(
         DataValue::Null => {
             // If we have an initial value, return it
             if args.len() == 3 {
-                return evaluate(args[2], data, arena);
+                return evaluate(args[2], arena);
             }
             return Err(LogicError::InvalidArgumentsError);
         }
@@ -522,14 +521,14 @@ pub fn eval_reduce<'a>(
     if items.is_empty() {
         // If we have an initial value, return it
         if args.len() == 3 {
-            return evaluate(args[2], data, arena);
+            return evaluate(args[2], arena);
         }
         return Err(LogicError::InvalidArgumentsError);
     }
 
     // Get the initial value
     let initial = if args.len() == 3 {
-        evaluate(args[2], data, arena)?
+        evaluate(args[2], arena)?
     } else {
         // If no initial value is provided, use the first item
         &items[0]
@@ -574,9 +573,10 @@ pub fn eval_reduce<'a>(
 
         // Create the context object
         let context = arena.alloc(DataValue::Object(context_entries));
+        arena.set_current_context(&context);
 
         // Evaluate the function with the context
-        acc = evaluate(function, context, arena)?;
+        acc = evaluate(function, arena)?;
     }
 
     Ok(acc)
@@ -585,7 +585,6 @@ pub fn eval_reduce<'a>(
 /// Evaluates a merge operation.
 pub fn eval_merge<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for no arguments
@@ -597,7 +596,7 @@ pub fn eval_merge<'a>(
     let mut result = Vec::with_capacity(args.len());
 
     for arg in args {
-        let value = evaluate(arg, data, arena)?;
+        let value = evaluate(arg, arena)?;
 
         match value {
             DataValue::Array(items) => {
@@ -622,15 +621,14 @@ pub fn eval_merge<'a>(
 /// Evaluates an "in" operation.
 pub fn eval_in<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let needle = evaluate(args[0], data, arena)?;
-    let haystack = evaluate(args[1], data, arena)?;
+    let needle = evaluate(args[0], arena)?;
+    let haystack = evaluate(args[1], arena)?;
 
     let result = match haystack {
         DataValue::String(s) => {

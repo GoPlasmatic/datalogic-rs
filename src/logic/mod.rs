@@ -56,9 +56,9 @@ mod tests {
         // Create test data
         let data_json = json!({"a": 10});
         let data = DataValue::from_json(&data_json, &arena);
-
+        arena.set_current_context(&data);
         // Evaluate logic
-        let result = evaluate(logic.root(), &data, &arena).unwrap();
+        let result = evaluate(logic.root(), &arena).unwrap();
 
         // Verify result
         assert_eq!(result.as_bool(), Some(true));
@@ -98,9 +98,9 @@ mod tests {
         // Create test data
         let data_json = json!({"a": 10});
         let data = DataValue::from_json(&data_json, &arena);
-
+        arena.set_current_context(&data);
         // Evaluate logic
-        let result = evaluate(logic.root(), &data, &arena).unwrap();
+        let result = evaluate(logic.root(), &arena).unwrap();
 
         // Verify result
         assert_eq!(result.as_bool(), Some(true));

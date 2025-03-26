@@ -33,7 +33,6 @@ pub enum ComparisonOp {
 /// Evaluates an equality comparison.
 pub fn eval_equal<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -41,8 +40,8 @@ pub fn eval_equal<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         // Fast path for identical references
         if std::ptr::eq(left as *const DataValue, right as *const DataValue) {
@@ -133,7 +132,6 @@ pub fn eval_equal<'a>(
 /// Evaluates a strict equality comparison.
 pub fn eval_strict_equal<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -141,8 +139,8 @@ pub fn eval_strict_equal<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         if !left.strict_equals(right) {
             return Ok(arena.false_value());
@@ -155,7 +153,6 @@ pub fn eval_strict_equal<'a>(
 /// Evaluates a not equal comparison.
 pub fn eval_not_equal<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -163,8 +160,8 @@ pub fn eval_not_equal<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
@@ -201,7 +198,6 @@ pub fn eval_not_equal<'a>(
 /// Evaluates a strict not-equal comparison.
 pub fn eval_strict_not_equal<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -209,8 +205,8 @@ pub fn eval_strict_not_equal<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         if left.strict_equals(right) {
             return Ok(arena.false_value());
@@ -223,7 +219,6 @@ pub fn eval_strict_not_equal<'a>(
 /// Evaluates a greater-than comparison.
 pub fn eval_greater_than<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -231,8 +226,8 @@ pub fn eval_greater_than<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
@@ -269,7 +264,6 @@ pub fn eval_greater_than<'a>(
 /// Evaluates a greater-than-or-equal comparison.
 pub fn eval_greater_than_or_equal<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -277,8 +271,8 @@ pub fn eval_greater_than_or_equal<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
@@ -315,7 +309,6 @@ pub fn eval_greater_than_or_equal<'a>(
 /// Evaluates a less-than comparison.
 pub fn eval_less_than<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -323,8 +316,8 @@ pub fn eval_less_than<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
@@ -361,7 +354,6 @@ pub fn eval_less_than<'a>(
 /// Evaluates a less-than-or-equal comparison.
 pub fn eval_less_than_or_equal<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -369,8 +361,8 @@ pub fn eval_less_than_or_equal<'a>(
     }
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], data, arena)?;
-        let right = evaluate(args[i + 1], data, arena)?;
+        let left = evaluate(args[i], arena)?;
+        let right = evaluate(args[i + 1], arena)?;
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {

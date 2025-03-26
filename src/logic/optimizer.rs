@@ -54,12 +54,13 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
             if is_static {
                 // Create a dummy data value for evaluation
                 let dummy_data = arena.alloc(DataValue::Null);
+                arena.set_current_context(&dummy_data);
 
                 // Create the operator token in the arena
                 let op_token = arena.alloc(Token::operator(*op_type, optimized_args));
 
                 // Try to evaluate the expression
-                match evaluate(op_token, dummy_data, arena) {
+                match evaluate(op_token, arena) {
                     Ok(result) => {
                         // Return the result as a literal
                         return Ok(arena.alloc(Token::literal(result.clone())));
@@ -111,12 +112,12 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
                     if all_literals {
                         // Create a dummy data value for evaluation
                         let dummy_data = arena.alloc(DataValue::Null);
-
+                        arena.set_current_context(&dummy_data);
                         // Create the operator token in the arena
                         let op_token = arena.alloc(Token::operator(*op_type, new_array_token));
 
                         // Try to evaluate the expression
-                        match evaluate(op_token, dummy_data, arena) {
+                        match evaluate(op_token, arena) {
                             Ok(result) => {
                                 // Return the result as a literal
                                 return Ok(arena.alloc(Token::literal(result.clone())));

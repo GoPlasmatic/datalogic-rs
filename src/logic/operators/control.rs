@@ -27,7 +27,6 @@ pub enum ControlOp {
 /// Evaluates an if operation.
 pub fn eval_if<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -39,11 +38,11 @@ pub fn eval_if<'a>(
     let mut i = 0;
     while i + 1 < args.len() {
         // Evaluate the condition
-        let condition = evaluate(args[i], data, arena)?;
+        let condition = evaluate(args[i], arena)?;
 
         // If the condition is true, return the value
         if condition.coerce_to_bool() {
-            return evaluate(args[i + 1], data, arena);
+            return evaluate(args[i + 1], arena);
         }
 
         // Move to the next pair
@@ -52,7 +51,7 @@ pub fn eval_if<'a>(
 
     // If there's an odd number of arguments, the last one is the "else" value
     if i < args.len() {
-        return evaluate(args[i], data, arena);
+        return evaluate(args[i], arena);
     }
 
     // No conditions matched and no else value
@@ -62,7 +61,6 @@ pub fn eval_if<'a>(
 /// Evaluates an AND operation.
 pub fn eval_and<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
@@ -72,14 +70,14 @@ pub fn eval_and<'a>(
 
     // Fast path for single argument
     if args.len() == 1 {
-        return evaluate(args[0], data, arena);
+        return evaluate(args[0], arena);
     }
 
     // Evaluate each argument with short-circuit evaluation
     let mut last_value = arena.null_value();
 
     for arg in args {
-        let value = evaluate(arg, data, arena)?;
+        let value = evaluate(arg, arena)?;
         last_value = value;
 
         // If any argument is false, short-circuit and return that value
@@ -95,7 +93,6 @@ pub fn eval_and<'a>(
 /// Evaluates an OR operation.
 pub fn eval_or<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
@@ -105,14 +102,14 @@ pub fn eval_or<'a>(
 
     // Fast path for single argument
     if args.len() == 1 {
-        return evaluate(args[0], data, arena);
+        return evaluate(args[0], arena);
     }
 
     // Evaluate each argument with short-circuit evaluation
     let mut last_value = arena.false_value();
 
     for arg in args {
-        let value = evaluate(arg, data, arena)?;
+        let value = evaluate(arg, arena)?;
         last_value = value;
 
         // If any argument is true, short-circuit and return that value
@@ -128,28 +125,26 @@ pub fn eval_or<'a>(
 /// Evaluates a logical NOT operation.
 pub fn eval_not<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let value = evaluate(args[0], data, arena)?;
+    let value = evaluate(args[0], arena)?;
     Ok(arena.alloc(DataValue::Bool(!value.coerce_to_bool())))
 }
 
 /// Evaluates a logical double negation (!!).
 pub fn eval_double_negation<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let value = evaluate(args[0], data, arena)?;
+    let value = evaluate(args[0], arena)?;
     Ok(arena.alloc(DataValue::Bool(value.coerce_to_bool())))
 }
 

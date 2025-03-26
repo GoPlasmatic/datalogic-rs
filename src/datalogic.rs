@@ -102,7 +102,8 @@ impl DataLogic {
         rule: &'a Logic,
         data: &'a DataValue,
     ) -> Result<&'a DataValue<'a>> {
-        evaluate(rule.root(), data, &self.arena)
+        self.arena.set_current_context(data);
+        evaluate(rule.root(), &self.arena)
     }
 
     /// Parse and evaluate in one step, returning JSON
