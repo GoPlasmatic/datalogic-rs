@@ -12,6 +12,77 @@ use std::fmt;
 use super::interner::StringInterner;
 use crate::value::DataValue;
 
+/// Maximum number of path components in the fixed-size array
+const PATH_CHAIN_CAPACITY: usize = 16;
+
+/// A wrapper for a BumpVec that maintains safety around lifetimes
+struct PathChainVec {
+    /// The inner vector, using 'static lifetimes to avoid borrow checker issues
+    vec: Vec<&'static DataValue<'static>>,
+    /// Capacity reserved for the vector to avoid reallocations
+    capacity: usize,
+}
+
+impl PathChainVec {
+    /// Create a new path chain with default capacity
+    fn new() -> Self {
+        Self { 
+            vec: Vec::with_capacity(PATH_CHAIN_CAPACITY),
+            capacity: PATH_CHAIN_CAPACITY,
+        }
+    }
+    
+    /// Push a new element to the path chain
+    fn push(&mut self, value: &'static DataValue<'static>) {
+        self.vec.push(value);
+    }
+    
+    /// Pop the last element from the path chain
+    fn pop(&mut self) -> Option<&'static DataValue<'static>> {
+        self.vec.pop()
+    }
+    
+    /// Clear the path chain
+    fn clear(&mut self) {
+        self.vec.clear();
+    }
+    
+    /// Get the length of the path chain
+    fn len(&self) -> usize {
+        self.vec.len()
+    }
+    
+    /// Check if the path chain is empty
+    fn _is_empty(&self) -> bool {
+        self.vec.is_empty()
+    }
+    
+    /// Get an element at the specified index
+    fn _get(&self, index: usize) -> Option<&'static DataValue<'static>> {
+        self.vec.get(index).copied()
+    }
+    
+    /// Get the last element in the path chain
+    fn last(&self) -> Option<&'static DataValue<'static>> {
+        self.vec.last().copied()
+    }
+    
+    /// Get a slice of the path chain
+    fn as_slice(&self) -> &[&'static DataValue<'static>] {
+        &self.vec
+    }
+}
+
+impl fmt::Debug for PathChainVec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PathChainVec")
+            .field("len", &self.len())
+            .field("capacity", &self.capacity)
+            .field("elements", &self.vec)
+            .finish()
+    }
+}
+
 /// An arena allocator for efficient data allocation.
 ///
 pub struct DataArena {
@@ -44,6 +115,15 @@ pub struct DataArena {
 
     /// Preallocated empty array value
     empty_array_value: &'static DataValue<'static>,
+
+    /// Current context (root data)
+    current_context: RefCell<Option<&'static DataValue<'static>>>,
+
+    /// Preallocated root context
+    root_context: RefCell<Option<&'static DataValue<'static>>>,
+    
+    /// Current path chain - represents the path from root to current position
+    path_chain: RefCell<PathChainVec>,
 }
 
 impl Default for DataArena {
@@ -56,6 +136,7 @@ impl fmt::Debug for DataArena {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataArena")
             .field("chunk_size", &self.chunk_size)
+            .field("path_chain", &self.path_chain)
             .finish()
     }
 }
@@ -99,6 +180,9 @@ impl DataArena {
             empty_string_value: &EMPTY_STRING_VALUE,
             empty_array: &EMPTY_ARRAY,
             empty_array_value: &EMPTY_ARRAY_VALUE,
+            current_context: RefCell::new(None),
+            root_context: RefCell::new(None),
+            path_chain: RefCell::new(PathChainVec::new()),
         }
     }
 
@@ -188,6 +272,9 @@ impl DataArena {
     pub fn reset(&mut self) {
         self.bump.reset();
         self.interner = RefCell::new(StringInterner::new());
+        self.current_context.replace(None);
+        self.root_context.replace(None);
+        self.path_chain.replace(PathChainVec::new());
     }
 
     /// Returns the current memory usage of the arena in bytes.
@@ -317,6 +404,90 @@ impl DataArena {
             }
             2..=8 => self.vec_into_slice(values.to_vec()),
             _ => unreachable!("This method is only for arrays up to 8 elements"),
+        }
+    }
+
+    /// Sets the current context for the arena.
+    pub fn set_current_context<'a>(&self, context: &'a DataValue<'a>, key: &'a DataValue<'a>) {
+        self.current_context.replace(Some(unsafe {
+            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context)
+        }));
+        self.push_path_key(key);
+    }
+
+    /// Returns the current context for the arena.
+    pub fn current_context(&self, scope_jump: usize) -> Option<&DataValue> {
+        if scope_jump == 0 {
+            return *self.current_context.borrow();
+        } else {
+            self.root_context_with_jump(scope_jump)
+        }
+    }
+
+    /// Returns the root context for the arena.
+    pub fn root_context(&self) -> Option<&DataValue> {
+        // Reset the path chain when getting root context
+        self.path_chain.borrow_mut().clear();
+        *self.root_context.borrow()
+    }
+
+    /// Sets the root context for the arena.
+    pub fn set_root_context<'a>(&self, context: &'a DataValue<'a>) {
+        self.root_context.replace(Some(unsafe {
+            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context)
+        }));
+    }
+
+    fn root_context_with_jump(&self, _scope_jump: usize) -> Option<&DataValue> {
+        unimplemented!()
+    }
+
+    /// Appends a key component to the current path chain.
+    pub fn push_path_key<'a>(&self, key: &'a DataValue<'a>) {
+        self.path_chain.borrow_mut().push(unsafe {
+            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key)
+        });
+    }
+    
+    /// Removes the last component from the path chain.
+    pub fn pop_path_component(&self) -> Option<&'static DataValue<'static>> {
+        self.path_chain.borrow_mut().pop()
+    }
+    
+    /// Clears the path chain.
+    pub fn clear_path_chain(&self) {
+        self.path_chain.borrow_mut().clear();
+    }
+    
+    /// Returns the length of the path chain.
+    pub fn path_chain_len(&self) -> usize {
+        self.path_chain.borrow().len()
+    }
+    
+    /// Returns the current path chain as a slice.
+    pub fn path_chain_as_slice(&self) -> Vec<&DataValue> {
+        let chain = self.path_chain.borrow();
+        let slice = chain.as_slice();
+        slice.iter().copied().collect()
+    }
+    
+    /// Returns the last path component.
+    pub fn last_path_component(&self) -> Option<&DataValue> {
+        self.path_chain.borrow().last()
+    }
+    
+    /// Batch appends multiple path components in one operation.
+    pub fn push_path_components<'a>(&self, keys: &[&'a DataValue<'a>]) {
+        if keys.is_empty() {
+            return;
+        }
+        
+        let mut path_chain = self.path_chain.borrow_mut();
+        for key in keys {
+            let static_key = unsafe {
+                std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key)
+            };
+            path_chain.push(static_key);
         }
     }
 }

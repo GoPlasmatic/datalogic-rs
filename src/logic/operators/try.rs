@@ -18,7 +18,6 @@ use crate::value::DataValue;
 #[inline]
 pub fn eval_try<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Check if we have arguments
@@ -28,7 +27,7 @@ pub fn eval_try<'a>(
 
     // Special case for a single argument - just evaluate it
     if args.len() == 1 {
-        return evaluate(args[0], data, arena);
+        return evaluate(args[0], arena);
     }
 
     // Try each expression in sequence
@@ -37,7 +36,7 @@ pub fn eval_try<'a>(
     for (i, arg) in args.iter().enumerate() {
         // For the first expression, use the original data context
         if i == 0 {
-            match evaluate(arg, data, arena) {
+            match evaluate(arg, arena) {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     last_error = Some(e);
@@ -76,9 +75,11 @@ pub fn eval_try<'a>(
                     arena.alloc(DataValue::null())
                 }
             };
+            let key = DataValue::Number(crate::value::NumberValue::from_f64(i as f64));
+            arena.set_current_context(&error_context, &key);
 
             // Evaluate with the error context
-            match evaluate(arg, error_context, arena) {
+            match evaluate(arg, arena) {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     last_error = Some(e);

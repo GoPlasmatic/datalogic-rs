@@ -13,21 +13,21 @@ use crate::value::DataValue;
 pub fn evaluate_variable<'a>(
     path: &str,
     default: &Option<&'a Token<'a>>,
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
+    let current_context = arena.current_context(0).unwrap();
     // Handle empty path as a reference to the data itself
     if path.is_empty() {
-        return Ok(data);
+        return Ok(current_context);
     }
 
     // Fast path for direct property access (no dots)
     if !path.contains('.') {
-        return evaluate_simple_path(path, default, data, arena);
+        return evaluate_simple_path(path, default, current_context, arena);
     }
 
     // For paths with dots, traverse the object tree without creating a Vec
-    let mut current = data;
+    let mut current = current_context;
     let mut start = 0;
     let path_bytes = path.as_bytes();
 
@@ -52,7 +52,7 @@ pub fn evaluate_variable<'a>(
                     current = value;
                 } else {
                     // Component not found, use default
-                    return use_default_or_null(default, data, arena);
+                    return use_default_or_null(default, arena);
                 }
             }
             DataValue::Array(_) => {
@@ -62,16 +62,16 @@ pub fn evaluate_variable<'a>(
                         current = value;
                     } else {
                         // Index out of bounds, use default
-                        return use_default_or_null(default, data, arena);
+                        return use_default_or_null(default, arena);
                     }
                 } else {
                     // Not a valid index, use default
-                    return use_default_or_null(default, data, arena);
+                    return use_default_or_null(default, arena);
                 }
             }
             _ => {
                 // Not an object or array, use default
-                return use_default_or_null(default, data, arena);
+                return use_default_or_null(default, arena);
             }
         }
 
@@ -86,12 +86,13 @@ pub fn evaluate_variable<'a>(
 /// Evaluates if a path exists in the input data.
 pub fn eval_exists<'a>(
     args: &'a [DataValue<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
+
+    let current_context = arena.current_context(0).unwrap();
 
     // Special case for the nested path test case with two args: "hello" and "world"
     if args.len() == 2 {
@@ -99,7 +100,7 @@ pub fn eval_exists<'a>(
             // Special handling for hello, world case
             if *first == "hello" && *second == "world" {
                 // First check if data has a "hello" property
-                if let Some(hello_val) = data_get_property(data, "hello") {
+                if let Some(hello_val) = data_get_property(current_context, "hello") {
                     // Check if hello has a "world" property
                     let has_world = match hello_val {
                         DataValue::Object(fields) => fields.iter().any(|(key, _)| *key == "world"),
@@ -137,7 +138,7 @@ pub fn eval_exists<'a>(
                     && components[1] == "world"
                 {
                     // First check if data has a "hello" property
-                    if let Some(hello_val) = data_get_property(data, "hello") {
+                    if let Some(hello_val) = data_get_property(current_context, "hello") {
                         // Check if hello has a "world" property
                         let has_world = match hello_val {
                             DataValue::Object(fields) => {
@@ -161,7 +162,7 @@ pub fn eval_exists<'a>(
     for arg in args {
         let exists = match arg {
             // Simple string paths
-            DataValue::String(key) => data_has_property(data, key),
+            DataValue::String(key) => data_has_property(current_context, key),
             // Skip other types
             _ => false,
         };
@@ -192,7 +193,7 @@ fn evaluate_simple_path<'a>(
         }
 
         // Not found, use default
-        return use_default_or_null(default, data, arena);
+        return use_default_or_null(default, arena);
     }
 
     if let DataValue::Object(obj) = data {
@@ -204,7 +205,7 @@ fn evaluate_simple_path<'a>(
     }
 
     // Not found, use default
-    use_default_or_null(default, data, arena)
+    use_default_or_null(default, arena)
 }
 
 /// Helper function to find a key in an object
@@ -246,11 +247,10 @@ fn get_array_index<'a>(arr: &'a DataValue<'a>, index: usize) -> Option<&'a DataV
 #[inline]
 fn use_default_or_null<'a>(
     default: &Option<&'a Token<'a>>,
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if let Some(default_token) = default {
-        evaluate(default_token, data, arena)
+        evaluate(default_token, arena)
     } else {
         Ok(arena.null_value())
     }
@@ -306,22 +306,24 @@ mod tests {
 
         // For low-level testing, convert to DataValue
         let data = DataValue::from_json(&data_json, &arena);
+        let key = DataValue::String("$");
+        arena.set_current_context(&data, &key);
 
         // Test simple variable access
         let path = "a";
-        let result = evaluate_variable(path, &None, &data, &arena).unwrap();
+        let result = evaluate_variable(path, &None, &arena).unwrap();
         assert_eq!(result.as_i64(), Some(1));
 
         // Test nested variable access
         let path = "b.c";
-        let result = evaluate_variable(path, &None, &data, &arena).unwrap();
+        let result = evaluate_variable(path, &None, &arena).unwrap();
         assert_eq!(result.as_i64(), Some(2));
 
         // Test missing variable with default
         let path = "d";
         let default_value = Token::literal(DataValue::string(&arena, "default"));
         let default_token = arena.alloc(default_value);
-        let result = evaluate_variable(path, &Some(default_token), &data, &arena).unwrap();
+        let result = evaluate_variable(path, &Some(default_token), &arena).unwrap();
         assert_eq!(result.as_str(), Some("default"));
 
         // Test using builder API
@@ -410,6 +412,8 @@ mod tests {
         });
 
         let data = DataValue::from_json(&data_json, &arena);
+        let key = DataValue::String("$");
+        arena.set_current_context(&data, &key);
 
         // Create a list of paths as DataValues
         let paths = vec![
@@ -422,7 +426,7 @@ mod tests {
         let paths_slice = arena.vec_into_slice(paths);
 
         // Test exists with existing paths
-        let result = eval_exists(paths_slice, &data, &arena).unwrap();
+        let result = eval_exists(paths_slice, &arena).unwrap();
 
         // The result should be boolean indicating if at least one path exists
         assert_eq!(result.as_bool(), Some(true));
@@ -434,7 +438,7 @@ mod tests {
         ];
 
         let missing_paths_slice = arena.vec_into_slice(missing_paths);
-        let result = eval_exists(missing_paths_slice, &data, &arena).unwrap();
+        let result = eval_exists(missing_paths_slice, &arena).unwrap();
 
         // The result should be false because none of the paths exist
         assert_eq!(result.as_bool(), Some(false));

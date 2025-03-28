@@ -31,12 +31,12 @@ fn step_by_step_example() {
     let dl = DataLogic::new();
 
     // 1. Parse the data
-    let data = dl.parse_data(r#"{"temp": 110, "name": "user"}"#).unwrap();
+    let data = dl.parse_data(r#"{ "adder": 10, "arr": [1,2,3] }"#).unwrap();
     println!("Parsed data: {}", data);
 
     // 2. Parse the logic rule
     let rule = dl
-        .parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#, None)
+        .parse_logic(r#"{ "map": [{"val": ["arr"]}, { "+": [{ "val": [] }, { "val": [[-2], "adder"] }] }] }"#, None)
         .unwrap();
     println!("Parsed rule: {:?}", rule);
 

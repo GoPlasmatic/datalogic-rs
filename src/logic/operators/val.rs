@@ -15,7 +15,6 @@ use crate::value::DataValue;
 #[inline]
 pub fn eval_val<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Check if we have the right number of arguments
@@ -24,33 +23,45 @@ pub fn eval_val<'a>(
     }
 
     // Evaluate the first argument to get the path
-    let path_value = evaluate(args[0], data, arena)?;
+    let path_value = evaluate(args[0], arena)?;
+    let current_context = arena.current_context(0).unwrap();
 
     // Handle different path types
     match path_value {
         // Case 1: Empty array means return the entire data context
-        DataValue::Array([]) => Ok(data),
+        DataValue::Array([]) => Ok(current_context),
 
         // Case 2: String path for direct property access
         DataValue::String(path_str) => {
             // Handle empty string as a reference to the property with empty key
             if path_str.is_empty() {
                 // For empty path, access property with empty key
-                return access_property(data, "", arena);
+                return access_property(current_context, "", arena);
             }
 
             // Access the property from the data
-            access_property(data, path_str, arena)
+            access_property(current_context, path_str, arena)
         }
 
         // Case 3: Array path for nested access
-        DataValue::Array(path_components) => navigate_nested_path(data, path_components, arena),
+        DataValue::Array(path_components) => {
+            if let DataValue::Array(jumps) = path_components[0] {
+                if jumps.len() == 1 {
+                    let jump = jumps[0].as_i64().unwrap();
+                    let current_context = arena.current_context(jump.abs() as usize).unwrap();
+                    println!("current_context: {:?}", current_context);
+                    return navigate_nested_path(current_context, path_components, arena)
+                }
+            } 
+
+            navigate_nested_path(current_context, path_components, arena)
+        },
 
         // Case 4: Number path for array index access
         DataValue::Number(n) => {
             if let Some(idx) = n.as_i64() {
                 if idx >= 0 {
-                    access_array_index(data, idx as usize, arena)
+                    access_array_index(current_context, idx as usize, arena)
                 } else {
                     // Negative index
                     Ok(arena.null_value())

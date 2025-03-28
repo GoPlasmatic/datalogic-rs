@@ -14,7 +14,6 @@ use crate::value::DataValue;
 /// Checks whether the specified variables are missing from the data.
 pub fn eval_missing<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -24,12 +23,12 @@ pub fn eval_missing<'a>(
     let mut missing = arena.get_data_value_vec();
 
     for arg in args {
-        let value = evaluate(arg, data, arena)?;
+        let value = evaluate(arg, arena)?;
 
         if let DataValue::String(name) = value {
             // Create a variable token with this name
             let none_ref: Option<&Token> = None;
-            if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, data, arena) {
+            if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
                 // If the variable exists, continue to the next one
                 if var_value != arena.null_value() {
                     continue;
@@ -44,8 +43,7 @@ pub fn eval_missing<'a>(
                 if let DataValue::String(name) = name_value {
                     // Check if the variable exists
                     let none_ref: Option<&Token> = None;
-                    if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, data, arena)
-                    {
+                    if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
                         if var_value != arena.null_value() {
                             continue;
                         }
@@ -68,7 +66,6 @@ pub fn eval_missing<'a>(
 /// Checks whether at least the specified number of variables are present in the data.
 pub fn eval_missing_some<'a>(
     args: &'a [&'a Token<'a>],
-    data: &'a DataValue<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
@@ -76,14 +73,14 @@ pub fn eval_missing_some<'a>(
     }
 
     // Evaluate the first argument (minimum number of required fields)
-    let min_required = evaluate(args[0], data, arena)?;
+    let min_required = evaluate(args[0], arena)?;
     let min_count = min_required
         .coerce_to_number()
         .map(|n| n.as_i64().unwrap_or(0))
         .unwrap_or(0) as usize;
 
     // Evaluate the second argument (array of field names)
-    let fields = evaluate(args[1], data, arena)?;
+    let fields = evaluate(args[1], arena)?;
 
     if let DataValue::Array(names) = fields {
         // Count how many fields are present
@@ -94,7 +91,7 @@ pub fn eval_missing_some<'a>(
             if let DataValue::String(name) = name_value {
                 // Check if the variable exists
                 let none_ref: Option<&Token> = None;
-                if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, data, arena) {
+                if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
                     if var_value != arena.null_value() {
                         found_count += 1;
                         continue;
