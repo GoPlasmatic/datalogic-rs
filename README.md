@@ -328,5 +328,5 @@ Licensed under Apache License, Version 2.0
 ✅ Try out `datalogic-rs` today!  
 📖 Check out the [API documentation](./API.md) for detailed usage instructions  
 📚 See the [docs.rs documentation](https://docs.rs/datalogic-rs) for comprehensive reference  
-⭐ Star the [GitHub repository](https://github.com/json-logic/datalogic-rs) if you find it useful!
+⭐ Star the [GitHub repository](https://github.com/codetiger/datalogic-rs) if you find it useful!
 
