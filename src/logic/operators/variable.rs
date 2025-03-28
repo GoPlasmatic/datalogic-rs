@@ -3,7 +3,7 @@
 //! This module provides the implementation of the variable operator.
 
 use crate::arena::DataArena;
-use crate::logic::error::{LogicError, Result};
+use crate::logic::error::Result;
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
@@ -81,99 +81,6 @@ pub fn evaluate_variable<'a>(
 
     // Successfully traversed the entire path
     Ok(current)
-}
-
-/// Evaluates if a path exists in the input data.
-pub fn eval_exists<'a>(
-    args: &'a [DataValue<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    let current_context = arena.current_context(0).unwrap();
-
-    // Special case for the nested path test case with two args: "hello" and "world"
-    if args.len() == 2 {
-        if let (DataValue::String(first), DataValue::String(second)) = (&args[0], &args[1]) {
-            // Special handling for hello, world case
-            if *first == "hello" && *second == "world" {
-                // First check if data has a "hello" property
-                if let Some(hello_val) = data_get_property(current_context, "hello") {
-                    // Check if hello has a "world" property
-                    let has_world = match hello_val {
-                        DataValue::Object(fields) => fields.iter().any(|(key, _)| *key == "world"),
-                        _ => false,
-                    };
-
-                    return Ok(arena.alloc(DataValue::Bool(has_world)));
-                } else {
-                    return Ok(arena.alloc(DataValue::Bool(false)));
-                }
-            }
-        }
-    }
-
-    // Single argument case (not an array)
-    if args.len() == 1 {
-        if let DataValue::Array(arr) = &args[0] {
-            // Array with 2 elements is likely a path specification like ["hello", "world"]
-            if arr.len() == 2 {
-                let mut all_strings = true;
-                let mut components = Vec::with_capacity(arr.len());
-
-                for value in arr.iter() {
-                    if let DataValue::String(s) = value {
-                        components.push(*s);
-                    } else {
-                        all_strings = false;
-                        break;
-                    }
-                }
-
-                if all_strings
-                    && components.len() == 2
-                    && components[0] == "hello"
-                    && components[1] == "world"
-                {
-                    // First check if data has a "hello" property
-                    if let Some(hello_val) = data_get_property(current_context, "hello") {
-                        // Check if hello has a "world" property
-                        let has_world = match hello_val {
-                            DataValue::Object(fields) => {
-                                fields.iter().any(|(key, _)| *key == "world")
-                            }
-                            _ => false,
-                        };
-
-                        return Ok(arena.alloc(DataValue::Bool(has_world)));
-                    } else {
-                        return Ok(arena.alloc(DataValue::Bool(false)));
-                    }
-                }
-            }
-        }
-    }
-
-    // For the rest of the logic, just check if any path exists
-    let mut any_exists = false;
-
-    for arg in args {
-        let exists = match arg {
-            // Simple string paths
-            DataValue::String(key) => data_has_property(current_context, key),
-            // Skip other types
-            _ => false,
-        };
-
-        if exists {
-            any_exists = true;
-            break;
-        }
-    }
-
-    Ok(arena.alloc(DataValue::Bool(any_exists)))
 }
 
 /// Helper function to evaluate a simple path (no dots)
@@ -256,36 +163,12 @@ fn use_default_or_null<'a>(
     }
 }
 
-/// Helper function to check if a property exists in the data
-#[inline]
-fn data_has_property<'a>(data: &'a DataValue<'a>, key: &str) -> bool {
-    match data {
-        DataValue::Object(obj) => {
-            // Check if the key exists in the object
-            obj.iter().any(|(k, _v)| *k == key)
-        }
-        _ => false,
-    }
-}
-
-/// Helper function to get a property from the data
-#[inline]
-fn data_get_property<'a>(data: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue<'a>> {
-    match data {
-        DataValue::Object(obj) => {
-            // Find the key in the object
-            obj.iter()
-                .find_map(|(k, v)| if *k == key { Some(v) } else { None })
-        }
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::arena::DataArena;
     use crate::logic::{DataLogicCore, Logic, OperatorType};
+    use crate::logic::operators::val::eval_exists;
     use crate::value::{DataValue, FromJson};
 
     use serde_json::json;
@@ -403,7 +286,7 @@ mod tests {
         let arena = DataArena::new();
         let core = DataLogicCore::new();
 
-        // Reuse setup from test_evaluate_variable
+        // Setup test data
         let data_json = json!({
             "a": 1,
             "b": {
@@ -415,32 +298,34 @@ mod tests {
         let key = DataValue::String("$");
         arena.set_current_context(&data, &key);
 
-        // Create a list of paths as DataValues
-        let paths = vec![
-            DataValue::string(&arena, "a"),
-            DataValue::string(&arena, "b.c"),
-            DataValue::string(&arena, "d"),
-        ];
-
-        // Allocate in the arena
-        let paths_slice = arena.vec_into_slice(paths);
-
-        // Test exists with existing paths
-        let result = eval_exists(paths_slice, &arena).unwrap();
-
-        // The result should be boolean indicating if at least one path exists
+        // Test single path exists
+        let path = DataValue::string(&arena, "a");
+        let path_slice = arena.vec_into_slice(vec![path]);
+        let result = eval_exists(path_slice, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
-
-        // Test with only missing paths
-        let missing_paths = vec![
-            DataValue::string(&arena, "d"),
-            DataValue::string(&arena, "e.f"),
-        ];
-
-        let missing_paths_slice = arena.vec_into_slice(missing_paths);
-        let result = eval_exists(missing_paths_slice, &arena).unwrap();
-
-        // The result should be false because none of the paths exist
+        
+        // Test nested path exists
+        let nested_path = DataValue::Array(arena.vec_into_slice(vec![
+            DataValue::string(&arena, "b"),
+            DataValue::string(&arena, "c")
+        ]));
+        let nested_path_slice = arena.vec_into_slice(vec![nested_path]);
+        let result = eval_exists(nested_path_slice, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(true));
+        
+        // Test path doesn't exist
+        let nonexistent_path = DataValue::string(&arena, "nonexistent");
+        let nonexistent_path_slice = arena.vec_into_slice(vec![nonexistent_path]);
+        let result = eval_exists(nonexistent_path_slice, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(false));
+        
+        // Test nested path doesn't exist
+        let nonexistent_nested_path = DataValue::Array(arena.vec_into_slice(vec![
+            DataValue::string(&arena, "b"),
+            DataValue::string(&arena, "nonexistent")
+        ]));
+        let nonexistent_nested_path_slice = arena.vec_into_slice(vec![nonexistent_nested_path]);
+        let result = eval_exists(nonexistent_nested_path_slice, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
 
         // Test using direct operator creation

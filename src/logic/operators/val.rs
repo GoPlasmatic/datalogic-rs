@@ -309,10 +309,125 @@ fn navigate_nested_path<'a>(
     Ok(current)
 }
 
+/// Evaluates if a path exists in the input data.
+pub fn eval_exists<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let current_context = arena.current_context(0).unwrap();
+    
+    // Single string key case
+    if args.len() == 1 {
+        if let DataValue::String(key) = &args[0] {
+            // Check if the key exists in the object
+            let exists = match current_context {
+                DataValue::Object(obj) => obj.iter().any(|(k, _)| *k == *key),
+                _ => false,
+            };
+            return Ok(arena.alloc(DataValue::Bool(exists)));
+        }
+        
+        // Handle array case for a nested path
+        if let DataValue::Array(components) = &args[0] {
+            if components.is_empty() {
+                return Ok(arena.alloc(DataValue::Bool(true)));
+            }
+            
+            // For array of strings, treat it as a nested path
+            return check_nested_path_exists(components, current_context, arena);
+        }
+    }
+    
+    // Multiple arguments case - treat as a nested path
+    return check_nested_path_exists(args, current_context, arena);
+}
+
+/// Checks if a nested path exists in the data
+fn check_nested_path_exists<'a>(
+    components: &'a [DataValue<'a>], 
+    data: &'a DataValue<'a>,
+    arena: &'a DataArena
+) -> Result<&'a DataValue<'a>> {
+    let mut current = data;
+    
+    for (i, component) in components.iter().enumerate() {
+        match component {
+            DataValue::String(key) => {
+                match current {
+                    DataValue::Object(obj) => {
+                        let mut found = false;
+                        for (k, v) in *obj {
+                            if *k == *key {
+                                current = v;
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if !found {
+                            // Path component doesn't exist
+                            return Ok(arena.alloc(DataValue::Bool(false)));
+                        }
+                    },
+                    _ => {
+                        // Not an object, so path doesn't exist
+                        return Ok(arena.alloc(DataValue::Bool(false)));
+                    }
+                }
+            },
+            DataValue::Number(n) => {
+                if let Some(idx) = n.as_i64() {
+                    if idx >= 0 {
+                        let idx_usize = idx as usize;
+                        match current {
+                            DataValue::Array(arr) => {
+                                if idx_usize < arr.len() {
+                                    current = &arr[idx_usize];
+                                } else {
+                                    // Index out of bounds
+                                    return Ok(arena.alloc(DataValue::Bool(false)));
+                                }
+                            },
+                            _ => {
+                                // Not an array, so path doesn't exist
+                                return Ok(arena.alloc(DataValue::Bool(false)));
+                            }
+                        }
+                    } else {
+                        // Negative index not supported
+                        return Ok(arena.alloc(DataValue::Bool(false)));
+                    }
+                } else {
+                    // Invalid index
+                    return Ok(arena.alloc(DataValue::Bool(false)));
+                }
+            },
+            _ => {
+                // Unsupported component type
+                return Ok(arena.alloc(DataValue::Bool(false)));
+            }
+        }
+        
+        // If this is the last component, we've successfully traversed the path
+        if i == components.len() - 1 {
+            return Ok(arena.alloc(DataValue::Bool(true)));
+        }
+    }
+    
+    // Completed traversal, path exists
+    Ok(arena.alloc(DataValue::Bool(true)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::Logic;
+    use crate::logic::OperatorType;
     use serde_json::json;
 
     #[test]
@@ -371,5 +486,76 @@ mod tests {
         let rule = builder.val_path(components);
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
+    }
+    
+    #[test]
+    fn test_exists() {
+        let arena = DataArena::new();
+        let core = DataLogicCore::new();
+
+        // Setup test data
+        let data_json = json!({
+            "a": 1,
+            "b": {
+                "c": 2
+            }
+        });
+
+        let data = <DataValue as crate::value::FromJson>::from_json(&data_json, &arena);
+        let key = DataValue::String("$");
+        arena.set_current_context(&data, &key);
+
+        // Test single path exists
+        let path = DataValue::string(&arena, "a");
+        let path_slice = arena.vec_into_slice(vec![path]);
+        let result = eval_exists(path_slice, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(true));
+        
+        // Test nested path exists
+        let nested_path = DataValue::Array(arena.vec_into_slice(vec![
+            DataValue::string(&arena, "b"),
+            DataValue::string(&arena, "c")
+        ]));
+        let nested_path_slice = arena.vec_into_slice(vec![nested_path]);
+        let result = eval_exists(nested_path_slice, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(true));
+        
+        // Test path doesn't exist
+        let nonexistent_path = DataValue::string(&arena, "nonexistent");
+        let nonexistent_path_slice = arena.vec_into_slice(vec![nonexistent_path]);
+        let result = eval_exists(nonexistent_path_slice, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(false));
+        
+        // Test nested path doesn't exist
+        let nonexistent_nested_path = DataValue::Array(arena.vec_into_slice(vec![
+            DataValue::string(&arena, "b"),
+            DataValue::string(&arena, "nonexistent")
+        ]));
+        let nonexistent_nested_path_slice = arena.vec_into_slice(vec![nonexistent_nested_path]);
+        let result = eval_exists(nonexistent_nested_path_slice, &arena).unwrap();
+        assert_eq!(result.as_bool(), Some(false));
+
+        // Test using direct operator creation
+        let exists_rule = Logic::operator(
+            OperatorType::Exists,
+            vec![Logic::literal(DataValue::string(&arena, "a"), &arena)],
+            &arena,
+        );
+
+        let result = core.apply(&exists_rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test with a non-existent path
+        let exists_rule = Logic::operator(
+            OperatorType::Exists,
+            vec![Logic::literal(
+                DataValue::string(&arena, "nonexistent"),
+                &arena,
+            )],
+            &arena,
+        );
+
+        let result = core.apply(&exists_rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
     }
 }

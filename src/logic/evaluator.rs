@@ -278,7 +278,7 @@ fn evaluate_operator<'a>(
 
         OperatorType::Exists => {
             let args_result = evaluate_arguments(args, arena)?;
-            variable::eval_exists(args_result, arena)
+            val::eval_exists(args_result, arena)
         }
 
         OperatorType::Coalesce => eval_coalesce(token_refs, arena),
