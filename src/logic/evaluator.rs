@@ -362,7 +362,8 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"foo": 42, "bar": "hello"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        arena.set_current_context(&data);
+        arena.set_current_context(&data, &DataValue::String("$"));
+        arena.set_root_context(&data);
         let builder = RuleBuilder::new(&arena);
 
         // Equal
@@ -376,7 +377,8 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"person": {"name": "John"}, "name": "Jane"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        arena.set_current_context(&data);
+        arena.set_current_context(&data, &DataValue::String("$"));
+        arena.set_root_context(&data);
         let factory = RuleFactory::new(&arena);
 
         // Simple coalesce with one value
@@ -404,7 +406,9 @@ mod tests {
             (arena.intern_str("nested"), nested_obj),
         ]);
         let data = DataValue::Object(entries);
-        arena.set_current_context(&data);
+        arena.set_current_context(&data, &DataValue::String("$"));
+        arena.set_root_context(&data);
+        
         // Test simple val: { "val": "hello" }
         let val_arg = Token::literal(DataValue::string(&arena, "hello"));
         let val_token = Token::operator(OperatorType::Val, arena.alloc(val_arg));

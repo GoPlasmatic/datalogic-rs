@@ -44,6 +44,10 @@ pub fn eval_all<'a>(
 
     // Evaluate the first argument to get the array
     let array = evaluate(args[0], arena)?;
+    if let Token::Variable { path, .. } = args[0] {
+        let key = DataValue::String(path);
+        arena.push_path_key(arena.alloc(key));
+    }
 
     // Check that the first argument is an array
     let items = match array {
@@ -62,12 +66,15 @@ pub fn eval_all<'a>(
     let condition = args[1];
 
     // Check if all items satisfy the condition
-    for item in items.iter() {
-        arena.set_current_context(&item);
+    for (index, item) in items.iter().enumerate() {
+        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
+        arena.set_current_context(&item, arena.alloc(key));
         // Evaluate the function with the item as context
         if !evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
+        // Pop the key from the path chain
+        arena.pop_path_component();
     }
 
     // If all items satisfy the condition, return true
@@ -86,6 +93,10 @@ pub fn eval_some<'a>(
 
     // Evaluate the first argument to get the array
     let array = evaluate(args[0], arena)?;
+    if let Token::Variable { path, .. } = args[0] {
+        let key = DataValue::String(path);
+        arena.push_path_key(arena.alloc(key));
+    }
 
     // Check that the first argument is an array
     let items = match array {
@@ -104,12 +115,15 @@ pub fn eval_some<'a>(
     let condition = args[1];
 
     // Check if any item satisfies the condition
-    for item in items.iter() {
-        arena.set_current_context(&item);
+    for (index, item) in items.iter().enumerate() {
+        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
+        arena.set_current_context(&item, arena.alloc(key));
         // Evaluate the function with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.true_value());
         }
+        // Pop the key from the path chain
+        arena.pop_path_component();
     }
 
     // If no items satisfy the condition, return false
@@ -128,6 +142,10 @@ pub fn eval_none<'a>(
 
     // Evaluate the first argument to get the array
     let array = evaluate(args[0], arena)?;
+    if let Token::Variable { path, .. } = args[0] {
+        let key = DataValue::String(path);
+        arena.push_path_key(arena.alloc(key));
+    }
 
     // Check that the first argument is an array
     let items = match array {
@@ -146,12 +164,15 @@ pub fn eval_none<'a>(
     let condition = args[1];
 
     // Check if no items satisfy the condition
-    for item in items.iter() {
-        arena.set_current_context(&item);
+    for (index, item) in items.iter().enumerate() {
+        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
+        arena.set_current_context(&item, arena.alloc(key));
         // Evaluate the function with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
+        // Pop the key from the path chain
+        arena.pop_path_component();
     }
 
     // If no items satisfy the condition, return true
@@ -182,6 +203,10 @@ pub fn eval_map<'a>(
 
     // Evaluate the first argument to get the array
     let array = evaluate(args[0], arena)?;
+    if let Token::Variable { path, .. } = args[0] {
+        let key = DataValue::String(path);
+        arena.push_path_key(arena.alloc(key));
+    }
 
     // Check that the first argument is an array
     let items = match array {
@@ -204,11 +229,14 @@ pub fn eval_map<'a>(
     result_values.reserve(items.len()); // Pre-allocate for expected size
 
     // Apply the function to each item
-    for item in items.iter() {
+    for (index, item) in items.iter().enumerate() {
+        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
+        arena.set_current_context(&item, arena.alloc(key));
         // Evaluate the function with the item as context
-        arena.set_current_context(&item);
         let result = evaluate(function, arena)?;
         result_values.push(result.clone());
+        // Pop the key from the path chain
+        arena.pop_path_component();
     }
 
     // Create the result array
@@ -242,6 +270,10 @@ pub fn eval_filter<'a>(
 
     // Evaluate the first argument to get the array
     let array = evaluate(args[0], arena)?;
+    if let Token::Variable { path, .. } = args[0] {
+        let key = DataValue::String(path);
+        arena.push_path_key(arena.alloc(key));
+    }
 
     // Check that the first argument is an array
     let items = match array {
@@ -264,12 +296,15 @@ pub fn eval_filter<'a>(
     results.reserve(items.len());
 
     // Filter the array
-    for item in items.iter() {
+    for (index, item) in items.iter().enumerate() {
+        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
+        arena.set_current_context(&item, arena.alloc(key));
         // Evaluate the condition with the item as context
-        arena.set_current_context(&item);
         if evaluate(condition, arena)?.coerce_to_bool() {
             results.push(item.clone());
         }
+        // Pop the key from the path chain
+        arena.pop_path_component();
     }
 
     // Create the result array
@@ -502,6 +537,10 @@ pub fn eval_reduce<'a>(
 
     // Evaluate the first argument to get the array
     let array = evaluate(args[0], arena)?;
+    if let Token::Variable { path, .. } = args[0] {
+        let key = DataValue::String(path);
+        arena.push_path_key(arena.alloc(key));
+    }
 
     // Check that the first argument is an array
     let items = match array {
@@ -564,16 +603,17 @@ pub fn eval_reduce<'a>(
     let mut acc = initial;
 
     // Reduce the array using the generic approach
-    for i in start_idx..items.len() {
+    for (index, item) in items.iter().enumerate() {
+        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         // Create object entries with references to the values
-        let entries = vec![(curr_key, items[i].clone()), (acc_key, acc.clone())];
+        let entries = vec![(curr_key, item.clone()), (acc_key, acc.clone())];
 
         // Allocate the entries in the arena
         let context_entries = arena.vec_into_slice(entries);
 
         // Create the context object
         let context = arena.alloc(DataValue::Object(context_entries));
-        arena.set_current_context(&context);
+        arena.set_current_context(&context, &key);
 
         // Evaluate the function with the context
         acc = evaluate(function, arena)?;

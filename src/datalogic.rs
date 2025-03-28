@@ -102,7 +102,7 @@ impl DataLogic {
         rule: &'a Logic,
         data: &'a DataValue,
     ) -> Result<&'a DataValue<'a>> {
-        self.arena.set_current_context(data);
+        self.arena.set_current_context(data, &DataValue::String("$"));
         evaluate(rule.root(), &self.arena)
     }
 

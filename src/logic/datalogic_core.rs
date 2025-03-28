@@ -41,7 +41,8 @@ impl DataLogicCore {
     pub fn apply(&self, logic: &Logic, data: &serde_json::Value) -> Result<serde_json::Value> {
         // Convert input data to DataValue
         let data_value = DataValue::from_json(data, &self.arena);
-        self.arena.set_current_context(&data_value);
+        self.arena.set_current_context(&data_value, &DataValue::String("$"));
+        self.arena.set_root_context(&data_value);
         
         // Evaluate the rule
         let result = evaluate(logic.root(), &self.arena)?;

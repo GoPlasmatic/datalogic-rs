@@ -15,7 +15,7 @@ pub fn evaluate_variable<'a>(
     default: &Option<&'a Token<'a>>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    let current_context = arena.current_context().unwrap();
+    let current_context = arena.current_context(0).unwrap();
     // Handle empty path as a reference to the data itself
     if path.is_empty() {
         return Ok(current_context);
@@ -92,7 +92,7 @@ pub fn eval_exists<'a>(
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let current_context = arena.current_context().unwrap();
+    let current_context = arena.current_context(0).unwrap();
 
     // Special case for the nested path test case with two args: "hello" and "world"
     if args.len() == 2 {
@@ -306,7 +306,8 @@ mod tests {
 
         // For low-level testing, convert to DataValue
         let data = DataValue::from_json(&data_json, &arena);
-        arena.set_current_context(&data);
+        let key = DataValue::String("$");
+        arena.set_current_context(&data, &key);
 
         // Test simple variable access
         let path = "a";
@@ -411,7 +412,8 @@ mod tests {
         });
 
         let data = DataValue::from_json(&data_json, &arena);
-        arena.set_current_context(&data);
+        let key = DataValue::String("$");
+        arena.set_current_context(&data, &key);
 
         // Create a list of paths as DataValues
         let paths = vec![

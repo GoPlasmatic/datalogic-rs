@@ -75,7 +75,8 @@ pub fn eval_try<'a>(
                     arena.alloc(DataValue::null())
                 }
             };
-            arena.set_current_context(&error_context);
+            let key = DataValue::Number(crate::value::NumberValue::from_f64(i as f64));
+            arena.set_current_context(&error_context, &key);
 
             // Evaluate with the error context
             match evaluate(arg, arena) {

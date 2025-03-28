@@ -54,7 +54,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
             if is_static {
                 // Create a dummy data value for evaluation
                 let dummy_data = arena.alloc(DataValue::Null);
-                arena.set_current_context(&dummy_data);
+                arena.set_current_context(&dummy_data, &DataValue::String("$"));
 
                 // Create the operator token in the arena
                 let op_token = arena.alloc(Token::operator(*op_type, optimized_args));
@@ -112,7 +112,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
                     if all_literals {
                         // Create a dummy data value for evaluation
                         let dummy_data = arena.alloc(DataValue::Null);
-                        arena.set_current_context(&dummy_data);
+                        arena.set_current_context(&dummy_data, &DataValue::String("$"));
                         // Create the operator token in the arena
                         let op_token = arena.alloc(Token::operator(*op_type, new_array_token));
 

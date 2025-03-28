@@ -24,7 +24,7 @@ pub fn eval_val<'a>(
 
     // Evaluate the first argument to get the path
     let path_value = evaluate(args[0], arena)?;
-    let current_context = arena.current_context().unwrap();
+    let current_context = arena.current_context(0).unwrap();
 
     // Handle different path types
     match path_value {
@@ -44,7 +44,18 @@ pub fn eval_val<'a>(
         }
 
         // Case 3: Array path for nested access
-        DataValue::Array(path_components) => navigate_nested_path(current_context, path_components, arena),
+        DataValue::Array(path_components) => {
+            if let DataValue::Array(jumps) = path_components[0] {
+                if jumps.len() == 1 {
+                    let jump = jumps[0].as_i64().unwrap();
+                    let current_context = arena.current_context(jump.abs() as usize).unwrap();
+                    println!("current_context: {:?}", current_context);
+                    return navigate_nested_path(current_context, path_components, arena)
+                }
+            } 
+
+            navigate_nested_path(current_context, path_components, arena)
+        },
 
         // Case 4: Number path for array index access
         DataValue::Number(n) => {
