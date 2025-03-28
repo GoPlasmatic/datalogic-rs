@@ -1,23 +1,20 @@
-//! Error types for JSON Logic operations
-//!
-//! This module provides comprehensive error handling for rule parsing and evaluation.
+//! Unified error handling for the DataLogic library
 
-use thiserror::Error;
+// Re-export error types from logic module
+pub use crate::logic::error::{LogicError, Result};
 
-#[derive(Error, Debug, Clone)]
+// Note: For backward compatibility, we're keeping the re-exports above.
+// In a future version, consider replacing with a more comprehensive error type:
+/*
 pub enum Error {
-    #[error("Unknown Expression: {0}")]
-    UnknownExpression(String),
-
-    #[error("Invalid Expression format: {0}")]
-    InvalidExpression(String),
-    
-    #[error("Invalid Arguments: {0}")]
-    InvalidArguments(String),
-    
-    #[error("Type error: {0}")]
-    Type(String),
-
-    #[error("{0}")]
+    Parse(String),
+    Evaluation(String),
+    InvalidOperation(String),
+    UndefinedVariable(String),
+    TypeMismatch { expected: String, found: String },
+    InvalidArgument(String),
     Custom(String),
 }
+
+pub type Result<T> = std::result::Result<T, Error>;
+*/
