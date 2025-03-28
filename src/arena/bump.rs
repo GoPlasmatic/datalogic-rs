@@ -417,9 +417,11 @@ impl DataArena {
 
     /// Returns the current context for the arena.
     pub fn current_context(&self, scope_jump: usize) -> Option<&DataValue> {
+        // Fast path for the common case (no scope jump)
         if scope_jump == 0 {
             return *self.current_context.borrow();
         } else {
+            // Cold path for scope jumps
             self.root_context_with_jump(scope_jump)
         }
     }
@@ -438,6 +440,8 @@ impl DataArena {
         }));
     }
 
+    #[cold]
+    #[inline(never)]
     fn root_context_with_jump(&self, scope_jump: usize) -> Option<&DataValue> {
         if scope_jump == 0 {
             return *self.current_context.borrow();
@@ -461,13 +465,21 @@ impl DataArena {
             None => return Some(self.null_value()),  // Return null if no root context
         };
         
-        // Clone the path chain and remove the last `scope_jump` elements
-        let mut temp_chain = self.path_chain_as_slice();
-        temp_chain.truncate(chain_len - scope_jump);
+        // Use an optimization to avoid allocating a new vector when possible
+        let path_chain = self.path_chain.borrow();
+        let path_slice = path_chain.as_slice();
         
-        // Navigate from the root using the truncated path
+        // Navigate to the correct context without creating intermediate vectors
+        self.navigate_to_context(root, path_slice, chain_len - scope_jump)
+    }
+    
+    // Helper function to navigate through a context without allocating
+    #[inline(never)]
+    fn navigate_to_context<'a>(&'a self, root: &'a DataValue<'a>, path_components: &[&'a DataValue<'a>], depth: usize) -> Option<&'a DataValue<'a>> {
         let mut current = root;
-        for component in &temp_chain {
+        
+        // Only navigate to the specified depth
+        for component in path_components.iter().take(depth) {
             match component {
                 DataValue::String(key) => {
                     // Navigate by string key
@@ -540,8 +552,17 @@ impl DataArena {
     /// Returns the current path chain as a slice.
     pub fn path_chain_as_slice(&self) -> Vec<&DataValue> {
         let chain = self.path_chain.borrow();
-        let slice = chain.as_slice();
-        slice.iter().copied().collect()
+        chain.as_slice().iter().copied().collect()
+    }
+    
+    /// Efficiently access the path chain without allocating a new vector.
+    #[inline]
+    pub fn with_path_chain<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[&DataValue]) -> R,
+    {
+        let chain = self.path_chain.borrow();
+        f(chain.as_slice())
     }
     
     /// Returns the last path component.
