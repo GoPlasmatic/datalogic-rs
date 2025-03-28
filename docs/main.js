@@ -1,10 +1,10 @@
-import init, { JsJsonLogic } from './pkg/datalogic_rs.js';
+import { JsonLogicEvaluator } from './jsonlogic.js';
 
-let logic;
+let evaluator;
 
 async function initWasm() {
-    await init();
-    logic = new JsJsonLogic();
+    evaluator = new JsonLogicEvaluator();
+    await evaluator.initialize();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -57,21 +57,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     textFields.forEach(textField => new mdc.textField.MDCTextField(textField));
 
     // Sample data
-    const sampleRules = {
-        "some": [
-            {"var": "items"},
-            {
-                ">=": [{"var": "qty"}, 1]
-            }
-        ]
-    };
-
-    const sampleData = {
-        "items": [
-            {"qty": 1, "id": "first"},
-            {"qty": 2, "id": "second"}
-        ]
-    };
+    const sampleRules = evaluator.getSampleRules();
+    const sampleData = evaluator.getSampleData();
 
     // Event handlers
     evaluateButton.addEventListener('click', async () => {
@@ -83,15 +70,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 data = JSON.parse(dataValue);
             }
             
-            const result = await logic.apply(rules, data);
+            const result = await evaluator.evaluate(rules, data);
             
-            // Update the result editor with properly formatted JSON
-            resultEditor.setValue(JSON.stringify(result, null, 2));
-            resultEditor.refresh();
-            
-            // Update container classes
-            resultContainer.classList.remove('result-error');
-            resultContainer.classList.add('result-success');
+            if (result.success) {
+                // Update the result editor with properly formatted JSON
+                resultEditor.setValue(JSON.stringify(result.result, null, 2));
+                resultEditor.refresh();
+                
+                // Update container classes
+                resultContainer.classList.remove('result-error');
+                resultContainer.classList.add('result-success');
+            } else {
+                // Display error in result editor
+                resultEditor.setValue(`Error: ${result.error}`);
+                resultEditor.refresh();
+                
+                // Update container classes
+                resultContainer.classList.remove('result-success');
+                resultContainer.classList.add('result-error');
+            }
         } catch (err) {
             // Display error in result editor
             resultEditor.setValue(`Error: ${err.message}`);

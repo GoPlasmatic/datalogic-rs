@@ -34,7 +34,7 @@ Add `datalogic-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-datalogic-rs = "3.0.0"
+datalogic-rs = "3.0.6"
 ```
 
 ## Usage Examples

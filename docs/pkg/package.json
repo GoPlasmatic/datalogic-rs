@@ -1,31 +1,15 @@
 {
-  "name": "datalogic-rs",
+  "name": "datalogic-web",
   "type": "module",
-  "collaborators": [
-    "Harishankar Narayanan <nharishankar@gmail.com>"
-  ],
-  "description": "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications.",
-  "version": "2.1.9",
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/codetiger/datalogic-rs"
-  },
+  "version": "3.0.6",
   "files": [
-    "datalogic_rs_bg.wasm",
-    "datalogic_rs.js",
-    "datalogic_rs.d.ts"
+    "datalogic_web_bg.wasm",
+    "datalogic_web.js",
+    "datalogic_web.d.ts"
   ],
-  "main": "datalogic_rs.js",
-  "homepage": "https://github.com/codetiger/datalogic-rs",
-  "types": "datalogic_rs.d.ts",
+  "main": "datalogic_web.js",
+  "types": "datalogic_web.d.ts",
   "sideEffects": [
     "./snippets/*"
-  ],
-  "keywords": [
-    "rules",
-    "engine",
-    "json",
-    "logic"
   ]
 }

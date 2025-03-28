@@ -28,11 +28,19 @@ export class JsonLogicEvaluator {
                 throw new Error('Invalid data format');
             }
 
+            // Convert to JSON strings
+            const rulesStr = JSON.stringify(rules);
+            const dataStr = JSON.stringify(data);
+
             // Apply logic rules
-            const result = await this.logic.apply(rules, data);
+            const result = await this.logic.apply(rulesStr, dataStr);
+            
+            // Reset the arena to free memory
+            this.logic.reset();
+
             return {
                 success: true,
-                result: result
+                result: JSON.parse(result)
             };
         } catch (error) {
             return {
