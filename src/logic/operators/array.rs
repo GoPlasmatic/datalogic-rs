@@ -67,14 +67,21 @@ pub fn eval_all<'a>(
 
     // Check if all items satisfy the condition
     for (index, item) in items.iter().enumerate() {
+        // Store the current path chain length to preserve parent contexts
+        let current_chain_len = arena.path_chain_len();
+        
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         arena.set_current_context(&item, arena.alloc(key));
+        
         // Evaluate the function with the item as context
         if !evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
-        // Pop the key from the path chain
-        arena.pop_path_component();
+        
+        // Restore the path chain to its original state
+        while arena.path_chain_len() > current_chain_len {
+            arena.pop_path_component();
+        }
     }
 
     // If all items satisfy the condition, return true
@@ -116,14 +123,21 @@ pub fn eval_some<'a>(
 
     // Check if any item satisfies the condition
     for (index, item) in items.iter().enumerate() {
+        // Store the current path chain length to preserve parent contexts
+        let current_chain_len = arena.path_chain_len();
+        
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         arena.set_current_context(&item, arena.alloc(key));
+        
         // Evaluate the function with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.true_value());
         }
-        // Pop the key from the path chain
-        arena.pop_path_component();
+        
+        // Restore the path chain to its original state
+        while arena.path_chain_len() > current_chain_len {
+            arena.pop_path_component();
+        }
     }
 
     // If no items satisfy the condition, return false
@@ -165,14 +179,21 @@ pub fn eval_none<'a>(
 
     // Check if no items satisfy the condition
     for (index, item) in items.iter().enumerate() {
+        // Store the current path chain length to preserve parent contexts
+        let current_chain_len = arena.path_chain_len();
+        
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         arena.set_current_context(&item, arena.alloc(key));
+        
         // Evaluate the function with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
-        // Pop the key from the path chain
-        arena.pop_path_component();
+        
+        // Restore the path chain to its original state
+        while arena.path_chain_len() > current_chain_len {
+            arena.pop_path_component();
+        }
     }
 
     // If no items satisfy the condition, return true
@@ -230,13 +251,22 @@ pub fn eval_map<'a>(
 
     // Apply the function to each item
     for (index, item) in items.iter().enumerate() {
+        // Store the current path chain length to preserve parent contexts
+        let current_chain_len = arena.path_chain_len();
+        
+        // Set the current item as context
+        // Use the index as the key for the current context
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         arena.set_current_context(&item, arena.alloc(key));
+        
         // Evaluate the function with the item as context
         let result = evaluate(function, arena)?;
         result_values.push(result.clone());
-        // Pop the key from the path chain
-        arena.pop_path_component();
+        
+        // Restore the path chain to its original state
+        while arena.path_chain_len() > current_chain_len {
+            arena.pop_path_component();
+        }
     }
 
     // Create the result array
@@ -297,14 +327,21 @@ pub fn eval_filter<'a>(
 
     // Filter the array
     for (index, item) in items.iter().enumerate() {
+        // Store the current path chain length to preserve parent contexts
+        let current_chain_len = arena.path_chain_len();
+        
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         arena.set_current_context(&item, arena.alloc(key));
+        
         // Evaluate the condition with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             results.push(item.clone());
         }
-        // Pop the key from the path chain
-        arena.pop_path_component();
+        
+        // Restore the path chain to its original state
+        while arena.path_chain_len() > current_chain_len {
+            arena.pop_path_component();
+        }
     }
 
     // Create the result array
@@ -604,6 +641,9 @@ pub fn eval_reduce<'a>(
 
     // Reduce the array using the generic approach
     for (index, item) in items.iter().enumerate() {
+        // Store the current path chain length to preserve parent contexts
+        let current_chain_len = arena.path_chain_len();
+        
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         // Create object entries with references to the values
         let entries = vec![(curr_key, item.clone()), (acc_key, acc.clone())];
@@ -617,6 +657,11 @@ pub fn eval_reduce<'a>(
 
         // Evaluate the function with the context
         acc = evaluate(function, arena)?;
+        
+        // Restore the path chain to its original state
+        while arena.path_chain_len() > current_chain_len {
+            arena.pop_path_component();
+        }
     }
 
     Ok(acc)

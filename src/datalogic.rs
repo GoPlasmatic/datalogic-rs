@@ -102,7 +102,11 @@ impl DataLogic {
         rule: &'a Logic,
         data: &'a DataValue,
     ) -> Result<&'a DataValue<'a>> {
+        // Set both current context and root context to the data
+        self.arena.set_root_context(data);
         self.arena.set_current_context(data, &DataValue::String("$"));
+        
+        // Evaluate the rule with the data as context
         evaluate(rule.root(), &self.arena)
     }
 

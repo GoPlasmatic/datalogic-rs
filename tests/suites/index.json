@@ -32,9 +32,12 @@
     "exists.json",
     "val.json",
     "val-compat.json",
+    "val.extra.json",
+    "scopes.json",
     "empty-objects.json",
     "preserve.json",
     "unknown-operators.json",
     "throw.json",
-    "try.json"
+    "try.json",
+    "try.extra.json"
 ]

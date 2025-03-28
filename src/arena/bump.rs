@@ -438,8 +438,81 @@ impl DataArena {
         }));
     }
 
-    fn root_context_with_jump(&self, _scope_jump: usize) -> Option<&DataValue> {
-        unimplemented!()
+    fn root_context_with_jump(&self, scope_jump: usize) -> Option<&DataValue> {
+        if scope_jump == 0 {
+            return *self.current_context.borrow();
+        }
+
+        // Get the current path chain
+        let chain_len = self.path_chain_len();
+        
+        if scope_jump >= chain_len {
+            // If trying to jump beyond the root, return the root context
+            // We must always return a valid context, never None
+            return match *self.root_context.borrow() {
+                Some(ctx) => Some(ctx),
+                None => Some(self.null_value()),  // Return null if no root context
+            };
+        }
+        
+        // Get the root context, never returning None
+        let root = match *self.root_context.borrow() {
+            Some(ctx) => ctx,
+            None => return Some(self.null_value()),  // Return null if no root context
+        };
+        
+        // Clone the path chain and remove the last `scope_jump` elements
+        let mut temp_chain = self.path_chain_as_slice();
+        temp_chain.truncate(chain_len - scope_jump);
+        
+        // Navigate from the root using the truncated path
+        let mut current = root;
+        for component in &temp_chain {
+            match component {
+                DataValue::String(key) => {
+                    // Navigate by string key
+                    if let DataValue::Object(entries) = current {
+                        let mut found = false;
+                        for &(k, ref v) in *entries {
+                            if k == *key {
+                                current = v;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            return Some(self.null_value());
+                        }
+                    } else {
+                        return Some(self.null_value());
+                    }
+                },
+                DataValue::Number(n) => {
+                    // Navigate by array index
+                    if let Some(idx) = n.as_i64() {
+                        if idx >= 0 {
+                            let index = idx as usize;
+                            if let DataValue::Array(items) = current {
+                                if index < items.len() {
+                                    current = &items[index];
+                                } else {
+                                    return Some(self.null_value());
+                                }
+                            } else {
+                                return Some(self.null_value());
+                            }
+                        } else {
+                            return Some(self.null_value());
+                        }
+                    } else {
+                        return Some(self.null_value());
+                    }
+                },
+                _ => return Some(self.null_value()),
+            }
+        }
+        
+        Some(current)
     }
 
     /// Appends a key component to the current path chain.
