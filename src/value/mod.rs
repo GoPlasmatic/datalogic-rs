@@ -7,13 +7,15 @@
 mod access;
 mod convert;
 mod data_value;
+mod datetime;
 mod number;
 
-pub use access::{parse_path, PathSegment, ValueAccess};
+pub use access::{PathSegment, ValueAccess, parse_path};
 pub use convert::{
-    data_value_to_json, hash_map_to_data_value, json_to_data_value, FromJson, ToJson,
+    FromJson, ToJson, data_value_to_json, hash_map_to_data_value, json_to_data_value,
 };
 pub use data_value::DataValue;
+pub use datetime::{date_diff, format_duration, parse_datetime, parse_duration};
 pub use number::NumberValue;
 
 use crate::arena::DataArena;

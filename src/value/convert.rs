@@ -36,7 +36,20 @@ impl<'a> FromJson<'a> for DataValue<'a> {
                     DataValue::null()
                 }
             }
-            JsonValue::String(s) => DataValue::string(arena, s),
+            JsonValue::String(s) => {
+                // Try to parse as datetime
+                if let Ok(dt) = super::parse_datetime(s) {
+                    return DataValue::datetime(dt);
+                }
+
+                // Try to parse as duration
+                if let Ok(duration) = super::parse_duration(s) {
+                    return DataValue::duration(duration);
+                }
+
+                // Default to string
+                DataValue::string(arena, s)
+            }
             JsonValue::Array(arr) => {
                 // Pre-allocate space for the array elements
                 let mut values = Vec::with_capacity(arr.len());
@@ -98,6 +111,28 @@ impl ToJson for DataValue<'_> {
                     map.insert((*key).to_string(), value.to_json());
                 }
                 JsonValue::Object(map)
+            }
+            DataValue::DateTime(dt) => {
+                // Format the datetime as an ISO8601 string
+                JsonValue::String(dt.to_rfc3339())
+            }
+            DataValue::Duration(d) => {
+                // Format the duration as a simplified string representation
+                let total_seconds = d.num_seconds();
+                let days = total_seconds / 86400;
+                let hours = (total_seconds % 86400) / 3600;
+                let minutes = (total_seconds % 3600) / 60;
+                let seconds = total_seconds % 60;
+
+                if days > 0 {
+                    JsonValue::String(format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds))
+                } else if hours > 0 {
+                    JsonValue::String(format!("{}h:{}m:{}s", hours, minutes, seconds))
+                } else if minutes > 0 {
+                    JsonValue::String(format!("{}m:{}s", minutes, seconds))
+                } else {
+                    JsonValue::String(format!("{}s", seconds))
+                }
             }
         }
     }

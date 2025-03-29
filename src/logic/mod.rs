@@ -22,6 +22,7 @@ pub use operators::arithmetic::ArithmeticOp;
 pub use operators::array::ArrayOp;
 pub use operators::comparison::ComparisonOp;
 pub use operators::control::ControlOp;
+pub use operators::datetime::DateTimeOp;
 pub use operators::string::StringOp;
 
 /// Make optimizer function public

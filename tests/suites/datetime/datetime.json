@@ -1,0 +1,164 @@
+[
+    "# DateTime creation and parsing",
+    {
+        "description": "Create a datetime from string",
+        "rule": {"datetime": "2022-07-06T13:20:06Z"},
+        "data": null,
+        "result": {"datetime": "2022-07-06T13:20:06Z"}
+    },
+    {
+        "description": "parse_date with format string",
+        "rule": {"parse_date": ["2022-07-06", "yyyy-MM-dd"]},
+        "data": null,
+        "result": {"datetime": "2022-07-06T00:00:00Z"}
+    },
+    {
+        "description": "format_date with format string",
+        "rule": {"format_date": [{"datetime": "2022-07-06T13:20:06Z"}, "yyyy-MM-dd"]},
+        "data": null,
+        "result": "2022-07-06"
+    },
+
+    "# DateTime comparisons",
+    {
+        "description": "Equal datetimes",
+        "rule": {"==": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Not equal datetimes",
+        "rule": {"==": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-07T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Strict equal datetimes",
+        "rule": {"===": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Not strict equal datetimes",
+        "rule": {"!==": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-07T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Greater than comparison for datetimes",
+        "rule": {">": [
+            {"datetime": "2022-07-07T13:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Less than comparison for datetimes",
+        "rule": {"<": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-07T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Greater than or equal comparison for datetimes",
+        "rule": {">=": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Less than or equal comparison for datetimes",
+        "rule": {"<=": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"datetime": "2022-07-07T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+
+    "# DateTime arithmetic operations",
+    {
+        "description": "Add duration to datetime",
+        "rule": {"+": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"timestamp": "1d"}
+        ]},
+        "data": null,
+        "result": {"datetime": "2022-07-07T13:20:06Z"}
+    },
+    {
+        "description": "Subtract duration from datetime",
+        "rule": {"-": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            {"timestamp": "1d"}
+        ]},
+        "data": null,
+        "result": {"datetime": "2022-07-05T13:20:06Z"}
+    },
+    {
+        "description": "Calculate duration between two datetimes",
+        "rule": {"-": [
+            {"datetime": "2022-07-07T13:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"}
+        ]},
+        "data": null,
+        "result": {"timestamp": "1d:0h:0m:0s"}
+    },
+    {
+        "description": "date_diff with days unit",
+        "rule": {"date_diff": [
+            {"datetime": "2022-07-07T13:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "days"
+        ]},
+        "data": null,
+        "result": 1
+    },
+    {
+        "description": "date_diff with hours unit",
+        "rule": {"date_diff": [
+            {"datetime": "2022-07-06T14:20:06Z"},
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "hours"
+        ]},
+        "data": null,
+        "result": 1
+    },
+
+    "# Using datetime with variables",
+    {
+        "description": "Compare datetime from variable",
+        "rule": {">": [
+            {"val": "current_date"},
+            {"datetime": "2022-01-01T00:00:00Z"}
+        ]},
+        "data": {"current_date": {"datetime": "2022-07-06T13:20:06Z"}},
+        "result": true
+    },
+    {
+        "description": "Add duration to datetime from variable",
+        "rule": {"+": [
+            {"val": "start_date"},
+            {"timestamp": "1d"}
+        ]},
+        "data": {"start_date": {"datetime": "2022-07-06T13:20:06Z"}},
+        "result": {"datetime": "2022-07-07T13:20:06Z"}
+    }
+]

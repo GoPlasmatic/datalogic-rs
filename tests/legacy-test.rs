@@ -1,6 +1,6 @@
 // use datalogic_rs::DataArena;
 use datalogic_rs::{DataLogic, LogicError};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::fs;
 use std::path::Path;
 

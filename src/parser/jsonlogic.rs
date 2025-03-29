@@ -242,7 +242,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                                     "Variable path component must be a scalar value, found: {:?}",
                                     item
                                 ),
-                            })
+                            });
                         }
                     };
                     path_parts.push(part);
@@ -264,7 +264,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                             "Variable path must be a scalar value, found: {:?}",
                             arr[0]
                         ),
-                    })
+                    });
                 }
             };
 

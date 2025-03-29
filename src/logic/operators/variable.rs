@@ -167,8 +167,8 @@ fn use_default_or_null<'a>(
 mod tests {
     use super::*;
     use crate::arena::DataArena;
-    use crate::logic::{DataLogicCore, Logic, OperatorType};
     use crate::logic::operators::val::eval_exists;
+    use crate::logic::{DataLogicCore, Logic, OperatorType};
     use crate::value::{DataValue, FromJson};
 
     use serde_json::json;
@@ -303,26 +303,26 @@ mod tests {
         let path_slice = arena.vec_into_slice(vec![path]);
         let result = eval_exists(path_slice, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
-        
+
         // Test nested path exists
         let nested_path = DataValue::Array(arena.vec_into_slice(vec![
             DataValue::string(&arena, "b"),
-            DataValue::string(&arena, "c")
+            DataValue::string(&arena, "c"),
         ]));
         let nested_path_slice = arena.vec_into_slice(vec![nested_path]);
         let result = eval_exists(nested_path_slice, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
-        
+
         // Test path doesn't exist
         let nonexistent_path = DataValue::string(&arena, "nonexistent");
         let nonexistent_path_slice = arena.vec_into_slice(vec![nonexistent_path]);
         let result = eval_exists(nonexistent_path_slice, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
-        
+
         // Test nested path doesn't exist
         let nonexistent_nested_path = DataValue::Array(arena.vec_into_slice(vec![
             DataValue::string(&arena, "b"),
-            DataValue::string(&arena, "nonexistent")
+            DataValue::string(&arena, "nonexistent"),
         ]));
         let nonexistent_nested_path_slice = arena.vec_into_slice(vec![nonexistent_nested_path]);
         let result = eval_exists(nonexistent_nested_path_slice, &arena).unwrap();

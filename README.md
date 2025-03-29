@@ -222,6 +222,60 @@ let result = logic.evaluate_str(
 assert_eq!(result.as_str().unwrap(), "Eligible for discount");
 ```
 
+### 5. DateTime Operations
+
+**Builder API:**
+```rust
+use datalogic_rs::DataLogic;
+use serde_json::json;
+use chrono::Utc;
+
+let logic = DataLogic::new();
+let builder = logic.builder();
+
+// Create a datetime expression
+let date_expr = builder
+    .value({"datetime": "2023-07-15T08:30:00Z"})
+    .build();
+
+// Add 2 days to the date
+let future_date = builder
+    .arithmetic()
+    .add()
+    .arg(date_expr)
+    .arg(builder.value({"timestamp": "2d"}).build())
+    .build();
+
+// Compare dates
+let is_future = builder
+    .compare()
+    .greater_than()
+    .arg(future_date)
+    .arg(builder.value({"datetime": "2023-07-16T08:30:00Z"}).build())
+    .build();
+
+let result = logic.evaluate(&is_future, &logic.parse_data("{}").unwrap()).unwrap();
+assert!(result.to_json().as_bool().unwrap());
+```
+
+**Raw JSON Evaluation:**
+```rust
+let result = logic.evaluate_str(
+    r#"{
+        ">": [
+            {"+": [
+                {"datetime": "2023-07-15T08:30:00Z"},
+                {"timestamp": "2d"}
+            ]},
+            {"datetime": "2023-07-16T08:30:00Z"}
+        ]
+    }"#,
+    r#"{}"#,
+    None
+).unwrap();
+assert!(result.as_bool().unwrap());
+```
+
 ## Performance Benefits
 
 The builder API leverages arena allocation for all rule components, providing several performance benefits:
@@ -242,6 +296,7 @@ The builder API leverages arena allocation for all rule components, providing se
 | **Arrays** | `map`, `filter`, `reduce`, `merge`, `all`, `none`, `some` |
 | **Strings** | `substr`, `cat`, `in` |
 | **Data Access** | `var`, `val`, `exists`, `missing`, `missing_some` |
+| **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
 | **Special** | `preserve`, `throw`, `try` |
 | **Custom** | Support for user-defined operators |
 
@@ -305,6 +360,7 @@ assert_eq!(result.as_f64().unwrap(), 8.0);
 - **Form validation** (Check field dependencies dynamically)
 - **Authorization rules** (Implement complex access control policies)
 - **Business rule engines** (Enforce business policies with configurable rules)
+- **Date-based processing** (Event scheduling, time-based access control, date constraint validation)
 
 ## Performance
 
@@ -329,4 +385,3 @@ Licensed under Apache License, Version 2.0
 📖 Check out the [API documentation](./API.md) for detailed usage instructions  
 📚 See the [docs.rs documentation](https://docs.rs/datalogic-rs) for comprehensive reference  
 ⭐ Star the [GitHub repository](https://github.com/codetiger/datalogic-rs) if you find it useful!
-

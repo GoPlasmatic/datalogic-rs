@@ -19,10 +19,7 @@ pub enum StringOp {
 }
 
 /// Evaluates a string concatenation operation.
-pub fn eval_cat<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(arena.empty_string_value());
     }

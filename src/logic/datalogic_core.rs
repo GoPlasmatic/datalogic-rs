@@ -1,8 +1,8 @@
 use super::error::Result;
 use crate::arena::DataArena;
-use crate::builder::factory::RuleFactory;
 use crate::builder::RuleBuilder;
-use crate::logic::{evaluate, Logic};
+use crate::builder::factory::RuleFactory;
+use crate::logic::{Logic, evaluate};
 use crate::value::{DataValue, FromJson, ToJson};
 
 /// The main engine implementation for DataLogic expressions.
@@ -41,9 +41,10 @@ impl DataLogicCore {
     pub fn apply(&self, logic: &Logic, data: &serde_json::Value) -> Result<serde_json::Value> {
         // Convert input data to DataValue
         let data_value = DataValue::from_json(data, &self.arena);
-        self.arena.set_current_context(&data_value, &DataValue::String("$"));
+        self.arena
+            .set_current_context(&data_value, &DataValue::String("$"));
         self.arena.set_root_context(&data_value);
-        
+
         // Evaluate the rule
         let result = evaluate(logic.root(), &self.arena)?;
 

@@ -4,8 +4,8 @@
 //! allocation of memory with minimal overhead. All allocations are
 //! freed at once when the arena is reset or dropped.
 
-use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
+use bumpalo::collections::Vec as BumpVec;
 use std::cell::RefCell;
 use std::fmt;
 
@@ -26,47 +26,47 @@ struct PathChainVec {
 impl PathChainVec {
     /// Create a new path chain with default capacity
     fn new() -> Self {
-        Self { 
+        Self {
             vec: Vec::with_capacity(PATH_CHAIN_CAPACITY),
             capacity: PATH_CHAIN_CAPACITY,
         }
     }
-    
+
     /// Push a new element to the path chain
     fn push(&mut self, value: &'static DataValue<'static>) {
         self.vec.push(value);
     }
-    
+
     /// Pop the last element from the path chain
     fn pop(&mut self) -> Option<&'static DataValue<'static>> {
         self.vec.pop()
     }
-    
+
     /// Clear the path chain
     fn clear(&mut self) {
         self.vec.clear();
     }
-    
+
     /// Get the length of the path chain
     fn len(&self) -> usize {
         self.vec.len()
     }
-    
+
     /// Check if the path chain is empty
     fn _is_empty(&self) -> bool {
         self.vec.is_empty()
     }
-    
+
     /// Get an element at the specified index
     fn _get(&self, index: usize) -> Option<&'static DataValue<'static>> {
         self.vec.get(index).copied()
     }
-    
+
     /// Get the last element in the path chain
     fn last(&self) -> Option<&'static DataValue<'static>> {
         self.vec.last().copied()
     }
-    
+
     /// Get a slice of the path chain
     fn as_slice(&self) -> &[&'static DataValue<'static>] {
         &self.vec
@@ -121,7 +121,7 @@ pub struct DataArena {
 
     /// Preallocated root context
     root_context: RefCell<Option<&'static DataValue<'static>>>,
-    
+
     /// Current path chain - represents the path from root to current position
     path_chain: RefCell<PathChainVec>,
 }
@@ -449,35 +449,40 @@ impl DataArena {
 
         // Get the current path chain
         let chain_len = self.path_chain_len();
-        
+
         if scope_jump >= chain_len {
             // If trying to jump beyond the root, return the root context
             // We must always return a valid context, never None
             return match *self.root_context.borrow() {
                 Some(ctx) => Some(ctx),
-                None => Some(self.null_value()),  // Return null if no root context
+                None => Some(self.null_value()), // Return null if no root context
             };
         }
-        
+
         // Get the root context, never returning None
         let root = match *self.root_context.borrow() {
             Some(ctx) => ctx,
-            None => return Some(self.null_value()),  // Return null if no root context
+            None => return Some(self.null_value()), // Return null if no root context
         };
-        
+
         // Use an optimization to avoid allocating a new vector when possible
         let path_chain = self.path_chain.borrow();
         let path_slice = path_chain.as_slice();
-        
+
         // Navigate to the correct context without creating intermediate vectors
         self.navigate_to_context(root, path_slice, chain_len - scope_jump)
     }
-    
+
     // Helper function to navigate through a context without allocating
     #[inline(never)]
-    fn navigate_to_context<'a>(&'a self, root: &'a DataValue<'a>, path_components: &[&'a DataValue<'a>], depth: usize) -> Option<&'a DataValue<'a>> {
+    fn navigate_to_context<'a>(
+        &'a self,
+        root: &'a DataValue<'a>,
+        path_components: &[&'a DataValue<'a>],
+        depth: usize,
+    ) -> Option<&'a DataValue<'a>> {
         let mut current = root;
-        
+
         // Only navigate to the specified depth
         for component in path_components.iter().take(depth) {
             match component {
@@ -498,7 +503,7 @@ impl DataArena {
                     } else {
                         return Some(self.null_value());
                     }
-                },
+                }
                 DataValue::Number(n) => {
                     // Navigate by array index
                     if let Some(idx) = n.as_i64() {
@@ -519,11 +524,11 @@ impl DataArena {
                     } else {
                         return Some(self.null_value());
                     }
-                },
+                }
                 _ => return Some(self.null_value()),
             }
         }
-        
+
         Some(current)
     }
 
@@ -533,28 +538,28 @@ impl DataArena {
             std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key)
         });
     }
-    
+
     /// Removes the last component from the path chain.
     pub fn pop_path_component(&self) -> Option<&'static DataValue<'static>> {
         self.path_chain.borrow_mut().pop()
     }
-    
+
     /// Clears the path chain.
     pub fn clear_path_chain(&self) {
         self.path_chain.borrow_mut().clear();
     }
-    
+
     /// Returns the length of the path chain.
     pub fn path_chain_len(&self) -> usize {
         self.path_chain.borrow().len()
     }
-    
+
     /// Returns the current path chain as a slice.
     pub fn path_chain_as_slice(&self) -> Vec<&DataValue> {
         let chain = self.path_chain.borrow();
-        chain.as_slice().iter().copied().collect()
+        chain.as_slice().to_vec()
     }
-    
+
     /// Efficiently access the path chain without allocating a new vector.
     #[inline]
     pub fn with_path_chain<F, R>(&self, f: F) -> R
@@ -564,18 +569,18 @@ impl DataArena {
         let chain = self.path_chain.borrow();
         f(chain.as_slice())
     }
-    
+
     /// Returns the last path component.
     pub fn last_path_component(&self) -> Option<&DataValue> {
         self.path_chain.borrow().last()
     }
-    
+
     /// Batch appends multiple path components in one operation.
     pub fn push_path_components<'a>(&self, keys: &[&'a DataValue<'a>]) {
         if keys.is_empty() {
             return;
         }
-        
+
         let mut path_chain = self.path_chain.borrow_mut();
         for key in keys {
             let static_key = unsafe {

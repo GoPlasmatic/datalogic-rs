@@ -4,7 +4,7 @@
 //! for parsing and evaluating logic expressions.
 
 use crate::arena::DataArena;
-use crate::logic::{evaluate, optimize, Logic, Result};
+use crate::logic::{Logic, Result, evaluate, optimize};
 use crate::parser::{ExpressionParser, ParserRegistry};
 use crate::value::{DataValue, FromJson, ToJson};
 use crate::{LogicError, RuleBuilder};
@@ -104,8 +104,9 @@ impl DataLogic {
     ) -> Result<&'a DataValue<'a>> {
         // Set both current context and root context to the data
         self.arena.set_root_context(data);
-        self.arena.set_current_context(data, &DataValue::String("$"));
-        
+        self.arena
+            .set_current_context(data, &DataValue::String("$"));
+
         // Evaluate the rule with the data as context
         evaluate(rule.root(), &self.arena)
     }

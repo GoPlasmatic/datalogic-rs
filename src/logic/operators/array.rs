@@ -33,10 +33,7 @@ pub enum ArrayOp {
 }
 
 /// Evaluates an all operation.
-pub fn eval_all<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_all<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
@@ -69,15 +66,15 @@ pub fn eval_all<'a>(
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
         let current_chain_len = arena.path_chain_len();
-        
+
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-        arena.set_current_context(&item, arena.alloc(key));
-        
+        arena.set_current_context(item, arena.alloc(key));
+
         // Evaluate the function with the item as context
         if !evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
-        
+
         // Restore the path chain to its original state
         while arena.path_chain_len() > current_chain_len {
             arena.pop_path_component();
@@ -89,10 +86,7 @@ pub fn eval_all<'a>(
 }
 
 /// Evaluates a some operation.
-pub fn eval_some<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_some<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
@@ -125,15 +119,15 @@ pub fn eval_some<'a>(
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
         let current_chain_len = arena.path_chain_len();
-        
+
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-        arena.set_current_context(&item, arena.alloc(key));
-        
+        arena.set_current_context(item, arena.alloc(key));
+
         // Evaluate the function with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.true_value());
         }
-        
+
         // Restore the path chain to its original state
         while arena.path_chain_len() > current_chain_len {
             arena.pop_path_component();
@@ -145,10 +139,7 @@ pub fn eval_some<'a>(
 }
 
 /// Evaluates a none operation.
-pub fn eval_none<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_none<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
@@ -181,15 +172,15 @@ pub fn eval_none<'a>(
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
         let current_chain_len = arena.path_chain_len();
-        
+
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-        arena.set_current_context(&item, arena.alloc(key));
-        
+        arena.set_current_context(item, arena.alloc(key));
+
         // Evaluate the function with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             return Ok(arena.false_value());
         }
-        
+
         // Restore the path chain to its original state
         while arena.path_chain_len() > current_chain_len {
             arena.pop_path_component();
@@ -213,10 +204,7 @@ pub fn eval_none<'a>(
 /// ```json
 /// {"map": [{"var": "integers"}, {"*": [{"var": ""}, 2]}]}
 /// ```
-pub fn eval_map<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
@@ -253,16 +241,16 @@ pub fn eval_map<'a>(
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
         let current_chain_len = arena.path_chain_len();
-        
+
         // Set the current item as context
         // Use the index as the key for the current context
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-        arena.set_current_context(&item, arena.alloc(key));
-        
+        arena.set_current_context(item, arena.alloc(key));
+
         // Evaluate the function with the item as context
         let result = evaluate(function, arena)?;
         result_values.push(result.clone());
-        
+
         // Restore the path chain to its original state
         while arena.path_chain_len() > current_chain_len {
             arena.pop_path_component();
@@ -329,15 +317,15 @@ pub fn eval_filter<'a>(
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
         let current_chain_len = arena.path_chain_len();
-        
+
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-        arena.set_current_context(&item, arena.alloc(key));
-        
+        arena.set_current_context(item, arena.alloc(key));
+
         // Evaluate the condition with the item as context
         if evaluate(condition, arena)?.coerce_to_bool() {
             results.push(item.clone());
         }
-        
+
         // Restore the path chain to its original state
         while arena.path_chain_len() > current_chain_len {
             arena.pop_path_component();
@@ -643,7 +631,7 @@ pub fn eval_reduce<'a>(
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
         let current_chain_len = arena.path_chain_len();
-        
+
         let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
         // Create object entries with references to the values
         let entries = vec![(curr_key, item.clone()), (acc_key, acc.clone())];
@@ -653,11 +641,11 @@ pub fn eval_reduce<'a>(
 
         // Create the context object
         let context = arena.alloc(DataValue::Object(context_entries));
-        arena.set_current_context(&context, &key);
+        arena.set_current_context(context, &key);
 
         // Evaluate the function with the context
         acc = evaluate(function, arena)?;
-        
+
         // Restore the path chain to its original state
         while arena.path_chain_len() > current_chain_len {
             arena.pop_path_component();
@@ -704,10 +692,7 @@ pub fn eval_merge<'a>(
 }
 
 /// Evaluates an "in" operation.
-pub fn eval_in<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_in<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }

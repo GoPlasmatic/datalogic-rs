@@ -4,7 +4,7 @@
 
 use super::error::Result;
 use super::operators::{
-    arithmetic, array, comparison, control, missing, r#try, string, throw, val, variable,
+    arithmetic, array, comparison, control, datetime, missing, string, throw, r#try, val, variable,
 };
 use super::token::{OperatorType, Token};
 use crate::arena::DataArena;
@@ -26,10 +26,7 @@ fn convert_to_token_refs<'a>(args: &'a Token<'a>, arena: &'a DataArena) -> &'a [
 
 /// Evaluates a logic expression.
 #[inline]
-pub fn evaluate<'a>(
-    token: &'a Token<'a>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for literals - most common case
     if let Token::Literal(value) = token {
         return Ok(value);
@@ -74,7 +71,7 @@ pub fn evaluate<'a>(
                             "Dynamic variable path must evaluate to a scalar value, got: {:?}",
                             path_value
                         ),
-                    })
+                    });
                 }
             };
 
@@ -193,9 +190,7 @@ fn evaluate_operator<'a>(
             comparison::ComparisonOp::StrictEqual => {
                 comparison::eval_strict_equal(token_refs, arena)
             }
-            comparison::ComparisonOp::NotEqual => {
-                comparison::eval_not_equal(token_refs, arena)
-            }
+            comparison::ComparisonOp::NotEqual => comparison::eval_not_equal(token_refs, arena),
             comparison::ComparisonOp::StrictNotEqual => {
                 comparison::eval_strict_not_equal(token_refs, arena)
             }
@@ -205,9 +200,7 @@ fn evaluate_operator<'a>(
             comparison::ComparisonOp::GreaterThanOrEqual => {
                 comparison::eval_greater_than_or_equal(token_refs, arena)
             }
-            comparison::ComparisonOp::LessThan => {
-                comparison::eval_less_than(token_refs, arena)
-            }
+            comparison::ComparisonOp::LessThan => comparison::eval_less_than(token_refs, arena),
             comparison::ComparisonOp::LessThanOrEqual => {
                 comparison::eval_less_than_or_equal(token_refs, arena)
             }
@@ -261,9 +254,7 @@ fn evaluate_operator<'a>(
                 control::eval_or(token_refs, arena)
             }
             control::ControlOp::Not => control::eval_not(token_refs, arena),
-            control::ControlOp::DoubleNegation => {
-                control::eval_double_negation(token_refs, arena)
-            }
+            control::ControlOp::DoubleNegation => control::eval_double_negation(token_refs, arena),
         },
 
         // String operators
@@ -306,14 +297,29 @@ fn evaluate_operator<'a>(
             let result = DataValue::Array(array_slice);
             Ok(arena.alloc(result))
         }
+
+        // DateTime operators
+        OperatorType::DateTime(datetime_op) => {
+            // Evaluate arguments once and pass to the appropriate function
+            let args_result = evaluate_arguments(args, arena)?;
+            match datetime_op {
+                datetime::DateTimeOp::DateTime => {
+                    datetime::eval_datetime_operator(args_result, arena)
+                }
+                datetime::DateTimeOp::Timestamp => {
+                    datetime::eval_timestamp_operator(args_result, arena)
+                }
+                datetime::DateTimeOp::Now => datetime::eval_now(arena),
+                datetime::DateTimeOp::ParseDate => datetime::eval_parse_date(args_result, arena),
+                datetime::DateTimeOp::FormatDate => datetime::eval_format_date(args_result, arena),
+                datetime::DateTimeOp::DateDiff => datetime::eval_date_diff(args_result, arena),
+            }
+        }
     }
 }
 
 /// Evaluates a coalesce operation, which returns the first non-null value.
-fn eval_coalesce<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+fn eval_coalesce<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // If no arguments, return null
     if args.is_empty() {
         return Ok(arena.null_value());
@@ -408,7 +414,7 @@ mod tests {
         let data = DataValue::Object(entries);
         arena.set_current_context(&data, &DataValue::String("$"));
         arena.set_root_context(&data);
-        
+
         // Test simple val: { "val": "hello" }
         let val_arg = Token::literal(DataValue::string(&arena, "hello"));
         let val_token = Token::operator(OperatorType::Val, arena.alloc(val_arg));
@@ -435,5 +441,54 @@ mod tests {
 
         let result = evaluate(arena.alloc(empty_val_token), &arena).unwrap();
         assert_eq!(*result, data);
+    }
+
+    #[test]
+    fn test_evaluate_datetime() {
+        use super::evaluate;
+        use crate::arena::DataArena;
+        use crate::logic::operators::DateTimeOp;
+        use crate::logic::token::{OperatorType, Token};
+        use crate::value::DataValue;
+
+        let arena = DataArena::new();
+
+        // Test simple datetime conversion: { "datetime": "2022-07-06T13:20:06Z" }
+        let dt_arg = Token::literal(DataValue::string(&arena, "2022-07-06T13:20:06Z"));
+        let dt_token = Token::operator(
+            OperatorType::DateTime(DateTimeOp::DateTime),
+            arena.alloc(dt_arg),
+        );
+
+        let result = evaluate(arena.alloc(dt_token), &arena).unwrap();
+
+        // Check if it's an object with a datetime key
+        if let DataValue::Object(entries) = result {
+            let datetime_entry = entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("datetime"));
+            assert!(datetime_entry.is_some());
+
+            let (_, dt_val) = datetime_entry.unwrap();
+            assert!(dt_val.is_datetime());
+
+            // Now proceed with format test using the datetime from the object
+            // Since we can't easily compare the exact datetime directly, verify that
+            // it converts back to the expected string format using format_date
+            let format_arg = arena.vec_into_slice(vec![
+                result.clone(),
+                DataValue::string(&arena, "yyyy-MM-ddTHH:mm:ssZ"),
+            ]);
+            let format_array = DataValue::Array(format_arg);
+            let format_token = Token::operator(
+                OperatorType::DateTime(DateTimeOp::FormatDate),
+                arena.alloc(Token::literal(format_array)),
+            );
+
+            let formatted = evaluate(arena.alloc(format_token), &arena).unwrap();
+            assert_eq!(formatted.as_str().unwrap(), "2022-07-06T13:20:06Z");
+        } else {
+            panic!("Expected object but got: {:?}", result);
+        }
     }
 }

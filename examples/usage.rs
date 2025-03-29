@@ -36,7 +36,10 @@ fn step_by_step_example() {
 
     // 2. Parse the logic rule
     let rule = dl
-        .parse_logic(r#"{ "map": [[1,2,3], { "+": [{ "val": [] }, { "val": [[-1], "index"] }] }] }"#, None)
+        .parse_logic(
+            r#"{ "map": [[1,2,3], { "+": [{ "val": [] }, { "val": [[-1], "index"] }] }] }"#,
+            None,
+        )
         .unwrap();
     println!("Parsed rule: {:?}", rule);
 

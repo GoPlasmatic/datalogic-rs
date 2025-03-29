@@ -16,10 +16,7 @@ use crate::value::DataValue;
 /// When an error occurs, subsequent expressions are evaluated with the error
 /// as the context, allowing them to examine the error's properties.
 #[inline]
-pub fn eval_try<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_try<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Check if we have arguments
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
@@ -32,7 +29,7 @@ pub fn eval_try<'a>(
 
     // Preserve the original root context for later use
     let original_root = arena.root_context();
-    
+
     // Try each expression in sequence
     let mut last_error = None;
 
@@ -48,10 +45,10 @@ pub fn eval_try<'a>(
         } else {
             // For subsequent expressions, we need to create an error context
             // that includes the error details from the previous attempt
-            
+
             // Store the current path chain length to preserve parent contexts
             let current_chain_len = arena.path_chain_len();
-            
+
             let error_context = match &last_error {
                 Some(LogicError::ThrownError { r#type: error_type }) => {
                     // Create a context with the error type
@@ -82,11 +79,11 @@ pub fn eval_try<'a>(
                     arena.alloc(DataValue::null())
                 }
             };
-            
+
             // Set the error context as current but restore the original root context
             let key = DataValue::Number(crate::value::NumberValue::from_f64(i as f64));
-            arena.set_current_context(&error_context, &key);
-            
+            arena.set_current_context(error_context, &key);
+
             // Make sure the root context is still available for scope jumps
             if let Some(root) = original_root {
                 arena.set_root_context(root);
@@ -99,7 +96,7 @@ pub fn eval_try<'a>(
                     last_error = Some(e);
                 }
             }
-            
+
             // Restore the path chain to its original state
             while arena.path_chain_len() > current_chain_len {
                 arena.pop_path_component();

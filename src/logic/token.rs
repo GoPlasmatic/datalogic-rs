@@ -3,7 +3,7 @@
 //! This module provides a compact token representation for logic expressions,
 //! optimized for memory efficiency and evaluation performance.
 
-use super::operators::{ArithmeticOp, ArrayOp, ComparisonOp, ControlOp, StringOp};
+use super::operators::{ArithmeticOp, ArrayOp, ComparisonOp, ControlOp, DateTimeOp, StringOp};
 use crate::value::DataValue;
 use std::str::FromStr;
 
@@ -65,6 +65,8 @@ pub enum OperatorType {
     String(StringOp),
     /// Array operator
     Array(ArrayOp),
+    /// DateTime operator
+    DateTime(DateTimeOp),
     /// Missing operator
     Missing,
     /// Missing Some operator
@@ -219,6 +221,14 @@ impl OperatorType {
                 ArrayOp::Merge => "merge",
                 ArrayOp::In => "in",
             },
+            OperatorType::DateTime(op) => match op {
+                DateTimeOp::DateTime => "datetime",
+                DateTimeOp::Timestamp => "timestamp",
+                DateTimeOp::Now => "now",
+                DateTimeOp::ParseDate => "parse_date",
+                DateTimeOp::FormatDate => "format_date",
+                DateTimeOp::DateDiff => "date_diff",
+            },
             OperatorType::Missing => "missing",
             OperatorType::MissingSome => "missing_some",
             OperatorType::Exists => "exists",
@@ -267,6 +277,12 @@ impl FromStr for OperatorType {
             "none" => Ok(OperatorType::Array(ArrayOp::None)),
             "merge" => Ok(OperatorType::Array(ArrayOp::Merge)),
             "in" => Ok(OperatorType::Array(ArrayOp::In)),
+            "now" => Ok(OperatorType::DateTime(DateTimeOp::Now)),
+            "datetime" => Ok(OperatorType::DateTime(DateTimeOp::DateTime)),
+            "timestamp" => Ok(OperatorType::DateTime(DateTimeOp::Timestamp)),
+            "parse_date" => Ok(OperatorType::DateTime(DateTimeOp::ParseDate)),
+            "format_date" => Ok(OperatorType::DateTime(DateTimeOp::FormatDate)),
+            "date_diff" => Ok(OperatorType::DateTime(DateTimeOp::DateDiff)),
             "missing" => Ok(OperatorType::Missing),
             "missing_some" => Ok(OperatorType::MissingSome),
             "exists" => Ok(OperatorType::Exists),

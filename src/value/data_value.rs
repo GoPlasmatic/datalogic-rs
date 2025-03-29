@@ -5,6 +5,7 @@
 
 use super::number::NumberValue;
 use crate::arena::DataArena;
+use chrono::{DateTime, Duration, Utc};
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -31,6 +32,12 @@ pub enum DataValue<'a> {
 
     /// Represents an object with key-value pairs (arena-allocated)
     Object(&'a [(&'a str, DataValue<'a>)]),
+
+    /// Represents a datetime value
+    DateTime(DateTime<Utc>),
+
+    /// Represents a duration value
+    Duration(Duration),
 }
 
 impl<'a> DataValue<'a> {
@@ -64,6 +71,16 @@ impl<'a> DataValue<'a> {
         } else {
             DataValue::String(arena.alloc_str(value))
         }
+    }
+
+    /// Creates a datetime value from a `chrono::DateTime<Utc>`.
+    pub fn datetime(value: DateTime<Utc>) -> Self {
+        DataValue::DateTime(value)
+    }
+
+    /// Creates a duration value from a `chrono::Duration`.
+    pub fn duration(value: Duration) -> Self {
+        DataValue::Duration(value)
     }
 
     /// Creates an array value.
@@ -117,6 +134,16 @@ impl<'a> DataValue<'a> {
         matches!(self, DataValue::Object(_))
     }
 
+    /// Returns true if the value is a datetime.
+    pub fn is_datetime(&self) -> bool {
+        matches!(self, DataValue::DateTime(_))
+    }
+
+    /// Returns true if the value is a duration.
+    pub fn is_duration(&self) -> bool {
+        matches!(self, DataValue::Duration(_))
+    }
+
     /// Returns the value as a boolean, if it is one.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
@@ -153,6 +180,22 @@ impl<'a> DataValue<'a> {
     pub fn as_array(&self) -> Option<&[DataValue<'a>]> {
         match self {
             DataValue::Array(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Returns the value as a datetime, if it is a datetime.
+    pub fn as_datetime(&self) -> Option<&DateTime<Utc>> {
+        match self {
+            DataValue::DateTime(dt) => Some(dt),
+            _ => None,
+        }
+    }
+
+    /// Returns the value as a duration, if it is a duration.
+    pub fn as_duration(&self) -> Option<&Duration> {
+        match self {
+            DataValue::Duration(d) => Some(d),
             _ => None,
         }
     }
@@ -200,6 +243,12 @@ impl<'a> DataValue<'a> {
 
             // Object case - only empty object is false
             DataValue::Object(items) => !items.is_empty(),
+
+            // DateTime always coerces to true
+            DataValue::DateTime(_) => true,
+
+            // Duration is false if zero
+            DataValue::Duration(d) => !d.is_zero(),
         }
     }
 
@@ -265,6 +314,18 @@ impl<'a> DataValue<'a> {
                 }
             }
 
+            // DateTime can be converted to Unix timestamp
+            DataValue::DateTime(dt) => {
+                let timestamp = dt.timestamp_millis() as f64 / 1000.0;
+                Some(NumberValue::Float(timestamp))
+            }
+
+            // Duration can be converted to total seconds
+            DataValue::Duration(d) => {
+                let total_seconds = d.num_seconds();
+                Some(NumberValue::Integer(total_seconds))
+            }
+
             DataValue::Array(_) => None,
 
             DataValue::Object(_) => None,
@@ -293,6 +354,20 @@ impl<'a> DataValue<'a> {
                 DataValue::String(arena.alloc_str(&result))
             }
             DataValue::Object(_) => DataValue::String(arena.alloc_str("[object Object]")),
+            DataValue::DateTime(dt) => {
+                // Format datetime in ISO 8601 format
+                let iso_string = dt.to_rfc3339();
+                DataValue::String(arena.alloc_str(&iso_string))
+            }
+            DataValue::Duration(d) => {
+                // Format duration as 1d:2h:3m:4s
+                let days = d.num_days();
+                let hours = d.num_hours() % 24;
+                let minutes = d.num_minutes() % 60;
+                let seconds = d.num_seconds() % 60;
+                let formatted = format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds);
+                DataValue::String(arena.alloc_str(&formatted))
+            }
         }
     }
 
@@ -324,6 +399,8 @@ impl<'a> DataValue<'a> {
             DataValue::String(_) => "string",
             DataValue::Array(_) => "array",
             DataValue::Object(_) => "object",
+            DataValue::DateTime(_) => "datetime",
+            DataValue::Duration(_) => "duration",
         }
     }
 
@@ -350,6 +427,10 @@ impl<'a> DataValue<'a> {
                 // Finally, compare the actual strings
                 a == b
             }
+
+            // DateTime and Duration direct comparisons
+            (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
+            (DataValue::Duration(a), DataValue::Duration(b)) => a == b,
 
             // Different types with coercion
             (DataValue::Null, DataValue::Bool(b)) => !b,
@@ -423,6 +504,8 @@ impl<'a> DataValue<'a> {
             (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
             (DataValue::Number(a), DataValue::Number(b)) => a == b,
             (DataValue::String(a), DataValue::String(b)) => a == b,
+            (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
+            (DataValue::Duration(a), DataValue::Duration(b)) => a == b,
             (DataValue::Array(a), DataValue::Array(b)) => {
                 if a.len() != b.len() {
                     return false;
@@ -476,6 +559,10 @@ impl PartialOrd for DataValue<'_> {
             }
             (DataValue::Bool(a), DataValue::Bool(b)) => a.partial_cmp(b),
             (DataValue::Null, DataValue::Null) => Some(Ordering::Equal),
+
+            // DateTime and Duration comparisons
+            (DataValue::DateTime(a), DataValue::DateTime(b)) => a.partial_cmp(b),
+            (DataValue::Duration(a), DataValue::Duration(b)) => a.partial_cmp(b),
 
             (DataValue::Array(a), DataValue::Array(b)) => {
                 // Fast path for empty arrays
@@ -569,6 +656,20 @@ impl fmt::Display for DataValue<'_> {
                 }
                 write!(f, "}}")
             }
+            DataValue::DateTime(dt) => {
+                write!(f, "{{\"datetime\": \"{}\"}}", dt.to_rfc3339())
+            }
+            DataValue::Duration(d) => {
+                let days = d.num_days();
+                let hours = d.num_hours() % 24;
+                let minutes = d.num_minutes() % 60;
+                let seconds = d.num_seconds() % 60;
+                write!(
+                    f,
+                    "{{\"timestamp\": \"{}d:{}h:{}m:{}s\"}}",
+                    days, hours, minutes, seconds
+                )
+            }
         }
     }
 }
@@ -577,6 +678,7 @@ impl fmt::Display for DataValue<'_> {
 mod tests {
     use super::*;
     use crate::arena::DataArena;
+    use chrono::TimeZone;
 
     #[test]
     fn test_data_value_creation() {
@@ -598,6 +700,24 @@ mod tests {
         assert_eq!(integer.as_i64(), Some(42));
         assert_eq!(float.as_f64(), Some(3.14));
         assert_eq!(string.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn test_datetime_and_duration() {
+        // Test datetime creation and access
+        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt_value = DataValue::datetime(dt);
+
+        assert!(dt_value.is_datetime());
+        assert_eq!(dt_value.as_datetime(), Some(&dt));
+
+        // Test duration creation and access
+        let duration =
+            Duration::days(1) + Duration::hours(2) + Duration::minutes(3) + Duration::seconds(4);
+        let duration_value = DataValue::duration(duration);
+
+        assert!(duration_value.is_duration());
+        assert_eq!(duration_value.as_duration(), Some(&duration));
     }
 
     #[test]
@@ -644,6 +764,16 @@ mod tests {
         assert!(!DataValue::string(&arena, "").coerce_to_bool());
         assert!(DataValue::string(&arena, "hello").coerce_to_bool());
 
+        // Test datetime and duration boolean coercion
+        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        assert!(DataValue::datetime(dt).coerce_to_bool());
+
+        let duration = Duration::seconds(0);
+        assert!(!DataValue::duration(duration).coerce_to_bool());
+
+        let non_zero_duration = Duration::seconds(10);
+        assert!(DataValue::duration(non_zero_duration).coerce_to_bool());
+
         // Number coercion
         assert_eq!(
             DataValue::null().coerce_to_number(),
@@ -662,6 +792,17 @@ mod tests {
             Some(NumberValue::Float(3.14))
         );
 
+        // Test datetime and duration number coercion
+        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt_num = DataValue::datetime(dt).coerce_to_number();
+        assert!(dt_num.is_some());
+
+        let duration = Duration::seconds(93784); // 1d:2h:3m:4s
+        assert_eq!(
+            DataValue::duration(duration).coerce_to_number(),
+            Some(NumberValue::Integer(93784))
+        );
+
         // String coercion
         assert_eq!(
             DataValue::null().coerce_to_string(&arena).as_str(),
@@ -675,6 +816,19 @@ mod tests {
             DataValue::integer(42).coerce_to_string(&arena).as_str(),
             Some("42")
         );
+
+        // Test datetime and duration string coercion
+        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt_value = DataValue::datetime(dt).coerce_to_string(&arena);
+        let dt_str = dt_value.as_str();
+        assert!(dt_str.is_some());
+        assert!(dt_str.unwrap().contains("2022-07-06T13:20:06"));
+
+        let duration =
+            Duration::days(1) + Duration::hours(2) + Duration::minutes(3) + Duration::seconds(4);
+        let dur_value = DataValue::duration(duration).coerce_to_string(&arena);
+        let dur_str = dur_value.as_str();
+        assert_eq!(dur_str, Some("1d:2h:3m:4s"));
     }
 
     #[test]
@@ -688,6 +842,22 @@ mod tests {
         assert!(DataValue::float(3.14) > DataValue::float(2.71));
         assert!(DataValue::string(&arena, "hello") == DataValue::string(&arena, "hello"));
         assert!(DataValue::string(&arena, "world") > DataValue::string(&arena, "hello"));
+
+        // Test datetime comparison
+        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt2 = Utc.with_ymd_and_hms(2022, 7, 7, 13, 20, 6).unwrap();
+
+        assert!(DataValue::datetime(dt1) < DataValue::datetime(dt2));
+        assert!(DataValue::datetime(dt2) > DataValue::datetime(dt1));
+        assert!(DataValue::datetime(dt1) == DataValue::datetime(dt1));
+
+        // Test duration comparison
+        let dur1 = Duration::days(1);
+        let dur2 = Duration::days(2);
+
+        assert!(DataValue::duration(dur1) < DataValue::duration(dur2));
+        assert!(DataValue::duration(dur2) > DataValue::duration(dur1));
+        assert!(DataValue::duration(dur1) == DataValue::duration(dur1));
 
         // Mixed types
         assert!(DataValue::integer(42) == DataValue::float(42.0));

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::value::DataValue;
     use crate::DataLogic;
+    use crate::value::DataValue;
 
     #[test]
     fn test_basic_builder() {

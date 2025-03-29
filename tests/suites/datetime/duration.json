@@ -1,0 +1,156 @@
+[
+    "# Duration creation and parsing",
+    {
+        "description": "Create a duration from string",
+        "rule": {"timestamp": "1d:2h:3m:4s"},
+        "data": null,
+        "result": {"timestamp": "1d:2h:3m:4s"}
+    },
+    {
+        "description": "Create a duration with days only",
+        "rule": {"timestamp": "2d"},
+        "data": null,
+        "result": {"timestamp": "2d:0h:0m:0s"}
+    },
+    {
+        "description": "Create a duration with hours only",
+        "rule": {"timestamp": "5h"},
+        "data": null,
+        "result": {"timestamp": "0d:5h:0m:0s"}
+    },
+    {
+        "description": "Create a duration with minutes only",
+        "rule": {"timestamp": "30m"},
+        "data": null,
+        "result": {"timestamp": "0d:0h:30m:0s"}
+    },
+    {
+        "description": "Create a duration with seconds only",
+        "rule": {"timestamp": "45s"},
+        "data": null,
+        "result": {"timestamp": "0d:0h:0m:45s"}
+    },
+
+    "# Duration arithmetic operations",
+    {
+        "description": "Multiply duration by number",
+        "rule": {"*": [
+            {"timestamp": "1d"},
+            2
+        ]},
+        "data": null,
+        "result": {"timestamp": "2d:0h:0m:0s"}
+    },
+    {
+        "description": "Divide duration by number",
+        "rule": {"/": [
+            {"timestamp": "2d"},
+            2
+        ]},
+        "data": null,
+        "result": {"timestamp": "1d:0h:0m:0s"}
+    },
+    {
+        "description": "Add two durations",
+        "rule": {"+": [
+            {"timestamp": "1d"},
+            {"timestamp": "12h"}
+        ]},
+        "data": null,
+        "result": {"timestamp": "1d:12h:0m:0s"}
+    },
+    {
+        "description": "Subtract two durations",
+        "rule": {"-": [
+            {"timestamp": "2d"},
+            {"timestamp": "12h"}
+        ]},
+        "data": null,
+        "result": {"timestamp": "1d:12h:0m:0s"}
+    },
+    {
+        "description": "Complex duration expression",
+        "rule": {"+": [
+            {"*": [{"timestamp": "1d"}, 2]},
+            {"timestamp": "12h"}
+        ]},
+        "data": null,
+        "result": {"timestamp": "2d:12h:0m:0s"}
+    },
+
+    "# Duration comparisons",
+    {
+        "description": "Equal durations",
+        "rule": {"==": [
+            {"timestamp": "1d"},
+            {"timestamp": "24h"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Not equal durations",
+        "rule": {"!=": [
+            {"timestamp": "1d"},
+            {"timestamp": "12h"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Greater than comparison for durations",
+        "rule": {">": [
+            {"timestamp": "2d"},
+            {"timestamp": "1d"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Less than comparison for durations",
+        "rule": {"<": [
+            {"timestamp": "12h"},
+            {"timestamp": "1d"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Greater than or equal comparison for durations",
+        "rule": {">=": [
+            {"timestamp": "24h"},
+            {"timestamp": "1d"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Less than or equal comparison for durations",
+        "rule": {"<=": [
+            {"timestamp": "1d"},
+            {"timestamp": "24h"}
+        ]},
+        "data": null,
+        "result": true
+    },
+
+    "# Using duration with variables",
+    {
+        "description": "Compare duration from variable",
+        "rule": {">": [
+            {"val": "duration1"},
+            {"timestamp": "1h"}
+        ]},
+        "data": {"duration1": {"timestamp": "2h"}},
+        "result": true
+    },
+    {
+        "description": "Multiply duration from variable",
+        "rule": {"*": [
+            {"val": "duration"},
+            3
+        ]},
+        "data": {"duration": {"timestamp": "1d"}},
+        "result": {"timestamp": "3d:0h:0m:0s"}
+    }
+]

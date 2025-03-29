@@ -8,6 +8,7 @@ use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
+use chrono::{DateTime, Duration, Utc};
 
 /// Enumeration of comparison operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +31,51 @@ pub enum ComparisonOp {
     LessThanOrEqual,
 }
 
+/// Helper function to extract a datetime from a direct DateTime value or an object with a "datetime" key
+fn extract_datetime<'a>(
+    value: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Option<&'a DateTime<Utc>> {
+    match value {
+        DataValue::DateTime(dt) => Some(dt),
+        DataValue::Object(entries) => {
+            // Look for a "datetime" entry
+            entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("datetime"))
+                .and_then(|(_, value)| {
+                    if let DataValue::DateTime(dt) = value {
+                        Some(dt)
+                    } else {
+                        None
+                    }
+                })
+        }
+        _ => None,
+    }
+}
+
+/// Helper function to extract a duration from a direct Duration value or an object with a "timestamp" key
+fn extract_duration<'a>(value: &'a DataValue<'a>, arena: &'a DataArena) -> Option<&'a Duration> {
+    match value {
+        DataValue::Duration(dur) => Some(dur),
+        DataValue::Object(entries) => {
+            // Look for a "timestamp" entry
+            entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("timestamp"))
+                .and_then(|(_, value)| {
+                    if let DataValue::Duration(dur) = value {
+                        Some(dur)
+                    } else {
+                        None
+                    }
+                })
+        }
+        _ => None,
+    }
+}
+
 /// Evaluates an equality comparison.
 pub fn eval_equal<'a>(
     args: &'a [&'a Token<'a>],
@@ -45,6 +91,30 @@ pub fn eval_equal<'a>(
 
         // Fast path for identical references
         if std::ptr::eq(left as *const DataValue, right as *const DataValue) {
+            continue;
+        }
+
+        // Try to extract datetime values
+        let left_dt = extract_datetime(left, arena);
+        let right_dt = extract_datetime(right, arena);
+
+        // If both values are datetimes, compare them
+        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+            if left_dt != right_dt {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
+        // Try to extract duration values
+        let left_dur = extract_duration(left, arena);
+        let right_dur = extract_duration(right, arena);
+
+        // If both values are durations, compare them
+        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+            if left_dur != right_dur {
+                return Ok(arena.false_value());
+            }
             continue;
         }
 
@@ -101,6 +171,7 @@ pub fn eval_equal<'a>(
             }
             (DataValue::Object(_), _) | (_, DataValue::Object(_)) => {
                 // Objects can't be compared with anything else
+                // But we already handled the case where both are datetime objects above
                 return Err(LogicError::NaNError);
             }
             _ => {
@@ -162,6 +233,30 @@ pub fn eval_not_equal<'a>(
     for i in 0..args.len() - 1 {
         let left = evaluate(args[i], arena)?;
         let right = evaluate(args[i + 1], arena)?;
+
+        // Try to extract datetime values
+        let left_dt = extract_datetime(left, arena);
+        let right_dt = extract_datetime(right, arena);
+
+        // If both values are datetimes, compare them
+        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+            if left_dt == right_dt {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
+        // Try to extract duration values
+        let left_dur = extract_duration(left, arena);
+        let right_dur = extract_duration(right, arena);
+
+        // If both values are durations, compare them
+        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+            if left_dur == right_dur {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
@@ -229,6 +324,30 @@ pub fn eval_greater_than<'a>(
         let left = evaluate(args[i], arena)?;
         let right = evaluate(args[i + 1], arena)?;
 
+        // Try to extract datetime values
+        let left_dt = extract_datetime(left, arena);
+        let right_dt = extract_datetime(right, arena);
+
+        // If both values are datetimes, compare them
+        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+            if left_dt <= right_dt {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
+        // Try to extract duration values
+        let left_dur = extract_duration(left, arena);
+        let right_dur = extract_duration(right, arena);
+
+        // If both values are durations, compare them
+        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+            if left_dur <= right_dur {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
                 if a.as_f64() <= b.as_f64() {
@@ -274,6 +393,30 @@ pub fn eval_greater_than_or_equal<'a>(
         let left = evaluate(args[i], arena)?;
         let right = evaluate(args[i + 1], arena)?;
 
+        // Try to extract datetime values
+        let left_dt = extract_datetime(left, arena);
+        let right_dt = extract_datetime(right, arena);
+
+        // If both values are datetimes, compare them
+        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+            if left_dt < right_dt {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
+        // Try to extract duration values
+        let left_dur = extract_duration(left, arena);
+        let right_dur = extract_duration(right, arena);
+
+        // If both values are durations, compare them
+        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+            if left_dur < right_dur {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
                 if a.as_f64() < b.as_f64() {
@@ -291,7 +434,7 @@ pub fn eval_greater_than_or_equal<'a>(
                 }
             }
             (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.false_value());
+                return Ok(arena.true_value());
             }
             _ => {
                 let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
@@ -318,6 +461,30 @@ pub fn eval_less_than<'a>(
     for i in 0..args.len() - 1 {
         let left = evaluate(args[i], arena)?;
         let right = evaluate(args[i + 1], arena)?;
+
+        // Try to extract datetime values
+        let left_dt = extract_datetime(left, arena);
+        let right_dt = extract_datetime(right, arena);
+
+        // If both values are datetimes, compare them
+        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+            if left_dt >= right_dt {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
+        // Try to extract duration values
+        let left_dur = extract_duration(left, arena);
+        let right_dur = extract_duration(right, arena);
+
+        // If both values are durations, compare them
+        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+            if left_dur >= right_dur {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
 
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
@@ -364,6 +531,30 @@ pub fn eval_less_than_or_equal<'a>(
         let left = evaluate(args[i], arena)?;
         let right = evaluate(args[i + 1], arena)?;
 
+        // Try to extract datetime values
+        let left_dt = extract_datetime(left, arena);
+        let right_dt = extract_datetime(right, arena);
+
+        // If both values are datetimes, compare them
+        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+            if left_dt > right_dt {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
+        // Try to extract duration values
+        let left_dur = extract_duration(left, arena);
+        let right_dur = extract_duration(right, arena);
+
+        // If both values are durations, compare them
+        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+            if left_dur > right_dur {
+                return Ok(arena.false_value());
+            }
+            continue;
+        }
+
         match (left, right) {
             (DataValue::Number(a), DataValue::Number(b)) => {
                 if a.as_f64() > b.as_f64() {
@@ -381,7 +572,7 @@ pub fn eval_less_than_or_equal<'a>(
                 }
             }
             (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.false_value());
+                return Ok(arena.true_value());
             }
             _ => {
                 let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;

@@ -1,0 +1,202 @@
+[
+    "# Accessing DateTime properties with val operator",
+    {
+        "description": "Access year property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "year"
+        ]},
+        "data": null,
+        "result": 2022
+    },
+    {
+        "description": "Access month property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "month"
+        ]},
+        "data": null,
+        "result": 7
+    },
+    {
+        "description": "Access day property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "day"
+        ]},
+        "data": null,
+        "result": 6
+    },
+    {
+        "description": "Access hour property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "hour"
+        ]},
+        "data": null,
+        "result": 13
+    },
+    {
+        "description": "Access minute property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "minute"
+        ]},
+        "data": null,
+        "result": 20
+    },
+    {
+        "description": "Access second property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "second"
+        ]},
+        "data": null,
+        "result": 6
+    },
+    {
+        "description": "Access timestamp property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "timestamp"
+        ]},
+        "data": null,
+        "result_type": "number"
+    },
+    {
+        "description": "Access iso property from datetime",
+        "rule": {"val": [
+            {"datetime": "2022-07-06T13:20:06Z"},
+            "iso"
+        ]},
+        "data": null,
+        "result": "2022-07-06T13:20:06Z"
+    },
+    
+    "# Accessing Duration properties with val operator",
+    {
+        "description": "Access days property from duration",
+        "rule": {"val": [
+            {"timestamp": "1d:2h:3m:4s"},
+            "days"
+        ]},
+        "data": null,
+        "result": 1
+    },
+    {
+        "description": "Access hours property from duration",
+        "rule": {"val": [
+            {"timestamp": "1d:2h:3m:4s"},
+            "hours"
+        ]},
+        "data": null,
+        "result": 2
+    },
+    {
+        "description": "Access minutes property from duration",
+        "rule": {"val": [
+            {"timestamp": "1d:2h:3m:4s"},
+            "minutes"
+        ]},
+        "data": null,
+        "result": 3
+    },
+    {
+        "description": "Access seconds property from duration",
+        "rule": {"val": [
+            {"timestamp": "1d:2h:3m:4s"},
+            "seconds"
+        ]},
+        "data": null,
+        "result": 4
+    },
+    {
+        "description": "Access total_seconds property from duration",
+        "rule": {"val": [
+            {"timestamp": "1d:2h:3m:4s"},
+            "total_seconds"
+        ]},
+        "data": null,
+        "result": 93784
+    },
+    
+    "# Accessing DateTime properties from variables",
+    {
+        "description": "Access year from datetime variable",
+        "rule": {"val": [
+            {"val": "date"},
+            "year"
+        ]},
+        "data": {"date": {"datetime": "2022-07-06T13:20:06Z"}},
+        "result": 2022
+    },
+    {
+        "description": "Access month from datetime variable",
+        "rule": {"val": [
+            {"val": "date"},
+            "month"
+        ]},
+        "data": {"date": {"datetime": "2022-07-06T13:20:06Z"}},
+        "result": 7
+    },
+    {
+        "description": "Arithmetic with property from datetime variable",
+        "rule": {"+": [
+            {"val": [{"val": "date"}, "year"]},
+            1
+        ]},
+        "data": {"date": {"datetime": "2022-07-06T13:20:06Z"}},
+        "result": 2023
+    },
+    
+    "# Accessing Duration properties from variables",
+    {
+        "description": "Access days from duration variable",
+        "rule": {"val": [
+            {"val": "duration"},
+            "days"
+        ]},
+        "data": {"duration": {"timestamp": "1d:2h:3m:4s"}},
+        "result": 1
+    },
+    {
+        "description": "Access hours from duration variable",
+        "rule": {"val": [
+            {"val": "duration"},
+            "hours"
+        ]},
+        "data": {"duration": {"timestamp": "1d:2h:3m:4s"}},
+        "result": 2
+    },
+    {
+        "description": "Arithmetic with property from duration variable",
+        "rule": {"*": [
+            {"val": [{"val": "duration"}, "days"]},
+            2
+        ]},
+        "data": {"duration": {"timestamp": "1d:2h:3m:4s"}},
+        "result": 2
+    },
+    
+    "# Conditional tests with datetime and duration properties",
+    {
+        "description": "Conditional based on year property",
+        "rule": {"if": [
+            {">": [{"val": [{"val": "date"}, "year"]}, 2020]},
+            "Recent date",
+            "Old date"
+        ]},
+        "data": {"date": {"datetime": "2022-07-06T13:20:06Z"}},
+        "result": "Recent date"
+    },
+    {
+        "description": "Conditional based on duration days property",
+        "rule": {"if": [
+            {">": [{"val": [{"val": "duration"}, "days"]}, 0]},
+            "At least one day",
+            "Less than a day"
+        ]},
+        "data": {"duration": {"timestamp": "1d:2h:3m:4s"}},
+        "result": "At least one day"
+    }
+]

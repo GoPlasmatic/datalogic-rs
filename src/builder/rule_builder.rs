@@ -6,6 +6,7 @@ use super::arithmetic_builder::ArithmeticBuilder;
 use super::array_builder::ArrayBuilder;
 use super::comparison_builder::ComparisonBuilder;
 use super::control_builder::ControlBuilder;
+use super::datetime_builder::DateTimeBuilder;
 use super::string_builder::StringBuilder;
 use super::variable_builder::VariableBuilder;
 
@@ -52,6 +53,11 @@ impl<'a> RuleBuilder<'a> {
     /// Creates a string operation builder.
     pub fn string_ops(&self) -> StringBuilder<'a> {
         StringBuilder::new(self.arena)
+    }
+
+    /// Creates a datetime operation builder.
+    pub fn datetime(&self) -> DateTimeBuilder<'a> {
+        DateTimeBuilder::new(self.arena)
     }
 
     /// Creates a variable reference.

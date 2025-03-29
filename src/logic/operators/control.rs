@@ -25,10 +25,7 @@ pub enum ControlOp {
 }
 
 /// Evaluates an if operation.
-pub fn eval_if<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_if<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.is_empty() {
         return Ok(arena.null_value());
@@ -59,10 +56,7 @@ pub fn eval_if<'a>(
 }
 
 /// Evaluates an AND operation.
-pub fn eval_and<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_and<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
     if args.is_empty() {
         return Ok(arena.null_value());
@@ -91,10 +85,7 @@ pub fn eval_and<'a>(
 }
 
 /// Evaluates an OR operation.
-pub fn eval_or<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_or<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
     if args.is_empty() {
         return Ok(arena.false_value());
@@ -123,10 +114,7 @@ pub fn eval_or<'a>(
 }
 
 /// Evaluates a logical NOT operation.
-pub fn eval_not<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+pub fn eval_not<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {
         return Err(LogicError::InvalidArgumentsError);
     }
