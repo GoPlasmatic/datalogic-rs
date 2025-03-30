@@ -16,13 +16,13 @@ fn basic_example() {
     // Parse and evaluate in one step
     let result = dl
         .evaluate_str(
-            r#"{ ">": [{"var": "temp"}, 100] }"#,
+            r#"{ "now": [] }"#,
             r#"{"temp": 110, "name": "user"}"#,
             None,
         )
         .unwrap();
 
-    println!("Is temperature > 100? {}\n", result);
+    println!("Datetime: {}\n", result);
 }
 
 fn step_by_step_example() {

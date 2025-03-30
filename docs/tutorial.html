@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataLogic-rs Tutorial - Expression Evaluation Engine</title>
+    
+    <!-- Material Design -->
+    <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <!-- Code highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+</head>
+<body class="mdc-typography">
+    <div class="container">
+        <header class="mdc-top-app-bar">
+            <div class="mdc-top-app-bar__row">
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
+                    <h1 class="mdc-typography--headline4">DataLogic-rs</h1>
+                </section>
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end">
+                    <nav class="navigation">
+                        <a href="index.html" class="mdc-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Home</span>
+                        </a>
+                        <a href="tutorial.html" class="mdc-button mdc-button--unelevated">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Tutorial</span>
+                        </a>
+                        <a href="operators.html" class="mdc-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Operators</span>
+                        </a>
+                        <a href="playground.html" class="mdc-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Playground</span>
+                        </a>
+                        <a href="https://github.com/codetiger/datalogic-rs" class="mdc-button" target="_blank">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">GitHub</span>
+                        </a>
+                    </nav>
+                </section>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <h1 class="mdc-typography--headline4">Getting Started with DataLogic-rs</h1>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Introduction</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs is a powerful expression evaluation engine for Rust that implements the
+                    JSONLogic specification and will support additional expression formats in the future. 
+                    This tutorial will guide you through setting up and using DataLogic-rs in your Rust projects.
+                </p>
+            </section>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Installation</h2>
+                <p class="mdc-typography--body1">
+                    Add DataLogic-rs to your <code>Cargo.toml</code> file:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-toml">[dependencies]
+datalogic-rs = "3.0.7"</code></pre>
+                </div>
+            </section>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Basic Usage</h2>
+                <p class="mdc-typography--body1">
+                    Here's a simple example of how to use DataLogic-rs:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    // Create a new DataLogic instance
+    let dl = DataLogic::new();
+    
+    // Define a rule and data
+    let rule_str = r#"{"==":[{"val":"temperature"},0]}"#;
+    let data_str = r#"{"temperature":0}"#;
+    
+    // Evaluate the rule against the data
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    
+    println!("Result: {}", result); // Prints: true
+}</code></pre>
+                </div>
+                
+                <p class="mdc-typography--body1">
+                    This example checks if the temperature in the data is equal to 0.
+                </p>
+            </section>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Working with Complex Rules</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs can handle complex rules and data structures:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    let dl = DataLogic::new();
+    
+    // A complex rule that filters items based on their quantity
+    let rule_str = r#"{
+        "filter": [
+            {"val": "items"}, 
+            {">=": [{"val": "qty"}, 2]}
+        ]
+    }"#;
+    
+    let data_str = r#"{
+        "items": [
+            {"id": "apple", "qty": 1},
+            {"id": "banana", "qty": 3},
+            {"id": "orange", "qty": 2}
+        ]
+    }"#;
+    
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    
+    println!("Items with qty >= 2: {}", result);
+    // Prints items that have qty >= 2 (banana and orange)
+}</code></pre>
+                </div>
+            </section>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Custom Operators</h2>
+                <p class="mdc-typography--body1">
+                    You can extend DataLogic-rs with your own custom operators:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, Value};
+use std::collections::HashMap;
+
+fn main() {
+    let mut dl = DataLogic::new();
+    
+    // Add a custom "double" operator that multiplies a number by 2
+    dl.add_operation("double", |args, data, _ops| {
+        if args.is_empty() {
+            return Value::Null;
+        }
+        
+        // Evaluate the first argument
+        let value = dl.apply(&args[0], data, None);
+        
+        // Check if it's a number and double it
+        if let Value::Number(n) = value {
+            Value::Number(n * 2.0)
+        } else {
+            Value::Null
+        }
+    });
+    
+    // Use the custom operator
+    let rule_str = r#"{"double":{"val":"value"}}"#;
+    let data_str = r#"{"value":5}"#;
+    
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    
+    println!("Result: {}", result); // Prints: 10
+}</code></pre>
+                </div>
+            </section>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">WebAssembly Support</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs can be compiled to WebAssembly for use in web applications:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">// In your lib.rs
+use wasm_bindgen::prelude::*;
+use datalogic_rs::DataLogic;
+
+#[wasm_bindgen]
+pub struct JsDataLogic {
+    engine: DataLogic,
+}
+
+#[wasm_bindgen]
+impl JsDataLogic {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        JsDataLogic {
+            engine: DataLogic::new(),
+        }
+    }
+    
+    #[wasm_bindgen]
+    pub fn evaluate(&self, rule: &str, data: &str) -> Result<String, JsValue> {
+        match self.engine.evaluate_str(rule, data, None) {
+            Ok(result) => Ok(result.to_string()),
+            Err(e) => Err(JsValue::from_str(&e.to_string())),
+        }
+    }
+}</code></pre>
+                </div>
+                
+                <p class="mdc-typography--body1">
+                    Then in JavaScript, you can use it like this:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-javascript">import { JsDataLogic } from 'datalogic-rs';
+
+const logic = new JsDataLogic();
+const rule = '{"==":[{"val":"temperature"},0]}';
+const data = '{"temperature":0}';
+
+try {
+    const result = logic.evaluate(rule, data);
+    console.log(`Result: ${result}`); // Outputs: Result: true
+} catch (error) {
+    console.error(`Error: ${error}`);
+}</code></pre>
+                </div>
+            </section>
+            
+            <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Next Steps</h2>
+                <p class="mdc-typography--body1">
+                    Now that you understand the basics of DataLogic-rs, you can:
+                </p>
+                
+                <ul class="mdc-typography--body1">
+                    <li>Explore the <a href="operators.html">Operators Documentation</a> to learn about all available operators</li>
+                    <li>Try out examples in the <a href="playground.html">Interactive Playground</a></li>
+                    <li>Check out the <a href="https://github.com/codetiger/datalogic-rs">GitHub repository</a> for more examples and advanced usage</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer class="footer mdc-typography--caption">
+            <p>DataLogic-rs is a Rust implementation compatible with 
+                <a href="https://jsonlogic.com" target="_blank">JSONLogic</a> and other expression formats. 
+                View the <a href="https://github.com/codetiger/datalogic-rs" target="_blank">source code</a>.
+            </p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+    <script type="module" src="jsonlogic.js"></script>
+    <script type="module">
+        import { JsonLogicEvaluator } from './jsonlogic.js';
+
+        let evaluator;
+
+        async function initWasm() {
+            evaluator = new JsonLogicEvaluator();
+            await evaluator.initialize();
+        }
+
+        function setupEditor(ruleId, dataId, resultId, initialRule, initialData) {
+            const rulesEditor = CodeMirror.fromTextArea(document.getElementById(ruleId), {
+                mode: { name: 'javascript', json: true },
+                theme: 'material',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                tabSize: 2
+            });
+
+            const dataEditor = CodeMirror.fromTextArea(document.getElementById(dataId), {
+                mode: { name: 'javascript', json: true },
+                theme: 'material',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                tabSize: 2
+            });
+
+            const resultEditor = CodeMirror.fromTextArea(document.getElementById(resultId), {
+                mode: { name: 'javascript', json: true },
+                theme: 'material',
+                lineNumbers: true,
+                matchBrackets: true,
+                readOnly: true,
+                tabSize: 2
+            });
+            
+            // Set initial values
+            rulesEditor.setValue(JSON.stringify(initialRule, null, 2));
+            dataEditor.setValue(JSON.stringify(initialData, null, 2));
+            
+            // Mark result editor as readonly
+            resultEditor.getWrapperElement().classList.add('CodeMirror-readonly');
+            
+            // Add change handlers to update result
+            const updateResult = async () => {
+                try {
+                    const rules = JSON.parse(rulesEditor.getValue());
+                    let data = {};
+                    
+                    try {
+                        const dataValue = dataEditor.getValue().trim();
+                        if (dataValue) {
+                            data = JSON.parse(dataValue);
+                        }
+                    } catch (err) {
+                        resultEditor.setValue(`Data Error: ${err.message}`);
+                        return;
+                    }
+                    
+                    const result = await evaluator.evaluate(rules, data);
+                    
+                    if (result.success) {
+                        resultEditor.setValue(JSON.stringify(result.result, null, 2));
+                    } else {
+                        resultEditor.setValue(`Error: ${result.error}`);
+                    }
+                } catch (err) {
+                    resultEditor.setValue(`Rule Error: ${err.message}`);
+                }
+            };
+            
+            rulesEditor.on('change', updateResult);
+            dataEditor.on('change', updateResult);
+            
+            // Initial evaluation
+            updateResult();
+            
+            return { rulesEditor, dataEditor, resultEditor };
+        }
+        
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initWasm();
+            
+            // Initialize code highlighting
+            hljs.highlightAll();
+            
+            // Set up the tutorial examples
+            setupEditor('intro-rule-editor', 'intro-data-editor', 'intro-result-editor', 
+                { "==": [1, 1] }, {});
+                
+            setupEditor('comparison-rule-editor', 'comparison-data-editor', 'comparison-result-editor', 
+                { "==": [3, 3] }, {});
+                
+            setupEditor('arithmetic-rule-editor', 'arithmetic-data-editor', 'arithmetic-result-editor', 
+                { "+": [2, 3] }, {});
+                
+            setupEditor('variables-rule-editor', 'variables-data-editor', 'variables-result-editor', 
+                { "val": ["user", "name"] }, { user: { name: "John", age: 30 } });
+                
+            setupEditor('array-rule-editor', 'array-data-editor', 'array-result-editor', 
+                { "some": [{ "val": "items" }, { ">=": [{ "val": "qty" }, 10] }] }, 
+                { items: [{ qty: 5, id: "A" }, { qty: 15, id: "B" }, { qty: 3, id: "C" }] });
+                
+            setupEditor('condition-rule-editor', 'condition-data-editor', 'condition-result-editor', 
+                { "if": [{ "<": [{ "val": "age" }, 18] }, "Minor", "Adult"] }, 
+                { age: 15 });
+                
+            setupEditor('complex-rule-editor', 'complex-data-editor', 'complex-result-editor', 
+                { "and": [
+                    { ">=": [{ "val": "age" }, 18] },
+                    { "or": [
+                        { "==": [{ "val": "membership" }, "premium"] },
+                        { ">=": [{ "val": "purchases" }, 5] }
+                    ]}
+                ]}, 
+                { age: 25, membership: "basic", purchases: 7 });
+                
+            setupEditor('try-rule-editor', 'try-data-editor', 'try-result-editor', 
+                { "try": [{ "val": ["non_existent", "property"] }, { "throw": "Property not found!" }] }, 
+                {});
+                
+            // Set up navigation
+            const navLinks = document.querySelectorAll('.tutorial-nav-list a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const targetId = link.getAttribute('href').substring(1);
+                    document.getElementById(targetId).scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+            
+            // Initialize MDC components
+            mdc.autoInit();
+            
+            // Initialize ripple effect for all buttons
+            const buttons = document.querySelectorAll('.mdc-button');
+            buttons.forEach(button => {
+                mdc.ripple.MDCRipple.attachTo(button);
+            });
+        });
+    </script>
+</body>
+</html> 

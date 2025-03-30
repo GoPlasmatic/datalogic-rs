@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operators - DataLogic-rs</title>
+    
+    <!-- Material Design -->
+    <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Code highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+</head>
+<body class="mdc-typography">
+    <div class="container">
+        <header class="mdc-top-app-bar">
+            <div class="mdc-top-app-bar__row">
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
+                    <h1 class="mdc-typography--headline4">DataLogic-rs</h1>
+                </section>
+                <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end">
+                    <nav class="navigation">
+                        <a href="index.html" class="mdc-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Home</span>
+                        </a>
+                        <a href="tutorial.html" class="mdc-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Tutorial</span>
+                        </a>
+                        <a href="operators.html" class="mdc-button mdc-button--unelevated">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Operators</span>
+                        </a>
+                        <a href="playground.html" class="mdc-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Playground</span>
+                        </a>
+                        <a href="https://github.com/codetiger/datalogic-rs" class="mdc-button" target="_blank">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">GitHub</span>
+                        </a>
+                    </nav>
+                </section>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <h1 class="mdc-typography--headline4">Operators Reference</h1>
+            <p class="mdc-typography--body1">
+                DataLogic-rs provides a comprehensive set of operators for building powerful expressions. 
+                These operators are organized into categories based on their functionality.
+            </p>
+            
+            <div class="operators-grid">
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">calculate</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Arithmetic Operators</h2>
+                            <p class="mdc-typography--body2">Perform mathematical calculations: +, -, *, /, %, min, max</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">+</span> Addition</li>
+                                <li><span class="operator-symbol">-</span> Subtraction</li>
+                                <li><span class="operator-symbol">*</span> Multiplication</li>
+                                <li><span class="operator-symbol">/</span> Division</li>
+                                <li><span class="operator-symbol">%</span> Modulo</li>
+                                <li><span class="operator-symbol">min</span> Minimum</li>
+                                <li><span class="operator-symbol">max</span> Maximum</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/arithmetic.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">compare_arrows</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Comparison Operators</h2>
+                            <p class="mdc-typography--body2">Compare values: ==, ===, !=, !==, >, >=, <, <=</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">==</span> Equal</li>
+                                <li><span class="operator-symbol">===</span> Strict Equal</li>
+                                <li><span class="operator-symbol">!=</span> Not Equal</li>
+                                <li><span class="operator-symbol">!==</span> Strict Not Equal</li>
+                                <li><span class="operator-symbol">&gt;</span> Greater Than</li>
+                                <li><span class="operator-symbol">&lt;</span> Less Than</li>
+                                <li><span class="operator-symbol">&gt;=</span> Greater Than or Equal</li>
+                                <li><span class="operator-symbol">&lt;=</span> Less Than or Equal</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/comparison.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">view_array</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Array Operators</h2>
+                            <p class="mdc-typography--body2">Manipulate arrays: map, filter, reduce, some, all, merge</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">map</span> Transform each item</li>
+                                <li><span class="operator-symbol">filter</span> Select matching items</li>
+                                <li><span class="operator-symbol">reduce</span> Accumulate values</li>
+                                <li><span class="operator-symbol">all</span> Check if all items match</li>
+                                <li><span class="operator-symbol">some</span> Check if any item matches</li>
+                                <li><span class="operator-symbol">merge</span> Combine arrays</li>
+                                <li><span class="operator-symbol">in</span> Check if value exists in array</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/array.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">text_format</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">String Operators</h2>
+                            <p class="mdc-typography--body2">Manipulate strings: cat, substr, in, trim, length</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">cat</span> Concatenate strings</li>
+                                <li><span class="operator-symbol">substr</span> Extract substring</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/string.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">tune</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Variable Operators</h2>
+                            <p class="mdc-typography--body2">Access data: var, missing, missing_some</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">var</span> Access variables from data</li>
+                                <li><span class="operator-symbol">missing</span> Check for missing fields</li>
+                                <li><span class="operator-symbol">missing_some</span> Check if some required fields exist</li>
+                                <li><span class="operator-symbol">val</span>Access values from data</li>
+                                <li><span class="operator-symbol">exists</span> Check if a value exists</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/variable.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">account_tree</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Control Flow Operators</h2>
+                            <p class="mdc-typography--body2">Control logic: if, and, or, !, ??</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">if</span> Conditional execution</li>
+                                <li><span class="operator-symbol">and</span> Logical AND</li>
+                                <li><span class="operator-symbol">or</span> Logical OR</li>
+                                <li><span class="operator-symbol">!</span> Logical NOT</li>
+                                <li><span class="operator-symbol">??</span> Null coalescing</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/control.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">schedule</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Date & Time Operators</h2>
+                            <p class="mdc-typography--body2">Work with dates: now, date_diff</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">now</span> Current timestamp</li>
+                                <li><span class="operator-symbol">date_diff</span> Calculate difference between dates</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/datetime.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">error_outline</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Error Handling Operators</h2>
+                            <p class="mdc-typography--body2">Handle errors: try, throw</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">try</span> Try an operation with fallback</li>
+                                <li><span class="operator-symbol">throw</span> Throw an error</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/error.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="operator-category-card mdc-card">
+                    <div class="mdc-card__primary-action" tabindex="0">
+                        <div class="operator-category-icon">
+                            <span class="material-icons">compare_arrows</span>
+                        </div>
+                        <div class="operator-category-content">
+                            <h2 class="mdc-typography--headline6">Coalescing Operator</h2>
+                            <p class="mdc-typography--body2">Handle null/undefined values with fallbacks</p>
+                            <ul class="operator-list">
+                                <li><span class="operator-symbol">??</span> Nullish coalescing operator</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mdc-card__actions">
+                        <div class="mdc-card__action-buttons">
+                            <a href="operators/coalesce.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">View Details</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <section class="advanced-section mdc-card">
+                <h2 class="mdc-typography--headline5">Custom Operators</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs allows you to extend the engine with custom operators. This provides 
+                    flexibility to implement domain-specific functionality beyond the standard operators.
+                </p>
+                
+                <div class="code-block">
+                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, Value};
+
+// Create a new instance
+let mut dl = DataLogic::new();
+
+// Add a custom operator that doubles a number
+dl.add_operation("double", |args, data, _ops| {
+    if args.is_empty() {
+        return Value::Null;
+    }
+    
+    // Evaluate the first argument
+    let value = dl.apply(&args[0], data, None);
+    
+    // Check if it's a number and double it
+    if let Value::Number(n) = value {
+        Value::Number(n * 2.0)
+    } else {
+        Value::Null
+    }
+});</code></pre>
+                </div>
+                
+                <a href="tutorial.html#custom-operators" class="mdc-button mdc-button--raised">
+                    <span class="mdc-button__ripple"></span>
+                    <span class="mdc-button__label">Learn More About Custom Operators</span>
+                </a>
+            </section>
+        </main>
+
+        <footer class="footer mdc-typography--caption">
+            <p>DataLogic-rs is a Rust implementation compatible with 
+                <a href="https://jsonlogic.com" target="_blank">JSONLogic</a> and other expression formats. 
+                View the <a href="https://github.com/codetiger/datalogic-rs" target="_blank">source code</a>.
+            </p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Material Design components
+            mdc.autoInit();
+            
+            // Initialize ripple effect for all buttons
+            const buttons = document.querySelectorAll('.mdc-button');
+            buttons.forEach(button => {
+                mdc.ripple.MDCRipple.attachTo(button);
+            });
+            
+            // Initialize ripple effect for all card actions
+            const cardActions = document.querySelectorAll('.mdc-card__primary-action');
+            cardActions.forEach(action => {
+                mdc.ripple.MDCRipple.attachTo(action);
+            });
+            
+            // Initialize code highlighting
+            hljs.highlightAll();
+        });
+    </script>
+
+    <style>
+        /* Improved grid layout */
+        .operators-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .operator-category-card {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .mdc-card__primary-action {
+            flex-grow: 1;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .operator-category-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            background-color: #f5f5f5;
+            border-radius: 50%;
+            margin-bottom: 1rem;
+        }
+        
+        .operator-category-icon .material-icons {
+            font-size: 24px;
+            color: #6200ee;
+        }
+        
+        .operator-category-content {
+            flex-grow: 1;
+        }
+        
+        .operator-list {
+            list-style: none;
+            padding-left: 0;
+            margin-top: 0.75rem;
+        }
+        
+        .operator-list li {
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .operator-symbol {
+            display: inline-block;
+            padding: 0.1rem 0.3rem;
+            margin-right: 0.5rem;
+            background-color: #f5f5f5;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.85rem;
+            min-width: 1.5rem;
+            text-align: center;
+        }
+        
+        .advanced-section {
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .operators-grid {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .operators-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</body>
+</html> 
