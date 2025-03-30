@@ -168,7 +168,7 @@ body {
 }
 
 .mdc-card__primary-action {
-    padding: calc(var(--spacing-unit) * 3);
+    padding: calc(var(--spacing-unit));
 }
 
 /* Features Section */
@@ -230,6 +230,106 @@ body {
 .code-block code.hljs {
     background: transparent;
     padding: 0;
+}
+
+/* Architecture Section */
+.architecture-section {
+    margin: calc(var(--spacing-unit) * 6) 0;
+}
+
+.architecture-diagram {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 2);
+    padding: calc(var(--spacing-unit) * 4) 0;
+    margin: calc(var(--spacing-unit) * 4) 0;
+    background-color: rgba(59, 130, 246, 0.03);
+    border-radius: var(--border-radius);
+}
+
+.diagram-layer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: calc(var(--spacing-unit) * 2);
+    width: 100%;
+    max-width: 800px;
+    position: relative;
+}
+
+.diagram-arrow {
+    font-size: 24px;
+    color: var(--secondary-color);
+}
+
+.layer-box {
+    background: white;
+    padding: calc(var(--spacing-unit) * 2);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    font-weight: 500;
+    border: 1px solid var(--divider-color);
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+.layer-box:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.layer-box-full {
+    background: white;
+    padding: calc(var(--spacing-unit) * 2);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+    font-weight: 500;
+    border: 1px solid var(--divider-color);
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+.layer-box-full:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.parser-layer .layer-box {
+    border-top: 3px solid var(--primary-color);
+}
+
+.ast-layer .layer-box-full {
+    border-top: 3px solid var(--secondary-color);
+}
+
+.core-layer .layer-box-full {
+    border-top: 3px solid var(--accent-color);
+}
+
+.operator-layer .layer-box {
+    border-top: 3px solid var(--success-color);
+}
+
+.architecture-benefits {
+    list-style: none;
+    padding: 0;
+    margin: calc(var(--spacing-unit) * 3) 0;
+}
+
+.architecture-benefits li {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 1.5);
+    margin-bottom: calc(var(--spacing-unit) * 2);
+}
+
+.architecture-benefits li .material-icons {
+    color: var(--primary-color);
 }
 
 /* Operator Overview */
