@@ -1,4 +1,4 @@
-import init, { JsJsonLogic } from './pkg/datalogic_rs.js';
+import init, { JsJsonLogic } from './pkg/datalogic_web.js';
 
 export class JsonLogicEvaluator {
     constructor() {

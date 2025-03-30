@@ -16,8 +16,8 @@ fn basic_example() {
     // Parse and evaluate in one step
     let result = dl
         .evaluate_str(
-            r#"{ "now": [] }"#,
-            r#"{"temp": 110, "name": "user"}"#,
+            r#"{"datetime": "2022-07-06T13:20:06Z"}"#,
+            r#"{}"#,
             None,
         )
         .unwrap();

@@ -25,13 +25,10 @@ impl JsJsonLogic {
         // Evaluate the logic
         match self.inner.evaluate_str(rules, data, None) {
             Ok(v) => {
-                // Convert the result to a JSON string
-                match serde_json::to_string(&v) {
-                    Ok(json_str) => JsValue::from_str(&json_str),
-                    Err(e) => JsValue::from_str(&format!("JSON serialization error: {}", e))
-                }
+                // The value is already properly formatted, just pass it through
+                JsValue::from_str(&v.to_string())
             }
-            Err(e) => JsValue::from_str(&e.to_string())
+            Err(e) => JsValue::from_str(&format!("Evaluation error: {}", e))
         }
     }
 
@@ -39,4 +36,4 @@ impl JsJsonLogic {
     pub fn reset(&mut self) {
         self.inner.reset_arena();
     }
-} 
+}
