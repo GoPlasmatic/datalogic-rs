@@ -1,0 +1,266 @@
+[
+  "# Sort operator tests",
+  {
+    "description": "Sort array in ascending order (default)",
+    "rule": { "sort": [{"val": "array"}] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  {
+    "description": "Sort array in descending order",
+    "rule": { "sort": [{"val": "array"}, false] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [5, 4, 3, 2, 1]
+  },
+  {
+    "description": "Sort array with asc parameter",
+    "rule": { "sort": [{"val": "array"}, true] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  {
+    "description": "Sort array with explicit ascending parameter",
+    "rule": { "sort": [{"val": "array"}, true] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  {
+    "description": "Sort array with explicit descending parameter",
+    "rule": { "sort": [{"val": "array"}, false] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [5, 4, 3, 2, 1]
+  },
+  "# Already sorted arrays",
+  {
+    "description": "Sort already ascending sorted array",
+    "rule": { "sort": [{"val": "array"}] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  {
+    "description": "Sort already descending sorted array to ascending",
+    "rule": { "sort": [{"val": "array"}] },
+    "data": { "array": [5, 4, 3, 2, 1] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  "# Edge cases",
+  {
+    "description": "Sort empty array returns empty array",
+    "rule": { "sort": [{"val": "emptyArray"}] },
+    "data": { "emptyArray": [] },
+    "result": []
+  },
+  {
+    "description": "Sort single item array returns same array",
+    "rule": { "sort": [{"val": "singleItem"}] },
+    "data": { "singleItem": [42] },
+    "result": [42]
+  },
+  {
+    "description": "Sort array with repeated items maintains duplicates",
+    "rule": { "sort": [{"val": "repeatedItems"}] },
+    "data": { "repeatedItems": [3, 1, 3, 2, 1] },
+    "result": [1, 1, 2, 3, 3]
+  },
+  "# String sorting",
+  {
+    "description": "Sort string array alphabetically",
+    "rule": { "sort": [{"val": "strings"}] },
+    "data": { "strings": ["banana", "apple", "cherry", "date"] },
+    "result": ["apple", "banana", "cherry", "date"]
+  },
+  {
+    "description": "Sort mixed case strings (case-sensitive by default)",
+    "rule": { "sort": [{"val": "mixedCase"}] },
+    "data": { "mixedCase": ["banana", "Apple", "cherry", "Date"] },
+    "result": ["Apple", "Date", "banana", "cherry"]
+  },
+  "# Mixed types and special cases",
+  {
+    "description": "Sort array with mixed number types",
+    "rule": { "sort": [{"val": "mixedNumbers"}] },
+    "data": { "mixedNumbers": [3.14, 1, 2.5, 2, 5] },
+    "result": [1, 2, 2.5, 3.14, 5]
+  },
+  {
+    "description": "Sort with numbers as strings",
+    "rule": { "sort": [{"val": "numbersAsStrings"}] },
+    "data": { "numbersAsStrings": ["10", "2", "1", "20"] },
+    "result": ["1", "10", "2", "20"]
+  },
+  {
+    "description": "Sort with mixed types follows type order",
+    "rule": { "sort": [{"val": "mixedTypes"}] },
+    "data": { "mixedTypes": [true, "banana", 42, null, false, "apple"] },
+    "result": [null, false, true, 42, "apple", "banana"]
+  },
+  "# Field extraction - Simple field",
+  {
+    "description": "Sort objects by a simple field (ascending)",
+    "rule": { "sort": [{"val": "people"}, true, {"val": "age"}] },
+    "data": { 
+      "people": [
+        {"name": "Alice", "age": 30},
+        {"name": "Bob", "age": 25},
+        {"name": "Charlie", "age": 35}
+      ]
+    },
+    "result": [
+      {"name": "Bob", "age": 25},
+      {"name": "Alice", "age": 30},
+      {"name": "Charlie", "age": 35}
+    ]
+  },
+  {
+    "description": "Sort objects by a simple field (descending)",
+    "rule": { "sort": [{"val": "people"}, false, {"val": "age"}] },
+    "data": { 
+      "people": [
+        {"name": "Alice", "age": 30},
+        {"name": "Bob", "age": 25},
+        {"name": "Charlie", "age": 35}
+      ]
+    },
+    "result": [
+      {"name": "Charlie", "age": 35},
+      {"name": "Alice", "age": 30},
+      {"name": "Bob", "age": 25}
+    ]
+  },
+  {
+    "description": "Sort objects by a string field",
+    "rule": { "sort": [{"val": "people"}, true, {"val": "name"}] },
+    "data": { 
+      "people": [
+        {"name": "Charlie", "age": 35},
+        {"name": "Alice", "age": 30},
+        {"name": "Bob", "age": 25}
+      ]
+    },
+    "result": [
+      {"name": "Alice", "age": 30},
+      {"name": "Bob", "age": 25},
+      {"name": "Charlie", "age": 35}
+    ]
+  },
+  "# Field extraction - Nested fields",
+  {
+    "description": "Sort objects by a nested field",
+    "rule": { "sort": [{"val": "companies"}, true, {"val": ["address", "city"]}] },
+    "data": { 
+      "companies": [
+        {"name": "Acme Corp", "address": {"city": "New York", "zip": "10001"}},
+        {"name": "Globex", "address": {"city": "Boston", "zip": "02108"}},
+        {"name": "Initech", "address": {"city": "Austin", "zip": "73301"}}
+      ]
+    },
+    "result": [
+      {"name": "Initech", "address": {"city": "Austin", "zip": "73301"}},
+      {"name": "Globex", "address": {"city": "Boston", "zip": "02108"}},
+      {"name": "Acme Corp", "address": {"city": "New York", "zip": "10001"}}
+    ]
+  },
+  {
+    "description": "Sort objects by a deeply nested field",
+    "rule": { "sort": [{"val": "companies"}, true, {"val": ["metrics", "finance", "revenue"]}] },
+    "data": { 
+      "companies": [
+        {"name": "Acme Corp", "metrics": {"finance": {"revenue": 1000000, "profit": 250000}}},
+        {"name": "Globex", "metrics": {"finance": {"revenue": 2500000, "profit": 1000000}}},
+        {"name": "Initech", "metrics": {"finance": {"revenue": 500000, "profit": 100000}}}
+      ]
+    },
+    "result": [
+      {"name": "Initech", "metrics": {"finance": {"revenue": 500000, "profit": 100000}}},
+      {"name": "Acme Corp", "metrics": {"finance": {"revenue": 1000000, "profit": 250000}}},
+      {"name": "Globex", "metrics": {"finance": {"revenue": 2500000, "profit": 1000000}}}
+    ]
+  },
+  "# Field extraction - Complex expressions",
+  {
+    "description": "Sort objects by a calculated field (total price)",
+    "rule": { "sort": [{"val": "products"}, true, {"+": [{"val": "price"}, {"val": "tax"}]}] },
+    "data": { 
+      "products": [
+        {"name": "Laptop", "price": 1000, "tax": 100},
+        {"name": "Phone", "price": 500, "tax": 50},
+        {"name": "Tablet", "price": 300, "tax": 30}
+      ]
+    },
+    "result": [
+      {"name": "Tablet", "price": 300, "tax": 30},
+      {"name": "Phone", "price": 500, "tax": 50},
+      {"name": "Laptop", "price": 1000, "tax": 100}
+    ]
+  },
+  {
+    "description": "Sort by the length of a field",
+    "rule": { "sort": [{"val": "strings"}, true, {"length": {"val": []}}] },
+    "data": { 
+      "strings": ["elephant", "cat", "hippopotamus", "dog"]
+    },
+    "result": ["cat", "dog", "elephant", "hippopotamus"]
+  },
+  {
+    "description": "Sort array of objects by field with missing values",
+    "rule": { "sort": [{"val": "data"}, true, {"val": "value"}] },
+    "data": { 
+      "data": [
+        {"id": 1, "value": 10},
+        {"id": 2},
+        {"id": 3, "value": 5},
+        {"id": 4, "value": null}
+      ]
+    },
+    "result": [
+      {"id": 2},
+      {"id": 4, "value": null},
+      {"id": 3, "value": 5},
+      {"id": 1, "value": 10}
+    ]
+  },
+  "# Error handling",
+  {
+    "description": "Sort missing variable returns null",
+    "rule": { "sort": [{"val": "missing"}] },
+    "data": {},
+    "result": null
+  },
+  {
+    "description": "Sort operator with null argument throws error",
+    "rule": { "sort": null },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Sort operator with numeric argument throws error",
+    "rule": { "sort": 123 },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Sort operator with boolean argument throws error",
+    "rule": { "sort": true },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Sort with invalid direction parameter defaults to ascending",
+    "rule": { "sort": [{"val": "array"}, "invalid"] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  "# Complex usage",
+  {
+    "description": "Sort result of filtered array",
+    "rule": { "sort": [{ "filter": [{"val": "array"}, {">=": [{"val": []}, 3]}] }] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [3, 4, 5]
+  },
+  {
+    "description": "Map operation on sorted array",
+    "rule": { "map": [{ "sort": [{"val": "array"}] }, { "*": [{"val": []}, 2] }] },
+    "data": { "array": [3, 1, 4, 2, 5] },
+    "result": [2, 4, 6, 8, 10]
+  }
+]

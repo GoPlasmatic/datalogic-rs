@@ -42,5 +42,8 @@
     "try.extra.json",
     "datetime/datetime.json",
     "datetime/duration.json",
-    "datetime/val.datetime.json"
+    "datetime/val.datetime.json",
+    "length.json",
+    "sort.json",
+    "slice.json"
 ]

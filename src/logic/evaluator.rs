@@ -216,6 +216,9 @@ fn evaluate_operator<'a>(
             array::ArrayOp::None => array::eval_none(token_refs, arena),
             array::ArrayOp::Merge => array::eval_merge(token_refs, arena),
             array::ArrayOp::In => array::eval_in(token_refs, arena),
+            array::ArrayOp::Length => array::eval_length(token_refs, arena),
+            array::ArrayOp::Slice => array::eval_slice(token_refs, arena),
+            array::ArrayOp::Sort => array::eval_sort(token_refs, arena),
         },
 
         // Arithmetic operators

@@ -1,0 +1,184 @@
+[
+  "# Slice operator tests",
+  {
+    "description": "Basic array slice with start and end indices",
+    "rule": { "slice": [{"val": "array"}, 1, 3] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [2, 3]
+  },
+  {
+    "description": "Array slice with entire range",
+    "rule": { "slice": [{"val": "array"}, 0, 5] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  {
+    "description": "Array slice with first two elements",
+    "rule": { "slice": [{"val": "array"}, 0, 2] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 2]
+  },
+  {
+    "description": "Array slice with only start index returns remainder",
+    "rule": { "slice": [{"val": "array"}, 2] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [3, 4, 5]
+  },
+  {
+    "description": "Array slice with no parameters returns entire array",
+    "rule": { "slice": [{"val": "array"}] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  "# Negative indices",
+  {
+    "description": "Array slice with negative start index (from end)",
+    "rule": { "slice": [{"val": "array"}, -3] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [3, 4, 5]
+  },
+  {
+    "description": "Array slice with negative start and end indices",
+    "rule": { "slice": [{"val": "array"}, -3, -1] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [3, 4]
+  },
+  {
+    "description": "Array slice with positive start and negative end",
+    "rule": { "slice": [{"val": "array"}, 1, -1] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [2, 3, 4]
+  },
+  "# Step parameter",
+  {
+    "description": "Array slice with step = 2",
+    "rule": { "slice": [{"val": "array"}, 0, 5, 2] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 3, 5]
+  },
+  {
+    "description": "Array slice with step = 2 and end beyond array",
+    "rule": { "slice": [{"val": "array"}, 0, 6, 2] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 3, 5]
+  },
+  {
+    "description": "Array slice with step = 2 and null indices",
+    "rule": { "slice": [{"val": "array"}, null, null, 2] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 3, 5]
+  },
+  "# Negative step",
+  {
+    "description": "Array slice with negative step (reverse direction)",
+    "rule": { "slice": [{"val": "array"}, 4, 0, -1] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [5, 4, 3, 2]
+  },
+  {
+    "description": "Array reversed with slice",
+    "rule": { "slice": [{"val": "array"}, null, null, -1] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [5, 4, 3, 2, 1]
+  },
+  "# Edge cases",
+  {
+    "description": "Slice of empty array returns empty array",
+    "rule": { "slice": [{"val": "emptyArray"}, 0, 1] },
+    "data": { "emptyArray": [] },
+    "result": []
+  },
+  {
+    "description": "Slice with indices beyond array bounds returns empty array",
+    "rule": { "slice": [{"val": "array"}, 10, 20] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": []
+  },
+  {
+    "description": "Slice with negative start beyond bounds returns entire array",
+    "rule": { "slice": [{"val": "array"}, -10, 20] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [1, 2, 3, 4, 5]
+  },
+  "# String slicing",
+  {
+    "description": "String slice with start and end",
+    "rule": { "slice": [{"val": "str"}, 0, 5] },
+    "data": { "str": "hello world" },
+    "result": "hello"
+  },
+  {
+    "description": "String slice extracts word",
+    "rule": { "slice": [{"val": "str"}, 6, 11] },
+    "data": { "str": "hello world" },
+    "result": "world"
+  },
+  {
+    "description": "String slice with null start index",
+    "rule": { "slice": [{"val": "str"}, null, 5] },
+    "data": { "str": "hello world" },
+    "result": "hello"
+  },
+  {
+    "description": "String slice with only start index",
+    "rule": { "slice": [{"val": "str"}, 6] },
+    "data": { "str": "hello world" },
+    "result": "world"
+  },
+  {
+    "description": "String slice with negative start index",
+    "rule": { "slice": [{"val": "str"}, -5] },
+    "data": { "str": "hello world" },
+    "result": "world"
+  },
+  {
+    "description": "String slice with step = 2",
+    "rule": { "slice": [{"val": "str"}, 0, 5, 2] },
+    "data": { "str": "hello world" },
+    "result": "hlo"
+  },
+  {
+    "description": "String reversed with slice",
+    "rule": { "slice": [{"val": "str"}, null, null, -1] },
+    "data": { "str": "hello" },
+    "result": "olleh"
+  },
+  "# Error handling",
+  {
+    "description": "Slice of missing variable returns null",
+    "rule": { "slice": [{"val": "missing"}, 0, 5] },
+    "data": {},
+    "result": null
+  },
+  {
+    "description": "Slice with step = 0 throws error (invalid step)",
+    "rule": { "slice": [{"val": "array"}, 0, 5, 0] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Slice with non-numeric index throws error",
+    "rule": { "slice": [{"val": "array"}, "not a number", 5] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "error": { "type": "NaN" }
+  },
+  {
+    "description": "Slice of non-array/non-string value throws error",
+    "rule": { "slice": [{"val": "nonArrayOrString"}, 0, 1] },
+    "data": { "nonArrayOrString": 123 },
+    "error": { "type": "Invalid Arguments" }
+  },
+  "# Complex usage",
+  {
+    "description": "Map operation on sliced array",
+    "rule": { "map": [{ "slice": [{"val": "array"}, 1, 4] }, { "*": [{"val": []}, 2] }] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [4, 6, 8]
+  },
+  {
+    "description": "Slice of mapped array",
+    "rule": { "slice": [{ "map": [{"val": "array"}, { "*": [{"val": []}, 2] }] }, 0, 3] },
+    "data": { "array": [1, 2, 3, 4, 5] },
+    "result": [2, 4, 6]
+  }
+]

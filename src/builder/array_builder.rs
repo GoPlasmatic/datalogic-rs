@@ -37,6 +37,25 @@ impl<'a> ArrayBuilder<'a> {
         ArrayOperationBuilder::new(self.arena, ArrayOp::Merge)
     }
 
+    /// Creates a length operation.
+    pub fn length_op(&self, array: Logic<'a>) -> Logic<'a> {
+        Logic::operator(
+            OperatorType::Array(ArrayOp::Length),
+            vec![array],
+            self.arena,
+        )
+    }
+
+    /// Creates a slice operation.
+    pub fn slice_op(&self) -> SliceBuilder<'a> {
+        SliceBuilder::new(self.arena)
+    }
+
+    /// Creates a sort operation.
+    pub fn sort_op(&self) -> SortBuilder<'a> {
+        SortBuilder::new(self.arena)
+    }
+
     /// Creates an in-array check operation.
     pub fn in_op(&self, value: Logic<'a>, array: Logic<'a>) -> Logic<'a> {
         Logic::operator(
@@ -392,6 +411,193 @@ impl<'a> ArrayOperationBuilder<'a> {
         Logic::operator(
             OperatorType::Array(self.operation),
             self.operands,
+            self.arena,
+        )
+    }
+}
+
+/// Builder for slice operations.
+pub struct SliceBuilder<'a> {
+    /// The arena in which all allocations will be made.
+    arena: &'a DataArena,
+    /// The array or string to slice.
+    collection: Option<Logic<'a>>,
+    /// The start index (default: 0).
+    start: Option<Logic<'a>>,
+    /// The end index (default: length).
+    end: Option<Logic<'a>>,
+    /// The step value (default: 1).
+    step: Option<Logic<'a>>,
+}
+
+impl<'a> SliceBuilder<'a> {
+    /// Creates a new slice builder.
+    pub fn new(arena: &'a DataArena) -> Self {
+        Self {
+            arena,
+            collection: None,
+            start: None,
+            end: None,
+            step: None,
+        }
+    }
+
+    /// Sets the array or string to slice.
+    pub fn collection(mut self, collection: Logic<'a>) -> Self {
+        self.collection = Some(collection);
+        self
+    }
+
+    /// Sets the array to slice using a variable reference.
+    pub fn collection_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.collection(var)
+    }
+
+    /// Sets the start index.
+    pub fn start(mut self, start: Logic<'a>) -> Self {
+        self.start = Some(start);
+        self
+    }
+
+    /// Sets the start index as an integer.
+    pub fn start_int(self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.start(val)
+    }
+
+    /// Sets the end index.
+    pub fn end(mut self, end: Logic<'a>) -> Self {
+        self.end = Some(end);
+        self
+    }
+
+    /// Sets the end index as an integer.
+    pub fn end_int(self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.end(val)
+    }
+
+    /// Sets the step value.
+    pub fn step(mut self, step: Logic<'a>) -> Self {
+        self.step = Some(step);
+        self
+    }
+
+    /// Sets the step value as an integer.
+    pub fn step_int(self, value: i64) -> Self {
+        let val = Logic::literal(crate::value::DataValue::integer(value), self.arena);
+        self.step(val)
+    }
+
+    /// Builds the slice operation.
+    pub fn build(self) -> Logic<'a> {
+        let mut args = Vec::new();
+
+        // Add the collection (required)
+        args.push(self.collection.unwrap_or_else(|| {
+            Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena)
+        }));
+
+        // Add optional parameters
+        if let Some(start) = self.start {
+            args.push(start);
+            if let Some(end) = self.end {
+                args.push(end);
+                if let Some(step) = self.step {
+                    args.push(step);
+                }
+            }
+        }
+
+        Logic::operator(
+            OperatorType::Array(ArrayOp::Slice),
+            args,
+            self.arena,
+        )
+    }
+}
+
+/// Builder for sort operations.
+pub struct SortBuilder<'a> {
+    /// The arena in which all allocations will be made.
+    arena: &'a DataArena,
+    /// The array to sort.
+    array: Option<Logic<'a>>,
+    /// The direction (true=ascending, false=descending).
+    ascending: Option<Logic<'a>>,
+    /// The field extractor function.
+    extractor: Option<Logic<'a>>,
+}
+
+impl<'a> SortBuilder<'a> {
+    /// Creates a new sort builder.
+    pub fn new(arena: &'a DataArena) -> Self {
+        Self {
+            arena,
+            array: None,
+            ascending: None,
+            extractor: None,
+        }
+    }
+
+    /// Sets the array to sort.
+    pub fn array(mut self, array: Logic<'a>) -> Self {
+        self.array = Some(array);
+        self
+    }
+
+    /// Sets the array to sort using a variable reference.
+    pub fn array_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.array(var)
+    }
+
+    /// Sets the sort direction (true=ascending, false=descending).
+    pub fn ascending(mut self, ascending: bool) -> Self {
+        let val = Logic::literal(crate::value::DataValue::bool(ascending), self.arena);
+        self.ascending = Some(val);
+        self
+    }
+
+    /// Sets the field extractor function.
+    pub fn extractor(mut self, extractor: Logic<'a>) -> Self {
+        self.extractor = Some(extractor);
+        self
+    }
+
+    /// Sets the field extractor using a variable reference.
+    pub fn extractor_var(self, path: &str) -> Self {
+        let var = Logic::variable(path, None, self.arena);
+        self.extractor(var)
+    }
+
+    /// Builds the sort operation.
+    pub fn build(self) -> Logic<'a> {
+        let mut args = Vec::new();
+
+        // Add the array (required)
+        args.push(self.array.unwrap_or_else(|| {
+            Logic::literal(crate::value::DataValue::array(self.arena, &[]), self.arena)
+        }));
+
+        // Add direction if specified
+        if let Some(ascending) = self.ascending {
+            args.push(ascending);
+            // Add extractor if specified and direction is also specified
+            if let Some(extractor) = self.extractor {
+                args.push(extractor);
+            }
+        } else if let Some(extractor) = self.extractor {
+            // If no direction specified but extractor is, add default ascending direction
+            let default_asc = Logic::literal(crate::value::DataValue::bool(true), self.arena);
+            args.push(default_asc);
+            args.push(extractor);
+        }
+
+        Logic::operator(
+            OperatorType::Array(ArrayOp::Sort),
+            args,
             self.arena,
         )
     }
