@@ -64,43 +64,6 @@
                 </div>
             </div>
 
-            <div class="architecture-section">
-                <h2 class="mdc-typography--headline5">Architecture</h2>
-                <p class="mdc-typography--body1">DataLogic-rs features a modular design where parsers can be added as plugins while the core evaluation engine remains the same.</p>
-                
-                <div class="architecture-diagram">
-                    <div class="diagram-layer parser-layer">
-                        <div class="layer-box">JSONLogic Parser</div>
-                        <div class="layer-box">Custom Parser</div>
-                        <div class="layer-box">Future Parsers</div>
-                        <div class="layer-connector"></div>
-                    </div>
-                    <div class="diagram-arrow">↓</div>
-                    <div class="diagram-layer ast-layer">
-                        <div class="layer-box-full">Abstract Syntax Tree (AST)</div>
-                    </div>
-                    <div class="diagram-arrow">↓</div>
-                    <div class="diagram-layer core-layer">
-                        <div class="layer-box-full">Expression Evaluation Core</div>
-                    </div>
-                    <div class="diagram-arrow">↓</div>
-                    <div class="diagram-layer operator-layer">
-                        <div class="layer-box">Arithmetic</div>
-                        <div class="layer-box">Comparison</div>
-                        <div class="layer-box">Array</div>
-                        <div class="layer-box">String</div>
-                        <div class="layer-connector"></div>
-                    </div>
-                </div>
-                
-                <p class="mdc-typography--body1">This layered architecture enables:</p>
-                <ul class="architecture-benefits">
-                    <li><span class="material-icons">extension</span> Support for multiple expression formats through pluggable parsers</li>
-                    <li><span class="material-icons">speed</span> Efficient evaluation with the shared core engine</li>
-                    <li><span class="material-icons">build</span> Easy extension with custom operators while maintaining compatibility</li>
-                </ul>
-            </div>
-
             <div class="features-section">
                 <h2 class="mdc-typography--headline5">Features</h2>
                 <div class="features-grid">

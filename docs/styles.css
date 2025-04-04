@@ -885,3 +885,105 @@ html {
 ::-webkit-scrollbar-thumb:hover {
     background: #64748b;
 }
+
+/* Playground layout */
+.playground-container {
+    display: flex;
+    flex-direction: row;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.editors-section {
+    flex: 3;
+    display: flex;
+    flex-direction: column;
+}
+
+.result-section {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+}
+
+.result-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.result-container textarea,
+.result-container .CodeMirror {
+    flex-grow: 1;
+    height: 100% !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .playground-container {
+        flex-direction: column;
+    }
+}
+
+/* Fixed height section styles for playground */
+.fixed-height {
+    height: 400px;
+    overflow: hidden;
+}
+
+.fixed-height .mdc-card,
+.fixed-height .mdc-card__primary-action {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.fixed-height .mdc-card__primary-action h2 {
+    flex-shrink: 0;
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.fixed-height .CodeMirror {
+    flex: 1;
+    height: auto !important;
+}
+
+.fixed-height .editor-info {
+    flex-shrink: 0;
+    margin-top: 8px;
+}
+
+.editors-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: calc(var(--spacing-unit) * 4);
+    margin-bottom: calc(var(--spacing-unit) * 3);
+    height: 100%;
+}
+
+.playground-container .editors-container {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* Override default CodeMirror scroll behavior */
+.CodeMirror-scroll {
+    min-height: auto !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .playground-container {
+        flex-direction: column;
+    }
+    
+    .fixed-height {
+        height: 300px;
+        margin-bottom: 20px;
+    }
+    
+    .result-section.fixed-height {
+        height: 250px;
+    }
+}

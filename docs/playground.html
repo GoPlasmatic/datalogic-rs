@@ -86,52 +86,58 @@
                 </div>
             </div>
 
-            <div class="editors-container">
-                <!-- Rules Editor -->
-                <div class="editor-section">
-                    <div class="mdc-card">
-                        <div class="mdc-card__primary-action">
-                            <h2 class="mdc-typography--subtitle1">JSON Logic Rules</h2>
-                            <textarea id="rules-editor"></textarea>
-                            <div class="editor-info">
-                                <span class="material-icons info-icon">info</span>
-                                <span class="info-text mdc-typography--caption">Enter a JSON object containing JSONLogic rules.</span>
+            <div class="playground-container">
+                <div class="editors-section">
+                    <div class="editors-container">
+                        <!-- Rules Editor -->
+                        <div class="editor-section fixed-height">
+                            <div class="mdc-card">
+                                <div class="mdc-card__primary-action">
+                                    <h2 class="mdc-typography--subtitle1">JSON Logic Rules</h2>
+                                    <textarea id="rules-editor"></textarea>
+                                    <div class="editor-info">
+                                        <span class="material-icons info-icon">info</span>
+                                        <span class="info-text mdc-typography--caption">Enter a JSON object containing JSONLogic rules.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Data Editor -->
+                        <div class="editor-section fixed-height">
+                            <div class="mdc-card">
+                                <div class="mdc-card__primary-action">
+                                    <h2 class="mdc-typography--subtitle1">JSON Data</h2>
+                                    <textarea id="data-editor"></textarea>
+                                    <div class="editor-info">
+                                        <span class="material-icons info-icon">info</span>
+                                        <span class="info-text mdc-typography--caption">Enter data as a JSON object to be used with the `val` operator.</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Data Editor -->
-                <div class="editor-section">
-                    <div class="mdc-card">
-                        <div class="mdc-card__primary-action">
-                            <h2 class="mdc-typography--subtitle1">JSON Data</h2>
-                            <textarea id="data-editor"></textarea>
-                            <div class="editor-info">
-                                <span class="material-icons info-icon">info</span>
-                                <span class="info-text mdc-typography--caption">Enter data as a JSON object to be used with the var operator.</span>
-                            </div>
-                        </div>
+                    <!-- Buttons -->
+                    <div class="button-container">
+                        <button class="mdc-button mdc-button--outlined" id="clear-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Clear</span>
+                        </button>
+                        <button class="mdc-button mdc-button--raised" id="evaluate-button">
+                            <span class="mdc-button__ripple"></span>
+                            <span class="mdc-button__label">Evaluate</span>
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Buttons -->
-            <div class="button-container">
-                <button class="mdc-button mdc-button--outlined" id="clear-button">
-                    <span class="mdc-button__ripple"></span>
-                    <span class="mdc-button__label">Clear</span>
-                </button>
-                <button class="mdc-button mdc-button--raised" id="evaluate-button">
-                    <span class="mdc-button__ripple"></span>
-                    <span class="mdc-button__label">Evaluate</span>
-                </button>
-            </div>
-
-            <!-- Result Area -->
-            <div class="result-container mdc-card">
-                <h2 class="mdc-typography--subtitle1">Result</h2>
-                <textarea id="result-editor"></textarea>
+                <!-- Result Area -->
+                <div class="result-section fixed-height">
+                    <div class="result-container mdc-card">
+                        <h2 class="mdc-typography--subtitle1">Result</h2>
+                        <textarea id="result-editor"></textarea>
+                    </div>
+                </div>
             </div>
 
             <div class="help-section mdc-card">
@@ -317,7 +323,9 @@
                 autoCloseBrackets: true,
                 tabSize: 2,
                 gutters: ["CodeMirror-linenumbers"],
-                lint: true
+                lint: true,
+                viewportMargin: Infinity,
+                scrollbarStyle: "native"
             });
 
             dataEditor = CodeMirror.fromTextArea(document.getElementById('data-editor'), {
@@ -328,7 +336,9 @@
                 autoCloseBrackets: true,
                 tabSize: 2,
                 gutters: ["CodeMirror-linenumbers"],
-                lint: true
+                lint: true,
+                viewportMargin: Infinity,
+                scrollbarStyle: "native"
             });
 
             // Initialize result editor as readonly
@@ -339,11 +349,20 @@
                 matchBrackets: true,
                 readOnly: true,
                 tabSize: 2,
-                gutters: ["CodeMirror-linenumbers"]
+                gutters: ["CodeMirror-linenumbers"],
+                viewportMargin: Infinity,
+                scrollbarStyle: "native"
             });
             
             // Add readonly class to result editor
             resultEditor.getWrapperElement().classList.add('CodeMirror-readonly');
+
+            // Force CodeMirror to adjust to container size
+            setTimeout(() => {
+                rulesEditor.refresh();
+                dataEditor.refresh();
+                resultEditor.refresh();
+            }, 100);
 
             // Set up event listeners
             document.getElementById('evaluate-button').addEventListener('click', evaluate);
