@@ -25,40 +25,73 @@ pub enum DateTimeOp {
     DateDiff,
 }
 
+/// Validates that exactly n arguments are provided
+fn validate_argument_count(args: &[DataValue], expected: usize) -> Result<()> {
+    if args.len() != expected {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+    Ok(())
+}
+
+/// Converts from a human-readable format string to a chrono format string.
+fn convert_format_to_chrono(format: &str) -> String {
+    // This is a simplified version. We could add more conversions as needed.
+    format
+        .replace("yyyy", "%Y")
+        .replace("MM", "%m")
+        .replace("dd", "%d")
+        .replace("HH", "%H")
+        .replace("mm", "%M")
+        .replace("ss", "%S")
+}
+
+/// Extracts a datetime from a value, handling both direct and wrapped forms
+fn extract_datetime<'a>(
+    value: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a chrono::DateTime<Utc>> {
+    match value {
+        DataValue::DateTime(dt) => Ok(dt),
+        DataValue::Object(entries) => {
+            // Look for a "datetime" entry
+            if let Some((_, DataValue::DateTime(dt))) = entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("datetime"))
+            {
+                Ok(dt)
+            } else {
+                Err(LogicError::InvalidArgumentsError)
+            }
+        }
+        DataValue::String(s) => {
+            if let Ok(dt) = parse_datetime(s) {
+                Ok(arena.alloc(dt))
+            } else {
+                Err(LogicError::InvalidArgumentsError)
+            }
+        }
+        _ => Err(LogicError::InvalidArgumentsError),
+    }
+}
+
 /// Creates a duration value from a string.
 pub fn eval_timestamp_operator<'a>(
     args: &'a [DataValue<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 1 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
+    validate_argument_count(args, 1)?;
 
     match &args[0] {
         DataValue::String(s) => {
             // Try to parse the string as a duration
             match parse_duration(s) {
-                Ok(duration) => {
-                    // Create a duration value
-                    let dur_val = DataValue::duration(duration);
-
-                    // Create an object with {"timestamp": dur_val}
-                    let entries =
-                        arena.vec_into_slice(vec![(arena.intern_str("timestamp"), dur_val)]);
-
-                    Ok(arena.alloc(DataValue::Object(entries)))
-                }
+                Ok(duration) => Ok(arena.alloc(DataValue::duration(duration))),
                 Err(_) => Err(LogicError::InvalidArgumentsError),
             }
         }
         DataValue::Duration(dur) => {
             // If already a duration, wrap it in an object
-            let dur_val = DataValue::duration(*dur);
-
-            // Create an object with {"timestamp": dur_val}
-            let entries = arena.vec_into_slice(vec![(arena.intern_str("timestamp"), dur_val)]);
-
-            Ok(arena.alloc(DataValue::Object(entries)))
+            Ok(arena.alloc(DataValue::duration(*dur)))
         }
         _ => Err(LogicError::InvalidArgumentsError),
     }
@@ -80,28 +113,7 @@ pub fn eval_format_date<'a>(
     }
 
     // Extract the datetime from the first argument
-    let dt = match &args[0] {
-        DataValue::Object(obj) => {
-            // Use intern_str to get the string reference
-            let datetime_key = arena.intern_str("datetime");
-            if let Some((_, DataValue::DateTime(dt))) =
-                obj.iter().find(|(key, _)| *key == datetime_key)
-            {
-                dt
-            } else {
-                return Err(LogicError::InvalidArgumentsError);
-            }
-        }
-        DataValue::DateTime(dt) => dt,
-        DataValue::String(s) => {
-            if let Ok(dt) = parse_datetime(s) {
-                arena.alloc(dt)
-            } else {
-                return Err(LogicError::InvalidArgumentsError);
-            }
-        }
-        _ => return Err(LogicError::InvalidArgumentsError),
-    };
+    let dt = extract_datetime(&args[0], arena)?;
 
     // Ensure the second argument is a format string
     let format_str = match &args[1] {
@@ -134,9 +146,7 @@ pub fn eval_parse_date<'a>(
     args: &'a [DataValue<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
+    validate_argument_count(args, 2)?;
 
     let date_str = match &args[0] {
         DataValue::String(s) => s,
@@ -149,33 +159,17 @@ pub fn eval_parse_date<'a>(
     };
 
     // Convert from our custom format to chrono's format
-    let chrono_format = convert_format_string(format_str);
+    let chrono_format = convert_format_to_chrono(format_str);
 
     // Use the non-deprecated method
     match chrono::NaiveDateTime::parse_from_str(date_str, &chrono_format).map(|dt| dt.and_utc()) {
-        Ok(dt) => {
-            // Create a datetime value
-            let dt_val = DataValue::datetime(dt);
-
-            // Create an object with {"datetime": dt_val}
-            let entries = arena.vec_into_slice(vec![(arena.intern_str("datetime"), dt_val)]);
-
-            Ok(arena.alloc(DataValue::Object(entries)))
-        }
+        Ok(dt) => Ok(arena.alloc(DataValue::datetime(dt))),
         Err(_) => {
             // Try as date only
             match chrono::NaiveDate::parse_from_str(date_str, &chrono_format) {
                 Ok(date) => {
                     let dt = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
-
-                    // Create a datetime value
-                    let dt_val = DataValue::datetime(dt);
-
-                    // Create an object with {"datetime": dt_val}
-                    let entries =
-                        arena.vec_into_slice(vec![(arena.intern_str("datetime"), dt_val)]);
-
-                    Ok(arena.alloc(DataValue::Object(entries)))
+                    Ok(arena.alloc(DataValue::datetime(dt)))
                 }
                 Err(_) => Err(LogicError::InvalidArgumentsError),
             }
@@ -188,43 +182,11 @@ pub fn eval_date_diff<'a>(
     args: &'a [DataValue<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 3 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
+    validate_argument_count(args, 3)?;
 
-    // Extract datetime from the first argument (handle both direct and wrapped forms)
-    let dt1 = match &args[0] {
-        DataValue::DateTime(dt) => dt,
-        DataValue::Object(entries) => {
-            // Look for a "datetime" entry
-            if let Some((_, DataValue::DateTime(dt))) = entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
-            {
-                dt
-            } else {
-                return Err(LogicError::InvalidArgumentsError);
-            }
-        }
-        _ => return Err(LogicError::InvalidArgumentsError),
-    };
-
-    // Extract datetime from the second argument (handle both direct and wrapped forms)
-    let dt2 = match &args[1] {
-        DataValue::DateTime(dt) => dt,
-        DataValue::Object(entries) => {
-            // Look for a "datetime" entry
-            if let Some((_, DataValue::DateTime(dt))) = entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
-            {
-                dt
-            } else {
-                return Err(LogicError::InvalidArgumentsError);
-            }
-        }
-        _ => return Err(LogicError::InvalidArgumentsError),
-    };
+    // Extract datetime from the first and second arguments
+    let dt1 = extract_datetime(&args[0], arena)?;
+    let dt2 = extract_datetime(&args[1], arena)?;
 
     let unit = match &args[2] {
         DataValue::String(s) => s,
@@ -235,64 +197,24 @@ pub fn eval_date_diff<'a>(
     Ok(arena.alloc(DataValue::integer(diff)))
 }
 
-/// Converts from a simplified format string to a chrono format string.
-fn convert_format_string(format: &str) -> String {
-    // This is a simplified version. We could add more conversions as needed.
-    format
-        .replace("yyyy", "%Y")
-        .replace("MM", "%m")
-        .replace("dd", "%d")
-        .replace("HH", "%H")
-        .replace("mm", "%M")
-        .replace("ss", "%S")
-}
-
-/// Converts from a human-readable format string to a chrono format string.
-fn convert_format_to_chrono(format: &str) -> String {
-    // This is a simplified version. We could add more conversions as needed.
-    format
-        .replace("yyyy", "%Y")
-        .replace("MM", "%m")
-        .replace("dd", "%d")
-        .replace("HH", "%H")
-        .replace("mm", "%M")
-        .replace("ss", "%S")
-}
-
 /// Creates a datetime directly from a string without requiring a format.
 pub fn eval_datetime_operator<'a>(
     args: &'a [DataValue<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 1 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
+    validate_argument_count(args, 1)?;
 
     match &args[0] {
         DataValue::String(s) => {
             // Try to parse the string as a datetime
             match parse_datetime(s) {
-                Ok(dt) => {
-                    // Create a datetime value
-                    let dt_val = DataValue::datetime(dt);
-
-                    // Create an object with {"datetime": dt_val}
-                    let entries =
-                        arena.vec_into_slice(vec![(arena.intern_str("datetime"), dt_val)]);
-
-                    Ok(arena.alloc(DataValue::Object(entries)))
-                }
+                Ok(dt) => Ok(arena.alloc(DataValue::datetime(dt))),
                 Err(_) => Err(LogicError::InvalidArgumentsError),
             }
         }
         DataValue::DateTime(dt) => {
             // If already a datetime, wrap it in an object
-            let dt_val = DataValue::datetime(*dt);
-
-            // Create an object with {"datetime": dt_val}
-            let entries = arena.vec_into_slice(vec![(arena.intern_str("datetime"), dt_val)]);
-
-            Ok(arena.alloc(DataValue::Object(entries)))
+            Ok(arena.alloc(DataValue::datetime(*dt)))
         }
         _ => Err(LogicError::InvalidArgumentsError),
     }
@@ -311,24 +233,13 @@ mod tests {
         let args = [DataValue::string(&arena, "1d:2h:3m:4s")];
         let result = eval_timestamp_operator(&args, &arena).unwrap();
 
-        // Get the timestamp field from the object
-        if let DataValue::Object(entries) = result {
-            let timestamp_entry = entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("timestamp"));
-            assert!(timestamp_entry.is_some());
-
-            let (_, dur_val) = timestamp_entry.unwrap();
-            assert!(dur_val.is_duration());
-
-            let dur = dur_val.as_duration().unwrap();
-            assert_eq!(dur.num_days(), 1);
-            assert_eq!(dur.num_hours() % 24, 2);
-            assert_eq!(dur.num_minutes() % 60, 3);
-            assert_eq!(dur.num_seconds() % 60, 4);
-        } else {
-            panic!("Expected object but got: {:?}", result);
-        }
+        // Check that it's a duration directly
+        assert!(result.is_duration());
+        let dur = result.as_duration().unwrap();
+        assert_eq!(dur.num_days(), 1);
+        assert_eq!(dur.num_hours() % 24, 2);
+        assert_eq!(dur.num_minutes() % 60, 3);
+        assert_eq!(dur.num_seconds() % 60, 4);
 
         // Test with invalid duration string
         let args = [DataValue::string(&arena, "invalid")];
@@ -394,19 +305,9 @@ mod tests {
         ];
 
         let result = eval_parse_date(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_datetime());
 
-        // Verify it has a datetime field
-        let entries = result.as_object().unwrap();
-        let datetime_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("datetime"));
-        assert!(datetime_entry.is_some());
-
-        let (_, dt_val) = datetime_entry.unwrap();
-        assert!(dt_val.is_datetime());
-
-        let dt = dt_val.as_datetime().unwrap();
+        let dt = result.as_datetime().unwrap();
         assert_eq!(dt.year(), 2022);
         assert_eq!(dt.month(), 7);
         assert_eq!(dt.day(), 6);
@@ -450,26 +351,15 @@ mod tests {
         let args = [DataValue::string(&arena, "2022-07-06T13:20:06Z")];
         let result = eval_datetime_operator(&args, &arena).unwrap();
 
-        // Check that it's an object with a "datetime" key
-        if let DataValue::Object(entries) = result {
-            let datetime_entry = entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"));
-            assert!(datetime_entry.is_some());
-
-            let (_, dt_val) = datetime_entry.unwrap();
-            assert!(dt_val.is_datetime());
-
-            let dt = dt_val.as_datetime().unwrap();
-            assert_eq!(dt.year(), 2022);
-            assert_eq!(dt.month(), 7);
-            assert_eq!(dt.day(), 6);
-            assert_eq!(dt.hour(), 13);
-            assert_eq!(dt.minute(), 20);
-            assert_eq!(dt.second(), 6);
-        } else {
-            panic!("Expected object but got: {:?}", result);
-        }
+        // Check that it's a datetime directly
+        assert!(result.is_datetime());
+        let dt = result.as_datetime().unwrap();
+        assert_eq!(dt.year(), 2022);
+        assert_eq!(dt.month(), 7);
+        assert_eq!(dt.day(), 6);
+        assert_eq!(dt.hour(), 13);
+        assert_eq!(dt.minute(), 20);
+        assert_eq!(dt.second(), 6);
 
         // Test with invalid datetime string
         let args = [DataValue::string(&arena, "invalid")];
@@ -481,18 +371,8 @@ mod tests {
         let args = [DataValue::datetime(dt)];
         let result = eval_datetime_operator(&args, &arena).unwrap();
 
-        // Check that it's an object with a "datetime" key
-        if let DataValue::Object(entries) = result {
-            let datetime_entry = entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"));
-            assert!(datetime_entry.is_some());
-
-            let (_, dt_val) = datetime_entry.unwrap();
-            assert!(dt_val.is_datetime());
-            assert_eq!(dt_val.as_datetime().unwrap(), &dt);
-        } else {
-            panic!("Expected object but got: {:?}", result);
-        }
+        // Check that it returns a datetime directly
+        assert!(result.is_datetime());
+        assert_eq!(result.as_datetime().unwrap(), &dt);
     }
 }

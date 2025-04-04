@@ -18,6 +18,60 @@ pub enum StringOp {
     Substr,
 }
 
+/// Helper function to convert a value to a string representation
+fn value_to_string<'a>(value: &'a DataValue<'a>, arena: &'a DataArena) -> &'a str {
+    match value {
+        DataValue::String(s) => s,
+        _ => arena.alloc_str(&value.to_string()),
+    }
+}
+
+/// Helper function to append values from an array to a string
+fn append_array_to_string(values: &[DataValue<'_>], result: &mut String) {
+    for value in values {
+        match value {
+            DataValue::String(s) => result.push_str(s),
+            _ => result.push_str(&value.to_string()),
+        }
+    }
+}
+
+/// Validate arguments for substr operation
+fn validate_substr_args(args: &[&Token]) -> Result<()> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+    Ok(())
+}
+
+/// Calculate the starting position for substring extraction
+fn calculate_substr_start(start_idx: i64, char_count: usize) -> usize {
+    if start_idx < 0 {
+        let abs_idx = (-start_idx) as usize;
+        char_count.saturating_sub(abs_idx)
+    } else if start_idx as usize >= char_count {
+        // If start is beyond the string length, we'll return empty string later
+        char_count
+    } else {
+        start_idx as usize
+    }
+}
+
+/// Calculate the length for substring extraction
+fn calculate_substr_length(len_value: i64, char_count: usize, start_pos: usize) -> usize {
+    if len_value < 0 {
+        // Negative length means "leave this many characters off the end"
+        let chars_to_remove = (-len_value) as usize;
+        if chars_to_remove >= char_count || chars_to_remove > char_count - start_pos {
+            0 // If we'd remove all characters or more than we have after start_pos, return empty
+        } else {
+            char_count - start_pos - chars_to_remove
+        }
+    } else {
+        len_value as usize
+    }
+}
+
 /// Evaluates a string concatenation operation.
 pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -36,21 +90,12 @@ pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
         // If it's an array, concatenate all elements
         if let DataValue::Array(arr) = value {
             let mut result = String::new();
-            for item in *arr {
-                match item {
-                    DataValue::String(s) => result.push_str(s),
-                    _ => {
-                        let string_value = item.to_string();
-                        result.push_str(&string_value);
-                    }
-                }
-            }
+            append_array_to_string(arr, &mut result);
             return Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))));
         }
 
         // Otherwise, convert to string
-        let string_value = value.to_string();
-        return Ok(arena.alloc(DataValue::String(arena.alloc_str(&string_value))));
+        return Ok(arena.alloc(DataValue::String(arena.alloc_str(&value.to_string()))));
     }
 
     // For multiple arguments, concatenate them
@@ -62,19 +107,10 @@ pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
             DataValue::String(s) => result.push_str(s),
             DataValue::Array(arr) => {
                 // If we get an array from a chained operation, concatenate all elements
-                for item in *arr {
-                    match item {
-                        DataValue::String(s) => result.push_str(s),
-                        _ => {
-                            let string_value = item.to_string();
-                            result.push_str(&string_value);
-                        }
-                    }
-                }
+                append_array_to_string(arr, &mut result);
             }
             _ => {
-                let string_value = value.to_string();
-                result.push_str(&string_value);
+                result.push_str(&value.to_string());
             }
         }
     }
@@ -88,56 +124,37 @@ pub fn eval_substr<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 || args.len() > 3 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
+    validate_substr_args(args)?;
 
     let string = evaluate(args[0], arena)?;
-    let string_str = match string {
-        DataValue::String(s) => *s,
-        _ => arena.alloc_str(&string.to_string()),
-    };
+    let string_str = value_to_string(string, arena);
 
     // Convert to char array for proper handling of multi-byte characters
     let chars: Vec<char> = string_str.chars().collect();
     let char_count = chars.len();
 
     let start = evaluate(args[1], arena)?;
-    let start_idx_signed = match start.coerce_to_number() {
-        Some(num) => num.as_i64().unwrap_or(0),
-        None => 0,
-    };
+    let start_idx_signed = start
+        .coerce_to_number()
+        .map(|num| num.as_i64().unwrap_or(0))
+        .unwrap_or(0);
 
     // Handle negative start index (count from end)
-    let start_pos = if start_idx_signed < 0 {
-        let abs_idx = (-start_idx_signed) as usize;
-        char_count.saturating_sub(abs_idx)
-    } else if start_idx_signed as usize >= char_count {
-        // If start is beyond the string length, return empty string
+    let start_pos = calculate_substr_start(start_idx_signed, char_count);
+
+    // If start is beyond the string length, return empty string
+    if start_pos >= char_count {
         return Ok(arena.alloc(DataValue::String(arena.alloc_str(""))));
-    } else {
-        start_idx_signed as usize
-    };
+    }
 
     let length = if args.len() == 3 {
         let len = evaluate(args[2], arena)?;
-        match len.coerce_to_number() {
-            Some(num) => {
+        len.coerce_to_number()
+            .map(|num| {
                 let len_signed = num.as_i64().unwrap_or(0);
-                if len_signed < 0 {
-                    // Negative length means "leave this many characters off the end"
-                    let chars_to_remove = (-len_signed) as usize;
-                    if chars_to_remove >= char_count || chars_to_remove > char_count - start_pos {
-                        0 // If we'd remove all characters or more than we have after start_pos, return empty
-                    } else {
-                        char_count - start_pos - chars_to_remove
-                    }
-                } else {
-                    len_signed as usize
-                }
-            }
-            None => 0,
-        }
+                calculate_substr_length(len_signed, char_count, start_pos)
+            })
+            .unwrap_or(0)
     } else {
         // If no length provided, use the rest of the string
         char_count - start_pos

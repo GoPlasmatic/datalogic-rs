@@ -16,6 +16,7 @@ pub fn evaluate_variable<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     let current_context = arena.current_context(0).unwrap();
+
     // Handle empty path as a reference to the data itself
     if path.is_empty() {
         return Ok(current_context);
@@ -26,7 +27,18 @@ pub fn evaluate_variable<'a>(
         return evaluate_simple_path(path, default, current_context, arena);
     }
 
-    // For paths with dots, traverse the object tree without creating a Vec
+    // For paths with dots, process nested path
+    process_nested_path(path, default, current_context, arena)
+}
+
+/// Process a nested path (with dots)
+#[inline]
+fn process_nested_path<'a>(
+    path: &str,
+    default: &Option<&'a Token<'a>>,
+    current_context: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     let mut current = current_context;
     let mut start = 0;
     let path_bytes = path.as_bytes();
@@ -34,39 +46,23 @@ pub fn evaluate_variable<'a>(
     // Iterate through path components without allocating a Vec
     while start < path_bytes.len() {
         // Find the next dot or end of string
-        let end = path_bytes[start..]
-            .iter()
-            .position(|&b| b == b'.')
-            .map(|pos| start + pos)
-            .unwrap_or(path_bytes.len());
+        let end = find_next_component_boundary(path_bytes, start);
 
         // Extract the current component - we know the input is valid UTF-8
-        // Use from_utf8_unchecked to avoid validation overhead
-        let component = unsafe { std::str::from_utf8_unchecked(&path_bytes[start..end]) };
+        let component = extract_path_component(path_bytes, start, end);
 
-        // Process this component
+        // Process this component based on current value type
         match current {
             DataValue::Object(_) => {
-                // Try to find the component in the object
-                if let Some(value) = find_in_object(current, component) {
-                    current = value;
-                } else {
-                    // Component not found, use default
-                    return use_default_or_null(default, arena);
+                current = match process_object_component(current, component) {
+                    Some(value) => value,
+                    None => return use_default_or_null(default, arena),
                 }
             }
             DataValue::Array(_) => {
-                // Try to parse the component as an index
-                if let Ok(index) = component.parse::<usize>() {
-                    if let Some(value) = get_array_index(current, index) {
-                        current = value;
-                    } else {
-                        // Index out of bounds, use default
-                        return use_default_or_null(default, arena);
-                    }
-                } else {
-                    // Not a valid index, use default
-                    return use_default_or_null(default, arena);
+                current = match process_array_component(current, component) {
+                    Some(value) => value,
+                    None => return use_default_or_null(default, arena),
                 }
             }
             _ => {
@@ -83,6 +79,47 @@ pub fn evaluate_variable<'a>(
     Ok(current)
 }
 
+/// Find the boundary index for the next path component
+#[inline]
+fn find_next_component_boundary(path_bytes: &[u8], start: usize) -> usize {
+    path_bytes[start..]
+        .iter()
+        .position(|&b| b == b'.')
+        .map(|pos| start + pos)
+        .unwrap_or(path_bytes.len())
+}
+
+/// Extract a path component from the path bytes
+#[inline]
+fn extract_path_component(path_bytes: &[u8], start: usize, end: usize) -> &str {
+    // Safe because we know the input is valid UTF-8
+    unsafe { std::str::from_utf8_unchecked(&path_bytes[start..end]) }
+}
+
+/// Process a component when the current value is an object
+#[inline]
+fn process_object_component<'a>(
+    obj: &'a DataValue<'a>,
+    component: &str,
+) -> Option<&'a DataValue<'a>> {
+    find_in_object(obj, component)
+}
+
+/// Process a component when the current value is an array
+#[inline]
+fn process_array_component<'a>(
+    arr: &'a DataValue<'a>,
+    component: &str,
+) -> Option<&'a DataValue<'a>> {
+    // Try to parse the component as an index
+    if let Ok(index) = component.parse::<usize>() {
+        get_array_index(arr, index)
+    } else {
+        // Not a valid index
+        None
+    }
+}
+
 /// Helper function to evaluate a simple path (no dots)
 #[inline]
 fn evaluate_simple_path<'a>(
@@ -93,25 +130,31 @@ fn evaluate_simple_path<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Special case for numeric indices - direct array access
     if let Ok(index) = path.parse::<usize>() {
-        if let DataValue::Array(items) = data {
-            if index < items.len() {
-                return Ok(&items[index]);
-            }
-        }
-
-        // Not found, use default
-        return use_default_or_null(default, arena);
+        return handle_array_index_access(data, index, default, arena);
     }
 
-    if let DataValue::Object(obj) = data {
-        for (k, v) in *obj {
-            if *k == path {
-                return Ok(v);
-            }
-        }
+    // Otherwise, look for a matching property in the object
+    if let Some(value) = find_in_object(data, path) {
+        return Ok(value);
     }
 
     // Not found, use default
+    use_default_or_null(default, arena)
+}
+
+/// Handle direct array index access for simple paths
+#[inline]
+fn handle_array_index_access<'a>(
+    data: &'a DataValue<'a>,
+    index: usize,
+    default: &Option<&'a Token<'a>>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if let Some(value) = get_array_index(data, index) {
+        return Ok(value);
+    }
+
+    // Not found or not an array, use default
     use_default_or_null(default, arena)
 }
 
@@ -122,18 +165,37 @@ fn find_in_object<'a>(obj: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue
         // If the object has more than 8 entries, use binary search
         // This assumes entries are sorted by key, which should be enforced elsewhere
         if entries.len() > 8 {
-            // Binary search for the key
-            match entries.binary_search_by_key(&key, |&(k, _)| k) {
-                Ok(idx) => return Some(&entries[idx].1),
-                Err(_) => return None,
-            }
+            return find_in_large_object(entries, key);
         }
 
         // For small objects, linear search is faster due to cache locality
-        for &(k, ref v) in *entries {
-            if k == key {
-                return Some(v);
-            }
+        return find_in_small_object(entries, key);
+    }
+    None
+}
+
+/// Find a key in a large object using binary search
+#[inline]
+fn find_in_large_object<'a>(
+    entries: &'a [(&'a str, DataValue<'a>)],
+    key: &str,
+) -> Option<&'a DataValue<'a>> {
+    // Binary search for the key
+    match entries.binary_search_by_key(&key, |&(k, _)| k) {
+        Ok(idx) => Some(&entries[idx].1),
+        Err(_) => None,
+    }
+}
+
+/// Find a key in a small object using linear search
+#[inline]
+fn find_in_small_object<'a>(
+    entries: &'a [(&'a str, DataValue<'a>)],
+    key: &str,
+) -> Option<&'a DataValue<'a>> {
+    for &(k, ref v) in entries {
+        if k == key {
+            return Some(v);
         }
     }
     None

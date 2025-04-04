@@ -1,0 +1,226 @@
+[
+  "# Map operator tests",
+  {
+    "description": "Basic array iteration - double each number",
+    "rule": {
+      "map": [
+        [1, 2, 3, 4],
+        {"*": [{"val": []}, 2]}
+      ]
+    },
+    "data": null,
+    "result": [2, 4, 6, 8]
+  },
+  {
+    "description": "Data-driven array iteration - double each number from input",
+    "rule": {
+      "map": [
+        {"val": "numbers"},
+        {"*": [{"val": []}, 2]}
+      ]
+    },
+    "data": {
+      "numbers": [3, 4, 5]
+    },
+    "result": [6, 8, 10]
+  },
+  {
+    "description": "Array indices - append index to value using scope traversal",
+    "rule": {
+      "map": [
+        ["a", "b", "c"],
+        {
+          "cat": [
+            {"val": []},
+            "-",
+            {"val": [[1], "index"]}
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": ["a-0", "b-1", "c-2"]
+  },
+  {
+    "description": "Object iteration - extract values",
+    "rule": {
+      "map": [
+        {"val": "obj"},
+        {"val": []}
+      ]
+    },
+    "data": {
+      "obj": {"a": 1, "b": 2, "c": 3}
+    },
+    "result": [1, 2, 3]
+  },
+  {
+    "description": "Object iteration - extract values from data context",
+    "rule": {
+      "map": [
+        {"val": "user"},
+        {"val": []}
+      ]
+    },
+    "data": {
+      "user": {
+        "name": "Alice",
+        "age": 30,
+        "city": "New York"
+      }
+    },
+    "result": [30, "New York", "Alice"]
+  },
+  {
+    "description": "Object iteration - filter values greater than 10",
+    "rule": {
+      "map": [
+        {"val": "obj"},
+        {"if": [
+          {">": [{"val": []}, 10]},
+          {"val": []},
+          null
+        ]}
+      ]
+    },
+    "data": {
+      "obj": {"a": 5, "b": 15, "c": 20, "d": 8}
+    },
+    "result": [null, 15, 20, null]
+  },
+  {
+    "description": "Object iteration - create key-value string pairs using scope traversal",
+    "rule": {
+      "map": [
+        {"val": "person"},
+        {
+          "cat": [
+            {"val": [[1], "key"]},
+            ": ",
+            {"val": []}
+          ]
+        }
+      ]
+    },
+    "data": {
+      "person": {"name": "Alice", "age": 30, "city": "New York"}
+    },
+    "result": ["age: 30", "city: New York", "name: Alice"]
+  },
+  {
+    "description": "Array filtering - keep only even numbers",
+    "rule": {
+      "map": [
+        [1, 2, 3, 4, 5, 6],
+        {"if": [
+          {"==": [0, {"%": [{"val": []}, 2]}]},
+          {"val": []},
+          null
+        ]}
+      ]
+    },
+    "data": null,
+    "result": [null, 2, null, 4, null, 6]
+  },
+  {
+    "description": "Map null input returns empty array",
+    "rule": {
+      "map": [
+        {"val": "nonexistent"},
+        {"val": []}
+      ]
+    },
+    "data": null,
+    "result": []
+  },
+  {
+    "description": "Access collection info during iteration with scope traversal",
+    "rule": {
+      "map": [
+        [10, 20, 30, 40],
+        {
+          "cat": [
+            "Item #",
+            {"val": [[1], "index"]},
+            ": ",
+            {"val": []}
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": ["Item #0: 10", "Item #1: 20", "Item #2: 30", "Item #3: 40"]
+  },
+  {
+    "description": "Map with primitive value from data context",
+    "rule": {
+      "map": [
+        {"val": "number"},
+        {"*": [{"val": []}, 2]}
+      ]
+    },
+    "data": {
+      "number": 42
+    },
+    "result": [84]
+  },
+  {
+    "description": "Conditionally mapping object fields - show or hide sensitive data",
+    "rule": {
+      "map": [
+        {"val": "user"},
+        {
+          "if": [
+            {"in": [{"val": [[1], "key"]}, ["name", "email"]]},
+            {"val": []},
+            "hidden"
+          ]
+        }
+      ]
+    },
+    "data": {
+      "user": {
+        "name": "John",
+        "email": "john@example.com",
+        "password": "secret123",
+        "creditCard": "1234-5678-9101-1121"
+      }
+    },
+    "result": ["hidden", "john@example.com", "John", "hidden"]
+  },
+  {
+    "description": "Map empty array returns empty array",
+    "rule": {
+      "map": [
+        [],
+        {"val": []}
+      ]
+    },
+    "data": null,
+    "result": []
+  },
+  {
+    "description": "Map empty object returns empty array",
+    "rule": {
+      "map": [
+        {"val": "empty"},
+        {"val": []}
+      ]
+    },
+    "data": {
+      "empty": {}
+    },
+    "result": []
+  },
+  {
+    "description": "Access parent data from map iteration using negative scope indices",
+    "rule": {
+      "map": [
+        [1, 2, 3],
+        {"*": [{"val": []}, {"val": [[-2], "multiplier"]}]}
+      ]
+    },
+    "data": {"multiplier": 5},
+    "result": [5, 10, 15]
+  }
+]

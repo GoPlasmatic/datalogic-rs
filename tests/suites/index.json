@@ -45,5 +45,6 @@
     "datetime/val.datetime.json",
     "length.json",
     "sort.json",
-    "slice.json"
+    "slice.json",
+    "array/map.json"
 ]

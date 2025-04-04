@@ -4,31 +4,31 @@
         "description": "Create a duration from string",
         "rule": {"timestamp": "1d:2h:3m:4s"},
         "data": null,
-        "result": {"timestamp": "1d:2h:3m:4s"}
+        "result": "1d:2h:3m:4s"
     },
     {
         "description": "Create a duration with days only",
         "rule": {"timestamp": "2d"},
         "data": null,
-        "result": {"timestamp": "2d:0h:0m:0s"}
+        "result": "2d:0h:0m:0s"
     },
     {
         "description": "Create a duration with hours only",
         "rule": {"timestamp": "5h"},
         "data": null,
-        "result": {"timestamp": "0d:5h:0m:0s"}
+        "result": "0d:5h:0m:0s"
     },
     {
         "description": "Create a duration with minutes only",
         "rule": {"timestamp": "30m"},
         "data": null,
-        "result": {"timestamp": "0d:0h:30m:0s"}
+        "result": "0d:0h:30m:0s"
     },
     {
         "description": "Create a duration with seconds only",
         "rule": {"timestamp": "45s"},
         "data": null,
-        "result": {"timestamp": "0d:0h:0m:45s"}
+        "result": "0d:0h:0m:45s"
     },
 
     "# Duration arithmetic operations",
@@ -39,7 +39,7 @@
             2
         ]},
         "data": null,
-        "result": {"timestamp": "2d:0h:0m:0s"}
+        "result": "2d:0h:0m:0s"
     },
     {
         "description": "Divide duration by number",
@@ -48,7 +48,7 @@
             2
         ]},
         "data": null,
-        "result": {"timestamp": "1d:0h:0m:0s"}
+        "result": "1d:0h:0m:0s"
     },
     {
         "description": "Add two durations",
@@ -57,7 +57,7 @@
             {"timestamp": "12h"}
         ]},
         "data": null,
-        "result": {"timestamp": "1d:12h:0m:0s"}
+        "result": "1d:12h:0m:0s"
     },
     {
         "description": "Subtract two durations",
@@ -66,7 +66,7 @@
             {"timestamp": "12h"}
         ]},
         "data": null,
-        "result": {"timestamp": "1d:12h:0m:0s"}
+        "result": "1d:12h:0m:0s"
     },
     {
         "description": "Complex duration expression",
@@ -75,7 +75,7 @@
             {"timestamp": "12h"}
         ]},
         "data": null,
-        "result": {"timestamp": "2d:12h:0m:0s"}
+        "result": "2d:12h:0m:0s"
     },
 
     "# Duration comparisons",
@@ -151,6 +151,6 @@
             3
         ]},
         "data": {"duration": {"timestamp": "1d"}},
-        "result": {"timestamp": "3d:0h:0m:0s"}
+        "result": "3d:0h:0m:0s"
     }
 ]

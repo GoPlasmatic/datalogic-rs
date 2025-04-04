@@ -12,7 +12,6 @@ struct TestCase {
     rule: JsonValue,
     data: Option<JsonValue>,
     result: Option<JsonValue>,
-    result_type: Option<String>,
     error: Option<JsonValue>,
     format: Option<String>,
 }
@@ -40,16 +39,16 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
             let rule = obj.get("rule").cloned().unwrap_or(JsonValue::Null);
             let data = obj.get("data").cloned();
             let result = obj.get("result").cloned();
-            let result_type = obj.get("result_type").map(|v| v.as_str().unwrap_or("").to_string());
             let error = obj.get("error").cloned();
-            let format = obj.get("format").map(|v| v.as_str().unwrap_or("").to_string());
+            let format = obj
+                .get("format")
+                .map(|v| v.as_str().unwrap_or("").to_string());
 
             test_cases.push(TestCase {
                 description,
                 rule,
                 data,
                 result,
-                result_type,
                 error,
                 format,
             });
@@ -140,44 +139,6 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
         return Err(format!("Expected an error but got result: {}", result));
     }
 
-    // If we only care about the result type
-    if let Some(result_type) = &test_case.result_type {
-        match result_type.as_str() {
-            "number" => {
-                if !result.is_number() {
-                    return Err(format!("Expected number result, got: {}", result));
-                }
-            },
-            "string" => {
-                if !result.is_string() {
-                    return Err(format!("Expected string result, got: {}", result));
-                }
-            },
-            "boolean" => {
-                if !result.is_bool() {
-                    return Err(format!("Expected boolean result, got: {}", result));
-                }
-            },
-            "array" => {
-                if !result.is_array() {
-                    return Err(format!("Expected array result, got: {}", result));
-                }
-            },
-            "object" => {
-                if !result.is_object() {
-                    return Err(format!("Expected object result, got: {}", result));
-                }
-            },
-            "null" => {
-                if !result.is_null() {
-                    return Err(format!("Expected null result, got: {}", result));
-                }
-            },
-            _ => return Err(format!("Unknown result_type: {}", result_type)),
-        }
-        return Ok(());
-    }
-
     // If a specific result is expected
     if let Some(expected_result) = &test_case.result {
         // Convert the expected result to DataValue for comparison
@@ -208,7 +169,11 @@ fn run_test_suite(test_file_path: &Path) -> (usize, usize) {
     let json_str = match fs::read_to_string(test_file_path) {
         Ok(content) => content,
         Err(e) => {
-            println!("ERROR: Failed to read test file {}: {}", test_file_path.display(), e);
+            println!(
+                "ERROR: Failed to read test file {}: {}",
+                test_file_path.display(),
+                e
+            );
             return (0, 0);
         }
     };
@@ -224,23 +189,22 @@ fn run_test_suite(test_file_path: &Path) -> (usize, usize) {
         match run_test_case(test_case) {
             Ok(_) => {
                 passed += 1;
-                println!("  ✅ {}: {}", i+1, test_case.description);
+                println!("  ✅ {}: {}", i + 1, test_case.description);
             }
             Err(e) => {
                 failed += 1;
-                println!("  ❌ {}: {}", i+1, test_case.description);
+                println!("  ❌ {}: {}", i + 1, test_case.description);
                 println!("     Error: {}", e);
                 println!("     Rule: {}", test_case.rule);
-                println!("     Data: {}", test_case.data.as_ref().unwrap_or(&empty_json));
+                println!(
+                    "     Data: {}",
+                    test_case.data.as_ref().unwrap_or(&empty_json)
+                );
             }
         }
     }
 
-    println!(
-        "  Results: {} passed, {} failed",
-        passed,
-        failed
-    );
+    println!("  Results: {} passed, {} failed", passed, failed);
 
     (passed, failed)
 }
@@ -270,17 +234,15 @@ mod tests {
         // Default: Run all test files from the index
         let index_file = PathBuf::from("tests/suites/index.json");
         if index_file.exists() {
-            match fs::read_to_string(&index_file) {
-                Ok(content) => {
-                    let json: JsonValue = serde_json::from_str(&content).unwrap_or_else(|_| json!([]));
-                    if let Some(arr) = json.as_array() {
-                        return arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .map(|s| PathBuf::from(format!("tests/suites/{}", s)))
-                            .collect();
-                    }
+            if let Ok(content) = fs::read_to_string(&index_file) {
+                let json: JsonValue = serde_json::from_str(&content).unwrap_or_else(|_| json!([]));
+                if let Some(arr) = json.as_array() {
+                    return arr
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| PathBuf::from(format!("tests/suites/{}", s)))
+                        .collect();
                 }
-                Err(_) => {}
             }
         }
 
@@ -291,7 +253,7 @@ mod tests {
     #[test]
     fn test_jsonlogic() {
         let test_files = get_test_files();
-        
+
         let mut total_passed = 0;
         let mut total_failed = 0;
 
@@ -301,8 +263,11 @@ mod tests {
             total_failed += failed;
         }
 
-        println!("\nTotal Results: {} passed, {} failed", total_passed, total_failed);
-        
+        println!(
+            "\nTotal Results: {} passed, {} failed",
+            total_passed, total_failed
+        );
+
         assert_eq!(total_failed, 0, "{} tests failed", total_failed);
     }
-} 
+}

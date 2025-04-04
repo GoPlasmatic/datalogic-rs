@@ -5,6 +5,7 @@
 
 use chrono::Duration;
 use core::f64;
+use std::cmp::Ordering;
 
 use crate::arena::DataArena;
 use crate::logic::error::{LogicError, Result};
@@ -36,6 +37,15 @@ fn safe_to_f64(value: &DataValue) -> Result<f64> {
         .coerce_to_number()
         .ok_or(LogicError::NaNError)
         .map(|n| n.as_f64())
+}
+
+/// Helper function to create appropriate number type based on value
+fn create_number(value: f64, arena: &DataArena) -> &DataValue<'_> {
+    if value.fract() == 0.0 && value >= i64::MIN as f64 && value <= i64::MAX as f64 {
+        arena.alloc(DataValue::integer(value as i64))
+    } else {
+        arena.alloc(DataValue::float(value))
+    }
 }
 
 /// Helper function to extract a datetime from a direct DateTime value or an object with a "datetime" key
@@ -80,433 +90,245 @@ fn extract_duration<'a>(value: &'a DataValue<'a>, arena: &'a DataArena) -> Optio
     }
 }
 
-/// Helper function to create a datetime object
-fn create_datetime_object(dt: DateTime<Utc>, arena: &DataArena) -> &DataValue<'_> {
-    let dt_val = DataValue::datetime(dt);
+/// Process potential datetime and duration operations for addition
+fn process_datetime_duration_add<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Option<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return None;
+    }
 
-    // Create an object with {"datetime": dt_val}
-    let entries = arena.vec_into_slice(vec![(arena.intern_str("datetime"), dt_val)]);
+    // Check for datetime + duration
+    let left_dt = extract_datetime(&args[0], arena);
+    let right_dur = extract_duration(&args[1], arena);
+    if let (Some(dt), Some(dur)) = (left_dt, right_dur) {
+        return Some(arena.alloc(DataValue::datetime(dt + dur)));
+    }
 
-    arena.alloc(DataValue::Object(entries))
+    // Check for duration + datetime (reverse order)
+    let left_dur = extract_duration(&args[0], arena);
+    let right_dt = extract_datetime(&args[1], arena);
+    if let (Some(dur), Some(dt)) = (left_dur, right_dt) {
+        return Some(arena.alloc(DataValue::datetime(dt + dur)));
+    }
+
+    // Check for duration + duration
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return Some(arena.alloc(DataValue::duration(dur1 + dur2)));
+    }
+
+    None
 }
 
-/// Helper function to create a duration object
-fn create_duration_object(dur: Duration, arena: &DataArena) -> &DataValue<'_> {
-    let dur_val = DataValue::duration(dur);
+/// Process potential datetime and duration operations for subtraction
+fn process_datetime_duration_sub<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Option<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return None;
+    }
 
-    // Create an object with {"timestamp": dur_val}
-    let entries = arena.vec_into_slice(vec![(arena.intern_str("timestamp"), dur_val)]);
+    // Check for datetime - datetime = duration
+    let left_dt = extract_datetime(&args[0], arena);
+    let right_dt = extract_datetime(&args[1], arena);
+    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+        let duration = dt1 - dt2;
+        return Some(arena.alloc(DataValue::duration(duration)));
+    }
 
-    arena.alloc(DataValue::Object(entries))
+    // Check for datetime - duration = datetime
+    let right_dur = extract_duration(&args[1], arena);
+    if let (Some(dt), Some(dur)) = (left_dt, right_dur) {
+        return Some(arena.alloc(DataValue::datetime(dt - dur)));
+    }
+
+    // Check for duration - duration = duration
+    let left_dur = extract_duration(&args[0], arena);
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return Some(arena.alloc(DataValue::duration(dur1 - dur2)));
+    }
+
+    None
 }
 
-/// Evaluates an addition operation.
-pub fn eval_add<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+/// Process potential duration operations for multiplication
+fn process_duration_multiplication<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Option<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return None;
+    }
+
+    // Check for duration * number
+    let left_dur = extract_duration(&args[0], arena);
+    if let Some(dur) = left_dur {
+        if let DataValue::Number(n) = &args[1] {
+            let factor = n.as_f64();
+            if factor.fract() == 0.0 && factor >= 0.0 {
+                let result_dur = dur * (factor as i32);
+                return Some(arena.alloc(DataValue::duration(result_dur)));
+            }
+        }
+    }
+
+    // Check for number * duration (reverse order)
+    let right_dur = extract_duration(&args[1], arena);
+    if let Some(dur) = right_dur {
+        if let DataValue::Number(n) = &args[0] {
+            let factor = n.as_f64();
+            if factor.fract() == 0.0 && factor >= 0.0 {
+                let result_dur = dur * (factor as i32);
+                return Some(arena.alloc(DataValue::duration(result_dur)));
+            }
+        }
+    }
+
+    None
+}
+
+/// Process potential duration operations for division
+fn process_duration_division<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Option<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return None;
+    }
+
+    // Check for duration / number
+    let left_dur = extract_duration(&args[0], arena);
+    if let Some(dur) = left_dur {
+        if let DataValue::Number(n) = &args[1] {
+            let divisor = n.as_f64();
+            if divisor.fract() == 0.0 && divisor > 0.0 {
+                let result_dur = dur / (divisor as i32);
+                return Some(arena.alloc(DataValue::duration(result_dur)));
+            }
+        }
+    }
+
+    // Check for duration / duration = number (returns a scalar)
+    let right_dur = extract_duration(&args[1], arena);
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        if dur2.num_seconds() == 0 {
+            return None; // Will be handled as a division by zero error later
+        }
+
+        // Calculate the ratio
+        let ratio = dur1.num_seconds() as f64 / dur2.num_seconds() as f64;
+        return Some(create_number(ratio, arena));
+    }
+
+    None
+}
+
+/// Process numeric addition
+fn process_numeric_add<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         // Empty add operation returns 0
         return Ok(arena.alloc(DataValue::integer(0)));
     }
 
-    // Check for datetime + duration first
-    if args.len() == 2 {
-        let left_dt = extract_datetime(&args[0], arena);
-        let right_dur = extract_duration(&args[1], arena);
-
-        if let (Some(dt), Some(dur)) = (left_dt, right_dur) {
-            return Ok(create_datetime_object(dt + dur, arena));
-        }
-
-        // Check for duration + datetime (reverse order)
-        let left_dur = extract_duration(&args[0], arena);
-        let right_dt = extract_datetime(&args[1], arena);
-
-        if let (Some(dur), Some(dt)) = (left_dur, right_dt) {
-            return Ok(create_datetime_object(dt + dur, arena));
-        }
-
-        // Check for duration + duration
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(create_duration_object(dur1 + dur2, arena));
-        }
-    }
-
-    // For numeric values, perform conventional addition
     let mut sum = 0.0;
     for arg in args {
-        match arg {
-            DataValue::Number(n) => {
-                sum += n.as_f64();
-            }
-            DataValue::String(s) => {
-                // Special case for empty string - treat as 0
-                if s.is_empty() {
-                    sum += 0.0;
-                } else if let Ok(num) = s.parse::<f64>() {
-                    sum += num;
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
-            DataValue::Bool(b) => {
-                sum += if *b { 1.0 } else { 0.0 };
-            }
-            DataValue::Null => {
-                sum += 0.0;
-            }
-            _ => {
-                // For other types, try to convert to number
-                if let Some(n) = arg.coerce_to_number() {
-                    sum += n.as_f64();
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
+        if let Some(n) = arg.coerce_to_number() {
+            sum += n.as_f64();
+        } else {
+            return Err(LogicError::NaNError);
         }
     }
 
-    // Check if it's an integer or a floating point
-    if sum.fract() == 0.0 && sum >= i64::MIN as f64 && sum <= i64::MAX as f64 {
-        Ok(arena.alloc(DataValue::integer(sum as i64)))
-    } else {
-        Ok(arena.alloc(DataValue::float(sum)))
-    }
+    Ok(create_number(sum, arena))
 }
 
-/// Evaluates a subtraction operation.
-pub fn eval_sub<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+/// Process numeric subtraction
+fn process_numeric_sub<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    // Check for datetime and duration operations first
-    if args.len() == 2 {
-        let left_dt = extract_datetime(&args[0], arena);
-        let right_dt = extract_datetime(&args[1], arena);
-
-        // Datetime - Datetime = Duration
-        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-            let duration = dt1 - dt2;
-            return Ok(create_duration_object(duration, arena));
-        }
-
-        let right_dur = extract_duration(&args[1], arena);
-
-        // Datetime - Duration = Datetime
-        if let (Some(dt), Some(dur)) = (left_dt, right_dur) {
-            return Ok(create_datetime_object(dt - dur, arena));
-        }
-
-        let left_dur = extract_duration(&args[0], arena);
-
-        // Duration - Duration = Duration
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(create_duration_object(dur1 - dur2, arena));
-        }
-    }
-
-    // Regular numeric subtraction
-    let first = &args[0];
-    let first_value = match first {
-        DataValue::Number(n) => n.as_f64(),
-        DataValue::String(s) => {
-            // Special case for empty string - treat as 0
-            if s.is_empty() {
-                0.0
-            } else if let Ok(num) = s.parse::<f64>() {
-                num
-            } else {
-                return Err(LogicError::NaNError);
-            }
-        }
-        DataValue::Bool(b) => {
-            if *b {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        DataValue::Null => 0.0,
-        _ => {
-            // For other types, try to convert to number
-            if let Some(n) = first.coerce_to_number() {
-                n.as_f64()
-            } else {
-                return Err(LogicError::NaNError);
-            }
-        }
+    // Get first value
+    let first_value = match args[0].coerce_to_number() {
+        Some(n) => n.as_f64(),
+        None => return Err(LogicError::NaNError),
     };
 
     // If only one argument, return negation
     if args.len() == 1 {
-        if first_value.fract() == 0.0
-            && -first_value >= i64::MIN as f64
-            && -first_value <= i64::MAX as f64
-        {
-            return Ok(arena.alloc(DataValue::integer(-first_value as i64)));
-        } else {
-            return Ok(arena.alloc(DataValue::float(-first_value)));
-        }
+        return Ok(create_number(-first_value, arena));
     }
 
     // Otherwise, subtract all other values from the first
     let mut result = first_value;
     for arg in &args[1..] {
-        match arg {
-            DataValue::Number(n) => {
-                result -= n.as_f64();
-            }
-            DataValue::String(s) => {
-                // Special case for empty string - treat as 0
-                if s.is_empty() {
-                    result -= 0.0;
-                } else if let Ok(num) = s.parse::<f64>() {
-                    result -= num;
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
-            DataValue::Bool(b) => {
-                result -= if *b { 1.0 } else { 0.0 };
-            }
-            DataValue::Null => {
-                result -= 0.0;
-            }
-            _ => {
-                // For other types, try to convert to number
-                if let Some(n) = arg.coerce_to_number() {
-                    result -= n.as_f64();
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
+        match arg.coerce_to_number() {
+            Some(n) => result -= n.as_f64(),
+            None => return Err(LogicError::NaNError),
         }
     }
 
-    // Check if it's an integer or a floating point
-    if result.fract() == 0.0 && result >= i64::MIN as f64 && result <= i64::MAX as f64 {
-        Ok(arena.alloc(DataValue::integer(result as i64)))
-    } else {
-        Ok(arena.alloc(DataValue::float(result)))
-    }
+    Ok(create_number(result, arena))
 }
 
-/// Evaluates a multiplication operation.
-pub fn eval_mul<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+/// Process numeric multiplication
+fn process_numeric_mul<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         // Empty multiply operation returns 1
         return Ok(arena.alloc(DataValue::integer(1)));
     }
 
-    // Check for duration * number
-    if args.len() == 2 {
-        let left_dur = extract_duration(&args[0], arena);
-
-        if let Some(dur) = left_dur {
-            if let DataValue::Number(n) = &args[1] {
-                let factor = n.as_f64();
-                if factor.fract() == 0.0 && factor >= 0.0 {
-                    let result_dur = dur * (factor as i32);
-                    return Ok(create_duration_object(result_dur, arena));
-                }
-            }
-        }
-
-        // Check for number * duration (reverse order)
-        let right_dur = extract_duration(&args[1], arena);
-
-        if let Some(dur) = right_dur {
-            if let DataValue::Number(n) = &args[0] {
-                let factor = n.as_f64();
-                if factor.fract() == 0.0 && factor >= 0.0 {
-                    let result_dur = dur * (factor as i32);
-                    return Ok(create_duration_object(result_dur, arena));
-                }
-            }
-        }
-    }
-
-    // Regular numeric multiplication
     let mut product = 1.0;
     for arg in args {
-        match arg {
-            DataValue::Number(n) => {
-                product *= n.as_f64();
-            }
-            DataValue::String(s) => {
-                // Special case for empty string - treat as 0
-                if s.is_empty() {
-                    product *= 0.0;
-                } else if let Ok(num) = s.parse::<f64>() {
-                    product *= num;
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
-            DataValue::Bool(b) => {
-                product *= if *b { 1.0 } else { 0.0 };
-            }
-            DataValue::Null => {
-                product *= 0.0;
-            }
-            _ => {
-                // For other types, try to convert to number
-                if let Some(n) = arg.coerce_to_number() {
-                    product *= n.as_f64();
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
+        match arg.coerce_to_number() {
+            Some(n) => product *= n.as_f64(),
+            None => return Err(LogicError::NaNError),
         }
     }
 
-    // Check if it's an integer or a floating point
-    if product.fract() == 0.0 && product >= i64::MIN as f64 && product <= i64::MAX as f64 {
-        Ok(arena.alloc(DataValue::integer(product as i64)))
-    } else {
-        Ok(arena.alloc(DataValue::float(product)))
-    }
+    Ok(create_number(product, arena))
 }
 
-/// Evaluates a division operation.
-pub fn eval_div<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+/// Process numeric division
+fn process_numeric_div<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
+    // Get first value
+    let first_value = match args[0].coerce_to_number() {
+        Some(n) => n.as_f64(),
+        None => return Err(LogicError::NaNError),
+    };
+
     // Single operand case: return 1/x (reciprocal)
     if args.len() == 1 {
-        let value = match &args[0] {
-            DataValue::Number(n) => n.as_f64(),
-            DataValue::String(s) => {
-                if let Ok(num) = s.parse::<f64>() {
-                    num
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
-            DataValue::Bool(b) => {
-                if *b {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
-            DataValue::Null => 0.0,
-            _ => {
-                // For other types, try to convert to number
-                if let Some(n) = args[0].coerce_to_number() {
-                    n.as_f64()
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
-        };
-
-        if value == 0.0 {
+        if first_value == 0.0 {
             return Err(LogicError::NaNError);
         }
-
-        let result = 1.0 / value;
-
-        // Check if it's an integer or a floating point
-        if result.fract() == 0.0 && result >= i64::MIN as f64 && result <= i64::MAX as f64 {
-            return Ok(arena.alloc(DataValue::integer(result as i64)));
-        } else {
-            return Ok(arena.alloc(DataValue::float(result)));
-        }
+        return Ok(create_number(1.0 / first_value, arena));
     }
-
-    // Check for duration / number
-    if args.len() == 2 {
-        let left_dur = extract_duration(&args[0], arena);
-
-        if let Some(dur) = left_dur {
-            if let DataValue::Number(n) = &args[1] {
-                let divisor = n.as_f64();
-                if divisor.fract() == 0.0 && divisor > 0.0 {
-                    let result_dur = dur / (divisor as i32);
-                    return Ok(create_duration_object(result_dur, arena));
-                }
-            }
-        }
-
-        // Check for duration / duration = number (returns a scalar)
-        let right_dur = extract_duration(&args[1], arena);
-
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            if dur2.num_seconds() == 0 {
-                return Err(LogicError::NaNError);
-            }
-
-            // Calculate the ratio
-            let ratio = dur1.num_seconds() as f64 / dur2.num_seconds() as f64;
-
-            // Check if it's an integer or a floating point
-            if ratio.fract() == 0.0 && ratio >= i64::MIN as f64 && ratio <= i64::MAX as f64 {
-                return Ok(arena.alloc(DataValue::integer(ratio as i64)));
-            } else {
-                return Ok(arena.alloc(DataValue::float(ratio)));
-            }
-        }
-    }
-
-    // Regular numeric division
-    let first = &args[0];
-    let first_value = match first {
-        DataValue::Number(n) => n.as_f64(),
-        DataValue::String(s) => {
-            if let Ok(num) = s.parse::<f64>() {
-                num
-            } else {
-                return Err(LogicError::NaNError);
-            }
-        }
-        DataValue::Bool(b) => {
-            if *b {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        DataValue::Null => 0.0,
-        _ => {
-            // For other types, try to convert to number
-            if let Some(n) = first.coerce_to_number() {
-                n.as_f64()
-            } else {
-                return Err(LogicError::NaNError);
-            }
-        }
-    };
 
     // Divide the first value by all other values
     let mut result = first_value;
     for arg in &args[1..] {
-        let divisor = match arg {
-            DataValue::Number(n) => n.as_f64(),
-            DataValue::String(s) => {
-                if let Ok(num) = s.parse::<f64>() {
-                    num
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
-            DataValue::Bool(b) => {
-                if *b {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
-            DataValue::Null => 0.0,
-            _ => {
-                // For other types, try to convert to number
-                if let Some(n) = arg.coerce_to_number() {
-                    n.as_f64()
-                } else {
-                    return Err(LogicError::NaNError);
-                }
-            }
+        let divisor = match arg.coerce_to_number() {
+            Some(n) => n.as_f64(),
+            None => return Err(LogicError::NaNError),
         };
 
         if divisor == 0.0 {
@@ -516,22 +338,58 @@ pub fn eval_div<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
         result /= divisor;
     }
 
-    // Check if it's an integer or a floating point
-    if result.fract() == 0.0 && result >= i64::MIN as f64 && result <= i64::MAX as f64 {
-        Ok(arena.alloc(DataValue::integer(result as i64)))
-    } else {
-        Ok(arena.alloc(DataValue::float(result)))
-    }
+    Ok(create_number(result, arena))
 }
 
-/// Evaluates a modulo operation with a single argument.
+/// Evaluates an addition operation.
+pub fn eval_add<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    // First check for datetime/duration operations
+    if let Some(result) = process_datetime_duration_add(args, arena) {
+        return Ok(result);
+    }
+
+    // Fall back to numeric addition
+    process_numeric_add(args, arena)
+}
+
+/// Evaluates a subtraction operation.
+pub fn eval_sub<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    // First check for datetime/duration operations
+    if let Some(result) = process_datetime_duration_sub(args, arena) {
+        return Ok(result);
+    }
+
+    // Fall back to numeric subtraction
+    process_numeric_sub(args, arena)
+}
+
+/// Evaluates a multiplication operation.
+pub fn eval_mul<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    // First check for duration operations
+    if let Some(result) = process_duration_multiplication(args, arena) {
+        return Ok(result);
+    }
+
+    // Fall back to numeric multiplication
+    process_numeric_mul(args, arena)
+}
+
+/// Evaluates a division operation.
+pub fn eval_div<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    // First check for duration operations
+    if let Some(result) = process_duration_division(args, arena) {
+        return Ok(result);
+    }
+
+    // Fall back to numeric division
+    process_numeric_div(args, arena)
+}
+
+/// Evaluates a modulo operation.
 pub fn eval_mod<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     match args.len() {
         0 => Err(LogicError::InvalidArgumentsError),
-        1 => {
-            // Can't do modulo with a single value
-            Err(LogicError::InvalidArgumentsError)
-        }
+        1 => Err(LogicError::InvalidArgumentsError), // Can't do modulo with a single value
         _ => {
             let first = safe_to_f64(&args[0])?;
             let mut result = first;
@@ -544,119 +402,97 @@ pub fn eval_mod<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
                 result %= divisor;
             }
 
-            Ok(arena.alloc(DataValue::float(result)))
+            Ok(create_number(result, arena))
+        }
+    }
+}
+
+/// Common implementation for min and max operations
+fn eval_min_max<'a>(args: &'a [DataValue<'a>], is_min: bool) -> Result<&'a DataValue<'a>> {
+    match args.len() {
+        0 => Err(LogicError::InvalidArgumentsError),
+        1 => {
+            if !args[0].is_number() && !args[0].is_datetime() && !args[0].is_duration() {
+                return Err(LogicError::InvalidArgumentsError);
+            }
+            Ok(&args[0])
+        }
+        _ => {
+            // Special case for datetime
+            if args.iter().all(|v| v.is_datetime()) {
+                let mut result_value = &args[0];
+
+                for value in &args[1..] {
+                    let comparison = value
+                        .as_datetime()
+                        .unwrap()
+                        .cmp(result_value.as_datetime().unwrap());
+                    if (is_min && comparison == Ordering::Less)
+                        || (!is_min && comparison == Ordering::Greater)
+                    {
+                        result_value = value;
+                    }
+                }
+
+                return Ok(result_value);
+            }
+            // Special case for duration
+            else if args.iter().all(|v| v.is_duration()) {
+                let mut result_value = &args[0];
+
+                for value in &args[1..] {
+                    let comparison = value
+                        .as_duration()
+                        .unwrap()
+                        .cmp(result_value.as_duration().unwrap());
+                    if (is_min && comparison == Ordering::Less)
+                        || (!is_min && comparison == Ordering::Greater)
+                    {
+                        result_value = value;
+                    }
+                }
+
+                return Ok(result_value);
+            }
+
+            // Default numeric min/max
+            let mut result_value = &args[0];
+            let mut result_num = if is_min {
+                f64::INFINITY
+            } else {
+                f64::NEG_INFINITY
+            };
+
+            for value in args {
+                if !value.is_number() {
+                    return Err(LogicError::InvalidArgumentsError);
+                }
+                let val_num = value.as_f64().unwrap();
+
+                let should_update = if is_min {
+                    val_num < result_num
+                } else {
+                    val_num > result_num
+                };
+                if should_update {
+                    result_value = value;
+                    result_num = val_num;
+                }
+            }
+
+            Ok(result_value)
         }
     }
 }
 
 /// Evaluates a min operation with a single argument.
 pub fn eval_min<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
-    match args.len() {
-        0 => Err(LogicError::InvalidArgumentsError),
-        1 => {
-            if !args[0].is_number() && !args[0].is_datetime() && !args[0].is_duration() {
-                return Err(LogicError::InvalidArgumentsError);
-            }
-            Ok(&args[0])
-        }
-        _ => {
-            // Special case for datetime and duration
-            if args.iter().all(|v| v.is_datetime()) {
-                let mut min_value = &args[0];
-
-                for value in &args[1..] {
-                    if value.as_datetime().unwrap() < min_value.as_datetime().unwrap() {
-                        min_value = value;
-                    }
-                }
-
-                return Ok(min_value);
-            } else if args.iter().all(|v| v.is_duration()) {
-                let mut min_value = &args[0];
-
-                for value in &args[1..] {
-                    if value.as_duration().unwrap() < min_value.as_duration().unwrap() {
-                        min_value = value;
-                    }
-                }
-
-                return Ok(min_value);
-            }
-
-            // Default numeric min
-            let mut min_value = &args[0];
-            let mut min_num = f64::INFINITY;
-
-            for value in args {
-                if !value.is_number() {
-                    return Err(LogicError::InvalidArgumentsError);
-                }
-                let val_num = value.as_f64().unwrap();
-
-                if val_num < min_num {
-                    min_value = value;
-                    min_num = val_num;
-                }
-            }
-
-            Ok(min_value)
-        }
-    }
+    eval_min_max(args, true)
 }
 
 /// Evaluates a max operation with a single argument.
 pub fn eval_max<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
-    match args.len() {
-        0 => Err(LogicError::InvalidArgumentsError),
-        1 => {
-            if !args[0].is_number() && !args[0].is_datetime() && !args[0].is_duration() {
-                return Err(LogicError::InvalidArgumentsError);
-            }
-            Ok(&args[0])
-        }
-        _ => {
-            // Special case for datetime and duration
-            if args.iter().all(|v| v.is_datetime()) {
-                let mut max_value = &args[0];
-
-                for value in &args[1..] {
-                    if value.as_datetime().unwrap() > max_value.as_datetime().unwrap() {
-                        max_value = value;
-                    }
-                }
-
-                return Ok(max_value);
-            } else if args.iter().all(|v| v.is_duration()) {
-                let mut max_value = &args[0];
-
-                for value in &args[1..] {
-                    if value.as_duration().unwrap() > max_value.as_duration().unwrap() {
-                        max_value = value;
-                    }
-                }
-
-                return Ok(max_value);
-            }
-
-            // Default numeric max
-            let mut max_value = &args[0];
-            let mut max_num = f64::NEG_INFINITY;
-
-            for value in args {
-                if !value.is_number() {
-                    return Err(LogicError::InvalidArgumentsError);
-                }
-                let val_num = value.as_f64().unwrap();
-
-                if val_num > max_num {
-                    max_value = value;
-                    max_num = val_num;
-                }
-            }
-
-            Ok(max_value)
-        }
-    }
+    eval_min_max(args, false)
 }
 
 #[cfg(test)]
@@ -706,50 +542,26 @@ mod tests {
         // Test adding duration to datetime
         let args = [DataValue::datetime(dt1), DataValue::duration(duration)];
         let result = eval_add(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_datetime());
 
-        // Check that it's an object with a "datetime" key
-        let entries = result.as_object().unwrap();
-        let datetime_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("datetime"));
-        assert!(datetime_entry.is_some());
-
-        let (_, dt_val) = datetime_entry.unwrap();
-        assert!(dt_val.is_datetime());
-        assert_eq!(*dt_val.as_datetime().unwrap(), dt2);
+        let result_dt = result.as_datetime().unwrap();
+        assert_eq!(*result_dt, dt2);
 
         // Test subtracting duration from datetime
         let args = [DataValue::datetime(dt2), DataValue::duration(duration)];
         let result = eval_sub(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_datetime());
 
-        // Check that it's an object with a "datetime" key
-        let entries = result.as_object().unwrap();
-        let datetime_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("datetime"));
-        assert!(datetime_entry.is_some());
-
-        let (_, dt_val) = datetime_entry.unwrap();
-        assert!(dt_val.is_datetime());
-        assert_eq!(*dt_val.as_datetime().unwrap(), dt1);
+        let result_dt = result.as_datetime().unwrap();
+        assert_eq!(*result_dt, dt1);
 
         // Test calculating duration between two datetimes
         let args = [DataValue::datetime(dt2), DataValue::datetime(dt1)];
         let result = eval_sub(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_duration());
 
-        // Check that it's an object with a "timestamp" key
-        let entries = result.as_object().unwrap();
-        let timestamp_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("timestamp"));
-        assert!(timestamp_entry.is_some());
-
-        let (_, dur_val) = timestamp_entry.unwrap();
-        assert!(dur_val.is_duration());
-        assert_eq!(dur_val.as_duration().unwrap().num_days(), 1);
+        let result_dur = result.as_duration().unwrap();
+        assert_eq!(result_dur.num_days(), 1);
     }
 
     #[test]
@@ -766,18 +578,10 @@ mod tests {
             DataValue::duration(duration2),
         ];
         let result = eval_add(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_duration());
 
-        // Check that it's an object with a "timestamp" key
-        let entries = result.as_object().unwrap();
-        let timestamp_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("timestamp"));
-        assert!(timestamp_entry.is_some());
-
-        let (_, dur_val) = timestamp_entry.unwrap();
-        assert!(dur_val.is_duration());
-        assert_eq!(dur_val.as_duration().unwrap().num_hours(), 36);
+        let result_dur = result.as_duration().unwrap();
+        assert_eq!(result_dur.num_hours(), 36);
 
         // Test subtracting durations
         let args = [
@@ -785,50 +589,26 @@ mod tests {
             DataValue::duration(duration2),
         ];
         let result = eval_sub(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_duration());
 
-        // Check that it's an object with a "timestamp" key
-        let entries = result.as_object().unwrap();
-        let timestamp_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("timestamp"));
-        assert!(timestamp_entry.is_some());
-
-        let (_, dur_val) = timestamp_entry.unwrap();
-        assert!(dur_val.is_duration());
-        assert_eq!(dur_val.as_duration().unwrap().num_hours(), 12);
+        let result_dur = result.as_duration().unwrap();
+        assert_eq!(result_dur.num_hours(), 12);
 
         // Test multiplying duration by number
         let args = [DataValue::duration(duration2), DataValue::integer(2)];
         let result = eval_mul(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_duration());
 
-        // Check that it's an object with a "timestamp" key
-        let entries = result.as_object().unwrap();
-        let timestamp_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("timestamp"));
-        assert!(timestamp_entry.is_some());
-
-        let (_, dur_val) = timestamp_entry.unwrap();
-        assert!(dur_val.is_duration());
-        assert_eq!(dur_val.as_duration().unwrap().num_hours(), 24);
+        let result_dur = result.as_duration().unwrap();
+        assert_eq!(result_dur.num_hours(), 24);
 
         // Test dividing duration by number
         let args = [DataValue::duration(duration1), DataValue::integer(2)];
         let result = eval_div(&args, &arena).unwrap();
-        assert!(result.is_object());
+        assert!(result.is_duration());
 
-        // Check that it's an object with a "timestamp" key
-        let entries = result.as_object().unwrap();
-        let timestamp_entry = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("timestamp"));
-        assert!(timestamp_entry.is_some());
-
-        let (_, dur_val) = timestamp_entry.unwrap();
-        assert!(dur_val.is_duration());
-        assert_eq!(dur_val.as_duration().unwrap().num_hours(), 12);
+        let result_dur = result.as_duration().unwrap();
+        assert_eq!(result_dur.num_hours(), 12);
     }
 
     #[test]

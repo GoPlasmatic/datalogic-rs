@@ -11,6 +11,7 @@ pub mod missing;
 pub mod string;
 pub mod throw;
 pub mod r#try;
+pub mod type_op;
 pub mod val;
 pub mod variable;
 

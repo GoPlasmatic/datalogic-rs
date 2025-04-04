@@ -4,13 +4,13 @@
         "description": "Create a datetime from string",
         "rule": {"datetime": "2022-07-06T13:20:06Z"},
         "data": null,
-        "result": {"datetime": "2022-07-06T13:20:06Z"}
+        "result": "2022-07-06T13:20:06Z"
     },
     {
         "description": "parse_date with format string",
         "rule": {"parse_date": ["2022-07-06", "yyyy-MM-dd"]},
         "data": null,
-        "result": {"datetime": "2022-07-06T00:00:00Z"}
+        "result": "2022-07-06T00:00:00Z"
     },
     {
         "description": "format_date with format string",
@@ -101,7 +101,7 @@
             {"timestamp": "1d"}
         ]},
         "data": null,
-        "result": {"datetime": "2022-07-07T13:20:06Z"}
+        "result": "2022-07-07T13:20:06Z"
     },
     {
         "description": "Subtract duration from datetime",
@@ -110,7 +110,7 @@
             {"timestamp": "1d"}
         ]},
         "data": null,
-        "result": {"datetime": "2022-07-05T13:20:06Z"}
+        "result": "2022-07-05T13:20:06Z"
     },
     {
         "description": "Calculate duration between two datetimes",
@@ -119,7 +119,7 @@
             {"datetime": "2022-07-06T13:20:06Z"}
         ]},
         "data": null,
-        "result": {"timestamp": "1d:0h:0m:0s"}
+        "result": "1d:0h:0m:0s"
     },
     {
         "description": "date_diff with days unit",
@@ -159,6 +159,6 @@
             {"timestamp": "1d"}
         ]},
         "data": {"start_date": {"datetime": "2022-07-06T13:20:06Z"}},
-        "result": {"datetime": "2022-07-07T13:20:06Z"}
+        "result": "2022-07-07T13:20:06Z"
     }
 ]

@@ -3,19 +3,29 @@
 //! This module provides a bump allocator that allows for efficient
 //! allocation of memory with minimal overhead. All allocations are
 //! freed at once when the arena is reset or dropped.
+//!
+//! The `DataArena` maintains shared references and context for evaluating
+//! logic expressions.
 
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::RefCell;
 use std::fmt;
+use std::mem;
 
 use super::interner::StringInterner;
-use crate::value::DataValue;
+use crate::value::{DataValue, NumberValue};
 
 /// Maximum number of path components in the fixed-size array
 const PATH_CHAIN_CAPACITY: usize = 16;
 
-/// A wrapper for a BumpVec that maintains safety around lifetimes
+/// Default allocation size for vectors
+const DEFAULT_VECTOR_CAPACITY: usize = 8;
+
+/// A wrapper for path chain that maintains safety around lifetimes
+///
+/// This struct helps track the path from root to current position
+/// in a data structure, while handling lifetimes safely.
 struct PathChainVec {
     /// The inner vector, using 'static lifetimes to avoid borrow checker issues
     vec: Vec<&'static DataValue<'static>>,
@@ -85,6 +95,8 @@ impl fmt::Debug for PathChainVec {
 
 /// An arena allocator for efficient data allocation.
 ///
+/// The DataArena provides memory management for DataLogic values, with
+/// optimized allocation strategies and context tracking for logic evaluation.
 pub struct DataArena {
     /// The underlying bump allocator
     bump: Bump,
@@ -144,6 +156,7 @@ impl fmt::Debug for DataArena {
 impl DataArena {
     /// Creates a new empty arena.
     ///
+    /// The arena starts with default capacity and will grow as needed.
     pub fn new() -> Self {
         Self::with_chunk_size(0) // No limit
     }
@@ -153,6 +166,11 @@ impl DataArena {
     /// The chunk size determines how much memory is allocated at once
     /// when the arena needs more space. Larger chunk sizes can improve
     /// performance but may waste memory if not fully utilized.
+    ///
+    /// # Arguments
+    ///
+    /// * `chunk_size` - The size in bytes of each chunk allocation
+    ///   (0 means no limit)
     pub fn with_chunk_size(chunk_size: usize) -> Self {
         let bump = Bump::new();
         if chunk_size > 0 {
@@ -160,7 +178,7 @@ impl DataArena {
         }
 
         // Create static references to common values
-        // SAFETY: These are static and never change, so it's safe to cast them
+        // These are static and never change, so they're safe to use
         static NULL_VALUE: DataValue<'static> = DataValue::Null;
         static TRUE_VALUE: DataValue<'static> = DataValue::Bool(true);
         static FALSE_VALUE: DataValue<'static> = DataValue::Bool(false);
@@ -171,7 +189,7 @@ impl DataArena {
 
         Self {
             bump,
-            interner: RefCell::new(StringInterner::new()),
+            interner: RefCell::new(StringInterner::with_capacity(64)), // Start with reasonable capacity
             chunk_size,
             null_value: &NULL_VALUE,
             true_value: &TRUE_VALUE,
@@ -186,10 +204,14 @@ impl DataArena {
         }
     }
 
+    //
+    // Vector allocation helpers
+    //
+
     /// Gets a new BumpVec for DataValues with default capacity.
     #[inline]
     pub fn get_data_value_vec(&self) -> BumpVec<'_, DataValue<'_>> {
-        BumpVec::with_capacity_in(8, &self.bump)
+        BumpVec::with_capacity_in(DEFAULT_VECTOR_CAPACITY, &self.bump)
     }
 
     /// Gets a new BumpVec with specified capacity.
@@ -205,7 +227,14 @@ impl DataArena {
     }
 
     /// Converts a BumpVec into a slice allocated in the arena.
-    /// This is more efficient than cloning as it reuses the BumpVec's memory.
+    ///
+    /// This efficiently transfers ownership of the vector's memory to the arena.
+    ///
+    /// # Safety
+    ///
+    /// This function takes ownership of the vector's memory and transfers it to the arena.
+    /// The vector is forgotten to prevent double-free, as the arena will reclaim the memory
+    /// when it is reset or dropped.
     #[inline]
     pub fn bump_vec_into_slice<'a, T>(&'a self, vec: BumpVec<'a, T>) -> &'a [T] {
         if vec.is_empty() {
@@ -222,6 +251,12 @@ impl DataArena {
     }
 
     /// Converts a Vec into a slice allocated in the arena.
+    ///
+    /// # Safety
+    ///
+    /// This function takes ownership of the vector's memory and transfers it to the arena.
+    /// The vector is forgotten to prevent double-free, as the arena will reclaim the memory
+    /// when it is reset or dropped.
     #[inline]
     pub fn vec_into_slice<T>(&self, vec: Vec<T>) -> &[T] {
         if vec.is_empty() {
@@ -237,20 +272,48 @@ impl DataArena {
         unsafe { std::slice::from_raw_parts(ptr, len) }
     }
 
+    //
+    // Basic allocation methods
+    //
+
     /// Allocates a value in the arena.
     ///
+    /// # Arguments
+    ///
+    /// * `value` - The value to allocate
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated value, valid for the lifetime of the arena
+    #[inline]
     pub fn alloc<T>(&self, value: T) -> &T {
         self.bump.alloc(value)
     }
 
     /// Allocates a slice in the arena by copying from a slice.
     ///
+    /// # Arguments
+    ///
+    /// * `slice` - The slice to copy
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated slice, valid for the lifetime of the arena
+    #[inline]
     pub fn alloc_slice_copy<'a, T: Copy>(&'a self, slice: &[T]) -> &'a [T] {
         self.bump.alloc_slice_copy(slice)
     }
 
     /// Allocates a string in the arena.
     ///
+    /// # Arguments
+    ///
+    /// * `s` - The string to allocate
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated string, valid for the lifetime of the arena
+    #[inline]
     pub fn alloc_str<'a>(&'a self, s: &str) -> &'a str {
         if s.is_empty() {
             return self.empty_string();
@@ -260,6 +323,16 @@ impl DataArena {
 
     /// Interns a string, returning a reference to a unique instance.
     ///
+    /// This uses the string interner to deduplicate strings, reducing memory usage.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - The string to intern
+    ///
+    /// # Returns
+    ///
+    /// A reference to the interned string, valid for the lifetime of the arena
+    #[inline]
     pub fn intern_str<'a>(&'a self, s: &str) -> &'a str {
         if s.is_empty() {
             return self.empty_string();
@@ -269,28 +342,46 @@ impl DataArena {
 
     /// Resets the arena, freeing all allocations.
     ///
+    /// This clears all allocated memory, contexts, and path chains.
     pub fn reset(&mut self) {
         self.bump.reset();
-        self.interner = RefCell::new(StringInterner::new());
+        self.interner = RefCell::new(StringInterner::with_capacity(64));
+        self.clear_contexts_and_paths();
+    }
+
+    /// Clears all contexts and path information.
+    #[inline]
+    fn clear_contexts_and_paths(&mut self) {
         self.current_context.replace(None);
         self.root_context.replace(None);
         self.path_chain.replace(PathChainVec::new());
     }
 
     /// Returns the current memory usage of the arena in bytes.
+    #[inline]
     pub fn memory_usage(&self) -> usize {
         self.bump.allocated_bytes()
     }
 
     /// Creates a new temporary arena for short-lived allocations.
     ///
+    /// This is useful for operations that need temporary allocations
+    /// that should be discarded after use.
+    #[inline]
     pub fn create_temp_arena(&self) -> DataArena {
         DataArena::with_chunk_size(self.chunk_size)
     }
 
     /// Allocates a slice in the arena and fills it with values generated by a function.
-    /// Now implemented using BumpVec for better efficiency.
     ///
+    /// # Arguments
+    ///
+    /// * `len` - The length of the slice to allocate
+    /// * `f` - A function that produces a value for each index
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated slice, valid for the lifetime of the arena
     pub fn alloc_slice_fill_with<T, F>(&self, len: usize, mut f: F) -> &[T]
     where
         F: FnMut(usize) -> T,
@@ -306,62 +397,85 @@ impl DataArena {
         self.bump_vec_into_slice(vec)
     }
 
+    //
+    // Preallocated value accessors
+    //
+
     /// Returns a reference to the preallocated null value.
-    pub fn null_value<'a>(&'a self) -> &'a DataValue<'a> {
-        unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(self.null_value)
-        }
+    #[inline]
+    pub fn null_value(&self) -> &DataValue<'_> {
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
+        self.transmute_lifetime(self.null_value)
     }
 
     /// Returns a reference to the preallocated true value.
-    pub fn true_value<'a>(&'a self) -> &'a DataValue<'a> {
-        unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(self.true_value)
-        }
+    #[inline]
+    pub fn true_value(&self) -> &DataValue<'_> {
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
+        self.transmute_lifetime(self.true_value)
     }
 
     /// Returns a reference to the preallocated false value.
-    pub fn false_value<'a>(&'a self) -> &'a DataValue<'a> {
-        unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(self.false_value)
-        }
+    #[inline]
+    pub fn false_value(&self) -> &DataValue<'_> {
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
+        self.transmute_lifetime(self.false_value)
     }
 
     /// Returns a reference to the preallocated empty string.
+    #[inline]
     pub fn empty_string<'a>(&'a self) -> &'a str {
-        unsafe { std::mem::transmute::<&'static str, &'a str>(self.empty_string) }
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
+        unsafe { mem::transmute::<&'static str, &'a str>(self.empty_string) }
     }
 
     /// Returns a reference to the preallocated empty string value.
-    pub fn empty_string_value<'a>(&'a self) -> &'a DataValue<'a> {
-        unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(
-                self.empty_string_value,
-            )
-        }
+    #[inline]
+    pub fn empty_string_value(&self) -> &DataValue<'_> {
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
+        self.transmute_lifetime(self.empty_string_value)
     }
 
     /// Returns a reference to the preallocated empty array.
+    #[inline]
     pub fn empty_array<'a>(&'a self) -> &'a [DataValue<'a>] {
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
         unsafe {
-            std::mem::transmute::<&'static [DataValue<'static>], &'a [DataValue<'a>]>(
-                self.empty_array,
-            )
+            mem::transmute::<&'static [DataValue<'static>], &'a [DataValue<'a>]>(self.empty_array)
         }
     }
 
     /// Returns a reference to the preallocated empty array value.
-    pub fn empty_array_value<'a>(&'a self) -> &'a DataValue<'a> {
-        unsafe {
-            std::mem::transmute::<&'static DataValue<'static>, &'a DataValue<'a>>(
-                self.empty_array_value,
-            )
-        }
+    #[inline]
+    pub fn empty_array_value(&self) -> &DataValue<'_> {
+        // SAFETY: The static lifetime can be safely narrowed to match the arena's lifetime
+        self.transmute_lifetime(self.empty_array_value)
+    }
+
+    /// Safely narrows 'static lifetime to arena lifetime.
+    ///
+    /// This helper centralizes the transmute pattern used throughout the code.
+    ///
+    /// # Safety
+    ///
+    /// This assumes that the static reference will live at least as long
+    /// as the arena, which is guaranteed for preallocated static values.
+    #[inline]
+    fn transmute_lifetime<'a, T>(&'a self, value: &'static T) -> &'a T {
+        // SAFETY: We're narrowing a 'static lifetime to 'a, which is always safe
+        unsafe { mem::transmute::<&'static T, &'a T>(value) }
     }
 
     /// Allocates a slice of DataValues in the arena.
-    /// Now implemented using BumpVec for better efficiency.
     ///
+    /// # Arguments
+    ///
+    /// * `vals` - The values to allocate
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated slice, valid for the lifetime of the arena
+    #[inline]
     pub fn alloc_data_value_slice<'a>(&'a self, vals: &[DataValue<'a>]) -> &'a [DataValue<'a>] {
         if vals.is_empty() {
             return self.empty_array();
@@ -370,8 +484,15 @@ impl DataArena {
     }
 
     /// Allocates a slice of object entries in the arena.
-    /// Now implemented using BumpVec for better efficiency.
     ///
+    /// # Arguments
+    ///
+    /// * `entries` - The object entries to allocate
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated slice, valid for the lifetime of the arena
+    #[inline]
     pub fn alloc_object_entries<'a>(
         &'a self,
         entries: &[(&'a str, DataValue<'a>)],
@@ -384,8 +505,17 @@ impl DataArena {
     }
 
     /// Allocates a small array of DataValues (up to 8 elements) in the arena.
-    /// Now implemented using BumpVec for better efficiency.
     ///
+    /// This method is optimized for small arrays.
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - The values to allocate (must be at most 8 elements)
+    ///
+    /// # Returns
+    ///
+    /// A reference to the allocated slice, valid for the lifetime of the arena
+    #[inline]
     pub fn alloc_small_data_value_array<'a>(
         &'a self,
         values: &[DataValue<'a>],
@@ -407,15 +537,38 @@ impl DataArena {
         }
     }
 
+    //
+    // Context management methods
+    //
+
     /// Sets the current context for the arena.
+    ///
+    /// This establishes a new current context and records the path component.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The context data value
+    /// * `key` - The key for this context in the path chain
+    #[inline]
     pub fn set_current_context<'a>(&self, context: &'a DataValue<'a>, key: &'a DataValue<'a>) {
-        self.current_context.replace(Some(unsafe {
-            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context)
-        }));
+        // SAFETY: Widening the lifetime is safe because the arena manages the memory
+        let static_context =
+            unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context) };
+
+        self.current_context.replace(Some(static_context));
         self.push_path_key(key);
     }
 
     /// Returns the current context for the arena.
+    ///
+    /// # Arguments
+    ///
+    /// * `scope_jump` - How many levels to jump up the scope chain (0 means current context)
+    ///
+    /// # Returns
+    ///
+    /// The context data value, or None if no context is set
+    #[inline]
     pub fn current_context(&self, scope_jump: usize) -> Option<&DataValue> {
         // Fast path for the common case (no scope jump)
         if scope_jump == 0 {
@@ -427,6 +580,13 @@ impl DataArena {
     }
 
     /// Returns the root context for the arena.
+    ///
+    /// This also resets the path chain.
+    ///
+    /// # Returns
+    ///
+    /// The root context data value, or None if no root context is set
+    #[inline]
     pub fn root_context(&self) -> Option<&DataValue> {
         // Reset the path chain when getting root context
         self.path_chain.borrow_mut().clear();
@@ -434,12 +594,30 @@ impl DataArena {
     }
 
     /// Sets the root context for the arena.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The root context data value
+    #[inline]
     pub fn set_root_context<'a>(&self, context: &'a DataValue<'a>) {
-        self.root_context.replace(Some(unsafe {
-            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context)
-        }));
+        // SAFETY: Widening the lifetime is safe because the arena manages the memory
+        let static_context =
+            unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context) };
+
+        self.root_context.replace(Some(static_context));
     }
 
+    /// Get a context after jumping up the scope chain.
+    ///
+    /// This is a cold path for handling scope jumps.
+    ///
+    /// # Arguments
+    ///
+    /// * `scope_jump` - How many levels to jump up the scope chain
+    ///
+    /// # Returns
+    ///
+    /// The context data value after jumping up the scope chain
     #[cold]
     #[inline(never)]
     fn root_context_with_jump(&self, scope_jump: usize) -> Option<&DataValue> {
@@ -473,7 +651,17 @@ impl DataArena {
         self.navigate_to_context(root, path_slice, chain_len - scope_jump)
     }
 
-    // Helper function to navigate through a context without allocating
+    /// Helper function to navigate through a context without allocating
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - The root context to start from
+    /// * `path_components` - The path components to navigate through
+    /// * `depth` - How many components to include in the navigation
+    ///
+    /// # Returns
+    ///
+    /// The context data value after navigating to the specified depth
     #[inline(never)]
     fn navigate_to_context<'a>(
         &'a self,
@@ -487,41 +675,12 @@ impl DataArena {
         for component in path_components.iter().take(depth) {
             match component {
                 DataValue::String(key) => {
-                    // Navigate by string key
-                    if let DataValue::Object(entries) = current {
-                        let mut found = false;
-                        for &(k, ref v) in *entries {
-                            if k == *key {
-                                current = v;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if !found {
-                            return Some(self.null_value());
-                        }
-                    } else {
+                    if !self.navigate_by_string_key(&mut current, key) {
                         return Some(self.null_value());
                     }
                 }
                 DataValue::Number(n) => {
-                    // Navigate by array index
-                    if let Some(idx) = n.as_i64() {
-                        if idx >= 0 {
-                            let index = idx as usize;
-                            if let DataValue::Array(items) = current {
-                                if index < items.len() {
-                                    current = &items[index];
-                                } else {
-                                    return Some(self.null_value());
-                                }
-                            } else {
-                                return Some(self.null_value());
-                            }
-                        } else {
-                            return Some(self.null_value());
-                        }
-                    } else {
+                    if !self.navigate_by_array_index(&mut current, n) {
                         return Some(self.null_value());
                     }
                 }
@@ -532,60 +691,163 @@ impl DataArena {
         Some(current)
     }
 
+    /// Navigate an object by string key
+    ///
+    /// # Returns
+    ///
+    /// `true` if navigation succeeded, `false` if key not found or not an object
+    #[inline]
+    fn navigate_by_string_key<'a>(&'a self, current: &mut &'a DataValue<'a>, key: &str) -> bool {
+        if let DataValue::Object(entries) = *current {
+            for &(k, ref v) in *entries {
+                if k == key {
+                    *current = v;
+                    return true;
+                }
+            }
+            false // Key not found
+        } else {
+            false // Not an object
+        }
+    }
+
+    /// Navigate an array by index
+    ///
+    /// # Returns
+    ///
+    /// `true` if navigation succeeded, `false` if invalid index or not an array
+    #[inline]
+    fn navigate_by_array_index<'a>(
+        &'a self,
+        current: &mut &'a DataValue<'a>,
+        n: &NumberValue,
+    ) -> bool {
+        if let Some(idx) = n.as_i64() {
+            if idx >= 0 {
+                let index = idx as usize;
+                if let DataValue::Array(items) = *current {
+                    if index < items.len() {
+                        *current = &items[index];
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    //
+    // Path chain management methods
+    //
+
     /// Appends a key component to the current path chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to append to the path chain
+    #[inline]
     pub fn push_path_key<'a>(&self, key: &'a DataValue<'a>) {
-        self.path_chain.borrow_mut().push(unsafe {
-            std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key)
-        });
+        // SAFETY: Widening the lifetime is safe because the arena manages the memory
+        let static_key =
+            unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key) };
+
+        self.path_chain.borrow_mut().push(static_key);
     }
 
     /// Removes the last component from the path chain.
-    pub fn pop_path_component(&self) -> Option<&'static DataValue<'static>> {
-        self.path_chain.borrow_mut().pop()
+    ///
+    /// # Returns
+    ///
+    /// The removed path component, or None if the path chain is empty
+    #[inline]
+    pub fn pop_path_component(&self) -> Option<&DataValue> {
+        // SAFETY: The static lifetime can be safely narrowed
+        self.path_chain
+            .borrow_mut()
+            .pop()
+            .map(|v| self.transmute_lifetime(v))
     }
 
     /// Clears the path chain.
+    #[inline]
     pub fn clear_path_chain(&self) {
         self.path_chain.borrow_mut().clear();
     }
 
     /// Returns the length of the path chain.
+    #[inline]
     pub fn path_chain_len(&self) -> usize {
         self.path_chain.borrow().len()
     }
 
     /// Returns the current path chain as a slice.
+    ///
+    /// This allocates a new vector.
+    #[inline]
     pub fn path_chain_as_slice(&self) -> Vec<&DataValue> {
         let chain = self.path_chain.borrow();
-        chain.as_slice().to_vec()
+        chain
+            .as_slice()
+            .iter()
+            .map(|&v| self.transmute_lifetime(v))
+            .collect()
     }
 
     /// Efficiently access the path chain without allocating a new vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - A function that takes a slice of the path chain and returns a result
+    ///
+    /// # Returns
+    ///
+    /// The result of calling the function with the path chain slice
     #[inline]
     pub fn with_path_chain<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&[&DataValue]) -> R,
     {
         let chain = self.path_chain.borrow();
-        f(chain.as_slice())
+        // SAFETY: The static lifetime can be safely narrowed
+        let path_slice: &[&DataValue] = unsafe {
+            mem::transmute::<&[&'static DataValue<'static>], &[&DataValue]>(chain.as_slice())
+        };
+        f(path_slice)
     }
 
     /// Returns the last path component.
+    ///
+    /// # Returns
+    ///
+    /// The last path component, or None if the path chain is empty
+    #[inline]
     pub fn last_path_component(&self) -> Option<&DataValue> {
-        self.path_chain.borrow().last()
+        // SAFETY: The static lifetime can be safely narrowed
+        self.path_chain
+            .borrow()
+            .last()
+            .map(|v| self.transmute_lifetime(v))
     }
 
     /// Batch appends multiple path components in one operation.
-    pub fn push_path_components<'a>(&self, keys: &[&'a DataValue<'a>]) {
+    ///
+    /// # Arguments
+    ///
+    /// * `keys` - The keys to append to the path chain
+    #[inline]
+    pub fn push_path_components<'a, 'b>(&'a self, keys: &'b [&'b DataValue<'b>])
+    where
+        'b: 'a,
+    {
         if keys.is_empty() {
             return;
         }
 
         let mut path_chain = self.path_chain.borrow_mut();
-        for key in keys {
-            let static_key = unsafe {
-                std::mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key)
-            };
+        for &key in keys {
+            // SAFETY: Widening the lifetime is safe because the arena manages the memory
+            let static_key =
+                unsafe { mem::transmute::<&'b DataValue<'b>, &'static DataValue<'static>>(key) };
             path_chain.push(static_key);
         }
     }
@@ -658,5 +920,56 @@ mod tests {
         vec.push(DataValue::integer(2));
         let slice = arena.bump_vec_into_slice(vec);
         assert_eq!(slice.len(), 2);
+    }
+
+    #[test]
+    fn test_path_chain() {
+        let arena = DataArena::new();
+
+        // Test pushing and popping
+        arena.push_path_key(&DataValue::string(&arena, "key1"));
+        arena.push_path_key(&DataValue::string(&arena, "key2"));
+
+        assert_eq!(arena.path_chain_len(), 2);
+
+        let last = arena.last_path_component().unwrap();
+        assert_eq!(last.as_str(), Some("key2"));
+
+        let popped = arena.pop_path_component().unwrap();
+        assert_eq!(popped.as_str(), Some("key2"));
+
+        assert_eq!(arena.path_chain_len(), 1);
+
+        // Test clearing
+        arena.clear_path_chain();
+        assert_eq!(arena.path_chain_len(), 0);
+    }
+
+    #[test]
+    fn test_context_management() {
+        let arena = DataArena::new();
+
+        // Test setting and getting contexts
+        let root = arena.alloc(DataValue::object(
+            &arena,
+            &[(arena.intern_str("root"), DataValue::integer(1))],
+        ));
+
+        arena.set_root_context(root);
+        let retrieved_root = arena.root_context().unwrap();
+
+        assert!(matches!(retrieved_root, DataValue::Object(_)));
+
+        // Test current context
+        let current = arena.alloc(DataValue::object(
+            &arena,
+            &[(arena.intern_str("current"), DataValue::integer(2))],
+        ));
+
+        let key = arena.alloc(DataValue::string(&arena, "key"));
+        arena.set_current_context(current, key);
+
+        let retrieved_current = arena.current_context(0).unwrap();
+        assert!(matches!(retrieved_current, DataValue::Object(_)));
     }
 }

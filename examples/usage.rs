@@ -15,11 +15,7 @@ fn basic_example() {
 
     // Parse and evaluate in one step
     let result = dl
-        .evaluate_str(
-            r#"{"datetime": "2022-07-06T13:20:06Z"}"#,
-            r#"{}"#,
-            None,
-        )
+        .evaluate_str(r#"{"datetime": "2022-07-06T13:20:06Z"}"#, r#"{}"#, None)
         .unwrap();
 
     println!("Datetime: {}\n", result);

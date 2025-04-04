@@ -69,13 +69,276 @@
             </p>
             
             <div class="operator-chips">
+                <div class="mdc-chip" data-target="datetime">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">datetime</span>
+                </div>
+                <div class="mdc-chip" data-target="timestamp">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">timestamp</span>
+                </div>
                 <div class="mdc-chip" data-target="now">
                     <div class="mdc-chip__ripple"></div>
                     <span class="mdc-chip__text">now</span>
                 </div>
+                <div class="mdc-chip" data-target="parse_date">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">parse_date</span>
+                </div>
+                <div class="mdc-chip" data-target="format_date">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">format_date</span>
+                </div>
                 <div class="mdc-chip" data-target="date_diff">
                     <div class="mdc-chip__ripple"></div>
                     <span class="mdc-chip__text">date_diff</span>
+                </div>
+            </div>
+            
+            <!-- datetime operator -->
+            <div id="datetime" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">datetime</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>datetime</code> operator converts a string to a datetime object.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "datetime": [dateString] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">dateString</td>
+                                        <td class="mdc-data-table__cell">A string in ISO 8601 format (e.g., "2022-07-06T13:20:06Z")</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Create a datetime from ISO string</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="datetime-rule">{"datetime": ["2022-07-06T13:20:06Z"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="datetime-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="datetime-result" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- timestamp operator -->
+            <div id="timestamp" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">timestamp</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>timestamp</code> operator parses a duration string into a duration object.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "timestamp": [durationString] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">durationString</td>
+                                        <td class="mdc-data-table__cell">A string in format "nd:nh:nm:ns" (days, hours, minutes, seconds)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Parse duration string</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="timestamp-rule">{"timestamp": ["1d:2h:3m:4s"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="timestamp-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="timestamp-result" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- parse_date operator -->
+            <div id="parse_date" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">parse_date</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>parse_date</code> operator parses a date string using a specified format.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "parse_date": [dateString, formatString] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">dateString</td>
+                                        <td class="mdc-data-table__cell">The date string to parse</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">formatString</td>
+                                        <td class="mdc-data-table__cell">Format pattern (e.g., "yyyy-MM-dd")</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Parse date with format</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="parse-date-rule">{"parse_date": ["2022-07-06", "yyyy-MM-dd"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="parse-date-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="parse-date-result" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- format_date operator -->
+            <div id="format_date" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">format_date</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>format_date</code> operator formats a datetime according to a specified format string.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "format_date": [dateValue, formatString] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">dateValue</td>
+                                        <td class="mdc-data-table__cell">Datetime value to format</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">formatString</td>
+                                        <td class="mdc-data-table__cell">Format pattern (e.g., "yyyy-MM-dd HH:mm:ss")</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Format a date</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="format-date-rule">{"format_date": [
+  {"datetime": ["2022-07-06T13:20:06Z"]},
+  "yyyy/MM/dd HH:mm"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="format-date-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="format-date-result" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -219,7 +482,7 @@
                             </div>
                             <div class="editor-container">
                                 <h4 class="mdc-typography--subtitle2">Data:</h4>
-                                <textarea class="data-editor" id="date-diff-data">{"currentDate": 1621348976, "pastDate": 1618670576}</textarea>
+                                <textarea class="data-editor" id="date-diff-data">{"currentDate": "2022-07-15T13:20:06Z", "pastDate": "2022-07-06T13:20:06Z"}</textarea>
                             </div>
                             <div class="editor-container result-container">
                                 <h4 class="mdc-typography--subtitle2">Result:</h4>

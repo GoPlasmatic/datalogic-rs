@@ -120,12 +120,14 @@
                 <div class="operator-card mdc-card">
                     <h2 class="mdc-typography--headline5">map</h2>
                     <p class="mdc-typography--body1">
-                        The <code>map</code> operator applies a rule to each element in an array and returns an array with the results.
+                        The <code>map</code> operator transforms each item in an array or object using a specified expression.
+                        It applies a transformation function to each element of an array or each value of an object
+                        and returns a new array/object containing the results.
                     </p>
                     
                     <h3 class="mdc-typography--subtitle1">Syntax</h3>
                     <div class="code-block">
-                        <pre><code class="language-json">{ "map": [array, rule] }</code></pre>
+                        <pre><code class="language-json">{ "map": [source, transformation_expression] }</code></pre>
                     </div>
                     
                     <h3 class="mdc-typography--subtitle1">Parameters</h3>
@@ -140,12 +142,12 @@
                                 </thead>
                                 <tbody class="mdc-data-table__content">
                                     <tr class="mdc-data-table__row">
-                                        <td class="mdc-data-table__cell">array</td>
-                                        <td class="mdc-data-table__cell">The array to process</td>
+                                        <td class="mdc-data-table__cell">source</td>
+                                        <td class="mdc-data-table__cell">The array or object to transform</td>
                                     </tr>
                                     <tr class="mdc-data-table__row">
-                                        <td class="mdc-data-table__cell">rule</td>
-                                        <td class="mdc-data-table__cell">The rule to apply to each element</td>
+                                        <td class="mdc-data-table__cell">transformation_expression</td>
+                                        <td class="mdc-data-table__cell">The expression to apply to each element. Use <code>{"val": []}</code> to access the current element, <code>{"val": "_key"}</code> for object keys.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -181,7 +183,7 @@
                         <div class="editors-container">
                             <div class="editor-container">
                                 <h4 class="mdc-typography--subtitle2">Rule:</h4>
-                                <textarea class="rule-editor" id="map-extract-rule">{"map": [{"val": "people"}, {"val": "name"}]}</textarea>
+                                <textarea class="rule-editor" id="map-extract-rule">{"map": [{"val": "people"}, {"val": ["name"]}]}</textarea>
                             </div>
                             <div class="editor-container">
                                 <h4 class="mdc-typography--subtitle2">Data:</h4>
@@ -196,6 +198,56 @@
                             <div class="editor-container result-container">
                                 <h4 class="mdc-typography--subtitle2">Result:</h4>
                                 <textarea class="result-editor" id="map-extract-result" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Map over object properties</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="map-object-rule">{"map": [
+  {"val": "scores"}, 
+  {"cat": [
+    {"val": [[1],"key"]}, 
+    ": ", 
+    {"if": [
+      {">": [{"val": []}, 90]},
+      "A",
+      {"if": [
+        {">": [{"val": []}, 80]},
+        "B",
+        {"if": [
+          {">": [{"val": []}, 70]},
+          "C",
+          "F"
+        ]}
+      ]}
+    ]}
+  ]}
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="map-object-data">{
+  "scores": {
+    "Math": 95,
+    "English": 87,
+    "Science": 76,
+    "History": 65
+  }
+}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="map-object-result" readonly></textarea>
                             </div>
                         </div>
                         <div class="example-actions">

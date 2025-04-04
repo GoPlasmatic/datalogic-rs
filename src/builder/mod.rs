@@ -13,6 +13,7 @@ mod rule_builder;
 mod string_builder;
 #[cfg(test)]
 mod tests;
+mod type_builder;
 mod variable_builder;
 
 pub use arithmetic_builder::ArithmeticBuilder;
@@ -23,6 +24,7 @@ pub use datetime_builder::DateTimeBuilder;
 pub use factory::RuleFactory;
 pub use rule_builder::RuleBuilder;
 pub use string_builder::StringBuilder;
+pub use type_builder::TypeBuilder;
 pub use variable_builder::VariableBuilder;
 
 use crate::arena::DataArena;

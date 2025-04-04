@@ -8,24 +8,19 @@ use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
 
-/// Evaluates a throw operation.
-/// The throw operator throws an error with the provided value.
-#[inline]
-pub fn eval_throw<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    // Check if we have the right number of arguments
+/// Validate that at least one argument is provided for throw
+fn validate_throw_args(args: &[&Token]) -> Result<()> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
+    Ok(())
+}
 
-    // Evaluate the first argument to get the error value/type
-    let error_value = evaluate(args[0], arena)?;
-
+/// Extract error message from a value
+fn extract_error_message<'a>(error_value: &'a DataValue<'a>) -> String {
     // For string values, use them directly as the error type
     if let Some(error_str) = error_value.as_str() {
-        return Err(LogicError::thrown_error(error_str));
+        return error_str.to_string();
     }
 
     // Handle object values with a "type" field
@@ -33,14 +28,14 @@ pub fn eval_throw<'a>(
         for (key, value) in obj {
             if *key == "type" {
                 if let Some(type_str) = value.as_str() {
-                    return Err(LogicError::thrown_error(type_str));
+                    return type_str.to_string();
                 }
             }
         }
     }
 
     // For other values, convert to string
-    let error_str = if let Some(i) = error_value.as_i64() {
+    if let Some(i) = error_value.as_i64() {
         i.to_string()
     } else if let Some(f) = error_value.as_f64() {
         f.to_string()
@@ -50,9 +45,23 @@ pub fn eval_throw<'a>(
         "null".to_string()
     } else {
         "Unknown error".to_string()
-    };
+    }
+}
 
-    Err(LogicError::thrown_error(error_str))
+/// Evaluates a throw operation.
+/// The throw operator throws an error with the provided value.
+#[inline]
+pub fn eval_throw<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    validate_throw_args(args)?;
+
+    // Evaluate the first argument to get the error value/type
+    let error_value = evaluate(args[0], arena)?;
+    let error_message = extract_error_message(error_value);
+
+    Err(LogicError::thrown_error(error_message))
 }
 
 #[cfg(test)]

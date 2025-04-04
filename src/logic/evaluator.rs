@@ -2,9 +2,10 @@
 //!
 //! This module provides functions for evaluating logic expressions.
 
-use super::error::Result;
+use super::error::{LogicError, Result};
 use super::operators::{
-    arithmetic, array, comparison, control, datetime, missing, string, throw, r#try, val, variable,
+    arithmetic, array, comparison, control, datetime, missing, string, throw, r#try, type_op, val,
+    variable,
 };
 use super::token::{OperatorType, Token};
 use crate::arena::DataArena;
@@ -27,74 +28,20 @@ fn convert_to_token_refs<'a>(args: &'a Token<'a>, arena: &'a DataArena) -> &'a [
 /// Evaluates a logic expression.
 #[inline]
 pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
-    // Fast path for literals - most common case
-    if let Token::Literal(value) = token {
-        return Ok(value);
-    }
-
-    // Fast path for variables - second most common case
-    if let Token::Variable { path, default } = token {
-        return variable::evaluate_variable(path, default, arena);
-    }
-
-    // Handle other token types
     match token {
-        // Already handled above
-        Token::Literal(_) | Token::Variable { .. } => unreachable!(),
+        // Fast path for literals - most common case
+        Token::Literal(value) => Ok(value),
+
+        // Fast path for variables - second most common case
+        Token::Variable { path, default } => variable::evaluate_variable(path, default, arena),
 
         // Dynamic variables evaluate the path expression first
         Token::DynamicVariable { path_expr, default } => {
-            // Evaluate the path expression
-            let path_value = evaluate(path_expr, arena)?;
-
-            // Convert the path value to a string
-            let path_str = match path_value {
-                // Fast path for strings - no allocation needed
-                DataValue::String(s) => s,
-
-                // For null, use the preallocated empty string
-                DataValue::Null => arena.empty_string(),
-
-                // For other types, convert to string
-                DataValue::Number(n) => arena.alloc_str(&n.to_string()),
-                DataValue::Bool(b) => {
-                    if *b {
-                        "true"
-                    } else {
-                        "false"
-                    }
-                }
-                _ => {
-                    return Err(super::error::LogicError::VariableError {
-                        path: format!("{:?}", path_value),
-                        reason: format!(
-                            "Dynamic variable path must evaluate to a scalar value, got: {:?}",
-                            path_value
-                        ),
-                    });
-                }
-            };
-
-            // Evaluate the variable with the computed path
-            variable::evaluate_variable(path_str, default, arena)
+            evaluate_dynamic_variable(path_expr, default, arena)
         }
 
         // Array literals evaluate each element
-        Token::ArrayLiteral(items) => {
-            // Get a vector from the arena's pool
-            let mut values = arena.get_data_value_vec_with_capacity(items.len());
-
-            // Evaluate each item in the array
-            for item in items {
-                let value = evaluate(item, arena)?;
-                values.push(value.clone());
-            }
-
-            // Create the array DataValue and allocate it
-            let array_slice = arena.bump_vec_into_slice(values);
-            let result = DataValue::Array(array_slice);
-            Ok(arena.alloc(result))
-        }
+        Token::ArrayLiteral(items) => evaluate_array_literal(items, arena),
 
         // Operators apply a function to their arguments
         Token::Operator { op_type, args } => evaluate_operator(*op_type, args, arena),
@@ -116,13 +63,83 @@ pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a Da
     }
 }
 
+/// Evaluates a dynamic variable access
+#[inline]
+fn evaluate_dynamic_variable<'a>(
+    path_expr: &'a Token<'a>,
+    default: &Option<&'a Token<'a>>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Evaluate the path expression
+    let path_value = evaluate(path_expr, arena)?;
+
+    // Convert the path value to a string
+    let path_str = convert_to_path_string(path_value, arena)?;
+
+    // Evaluate the variable with the computed path
+    variable::evaluate_variable(path_str, default, arena)
+}
+
+/// Converts a data value to a string for use as a variable path
+#[inline]
+fn convert_to_path_string<'a>(
+    path_value: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a str> {
+    match path_value {
+        // Fast path for strings - no allocation needed
+        DataValue::String(s) => Ok(s),
+
+        // For null, use the preallocated empty string
+        DataValue::Null => Ok(arena.empty_string()),
+
+        // For other types, convert to string
+        DataValue::Number(n) => Ok(arena.alloc_str(&n.to_string())),
+        DataValue::Bool(b) => {
+            if *b {
+                Ok("true")
+            } else {
+                Ok("false")
+            }
+        }
+        _ => Err(LogicError::VariableError {
+            path: format!("{:?}", path_value),
+            reason: format!(
+                "Dynamic variable path must evaluate to a scalar value, got: {:?}",
+                path_value
+            ),
+        }),
+    }
+}
+
+/// Evaluates an array literal
+#[inline]
+fn evaluate_array_literal<'a>(
+    items: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Get a vector from the arena's pool
+    let mut values = arena.get_data_value_vec_with_capacity(items.len());
+
+    // Evaluate each item in the array
+    for item in items {
+        let value = evaluate(item, arena)?;
+        values.push(value.clone());
+    }
+
+    // Create the array DataValue and allocate it
+    let array_slice = arena.bump_vec_into_slice(values);
+    let result = DataValue::Array(array_slice);
+    Ok(arena.alloc(result))
+}
+
 /// Evaluates a custom operator application.
 fn evaluate_custom_operator<'a>(
     name: &'a str,
     _args: &'a [&'a Token<'a>],
     _arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    Err(super::error::LogicError::OperatorNotFoundError {
+    Err(LogicError::OperatorNotFoundError {
         operator: name.to_string(),
     })
 }
@@ -184,141 +201,177 @@ fn evaluate_operator<'a>(
     let token_refs = convert_to_token_refs(args, arena);
 
     match op_type {
-        // Comparison operators
-        OperatorType::Comparison(comp_op) => match comp_op {
-            comparison::ComparisonOp::Equal => comparison::eval_equal(token_refs, arena),
-            comparison::ComparisonOp::StrictEqual => {
-                comparison::eval_strict_equal(token_refs, arena)
-            }
-            comparison::ComparisonOp::NotEqual => comparison::eval_not_equal(token_refs, arena),
-            comparison::ComparisonOp::StrictNotEqual => {
-                comparison::eval_strict_not_equal(token_refs, arena)
-            }
-            comparison::ComparisonOp::GreaterThan => {
-                comparison::eval_greater_than(token_refs, arena)
-            }
-            comparison::ComparisonOp::GreaterThanOrEqual => {
-                comparison::eval_greater_than_or_equal(token_refs, arena)
-            }
-            comparison::ComparisonOp::LessThan => comparison::eval_less_than(token_refs, arena),
-            comparison::ComparisonOp::LessThanOrEqual => {
-                comparison::eval_less_than_or_equal(token_refs, arena)
-            }
-        },
-
-        // Array operators
-        OperatorType::Array(array_op) => match array_op {
-            array::ArrayOp::Map => array::eval_map(token_refs, arena),
-            array::ArrayOp::Filter => array::eval_filter(token_refs, arena),
-            array::ArrayOp::Reduce => array::eval_reduce(token_refs, arena),
-            array::ArrayOp::All => array::eval_all(token_refs, arena),
-            array::ArrayOp::Some => array::eval_some(token_refs, arena),
-            array::ArrayOp::None => array::eval_none(token_refs, arena),
-            array::ArrayOp::Merge => array::eval_merge(token_refs, arena),
-            array::ArrayOp::In => array::eval_in(token_refs, arena),
-            array::ArrayOp::Length => array::eval_length(token_refs, arena),
-            array::ArrayOp::Slice => array::eval_slice(token_refs, arena),
-            array::ArrayOp::Sort => array::eval_sort(token_refs, arena),
-        },
-
-        // Arithmetic operators
+        OperatorType::Comparison(comp_op) => {
+            evaluate_comparison_operator(comp_op, token_refs, arena)
+        }
+        OperatorType::Array(array_op) => evaluate_array_operator(array_op, token_refs, arena),
         OperatorType::Arithmetic(arith_op) => {
             // Evaluate arguments once and pass to the appropriate function
             let args_result = evaluate_arguments(args, arena)?;
-            match arith_op {
-                arithmetic::ArithmeticOp::Add => arithmetic::eval_add(args_result, arena),
-                arithmetic::ArithmeticOp::Subtract => arithmetic::eval_sub(args_result, arena),
-                arithmetic::ArithmeticOp::Multiply => arithmetic::eval_mul(args_result, arena),
-                arithmetic::ArithmeticOp::Divide => arithmetic::eval_div(args_result, arena),
-                arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(args_result, arena),
-                arithmetic::ArithmeticOp::Min => arithmetic::eval_min(args_result),
-                arithmetic::ArithmeticOp::Max => arithmetic::eval_max(args_result),
-            }
+            evaluate_arithmetic_operator(arith_op, args_result, arena)
         }
-
-        // Logical operators
-        OperatorType::Control(control_op) => match control_op {
-            control::ControlOp::If => {
-                if !args.is_array_literal() {
-                    return Err(super::error::LogicError::InvalidArgumentsError);
-                }
-                control::eval_if(token_refs, arena)
-            }
-            control::ControlOp::And => {
-                if !args.is_array_literal() {
-                    return Err(super::error::LogicError::InvalidArgumentsError);
-                }
-                control::eval_and(token_refs, arena)
-            }
-            control::ControlOp::Or => {
-                if !args.is_array_literal() {
-                    return Err(super::error::LogicError::InvalidArgumentsError);
-                }
-                control::eval_or(token_refs, arena)
-            }
-            control::ControlOp::Not => control::eval_not(token_refs, arena),
-            control::ControlOp::DoubleNegation => control::eval_double_negation(token_refs, arena),
-        },
-
-        // String operators
-        OperatorType::String(string_op) => match string_op {
-            string::StringOp::Cat => string::eval_cat(token_refs, arena),
-            string::StringOp::Substr => string::eval_substr(token_refs, arena),
-        },
-
+        OperatorType::Control(control_op) => {
+            evaluate_control_operator(control_op, args, token_refs, arena)
+        }
+        OperatorType::String(string_op) => evaluate_string_operator(string_op, token_refs, arena),
+        OperatorType::DateTime(datetime_op) => {
+            // Evaluate arguments once and pass to the appropriate function
+            let args_result = evaluate_arguments(args, arena)?;
+            evaluate_datetime_operator(datetime_op, args_result, arena)
+        }
         OperatorType::Missing => missing::eval_missing(token_refs, arena),
-
         OperatorType::MissingSome => missing::eval_missing_some(token_refs, arena),
-
         OperatorType::Exists => {
             let args_result = evaluate_arguments(args, arena)?;
             val::eval_exists(args_result, arena)
         }
-
         OperatorType::Coalesce => eval_coalesce(token_refs, arena),
-
-        // Throw operator
         OperatorType::Throw => throw::eval_throw(token_refs, arena),
-
-        // Try operator
         OperatorType::Try => r#try::eval_try(token_refs, arena),
-
-        // Val operator
         OperatorType::Val => val::eval_val(token_refs, arena),
+        OperatorType::Type => type_op::eval_type(token_refs, arena),
+        OperatorType::ArrayLiteral => evaluate_array_literal_operator(token_refs, arena),
+    }
+}
 
-        // Array literal operator
-        OperatorType::ArrayLiteral => {
-            // Just evaluate all elements as an array
-            let mut values = arena.get_data_value_vec();
-
-            for token in token_refs {
-                let value = evaluate(token, arena)?;
-                values.push(value.clone());
-            }
-
-            let array_slice = arena.bump_vec_into_slice(values);
-            let result = DataValue::Array(array_slice);
-            Ok(arena.alloc(result))
+/// Evaluates a comparison operator
+#[inline]
+fn evaluate_comparison_operator<'a>(
+    comp_op: comparison::ComparisonOp,
+    token_refs: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    match comp_op {
+        comparison::ComparisonOp::Equal => comparison::eval_equal(token_refs, arena),
+        comparison::ComparisonOp::StrictEqual => comparison::eval_strict_equal(token_refs, arena),
+        comparison::ComparisonOp::NotEqual => comparison::eval_not_equal(token_refs, arena),
+        comparison::ComparisonOp::StrictNotEqual => {
+            comparison::eval_strict_not_equal(token_refs, arena)
         }
-
-        // DateTime operators
-        OperatorType::DateTime(datetime_op) => {
-            // Evaluate arguments once and pass to the appropriate function
-            let args_result = evaluate_arguments(args, arena)?;
-            match datetime_op {
-                datetime::DateTimeOp::DateTime => {
-                    datetime::eval_datetime_operator(args_result, arena)
-                }
-                datetime::DateTimeOp::Timestamp => {
-                    datetime::eval_timestamp_operator(args_result, arena)
-                }
-                datetime::DateTimeOp::Now => datetime::eval_now(arena),
-                datetime::DateTimeOp::ParseDate => datetime::eval_parse_date(args_result, arena),
-                datetime::DateTimeOp::FormatDate => datetime::eval_format_date(args_result, arena),
-                datetime::DateTimeOp::DateDiff => datetime::eval_date_diff(args_result, arena),
-            }
+        comparison::ComparisonOp::GreaterThan => comparison::eval_greater_than(token_refs, arena),
+        comparison::ComparisonOp::GreaterThanOrEqual => {
+            comparison::eval_greater_than_or_equal(token_refs, arena)
+        }
+        comparison::ComparisonOp::LessThan => comparison::eval_less_than(token_refs, arena),
+        comparison::ComparisonOp::LessThanOrEqual => {
+            comparison::eval_less_than_or_equal(token_refs, arena)
         }
     }
+}
+
+/// Evaluates an array operator
+#[inline]
+fn evaluate_array_operator<'a>(
+    array_op: array::ArrayOp,
+    token_refs: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    match array_op {
+        array::ArrayOp::Map => array::eval_map(token_refs, arena),
+        array::ArrayOp::Filter => array::eval_filter(token_refs, arena),
+        array::ArrayOp::Reduce => array::eval_reduce(token_refs, arena),
+        array::ArrayOp::All => array::eval_all(token_refs, arena),
+        array::ArrayOp::Some => array::eval_some(token_refs, arena),
+        array::ArrayOp::None => array::eval_none(token_refs, arena),
+        array::ArrayOp::Merge => array::eval_merge(token_refs, arena),
+        array::ArrayOp::In => array::eval_in(token_refs, arena),
+        array::ArrayOp::Length => array::eval_length(token_refs, arena),
+        array::ArrayOp::Slice => array::eval_slice(token_refs, arena),
+        array::ArrayOp::Sort => array::eval_sort(token_refs, arena),
+    }
+}
+
+/// Evaluates an arithmetic operator
+#[inline]
+fn evaluate_arithmetic_operator<'a>(
+    arith_op: arithmetic::ArithmeticOp,
+    args_result: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    match arith_op {
+        arithmetic::ArithmeticOp::Add => arithmetic::eval_add(args_result, arena),
+        arithmetic::ArithmeticOp::Subtract => arithmetic::eval_sub(args_result, arena),
+        arithmetic::ArithmeticOp::Multiply => arithmetic::eval_mul(args_result, arena),
+        arithmetic::ArithmeticOp::Divide => arithmetic::eval_div(args_result, arena),
+        arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(args_result, arena),
+        arithmetic::ArithmeticOp::Min => arithmetic::eval_min(args_result),
+        arithmetic::ArithmeticOp::Max => arithmetic::eval_max(args_result),
+    }
+}
+
+/// Evaluates a control flow operator
+#[inline]
+fn evaluate_control_operator<'a>(
+    control_op: control::ControlOp,
+    args: &'a Token<'a>,
+    token_refs: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Validate array literals for certain control operations
+    if matches!(
+        control_op,
+        control::ControlOp::If | control::ControlOp::And | control::ControlOp::Or
+    ) && !args.is_array_literal()
+    {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    match control_op {
+        control::ControlOp::If => control::eval_if(token_refs, arena),
+        control::ControlOp::And => control::eval_and(token_refs, arena),
+        control::ControlOp::Or => control::eval_or(token_refs, arena),
+        control::ControlOp::Not => control::eval_not(token_refs, arena),
+        control::ControlOp::DoubleNegation => control::eval_double_negation(token_refs, arena),
+    }
+}
+
+/// Evaluates a string operator
+#[inline]
+fn evaluate_string_operator<'a>(
+    string_op: string::StringOp,
+    token_refs: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    match string_op {
+        string::StringOp::Cat => string::eval_cat(token_refs, arena),
+        string::StringOp::Substr => string::eval_substr(token_refs, arena),
+    }
+}
+
+/// Evaluates a datetime operator
+#[inline]
+fn evaluate_datetime_operator<'a>(
+    datetime_op: datetime::DateTimeOp,
+    args_result: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    match datetime_op {
+        datetime::DateTimeOp::DateTime => datetime::eval_datetime_operator(args_result, arena),
+        datetime::DateTimeOp::Timestamp => datetime::eval_timestamp_operator(args_result, arena),
+        datetime::DateTimeOp::Now => datetime::eval_now(arena),
+        datetime::DateTimeOp::ParseDate => datetime::eval_parse_date(args_result, arena),
+        datetime::DateTimeOp::FormatDate => datetime::eval_format_date(args_result, arena),
+        datetime::DateTimeOp::DateDiff => datetime::eval_date_diff(args_result, arena),
+    }
+}
+
+/// Evaluates an array literal operator
+#[inline]
+fn evaluate_array_literal_operator<'a>(
+    token_refs: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Just evaluate all elements as an array
+    let mut values = arena.get_data_value_vec();
+
+    for token in token_refs {
+        let value = evaluate(token, arena)?;
+        values.push(value.clone());
+    }
+
+    let array_slice = arena.bump_vec_into_slice(values);
+    let result = DataValue::Array(array_slice);
+    Ok(arena.alloc(result))
 }
 
 /// Evaluates a coalesce operation, which returns the first non-null value.
@@ -465,33 +518,23 @@ mod tests {
 
         let result = evaluate(arena.alloc(dt_token), &arena).unwrap();
 
-        // Check if it's an object with a datetime key
-        if let DataValue::Object(entries) = result {
-            let datetime_entry = entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"));
-            assert!(datetime_entry.is_some());
+        // Check if it's a datetime value directly
+        assert!(result.is_datetime());
 
-            let (_, dt_val) = datetime_entry.unwrap();
-            assert!(dt_val.is_datetime());
+        // Now proceed with format test using the datetime
+        // Since we can't easily compare the exact datetime directly, verify that
+        // it converts back to the expected string format using format_date
+        let format_arg = arena.vec_into_slice(vec![
+            result.clone(),
+            DataValue::string(&arena, "yyyy-MM-ddTHH:mm:ssZ"),
+        ]);
+        let format_array = DataValue::Array(format_arg);
+        let format_token = Token::operator(
+            OperatorType::DateTime(DateTimeOp::FormatDate),
+            arena.alloc(Token::literal(format_array)),
+        );
 
-            // Now proceed with format test using the datetime from the object
-            // Since we can't easily compare the exact datetime directly, verify that
-            // it converts back to the expected string format using format_date
-            let format_arg = arena.vec_into_slice(vec![
-                result.clone(),
-                DataValue::string(&arena, "yyyy-MM-ddTHH:mm:ssZ"),
-            ]);
-            let format_array = DataValue::Array(format_arg);
-            let format_token = Token::operator(
-                OperatorType::DateTime(DateTimeOp::FormatDate),
-                arena.alloc(Token::literal(format_array)),
-            );
-
-            let formatted = evaluate(arena.alloc(format_token), &arena).unwrap();
-            assert_eq!(formatted.as_str().unwrap(), "2022-07-06T13:20:06Z");
-        } else {
-            panic!("Expected object but got: {:?}", result);
-        }
+        let formatted = evaluate(arena.alloc(format_token), &arena).unwrap();
+        assert_eq!(formatted.as_str().unwrap(), "2022-07-06T13:20:06Z");
     }
 }

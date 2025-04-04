@@ -81,6 +81,8 @@ pub enum OperatorType {
     Throw,
     /// Try operator (for error handling)
     Try,
+    /// Type operator
+    Type,
     /// Array operator (for arrays with non-literal elements)
     ArrayLiteral,
 }
@@ -239,6 +241,7 @@ impl OperatorType {
             OperatorType::Val => "val",
             OperatorType::Throw => "throw",
             OperatorType::Try => "try",
+            OperatorType::Type => "type",
             OperatorType::ArrayLiteral => "array",
         }
     }
@@ -296,6 +299,7 @@ impl FromStr for OperatorType {
             "val" => Ok(OperatorType::Val),
             "throw" => Ok(OperatorType::Throw),
             "try" => Ok(OperatorType::Try),
+            "type" => Ok(OperatorType::Type),
             _ => Err("unknown operator"),
         }
     }

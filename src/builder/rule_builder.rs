@@ -8,6 +8,7 @@ use super::comparison_builder::ComparisonBuilder;
 use super::control_builder::ControlBuilder;
 use super::datetime_builder::DateTimeBuilder;
 use super::string_builder::StringBuilder;
+use super::type_builder;
 use super::variable_builder::VariableBuilder;
 
 /// Main builder for creating JSONLogic rules.
@@ -200,5 +201,10 @@ impl<'a> RuleBuilder<'a> {
             .collect::<Vec<_>>();
 
         Logic::operator(crate::logic::OperatorType::Try, expressions, self.arena)
+    }
+
+    /// Create a type operator that returns the type of a value
+    pub fn type_op(&self) -> type_builder::TypeBuilder<'a> {
+        type_builder::TypeBuilder::new(self.arena)
     }
 }

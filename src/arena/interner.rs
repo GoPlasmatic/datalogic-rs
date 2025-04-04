@@ -1,212 +1,254 @@
-//! String interning for efficient string storage and deduplication.
+//! String interner for efficient string deduplication.
 //!
-//! This module provides a string interner that deduplicates strings,
-//! reducing memory usage for repeated strings such as object keys.
+//! This module provides a string interner that allows for efficient storage of strings,
+//! ensuring that identical strings are only stored once in memory. This is particularly
+//! useful for JSON processing where the same string keys might appear many times.
+//!
+//! This implementation is based on the idea of "string interning" which is a technique
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::mem;
 
 use bumpalo::Bump;
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::{Hash, Hasher};
 
-/// A string reference with efficient equality comparison.
+/// A reference to a string in the interner.
 ///
-/// `StringRef` stores a reference to a string along with its hash,
-/// allowing for efficient equality comparison without recomputing
-/// the hash.
-#[derive(Clone, Copy)]
-struct StringRef<'a> {
-    /// Reference to the string data
-    data: &'a str,
-
-    /// Precomputed hash of the string
-    hash: u64,
-}
-
-impl<'a> StringRef<'a> {
-    /// Creates a new `StringRef` from a string.
-    fn new(s: &'a str) -> Self {
-        use std::collections::hash_map::DefaultHasher;
-
-        let mut hasher = DefaultHasher::new();
-        s.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        Self { data: s, hash }
-    }
-}
-
-impl PartialEq for StringRef<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        // Fast path: check hash first
-        if self.hash != other.hash {
-            return false;
-        }
-
-        // Slow path: compare strings
-        self.data == other.data
-    }
-}
-
-impl Eq for StringRef<'_> {}
+/// This is a newtype wrapper around a reference to a string,
+/// with lifetime parameters to ensure memory safety.
+#[derive(Debug, PartialEq, Eq)]
+pub struct StringRef<'a>(pub &'a str);
 
 impl Hash for StringRef<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
+        self.0.hash(state);
     }
 }
 
-impl fmt::Debug for StringRef<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StringRef({:?}, hash={})", self.data, self.hash)
-    }
+/// Computes a hash for the given string.
+///
+/// This function uses the DefaultHasher from the standard library.
+#[inline]
+fn compute_hash(s: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish()
 }
 
-/// A string interner for efficient string storage and deduplication.
+/// String interner for efficient deduplication of strings.
 ///
-/// The `StringInterner` deduplicates strings, reducing memory usage
-/// for repeated strings such as object keys.
-///
-#[derive(Default)]
+/// The interner stores unique instances of strings and provides
+/// references to them, ensuring that identical strings are only
+/// stored once in memory. This reduces memory usage when processing
+/// data with many repeated strings, such as JSON objects with
+/// identical keys across many objects.
 pub struct StringInterner {
-    /// Map of interned strings
-    strings: HashMap<StringRef<'static>, ()>,
+    /// Map from string hash to interned string references
+    map: HashMap<u64, Vec<&'static str>>,
+
+    /// Counter for tracking the number of interned strings
+    count: usize,
 }
 
-impl fmt::Debug for StringInterner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("StringInterner")
-            .field("interned_count", &self.strings.len())
-            .finish()
+impl Default for StringInterner {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl StringInterner {
-    /// Creates a new string interner.
+    /// Creates a new empty string interner.
     pub fn new() -> Self {
         Self {
-            strings: HashMap::new(),
+            map: HashMap::new(),
+            count: 0,
         }
     }
 
-    /// Interns a string, returning a reference to a unique instance.
+    /// Creates a new string interner with the specified capacity.
     ///
-    /// If the string has been interned before, returns a reference to
+    /// # Arguments
+    ///
+    /// * `capacity` - The initial capacity for the interner
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            map: HashMap::with_capacity(capacity),
+            count: 0,
+        }
+    }
+
+    /// Interns a string, returning a reference to the unique instance.
+    ///
+    /// If the string has already been interned, returns a reference to
     /// the existing instance. Otherwise, allocates the string in the
-    /// provided arena and returns a reference to it.
+    /// provided bump allocator and stores a reference to it.
     ///
-    pub fn intern<'a>(&mut self, s: &str, arena: &'a Bump) -> &'a str {
-        // Create a temporary StringRef for lookup
-        let temp_ref = StringRef::new(s);
+    /// # Arguments
+    ///
+    /// * `s` - The string to intern
+    /// * `bump` - The bump allocator for allocation if needed
+    ///
+    /// # Returns
+    ///
+    /// A reference to the interned string, valid for the lifetime of the bump allocator
+    pub fn intern<'a>(&mut self, s: &str, bump: &'a Bump) -> &'a str {
+        // Compute hash of the string
+        let hash = compute_hash(s);
 
-        // Convert to 'static lifetime for HashMap lookup
-        // This is safe because we only use the hash and string content for lookup
-        let static_ref: StringRef<'static> = unsafe { std::mem::transmute(temp_ref) };
-
-        // Check if the string is already interned
-        if self.strings.contains_key(&static_ref) {
-            // Find the existing string reference
-            let existing = self.strings.keys().find(|k| k.data == s).unwrap();
-
-            // Convert back to the arena's lifetime
-            // This is safe because the string is allocated in the arena
-            let existing_str: &'a str = unsafe { std::mem::transmute(existing.data) };
-
-            return existing_str;
+        // Check if we have a bucket for this hash
+        if let Some(bucket) = self.map.get(&hash) {
+            // Check if the string is already interned
+            for &stored_str in bucket {
+                if stored_str == s {
+                    // Found existing interned string, return it
+                    // SAFETY: The static lifetime can be safely narrowed to match the bump's lifetime
+                    return unsafe { mem::transmute::<&'static str, &'a str>(stored_str) };
+                }
+            }
         }
 
-        // Allocate the string in the arena
-        let new_str = arena.alloc_str(s);
+        // String not found, allocate and store it
+        let allocated = bump.alloc_str(s);
 
-        // Create a new StringRef for the interned string
-        let new_ref = StringRef::new(new_str);
+        // SAFETY: We widen the lifetime from 'a to 'static for storage
+        // This is safe because:
+        // 1. The bump allocator owns the memory and won't deallocate it during its lifetime
+        // 2. We'll only return references with lifetimes bound to the bump
+        // 3. When transmuting back to 'a, we ensure we don't outlive the bump
+        let static_str: &'static str =
+            unsafe { mem::transmute::<&'a str, &'static str>(allocated) };
 
-        // Convert to 'static lifetime for HashMap storage
-        // This is safe because the HashMap doesn't outlive the arena
-        let static_new_ref: StringRef<'static> = unsafe { std::mem::transmute(new_ref) };
+        // Store the string in the appropriate bucket
+        self.map.entry(hash).or_default().push(static_str);
 
-        // Store the interned string
-        self.strings.insert(static_new_ref, ());
+        self.count += 1;
 
-        new_str
+        // Return the allocated reference with the correct lifetime
+        allocated
     }
 
-    /// Returns the number of interned strings.
-    fn _len(&self) -> usize {
-        self.strings.len()
+    /// Returns the number of unique strings interned.
+    #[inline]
+    pub fn _len(&self) -> usize {
+        self.count
     }
 
-    /// Returns true if no strings have been interned.
-    fn _is_empty(&self) -> bool {
-        self.strings.is_empty()
+    /// Checks if the interner is empty.
+    #[inline]
+    pub fn _is_empty(&self) -> bool {
+        self.count == 0
     }
 
     /// Clears the interner, removing all interned strings.
-    fn _clear(&mut self) {
-        self.strings.clear();
+    ///
+    /// Note that this does not deallocate the strings, as they
+    /// are managed by the bump allocators.
+    #[inline]
+    pub fn _clear(&mut self) {
+        self.map.clear();
+        self.count = 0;
+    }
+
+    /// Reserves capacity for at least the specified number of additional elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `additional` - The number of additional elements to reserve capacity for
+    pub fn _reserve(&mut self, additional: usize) {
+        self.map.reserve(additional);
+    }
+
+    /// Shrinks the capacity of the interner as much as possible.
+    ///
+    /// This may be useful after interning a large number of strings
+    /// to reduce memory usage.
+    pub fn _shrink_to_fit(&mut self) {
+        self.map.shrink_to_fit();
+
+        // Shrink each bucket as well
+        for bucket in self.map.values_mut() {
+            bucket.shrink_to_fit();
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bumpalo::Bump;
+    use std::ptr;
 
     #[test]
-    fn test_intern() {
+    fn test_interner_basic() {
         let bump = Bump::new();
         let mut interner = StringInterner::new();
 
+        // Intern some strings
         let s1 = interner.intern("hello", &bump);
         let s2 = interner.intern("hello", &bump);
         let s3 = interner.intern("world", &bump);
 
-        assert_eq!(s1, "hello");
-        assert_eq!(s2, "hello");
-        assert_eq!(s3, "world");
+        // Verify that identical strings return the same reference
+        assert!(ptr::eq(s1, s2));
 
-        // Same strings should yield same references
-        assert_eq!(s1.as_ptr(), s2.as_ptr());
+        // Verify that different strings return different references
+        assert!(!ptr::eq(s1, s3));
 
-        // Different strings should yield different references
-        assert_ne!(s1.as_ptr(), s3.as_ptr());
-
-        // Interner should have 2 strings
+        // Check length
         assert_eq!(interner._len(), 2);
     }
 
     #[test]
-    fn test_clear() {
+    fn test_interner_with_capacity() {
+        let bump = Bump::new();
+        let mut interner = StringInterner::with_capacity(100);
+
+        // Intern a large number of strings
+        for i in 0..50 {
+            let s = format!("string{}", i);
+            interner.intern(&s, &bump);
+        }
+
+        // Check length
+        assert_eq!(interner._len(), 50);
+    }
+
+    #[test]
+    fn test_interner_clear() {
         let bump = Bump::new();
         let mut interner = StringInterner::new();
 
+        // Intern some strings
         interner.intern("hello", &bump);
         interner.intern("world", &bump);
 
-        assert_eq!(interner._len(), 2);
-
+        // Clear the interner
         interner._clear();
 
-        assert_eq!(interner._len(), 0);
+        // Check that the interner is empty
         assert!(interner._is_empty());
+        assert_eq!(interner._len(), 0);
     }
 
     #[test]
-    fn test_string_ref() {
-        let s1 = "hello";
-        let s2 = "hello";
-        let s3 = "world";
+    fn test_hash_collisions() {
+        let bump = Bump::new();
+        let mut interner = StringInterner::new();
 
-        let ref1 = StringRef::new(s1);
-        let ref2 = StringRef::new(s2);
-        let ref3 = StringRef::new(s3);
+        // Create strings that may hash to the same value
+        // (This is a simplistic test; real hash collisions are rare but possible)
+        let strings = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
-        assert_eq!(ref1, ref2);
-        assert_ne!(ref1, ref3);
+        // Intern all strings
+        let refs: Vec<_> = strings.iter().map(|&s| interner.intern(s, &bump)).collect();
 
-        // Same strings should have same hash
-        assert_eq!(ref1.hash, ref2.hash);
+        // Verify that all strings are correctly interned
+        for (i, &s) in strings.iter().enumerate() {
+            assert_eq!(refs[i], s);
+        }
 
-        // Different strings should have different hash (with high probability)
-        assert_ne!(ref1.hash, ref3.hash);
+        // Verify that reinterning returns the same references
+        for (i, &s) in strings.iter().enumerate() {
+            assert!(ptr::eq(refs[i], interner.intern(s, &bump)));
+        }
     }
 }

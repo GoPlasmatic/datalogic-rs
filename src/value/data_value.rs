@@ -469,26 +469,22 @@ impl<'a> DataValue<'a> {
                     .all(|(a_item, b_item)| a_item.equals(b_item))
             }
             (DataValue::Object(a), DataValue::Object(b)) => {
+                // Quick length check first
                 if a.len() != b.len() {
                     return false;
                 }
 
-                // Check that all keys in a exist in b with equal values
-                for (a_key, a_value) in *a {
-                    let mut found = false;
-                    for (b_key, b_value) in *b {
-                        if a_key == b_key {
-                            if !a_value.equals(b_value) {
-                                return false;
-                            }
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
+                // Check all key-value pairs in both directions
+                for (a_key, a_val) in *a {
+                    let found_pair = b
+                        .iter()
+                        .any(|(b_key, b_val)| *a_key == *b_key && a_val.equals(b_val));
+                    if !found_pair {
                         return false;
                     }
                 }
+
+                // All key-value pairs matched
                 true
             }
 
@@ -657,18 +653,14 @@ impl fmt::Display for DataValue<'_> {
                 write!(f, "}}")
             }
             DataValue::DateTime(dt) => {
-                write!(f, "{{\"datetime\": \"{}\"}}", dt.to_rfc3339())
+                write!(f, "\"{}\"", dt.to_rfc3339())
             }
             DataValue::Duration(d) => {
                 let days = d.num_days();
                 let hours = d.num_hours() % 24;
                 let minutes = d.num_minutes() % 60;
                 let seconds = d.num_seconds() % 60;
-                write!(
-                    f,
-                    "{{\"timestamp\": \"{}d:{}h:{}m:{}s\"}}",
-                    days, hours, minutes, seconds
-                )
+                write!(f, "{}d:{}h:{}m:{}s", days, hours, minutes, seconds)
             }
         }
     }

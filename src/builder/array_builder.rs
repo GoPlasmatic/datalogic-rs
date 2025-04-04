@@ -510,11 +510,7 @@ impl<'a> SliceBuilder<'a> {
             }
         }
 
-        Logic::operator(
-            OperatorType::Array(ArrayOp::Slice),
-            args,
-            self.arena,
-        )
+        Logic::operator(OperatorType::Array(ArrayOp::Slice), args, self.arena)
     }
 }
 
@@ -595,10 +591,6 @@ impl<'a> SortBuilder<'a> {
             args.push(extractor);
         }
 
-        Logic::operator(
-            OperatorType::Array(ArrayOp::Sort),
-            args,
-            self.arena,
-        )
+        Logic::operator(OperatorType::Array(ArrayOp::Sort), args, self.arena)
     }
 }

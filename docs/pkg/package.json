@@ -1,7 +1,7 @@
 {
   "name": "datalogic-web",
   "type": "module",
-  "version": "3.0.7",
+  "version": "3.0.10",
   "files": [
     "datalogic_web_bg.wasm",
     "datalogic_web.js",

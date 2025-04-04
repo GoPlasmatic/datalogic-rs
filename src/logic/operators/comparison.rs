@@ -76,128 +76,301 @@ fn extract_duration<'a>(value: &'a DataValue<'a>, arena: &'a DataArena) -> Optio
     }
 }
 
-/// Evaluates an equality comparison.
-pub fn eval_equal<'a>(
-    args: &'a [&'a Token<'a>],
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
+/// Validate that sufficient arguments are provided for a comparison operation
+fn validate_arguments(args: &[&Token]) -> Result<()> {
     if args.len() < 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
+    Ok(())
+}
+
+/// Helper function to evaluate all pairs of arguments with a comparison function
+fn evaluate_pairwise<'a, F>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+    comparator: F,
+) -> Result<&'a DataValue<'a>>
+where
+    F: Fn(&'a DataValue<'a>, &'a DataValue<'a>) -> Result<bool>,
+{
+    validate_arguments(args)?;
 
     for i in 0..args.len() - 1 {
         let left = evaluate(args[i], arena)?;
         let right = evaluate(args[i + 1], arena)?;
 
-        // Fast path for identical references
-        if std::ptr::eq(left as *const DataValue, right as *const DataValue) {
-            continue;
-        }
-
-        // Try to extract datetime values
-        let left_dt = extract_datetime(left, arena);
-        let right_dt = extract_datetime(right, arena);
-
-        // If both values are datetimes, compare them
-        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
-            if left_dt != right_dt {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        // Try to extract duration values
-        let left_dur = extract_duration(left, arena);
-        let right_dur = extract_duration(right, arena);
-
-        // If both values are durations, compare them
-        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
-            if left_dur != right_dur {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        match (left, right) {
-            (DataValue::Number(a), DataValue::Number(b)) => {
-                if a.as_f64() != b.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::String(a), DataValue::String(b)) => {
-                if a != b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Bool(a), DataValue::Bool(b)) => {
-                if a != b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Null, DataValue::Null) => {
-                continue;
-            }
-            (DataValue::Number(_), DataValue::String(s)) => {
-                // Try to parse the string as a number
-                if let Ok(num) = s.parse::<f64>() {
-                    let left_num = left.coerce_to_number().unwrap();
-                    if left_num.as_f64() != num {
-                        return Ok(arena.false_value());
-                    }
-                } else {
-                    // String is not a valid number
-                    return Err(LogicError::NaNError);
-                }
-            }
-            (DataValue::String(s), DataValue::Number(_)) => {
-                // Try to parse the string as a number
-                if let Ok(num) = s.parse::<f64>() {
-                    let right_num = right.coerce_to_number().unwrap();
-                    if num != right_num.as_f64() {
-                        return Ok(arena.false_value());
-                    }
-                } else {
-                    // String is not a valid number
-                    return Err(LogicError::NaNError);
-                }
-            }
-            (DataValue::Array(_), DataValue::Array(_)) => {
-                // Arrays should be compared by reference, not by value
-                return Err(LogicError::NaNError);
-            }
-            (DataValue::Array(_), _) | (_, DataValue::Array(_)) => {
-                // Arrays can't be compared with non-arrays
-                return Err(LogicError::NaNError);
-            }
-            (DataValue::Object(_), _) | (_, DataValue::Object(_)) => {
-                // Objects can't be compared with anything else
-                // But we already handled the case where both are datetime objects above
-                return Err(LogicError::NaNError);
-            }
-            _ => {
-                // Try numeric coercion for other cases
-                if let (Some(a), Some(b)) = (left.coerce_to_number(), right.coerce_to_number()) {
-                    if a.as_f64() != b.as_f64() {
-                        return Ok(arena.false_value());
-                    }
-                } else {
-                    // If numeric coercion fails, fall back to string comparison
-                    let left_str = left.coerce_to_string(arena);
-                    let right_str = right.coerce_to_string(arena);
-
-                    if let (DataValue::String(a), DataValue::String(b)) = (&left_str, &right_str) {
-                        if a != b {
-                            return Ok(arena.false_value());
-                        }
-                    } else {
-                        return Ok(arena.false_value());
-                    }
-                }
-            }
+        if !comparator(left, right)? {
+            return Ok(arena.false_value());
         }
     }
 
     Ok(arena.true_value())
+}
+
+/// Helper for equality comparison between two values with type coercion
+fn values_are_equal<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<bool> {
+    // Fast path for identical references
+    if std::ptr::eq(left as *const DataValue, right as *const DataValue) {
+        return Ok(true);
+    }
+
+    // Try to extract datetime values
+    let left_dt = extract_datetime(left, arena);
+    let right_dt = extract_datetime(right, arena);
+
+    // If both values are datetimes, compare them
+    if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+        return Ok(left_dt == right_dt);
+    }
+
+    // Try to extract duration values
+    let left_dur = extract_duration(left, arena);
+    let right_dur = extract_duration(right, arena);
+
+    // If both values are durations, compare them
+    if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+        return Ok(left_dur == right_dur);
+    }
+
+    match (left, right) {
+        (DataValue::Number(a), DataValue::Number(b)) => Ok(a.as_f64() == b.as_f64()),
+        (DataValue::String(a), DataValue::String(b)) => Ok(a == b),
+        (DataValue::Bool(a), DataValue::Bool(b)) => Ok(a == b),
+        (DataValue::Null, DataValue::Null) => Ok(true),
+        (DataValue::Number(_), DataValue::String(s)) => {
+            // Try to parse the string as a number
+            if let Ok(num) = s.parse::<f64>() {
+                let left_num = left.coerce_to_number().unwrap();
+                Ok(left_num.as_f64() == num)
+            } else {
+                // String is not a valid number
+                Err(LogicError::NaNError)
+            }
+        }
+        (DataValue::String(s), DataValue::Number(_)) => {
+            // Try to parse the string as a number
+            if let Ok(num) = s.parse::<f64>() {
+                let right_num = right.coerce_to_number().unwrap();
+                Ok(num == right_num.as_f64())
+            } else {
+                // String is not a valid number
+                Err(LogicError::NaNError)
+            }
+        }
+        (DataValue::Array(_), DataValue::Array(_)) => {
+            // Arrays should be compared by reference, not by value
+            Err(LogicError::NaNError)
+        }
+        (DataValue::Array(_), _) | (_, DataValue::Array(_)) => {
+            // Arrays can't be compared with non-arrays
+            Err(LogicError::NaNError)
+        }
+        (DataValue::Object(_), _) | (_, DataValue::Object(_)) => {
+            // Objects can't be compared with anything else
+            // But we already handled the case where both are datetime objects above
+            Err(LogicError::NaNError)
+        }
+        _ => {
+            // Try numeric coercion for other cases
+            if let (Some(a), Some(b)) = (left.coerce_to_number(), right.coerce_to_number()) {
+                Ok(a.as_f64() == b.as_f64())
+            } else {
+                // If numeric coercion fails, fall back to string comparison
+                let left_str = left.coerce_to_string(arena);
+                let right_str = right.coerce_to_string(arena);
+
+                if let (DataValue::String(a), DataValue::String(b)) = (&left_str, &right_str) {
+                    Ok(a == b)
+                } else {
+                    Ok(false)
+                }
+            }
+        }
+    }
+}
+
+/// Helper for strict equality comparison between two values
+fn values_are_strict_equal<'a>(left: &'a DataValue<'a>, right: &'a DataValue<'a>) -> Result<bool> {
+    Ok(left.strict_equals(right))
+}
+
+/// Helper for not-equal comparison between two values with type coercion
+fn values_are_not_equal<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<bool> {
+    values_are_equal(left, right, arena).map(|result| !result)
+}
+
+/// Helper for strict not-equal comparison between two values
+fn values_are_strict_not_equal<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+) -> Result<bool> {
+    values_are_strict_equal(left, right).map(|result| !result)
+}
+
+/// Helper for greater-than comparison between two values
+fn value_is_greater_than<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<bool> {
+    // Try to extract datetime values
+    let left_dt = extract_datetime(left, arena);
+    let right_dt = extract_datetime(right, arena);
+
+    // If both values are datetimes, compare them
+    if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+        return Ok(left_dt > right_dt);
+    }
+
+    // Try to extract duration values
+    let left_dur = extract_duration(left, arena);
+    let right_dur = extract_duration(right, arena);
+
+    // If both values are durations, compare them
+    if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+        return Ok(left_dur > right_dur);
+    }
+
+    match (left, right) {
+        (DataValue::Number(a), DataValue::Number(b)) => Ok(a.as_f64() > b.as_f64()),
+        (DataValue::String(a), DataValue::String(b)) => Ok(a > b),
+        (DataValue::Bool(a), DataValue::Bool(b)) => Ok(a > b),
+        (DataValue::Null, DataValue::Null) => Ok(false),
+        _ => {
+            let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+            let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+            Ok(left_num.as_f64() > right_num.as_f64())
+        }
+    }
+}
+
+/// Helper for greater-than-or-equal comparison between two values
+fn value_is_greater_than_or_equal<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<bool> {
+    // Try to extract datetime values
+    let left_dt = extract_datetime(left, arena);
+    let right_dt = extract_datetime(right, arena);
+
+    // If both values are datetimes, compare them
+    if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+        return Ok(left_dt >= right_dt);
+    }
+
+    // Try to extract duration values
+    let left_dur = extract_duration(left, arena);
+    let right_dur = extract_duration(right, arena);
+
+    // If both values are durations, compare them
+    if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+        return Ok(left_dur >= right_dur);
+    }
+
+    match (left, right) {
+        (DataValue::Number(a), DataValue::Number(b)) => Ok(a.as_f64() >= b.as_f64()),
+        (DataValue::String(a), DataValue::String(b)) => Ok(a >= b),
+        (DataValue::Bool(a), DataValue::Bool(b)) => Ok(a >= b),
+        (DataValue::Null, DataValue::Null) => Ok(true),
+        _ => {
+            let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+            let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+            Ok(left_num.as_f64() >= right_num.as_f64())
+        }
+    }
+}
+
+/// Helper for less-than comparison between two values
+fn value_is_less_than<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<bool> {
+    // Try to extract datetime values
+    let left_dt = extract_datetime(left, arena);
+    let right_dt = extract_datetime(right, arena);
+
+    // If both values are datetimes, compare them
+    if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+        return Ok(left_dt < right_dt);
+    }
+
+    // Try to extract duration values
+    let left_dur = extract_duration(left, arena);
+    let right_dur = extract_duration(right, arena);
+
+    // If both values are durations, compare them
+    if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+        return Ok(left_dur < right_dur);
+    }
+
+    match (left, right) {
+        (DataValue::Number(a), DataValue::Number(b)) => Ok(a.as_f64() < b.as_f64()),
+        (DataValue::String(a), DataValue::String(b)) => Ok(a < b),
+        (DataValue::Bool(a), DataValue::Bool(b)) => Ok(a < b),
+        (DataValue::Null, DataValue::Null) => Ok(false),
+        _ => {
+            let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+            let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+            Ok(left_num.as_f64() < right_num.as_f64())
+        }
+    }
+}
+
+/// Helper for less-than-or-equal comparison between two values
+fn value_is_less_than_or_equal<'a>(
+    left: &'a DataValue<'a>,
+    right: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Result<bool> {
+    // Try to extract datetime values
+    let left_dt = extract_datetime(left, arena);
+    let right_dt = extract_datetime(right, arena);
+
+    // If both values are datetimes, compare them
+    if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
+        return Ok(left_dt <= right_dt);
+    }
+
+    // Try to extract duration values
+    let left_dur = extract_duration(left, arena);
+    let right_dur = extract_duration(right, arena);
+
+    // If both values are durations, compare them
+    if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
+        return Ok(left_dur <= right_dur);
+    }
+
+    match (left, right) {
+        (DataValue::Number(a), DataValue::Number(b)) => Ok(a.as_f64() <= b.as_f64()),
+        (DataValue::String(a), DataValue::String(b)) => Ok(a <= b),
+        (DataValue::Bool(a), DataValue::Bool(b)) => Ok(a <= b),
+        (DataValue::Null, DataValue::Null) => Ok(true),
+        _ => {
+            let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
+            let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
+            Ok(left_num.as_f64() <= right_num.as_f64())
+        }
+    }
+}
+
+/// Evaluates an equality comparison.
+pub fn eval_equal<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    evaluate_pairwise(args, arena, |left, right| {
+        values_are_equal(left, right, arena)
+    })
 }
 
 /// Evaluates a strict equality comparison.
@@ -205,20 +378,9 @@ pub fn eval_strict_equal<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        if !left.strict_equals(right) {
-            return Ok(arena.false_value());
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        values_are_strict_equal(left, right)
+    })
 }
 
 /// Evaluates a not equal comparison.
@@ -226,68 +388,9 @@ pub fn eval_not_equal<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        // Try to extract datetime values
-        let left_dt = extract_datetime(left, arena);
-        let right_dt = extract_datetime(right, arena);
-
-        // If both values are datetimes, compare them
-        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
-            if left_dt == right_dt {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        // Try to extract duration values
-        let left_dur = extract_duration(left, arena);
-        let right_dur = extract_duration(right, arena);
-
-        // If both values are durations, compare them
-        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
-            if left_dur == right_dur {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        match (left, right) {
-            (DataValue::Number(a), DataValue::Number(b)) => {
-                if a.as_f64() == b.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::String(a), DataValue::String(b)) => {
-                if a == b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Bool(a), DataValue::Bool(b)) => {
-                if a == b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.false_value());
-            }
-            _ => {
-                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
-                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
-                if left_num.as_f64() == right_num.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        values_are_not_equal(left, right, arena)
+    })
 }
 
 /// Evaluates a strict not-equal comparison.
@@ -295,20 +398,9 @@ pub fn eval_strict_not_equal<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        if left.strict_equals(right) {
-            return Ok(arena.false_value());
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        values_are_strict_not_equal(left, right)
+    })
 }
 
 /// Evaluates a greater-than comparison.
@@ -316,68 +408,9 @@ pub fn eval_greater_than<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        // Try to extract datetime values
-        let left_dt = extract_datetime(left, arena);
-        let right_dt = extract_datetime(right, arena);
-
-        // If both values are datetimes, compare them
-        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
-            if left_dt <= right_dt {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        // Try to extract duration values
-        let left_dur = extract_duration(left, arena);
-        let right_dur = extract_duration(right, arena);
-
-        // If both values are durations, compare them
-        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
-            if left_dur <= right_dur {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        match (left, right) {
-            (DataValue::Number(a), DataValue::Number(b)) => {
-                if a.as_f64() <= b.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::String(a), DataValue::String(b)) => {
-                if a <= b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Bool(a), DataValue::Bool(b)) => {
-                if a <= b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.false_value());
-            }
-            _ => {
-                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
-                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
-                if left_num.as_f64() <= right_num.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        value_is_greater_than(left, right, arena)
+    })
 }
 
 /// Evaluates a greater-than-or-equal comparison.
@@ -385,68 +418,9 @@ pub fn eval_greater_than_or_equal<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        // Try to extract datetime values
-        let left_dt = extract_datetime(left, arena);
-        let right_dt = extract_datetime(right, arena);
-
-        // If both values are datetimes, compare them
-        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
-            if left_dt < right_dt {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        // Try to extract duration values
-        let left_dur = extract_duration(left, arena);
-        let right_dur = extract_duration(right, arena);
-
-        // If both values are durations, compare them
-        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
-            if left_dur < right_dur {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        match (left, right) {
-            (DataValue::Number(a), DataValue::Number(b)) => {
-                if a.as_f64() < b.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::String(a), DataValue::String(b)) => {
-                if a < b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Bool(a), DataValue::Bool(b)) => {
-                if a < b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.true_value());
-            }
-            _ => {
-                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
-                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
-                if left_num.as_f64() < right_num.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        value_is_greater_than_or_equal(left, right, arena)
+    })
 }
 
 /// Evaluates a less-than comparison.
@@ -454,68 +428,9 @@ pub fn eval_less_than<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        // Try to extract datetime values
-        let left_dt = extract_datetime(left, arena);
-        let right_dt = extract_datetime(right, arena);
-
-        // If both values are datetimes, compare them
-        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
-            if left_dt >= right_dt {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        // Try to extract duration values
-        let left_dur = extract_duration(left, arena);
-        let right_dur = extract_duration(right, arena);
-
-        // If both values are durations, compare them
-        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
-            if left_dur >= right_dur {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        match (left, right) {
-            (DataValue::Number(a), DataValue::Number(b)) => {
-                if a.as_f64() >= b.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::String(a), DataValue::String(b)) => {
-                if a >= b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Bool(a), DataValue::Bool(b)) => {
-                if a >= b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.false_value());
-            }
-            _ => {
-                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
-                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
-                if left_num.as_f64() >= right_num.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        value_is_less_than(left, right, arena)
+    })
 }
 
 /// Evaluates a less-than-or-equal comparison.
@@ -523,68 +438,9 @@ pub fn eval_less_than_or_equal<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
-
-        // Try to extract datetime values
-        let left_dt = extract_datetime(left, arena);
-        let right_dt = extract_datetime(right, arena);
-
-        // If both values are datetimes, compare them
-        if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
-            if left_dt > right_dt {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        // Try to extract duration values
-        let left_dur = extract_duration(left, arena);
-        let right_dur = extract_duration(right, arena);
-
-        // If both values are durations, compare them
-        if let (Some(left_dur), Some(right_dur)) = (left_dur, right_dur) {
-            if left_dur > right_dur {
-                return Ok(arena.false_value());
-            }
-            continue;
-        }
-
-        match (left, right) {
-            (DataValue::Number(a), DataValue::Number(b)) => {
-                if a.as_f64() > b.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::String(a), DataValue::String(b)) => {
-                if a > b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Bool(a), DataValue::Bool(b)) => {
-                if a > b {
-                    return Ok(arena.false_value());
-                }
-            }
-            (DataValue::Null, DataValue::Null) => {
-                return Ok(arena.true_value());
-            }
-            _ => {
-                let left_num = left.coerce_to_number().ok_or(LogicError::NaNError)?;
-                let right_num = right.coerce_to_number().ok_or(LogicError::NaNError)?;
-                if left_num.as_f64() > right_num.as_f64() {
-                    return Ok(arena.false_value());
-                }
-            }
-        }
-    }
-
-    Ok(arena.true_value())
+    evaluate_pairwise(args, arena, |left, right| {
+        value_is_less_than_or_equal(left, right, arena)
+    })
 }
 
 #[cfg(test)]

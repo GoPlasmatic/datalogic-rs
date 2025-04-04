@@ -10,6 +10,15 @@ use crate::logic::operators::variable;
 use crate::logic::token::Token;
 use crate::value::DataValue;
 
+/// Checks if a variable with the given name exists and is not null
+fn variable_exists<'a>(name: &'a str, arena: &'a DataArena) -> bool {
+    let none_ref: Option<&Token> = None;
+    if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
+        return var_value != arena.null_value();
+    }
+    false
+}
+
 /// Evaluates a missing operation.
 /// Checks whether the specified variables are missing from the data.
 pub fn eval_missing<'a>(
@@ -25,37 +34,26 @@ pub fn eval_missing<'a>(
     for arg in args {
         let value = evaluate(arg, arena)?;
 
-        if let DataValue::String(name) = value {
-            // Create a variable token with this name
-            let none_ref: Option<&Token> = None;
-            if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
-                // If the variable exists, continue to the next one
-                if var_value != arena.null_value() {
-                    continue;
-                }
-            }
-
-            // If we get here, the variable is missing
-            missing.push(DataValue::String(name));
-        } else if let DataValue::Array(names) = value {
-            // Check each name in the array
-            for name_value in *names {
-                if let DataValue::String(name) = name_value {
-                    // Check if the variable exists
-                    let none_ref: Option<&Token> = None;
-                    if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
-                        if var_value != arena.null_value() {
-                            continue;
-                        }
-                    }
-
-                    // Variable is missing
+        match value {
+            DataValue::String(name) => {
+                if !variable_exists(name, arena) {
                     missing.push(DataValue::String(name));
                 }
-                // Ignore non-string names
             }
+            DataValue::Array(names) => {
+                // Process each variable name in the array
+                for name_value in *names {
+                    if let DataValue::String(name) = name_value {
+                        if !variable_exists(name, arena) {
+                            missing.push(DataValue::String(name));
+                        }
+                    }
+                    // Ignore non-string names
+                }
+            }
+            // Ignore non-string, non-array values
+            _ => {}
         }
-        // Ignore non-string, non-array values
     }
 
     let result = DataValue::Array(arena.bump_vec_into_slice(missing));
@@ -89,17 +87,11 @@ pub fn eval_missing_some<'a>(
 
         for name_value in *names {
             if let DataValue::String(name) = name_value {
-                // Check if the variable exists
-                let none_ref: Option<&Token> = None;
-                if let Ok(var_value) = variable::evaluate_variable(name, &none_ref, arena) {
-                    if var_value != arena.null_value() {
-                        found_count += 1;
-                        continue;
-                    }
+                if variable_exists(name, arena) {
+                    found_count += 1;
+                } else {
+                    missing.push(DataValue::String(name));
                 }
-
-                // Variable is missing
-                missing.push(DataValue::String(name));
             }
             // Ignore non-string names
         }

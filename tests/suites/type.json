@@ -1,0 +1,181 @@
+[
+  "# Basic type operator tests",
+  {
+    "description": "Type of null is 'null'",
+    "rule": { "type": null },
+    "data": {},
+    "result": "null"
+  },
+  {
+    "description": "Type of boolean true is 'boolean'",
+    "rule": { "type": true },
+    "data": {},
+    "result": "boolean"
+  },
+  {
+    "description": "Type of boolean false is 'boolean'",
+    "rule": { "type": false },
+    "data": {},
+    "result": "boolean"
+  },
+  {
+    "description": "Type of integer is 'number'",
+    "rule": { "type": 42 },
+    "data": {},
+    "result": "number"
+  },
+  {
+    "description": "Type of float is 'number'",
+    "rule": { "type": 3.14 },
+    "data": {},
+    "result": "number"
+  },
+  {
+    "description": "Type of string is 'string'",
+    "rule": { "type": "hello" },
+    "data": {},
+    "result": "string"
+  },
+  {
+    "description": "Type of empty array is 'array'",
+    "rule": { "type": [] },
+    "data": {},
+    "result": "array"
+  },
+  {
+    "description": "Type of array with elements is 'array'",
+    "rule": { "type": [1, 2, 3] },
+    "data": {},
+    "result": "array"
+  },
+  {
+    "description": "Type of empty object is 'object'",
+    "rule": { "type": {} },
+    "data": {},
+    "result": "object"
+  },
+  {
+    "description": "Type of object with properties is 'object'",
+    "rule": { "type": {"val": "obj"} },
+    "data": {"obj": {"a": 1, "b": 2}},
+    "result": "object"
+  },
+  "# Type operator with variables",
+  {
+    "description": "Type of null variable",
+    "rule": { "type": {"val": "nullVal"} },
+    "data": { "nullVal": null },
+    "result": "null"
+  },
+  {
+    "description": "Type of boolean variable",
+    "rule": { "type": {"val": "boolVal"} },
+    "data": { "boolVal": true },
+    "result": "boolean"
+  },
+  {
+    "description": "Type of integer variable",
+    "rule": { "type": {"val": "intVal"} },
+    "data": { "intVal": 42 },
+    "result": "number"
+  },
+  {
+    "description": "Type of float variable",
+    "rule": { "type": {"val": "floatVal"} },
+    "data": { "floatVal": 3.14 },
+    "result": "number"
+  },
+  {
+    "description": "Type of string variable",
+    "rule": { "type": {"val": "strVal"} },
+    "data": { "strVal": "hello" },
+    "result": "string"
+  },
+  {
+    "description": "Type of array variable",
+    "rule": { "type": {"val": "arrayVal"} },
+    "data": { "arrayVal": [1, 2, 3] },
+    "result": "array"
+  },
+  {
+    "description": "Type of object variable",
+    "rule": { "type": {"val": "objVal"} },
+    "data": { "objVal": {"a": 1, "b": 2} },
+    "result": "object"
+  },
+  {
+    "description": "Type of missing variable with default",
+    "rule": { "type": {"val": "missing"} },
+    "data": {},
+    "result": "null"
+  },
+  "# Nested expressions",
+  {
+    "description": "Type of arithmetic operation result",
+    "rule": { "type": {"+": [2, 3]} },
+    "data": {},
+    "result": "number"
+  },
+  {
+    "description": "Type of comparison operation result",
+    "rule": { "type": {"==": [1, 1]} },
+    "data": {},
+    "result": "boolean"
+  },
+  {
+    "description": "Type of logical operation result",
+    "rule": { "type": {"and": [true, false]} },
+    "data": {},
+    "result": "boolean"
+  },
+  {
+    "description": "Type of map operation result",
+    "rule": { "type": {"map": [[1, 2, 3], {"*": [{"val": []}, 2]}]} },
+    "data": {},
+    "result": "array"
+  },
+  {
+    "description": "Type of filter operation result",
+    "rule": { "type": {"filter": [[1, 2, 3, 4], {">": [{"val": []}, 2]}]} },
+    "data": {},
+    "result": "array"
+  },
+  {
+    "description": "Type of string concatenation result",
+    "rule": { "type": {"cat": ["hello", " ", "world"]} },
+    "data": {},
+    "result": "string"
+  },
+  "# Edge cases",
+  {
+    "description": "Type of conditional expression result",
+    "rule": { "type": {"if": [true, "then", "else"]} },
+    "data": {},
+    "result": "string"
+  },
+  {
+    "description": "Type of condition-based variable result",
+    "rule": { "type": {"if": [true, {"val": "numVal"}, {"val": "strVal"}]} },
+    "data": { "numVal": 42, "strVal": "hello" },
+    "result": "number"
+  },
+  {
+    "description": "Type of datetime value",
+    "rule": { "type": {"datetime": "2022-07-06T13:20:06Z"} },
+    "data": {},
+    "result": "datetime"
+  },
+  {
+    "description": "Type of duration value",
+    "rule": { "type": {"timestamp": "1d"} },
+    "data": {},
+    "result": "duration"
+  },
+  "# Error handling",
+  {
+    "description": "Type operator requires an argument",
+    "rule": { "type": [] },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  }
+]
