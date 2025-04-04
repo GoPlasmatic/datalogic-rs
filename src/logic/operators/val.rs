@@ -275,8 +275,8 @@ fn access_datetime_property<'a>(
         "hour" => Ok(arena.alloc(DataValue::integer(dt.hour() as i64))),
         "minute" => Ok(arena.alloc(DataValue::integer(dt.minute() as i64))),
         "second" => Ok(arena.alloc(DataValue::integer(dt.second() as i64))),
-        "timestamp" => Ok(arena.null_value()),
-        "iso" => Ok(arena.alloc(DataValue::DateTime(*dt))),
+        "timestamp" => Ok(arena.alloc(DataValue::integer(dt.timestamp()))),
+        "iso" => Ok(arena.alloc(DataValue::datetime(*dt))),
         _ => Ok(arena.null_value()),
     }
 }
