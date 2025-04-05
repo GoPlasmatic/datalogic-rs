@@ -56,33 +56,6 @@
                 These operators are organized into categories based on their functionality.
             </p>
             
-            <div class="api-methods-overview mdc-card">
-                <h2 class="mdc-typography--headline6">Using Operators with API Methods</h2>
-                <p class="mdc-typography--body1">
-                    You can use any of these operators with the following API methods:
-                </p>
-                <ul>
-                    <li>
-                        <code>evaluate</code> - Evaluates a pre-compiled rule against parsed data
-                        <pre><code class="language-rust">let rule = dl.parse_logic(r#"{ "abs": -10 }"#, None).unwrap();
-let data = dl.parse_data("{}").unwrap();
-let result = dl.evaluate(&rule, &data).unwrap();</code></pre>
-                    </li>
-                    <li>
-                        <code>evaluate_str</code> - Parses and evaluates in one step, returning a JSON value
-                        <pre><code class="language-rust">let result = dl.evaluate_str(r#"{ "ceil": 3.14 }"#, "{}", None).unwrap();</code></pre>
-                    </li>
-                    <li>
-                        <code>evaluate_json</code> - Works directly with JSON values
-                        <pre><code class="language-rust">let logic = json!({"abs": -42});
-let data = json!({});
-let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
-                    </li>
-                </ul>
-                <p class="mdc-typography--body1">
-                    For more detailed examples, see the <a href="tutorial.html#core-api-methods">Core API Methods</a> section in the tutorial.
-                </p>
-            </div>
             
             <div class="operators-grid">
                 <div class="operator-category-card mdc-card">
@@ -105,7 +78,6 @@ let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
                                 <li><span class="operator-symbol">ceil</span> Ceiling (round up)</li>
                                 <li><span class="operator-symbol">floor</span> Floor (round down)</li>
                             </ul>
-                            <p>Examples of arithmetic operators:</p>
                         </div>
                     </div>
                     <div class="mdc-card__actions">
@@ -238,19 +210,22 @@ let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
                 <div class="operator-category-card mdc-card">
                     <div class="mdc-card__primary-action" tabindex="0">
                         <div class="operator-category-icon">
-                            <span class="material-icons">category</span>
+                            <span class="material-icons">build</span>
                         </div>
                         <div class="operator-category-content">
-                            <h2 class="mdc-typography--headline6">Type Operators</h2>
-                            <p class="mdc-typography--body2">Check and convert types</p>
+                            <h2 class="mdc-typography--headline6">Utility Operators</h2>
+                            <p class="mdc-typography--body2">Type operations, error handling, and coalescing</p>
                             <ul class="operator-list">
                                 <li><span class="operator-symbol">type</span> Get type of a value</li>
+                                <li><span class="operator-symbol">try</span> Try an operation with fallback</li>
+                                <li><span class="operator-symbol">throw</span> Throw an error</li>
+                                <li><span class="operator-symbol">??</span> Nullish coalescing operator</li>
                             </ul>
                         </div>
                     </div>
                     <div class="mdc-card__actions">
                         <div class="mdc-card__action-buttons">
-                            <a href="operators/type.html" class="mdc-button mdc-card__action mdc-card__action--button">
+                            <a href="operators/utility.html" class="mdc-button mdc-card__action mdc-card__action--button">
                                 <span class="mdc-button__ripple"></span>
                                 <span class="mdc-button__label">View Details</span>
                             </a>
@@ -312,53 +287,6 @@ let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
                         </div>
                     </div>
                 </div>
-                
-                <div class="operator-category-card mdc-card">
-                    <div class="mdc-card__primary-action" tabindex="0">
-                        <div class="operator-category-icon">
-                            <span class="material-icons">error_outline</span>
-                        </div>
-                        <div class="operator-category-content">
-                            <h2 class="mdc-typography--headline6">Error Handling Operators</h2>
-                            <p class="mdc-typography--body2">Handle errors: try, throw</p>
-                            <ul class="operator-list">
-                                <li><span class="operator-symbol">try</span> Try an operation with fallback</li>
-                                <li><span class="operator-symbol">throw</span> Throw an error</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="mdc-card__actions">
-                        <div class="mdc-card__action-buttons">
-                            <a href="operators/error.html" class="mdc-button mdc-card__action mdc-card__action--button">
-                                <span class="mdc-button__ripple"></span>
-                                <span class="mdc-button__label">View Details</span>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="operator-category-card mdc-card">
-                    <div class="mdc-card__primary-action" tabindex="0">
-                        <div class="operator-category-icon">
-                            <span class="material-icons">compare_arrows</span>
-                        </div>
-                        <div class="operator-category-content">
-                            <h2 class="mdc-typography--headline6">Coalescing Operator</h2>
-                            <p class="mdc-typography--body2">Handle null/undefined values with fallbacks</p>
-                            <ul class="operator-list">
-                                <li><span class="operator-symbol">??</span> Nullish coalescing operator</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="mdc-card__actions">
-                        <div class="mdc-card__action-buttons">
-                            <a href="operators/coalesce.html" class="mdc-button mdc-card__action mdc-card__action--button">
-                                <span class="mdc-button__ripple"></span>
-                                <span class="mdc-button__label">View Details</span>
-                            </a>
-                        </div>
-                    </div>
-                </div>
             </div>
             
             <section class="advanced-section mdc-card">
@@ -368,43 +296,10 @@ let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
                     This provides flexibility to implement domain-specific functionality beyond the standard operators.
                 </p>
                 
-                <div class="code-block">
-                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, DataValue, CustomOperator};
-
-// Define a custom operator that multiplies all numbers
-struct MultiplyAll;
-
-impl CustomOperator for MultiplyAll {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
-        if args.is_empty() {
-            return Ok(DataValue::from(1.0));
-        }
-        
-        let mut product = 1.0;
-        
-        for arg in args {
-            if let Some(num) = arg.as_f64() {
-                product *= num;
-            }
-        }
-        
-        Ok(DataValue::from(product))
-    }
-}
-
-// Create a new instance and register the operator
-let mut dl = DataLogic::new();
-dl.register_operator("multiply_all", MultiplyAll);
-
-// Use the custom operator
-let result = dl.evaluate_str(
-    r#"{"multiply_all": [2, 3, 4]}"#,
-    "{}",
-    None
-).unwrap();
-
-// Result will be 24.0</code></pre>
-                </div>
+                <p class="mdc-typography--body1">
+                    Custom operators enable you to create reusable, domain-specific logic that can be composed with 
+                    built-in operators. For implementation details and examples, see the Custom Operators section in the tutorial.
+                </p>
                 
                 <a href="tutorial.html#custom-operators" class="mdc-button mdc-button--raised">
                     <span class="mdc-button__ripple"></span>
