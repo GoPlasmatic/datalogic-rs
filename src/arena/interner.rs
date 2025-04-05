@@ -5,8 +5,8 @@
 //! useful for JSON processing where the same string keys might appear many times.
 //!
 //! This implementation is based on the idea of "string interning" which is a technique
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::mem;
 

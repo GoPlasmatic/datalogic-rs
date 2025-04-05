@@ -7,14 +7,50 @@
 //! The `DataArena` maintains shared references and context for evaluating
 //! logic expressions.
 
-use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
+use bumpalo::Bump;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 
 use super::interner::StringInterner;
-use crate::value::{DataValue, NumberValue};
+use crate::logic::Result;
+use crate::value::{DataValue, FromJson, NumberValue, ToJson};
+
+/// Trait for custom JSONLogic operators
+pub trait CustomOperator: fmt::Debug + Send + Sync {
+    /// Evaluate the custom operator with the given arguments
+    ///
+    /// This function takes owned DataValue arguments and returns an owned DataValue.
+    /// The actual allocation in the arena is handled internally.
+    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue>;
+}
+
+/// Registry for custom operator functions
+#[derive(Default)]
+pub struct CustomOperatorRegistry {
+    operators: HashMap<String, Box<dyn CustomOperator>>,
+}
+
+impl CustomOperatorRegistry {
+    /// Creates a new empty custom operator registry
+    pub fn new() -> Self {
+        Self {
+            operators: HashMap::new(),
+        }
+    }
+
+    /// Registers a custom operator function
+    pub fn register(&mut self, name: &str, operator: Box<dyn CustomOperator>) {
+        self.operators.insert(name.to_string(), operator);
+    }
+
+    /// Returns a reference to a custom operator by name
+    pub fn get(&self, name: &str) -> Option<&dyn CustomOperator> {
+        self.operators.get(name).map(|op| op.as_ref())
+    }
+}
 
 /// Maximum number of path components in the fixed-size array
 const PATH_CHAIN_CAPACITY: usize = 16;
@@ -104,6 +140,9 @@ pub struct DataArena {
     /// String interner for efficient string storage
     interner: RefCell<StringInterner>,
 
+    /// Custom operator registry for evaluating custom operators
+    custom_operators: RefCell<CustomOperatorRegistry>,
+
     /// Chunk size for allocations (in bytes)
     chunk_size: usize,
 
@@ -190,6 +229,7 @@ impl DataArena {
         Self {
             bump,
             interner: RefCell::new(StringInterner::with_capacity(64)), // Start with reasonable capacity
+            custom_operators: RefCell::new(CustomOperatorRegistry::new()),
             chunk_size,
             null_value: &NULL_VALUE,
             true_value: &TRUE_VALUE,
@@ -849,6 +889,48 @@ impl DataArena {
             let static_key =
                 unsafe { mem::transmute::<&'b DataValue<'b>, &'static DataValue<'static>>(key) };
             path_chain.push(static_key);
+        }
+    }
+
+    /// Register a custom operator
+    pub fn register_custom_operator(&self, name: &str, operator: Box<dyn CustomOperator>) {
+        self.custom_operators.borrow_mut().register(name, operator);
+    }
+
+    /// Check if a custom operator exists
+    pub fn has_custom_operator(&self, name: &str) -> bool {
+        self.custom_operators.borrow().get(name).is_some()
+    }
+
+    /// Evaluate a custom operator with the given name and arguments
+    pub fn evaluate_custom_operator<'a>(
+        &'a self,
+        name: &str,
+        args: &[&'a DataValue<'a>],
+    ) -> Result<&'a DataValue<'a>> {
+        // Get the custom operator
+        if let Some(op) = self.custom_operators.borrow().get(name) {
+            // Convert arena references to owned DataValues by going through JSON
+            let owned_args: Vec<DataValue> = args
+                .iter()
+                .map(|&arg| {
+                    // Convert to JSON and back to create owned values
+                    let json = arg.to_json();
+                    DataValue::from_json(&json, self)
+                })
+                .collect();
+
+            // Call the custom operator with owned values
+            let result = op.evaluate(&owned_args)?;
+
+            // Allocate the result back into the arena
+            let json_result = result.to_json();
+            let result_value = DataValue::from_json(&json_result, self);
+            Ok(self.alloc(result_value))
+        } else {
+            Err(crate::logic::LogicError::OperatorNotFoundError {
+                operator: name.to_string(),
+            })
         }
     }
 }

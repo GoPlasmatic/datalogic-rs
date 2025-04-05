@@ -364,32 +364,46 @@ let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
             <section class="advanced-section mdc-card">
                 <h2 class="mdc-typography--headline5">Custom Operators</h2>
                 <p class="mdc-typography--body1">
-                    DataLogic-rs allows you to extend the engine with custom operators. This provides 
-                    flexibility to implement domain-specific functionality beyond the standard operators.
+                    DataLogic-rs allows you to extend the engine with custom operators by implementing the <code>CustomOperator</code> trait. 
+                    This provides flexibility to implement domain-specific functionality beyond the standard operators.
                 </p>
                 
                 <div class="code-block">
-                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, Value};
+                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, DataValue, CustomOperator};
 
-// Create a new instance
+// Define a custom operator that multiplies all numbers
+struct MultiplyAll;
+
+impl CustomOperator for MultiplyAll {
+    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
+        if args.is_empty() {
+            return Ok(DataValue::from(1.0));
+        }
+        
+        let mut product = 1.0;
+        
+        for arg in args {
+            if let Some(num) = arg.as_f64() {
+                product *= num;
+            }
+        }
+        
+        Ok(DataValue::from(product))
+    }
+}
+
+// Create a new instance and register the operator
 let mut dl = DataLogic::new();
+dl.register_operator("multiply_all", MultiplyAll);
 
-// Add a custom operator that doubles a number
-dl.add_operation("double", |args, data, _ops| {
-    if args.is_empty() {
-        return Value::Null;
-    }
-    
-    // Evaluate the first argument
-    let value = dl.apply(&args[0], data, None);
-    
-    // Check if it's a number and double it
-    if let Value::Number(n) = value {
-        Value::Number(n * 2.0)
-    } else {
-        Value::Null
-    }
-});</code></pre>
+// Use the custom operator
+let result = dl.evaluate_str(
+    r#"{"multiply_all": [2, 3, 4]}"#,
+    "{}",
+    None
+).unwrap();
+
+// Result will be 24.0</code></pre>
                 </div>
                 
                 <a href="tutorial.html#custom-operators" class="mdc-button mdc-button--raised">

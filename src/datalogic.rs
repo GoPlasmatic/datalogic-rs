@@ -4,11 +4,14 @@
 //! for parsing and evaluating logic expressions.
 
 use crate::arena::DataArena;
-use crate::logic::{Logic, Result, evaluate, optimize};
+use crate::logic::{evaluate, optimize, Logic, Result};
 use crate::parser::{ExpressionParser, ParserRegistry};
 use crate::value::{DataValue, FromJson, ToJson};
 use crate::{LogicError, RuleBuilder};
 use serde_json::Value as JsonValue;
+
+/// Trait for custom JSONLogic operators
+pub use crate::arena::CustomOperator;
 
 /// Main interface for the DataLogic library
 ///
@@ -76,6 +79,62 @@ impl DataLogic {
     /// Get a rule builder for constructing rules programmatically
     pub fn builder(&self) -> RuleBuilder {
         RuleBuilder::new(&self.arena)
+    }
+
+    /// Register a custom operator implementation
+    ///
+    /// This allows users to extend JSONLogic with custom operations.
+    /// The implementation should take an array of DataValue objects and return a DataValue result.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use datalogic_rs::{DataLogic, DataValue, LogicError, Result, CustomOperator};
+    /// use datalogic_rs::value::NumberValue;
+    /// use std::fmt::Debug;
+    ///
+    /// // Define a custom operator that multiplies all numbers in the array
+    /// #[derive(Debug)]
+    /// struct MultiplyAll;
+    ///
+    /// impl CustomOperator for MultiplyAll {
+    ///     fn evaluate(&self, args: &[DataValue]) -> Result<DataValue> {
+    ///         // Default to 1 if no arguments provided
+    ///         if args.is_empty() {
+    ///             return Ok(DataValue::Number(NumberValue::from_i64(1)));
+    ///         }
+    ///
+    ///         // Calculate product of all numeric values
+    ///         let mut product = 1.0;
+    ///         for arg in args {
+    ///             if let Some(n) = arg.as_f64() {
+    ///                 product *= n;
+    ///             }
+    ///         }
+    ///
+    ///         // Return the result
+    ///         Ok(DataValue::Number(NumberValue::from_f64(product)))
+    ///     }
+    /// }
+    ///
+    /// let mut dl = DataLogic::new();
+    /// dl.register_custom_operator("multiply_all", Box::new(MultiplyAll));
+    ///
+    /// // Use the custom operator
+    /// let result = dl.evaluate_str(
+    ///     r#"{"multiply_all": [2, 3, 4]}"#,
+    ///     r#"{}"#,
+    ///     None
+    /// ).unwrap();
+    /// assert_eq!(result.as_f64().unwrap(), 24.0);
+    /// ```
+    pub fn register_custom_operator(&mut self, name: &str, operator: Box<dyn CustomOperator>) {
+        self.arena.register_custom_operator(name, operator);
+    }
+
+    /// Check if a custom operator is registered
+    pub fn has_custom_operator(&self, name: &str) -> bool {
+        self.arena.has_custom_operator(name)
     }
 
     /// Parse a logic expression using the specified parser format
@@ -203,5 +262,57 @@ impl DataLogic {
 impl Default for DataLogic {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::NumberValue;
+    use serde_json::json;
+
+    #[derive(Debug)]
+    struct MultiplyAll;
+
+    impl CustomOperator for MultiplyAll {
+        fn evaluate(&self, args: &[DataValue]) -> Result<DataValue> {
+            // Default to 1 if no arguments provided
+            if args.is_empty() {
+                return Ok(DataValue::Number(NumberValue::from_i64(1)));
+            }
+
+            // Calculate product of all numeric values
+            let mut product = 1.0;
+            for arg in args {
+                if let Some(n) = arg.as_f64() {
+                    product *= n;
+                }
+            }
+
+            // Return the result
+            Ok(DataValue::Number(NumberValue::from_f64(product)))
+        }
+    }
+
+    #[test]
+    fn test_custom_operator() {
+        let mut dl = DataLogic::new();
+
+        // Register custom operator
+        dl.register_custom_operator("multiply_all", Box::new(MultiplyAll));
+
+        // Test with JSON values
+        let result = dl
+            .evaluate_json(&json!({"multiply_all": [2, 3, 4]}), &json!({}), None)
+            .unwrap();
+
+        assert_eq!(result.as_f64().unwrap(), 24.0);
+
+        // Test with string values
+        let result = dl
+            .evaluate_str(r#"{"multiply_all": [2, 3, 4]}"#, r#"{}"#, None)
+            .unwrap();
+
+        assert_eq!(result.as_f64().unwrap(), 24.0);
     }
 }

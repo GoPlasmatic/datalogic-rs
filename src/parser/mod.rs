@@ -8,7 +8,7 @@ pub mod jsonlogic;
 mod tests;
 
 /// Trait that defines a parser for an expression language
-pub trait ExpressionParser {
+pub trait ExpressionParser: Send + Sync {
     /// Parse the input string into a Token
     fn parse<'a>(&self, input: &str, arena: &'a DataArena) -> Result<&'a Token<'a>>;
 

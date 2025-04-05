@@ -193,6 +193,89 @@ fn process_input(rule: &str, data: &str) -> Result<()> {
   - Working with strings? Use `evaluate_str`
   - Need to reuse rules/data? Parse separately and use `evaluate`
 
+## Custom Operators
+
+The library supports extending its functionality with custom operators:
+
+```rust
+use datalogic_rs::{CustomOperator, DataLogic, DataValue};
+
+// 1. Define a struct that implements the CustomOperator trait
+struct PowerOperator;
+
+impl CustomOperator for PowerOperator {
+    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
+        if args.len() != 2 {
+            return Err("Power operator requires exactly 2 arguments".to_string());
+        }
+        
+        if let (Some(base), Some(exp)) = (args[0].as_f64(), args[1].as_f64()) {
+            return Ok(DataValue::from(base.powf(exp)));
+        }
+        
+        Err("Arguments must be numbers".to_string())
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dl = DataLogic::new();
+    
+    // 2. Register the custom operator with DataLogic
+    dl.register_operator("pow", PowerOperator);
+    
+    // 3. Use the custom operator in your logic expressions
+    let result = dl.evaluate_str(
+        r#"{"pow": [2, 3]}"#,
+        r#"{}"#,
+        None
+    )?;
+    
+    println!("2^3 = {}", result); // Prints: 2^3 = 8
+    Ok(())
+}
+```
+
+### Custom Operator API
+
+The `CustomOperator` trait requires implementing a single method:
+
+```rust
+fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String>;
+```
+
+- `args`: A slice of `DataValue` instances, representing the arguments passed to the operator
+- Returns: Either a `DataValue` containing the result or a `String` error message
+
+### Registration
+
+To register a custom operator with DataLogic:
+
+```rust
+dl.register_operator("operator_name", OperatorImplementation);
+```
+
+### Advanced Use Cases
+
+Custom operators can be combined with built-in operators and data access:
+
+```rust
+// Calculate 2 * (base^2) * 3 where base comes from input data
+let rule = r#"{
+    "*": [
+        2,
+        {"pow": [{"var": "base"}, 2]},
+        3
+    ]
+}"#;
+
+let data = r#"{"base": 4}"#;
+
+// With base = 4, this calculates 2 * 4² * 3 = 2 * 16 * 3 = 96
+let result = dl.evaluate_str(rule, data, None)?;
+```
+
+For more examples, see the `examples/custom.rs` file in the repository.
+
 ## Complete API Reference
 
 For a full list of available methods and types, refer to the Rust documentation:

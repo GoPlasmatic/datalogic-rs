@@ -226,32 +226,37 @@ fn main() {
             <section class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Custom Operators</h2>
                 <p class="mdc-typography--body1">
-                    You can extend DataLogic-rs with your own custom operators:
+                    You can extend DataLogic-rs with your own custom operators by implementing the <code>CustomOperator</code> trait:
                 </p>
                 
                 <div class="code-block mdc-card">
-                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, Value};
-use std::collections::HashMap;
+                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, DataValue, CustomOperator};
+
+// Define a custom operator that doubles a number
+struct DoubleOperator;
+
+impl CustomOperator for DoubleOperator {
+    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
+        if args.is_empty() {
+            return Err("double operator requires at least one argument".to_string());
+        }
+        
+        // Get the first argument value
+        if let Some(num) = args[0].as_f64() {
+            // Double it and return
+            return Ok(DataValue::from(num * 2.0));
+        }
+        
+        // Return null for non-numeric values
+        Ok(DataValue::Null)
+    }
+}
 
 fn main() {
     let mut dl = DataLogic::new();
     
-    // Add a custom "double" operator that multiplies a number by 2
-    dl.add_operation("double", |args, data, _ops| {
-        if args.is_empty() {
-            return Value::Null;
-        }
-        
-        // Evaluate the first argument
-        let value = dl.evaluate_str(&args[0], data, None);
-        
-        // Check if it's a number and double it
-        if let Value::Number(n) = value {
-            Value::Number(n * 2.0)
-        } else {
-            Value::Null
-        }
-    });
+    // Register the custom operator
+    dl.register_operator("double", DoubleOperator);
     
     // Use the custom operator
     let rule_str = r#"{"double":{"val":"value"}}"#;

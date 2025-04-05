@@ -578,9 +578,9 @@ fn check_number_component_exists<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::Logic;
     use crate::logic::OperatorType;
-    use crate::logic::datalogic_core::DataLogicCore;
     use serde_json::json;
 
     #[test]

@@ -1364,8 +1364,8 @@ pub fn eval_sort<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::Logic;
     use crate::parser::jsonlogic::parse_json;
     use serde_json::json;
 

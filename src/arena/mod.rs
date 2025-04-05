@@ -7,6 +7,7 @@
 mod bump;
 mod interner;
 
+pub use bump::CustomOperator;
 pub use bump::DataArena;
 
 #[cfg(test)]

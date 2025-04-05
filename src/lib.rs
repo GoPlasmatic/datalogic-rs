@@ -1,6 +1,6 @@
 // Core types and functionality
 pub use builder::RuleBuilder;
-pub use datalogic::DataLogic;
+pub use datalogic::{CustomOperator, DataLogic};
 pub use error::LogicError;
 pub use logic::{Logic, Result};
 pub use value::{DataValue, FromDataValue, FromJson, IntoDataValue, ToJson};

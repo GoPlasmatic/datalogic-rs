@@ -10,9 +10,9 @@ mod data_value;
 mod datetime;
 mod number;
 
-pub use access::{PathSegment, ValueAccess, parse_path};
+pub use access::{parse_path, PathSegment, ValueAccess};
 pub use convert::{
-    FromJson, ToJson, data_value_to_json, hash_map_to_data_value, json_to_data_value,
+    data_value_to_json, hash_map_to_data_value, json_to_data_value, FromJson, ToJson,
 };
 pub use data_value::DataValue;
 pub use datetime::{date_diff, format_duration, parse_datetime, parse_duration};

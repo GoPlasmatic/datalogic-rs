@@ -1,8 +1,8 @@
 use super::error::Result;
 use crate::arena::DataArena;
-use crate::builder::RuleBuilder;
 use crate::builder::factory::RuleFactory;
-use crate::logic::{Logic, evaluate};
+use crate::builder::RuleBuilder;
+use crate::logic::{evaluate, Logic};
 use crate::value::{DataValue, FromJson, ToJson};
 
 /// The main engine implementation for DataLogic expressions.

@@ -187,38 +187,49 @@ assert!(result.as_bool().unwrap());
 Create domain-specific operators to extend the system:
 
 ```rust
-use datalogic_rs::{DataLogic, CustomOperator, LogicError};
-use serde_json::{json, Value};
-use std::borrow::Cow;
+use datalogic_rs::{DataLogic, CustomOperator, DataValue};
 
+// Define a custom operator that calculates the power of numbers
 struct PowerOperator;
 
 impl CustomOperator for PowerOperator {
-    fn name(&self) -> &str {
-        "pow"
-    }
-    
-    fn apply<'a>(&self, args: &[Value], _data: &'a Value) -> Result<Cow<'a, Value>, LogicError> {
+    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
         if args.len() != 2 {
-            return Err(LogicError::InvalidArguments {
-                reason: "pow requires 2 arguments".into()
-            });
+            return Err("Power operator requires exactly 2 arguments".to_string());
         }
-        let base = args[0].as_f64().unwrap_or(0.0);
-        let exp = args[1].as_f64().unwrap_or(0.0);
-        Ok(Cow::Owned(json!(base.powf(exp))))
+        
+        if let (Some(base), Some(exp)) = (args[0].as_f64(), args[1].as_f64()) {
+            return Ok(DataValue::from(base.powf(exp)));
+        }
+        
+        Err("Arguments must be numbers".to_string())
     }
 }
 
 let mut dl = DataLogic::new();
-dl.register_custom_operator(Box::new(PowerOperator));
+dl.register_operator("pow", PowerOperator);
 
 let result = dl.evaluate_str(
     r#"{"pow": [2, 3]}"#,
     r#"{}"#,
     None
 ).unwrap();
+
 assert_eq!(result.as_f64().unwrap(), 8.0);
+```
+
+Custom operators can be combined with built-in operators for complex logic:
+
+```rust
+let complex_rule = r#"{
+    "*": [
+        2,
+        {"pow": [{"var": "base"}, 2]},
+        3
+    ]
+}"#;
+
+// With data: {"base": 3}, evaluates to 2 * 3² * 3 = 2 * 9 * 3 = 54
 ```
 
 ## Use Cases

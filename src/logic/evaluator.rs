@@ -4,7 +4,7 @@
 
 use super::error::{LogicError, Result};
 use super::operators::{
-    arithmetic, array, comparison, control, datetime, missing, string, throw, r#try, type_op, val,
+    arithmetic, array, comparison, control, datetime, missing, r#try, string, throw, type_op, val,
     variable,
 };
 use super::token::{OperatorType, Token};
@@ -136,12 +136,21 @@ fn evaluate_array_literal<'a>(
 /// Evaluates a custom operator application.
 fn evaluate_custom_operator<'a>(
     name: &'a str,
-    _args: &'a [&'a Token<'a>],
-    _arena: &'a DataArena,
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    Err(LogicError::OperatorNotFoundError {
-        operator: name.to_string(),
-    })
+    // First evaluate all the arguments to get DataValue instances
+    let mut data_values = Vec::with_capacity(args.len());
+    for arg in args {
+        let value = evaluate(arg, arena)?;
+        data_values.push(value);
+    }
+
+    // Get a slice of DataValue references
+    let data_values_slice = data_values.as_slice();
+
+    // Use the arena's evaluate_custom_operator method
+    arena.evaluate_custom_operator(name, data_values_slice)
 }
 
 /// Evaluates arguments and returns them as a slice of DataValues
