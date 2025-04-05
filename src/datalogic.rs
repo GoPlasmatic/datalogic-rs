@@ -146,47 +146,6 @@ impl DataLogic {
         evaluate(rule.root(), &self.arena)
     }
 
-    /// Parse and evaluate in one step, returning JSON value
-    ///
-    /// This method combines parsing and evaluation in a single step.
-    /// It parses both the logic rule and the data from strings, evaluates the rule,
-    /// and returns the result as a JSON value.
-    ///
-    /// # Arguments
-    ///
-    /// * `logic_source` - The logic rule as a JSON string
-    /// * `data_source` - The data context as a JSON string
-    /// * `format` - Optional format name for the parser to use
-    ///
-    /// # Returns
-    ///
-    /// A Result containing the evaluation result as a JsonValue
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use datalogic_rs::DataLogic;
-    ///
-    /// let dl = DataLogic::new();
-    /// let result = dl.apply(
-    ///     r#"{ "abs": -42 }"#,
-    ///     r#"{}"#,
-    ///     None
-    /// ).unwrap();
-    /// assert_eq!(result.as_i64().unwrap(), 42);
-    /// ```
-    pub fn apply(
-        &self,
-        logic_source: &str,
-        data_source: &str,
-        format: Option<&str>,
-    ) -> Result<JsonValue> {
-        let rule = self.parse_logic(logic_source, format)?;
-        let data_value = self.parse_data(data_source)?;
-        let result = self.evaluate(&rule, &data_value)?;
-        Ok(result.to_json())
-    }
-
     /// Evaluate using JSON values directly
     ///
     /// This method evaluates a logic rule against data, both provided as JSON values.

@@ -69,8 +69,8 @@ let data = dl.parse_data("{}").unwrap();
 let result = dl.evaluate(&rule, &data).unwrap();</code></pre>
                     </li>
                     <li>
-                        <code>apply</code> - Parses and evaluates in one step, returning a JSON value
-                        <pre><code class="language-rust">let result = dl.apply(r#"{ "ceil": 3.14 }"#, "{}", None).unwrap();</code></pre>
+                        <code>evaluate_str</code> - Parses and evaluates in one step, returning a JSON value
+                        <pre><code class="language-rust">let result = dl.evaluate_str(r#"{ "ceil": 3.14 }"#, "{}", None).unwrap();</code></pre>
                     </li>
                     <li>
                         <code>evaluate_json</code> - Works directly with JSON values

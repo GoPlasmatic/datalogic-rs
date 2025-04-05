@@ -16,17 +16,16 @@ A **lightweight, high-performance** Rust implementation of [JSONLogic](http://js
 
 ## Overview
 
-datalogic-rs provides a robust implementation of JSONLogic rules with arena-based memory management for optimal performance. The library provides both a parser for JSON-based rules and a fluent builder API for constructing rules in a type-safe manner.
+datalogic-rs provides a robust implementation of JSONLogic rules with arena-based memory management for optimal performance. The library features comprehensive operator support, optimizations for static rule components, and high test coverage.
 
 ## Features
 
 - Arena-based memory management for optimal performance
 - Comprehensive JSONLogic operator support
-- Fluent builder API for type-safe rule construction
-- Factory methods for common rule patterns
 - Optimizations for static rule components
 - Zero copy rule creation and evaluation
 - High test coverage and compatibility with standard JSONLogic
+- Intuitive API for creating, parsing, and evaluating rules
 
 ## Installation
 
@@ -34,131 +33,107 @@ Add `datalogic-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-datalogic-rs = "3.0.6"
+datalogic-rs = "3.0.12"
 ```
 
-## Usage Examples
+## Core API Methods
 
-### 1. Simple Comparison Rule
+datalogic-rs provides three primary API methods for evaluating rules, each suited for different use cases:
 
-**Builder API:**
+### 1. `evaluate` - For reusing parsed rules and data
+
+Best for scenarios where the same rule will be evaluated against different data contexts, or vice versa.
+
 ```rust
 use datalogic_rs::DataLogic;
-use serde_json::json;
 
-let logic = DataLogic::new();
-let builder = logic.builder();
+let dl = DataLogic::new();
 
-let rule = builder
-    .compare()
-    .greater_than()
-    .var("score")
-    .value(50)
-    .build();
+// Parse rule and data once
+let rule = dl.parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#, None).unwrap();
+let data = dl.parse_data(r#"{"temp": 110}"#).unwrap();
 
-let data = json!({"score": 75});
-let result = logic.evaluate(&rule, &logic.parse_data(&data.to_string()).unwrap()).unwrap();
+// Evaluate the rule against the data
+let result = dl.evaluate(&rule, &data).unwrap();
 assert!(result.to_json().as_bool().unwrap());
 ```
 
-**Raw JSON Evaluation:**
+### 2. `evaluate_str` - One-step parsing and evaluation
+
+Ideal for one-time evaluations or when rules are dynamically generated.
+
 ```rust
 use datalogic_rs::DataLogic;
-use serde_json::json;
 
-let logic = DataLogic::new();
-let result = logic.evaluate_str(
-    r#"{" > ": [{"var": "score"}, 50]}"#,
-    r#"{"score": 75}"#,
+let dl = DataLogic::new();
+
+// Parse and evaluate in one step
+let result = dl.evaluate_str(
+    r#"{ "abs": -42 }"#,
+    r#"{}"#,
     None
 ).unwrap();
-assert!(result.as_bool().unwrap());
+
+assert_eq!(result.as_i64().unwrap(), 42);
 ```
 
-### 2. Complex Logical Rule (AND/OR)
+### 3. `evaluate_json` - Work directly with JSON values
 
-**Builder API:**
+Perfect when your application already has the rule and data as serde_json Values.
+
 ```rust
-let rule = builder
-    .control()
-    .and()
-    .add(
-        builder
-            .compare()
-            .greater_than_or_equal()
-            .var("age")
-            .value(18)
-            .build()
-    )
-    .add(
-        builder
-            .compare()
-            .less_than()
-            .var("age")
-            .value(65)
-            .build()
-    )
-    .build();
+use datalogic_rs::DataLogic;
+use serde_json::json;
 
-let data = json!({"age": 25});
-let result = logic.evaluate(&rule, &logic.parse_data(&data.to_string()).unwrap()).unwrap();
-assert!(result.to_json().as_bool().unwrap());
+let dl = DataLogic::new();
+
+// Use serde_json values directly
+let logic = json!({
+    "if": [
+        {">": [{"var": "cart.total"}, 100]},
+        "Eligible for discount",
+        "No discount"
+    ]
+});
+let data = json!({"cart": {"total": 120}});
+
+let result = dl.evaluate_json(&logic, &data, None).unwrap();
+assert_eq!(result.as_str().unwrap(), "Eligible for discount");
 ```
 
-**Raw JSON Evaluation:**
+## Real-World Examples
+
+### 1. Complex Logical Rules (AND/OR)
+
 ```rust
-let result = logic.evaluate_str(
+use datalogic_rs::DataLogic;
+
+let dl = DataLogic::new();
+let result = dl.evaluate_str(
     r#"{
         "and": [
             {">=": [{"var": "age"}, 18]},
-            {"<": [{"var": "age"}, 65]}
+            {"<": [{"var": "age"}, 65]},
+            {"or": [
+                {"==": [{"var": "subscription"}, "premium"]},
+                {">=": [{"var": "purchases"}, 5]}
+            ]}
         ]
     }"#,
-    r#"{"age": 25}"#,
+    r#"{"age": 25, "subscription": "basic", "purchases": 7}"#,
     None
 ).unwrap();
+
 assert!(result.as_bool().unwrap());
 ```
 
-### 3. Array Operations
+### 2. Array Operations
 
-**Builder API:**
 ```rust
-let adult_names = builder
-    .array()
-    .map()
-    .array(
-        builder
-            .array()
-            .filter()
-            .array(builder.var("users"))
-            .condition(
-                builder
-                    .compare()
-                    .greater_than_or_equal()
-                    .var("age")
-                    .value(18)
-                    .build()
-            )
-            .build()
-    )
-    .mapper(builder.var("name"))
-    .build();
+use datalogic_rs::DataLogic;
 
-let data = json!({
-    "users": [
-        {"name": "Alice", "age": 20},
-        {"name": "Bob", "age": 15},
-        {"name": "Charlie", "age": 25}
-    ]
-});
-let result = logic.evaluate(&adult_names, &logic.parse_data(&data.to_string()).unwrap()).unwrap();
-assert_eq!(result.to_json().as_array().unwrap().len(), 2);
-```
-
-**Raw JSON Evaluation:**
-```rust
-let result = logic.evaluate_str(
+let dl = DataLogic::new();
+let result = dl.evaluate_str(
     r#"{
         "map": [
             {
@@ -179,88 +154,18 @@ let result = logic.evaluate_str(
     }"#,
     None
 ).unwrap();
+
+// Returns ["Alice", "Charlie"]
 assert_eq!(result.as_array().unwrap().len(), 2);
 ```
 
-### 4. Conditional Logic (IF)
+### 3. DateTime Operations
 
-**Builder API:**
-```rust
-let rule = builder
-    .control()
-    .if_()
-    .condition(
-        builder
-            .compare()
-            .greater_than()
-            .var("cart.total")
-            .value(100)
-            .build()
-    )
-    .then(builder.value("Eligible for discount"))
-    .else_(builder.value("No discount"))
-    .build();
-
-let data = json!({"cart": {"total": 120}});
-let result = logic.evaluate(&rule, &logic.parse_data(&data.to_string()).unwrap()).unwrap();
-assert_eq!(result.to_json().as_str().unwrap(), "Eligible for discount");
-```
-
-**Raw JSON Evaluation:**
-```rust
-let result = logic.evaluate_str(
-    r#"{
-        "if": [
-            {">": [{"var": "cart.total"}, 100]},
-            "Eligible for discount",
-            "No discount"
-        ]
-    }"#,
-    r#"{"cart": {"total": 120}}"#,
-    None
-).unwrap();
-assert_eq!(result.as_str().unwrap(), "Eligible for discount");
-```
-
-### 5. DateTime Operations
-
-**Builder API:**
 ```rust
 use datalogic_rs::DataLogic;
-use serde_json::json;
-use chrono::Utc;
 
-let logic = DataLogic::new();
-let builder = logic.builder();
-
-// Create a datetime expression
-let date_expr = builder
-    .value({"datetime": "2023-07-15T08:30:00Z"})
-    .build();
-
-// Add 2 days to the date
-let future_date = builder
-    .arithmetic()
-    .add()
-    .arg(date_expr)
-    .arg(builder.value({"timestamp": "2d"}).build())
-    .build();
-
-// Compare dates
-let is_future = builder
-    .compare()
-    .greater_than()
-    .arg(future_date)
-    .arg(builder.value({"datetime": "2023-07-16T08:30:00Z"}).build())
-    .build();
-
-let result = logic.evaluate(&is_future, &logic.parse_data("{}").unwrap()).unwrap();
-assert!(result.to_json().as_bool().unwrap());
-```
-
-**Raw JSON Evaluation:**
-```rust
-let result = logic.evaluate_str(
+let dl = DataLogic::new();
+let result = dl.evaluate_str(
     r#"{
         ">": [
             {"+": [
@@ -273,34 +178,13 @@ let result = logic.evaluate_str(
     r#"{}"#,
     None
 ).unwrap();
+
 assert!(result.as_bool().unwrap());
 ```
 
-## Performance Benefits
-
-The builder API leverages arena allocation for all rule components, providing several performance benefits:
-
-1. Zero-copy rule construction
-2. Reduced memory allocations
-3. Improved cache locality
-4. Optimization opportunities during construction
-
-## Supported Operations
-
-| Category | Operators |
-|----------|-----------|
-| **Comparison** | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=` |
-| **Logic** | `and`, `or`, `!`, `!!` |
-| **Arithmetic** | `+`, `-`, `*`, `/`, `%`, `min`, `max` |
-| **Control Flow** | `if`, `?:`, `??` |
-| **Arrays** | `map`, `filter`, `reduce`, `merge`, `all`, `none`, `some` |
-| **Strings** | `substr`, `cat`, `in` |
-| **Data Access** | `var`, `val`, `exists`, `missing`, `missing_some` |
-| **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
-| **Special** | `preserve`, `throw`, `try` |
-| **Custom** | Support for user-defined operators |
-
 ## Custom Operators
+
+Create domain-specific operators to extend the system:
 
 ```rust
 use datalogic_rs::{DataLogic, CustomOperator, LogicError};
@@ -326,23 +210,9 @@ impl CustomOperator for PowerOperator {
     }
 }
 
-// Using Builder API
 let mut dl = DataLogic::new();
 dl.register_custom_operator(Box::new(PowerOperator));
-let builder = dl.builder();
 
-let rule = builder
-    .custom("pow")
-    .args(vec![
-        builder.value(2).build(),
-        builder.value(3).build()
-    ])
-    .build();
-
-let result = dl.evaluate(&rule, &dl.parse_data("{}").unwrap()).unwrap();
-assert_eq!(result.to_json().as_f64().unwrap(), 8.0);
-
-// Using Raw JSON
 let result = dl.evaluate_str(
     r#"{"pow": [2, 3]}"#,
     r#"{}"#,
@@ -353,14 +223,111 @@ assert_eq!(result.as_f64().unwrap(), 8.0);
 
 ## Use Cases
 
-`datalogic-rs` is ideal for **rule-based decision engines** in:
-- **Feature flagging** (Enable features dynamically based on user attributes)
-- **Dynamic pricing** (Apply discounts or surge pricing based on conditions)
-- **Fraud detection** (Evaluate transaction risk using JSON-based rules)
-- **Form validation** (Check field dependencies dynamically)
-- **Authorization rules** (Implement complex access control policies)
-- **Business rule engines** (Enforce business policies with configurable rules)
-- **Date-based processing** (Event scheduling, time-based access control, date constraint validation)
+`datalogic-rs` excels in scenarios requiring runtime rule evaluation:
+
+### Feature Flagging
+Control feature access based on user attributes or context:
+
+```rust
+let rule = r#"{
+    "and": [
+        {"==": [{"var": "user.country"}, "US"]},
+        {"or": [
+            {"==": [{"var": "user.role"}, "beta_tester"]},
+            {">=": [{"var": "user.account_age_days"}, 30]}
+        ]}
+    ]
+}"#;
+
+// Feature is available only to US users who are either beta testers or have accounts older than 30 days
+let feature_enabled = dl.evaluate_str(rule, user_data_json, None).unwrap().as_bool().unwrap();
+```
+
+### Dynamic Pricing
+Apply complex discount rules:
+
+```rust
+let pricing_rule = r#"{
+    "if": [
+        {">=": [{"var": "cart.total"}, 100]},
+        {"-": [{"var": "cart.total"}, {"*": [{"var": "cart.total"}, 0.1]}]},
+        {"var": "cart.total"}
+    ]
+}"#;
+
+// 10% discount for orders over $100
+let final_price = dl.evaluate_str(pricing_rule, order_data, None).unwrap().as_f64().unwrap();
+```
+
+### Fraud Detection
+Evaluate transaction risk:
+
+```rust
+let fraud_check = r#"{
+    "or": [
+        {"and": [
+            {"!=": [{"var": "transaction.billing_country"}, {"var": "user.country"}]},
+            {">=": [{"var": "transaction.amount"}, 1000]}
+        ]},
+        {"and": [
+            {">=": [{"var": "transaction.attempts_last_hour"}, 5]},
+            {">": [{"var": "transaction.amount"}, 500]}
+        ]}
+    ]
+}"#;
+
+let is_suspicious = dl.evaluate_str(fraud_check, transaction_data, None).unwrap().as_bool().unwrap();
+```
+
+### Authorization Rules
+Implement complex access control:
+
+```rust
+let access_rule = r#"{
+    "or": [
+        {"==": [{"var": "user.role"}, "admin"]},
+        {"and": [
+            {"==": [{"var": "user.role"}, "editor"]},
+            {"in": [{"var": "resource.project_id"}, {"var": "user.projects"}]}
+        ]}
+    ]
+}"#;
+
+let has_access = dl.evaluate_str(access_rule, access_context, None).unwrap().as_bool().unwrap();
+```
+
+### Form Validation
+Check field dependencies dynamically:
+
+```rust
+let validation_rule = r#"{
+    "if": [
+        {"==": [{"var": "shipping_method"}, "international"]},
+        {"and": [
+            {"!": {"missing": "postal_code"}},
+            {"!": {"missing": "country"}}
+        ]},
+        true
+    ]
+}"#;
+
+let is_valid = dl.evaluate_str(validation_rule, form_data, None).unwrap().as_bool().unwrap();
+```
+
+## Supported Operations
+
+| Category | Operators |
+|----------|-----------|
+| **Comparison** | `==` (equal), `===` (strict equal), `!=` (not equal), `!==` (strict not equal), `>` (greater than), `>=` (greater than or equal), `<` (less than), `<=` (less than or equal) |
+| **Logic** | `and`, `or`, `!` (not), `!!` (double negation) |
+| **Arithmetic** | `+` (addition), `-` (subtraction), `*` (multiplication), `/` (division), `%` (modulo), `min`, `max`, `abs` (absolute value), `ceil` (round up), `floor` (round down) |
+| **Control Flow** | `if` (conditional), `?:` (ternary), `??` (nullish coalescing) |
+| **Arrays** | `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in` (contains), `length`, `slice`, `sort` |
+| **Strings** | `cat` (concatenate), `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim` |
+| **Data Access** | `var` (variable access), `val` (value access), `exists`, `missing`, `missing_some` |
+| **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
+| **Error Handling** | `throw`, `try` |
+| **Custom** | Support for user-defined operators |
 
 ## Performance
 
@@ -369,6 +336,17 @@ assert_eq!(result.as_f64().unwrap(), 8.0);
 - Static operator dispatch
 - Zero-copy deserialization
 - Optimized rule compilation
+
+### Benchmark Metrics (Apple M2 Pro)
+
+| Implementation | Execution Time | Relative Performance |
+|----------------|---------------|---------------------|
+| **datalogic-rs** | **380ms** | **1.0x (baseline)** |
+| json-logic-engine (pre-compiled) | 417ms | 1.1x slower |
+| json-logic-engine (interpreted) | 986.064ms | 2.6x slower |
+| json-logic-js | 5,755ms | 15.1x slower |
+
+These benchmarks represent execution time for the same standard suite of JSONLogic tests, demonstrating datalogic-rs's superior performance profile across common expression patterns.
 
 ## Contributing
 

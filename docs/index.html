@@ -124,9 +124,9 @@ fn main() {
     
     println!("Result1: {}", result1); // prints "true"
     
-    // Method 2: Use the apply method for one-step evaluation
+    // Method 2: Use the evaluate_str method for one-step evaluation
     let result2 = dl
-        .apply(
+        .evaluate_str(
             r#"{ "abs": -42 }"#,
             r#"{}"#,
             None,

@@ -170,9 +170,9 @@ fn main() {
 }</code></pre>
                 </div>
 
-                <h3 class="mdc-typography--subtitle1">2. apply</h3>
+                <h3 class="mdc-typography--subtitle1">2. evaluate_str</h3>
                 <p class="mdc-typography--body1">
-                    The <code>apply</code> method combines parsing and evaluation in a single step.
+                    The <code>evaluate_str</code> method combines parsing and evaluation in a single step.
                     It's ideal for one-time evaluations or quick scripting.
                 </p>
                 
@@ -183,7 +183,7 @@ fn main() {
     let dl = DataLogic::new();
     
     // Parse and evaluate in one step
-    let result = dl.apply(
+    let result = dl.evaluate_str(
         r#"{ "abs": -42 }"#,
         r#"{}"#,
         None
@@ -243,7 +243,7 @@ fn main() {
         }
         
         // Evaluate the first argument
-        let value = dl.apply(&args[0], data, None);
+        let value = dl.evaluate_str(&args[0], data, None);
         
         // Check if it's a number and double it
         if let Value::Number(n) = value {
