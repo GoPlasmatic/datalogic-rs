@@ -7,21 +7,23 @@ This implementation adds support for custom operators in the JSONLogic Rust libr
 1. A `CustomOperator` trait that allows users to implement custom logic
 2. Registration methods on `DataLogic` to add custom operators
 3. Runtime evaluation of custom operators in JSONLogic expressions
-4. Simple API that works with owned values (no arena complexity exposed)
+4. Simple API that works with owned values and the arena allocation system
 
 ## Example Usage
 
 ```rust
 use datalogic_rs::{CustomOperator, DataLogic, DataValue};
+use datalogic_rs::arena::DataArena;
+use datalogic_rs::value::NumberValue;
 
 // Define a custom operator that multiplies all numbers in the array
 struct MultiplyAll;
 
 impl CustomOperator for MultiplyAll {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
+    fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
         // Default to 1 if no arguments provided
         if args.is_empty() {
-            return Ok(DataValue::from(1));
+            return Ok(arena.alloc(DataValue::Number(NumberValue::from_i64(1))));
         }
 
         // Calculate product of all numeric values
@@ -32,8 +34,8 @@ impl CustomOperator for MultiplyAll {
             }
         }
 
-        // Return the result
-        Ok(DataValue::from(product))
+        // Return the result allocated in the arena
+        Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(product))))
     }
 }
 
@@ -41,7 +43,7 @@ fn main() {
     let mut dl = DataLogic::new();
     
     // Register custom operator
-    dl.register_operator("multiply_all", MultiplyAll);
+    dl.register_custom_operator("multiply_all", Box::new(MultiplyAll));
     
     // Use the custom operator
     let result = dl.evaluate_str(
@@ -56,9 +58,9 @@ fn main() {
 
 ## Design Considerations
 
-1. **Simple API**: The API is designed to be simple and intuitive for users. Custom operators work with owned values rather than arena references.
+1. **Arena Allocation**: The CustomOperator implementation works with the DataLogic arena allocation system, ensuring efficient memory management for custom operations.
 
-2. **Memory Management**: While the JSONLogic library uses arena allocation internally for performance, the custom operator interface abstracts this away, allowing users to focus on their logic.
+2. **Memory Management**: While the JSONLogic library uses arena allocation internally for performance, the custom operator interface makes this straightforward to use.
 
 3. **Composition**: Custom operators can be combined with built-in operators, allowing for complex expressions.
 

@@ -231,24 +231,27 @@ fn main() {
                 
                 <div class="code-block mdc-card">
                     <pre><code class="language-rust">use datalogic_rs::{DataLogic, DataValue, CustomOperator};
+use datalogic_rs::arena::DataArena;
+use datalogic_rs::value::NumberValue;
 
 // Define a custom operator that doubles a number
+#[derive(Debug)]
 struct DoubleOperator;
 
 impl CustomOperator for DoubleOperator {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
+    fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
-            return Err("double operator requires at least one argument".to_string());
+            return Err("double operator requires at least one argument".into());
         }
         
         // Get the first argument value
         if let Some(num) = args[0].as_f64() {
-            // Double it and return
-            return Ok(DataValue::from(num * 2.0));
+            // Double it and return - allocated in the arena
+            return Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(num * 2.0))));
         }
         
         // Return null for non-numeric values
-        Ok(DataValue::Null)
+        Ok(arena.null_value())
     }
 }
 
@@ -256,7 +259,7 @@ fn main() {
     let mut dl = DataLogic::new();
     
     // Register the custom operator
-    dl.register_operator("double", DoubleOperator);
+    dl.register_custom_operator("double", Box::new(DoubleOperator));
     
     // Use the custom operator
     let rule_str = r#"{"double":{"val":"value"}}"#;
