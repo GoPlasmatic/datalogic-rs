@@ -296,6 +296,9 @@ fn evaluate_arithmetic_operator<'a>(
         arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(args_result, arena),
         arithmetic::ArithmeticOp::Min => arithmetic::eval_min(args_result),
         arithmetic::ArithmeticOp::Max => arithmetic::eval_max(args_result),
+        arithmetic::ArithmeticOp::Abs => arithmetic::eval_abs(args_result, arena),
+        arithmetic::ArithmeticOp::Ceil => arithmetic::eval_ceil(args_result, arena),
+        arithmetic::ArithmeticOp::Floor => arithmetic::eval_floor(args_result, arena),
     }
 }
 
@@ -335,6 +338,11 @@ fn evaluate_string_operator<'a>(
     match string_op {
         string::StringOp::Cat => string::eval_cat(token_refs, arena),
         string::StringOp::Substr => string::eval_substr(token_refs, arena),
+        string::StringOp::StartsWith => string::eval_starts_with(token_refs, arena),
+        string::StringOp::EndsWith => string::eval_ends_with(token_refs, arena),
+        string::StringOp::Upper => string::eval_upper(token_refs, arena),
+        string::StringOp::Lower => string::eval_lower(token_refs, arena),
+        string::StringOp::Trim => string::eval_trim(token_refs, arena),
     }
 }
 

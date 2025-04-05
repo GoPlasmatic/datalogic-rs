@@ -77,6 +77,26 @@
                     <div class="mdc-chip__ripple"></div>
                     <span class="mdc-chip__text">substr</span>
                 </div>
+                <div class="mdc-chip" data-target="starts_with">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">starts_with</span>
+                </div>
+                <div class="mdc-chip" data-target="ends_with">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">ends_with</span>
+                </div>
+                <div class="mdc-chip" data-target="upper">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">upper</span>
+                </div>
+                <div class="mdc-chip" data-target="lower">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">lower</span>
+                </div>
+                <div class="mdc-chip" data-target="trim">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">trim</span>
+                </div>
             </div>
             
             <!-- cat operator -->
@@ -251,6 +271,439 @@
                             <div class="editor-container result-container">
                                 <h4 class="mdc-typography--subtitle2">Result:</h4>
                                 <textarea class="result-editor" id="substr-end-result" readonly>"@example.com"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- starts_with operator -->
+            <div id="starts_with" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">starts_with</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>starts_with</code> operator checks if a string starts with a specified prefix.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "starts_with": [string, prefix] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The string to check</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">prefix</td>
+                                        <td class="mdc-data-table__cell">The prefix to look for at the start of the string</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Check if string starts with prefix</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="starts-with-rule">{"starts_with": [{"var": "text"}, "Hello"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="starts-with-data">{"text": "Hello World"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="starts-with-result" readonly>true</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Case sensitivity</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="starts-with-case-rule">{"starts_with": [{"var": "text"}, "hello"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="starts-with-case-data">{"text": "Hello World"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="starts-with-case-result" readonly>false</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ends_with operator -->
+            <div id="ends_with" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">ends_with</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>ends_with</code> operator checks if a string ends with a specified suffix.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "ends_with": [string, suffix] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The string to check</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">suffix</td>
+                                        <td class="mdc-data-table__cell">The suffix to look for at the end of the string</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Check if string ends with suffix</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="ends-with-rule">{"ends_with": [{"var": "text"}, "World"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="ends-with-data">{"text": "Hello World"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="ends-with-result" readonly>true</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Using with conditional</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="ends-with-if-rule">{"if": [
+  {"ends_with": [{"var": "filename"}, ".txt"]},
+  "Text file",
+  "Other file"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="ends-with-if-data">{"filename": "document.txt"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="ends-with-if-result" readonly>"Text file"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- upper operator -->
+            <div id="upper" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">upper</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>upper</code> operator converts a string to uppercase.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "upper": string }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The string to convert to uppercase</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Convert string to uppercase</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="upper-rule">{"upper": {"var": "text"}}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="upper-data">{"text": "Hello World"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="upper-result" readonly>"HELLO WORLD"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Combining with other operators</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="upper-combo-rule">{"upper": {"substr": [{"var": "text"}, 0, 5]}}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="upper-combo-data">{"text": "hello world"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="upper-combo-result" readonly>"HELLO"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- lower operator -->
+            <div id="lower" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">lower</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>lower</code> operator converts a string to lowercase.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "lower": string }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The string to convert to lowercase</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Convert string to lowercase</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="lower-rule">{"lower": {"var": "text"}}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="lower-data">{"text": "Hello World"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="lower-result" readonly>"hello world"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Case-insensitive comparison</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="lower-compare-rule">{"==": [
+  {"lower": {"var": "userInput"}},
+  "hello world"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="lower-compare-data">{"userInput": "HELLO WORLD"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="lower-compare-result" readonly>true</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- trim operator -->
+            <div id="trim" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">trim</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>trim</code> operator removes whitespace characters from the beginning and end of a string.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "trim": string }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The string to trim</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Remove leading and trailing whitespace</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="trim-rule">{"trim": {"var": "text"}}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="trim-data">{"text": "  Hello World  "}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="trim-result" readonly>"Hello World"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Combine with other operators</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="trim-combo-rule">{"starts_with": [
+  {"trim": {"var": "text"}},
+  "Hello"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="trim-combo-data">{"text": "  Hello World  "}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="trim-combo-result" readonly>true</textarea>
                             </div>
                         </div>
                         <div class="example-actions">

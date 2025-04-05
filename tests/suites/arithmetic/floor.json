@@ -1,0 +1,98 @@
+[
+    {
+        "description": "Floor of an integer",
+        "rule": { "floor": 5 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Floor of a positive float",
+        "rule": { "floor": 5.7 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Floor of a negative float",
+        "rule": { "floor": -5.3 },
+        "data": null,
+        "result": -6
+    },
+    {
+        "description": "Floor of zero",
+        "rule": { "floor": 0 },
+        "data": null,
+        "result": 0
+    },
+    {
+        "description": "Floor of a value exactly at the boundary",
+        "rule": { "floor": 5.0 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Floor from a variable",
+        "rule": { "floor": {"val": "value"} },
+        "data": { "value": 7.8 },
+        "result": 7
+    },
+    {
+        "description": "Floor from a nested expression",
+        "rule": { "floor": { "/": [10, 3] } },
+        "data": null,
+        "result": 3
+    },
+    {
+        "description": "Floor used in another expression",
+        "rule": { "+": [{ "floor": 3.7 }, 2] },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Floor with two arguments returns an array of floor values",
+        "rule": { "floor": [3.8, -4.2] },
+        "data": null,
+        "result": [3, -5]
+    },
+    {
+        "description": "Floor with multiple arguments returns an array of floor values",
+        "rule": { "floor": [3.9, -4.3, 5, 6.1, 0.7, -7.5] },
+        "data": null,
+        "result": [3, -5, 5, 6, 0, -8]
+    },
+    {
+        "description": "Floor with no arguments",
+        "rule": { "floor": [] },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Floor of a string",
+        "rule": { "floor": "hello" },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Floor with mixed numeric and non-numeric arguments",
+        "rule": { "floor": [3.5, "hello", -5.8] },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Floor of a boolean",
+        "rule": { "floor": true },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Floor of null",
+        "rule": { "floor": null },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Floor of very small fractions",
+        "rule": { "floor": 0.9999 },
+        "data": null,
+        "result": 0
+    }
+] 

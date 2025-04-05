@@ -46,5 +46,9 @@
     "length.json",
     "sort.json",
     "slice.json",
-    "array/map.json"
+    "array/map.json",
+    "string/string.json",
+    "arithmetic/abs.json",
+    "arithmetic/ceil.json",
+    "arithmetic/floor.json"
 ]

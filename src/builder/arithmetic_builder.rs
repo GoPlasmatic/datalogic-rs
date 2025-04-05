@@ -51,6 +51,21 @@ impl<'a> ArithmeticBuilder<'a> {
     pub fn max_op(&self) -> ArithmeticOperationBuilder<'a> {
         ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Max)
     }
+
+    /// Creates an absolute value operation.
+    pub fn abs_op(&self) -> ArithmeticOperationBuilder<'a> {
+        ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Abs)
+    }
+
+    /// Creates a ceiling operation.
+    pub fn ceil_op(&self) -> ArithmeticOperationBuilder<'a> {
+        ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Ceil)
+    }
+
+    /// Creates a floor operation.
+    pub fn floor_op(&self) -> ArithmeticOperationBuilder<'a> {
+        ArithmeticOperationBuilder::new(self.arena, ArithmeticOp::Floor)
+    }
 }
 
 /// Builder for an arithmetic operation with its operands.

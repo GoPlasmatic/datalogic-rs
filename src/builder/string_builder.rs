@@ -26,6 +26,31 @@ impl<'a> StringBuilder<'a> {
     pub fn substr_op(&self) -> SubstringBuilder<'a> {
         SubstringBuilder::new(self.arena)
     }
+
+    /// Creates a "starts with" operation.
+    pub fn starts_with_op(&self) -> StringOperationBuilder<'a> {
+        StringOperationBuilder::new(self.arena, StringOp::StartsWith)
+    }
+
+    /// Creates an "ends with" operation.
+    pub fn ends_with_op(&self) -> StringOperationBuilder<'a> {
+        StringOperationBuilder::new(self.arena, StringOp::EndsWith)
+    }
+
+    /// Creates an "upper case" operation.
+    pub fn upper_op(&self) -> StringOperationBuilder<'a> {
+        StringOperationBuilder::new(self.arena, StringOp::Upper)
+    }
+
+    /// Creates a "lower case" operation.
+    pub fn lower_op(&self) -> StringOperationBuilder<'a> {
+        StringOperationBuilder::new(self.arena, StringOp::Lower)
+    }
+
+    /// Creates a "trim" operation.
+    pub fn trim_op(&self) -> StringOperationBuilder<'a> {
+        StringOperationBuilder::new(self.arena, StringOp::Trim)
+    }
 }
 
 /// Builder for string operations with multiple operands.

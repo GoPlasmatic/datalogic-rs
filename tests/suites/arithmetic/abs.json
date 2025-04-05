@@ -1,0 +1,92 @@
+[
+    {
+        "description": "Absolute value of a positive number",
+        "rule": { "abs": 5 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Absolute value of a negative number",
+        "rule": { "abs": -5 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Absolute value of zero",
+        "rule": { "abs": 0 },
+        "data": null,
+        "result": 0
+    },
+    {
+        "description": "Absolute value from a variable",
+        "rule": { "abs": {"val": "value"} },
+        "data": { "value": -10 },
+        "result": 10
+    },
+    {
+        "description": "Absolute value from a nested expression",
+        "rule": { "abs": { "-": [5, 10] } },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Absolute value of a float",
+        "rule": { "abs": -3.14 },
+        "data": null,
+        "result": 3.14
+    },
+    {
+        "description": "Absolute value used in another expression",
+        "rule": { "+": [{ "abs": -5 }, 3] },
+        "data": null,
+        "result": 8
+    },
+    {
+        "description": "Absolute value with two arguments returns an array of absolute values",
+        "rule": { "abs": [3, -4] },
+        "data": null,
+        "result": [3, 4]
+    },
+    {
+        "description": "Absolute value with multiple arguments returns an array of absolute values",
+        "rule": { "abs": [3, -4, -5, 6, 0, -7.5] },
+        "data": null,
+        "result": [3, 4, 5, 6, 0, 7.5]
+    },
+    {
+        "description": "Absolute value with no arguments",
+        "rule": { "abs": [] },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Absolute value of a string",
+        "rule": { "abs": "hello" },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Absolute value with mixed numeric and non-numeric arguments",
+        "rule": { "abs": [3, "hello", -5] },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Absolute value of a boolean",
+        "rule": { "abs": true },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Absolute value of null",
+        "rule": { "abs": null },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Absolute value of an array",
+        "rule": { "abs": [1, 2, 3] },
+        "data": null,
+        "result": [1, 2, 3]
+    }
+] 

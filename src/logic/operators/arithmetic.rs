@@ -29,6 +29,12 @@ pub enum ArithmeticOp {
     Min,
     /// Maximum value
     Max,
+    /// Absolute value
+    Abs,
+    /// Ceiling (round up)
+    Ceil,
+    /// Floor (round down)
+    Floor,
 }
 
 /// Helper function to safely convert a DataValue to f64
@@ -493,6 +499,99 @@ pub fn eval_min<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
 /// Evaluates a max operation with a single argument.
 pub fn eval_max<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
     eval_min_max(args, false)
+}
+
+/// Evaluates an absolute value operation.
+pub fn eval_abs<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    // For a single argument, take its absolute value
+    if args.len() == 1 {
+        let value = &args[0];
+        if !value.is_number() {
+            return Err(LogicError::InvalidArgumentsError);
+        }
+
+        let num = safe_to_f64(value)?;
+        return Ok(create_number(num.abs(), arena));
+    }
+
+    // For multiple arguments, take the absolute value of each and return as an array
+    let mut result = Vec::with_capacity(args.len());
+    for value in args {
+        if !value.is_number() {
+            return Err(LogicError::InvalidArgumentsError);
+        }
+        
+        let num = safe_to_f64(value)?;
+        result.push(DataValue::float(num.abs()));
+    }
+
+    Ok(arena.alloc(DataValue::Array(arena.alloc_data_value_slice(&result))))
+}
+
+/// Evaluates a ceiling operation.
+pub fn eval_ceil<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    // For a single argument, take its ceiling
+    if args.len() == 1 {
+        let value = &args[0];
+        if !value.is_number() {
+            return Err(LogicError::InvalidArgumentsError);
+        }
+
+        let num = safe_to_f64(value)?;
+        return Ok(create_number(num.ceil(), arena));
+    }
+
+    // For multiple arguments, take the ceiling of each and return as an array
+    let mut result = Vec::with_capacity(args.len());
+    for value in args {
+        if !value.is_number() {
+            return Err(LogicError::InvalidArgumentsError);
+        }
+        
+        let num = safe_to_f64(value)?;
+        result.push(DataValue::float(num.ceil()));
+    }
+
+    Ok(arena.alloc(DataValue::Array(arena.alloc_data_value_slice(&result))))
+}
+
+/// Evaluates a floor operation.
+pub fn eval_floor<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    // For a single argument, take its floor
+    if args.len() == 1 {
+        let value = &args[0];
+        if !value.is_number() {
+            return Err(LogicError::InvalidArgumentsError);
+        }
+
+        let num = safe_to_f64(value)?;
+        return Ok(create_number(num.floor(), arena));
+    }
+
+    // For multiple arguments, take the floor of each and return as an array
+    let mut result = Vec::with_capacity(args.len());
+    for value in args {
+        if !value.is_number() {
+            return Err(LogicError::InvalidArgumentsError);
+        }
+        
+        let num = safe_to_f64(value)?;
+        result.push(DataValue::float(num.floor()));
+    }
+
+    Ok(arena.alloc(DataValue::Array(arena.alloc_data_value_slice(&result))))
 }
 
 #[cfg(test)]

@@ -1,0 +1,98 @@
+[
+    {
+        "description": "Ceiling of an integer",
+        "rule": { "ceil": 5 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Ceiling of a positive float",
+        "rule": { "ceil": 5.3 },
+        "data": null,
+        "result": 6
+    },
+    {
+        "description": "Ceiling of a negative float",
+        "rule": { "ceil": -5.7 },
+        "data": null,
+        "result": -5
+    },
+    {
+        "description": "Ceiling of zero",
+        "rule": { "ceil": 0 },
+        "data": null,
+        "result": 0
+    },
+    {
+        "description": "Ceiling of a value exactly at the boundary",
+        "rule": { "ceil": 5.0 },
+        "data": null,
+        "result": 5
+    },
+    {
+        "description": "Ceiling from a variable",
+        "rule": { "ceil": {"val": "value"} },
+        "data": { "value": 7.2 },
+        "result": 8
+    },
+    {
+        "description": "Ceiling from a nested expression",
+        "rule": { "ceil": { "/": [10, 3] } },
+        "data": null,
+        "result": 4
+    },
+    {
+        "description": "Ceiling used in another expression",
+        "rule": { "+": [{ "ceil": 3.7 }, 2] },
+        "data": null,
+        "result": 6
+    },
+    {
+        "description": "Ceiling with two arguments returns an array of ceiling values",
+        "rule": { "ceil": [3.2, -4.8] },
+        "data": null,
+        "result": [4, -4]
+    },
+    {
+        "description": "Ceiling with multiple arguments returns an array of ceiling values",
+        "rule": { "ceil": [3.1, -4.7, 5, 6.9, 0.1, -7.5] },
+        "data": null,
+        "result": [4, -4, 5, 7, 1, -7]
+    },
+    {
+        "description": "Ceiling with no arguments",
+        "rule": { "ceil": [] },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Ceiling of a string",
+        "rule": { "ceil": "hello" },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Ceiling with mixed numeric and non-numeric arguments",
+        "rule": { "ceil": [3.5, "hello", -5.2] },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Ceiling of a boolean",
+        "rule": { "ceil": true },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Ceiling of null",
+        "rule": { "ceil": null },
+        "data": null,
+        "error": { "type": "Invalid Arguments" }
+    },
+    {
+        "description": "Ceiling of very small fractions",
+        "rule": { "ceil": 0.0001 },
+        "data": null,
+        "result": 1
+    }
+] 

@@ -16,6 +16,16 @@ pub enum StringOp {
     Cat,
     /// Substring extraction
     Substr,
+    /// String starts with
+    StartsWith,
+    /// String ends with
+    EndsWith,
+    /// Convert string to uppercase
+    Upper,
+    /// Convert string to lowercase
+    Lower,
+    /// Trim whitespace from beginning and end of string
+    Trim,
 }
 
 /// Helper function to convert a value to a string representation
@@ -166,6 +176,93 @@ pub fn eval_substr<'a>(
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
 }
 
+/// Evaluates a "starts with" operation.
+pub fn eval_starts_with<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let prefix = evaluate(args[1], arena)?;
+
+    let string_str = value_to_string(string, arena);
+    let prefix_str = value_to_string(prefix, arena);
+
+    Ok(arena.alloc(DataValue::Bool(string_str.starts_with(prefix_str))))
+}
+
+/// Evaluates an "ends with" operation.
+pub fn eval_ends_with<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let suffix = evaluate(args[1], arena)?;
+
+    let string_str = value_to_string(string, arena);
+    let suffix_str = value_to_string(suffix, arena);
+
+    Ok(arena.alloc(DataValue::Bool(string_str.ends_with(suffix_str))))
+}
+
+/// Evaluates a string uppercase operation.
+pub fn eval_upper<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let string_str = value_to_string(string, arena);
+
+    // Convert to uppercase
+    let result = string_str.to_uppercase();
+
+    Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
+}
+
+/// Evaluates a string lowercase operation.
+pub fn eval_lower<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let string_str = value_to_string(string, arena);
+
+    // Convert to lowercase
+    let result = string_str.to_lowercase();
+
+    Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
+}
+
+/// Evaluates a string trim operation.
+pub fn eval_trim<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    if args.is_empty() {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let string_str = value_to_string(string, arena);
+
+    // Trim whitespace
+    let result = string_str.trim();
+
+    Ok(arena.alloc(DataValue::String(arena.alloc_str(result))))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
@@ -266,5 +363,134 @@ mod tests {
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
+    }
+
+    #[test]
+    fn test_starts_with() {
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
+        let data_json = json!({"text": "hello world"});
+
+        // Test positive case
+        let rule = builder
+            .string_ops()
+            .starts_with_op()
+            .var("text")
+            .string("hello")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test negative case
+        let rule = builder
+            .string_ops()
+            .starts_with_op()
+            .var("text")
+            .string("world")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test case sensitivity
+        let rule = builder
+            .string_ops()
+            .starts_with_op()
+            .var("text")
+            .string("HELLO")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
+    }
+
+    #[test]
+    fn test_ends_with() {
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
+        let data_json = json!({"text": "hello world"});
+
+        // Test positive case
+        let rule = builder
+            .string_ops()
+            .ends_with_op()
+            .var("text")
+            .string("world")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(true));
+
+        // Test negative case
+        let rule = builder
+            .string_ops()
+            .ends_with_op()
+            .var("text")
+            .string("hello")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
+
+        // Test case sensitivity
+        let rule = builder
+            .string_ops()
+            .ends_with_op()
+            .var("text")
+            .string("WORLD")
+            .build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(false));
+    }
+
+    #[test]
+    fn test_upper() {
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
+        let data_json = json!({"text": "Hello World"});
+
+        // Test uppercase
+        let rule = builder.string_ops().upper_op().var("text").build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("HELLO WORLD"));
+    }
+
+    #[test]
+    fn test_lower() {
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
+        let data_json = json!({"text": "Hello World"});
+
+        // Test lowercase
+        let rule = builder.string_ops().lower_op().var("text").build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello world"));
+    }
+
+    #[test]
+    fn test_trim() {
+        // Create JSONLogic instance
+        let core = DataLogicCore::new();
+        let builder = core.builder();
+
+        let data_json = json!({"text": "  Hello World  "});
+
+        // Test trim
+        let rule = builder.string_ops().trim_op().var("text").build();
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("Hello World"));
     }
 }

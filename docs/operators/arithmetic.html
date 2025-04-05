@@ -97,6 +97,18 @@
                     <div class="mdc-chip__ripple"></div>
                     <span class="mdc-chip__text">max</span>
                 </div>
+                <div class="mdc-chip" data-target="abs">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">abs</span>
+                </div>
+                <div class="mdc-chip" data-target="ceil">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">ceil</span>
+                </div>
+                <div class="mdc-chip" data-target="floor">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">floor</span>
+                </div>
             </div>
             
             <!-- Addition operator -->
@@ -560,6 +572,342 @@
                             <div class="editor-container result-container">
                                 <h4 class="mdc-typography--subtitle2">Result:</h4>
                                 <textarea class="result-editor" id="max-result" readonly>9</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Abs operator -->
+            <div id="abs" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">abs (Absolute Value)</h2>
+                    <p class="mdc-typography--body1">
+                        Returns the absolute value of a number or an array of numbers. The absolute value is the non-negative value of a number without regard to its sign.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "abs": value }</code></pre>
+                        <pre><code class="language-json">{ "abs": [value1, value2, ...] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">value</td>
+                                        <td class="mdc-data-table__cell">A numeric value to compute the absolute value of</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">value1, value2, ...</td>
+                                        <td class="mdc-data-table__cell">Multiple numeric values to compute the absolute values of</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Single Value</h3>
+                    <div class="example-card mdc-card simple-example">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="abs-rule">{ "abs": -5 }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="abs-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="abs-result" readonly>5</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Multiple Values</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="abs-multiple-rule">{ "abs": [3, -4, -5.7, 0] }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="abs-multiple-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="abs-multiple-result" readonly>[3, 4, 5.7, 0]</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: With Variable</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="abs-variable-rule">{ "abs": {"val": "x"} }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="abs-variable-data">{"x": -10}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="abs-variable-result" readonly>10</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Ceil operator -->
+            <div id="ceil" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">ceil (Ceiling)</h2>
+                    <p class="mdc-typography--body1">
+                        Returns the smallest integer greater than or equal to a given number. In other words, it rounds a number up to the nearest integer.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "ceil": value }</code></pre>
+                        <pre><code class="language-json">{ "ceil": [value1, value2, ...] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">value</td>
+                                        <td class="mdc-data-table__cell">A numeric value to compute the ceiling of</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">value1, value2, ...</td>
+                                        <td class="mdc-data-table__cell">Multiple numeric values to compute the ceilings of</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Single Value</h3>
+                    <div class="example-card mdc-card simple-example">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="ceil-rule">{ "ceil": 4.3 }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="ceil-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="ceil-result" readonly>5</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Negative Number</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="ceil-negative-rule">{ "ceil": -3.7 }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="ceil-negative-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="ceil-negative-result" readonly>-3</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Multiple Values</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="ceil-multiple-rule">{ "ceil": [1.1, 2.9, -3.1, -4.9] }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="ceil-multiple-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="ceil-multiple-result" readonly>[2, 3, -3, -4]</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Floor operator -->
+            <div id="floor" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">floor (Floor)</h2>
+                    <p class="mdc-typography--body1">
+                        Returns the largest integer less than or equal to a given number. In other words, it rounds a number down to the nearest integer.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "floor": value }</code></pre>
+                        <pre><code class="language-json">{ "floor": [value1, value2, ...] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">value</td>
+                                        <td class="mdc-data-table__cell">A numeric value to compute the floor of</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">value1, value2, ...</td>
+                                        <td class="mdc-data-table__cell">Multiple numeric values to compute the floors of</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Single Value</h3>
+                    <div class="example-card mdc-card simple-example">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="floor-rule">{ "floor": 7.8 }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="floor-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="floor-result" readonly>7</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Negative Number</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="floor-negative-rule">{ "floor": -2.3 }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="floor-negative-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="floor-negative-result" readonly>-3</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Multiple Values</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="floor-multiple-rule">{ "floor": [1.9, 2.1, -3.1, -4.9] }</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="floor-multiple-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="floor-multiple-result" readonly>[1, 2, -4, -5]</textarea>
                             </div>
                         </div>
                         <div class="example-actions">

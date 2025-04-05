@@ -1,0 +1,195 @@
+[
+  "# String operator tests",
+  {
+    "description": "Basic starts_with with matching prefix",
+    "rule": { "starts_with": [{"var": "text"}, "Hello"] },
+    "data": { "text": "Hello World" },
+    "result": true
+  },
+  {
+    "description": "Basic starts_with with non-matching prefix",
+    "rule": { "starts_with": [{"var": "text"}, "World"] },
+    "data": { "text": "Hello World" },
+    "result": false
+  },
+  {
+    "description": "starts_with with empty string as prefix always returns true",
+    "rule": { "starts_with": [{"var": "text"}, ""] },
+    "data": { "text": "Hello World" },
+    "result": true
+  },
+  {
+    "description": "starts_with with empty target string only matches empty prefix",
+    "rule": { "starts_with": [{"var": "empty"}, "Hello"] },
+    "data": { "empty": "" },
+    "result": false
+  },
+  {
+    "description": "starts_with with case sensitivity",
+    "rule": { "starts_with": [{"var": "text"}, "hello"] },
+    "data": { "text": "Hello World" },
+    "result": false
+  },
+  {
+    "description": "starts_with without sufficient arguments",
+    "rule": { "starts_with": [{"var": "text"}] },
+    "data": { "text": "Hello World" },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Basic ends_with with matching suffix",
+    "rule": { "ends_with": [{"var": "text"}, "World"] },
+    "data": { "text": "Hello World" },
+    "result": true
+  },
+  {
+    "description": "Basic ends_with with non-matching suffix",
+    "rule": { "ends_with": [{"var": "text"}, "Hello"] },
+    "data": { "text": "Hello World" },
+    "result": false
+  },
+  {
+    "description": "ends_with with empty string as suffix always returns true",
+    "rule": { "ends_with": [{"var": "text"}, ""] },
+    "data": { "text": "Hello World" },
+    "result": true
+  },
+  {
+    "description": "ends_with with empty target string only matches empty suffix",
+    "rule": { "ends_with": [{"var": "empty"}, "World"] },
+    "data": { "empty": "" },
+    "result": false
+  },
+  {
+    "description": "ends_with with case sensitivity",
+    "rule": { "ends_with": [{"var": "text"}, "world"] },
+    "data": { "text": "Hello World" },
+    "result": false
+  },
+  {
+    "description": "ends_with without sufficient arguments",
+    "rule": { "ends_with": [{"var": "text"}] },
+    "data": { "text": "Hello World" },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Basic upper case conversion",
+    "rule": { "upper": {"var": "text"} },
+    "data": { "text": "Hello World" },
+    "result": "HELLO WORLD"
+  },
+  {
+    "description": "upper with already uppercase string",
+    "rule": { "upper": {"var": "text"} },
+    "data": { "text": "HELLO WORLD" },
+    "result": "HELLO WORLD"
+  },
+  {
+    "description": "upper with empty string",
+    "rule": { "upper": {"var": "empty"} },
+    "data": { "empty": "" },
+    "result": ""
+  },
+  {
+    "description": "upper with mixed case and special characters",
+    "rule": { "upper": {"var": "text"} },
+    "data": { "text": "Hello, World! 123" },
+    "result": "HELLO, WORLD! 123"
+  },
+  {
+    "description": "upper without arguments",
+    "rule": { "upper": [] },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Basic lower case conversion",
+    "rule": { "lower": {"var": "text"} },
+    "data": { "text": "Hello World" },
+    "result": "hello world"
+  },
+  {
+    "description": "lower with already lowercase string",
+    "rule": { "lower": {"var": "text"} },
+    "data": { "text": "hello world" },
+    "result": "hello world"
+  },
+  {
+    "description": "lower with empty string",
+    "rule": { "lower": {"var": "empty"} },
+    "data": { "empty": "" },
+    "result": ""
+  },
+  {
+    "description": "lower with mixed case and special characters",
+    "rule": { "lower": {"var": "text"} },
+    "data": { "text": "Hello, World! 123" },
+    "result": "hello, world! 123"
+  },
+  {
+    "description": "lower without arguments",
+    "rule": { "lower": [] },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Basic trim operation",
+    "rule": { "trim": {"var": "text"} },
+    "data": { "text": "  Hello World  " },
+    "result": "Hello World"
+  },
+  {
+    "description": "trim with no leading/trailing spaces",
+    "rule": { "trim": {"var": "text"} },
+    "data": { "text": "Hello World" },
+    "result": "Hello World"
+  },
+  {
+    "description": "trim with only leading spaces",
+    "rule": { "trim": {"var": "text"} },
+    "data": { "text": "  Hello World" },
+    "result": "Hello World"
+  },
+  {
+    "description": "trim with only trailing spaces",
+    "rule": { "trim": {"var": "text"} },
+    "data": { "text": "Hello World  " },
+    "result": "Hello World"
+  },
+  {
+    "description": "trim with tabs and newlines",
+    "rule": { "trim": {"var": "text"} },
+    "data": { "text": "\t\nHello World\t\n" },
+    "result": "Hello World"
+  },
+  {
+    "description": "trim with empty string",
+    "rule": { "trim": {"var": "empty"} },
+    "data": { "empty": "" },
+    "result": ""
+  },
+  {
+    "description": "trim without arguments",
+    "rule": { "trim": [] },
+    "data": {},
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Combine operators: uppercase first word",
+    "rule": { "upper": { "substr": [{"var": "text"}, 0, 5] } },
+    "data": { "text": "hello world" },
+    "result": "HELLO"
+  },
+  {
+    "description": "Combine operators: check if trimmed text starts with Hello",
+    "rule": { "starts_with": [{ "trim": {"var": "text"} }, "Hello"] },
+    "data": { "text": "  Hello World  " },
+    "result": true
+  },
+  {
+    "description": "Combine operators: check if lowercase text ends with world",
+    "rule": { "ends_with": [{ "lower": {"var": "text"} }, "world"] },
+    "data": { "text": "Hello World" },
+    "result": true
+  }
+]
