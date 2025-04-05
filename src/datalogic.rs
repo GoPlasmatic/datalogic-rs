@@ -88,6 +88,12 @@ impl DataLogic {
         Ok(Logic::new(optimized_token, &self.arena))
     }
 
+    /// Parse a JSON logic expression into a Token
+    pub fn parse_logic_json(&self, source: &JsonValue, format: Option<&str>) -> Result<Logic> {
+        let token = self.parsers.parse_json(source, format, &self.arena)?;
+        Ok(Logic::new(token, &self.arena))
+    }
+
     /// Parse a JSON data string into a DataValue
     pub fn parse_data(&self, source: &str) -> Result<DataValue> {
         let json = serde_json::from_str(source).map_err(|e| LogicError::ParseError {
@@ -96,7 +102,36 @@ impl DataLogic {
         Ok(DataValue::from_json(&json, &self.arena))
     }
 
+    /// Parse a JSON data string into a DataValue
+    pub fn parse_data_json(&self, source: &JsonValue) -> Result<DataValue> {
+        Ok(DataValue::from_json(source, &self.arena))
+    }
+
     /// Evaluate a rule with the provided data
+    ///
+    /// This method evaluates a logic rule against the given data context.
+    /// The data is used as both the current context and the root context for evaluation.
+    ///
+    /// # Arguments
+    ///
+    /// * `rule` - The compiled logic rule to evaluate
+    /// * `data` - The data to use as context during evaluation
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a reference to the evaluation result as a DataValue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let dl = DataLogic::new();
+    /// let rule = dl.parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#, None).unwrap();
+    /// let data = dl.parse_data(r#"{"temp": 110}"#).unwrap();
+    /// let result = dl.evaluate(&rule, &data).unwrap();
+    /// assert_eq!(result.to_string(), "true");
+    /// ```
     pub fn evaluate<'a>(
         &'a self,
         rule: &'a Logic,
@@ -111,7 +146,35 @@ impl DataLogic {
         evaluate(rule.root(), &self.arena)
     }
 
-    /// Parse and evaluate in one step, returning JSON
+    /// Parse and evaluate in one step, returning JSON value
+    ///
+    /// This method combines parsing and evaluation in a single step.
+    /// It parses both the logic rule and the data from strings, evaluates the rule,
+    /// and returns the result as a JSON value.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic_source` - The logic rule as a JSON string
+    /// * `data_source` - The data context as a JSON string
+    /// * `format` - Optional format name for the parser to use
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the evaluation result as a JsonValue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let dl = DataLogic::new();
+    /// let result = dl.apply(
+    ///     r#"{ "abs": -42 }"#,
+    ///     r#"{}"#,
+    ///     None
+    /// ).unwrap();
+    /// assert_eq!(result.as_i64().unwrap(), 42);
+    /// ```
     pub fn apply(
         &self,
         logic_source: &str,
@@ -124,7 +187,47 @@ impl DataLogic {
         Ok(result.to_json())
     }
 
-    /// Parse and evaluate in one step, returning a DataValue
+    /// Evaluate using JSON values directly
+    ///
+    /// This method evaluates a logic rule against data, both provided as JSON values.
+    /// It parses the logic and data from JSON, evaluates the rule, and returns
+    /// the result as a JSON value.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - The logic rule as a JsonValue
+    /// * `data` - The data context as a JsonValue
+    /// * `format` - Optional format name for the parser to use
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the evaluation result as a JsonValue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use datalogic_rs::DataLogic;
+    /// use serde_json::json;
+    ///
+    /// let dl = DataLogic::new();
+    /// let logic = json!({"ceil": 3.14});
+    /// let data = json!({});
+    /// let result = dl.evaluate_json(&logic, &data, None).unwrap();
+    /// assert_eq!(result.as_i64().unwrap(), 4);
+    /// ```
+    pub fn evaluate_json(
+        &self,
+        logic: &JsonValue,
+        data: &JsonValue,
+        format: Option<&str>,
+    ) -> Result<JsonValue> {
+        let rule = self.parse_logic_json(logic, format)?;
+        let data_value = self.parse_data_json(data)?;
+        let result = self.evaluate(&rule, &data_value)?;
+        Ok(result.to_json())
+    }
+
+    /// Parse and evaluate in one step, returning a JSON value
     pub fn evaluate_str(
         &self,
         logic_source: &str,

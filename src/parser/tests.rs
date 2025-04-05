@@ -7,6 +7,7 @@ mod tests {
     use crate::arena::DataArena;
     use crate::logic::{ComparisonOp, OperatorType, Token};
     use crate::parser::{ExpressionParser, ParserRegistry};
+    use serde_json::Value as JsonValue;
 
     #[test]
     fn test_parser_registry_creation() {
@@ -61,6 +62,16 @@ mod tests {
             arena: &'a DataArena,
         ) -> crate::logic::Result<&'a Token<'a>> {
             // Always returns a literal token with the value "mock"
+            Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
+                arena, "mock",
+            ))))
+        }
+
+        fn parse_json<'a>(
+            &self,
+            _input: &JsonValue,
+            arena: &'a DataArena,
+        ) -> crate::logic::Result<&'a Token<'a>> {
             Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
                 arena, "mock",
             ))))

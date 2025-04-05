@@ -142,6 +142,88 @@ fn main() {
             </section>
             
             <section class="tutorial-section">
+                <h2 class="mdc-typography--headline5" id="core-api-methods">Core API Methods</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs provides three core methods for evaluating rules against data:
+                </p>
+
+                <h3 class="mdc-typography--subtitle1">1. evaluate</h3>
+                <p class="mdc-typography--body1">
+                    The <code>evaluate</code> method evaluates a compiled rule against a parsed data context.
+                    This is useful when you need to reuse the same rule or data multiple times.
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    let dl = DataLogic::new();
+    
+    // Parse the rule and data separately
+    let rule = dl.parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#, None).unwrap();
+    let data = dl.parse_data(r#"{"temp": 110}"#).unwrap();
+    
+    // Evaluate the rule against the data
+    let result = dl.evaluate(&rule, &data).unwrap();
+    
+    println!("Result: {}", result); // Prints: true
+}</code></pre>
+                </div>
+
+                <h3 class="mdc-typography--subtitle1">2. apply</h3>
+                <p class="mdc-typography--body1">
+                    The <code>apply</code> method combines parsing and evaluation in a single step.
+                    It's ideal for one-time evaluations or quick scripting.
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    let dl = DataLogic::new();
+    
+    // Parse and evaluate in one step
+    let result = dl.apply(
+        r#"{ "abs": -42 }"#,
+        r#"{}"#,
+        None
+    ).unwrap();
+    
+    println!("Result: {}", result); // Prints: 42
+}</code></pre>
+                </div>
+
+                <h3 class="mdc-typography--subtitle1">3. evaluate_json</h3>
+                <p class="mdc-typography--body1">
+                    The <code>evaluate_json</code> method works directly with serde_json Values.
+                    This is useful when you're already working with JSON data in your application.
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+use serde_json::json;
+
+fn main() {
+    let dl = DataLogic::new();
+    
+    // Use serde_json's json! macro to create JSON values
+    let logic = json!({"ceil": 3.14});
+    let data = json!({});
+    
+    // Evaluate using the JSON values directly
+    let result = dl.evaluate_json(&logic, &data, None).unwrap();
+    
+    println!("Result: {}", result); // Prints: 4
+}</code></pre>
+                </div>
+                
+                <p class="mdc-typography--body1">
+                    Choose the method that best fits your use case based on whether you need to reuse rules/data
+                    and your preferred input format.
+                </p>
+            </section>
+            
+            <section class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Custom Operators</h2>
                 <p class="mdc-typography--body1">
                     You can extend DataLogic-rs with your own custom operators:

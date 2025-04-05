@@ -56,6 +56,34 @@
                 These operators are organized into categories based on their functionality.
             </p>
             
+            <div class="api-methods-overview mdc-card">
+                <h2 class="mdc-typography--headline6">Using Operators with API Methods</h2>
+                <p class="mdc-typography--body1">
+                    You can use any of these operators with the following API methods:
+                </p>
+                <ul>
+                    <li>
+                        <code>evaluate</code> - Evaluates a pre-compiled rule against parsed data
+                        <pre><code class="language-rust">let rule = dl.parse_logic(r#"{ "abs": -10 }"#, None).unwrap();
+let data = dl.parse_data("{}").unwrap();
+let result = dl.evaluate(&rule, &data).unwrap();</code></pre>
+                    </li>
+                    <li>
+                        <code>apply</code> - Parses and evaluates in one step, returning a JSON value
+                        <pre><code class="language-rust">let result = dl.apply(r#"{ "ceil": 3.14 }"#, "{}", None).unwrap();</code></pre>
+                    </li>
+                    <li>
+                        <code>evaluate_json</code> - Works directly with JSON values
+                        <pre><code class="language-rust">let logic = json!({"abs": -42});
+let data = json!({});
+let result = dl.evaluate_json(&logic, &data, None).unwrap();</code></pre>
+                    </li>
+                </ul>
+                <p class="mdc-typography--body1">
+                    For more detailed examples, see the <a href="tutorial.html#core-api-methods">Core API Methods</a> section in the tutorial.
+                </p>
+            </div>
+            
             <div class="operators-grid">
                 <div class="operator-category-card mdc-card">
                     <div class="mdc-card__primary-action" tabindex="0">

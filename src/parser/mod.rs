@@ -1,5 +1,6 @@
 use crate::arena::DataArena;
 use crate::logic::{LogicError, Result, Token};
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 pub mod jsonlogic;
@@ -10,6 +11,9 @@ mod tests;
 pub trait ExpressionParser {
     /// Parse the input string into a Token
     fn parse<'a>(&self, input: &str, arena: &'a DataArena) -> Result<&'a Token<'a>>;
+
+    /// Parse the input JSON into a Token
+    fn parse_json<'a>(&self, input: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>>;
 
     /// Get the name of this parser format
     fn format_name(&self) -> &'static str;
@@ -75,5 +79,18 @@ impl ParserRegistry {
                 reason: format!("Unknown parser format: {}", format),
             })
         }
+    }
+
+    pub fn parse_json<'a>(
+        &self,
+        input: &JsonValue,
+        format: Option<&str>,
+        arena: &'a DataArena,
+    ) -> Result<&'a Token<'a>> {
+        let format = format.unwrap_or(&self.default_parser);
+        let parser = self.parsers.get(format).ok_or(LogicError::ParseError {
+            reason: format!("Unknown parser format: {}", format),
+        })?;
+        parser.parse_json(input, arena)
     }
 }

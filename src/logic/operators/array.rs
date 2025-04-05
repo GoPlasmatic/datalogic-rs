@@ -619,7 +619,7 @@ pub fn eval_reduce<'a>(
             ArithmeticOp::Max => reduce_max(items, initial, start_idx, arena),
             // These operators don't really make sense in a reduction context
             ArithmeticOp::Abs | ArithmeticOp::Ceil | ArithmeticOp::Floor => {
-                return Err(LogicError::InvalidArgumentsError.into());
+                return Err(LogicError::InvalidArgumentsError);
             }
         };
     }

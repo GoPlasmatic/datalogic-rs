@@ -524,7 +524,7 @@ pub fn eval_abs<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
         if !value.is_number() {
             return Err(LogicError::InvalidArgumentsError);
         }
-        
+
         let num = safe_to_f64(value)?;
         result.push(DataValue::float(num.abs()));
     }
@@ -555,7 +555,7 @@ pub fn eval_ceil<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<
         if !value.is_number() {
             return Err(LogicError::InvalidArgumentsError);
         }
-        
+
         let num = safe_to_f64(value)?;
         result.push(DataValue::float(num.ceil()));
     }
@@ -564,7 +564,10 @@ pub fn eval_ceil<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<
 }
 
 /// Evaluates a floor operation.
-pub fn eval_floor<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_floor<'a>(
+    args: &'a [DataValue<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
@@ -586,7 +589,7 @@ pub fn eval_floor<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result
         if !value.is_number() {
             return Err(LogicError::InvalidArgumentsError);
         }
-        
+
         let num = safe_to_f64(value)?;
         result.push(DataValue::float(num.floor()));
     }

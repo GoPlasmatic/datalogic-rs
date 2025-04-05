@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-web"
-version = "3.0.10"
+version = "3.0.12"
 edition = "2024"
 publish = false
 

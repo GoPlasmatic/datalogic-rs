@@ -103,7 +103,7 @@
                 Import the crate:
                 <div class="code-block mdc-card">
                     <pre><code class="language-toml">[dependencies]
-datalogic-rs = "3.0.7"</code></pre></div>
+datalogic-rs = "3.0.12"</code></pre></div>
 
 Example usage:
 <div class="code-block mdc-card">
@@ -113,8 +113,8 @@ use datalogic_rs::DataLogic;
 fn main() {
     let dl = DataLogic::new();
     
-    // Parse and evaluate in one step
-    let result = dl
+    // Method 1: Parse and evaluate in one step with evaluate_str
+    let result1 = dl
         .evaluate_str(
             r#"{ "some": [{"var": "items"}, {">=": [{"var": "qty"}, 1]}] }"#,
             r#"{"items": [{"qty": 1, "id": "first"}, {"qty": 2, "id": "second"}]}"#,
@@ -122,7 +122,18 @@ fn main() {
         )
         .unwrap();
     
-    println!("Result: {}", result); // prints "true"
+    println!("Result1: {}", result1); // prints "true"
+    
+    // Method 2: Use the apply method for one-step evaluation
+    let result2 = dl
+        .apply(
+            r#"{ "abs": -42 }"#,
+            r#"{}"#,
+            None,
+        )
+        .unwrap();
+    
+    println!("Result2: {}", result2); // prints "42"
 }</code></pre>
                 </div>
             </div>

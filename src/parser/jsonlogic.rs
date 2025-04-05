@@ -24,6 +24,10 @@ impl ExpressionParser for JsonLogicParser {
         parse_json(&json, arena)
     }
 
+    fn parse_json<'a>(&self, input: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
+        parse_json(input, arena)
+    }
+
     fn format_name(&self) -> &'static str {
         "jsonlogic"
     }
