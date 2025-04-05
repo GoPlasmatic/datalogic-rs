@@ -16,7 +16,7 @@ use std::mem;
 
 use super::interner::StringInterner;
 use crate::logic::Result;
-use crate::value::{DataValue, FromJson, NumberValue, ToJson};
+use crate::value::{DataValue, NumberValue};
 
 /// Trait for custom JSONLogic operators
 pub trait CustomOperator: fmt::Debug + Send + Sync {
@@ -24,7 +24,11 @@ pub trait CustomOperator: fmt::Debug + Send + Sync {
     ///
     /// This function takes owned DataValue arguments and returns an owned DataValue.
     /// The actual allocation in the arena is handled internally.
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue>;
+    fn evaluate<'a>(
+        &self,
+        args: &'a [DataValue<'a>],
+        arena: &'a DataArena,
+    ) -> Result<&'a DataValue<'a>>;
 }
 
 /// Registry for custom operator functions
@@ -906,27 +910,12 @@ impl DataArena {
     pub fn evaluate_custom_operator<'a>(
         &'a self,
         name: &str,
-        args: &[&'a DataValue<'a>],
+        args: &'a [DataValue<'a>],
     ) -> Result<&'a DataValue<'a>> {
         // Get the custom operator
         if let Some(op) = self.custom_operators.borrow().get(name) {
-            // Convert arena references to owned DataValues by going through JSON
-            let owned_args: Vec<DataValue> = args
-                .iter()
-                .map(|&arg| {
-                    // Convert to JSON and back to create owned values
-                    let json = arg.to_json();
-                    DataValue::from_json(&json, self)
-                })
-                .collect();
-
-            // Call the custom operator with owned values
-            let result = op.evaluate(&owned_args)?;
-
-            // Allocate the result back into the arena
-            let json_result = result.to_json();
-            let result_value = DataValue::from_json(&json_result, self);
-            Ok(self.alloc(result_value))
+            // Call the custom operator with owned values to get an owned DataValue
+            op.evaluate(args, self)
         } else {
             Err(crate::logic::LogicError::OperatorNotFoundError {
                 operator: name.to_string(),

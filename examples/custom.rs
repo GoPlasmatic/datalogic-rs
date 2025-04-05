@@ -1,3 +1,4 @@
+use datalogic_rs::arena::DataArena;
 use datalogic_rs::value::NumberValue;
 use datalogic_rs::{CustomOperator, DataLogic, DataValue, Result};
 use serde_json::json;
@@ -8,10 +9,14 @@ use std::fmt::Debug;
 struct MultiplyAll;
 
 impl CustomOperator for MultiplyAll {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue> {
+    fn evaluate<'a>(
+        &self,
+        args: &'a [DataValue<'a>],
+        arena: &'a DataArena,
+    ) -> Result<&'a DataValue<'a>> {
         // Default to 1 if no arguments provided
         if args.is_empty() {
-            return Ok(DataValue::Number(NumberValue::from_i64(1)));
+            return Ok(arena.alloc(DataValue::Number(NumberValue::from_i64(1))));
         }
 
         // Calculate product of all numeric values
@@ -23,7 +28,7 @@ impl CustomOperator for MultiplyAll {
         }
 
         // Return the result
-        Ok(DataValue::Number(NumberValue::from_f64(product)))
+        Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(product))))
     }
 }
 
@@ -32,7 +37,11 @@ impl CustomOperator for MultiplyAll {
 struct Median;
 
 impl CustomOperator for Median {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue> {
+    fn evaluate<'a>(
+        &self,
+        args: &'a [DataValue<'a>],
+        arena: &'a DataArena,
+    ) -> Result<&'a DataValue<'a>> {
         // Collect all numeric values
         let mut numbers = Vec::new();
 
@@ -56,7 +65,7 @@ impl CustomOperator for Median {
 
         // Return 0 for empty arrays
         if numbers.is_empty() {
-            return Ok(DataValue::Number(NumberValue::from_i64(0)));
+            return Ok(arena.alloc(DataValue::Number(NumberValue::from_i64(0))));
         }
 
         // Sort the numbers
@@ -73,7 +82,7 @@ impl CustomOperator for Median {
         };
 
         // Return the result
-        Ok(DataValue::Number(NumberValue::from_f64(median)))
+        Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(median))))
     }
 }
 

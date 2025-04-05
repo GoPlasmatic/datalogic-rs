@@ -48,17 +48,8 @@ pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a Da
 
         // Custom operators are looked up in a registry
         Token::CustomOperator { name, args } => {
-            // Convert args to a vector of token references
-            let tokens_refs = if let Token::ArrayLiteral(items) = args {
-                // For ArrayLiteral, we can use the items directly
-                items.as_slice()
-            } else {
-                // For single argument (not in an ArrayLiteral), create a one-element slice
-                std::slice::from_ref(args)
-            };
-
-            // Pass the tokens to the custom operator evaluator
-            evaluate_custom_operator(name, tokens_refs, arena)
+            let data_values = evaluate_arguments(args, arena)?;
+            evaluate_custom_operator(name, data_values, arena)
         }
     }
 }
@@ -136,21 +127,11 @@ fn evaluate_array_literal<'a>(
 /// Evaluates a custom operator application.
 fn evaluate_custom_operator<'a>(
     name: &'a str,
-    args: &'a [&'a Token<'a>],
+    args: &'a [DataValue<'a>],
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // First evaluate all the arguments to get DataValue instances
-    let mut data_values = Vec::with_capacity(args.len());
-    for arg in args {
-        let value = evaluate(arg, arena)?;
-        data_values.push(value);
-    }
-
-    // Get a slice of DataValue references
-    let data_values_slice = data_values.as_slice();
-
     // Use the arena's evaluate_custom_operator method
-    arena.evaluate_custom_operator(name, data_values_slice)
+    arena.evaluate_custom_operator(name, args)
 }
 
 /// Evaluates arguments and returns them as a slice of DataValues

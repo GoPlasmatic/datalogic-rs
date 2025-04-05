@@ -6,10 +6,10 @@ pub use logic::{Logic, Result};
 pub use value::{DataValue, FromDataValue, FromJson, IntoDataValue, ToJson};
 
 // Internal modules with implementation details
-mod arena;
 mod parser;
 
 // Public modules
+pub mod arena;
 pub mod builder;
 pub mod datalogic;
 pub mod error;

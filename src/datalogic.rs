@@ -92,16 +92,17 @@ impl DataLogic {
     /// use datalogic_rs::{DataLogic, DataValue, LogicError, Result, CustomOperator};
     /// use datalogic_rs::value::NumberValue;
     /// use std::fmt::Debug;
+    /// use datalogic_rs::arena::DataArena;
     ///
     /// // Define a custom operator that multiplies all numbers in the array
     /// #[derive(Debug)]
     /// struct MultiplyAll;
     ///
     /// impl CustomOperator for MultiplyAll {
-    ///     fn evaluate(&self, args: &[DataValue]) -> Result<DataValue> {
+    ///     fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     ///         // Default to 1 if no arguments provided
     ///         if args.is_empty() {
-    ///             return Ok(DataValue::Number(NumberValue::from_i64(1)));
+    ///             return Ok(arena.alloc(DataValue::Number(NumberValue::from_i64(1))));
     ///         }
     ///
     ///         // Calculate product of all numeric values
@@ -113,7 +114,7 @@ impl DataLogic {
     ///         }
     ///
     ///         // Return the result
-    ///         Ok(DataValue::Number(NumberValue::from_f64(product)))
+    ///         Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(product))))
     ///     }
     /// }
     ///
@@ -268,17 +269,22 @@ impl Default for DataLogic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::NumberValue;
+    use crate::arena::DataArena;
+    use crate::value::{DataValue, NumberValue};
     use serde_json::json;
 
     #[derive(Debug)]
     struct MultiplyAll;
 
     impl CustomOperator for MultiplyAll {
-        fn evaluate(&self, args: &[DataValue]) -> Result<DataValue> {
+        fn evaluate<'a>(
+            &self,
+            args: &'a [DataValue<'a>],
+            arena: &'a DataArena,
+        ) -> Result<&'a DataValue<'a>> {
             // Default to 1 if no arguments provided
             if args.is_empty() {
-                return Ok(DataValue::Number(NumberValue::from_i64(1)));
+                return Ok(arena.alloc(DataValue::Number(NumberValue::from_i64(1))));
             }
 
             // Calculate product of all numeric values
@@ -290,7 +296,7 @@ mod tests {
             }
 
             // Return the result
-            Ok(DataValue::Number(NumberValue::from_f64(product)))
+            Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(product))))
         }
     }
 
