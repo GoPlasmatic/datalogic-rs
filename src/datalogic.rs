@@ -273,9 +273,19 @@ impl DataLogic {
     /// use datalogic_rs::{DataLogic, DataValue, Result};
     ///
     /// // Define a simple operator that doubles a number
-    /// fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+    /// fn double<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
     ///     if args.is_empty() {
-    ///         return Err("double operator requires at least one argument".to_string());
+    ///         // Check data context for value if no args provided
+    ///         if let Some(obj) = data.as_object() {
+    ///             for (key, val) in obj {
+    ///                 if *key == "value" && val.is_number() {
+    ///                     if let Some(n) = val.as_f64() {
+    ///                         return Ok(DataValue::float(n * 2.0));
+    ///                     }
+    ///                 }
+    ///             }
+    ///         }
+    ///         return Err("double operator requires at least one argument or 'value' in data".to_string());
     ///     }
     ///     
     ///     if let Some(n) = args[0].as_f64() {
@@ -290,7 +300,7 @@ impl DataLogic {
     /// // Register the simple operator
     /// dl.register_simple_operator("double", double);
     ///
-    /// // Use the custom operator in a rule
+    /// // Use the custom operator in a rule with explicit argument
     /// let result = dl.evaluate_str(
     ///     r#"{"double": 5}"#,
     ///     r#"{}"#,
@@ -298,6 +308,15 @@ impl DataLogic {
     /// ).unwrap();
     ///
     /// assert_eq!(result.as_f64().unwrap(), 10.0);
+    /// 
+    /// // Use the custom operator with data context
+    /// let result = dl.evaluate_str(
+    ///     r#"{"double": []}"#,
+    ///     r#"{"value": 7}"#,
+    ///     None
+    /// ).unwrap();
+    ///
+    /// assert_eq!(result.as_f64().unwrap(), 14.0);
     /// ```
     pub fn register_simple_operator(&mut self, name: &str, function: SimpleOperatorFn) {
         let adapter = SimpleOperatorAdapter::new(name, function);
