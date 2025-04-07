@@ -17,6 +17,38 @@
     <!-- Code highlighting -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <style>
+        .tutorial-nav {
+            background-color: #f7f9fc;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .tutorial-nav h3 {
+            margin-top: 0;
+        }
+        .tutorial-nav-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .tutorial-nav-list li {
+            margin-right: 16px;
+            margin-bottom: 8px;
+        }
+        .tutorial-nav-list a {
+            text-decoration: none;
+            color: #6200ee;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        .tutorial-nav-list a:hover {
+            background-color: rgba(98, 0, 238, 0.08);
+        }
+    </style>
 </head>
 <body class="mdc-typography">
     <div class="container">
@@ -55,7 +87,23 @@
         <main class="main-content">
             <h1 class="mdc-typography--headline4">Getting Started with DataLogic-rs</h1>
             
-            <section class="tutorial-section">
+            <!-- Tutorial Navigation -->
+            <div class="tutorial-nav mdc-card">
+                <h3 class="mdc-typography--subtitle1">Jump to Section</h3>
+                <ul class="tutorial-nav-list">
+                    <li><a href="#introduction">Introduction</a></li>
+                    <li><a href="#installation">Installation</a></li>
+                    <li><a href="#basic-usage">Basic Usage</a></li>
+                    <li><a href="#complex-rules">Complex Rules</a></li>
+                    <li><a href="#core-api-methods">Core API Methods</a></li>
+                    <li><a href="#arena-memory">Arena Memory Management</a></li>
+                    <li><a href="#custom-operators">Custom Operators</a></li>
+                    <li><a href="#wasm-support">WebAssembly Support</a></li>
+                    <li><a href="#next-steps">Next Steps</a></li>
+                </ul>
+            </div>
+            
+            <section id="introduction" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Introduction</h2>
                 <p class="mdc-typography--body1">
                     DataLogic-rs is a powerful expression evaluation engine for Rust that implements the
@@ -64,7 +112,7 @@
                 </p>
             </section>
             
-            <section class="tutorial-section">
+            <section id="installation" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Installation</h2>
                 <p class="mdc-typography--body1">
                     Add DataLogic-rs to your <code>Cargo.toml</code> file:
@@ -76,7 +124,7 @@ datalogic-rs = "3.0.7"</code></pre>
                 </div>
             </section>
             
-            <section class="tutorial-section">
+            <section id="basic-usage" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Basic Usage</h2>
                 <p class="mdc-typography--body1">
                     Here's a simple example of how to use DataLogic-rs:
@@ -105,7 +153,7 @@ fn main() {
                 </p>
             </section>
             
-            <section class="tutorial-section">
+            <section id="complex-rules" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Working with Complex Rules</h2>
                 <p class="mdc-typography--body1">
                     DataLogic-rs can handle complex rules and data structures:
@@ -141,8 +189,8 @@ fn main() {
                 </div>
             </section>
             
-            <section class="tutorial-section">
-                <h2 class="mdc-typography--headline5" id="core-api-methods">Core API Methods</h2>
+            <section id="core-api-methods" class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Core API Methods</h2>
                 <p class="mdc-typography--body1">
                     DataLogic-rs provides three core methods for evaluating rules against data:
                 </p>
@@ -223,7 +271,92 @@ fn main() {
                 </p>
             </section>
             
-            <section class="tutorial-section">
+            <section id="arena-memory" class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Arena-Based Memory Management</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs uses arena-based memory management for high-performance allocation and deallocation,
+                    which is particularly important when processing many rules or working with large datasets.
+                </p>
+                
+                <h3 class="mdc-typography--subtitle1">What is Arena Allocation?</h3>
+                <p class="mdc-typography--body1">
+                    Arena allocation (also known as "bump allocation") offers several key advantages:
+                </p>
+                <ul class="mdc-typography--body1">
+                    <li>Memory is allocated in large, contiguous chunks</li>
+                    <li>Individual allocations are extremely fast (just incrementing a pointer)</li>
+                    <li>Memory is freed all at once instead of individually</li>
+                    <li>Improved memory locality leads to better cache performance</li>
+                </ul>
+                
+                <h3 class="mdc-typography--subtitle1">Resetting the Arena</h3>
+                <p class="mdc-typography--body1">
+                    For long-running applications, it's important to periodically reset the arena to free memory:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    // Create a DataLogic instance with default settings
+    let mut dl = DataLogic::new();
+    
+    // Evaluate some rules
+    let result1 = dl.evaluate_str(r#"{ ">": [{"var": "temp"}, 100] }"#, r#"{"temp": 110}"#, None).unwrap();
+    
+    // Reset the arena to free memory
+    dl.reset_arena();
+    
+    // Continue with new evaluations
+    let result2 = dl.evaluate_str(r#"{ "<": [{"var": "count"}, 10] }"#, r#"{"count": 5}"#, None).unwrap();
+    
+    println!("Results: {}, {}", result1, result2);
+}</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Tuning Arena Size</h3>
+                <p class="mdc-typography--body1">
+                    You can customize the chunk size used by the arena for better performance:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+// Create a DataLogic instance with a 1MB chunk size
+let mut dl = DataLogic::with_chunk_size(1024 * 1024);</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Processing Large Batches</h3>
+                <p class="mdc-typography--body1">
+                    For batch processing, reset the arena after each batch to prevent memory growth:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, Result};
+
+fn process_batches(batches: Vec<(String, String)>) -> Result<()> {
+    let mut dl = DataLogic::new();
+    
+    for (rule_str, data_str) in batches {
+        // Process each batch
+        let result = dl.evaluate_str(&rule_str, &data_str, None)?;
+        println!("Result: {}", result);
+        
+        // Reset the arena to free memory after processing a batch
+        dl.reset_arena();
+    }
+    
+    Ok(())
+}</code></pre>
+                </div>
+                
+                <p class="mdc-typography--body1">
+                    For more detailed information on arena-based memory management, see the
+                    <a href="https://github.com/codetiger/datalogic-rs/blob/main/ARENA.md" target="_blank">ARENA.md</a> document.
+                </p>
+            </section>
+            
+            <section id="custom-operators" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Custom Operators</h2>
                 <p class="mdc-typography--body1">
                     You can extend DataLogic-rs with your own custom operators by implementing the <code>CustomOperator</code> trait:
@@ -270,9 +403,44 @@ fn main() {
     println!("Result: {}", result); // Prints: 10
 }</code></pre>
                 </div>
+                
+                <h3 class="mdc-typography--subtitle1">Using Arena Allocation in Custom Operators</h3>
+                <p class="mdc-typography--body1">
+                    When implementing custom operators, always allocate results in the arena to ensure proper memory management:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">// Basic allocation for simple values
+Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(value))))
+
+// Working with strings
+Ok(arena.alloc(DataValue::String(arena.alloc_str("my string"))))
+
+// Working with arrays/collections
+let mut temp_vec = arena.get_data_value_vec();
+// Add elements to the vector
+temp_vec.push(DataValue::Number(1.into()));
+temp_vec.push(DataValue::Number(2.into()));
+
+// Convert to a permanent slice in the arena
+let result_slice = arena.bump_vec_into_slice(temp_vec);
+
+// Create and return a DataValue array
+Ok(arena.alloc(DataValue::Array(result_slice)))</code></pre>
+                </div>
+                
+                <p class="mdc-typography--body1">
+                    Key points to remember:
+                </p>
+                <ul class="mdc-typography--body1">
+                    <li>Always use <code>arena.alloc()</code> for new values</li>
+                    <li>Return references from the arena, not owned values</li>
+                    <li>Use arena helper methods for complex data structures</li>
+                    <li>Reset the arena when appropriate to free memory</li>
+                </ul>
             </section>
             
-            <section class="tutorial-section">
+            <section id="wasm-support" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">WebAssembly Support</h2>
                 <p class="mdc-typography--body1">
                     DataLogic-rs can be compiled to WebAssembly for use in web applications:
@@ -327,7 +495,7 @@ try {
                 </div>
             </section>
             
-            <section class="tutorial-section">
+            <section id="next-steps" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Next Steps</h2>
                 <p class="mdc-typography--body1">
                     Now that you understand the basics of DataLogic-rs, you can:
@@ -337,6 +505,7 @@ try {
                     <li>Explore the <a href="operators.html">Operators Documentation</a> to learn about all available operators</li>
                     <li>Try out examples in the <a href="playground.html">Interactive Playground</a></li>
                     <li>Check out the <a href="https://github.com/codetiger/datalogic-rs">GitHub repository</a> for more examples and advanced usage</li>
+                    <li>Read <a href="https://github.com/codetiger/datalogic-rs/blob/main/ARENA.md" target="_blank">ARENA.md</a> for detailed information on memory management</li>
                 </ul>
             </section>
         </main>

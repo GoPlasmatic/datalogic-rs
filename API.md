@@ -133,9 +133,18 @@ DataLogic-rs provides methods to parse rules and data separately:
 - `parse_data(&self, source: &str) -> Result<DataValue>`: Parse data from a string
 - `parse_data_json(&self, source: &JsonValue) -> Result<DataValue>`: Parse data from a JSON value
 
-## Memory Management
+## Arena-Based Memory Management
 
-The library uses an arena allocator for efficient memory use. For long-running applications processing many rules:
+DataLogic-rs uses an arena-based memory management system for efficient allocation and deallocation of values during rule evaluation. This approach significantly improves performance and reduces memory overhead.
+
+### Memory Management Methods
+
+- `DataLogic::with_chunk_size(size: usize) -> Self`: Create a new instance with a specific arena chunk size
+- `reset_arena(&mut self)`: Reset the arena to free all allocated memory
+
+### Using the Arena in Long-Running Applications
+
+For long-running applications or when processing many rules, periodically reset the arena to prevent excessive memory usage:
 
 ```rust
 use datalogic_rs::{DataLogic, Result};
@@ -155,6 +164,15 @@ fn process_batches(batches: Vec<(String, String)>) -> Result<()> {
     Ok(())
 }
 ```
+
+### Best Practices for Arena Management
+
+1. **Reset Periodically**: Call `reset_arena()` after processing batches of rules to free memory
+2. **Tune Chunk Size**: For memory-sensitive applications, customize the arena chunk size
+3. **Reuse Parsed Rules**: Parse rules once and reuse them to avoid repeated parsing costs
+4. **Beware of Dangling References**: After `reset_arena()` is called, all previously returned values become invalid
+
+For more detailed information on using the arena, see the [ARENA.md](ARENA.md) document.
 
 ## Error Handling
 
@@ -195,25 +213,38 @@ fn process_input(rule: &str, data: &str) -> Result<()> {
 
 ## Custom Operators
 
-The library supports extending its functionality with custom operators:
+The library supports extending its functionality with custom operators. These operators need to be arena-aware to properly interact with the memory management system.
+
+### Implementing Custom Operators
+
+Custom operators in DataLogic-rs implement the `CustomOperator` trait, which requires an `evaluate` method that takes arguments and returns a result allocated within the arena:
 
 ```rust
-use datalogic_rs::{CustomOperator, DataLogic, DataValue};
+use datalogic_rs::{CustomOperator, DataLogic, DataValue, Result};
+use datalogic_rs::value::NumberValue;
+use datalogic_rs::arena::DataArena;
+use std::fmt::Debug;
 
 // 1. Define a struct that implements the CustomOperator trait
+#[derive(Debug)]
 struct PowerOperator;
 
 impl CustomOperator for PowerOperator {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
+    fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
         if args.len() != 2 {
-            return Err("Power operator requires exactly 2 arguments".to_string());
+            return Err(LogicError::InvalidArgument {
+                reason: "Power operator requires exactly 2 arguments".to_string(),
+            });
         }
         
         if let (Some(base), Some(exp)) = (args[0].as_f64(), args[1].as_f64()) {
-            return Ok(DataValue::from(base.powf(exp)));
+            // Allocate the result in the arena
+            return Ok(arena.alloc(DataValue::Number(NumberValue::from_f64(base.powf(exp)))));
         }
         
-        Err("Arguments must be numbers".to_string())
+        Err(LogicError::InvalidArgument {
+            reason: "Arguments must be numbers".to_string(),
+        })
     }
 }
 
@@ -221,7 +252,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dl = DataLogic::new();
     
     // 2. Register the custom operator with DataLogic
-    dl.register_operator("pow", PowerOperator);
+    dl.register_custom_operator("pow", Box::new(PowerOperator));
     
     // 3. Use the custom operator in your logic expressions
     let result = dl.evaluate_str(
@@ -235,23 +266,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Custom Operator API
+### Arena Allocation in Custom Operators
 
-The `CustomOperator` trait requires implementing a single method:
+When implementing custom operators, follow these arena allocation best practices:
+
+1. **Always allocate results in the arena**: Use `arena.alloc()` for any values you return
+2. **Use arena helper methods for collections**:
+   - `arena.get_data_value_vec()` - Get a temporary vector for building collections
+   - `arena.bump_vec_into_slice()` - Convert a temporary vector to a permanent slice
+   - `arena.alloc_str()` - Allocate string values
+   - `arena.alloc_slice_copy()` - Allocate arrays of copyable types
+
+3. **Return references from the arena**: The return type must be a reference to a value in the arena
+
+### Working with Collections in Custom Operators
+
+For operators that need to build collections:
 
 ```rust
-fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String>;
+fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    // Create a temporary vector backed by the arena
+    let mut temp_vec = arena.get_data_value_vec();
+    
+    // Add elements to it
+    for i in 1..=5 {
+        temp_vec.push(DataValue::Number(i.into()));
+    }
+    
+    // Convert to a permanent slice in the arena
+    let result_slice = arena.bump_vec_into_slice(temp_vec);
+    
+    // Create and return a DataValue array allocated in the arena
+    Ok(arena.alloc(DataValue::Array(result_slice)))
+}
 ```
 
-- `args`: A slice of `DataValue` instances, representing the arguments passed to the operator
-- Returns: Either a `DataValue` containing the result or a `String` error message
+For more complex examples and detailed information on using the arena in custom operators, see the [ARENA.md](ARENA.md) document.
 
 ### Registration
 
 To register a custom operator with DataLogic:
 
 ```rust
-dl.register_operator("operator_name", OperatorImplementation);
+dl.register_custom_operator("operator_name", Box::new(OperatorImplementation));
 ```
 
 ### Advanced Use Cases
