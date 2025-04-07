@@ -10,51 +10,13 @@
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 
+use super::custom::{CustomOperator, CustomOperatorRegistry};
 use super::interner::StringInterner;
 use crate::logic::Result;
 use crate::value::{DataValue, NumberValue};
-
-/// Trait for custom JSONLogic operators
-pub trait CustomOperator: fmt::Debug + Send + Sync {
-    /// Evaluate the custom operator with the given arguments
-    ///
-    /// This function takes owned DataValue arguments and returns an owned DataValue.
-    /// The actual allocation in the arena is handled internally.
-    fn evaluate<'a>(
-        &self,
-        args: &'a [DataValue<'a>],
-        arena: &'a DataArena,
-    ) -> Result<&'a DataValue<'a>>;
-}
-
-/// Registry for custom operator functions
-#[derive(Default)]
-pub struct CustomOperatorRegistry {
-    operators: HashMap<String, Box<dyn CustomOperator>>,
-}
-
-impl CustomOperatorRegistry {
-    /// Creates a new empty custom operator registry
-    pub fn new() -> Self {
-        Self {
-            operators: HashMap::new(),
-        }
-    }
-
-    /// Registers a custom operator function
-    pub fn register(&mut self, name: &str, operator: Box<dyn CustomOperator>) {
-        self.operators.insert(name.to_string(), operator);
-    }
-
-    /// Returns a reference to a custom operator by name
-    pub fn get(&self, name: &str) -> Option<&dyn CustomOperator> {
-        self.operators.get(name).map(|op| op.as_ref())
-    }
-}
 
 /// Maximum number of path components in the fixed-size array
 const PATH_CHAIN_CAPACITY: usize = 16;

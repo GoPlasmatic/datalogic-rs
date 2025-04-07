@@ -359,13 +359,70 @@ fn process_batches(batches: Vec<(String, String)>) -> Result<()> {
             <section id="custom-operators" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">Custom Operators</h2>
                 <p class="mdc-typography--body1">
-                    You can extend DataLogic-rs with your own custom operators by implementing the <code>CustomOperator</code> trait:
+                    DataLogic-rs provides two approaches for implementing custom operators:
+                </p>
+                
+                <ul class="mdc-typography--body1">
+                    <li><strong>CustomSimple</strong> - A simplified API that works with owned values, ideal for scalar operations</li>
+                    <li><strong>CustomAdvanced</strong> - Direct arena access for maximum performance and complex data structures</li>
+                </ul>
+
+                <h3 class="mdc-typography--subtitle1">CustomSimple - Simplified Approach</h3>
+                <p class="mdc-typography--body1">
+                    The CustomSimple approach lets you work with operators as simple functions without worrying about arena allocation:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::{DataLogic, DataValue, SimpleOperatorFn};
+use datalogic_rs::value::NumberValue;
+
+// Define a simple custom operator that doubles a number
+fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+    if args.is_empty() {
+        return Err("double operator requires at least one argument".to_string());
+    }
+    
+    if let Some(n) = args[0].as_f64() {
+        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
+    }
+    
+    Err("Argument must be a number".to_string())
+}
+
+fn main() {
+    let mut dl = DataLogic::new();
+    
+    // Register the simple custom operator
+    dl.register_simple_operator("double", double);
+    
+    // Use the custom operator
+    let rule_str = r#"{"double":5}"#;
+    
+    let result = dl.evaluate_str(rule_str, "{}", None).unwrap();
+    
+    println!("Result: {}", result); // Prints: 10
+}</code></pre>
+                </div>
+
+                <p class="mdc-typography--body1">
+                    The CustomSimple approach is ideal for:
+                </p>
+                <ul class="mdc-typography--body1">
+                    <li>Working with scalar values (numbers, strings, booleans)</li>
+                    <li>Simpler implementation without arena management</li>
+                    <li>Operations that don't require returning complex data structures</li>
+                </ul>
+                
+                <h3 class="mdc-typography--subtitle1">CustomAdvanced - Arena-Based Approach</h3>
+                <p class="mdc-typography--body1">
+                    For more complex operations or when you need maximum performance, you can implement the <code>CustomOperator</code> trait:
                 </p>
                 
                 <div class="code-block mdc-card">
                     <pre><code class="language-rust">use datalogic_rs::{DataLogic, DataValue, CustomOperator};
 use datalogic_rs::arena::DataArena;
 use datalogic_rs::value::NumberValue;
+use datalogic_rs::logic::Result;
 
 // Define a custom operator that doubles a number
 #[derive(Debug)]
@@ -404,9 +461,46 @@ fn main() {
 }</code></pre>
                 </div>
                 
-                <h3 class="mdc-typography--subtitle1">Using Arena Allocation in Custom Operators</h3>
+                <h3 class="mdc-typography--subtitle1">Working with Complex Data in CustomAdvanced</h3>
                 <p class="mdc-typography--body1">
-                    When implementing custom operators, always allocate results in the arena to ensure proper memory management:
+                    The CustomAdvanced approach lets you work directly with arrays and objects:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">#[derive(Debug)]
+struct FilterEven;
+
+impl CustomOperator for FilterEven {
+    fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+        if args.is_empty() {
+            return Ok(arena.empty_array_value());
+        }
+
+        if let Some(arr) = args[0].as_array() {
+            // Filter numbers that are even
+            let filtered: Vec<&DataValue> = arr
+                .iter()
+                .filter(|v| {
+                    if let Some(n) = v.as_i64() {
+                        n % 2 == 0
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+
+            // Allocate the filtered array in the arena
+            Ok(arena.alloc_array(&filtered))
+        } else {
+            Ok(arena.empty_array_value())
+        }
+    }
+}</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Using Arena Allocation in CustomAdvanced</h3>
+                <p class="mdc-typography--body1">
+                    When implementing CustomAdvanced operators, always allocate results in the arena:
                 </p>
                 
                 <div class="code-block mdc-card">
@@ -429,15 +523,20 @@ let result_slice = arena.bump_vec_into_slice(temp_vec);
 Ok(arena.alloc(DataValue::Array(result_slice)))</code></pre>
                 </div>
                 
+                <h3 class="mdc-typography--subtitle1">Choosing Between CustomSimple and CustomAdvanced</h3>
                 <p class="mdc-typography--body1">
-                    Key points to remember:
+                    Key factors to consider:
                 </p>
                 <ul class="mdc-typography--body1">
-                    <li>Always use <code>arena.alloc()</code> for new values</li>
-                    <li>Return references from the arena, not owned values</li>
-                    <li>Use arena helper methods for complex data structures</li>
-                    <li>Reset the arena when appropriate to free memory</li>
+                    <li><strong>CustomSimple</strong>: Easier to implement, works well for scalar operations</li>
+                    <li><strong>CustomAdvanced</strong>: More complex but offers full control, required for arrays and objects</li>
+                    <li>Use CustomSimple when possible for simpler code maintenance</li>
+                    <li>Use CustomAdvanced when performance or complex data structures are required</li>
                 </ul>
+                
+                <p class="mdc-typography--body1">
+                    For detailed implementation guidance, see the <a href="https://github.com/codetiger/datalogic-rs/blob/main/CUSTOM_OPERATORS.md" target="_blank">Custom Operators documentation</a>.
+                </p>
             </section>
             
             <section id="wasm-support" class="tutorial-section">

@@ -5,10 +5,14 @@
 //! and improving memory locality.
 
 mod bump;
+mod custom;
 mod interner;
 
-pub use bump::CustomOperator;
+// Re-export the main types
 pub use bump::DataArena;
+
+// Re-export the simplified operator types from custom_operator
+pub use custom::{CustomOperator, CustomOperatorRegistry, SimpleOperatorAdapter, SimpleOperatorFn};
 
 #[cfg(test)]
 mod tests {

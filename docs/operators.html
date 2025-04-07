@@ -292,13 +292,18 @@
             <section class="advanced-section mdc-card">
                 <h2 class="mdc-typography--headline5">Custom Operators</h2>
                 <p class="mdc-typography--body1">
-                    DataLogic-rs allows you to extend the engine with custom operators by implementing the <code>CustomOperator</code> trait. 
-                    This provides flexibility to implement domain-specific functionality beyond the standard operators.
+                    DataLogic-rs allows you to extend the engine with custom operators through two different approaches:
+                </p>
+                
+                <h3 class="mdc-typography--subtitle1">CustomSimple and CustomAdvanced</h3>
+                <p class="mdc-typography--body1">
+                    <strong>CustomSimple</strong> - A simplified API for scalar operations without arena management<br>
+                    <strong>CustomAdvanced</strong> - Complete control via the <code>CustomOperator</code> trait with arena allocation
                 </p>
                 
                 <p class="mdc-typography--body1">
                     Custom operators enable you to create reusable, domain-specific logic that can be composed with 
-                    built-in operators. For implementation details and examples, see the Custom Operators section in the tutorial.
+                    built-in operators. Both approaches support seamless integration with DataLogic's rule evaluation system.
                 </p>
                 
                 <a href="tutorial.html#custom-operators" class="mdc-button mdc-button--raised">

@@ -187,30 +187,27 @@ assert!(result.as_bool().unwrap());
 Create domain-specific operators to extend the system:
 
 ```rust
-use datalogic_rs::{DataLogic, CustomOperator, DataValue};
+use datalogic_rs::{DataLogic, SimpleOperatorFn, DataValue};
+use datalogic_rs::value::NumberValue;
 
-// Define a custom operator that calculates the power of numbers
-struct PowerOperator;
-
-impl CustomOperator for PowerOperator {
-    fn evaluate(&self, args: &[DataValue]) -> Result<DataValue, String> {
-        if args.len() != 2 {
-            return Err("Power operator requires exactly 2 arguments".to_string());
-        }
-        
-        if let (Some(base), Some(exp)) = (args[0].as_f64(), args[1].as_f64()) {
-            return Ok(DataValue::from(base.powf(exp)));
-        }
-        
-        Err("Arguments must be numbers".to_string())
+// Define a custom operator function - simple approach
+fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+    if args.is_empty() {
+        return Err("double operator requires an argument".to_string());
     }
+    
+    if let Some(n) = args[0].as_f64() {
+        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
+    }
+    
+    Err("Argument must be a number".to_string())
 }
 
 let mut dl = DataLogic::new();
-dl.register_operator("pow", PowerOperator);
+dl.register_simple_operator("double", double);
 
 let result = dl.evaluate_str(
-    r#"{"pow": [2, 3]}"#,
+    r#"{"double": 4}"#,
     r#"{}"#,
     None
 ).unwrap();
@@ -224,13 +221,15 @@ Custom operators can be combined with built-in operators for complex logic:
 let complex_rule = r#"{
     "*": [
         2,
-        {"pow": [{"var": "base"}, 2]},
+        {"double": {"var": "value"}},
         3
     ]
 }"#;
 
-// With data: {"base": 3}, evaluates to 2 * 3² * 3 = 2 * 9 * 3 = 54
+// With data: {"value": 3}, evaluates to 2 * (3*2) * 3 = 2 * 6 * 3 = 36
 ```
+
+For more advanced use cases and complex data types, DataLogic-rs also provides an [advanced custom operator API](CUSTOM_OPERATORS.md).
 
 ## Use Cases
 
@@ -373,4 +372,5 @@ Licensed under Apache License, Version 2.0
 ✅ Try out `datalogic-rs` today!  
 📖 Check out the [API documentation](./API.md) for detailed usage instructions  
 📚 See the [docs.rs documentation](https://docs.rs/datalogic-rs) for comprehensive reference  
+📝 Learn how to implement [custom operators](./CUSTOM_OPERATORS.md) to extend the engine  
 ⭐ Star the [GitHub repository](https://github.com/codetiger/datalogic-rs) if you find it useful!

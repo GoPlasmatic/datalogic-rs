@@ -4,6 +4,7 @@
 //! for parsing and evaluating logic expressions.
 
 use crate::arena::DataArena;
+use crate::arena::{SimpleOperatorAdapter, SimpleOperatorFn};
 use crate::logic::{evaluate, optimize, Logic, Result};
 use crate::parser::{ExpressionParser, ParserRegistry};
 use crate::value::{DataValue, FromJson, ToJson};
@@ -257,6 +258,50 @@ impl DataLogic {
         let data_value = self.parse_data(data_source)?;
         let result = self.evaluate(&rule, &data_value)?;
         Ok(result.to_json())
+    }
+
+    /// Register a simple custom operator implementation
+    ///
+    /// This method provides an easier way to register custom operators
+    /// without needing to understand arena-based memory management. The operator
+    /// is implemented as a function that takes owned DataValue objects and returns
+    /// an owned DataValue result.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use datalogic_rs::{DataLogic, DataValue, Result};
+    ///
+    /// // Define a simple operator that doubles a number
+    /// fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+    ///     if args.is_empty() {
+    ///         return Err("double operator requires at least one argument".to_string());
+    ///     }
+    ///     
+    ///     if let Some(n) = args[0].as_f64() {
+    ///         return Ok(DataValue::float(n * 2.0));
+    ///     }
+    ///     
+    ///     Err("Argument must be a number".to_string())
+    /// }
+    ///
+    /// let mut dl = DataLogic::new();
+    ///
+    /// // Register the simple operator
+    /// dl.register_simple_operator("double", double);
+    ///
+    /// // Use the custom operator in a rule
+    /// let result = dl.evaluate_str(
+    ///     r#"{"double": 5}"#,
+    ///     r#"{}"#,
+    ///     None
+    /// ).unwrap();
+    ///
+    /// assert_eq!(result.as_f64().unwrap(), 10.0);
+    /// ```
+    pub fn register_simple_operator(&mut self, name: &str, function: SimpleOperatorFn) {
+        let adapter = SimpleOperatorAdapter::new(name, function);
+        self.register_custom_operator(name, Box::new(adapter));
     }
 }
 
