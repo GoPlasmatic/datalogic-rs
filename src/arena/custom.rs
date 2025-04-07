@@ -43,12 +43,13 @@ impl CustomOperatorRegistry {
     }
 }
 
-/// A function type that works with owned DataValues rather than arena references
+/// A function type for simple custom operators that works with owned DataValues
 ///
-/// This type allows implementing custom operators without dealing with
-/// arena allocation or lifetimes. The function takes owned DataValues
-/// and returns an owned DataValue.
-pub type SimpleOperatorFn = fn(Vec<DataValue>) -> std::result::Result<DataValue, String>;
+/// This function signature uses owned DataValues without lifetimes, making it
+/// easier to implement custom operators. Takes arguments and data context
+/// as owned values and returns an owned DataValue.
+pub type SimpleOperatorFn =
+    for<'r> fn(Vec<DataValue<'r>>, DataValue<'r>) -> std::result::Result<DataValue<'r>, String>;
 
 /// An adapter that converts between the simple owned-value API and the arena-based API
 ///
@@ -77,10 +78,16 @@ impl CustomOperator for SimpleOperatorAdapter {
         arena: &'a DataArena,
     ) -> Result<&'a DataValue<'a>> {
         // Convert arena-referenced DataValues to owned DataValues
-        let owned_args = args.iter().map(|arg| arg.to_owned()).collect::<Vec<_>>();
+        let owned_args = args.to_vec();
+
+        // Get the current data context and convert to owned DataValue
+        let data_context = match arena.current_context(0) {
+            Some(ctx) => ctx.clone(),
+            None => DataValue::Null,
+        };
 
         // Call the user's simple function that works with owned values
-        match (self.function)(owned_args) {
+        match (self.function)(owned_args, data_context) {
             Ok(result) => {
                 // Handle basic scalar types directly
                 match result {
@@ -92,7 +99,7 @@ impl CustomOperator for SimpleOperatorAdapter {
                         let s_arena = arena.alloc_str(s);
                         Ok(arena.alloc(DataValue::String(s_arena)))
                     }
-                    // For complex types like Array and Object, convert to string as a fallback
+                    // Handle complex types like Array and Object by converting to string
                     DataValue::Array(_) | DataValue::Object(_) => {
                         let str_rep = format!("{:?}", result);
                         let s_arena = arena.alloc_str(&str_rep);

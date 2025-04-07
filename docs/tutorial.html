@@ -377,9 +377,19 @@ fn process_batches(batches: Vec<(String, String)>) -> Result<()> {
 use datalogic_rs::value::NumberValue;
 
 // Define a simple custom operator that doubles a number
-fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+fn double<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
     if args.is_empty() {
-        return Err("double operator requires at least one argument".to_string());
+        // If no arguments provided, check for a value in the data context
+        if let Some(obj) = data.as_object() {
+            for (key, val) in obj {
+                if *key == "value" && val.is_number() {
+                    if let Some(n) = val.as_f64() {
+                        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
+                    }
+                }
+            }
+        }
+        return Err("double operator requires at least one argument or 'value' in data".to_string());
     }
     
     if let Some(n) = args[0].as_f64() {
@@ -395,12 +405,16 @@ fn main() {
     // Register the simple custom operator
     dl.register_simple_operator("double", double);
     
-    // Use the custom operator
+    // Use the custom operator with an explicit argument
     let rule_str = r#"{"double":5}"#;
-    
     let result = dl.evaluate_str(rule_str, "{}", None).unwrap();
-    
     println!("Result: {}", result); // Prints: 10
+    
+    // Use the custom operator with data context
+    let rule_str = r#"{"double":[]}"#;
+    let data_str = r#"{"value":7}"#;
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    println!("Result from context: {}", result); // Prints: 14
 }</code></pre>
                 </div>
 
@@ -411,6 +425,7 @@ fn main() {
                     <li>Working with scalar values (numbers, strings, booleans)</li>
                     <li>Simpler implementation without arena management</li>
                     <li>Operations that don't require returning complex data structures</li>
+                    <li>Direct access to the data context for more flexible operations</li>
                 </ul>
                 
                 <h3 class="mdc-typography--subtitle1">CustomAdvanced - Arena-Based Approach</h3>

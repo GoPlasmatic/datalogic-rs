@@ -191,9 +191,19 @@ use datalogic_rs::{DataLogic, SimpleOperatorFn, DataValue};
 use datalogic_rs::value::NumberValue;
 
 // Define a custom operator function - simple approach
-fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+fn double<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
     if args.is_empty() {
-        return Err("double operator requires an argument".to_string());
+        // If no arguments, try to use a value from data context
+        if let Some(obj) = data.as_object() {
+            for (key, val) in obj {
+                if *key == "value" && val.is_number() {
+                    if let Some(n) = val.as_f64() {
+                        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
+                    }
+                }
+            }
+        }
+        return Err("double operator requires an argument or 'value' in data".to_string());
     }
     
     if let Some(n) = args[0].as_f64() {
@@ -206,6 +216,7 @@ fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
 let mut dl = DataLogic::new();
 dl.register_simple_operator("double", double);
 
+// Using with an explicit argument
 let result = dl.evaluate_str(
     r#"{"double": 4}"#,
     r#"{}"#,
@@ -213,6 +224,15 @@ let result = dl.evaluate_str(
 ).unwrap();
 
 assert_eq!(result.as_f64().unwrap(), 8.0);
+
+// Using with data context
+let result = dl.evaluate_str(
+    r#"{"double": []}"#,
+    r#"{"value": 5}"#,
+    None
+).unwrap();
+
+assert_eq!(result.as_f64().unwrap(), 10.0);
 ```
 
 Custom operators can be combined with built-in operators for complex logic:

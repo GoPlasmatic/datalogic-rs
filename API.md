@@ -266,6 +266,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Simple Custom Operators
+
+For simpler use cases, DataLogic-rs provides a more convenient way to implement custom operators:
+
+```rust
+use datalogic_rs::{DataLogic, DataValue, SimpleOperatorFn};
+use datalogic_rs::value::NumberValue;
+
+// Define a custom operator function with access to data context
+fn pow<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
+    // Check if we have the expected number of arguments
+    if args.len() != 2 {
+        // If arguments are missing, try to find them in the data context
+        if args.len() == 1 && args[0].is_number() {
+            if let Some(obj) = data.as_object() {
+                for (key, val) in obj {
+                    if *key == "exponent" && val.is_number() {
+                        if let (Some(base), Some(exp)) = (args[0].as_f64(), val.as_f64()) {
+                            return Ok(DataValue::Number(NumberValue::from_f64(base.powf(exp))));
+                        }
+                    }
+                }
+            }
+        }
+        return Err("Power operator requires 2 arguments or second arg in data context".to_string());
+    }
+    
+    // Process the arguments
+    if let (Some(base), Some(exp)) = (args[0].as_f64(), args[1].as_f64()) {
+        return Ok(DataValue::Number(NumberValue::from_f64(base.powf(exp))));
+    }
+    
+    Err("Arguments must be numbers".to_string())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dl = DataLogic::new();
+    
+    // Register the custom operator
+    dl.register_simple_operator("pow", pow);
+    
+    // Use the custom operator with explicit arguments
+    let result = dl.evaluate_str(
+        r#"{"pow": [2, 3]}"#,
+        r#"{}"#,
+        None
+    )?;
+    println!("2^3 = {}", result); // Prints: 2^3 = 8
+    
+    // Use the custom operator with data context
+    let result = dl.evaluate_str(
+        r#"{"pow": [2]}"#,
+        r#"{"exponent": 4}"#,
+        None
+    )?;
+    println!("2^4 = {}", result); // Prints: 2^4 = 16
+    
+    Ok(())
+}
+```
+
+The SimpleOperatorFn approach:
+- Has access to both arguments and the current data context
+- Works with owned DataValues
+- Can return scalar types (numbers, strings, booleans, null)
+- Handles arena allocation automatically
+- Is ideal for most use cases
+
 ### Arena Allocation in Custom Operators
 
 When implementing custom operators, follow these arena allocation best practices:
@@ -301,14 +369,25 @@ fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Resul
 }
 ```
 
-For more complex examples and detailed information on using the arena in custom operators, see the [ARENA.md](ARENA.md) document.
+### Accessing Data Context
+
+Both custom operator types provide access to the current data context:
+
+1. **SimpleOperatorFn**: The data context is directly passed as the second parameter
+2. **CustomOperator trait**: The data context can be accessed via `arena.current_context(0)`
+
+This allows custom operators to access values from the data independent of the arguments provided, enabling more flexible and powerful operations.
 
 ### Registration
 
 To register a custom operator with DataLogic:
 
 ```rust
+// For custom operator trait implementations
 dl.register_custom_operator("operator_name", Box::new(OperatorImplementation));
+
+// For simple function-based operators
+dl.register_simple_operator("operator_name", function_name);
 ```
 
 ### Advanced Use Cases
@@ -331,7 +410,7 @@ let data = r#"{"base": 4}"#;
 let result = dl.evaluate_str(rule, data, None)?;
 ```
 
-For more examples, see the `examples/custom.rs` file in the repository.
+For more examples, see the `examples/custom.rs` and `examples/custom_simple.rs` files in the repository.
 
 ## Complete API Reference
 

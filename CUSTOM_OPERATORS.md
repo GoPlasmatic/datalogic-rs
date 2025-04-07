@@ -18,9 +18,19 @@ use datalogic_rs::{DataValue, SimpleOperatorFn};
 use datalogic_rs::value::NumberValue;
 
 // Simple custom operator that doubles a number
-fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+fn double<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
     if args.is_empty() {
-        return Err("double operator requires at least one argument".to_string());
+        // If no arguments provided, check if we can get a value from data context
+        if let Some(obj) = data.as_object() {
+            for (key, val) in obj {
+                if *key == "value" && val.is_number() {
+                    if let Some(n) = val.as_f64() {
+                        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
+                    }
+                }
+            }
+        }
+        return Err("double operator requires at least one argument or 'value' in data".to_string());
     }
     
     if let Some(n) = args[0].as_f64() {
@@ -31,9 +41,21 @@ fn double(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
 }
 
 // String operator example
-fn to_uppercase(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+fn to_uppercase<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
     if args.is_empty() {
-        return Err("to_uppercase requires a string argument".to_string());
+        // If no arguments provided, check if we can get a text from data context
+        if let Some(obj) = data.as_object() {
+            for (key, val) in obj {
+                if *key == "text" && val.is_string() {
+                    if let Some(s) = val.as_str() {
+                        let upper = s.to_uppercase();
+                        let upper_str = Box::leak(upper.into_boxed_str());
+                        return Ok(DataValue::String(upper_str));
+                    }
+                }
+            }
+        }
+        return Err("to_uppercase requires a string argument or 'text' in data".to_string());
     }
     
     if let Some(s) = args[0].as_str() {
@@ -47,9 +69,19 @@ fn to_uppercase(args: Vec<DataValue>) -> std::result::Result<DataValue, String> 
 }
 
 // Boolean operator example
-fn is_even(args: Vec<DataValue>) -> std::result::Result<DataValue, String> {
+fn is_even<'r>(args: Vec<DataValue<'r>>, data: DataValue<'r>) -> std::result::Result<DataValue<'r>, String> {
     if args.is_empty() {
-        return Err("is_even requires a number argument".to_string());
+        // If no arguments provided, check if we can get a number from data context
+        if let Some(obj) = data.as_object() {
+            for (key, val) in obj {
+                if *key == "number" && val.is_number() {
+                    if let Some(n) = val.as_i64() {
+                        return Ok(DataValue::Bool(n % 2 == 0));
+                    }
+                }
+            }
+        }
+        return Err("is_even requires a number argument or 'number' in data".to_string());
     }
     
     if let Some(n) = args[0].as_i64() {
@@ -97,6 +129,14 @@ let result = dl.evaluate_str(
     None
 )?;
 // result = true
+
+// Using data context directly
+let result = dl.evaluate_str(
+    r#"{"double": []}"#,
+    r#"{"value": 3}"#,
+    None
+)?;
+// result = 6
 ```
 
 ### How CustomSimple Works
@@ -104,7 +144,7 @@ let result = dl.evaluate_str(
 Behind the scenes, the CustomSimple API:
 
 1. Converts arena-referenced `DataValue` instances to owned instances
-2. Calls your function with these owned values
+2. Calls your function with these owned values and the current data context
 3. Takes the returned owned value and allocates it back in the arena
 
 The implementation is organized in a dedicated `src/arena/custom_operator.rs` module.
@@ -231,6 +271,7 @@ impl CustomOperator for FilterEven {
 1. You're working with scalar values (numbers, strings, booleans)
 2. You want a simpler implementation without arena management
 3. You don't need to return complex data structures
+4. You want to access the current data context directly
 
 ### Use CustomAdvanced when:
 1. You need to return complex data types (arrays, objects)
@@ -245,6 +286,8 @@ impl CustomOperator for FilterEven {
 
 3. **Composition**: Both types of custom operators can be combined with built-in operators, allowing for complex expressions.
 
+4. **Data Context**: Both approaches provide access to the current data context, allowing operators to access data directly.
+
 ## Best Practices
 
 1. Focus on implementing operators that work with well-defined input types
@@ -252,6 +295,7 @@ impl CustomOperator for FilterEven {
 3. Keep your custom operators simple and focused on specific tasks
 4. For strings in CustomSimple, remember to use `Box::leak` to create 'static references
 5. For complex operations, prefer the CustomAdvanced API
+6. When using the data context, check for existence of expected fields and handle missing cases gracefully
 
 ## Examples
 
