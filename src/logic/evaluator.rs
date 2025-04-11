@@ -396,24 +396,25 @@ fn eval_coalesce<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builder::RuleBuilder;
-    use crate::builder::RuleFactory;
+    use crate::logic::operators::comparison::ComparisonOp;
+    use crate::logic::token::{OperatorType, Token};
     use crate::value::FromJson;
     use serde_json::json;
 
     #[test]
     fn test_evaluate_literal() {
         let arena = DataArena::new();
-        let builder = RuleBuilder::new(&arena);
 
         // Null
-        let token = builder.null();
-        let result = evaluate(token.root(), &arena).unwrap();
+        let token = Token::literal(DataValue::null());
+        let token_ref = arena.alloc(token);
+        let result = evaluate(token_ref, &arena).unwrap();
         assert!(result.is_null());
 
         // Boolean
-        let token = builder.bool(true);
-        let result = evaluate(token.root(), &arena).unwrap();
+        let token = Token::literal(DataValue::bool(true));
+        let token_ref = arena.alloc(token);
+        let result = evaluate(token_ref, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -424,11 +425,23 @@ mod tests {
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         arena.set_current_context(&data, &DataValue::String("$"));
         arena.set_root_context(&data);
-        let builder = RuleBuilder::new(&arena);
 
-        // Equal
-        let token = builder.compare().equal_op().var("foo").int(42).build();
-        let result = evaluate(token.root(), &arena).unwrap();
+        // Equal - create token structure directly:
+        // {"==": [{"var": "foo"}, 42]}
+        let var_token = Token::variable("foo", None);
+        let var_ref = arena.alloc(var_token);
+
+        let literal_token = Token::literal(DataValue::integer(42));
+        let literal_ref = arena.alloc(literal_token);
+
+        let args = vec![var_ref, literal_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let equal_token = Token::operator(OperatorType::Comparison(ComparisonOp::Equal), array_ref);
+        let equal_ref = arena.alloc(equal_token);
+
+        let result = evaluate(equal_ref, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -439,11 +452,20 @@ mod tests {
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
         arena.set_current_context(&data, &DataValue::String("$"));
         arena.set_root_context(&data);
-        let factory = RuleFactory::new(&arena);
 
-        // Simple coalesce with one value
-        let token = factory.coalesce(vec!["name"]);
-        let result = evaluate(token.root(), &arena).unwrap();
+        // Create {"??": [{"var": "name"}]}
+        // Instead of using a string literal, we need to use a variable reference
+        let name_var_token = Token::variable("name", None);
+        let name_var_ref = arena.alloc(name_var_token);
+
+        let args = vec![name_var_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let coalesce_token = Token::operator(OperatorType::Coalesce, array_ref);
+        let coalesce_ref = arena.alloc(coalesce_token);
+
+        let result = evaluate(coalesce_ref, &arena).unwrap();
         assert_eq!(result.as_str(), Some("Jane"));
     }
 

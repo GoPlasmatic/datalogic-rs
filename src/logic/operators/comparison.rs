@@ -446,53 +446,115 @@ pub fn eval_less_than_or_equal<'a>(
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::operators::comparison::ComparisonOp;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_equality() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"a": 10, "b": "10", "c": 20, "d": 10});
 
         // Test equal with same type
-        let rule = builder.compare().equal_op().var("a").int(10).build();
+        // Create {"==": [{"var": "a"}, 10]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let ten_token = Token::literal(DataValue::integer(10));
+        let ten_ref = arena.alloc(ten_token);
+
+        let equal_args = vec![a_var_ref, ten_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::Equal),
+            equal_array_ref,
+        );
+        let equal_ref = arena.alloc(equal_token);
+
+        let rule = Logic::new(equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test equal with different types (number and string)
-        let rule = builder.compare().equal_op().var("a").var("b").build();
+        // Create {"==": [{"var": "a"}, {"var": "b"}]}
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let equal_args = vec![a_var_ref, b_var_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::Equal),
+            equal_array_ref,
+        );
+        let equal_ref = arena.alloc(equal_token);
+
+        let rule = Logic::new(equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test not equal
-        let rule = builder.compare().equal_op().var("a").var("c").build();
+        // Create {"==": [{"var": "a"}, {"var": "c"}]}
+        let c_var_token = Token::variable("c", None);
+        let c_var_ref = arena.alloc(c_var_token);
+
+        let equal_args = vec![a_var_ref, c_var_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::Equal),
+            equal_array_ref,
+        );
+        let equal_ref = arena.alloc(equal_token);
+
+        let rule = Logic::new(equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
         // Test variadic equal (a = d = 10)
-        let rule = builder
-            .compare()
-            .equal_op()
-            .var("a")
-            .var("d")
-            .int(10)
-            .build();
+        // Create {"==": [{"var": "a"}, {"var": "d"}, 10]}
+        let d_var_token = Token::variable("d", None);
+        let d_var_ref = arena.alloc(d_var_token);
+
+        let equal_args = vec![a_var_ref, d_var_ref, ten_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::Equal),
+            equal_array_ref,
+        );
+        let equal_ref = arena.alloc(equal_token);
+
+        let rule = Logic::new(equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test variadic equal failing (a = c = 10)
-        let rule = builder
-            .compare()
-            .equal_op()
-            .var("a")
-            .var("c")
-            .int(10)
-            .build();
+        // Create {"==": [{"var": "a"}, {"var": "c"}, 10]}
+        let equal_args = vec![a_var_ref, c_var_ref, ten_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::Equal),
+            equal_array_ref,
+        );
+        let equal_ref = arena.alloc(equal_token);
+
+        let rule = Logic::new(equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -501,52 +563,103 @@ mod tests {
     #[test]
     fn test_not_equal() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"a": 10, "b": "10", "c": 20, "d": 30});
 
         // Test not equal with two arguments
-        let rule = builder.compare().not_equal_op().var("a").var("c").build();
+        // Create {"!=": [{"var": "a"}, {"var": "c"}]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let c_var_token = Token::variable("c", None);
+        let c_var_ref = arena.alloc(c_var_token);
+
+        let not_equal_args = vec![a_var_ref, c_var_ref];
+        let not_equal_array_token = Token::ArrayLiteral(not_equal_args);
+        let not_equal_array_ref = arena.alloc(not_equal_array_token);
+
+        let not_equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::NotEqual),
+            not_equal_array_ref,
+        );
+        let not_equal_ref = arena.alloc(not_equal_token);
+
+        let rule = Logic::new(not_equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test not equal with same values
-        let rule = builder.compare().not_equal_op().var("a").int(10).build();
+        // Create {"!=": [{"var": "a"}, 10]}
+        let ten_token = Token::literal(DataValue::integer(10));
+        let ten_ref = arena.alloc(ten_token);
+
+        let not_equal_args = vec![a_var_ref, ten_ref];
+        let not_equal_array_token = Token::ArrayLiteral(not_equal_args);
+        let not_equal_array_ref = arena.alloc(not_equal_array_token);
+
+        let not_equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::NotEqual),
+            not_equal_array_ref,
+        );
+        let not_equal_ref = arena.alloc(not_equal_token);
+
+        let rule = Logic::new(not_equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
-        // Test not equal with multiple arguments (chain comparison)
-        // For multiple arguments, we need to chain comparisons with AND
-        let comparison1 = builder.compare().not_equal_op().var("a").int(10).build();
+        // Create multiple comparisons with AND (a != 10 && b != 10 && c != 10)
+        // First, create the individual comparisons
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
 
-        let comparison2 = builder.compare().not_equal_op().var("b").int(10).build();
+        // {"!=": [{"var": "a"}, 10]}
+        let ne1_args = vec![a_var_ref, ten_ref];
+        let ne1_array_token = Token::ArrayLiteral(ne1_args);
+        let ne1_array_ref = arena.alloc(ne1_array_token);
 
-        let comparison3 = builder.compare().not_equal_op().var("c").int(10).build();
+        let ne1_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::NotEqual),
+            ne1_array_ref,
+        );
+        let ne1_ref = arena.alloc(ne1_token);
 
-        let rule = builder
-            .control()
-            .and_op()
-            .operand(comparison1)
-            .operand(comparison2)
-            .operand(comparison3)
-            .build();
+        // {"!=": [{"var": "b"}, 10]}
+        let ne2_args = vec![b_var_ref, ten_ref];
+        let ne2_array_token = Token::ArrayLiteral(ne2_args);
+        let ne2_array_ref = arena.alloc(ne2_array_token);
 
-        let result = core.apply(&rule, &data_json).unwrap();
-        assert_eq!(result, json!(false));
+        let ne2_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::NotEqual),
+            ne2_array_ref,
+        );
+        let ne2_ref = arena.alloc(ne2_token);
 
-        // Test not equal with different values in a chain
-        let comparison1 = builder.compare().not_equal_op().var("a").var("b").build();
+        // {"!=": [{"var": "c"}, 10]}
+        let ne3_args = vec![c_var_ref, ten_ref];
+        let ne3_array_token = Token::ArrayLiteral(ne3_args);
+        let ne3_array_ref = arena.alloc(ne3_array_token);
 
-        let comparison2 = builder.compare().not_equal_op().var("b").var("c").build();
+        let ne3_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::NotEqual),
+            ne3_array_ref,
+        );
+        let ne3_ref = arena.alloc(ne3_token);
 
-        let rule = builder
-            .control()
-            .and_op()
-            .operand(comparison1)
-            .operand(comparison2)
-            .build();
+        // Create {"and": [{"!=": [{"var": "a"}, 10]}, {"!=": [{"var": "b"}, 10]}, {"!=": [{"var": "c"}, 10]}]}
+        let and_args = vec![ne1_ref, ne2_ref, ne3_ref];
+        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_ref = arena.alloc(and_array_token);
+
+        let and_token = Token::operator(
+            OperatorType::Control(crate::logic::operators::control::ControlOp::And),
+            and_array_ref,
+        );
+        let and_ref = arena.alloc(and_token);
+
+        let rule = Logic::new(and_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -555,23 +668,49 @@ mod tests {
     #[test]
     fn test_strict_equal() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"a": 10, "b": "10", "c": 20});
 
         // Test strict equal with same type
-        let rule = builder.compare().strict_equal_op().var("a").int(10).build();
+        // Create: {"===": [{"var": "a"}, 10]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let ten_token = Token::literal(DataValue::integer(10));
+        let ten_ref = arena.alloc(ten_token);
+
+        let equal_args = vec![a_var_ref, ten_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let strict_equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::StrictEqual),
+            equal_array_ref,
+        );
+        let strict_equal_ref = arena.alloc(strict_equal_token);
+
+        let rule = Logic::new(strict_equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test strict equal with different types (number and string)
-        let rule = builder
-            .compare()
-            .strict_equal_op()
-            .var("a")
-            .var("b")
-            .build();
+        // Create: {"===": [{"var": "a"}, {"var": "b"}]}
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let equal_args = vec![a_var_ref, b_var_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let strict_equal_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::StrictEqual),
+            equal_array_ref,
+        );
+        let strict_equal_ref = arena.alloc(strict_equal_token);
+
+        let rule = Logic::new(strict_equal_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -580,53 +719,89 @@ mod tests {
     #[test]
     fn test_greater_than() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"a": 10, "b": 5, "c": "20", "d": 30, "e": 3});
 
         // Test greater than with numbers
-        let rule = builder
-            .compare()
-            .greater_than_op()
-            .var("a")
-            .var("b")
-            .build();
+        // Create {">": [{"var": "a"}, {"var": "b"}]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let gt_args = vec![a_var_ref, b_var_ref];
+        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_ref = arena.alloc(gt_array_token);
+
+        let gt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::GreaterThan),
+            gt_array_ref,
+        );
+        let gt_ref = arena.alloc(gt_token);
+
+        let rule = Logic::new(gt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test greater than with string coercion
-        let rule = builder
-            .compare()
-            .greater_than_op()
-            .var("c")
-            .var("a")
-            .build();
+        // Create {">": [{"var": "c"}, {"var": "a"}]}
+        let c_var_token = Token::variable("c", None);
+        let c_var_ref = arena.alloc(c_var_token);
+
+        let gt_args = vec![c_var_ref, a_var_ref];
+        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_ref = arena.alloc(gt_array_token);
+
+        let gt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::GreaterThan),
+            gt_array_ref,
+        );
+        let gt_ref = arena.alloc(gt_token);
+
+        let rule = Logic::new(gt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
-        // Test variadic greater than (d > a > b > e), which should be true
-        let rule = builder
-            .compare()
-            .greater_than_op()
-            .var("d") // 30
-            .var("a") // 10
-            .var("b") // 5
-            .var("e") // 3
-            .build();
+        // Test variadic greater than (d > a > b > e)
+        // Create {">": [{"var": "d"}, {"var": "a"}, {"var": "b"}, {"var": "e"}]}
+        let d_var_token = Token::variable("d", None);
+        let d_var_ref = arena.alloc(d_var_token);
+
+        let e_var_token = Token::variable("e", None);
+        let e_var_ref = arena.alloc(e_var_token);
+
+        let gt_args = vec![d_var_ref, a_var_ref, b_var_ref, e_var_ref];
+        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_ref = arena.alloc(gt_array_token);
+
+        let gt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::GreaterThan),
+            gt_array_ref,
+        );
+        let gt_ref = arena.alloc(gt_token);
+
+        let rule = Logic::new(gt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
-        // Test variadic greater than (a > b > c) which should be false
-        let rule = builder
-            .compare()
-            .greater_than_op()
-            .var("a") // 10
-            .var("b") // 5
-            .var("c") // "20"
-            .build();
+        // Test variadic greater than (a > b > c)
+        // Create {">": [{"var": "a"}, {"var": "b"}, {"var": "c"}]}
+        let gt_args = vec![a_var_ref, b_var_ref, c_var_ref];
+        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_ref = arena.alloc(gt_array_token);
+
+        let gt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::GreaterThan),
+            gt_array_ref,
+        );
+        let gt_ref = arena.alloc(gt_token);
+
+        let rule = Logic::new(gt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -635,30 +810,66 @@ mod tests {
     #[test]
     fn test_less_than() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"a": 10, "b": 5, "c": "20"});
 
         // Test less than with numbers
-        let rule = builder.compare().less_than_op().var("b").var("a").build();
+        // Create {"<": [{"var": "b"}, {"var": "a"}]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let lt_args = vec![b_var_ref, a_var_ref];
+        let lt_array_token = Token::ArrayLiteral(lt_args);
+        let lt_array_ref = arena.alloc(lt_array_token);
+
+        let lt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::LessThan),
+            lt_array_ref,
+        );
+        let lt_ref = arena.alloc(lt_token);
+
+        let rule = Logic::new(lt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test less than with string coercion
-        let rule = builder.compare().less_than_op().var("a").var("c").build();
+        // Create {"<": [{"var": "a"}, {"var": "c"}]}
+        let c_var_token = Token::variable("c", None);
+        let c_var_ref = arena.alloc(c_var_token);
+
+        let lt_args = vec![a_var_ref, c_var_ref];
+        let lt_array_token = Token::ArrayLiteral(lt_args);
+        let lt_array_ref = arena.alloc(lt_array_token);
+
+        let lt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::LessThan),
+            lt_array_ref,
+        );
+        let lt_ref = arena.alloc(lt_token);
+
+        let rule = Logic::new(lt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
         // Test variadic less than (b < a < c)
-        let rule = builder
-            .compare()
-            .less_than_op()
-            .var("b") // 5
-            .var("a") // 10
-            .var("c") // "20"
-            .build();
+        // Create {"<": [{"var": "b"}, {"var": "a"}, {"var": "c"}]}
+        let lt_args = vec![b_var_ref, a_var_ref, c_var_ref];
+        let lt_array_token = Token::ArrayLiteral(lt_args);
+        let lt_array_ref = arena.alloc(lt_array_token);
+
+        let lt_token = Token::operator(
+            OperatorType::Comparison(ComparisonOp::LessThan),
+            lt_array_ref,
+        );
+        let lt_ref = arena.alloc(lt_token);
+
+        let rule = Logic::new(lt_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));

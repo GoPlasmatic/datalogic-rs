@@ -587,7 +587,6 @@ mod tests {
     fn test_eval_val_with_path_components() {
         let arena = DataArena::new();
         let core = DataLogicCore::new();
-        let builder = core.builder();
 
         let data_json = json!({
             "users": [
@@ -609,34 +608,59 @@ mod tests {
         });
 
         // Use a mix of strings and numbers for the path components
-        let components: Vec<DataValue> = vec![
+        // Create {"val": ["users", 0, "name"]}
+        // The val function expects its argument to be a path, not an array of path parts
+        let path_components = DataValue::Array(arena.vec_into_slice(vec![
             DataValue::string(&arena, "users"),
             DataValue::integer(0),
             DataValue::string(&arena, "name"),
-        ];
-        let rule = builder.val_path(components);
+        ]));
+        let path_token = Token::literal(path_components);
+        let path_ref = arena.alloc(path_token);
+
+        let val_token = Token::operator(OperatorType::Val, path_ref);
+        let val_ref = arena.alloc(val_token);
+
+        let rule = Logic::new(val_ref, &arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Alice"));
 
         // Second test with different path
-        let components: Vec<DataValue> = vec![
+        // Create {"val": ["users", 1, "details", "age"]}
+        let path_components = DataValue::Array(arena.vec_into_slice(vec![
             DataValue::string(&arena, "users"),
             DataValue::integer(1),
             DataValue::string(&arena, "details"),
             DataValue::string(&arena, "age"),
-        ];
-        let rule = builder.val_path(components);
+        ]));
+        let path_token = Token::literal(path_components);
+        let path_ref = arena.alloc(path_token);
+
+        let val_token = Token::operator(OperatorType::Val, path_ref);
+        let val_ref = arena.alloc(val_token);
+
+        let rule = Logic::new(val_ref, &arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(25));
 
         // Third test accessing boolean value
-        let components: Vec<DataValue> = vec![
+        // Create {"val": ["users", 0, "details", "active"]}
+        let path_components = DataValue::Array(arena.vec_into_slice(vec![
             DataValue::string(&arena, "users"),
             DataValue::integer(0),
             DataValue::string(&arena, "details"),
             DataValue::string(&arena, "active"),
-        ];
-        let rule = builder.val_path(components);
+        ]));
+        let path_token = Token::literal(path_components);
+        let path_ref = arena.alloc(path_token);
+
+        let val_token = Token::operator(OperatorType::Val, path_ref);
+        let val_ref = arena.alloc(val_token);
+
+        let rule = Logic::new(val_ref, &arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
     }

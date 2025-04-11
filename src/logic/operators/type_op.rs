@@ -45,35 +45,104 @@ pub fn eval_type<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_type_operator() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         // Test with different types
-        let rule = builder.type_op().int(42).build();
+        // Create {"type": 42}
+        let int_token = Token::literal(DataValue::integer(42));
+        let int_ref = arena.alloc(int_token);
+
+        let type_token = Token::operator(OperatorType::Type, int_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &json!({})).unwrap();
         assert_eq!(result, json!("number"));
 
-        let rule = builder.type_op().string("hello").build();
+        // Create {"type": "hello"}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let str_token = Token::literal(DataValue::string(arena, "hello"));
+        let str_ref = arena.alloc(str_token);
+
+        let type_token = Token::operator(OperatorType::Type, str_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &json!({})).unwrap();
         assert_eq!(result, json!("string"));
 
-        let rule = builder.type_op().array().build();
+        // Create {"type": []}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        // First create a literal empty array value
+        let empty_array_value = DataValue::Array(&[]);
+        let empty_array_token = Token::literal(empty_array_value);
+        let empty_array_ref = arena.alloc(empty_array_token);
+
+        // Now use that as the argument to type
+        let type_token = Token::operator(OperatorType::Type, empty_array_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &json!({})).unwrap();
         assert_eq!(result, json!("array"));
 
-        let rule = builder.type_op().object().build();
+        // Create {"type": {}}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let empty_obj_token = Token::literal(DataValue::Object(&[]));
+        let empty_obj_ref = arena.alloc(empty_obj_token);
+
+        let type_token = Token::operator(OperatorType::Type, empty_obj_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &json!({})).unwrap();
         assert_eq!(result, json!("object"));
 
-        let rule = builder.type_op().null().build();
+        // Create {"type": null}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let null_token = Token::literal(DataValue::null());
+        let null_ref = arena.alloc(null_token);
+
+        let type_token = Token::operator(OperatorType::Type, null_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &json!({})).unwrap();
         assert_eq!(result, json!("null"));
 
-        let rule = builder.type_op().bool(true).build();
+        // Create {"type": true}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let bool_token = Token::literal(DataValue::Bool(true));
+        let bool_ref = arena.alloc(bool_token);
+
+        let type_token = Token::operator(OperatorType::Type, bool_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &json!({})).unwrap();
         assert_eq!(result, json!("boolean"));
     }
@@ -81,7 +150,7 @@ mod tests {
     #[test]
     fn test_type_with_variables() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data = json!({
             "number_val": 42,
@@ -92,27 +161,90 @@ mod tests {
             "bool_val": true
         });
 
-        let rule = builder.type_op().var("number_val").build();
+        // Create {"type": {"var": "number_val"}}
+        let number_var_token = Token::variable("number_val", None);
+        let number_var_ref = arena.alloc(number_var_token);
+
+        let type_token = Token::operator(OperatorType::Type, number_var_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!("number"));
 
-        let rule = builder.type_op().var("string_val").build();
+        // Create {"type": {"var": "string_val"}}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let string_var_token = Token::variable("string_val", None);
+        let string_var_ref = arena.alloc(string_var_token);
+
+        let type_token = Token::operator(OperatorType::Type, string_var_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!("string"));
 
-        let rule = builder.type_op().var("array_val").build();
+        // Create {"type": {"var": "array_val"}}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let array_var_token = Token::variable("array_val", None);
+        let array_var_ref = arena.alloc(array_var_token);
+
+        let type_token = Token::operator(OperatorType::Type, array_var_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!("array"));
 
-        let rule = builder.type_op().var("object_val").build();
+        // Create {"type": {"var": "object_val"}}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let object_var_token = Token::variable("object_val", None);
+        let object_var_ref = arena.alloc(object_var_token);
+
+        let type_token = Token::operator(OperatorType::Type, object_var_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!("object"));
 
-        let rule = builder.type_op().var("null_val").build();
+        // Create {"type": {"var": "null_val"}}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let null_var_token = Token::variable("null_val", None);
+        let null_var_ref = arena.alloc(null_var_token);
+
+        let type_token = Token::operator(OperatorType::Type, null_var_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!("null"));
 
-        let rule = builder.type_op().var("bool_val").build();
+        // Create {"type": {"var": "bool_val"}}
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let bool_var_token = Token::variable("bool_val", None);
+        let bool_var_ref = arena.alloc(bool_var_token);
+
+        let type_token = Token::operator(OperatorType::Type, bool_var_ref);
+        let type_ref = arena.alloc(type_token);
+
+        let rule = Logic::new(type_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!("boolean"));
     }

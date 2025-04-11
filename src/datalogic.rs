@@ -8,7 +8,7 @@ use crate::arena::{SimpleOperatorAdapter, SimpleOperatorFn};
 use crate::logic::{evaluate, optimize, Logic, Result};
 use crate::parser::{ExpressionParser, ParserRegistry};
 use crate::value::{DataValue, FromJson, ToJson};
-use crate::{LogicError, RuleBuilder};
+use crate::LogicError;
 use serde_json::Value as JsonValue;
 
 /// Trait for custom JSONLogic operators
@@ -75,11 +75,6 @@ impl DataLogic {
     /// Set the default parser
     pub fn set_default_parser(&mut self, format_name: &str) -> Result<()> {
         self.parsers.set_default(format_name)
-    }
-
-    /// Get a rule builder for constructing rules programmatically
-    pub fn builder(&self) -> RuleBuilder {
-        RuleBuilder::new(&self.arena)
     }
 
     /// Register a custom operator implementation
@@ -308,7 +303,7 @@ impl DataLogic {
     /// ).unwrap();
     ///
     /// assert_eq!(result.as_f64().unwrap(), 10.0);
-    /// 
+    ///
     /// // Use the custom operator with data context
     /// let result = dl.evaluate_str(
     ///     r#"{"double": []}"#,

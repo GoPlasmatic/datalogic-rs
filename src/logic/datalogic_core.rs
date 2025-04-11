@@ -1,14 +1,11 @@
 use super::error::Result;
 use crate::arena::DataArena;
-use crate::builder::factory::RuleFactory;
-use crate::builder::RuleBuilder;
 use crate::logic::{evaluate, Logic};
 use crate::value::{DataValue, FromJson, ToJson};
 
 /// The main engine implementation for DataLogic expressions.
 ///
-/// This struct provides core methods for evaluating rule expressions,
-/// as well as access to the builder API for creating rules.
+/// This struct provides core methods for evaluating rule expressions.
 pub struct DataLogicCore {
     /// The arena in which all allocations will be made.
     arena: DataArena,
@@ -27,17 +24,7 @@ impl DataLogicCore {
         &self.arena
     }
 
-    /// Creates a rule builder that allocates in this instance's arena.
-    pub fn builder(&self) -> RuleBuilder {
-        RuleBuilder::new(&self.arena)
-    }
-
-    /// Creates a rule factory that allocates in this instance's arena.
-    pub fn factory(&self) -> RuleFactory {
-        RuleFactory::new(&self.arena)
-    }
-
-    /// Evaluates a rule created with the builder API.
+    /// Evaluates a logic rule.
     pub fn apply(&self, logic: &Logic, data: &serde_json::Value) -> Result<serde_json::Value> {
         // Convert input data to DataValue
         let data_value = DataValue::from_json(data, &self.arena);

@@ -131,40 +131,82 @@ pub fn eval_try<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::error::LogicError;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     pub fn test_try_coalesce_error() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!(null);
 
-        // Test with builder API
-        let rule = builder.try_op([
-            builder.throw_op(builder.string_value("Some error")),
-            builder.int(1),
-        ]);
+        // Create {"try": [{"throw": "Some error"}, 1]}
+
+        // First, create the throw token
+        let error_str_token = Token::literal(DataValue::string(arena, "Some error"));
+        let error_str_ref = arena.alloc(error_str_token);
+
+        let throw_token = Token::operator(OperatorType::Throw, error_str_ref);
+        let throw_ref = arena.alloc(throw_token);
+
+        // Create the literal 1
+        let one_token = Token::literal(DataValue::integer(1));
+        let one_ref = arena.alloc(one_token);
+
+        // Create the try with both arguments
+        let try_args = vec![throw_ref, one_ref];
+        let try_array_token = Token::ArrayLiteral(try_args);
+        let try_array_ref = arena.alloc(try_array_token);
+
+        let try_token = Token::operator(OperatorType::Try, try_array_ref);
+        let try_ref = arena.alloc(try_token);
+
+        let rule = Logic::new(try_ref, arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result.as_i64(), Some(1));
     }
 
     #[test]
     pub fn test_try_propagate_error() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!(null);
 
-        // Test with builder API
-        let rule = builder.try_op([
-            builder.throw_op(builder.string_value("Some error")),
-            builder.throw_op(builder.string_value("Another error")),
-        ]);
+        // Create {"try": [{"throw": "Some error"}, {"throw": "Another error"}]}
+
+        // First, create the first throw token
+        let error1_str_token = Token::literal(DataValue::string(arena, "Some error"));
+        let error1_str_ref = arena.alloc(error1_str_token);
+
+        let throw1_token = Token::operator(OperatorType::Throw, error1_str_ref);
+        let throw1_ref = arena.alloc(throw1_token);
+
+        // Create the second throw token
+        let error2_str_token = Token::literal(DataValue::string(arena, "Another error"));
+        let error2_str_ref = arena.alloc(error2_str_token);
+
+        let throw2_token = Token::operator(OperatorType::Throw, error2_str_ref);
+        let throw2_ref = arena.alloc(throw2_token);
+
+        // Create the try with both throw arguments
+        let try_args = vec![throw1_ref, throw2_ref];
+        let try_array_token = Token::ArrayLiteral(try_args);
+        let try_array_ref = arena.alloc(try_array_token);
+
+        let try_token = Token::operator(OperatorType::Try, try_array_ref);
+        let try_ref = arena.alloc(try_token);
+
+        let rule = Logic::new(try_ref, arena);
+
         let result = core.apply(&rule, &data_json);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
@@ -176,17 +218,35 @@ mod tests {
 
     #[test]
     pub fn test_try_error_context() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!(null);
 
-        // Test with builder API
-        let rule = builder.try_op([
-            builder.throw_op(builder.string_value("Some error")),
-            builder.val_str("type"),
-        ]);
+        // Create {"try": [{"throw": "Some error"}, {"var": "type"}]}
+
+        // First, create the throw token
+        let error_str_token = Token::literal(DataValue::string(arena, "Some error"));
+        let error_str_ref = arena.alloc(error_str_token);
+
+        let throw_token = Token::operator(OperatorType::Throw, error_str_ref);
+        let throw_ref = arena.alloc(throw_token);
+
+        // Create the variable access
+        let type_var_token = Token::variable("type", None);
+        let type_var_ref = arena.alloc(type_var_token);
+
+        // Create the try with both arguments
+        let try_args = vec![throw_ref, type_var_ref];
+        let try_array_token = Token::ArrayLiteral(try_args);
+        let try_array_ref = arena.alloc(try_array_token);
+
+        let try_token = Token::operator(OperatorType::Try, try_array_ref);
+        let try_ref = arena.alloc(try_token);
+
+        let rule = Logic::new(try_ref, arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result.as_str(), Some("Some error"));
     }

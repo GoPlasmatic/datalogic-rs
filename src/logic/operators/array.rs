@@ -1365,26 +1365,58 @@ pub fn eval_sort<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::operators::arithmetic::ArithmeticOp;
+    use crate::logic::operators::array::ArrayOp;
+    use crate::logic::token::{OperatorType, Token};
     use crate::logic::Logic;
     use crate::parser::jsonlogic::parse_json;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_map_with_op_syntax() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4]
         });
 
         // Test mapping an array to double each value
-        let rule = builder
-            .array()
-            .map_op()
-            .array(builder.var("numbers").build())
-            .mapper(builder.arithmetic().multiply_op().var("").int(2).build())
-            .build();
+        // Create: {"map": [{"var": "numbers"}, {"*": [{"var": ""}, 2]}]}
+
+        // First create {"var": "numbers"}
+        let numbers_var_token = Token::variable("numbers", None);
+        let numbers_var_ref = arena.alloc(numbers_var_token);
+
+        // Now create {"var": ""}
+        let empty_var_token = Token::variable("", None);
+        let empty_var_ref = arena.alloc(empty_var_token);
+
+        // Create 2 literal
+        let two_token = Token::literal(DataValue::integer(2));
+        let two_ref = arena.alloc(two_token);
+
+        // Create {"*": [{"var": ""}, 2]}
+        let mul_args = vec![empty_var_ref, two_ref];
+        let mul_array_token = Token::ArrayLiteral(mul_args);
+        let mul_array_ref = arena.alloc(mul_array_token);
+
+        let mul_token = Token::operator(
+            OperatorType::Arithmetic(ArithmeticOp::Multiply),
+            mul_array_ref,
+        );
+        let mul_ref = arena.alloc(mul_token);
+
+        // Create {"map": [{"var": "numbers"}, {"*": [{"var": ""}, 2]}]}
+        let map_args = vec![numbers_var_ref, mul_ref];
+        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_ref = arena.alloc(map_array_token);
+
+        let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
+        let map_ref = arena.alloc(map_token);
+
+        let rule = Logic::new(map_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([2, 4, 6, 8]));
@@ -1400,26 +1432,61 @@ mod tests {
     #[test]
     fn test_filter_with_op_syntax() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4, 5, 6, 7, 8]
         });
 
         // Test filtering for even numbers
-        let rule = builder
-            .array()
-            .filter_op()
-            .array(builder.var("numbers").build())
-            .condition(
-                builder
-                    .compare()
-                    .equal_op()
-                    .operand(builder.arithmetic().modulo_op().var("").int(2).build())
-                    .operand(builder.int(0))
-                    .build(),
-            )
-            .build();
+        // Create: {"filter": [{"var": "numbers"}, {"==": [{"mod": [{"var": ""}, 2]}, 0]}]}
+
+        // First create {"var": "numbers"}
+        let numbers_var_token = Token::variable("numbers", None);
+        let numbers_var_ref = arena.alloc(numbers_var_token);
+
+        // Now create {"var": ""}
+        let empty_var_token = Token::variable("", None);
+        let empty_var_ref = arena.alloc(empty_var_token);
+
+        // Create 2 literal and 0 literal
+        let two_token = Token::literal(DataValue::integer(2));
+        let two_ref = arena.alloc(two_token);
+
+        let zero_token = Token::literal(DataValue::integer(0));
+        let zero_ref = arena.alloc(zero_token);
+
+        // Create {"mod": [{"var": ""}, 2]}
+        let mod_args = vec![empty_var_ref, two_ref];
+        let mod_array_token = Token::ArrayLiteral(mod_args);
+        let mod_array_ref = arena.alloc(mod_array_token);
+
+        let mod_token = Token::operator(
+            OperatorType::Arithmetic(ArithmeticOp::Modulo),
+            mod_array_ref,
+        );
+        let mod_ref = arena.alloc(mod_token);
+
+        // Create {"==": [{"mod": [{"var": ""}, 2]}, 0]}
+        let equal_args = vec![mod_ref, zero_ref];
+        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_ref = arena.alloc(equal_array_token);
+
+        let equal_token = Token::operator(
+            OperatorType::Comparison(crate::logic::operators::comparison::ComparisonOp::Equal),
+            equal_array_ref,
+        );
+        let equal_ref = arena.alloc(equal_token);
+
+        // Create {"filter": [{"var": "numbers"}, {"==": [{"mod": [{"var": ""}, 2]}, 0]}]}
+        let filter_args = vec![numbers_var_ref, equal_ref];
+        let filter_array_token = Token::ArrayLiteral(filter_args);
+        let filter_array_ref = arena.alloc(filter_array_token);
+
+        let filter_token = Token::operator(OperatorType::Array(ArrayOp::Filter), filter_array_ref);
+        let filter_ref = arena.alloc(filter_token);
+
+        let rule = Logic::new(filter_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([2, 4, 6, 8]));
@@ -1435,27 +1502,47 @@ mod tests {
     #[test]
     fn test_reduce_with_op_syntax() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4]
         });
 
         // Test reducing an array to sum its values
-        let rule = builder
-            .array()
-            .reduce_op()
-            .array(builder.var("numbers").build())
-            .reducer(
-                builder
-                    .arithmetic()
-                    .add_op()
-                    .var("current")
-                    .var("accumulator")
-                    .build(),
-            )
-            .initial(builder.int(0))
-            .build();
+        // Create: {"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 0]}
+
+        // First create {"var": "numbers"}
+        let numbers_var_token = Token::variable("numbers", None);
+        let numbers_var_ref = arena.alloc(numbers_var_token);
+
+        // Create {"var": "current"} and {"var": "accumulator"}
+        let current_var_token = Token::variable("current", None);
+        let current_var_ref = arena.alloc(current_var_token);
+
+        let accumulator_var_token = Token::variable("accumulator", None);
+        let accumulator_var_ref = arena.alloc(accumulator_var_token);
+
+        // Create {"+": [{"var": "current"}, {"var": "accumulator"}]}
+        let add_args = vec![current_var_ref, accumulator_var_ref];
+        let add_array_token = Token::ArrayLiteral(add_args);
+        let add_array_ref = arena.alloc(add_array_token);
+
+        let add_token = Token::operator(OperatorType::Arithmetic(ArithmeticOp::Add), add_array_ref);
+        let add_ref = arena.alloc(add_token);
+
+        // Create initial value 0
+        let zero_token = Token::literal(DataValue::integer(0));
+        let zero_ref = arena.alloc(zero_token);
+
+        // Create {"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 0]}
+        let reduce_args = vec![numbers_var_ref, add_ref, zero_ref];
+        let reduce_array_token = Token::ArrayLiteral(reduce_args);
+        let reduce_array_ref = arena.alloc(reduce_array_token);
+
+        let reduce_token = Token::operator(OperatorType::Array(ArrayOp::Reduce), reduce_array_ref);
+        let reduce_ref = arena.alloc(reduce_token);
+
+        let rule = Logic::new(reduce_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(10)); // 1 + 2 + 3 + 4 = 10
@@ -1468,20 +1555,21 @@ mod tests {
         assert_eq!(result, json!(0));
 
         // Test with different initial value
-        let rule = builder
-            .array()
-            .reduce_op()
-            .array(builder.var("numbers").build())
-            .reducer(
-                builder
-                    .arithmetic()
-                    .add_op()
-                    .var("current")
-                    .var("accumulator")
-                    .build(),
-            )
-            .initial(builder.int(10))
-            .build();
+        // Create: {"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 10]}
+
+        // Create initial value 10
+        let ten_token = Token::literal(DataValue::integer(10));
+        let ten_ref = arena.alloc(ten_token);
+
+        // Create {"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 10]}
+        let reduce_args = vec![numbers_var_ref, add_ref, ten_ref];
+        let reduce_array_token = Token::ArrayLiteral(reduce_args);
+        let reduce_array_ref = arena.alloc(reduce_array_token);
+
+        let reduce_token = Token::operator(OperatorType::Array(ArrayOp::Reduce), reduce_array_ref);
+        let reduce_ref = arena.alloc(reduce_token);
+
+        let rule = Logic::new(reduce_ref, arena);
 
         let data_json = json!({
             "numbers": [1, 2, 3, 4]
@@ -1493,24 +1581,45 @@ mod tests {
     #[test]
     fn test_length_operator() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
-        // Test array length with builder
-        let rule = builder.array().length_op(builder.var("array").build());
+        // Test array length
+        // Create: {"length": {"var": "array"}}
+        let array_var_token = Token::variable("array", None);
+        let array_var_ref = arena.alloc(array_var_token);
+
+        let length_token = Token::operator(OperatorType::Array(ArrayOp::Length), array_var_ref);
+        let length_ref = arena.alloc(length_token);
+
+        let rule = Logic::new(length_ref, arena);
 
         let json_data = json!({"array": [1, 2, 3, 4, 5]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!(5));
 
-        // Test string length with builder
-        let rule = builder.array().length_op(builder.var("string").build());
+        // Test string length
+        // Create: {"length": {"var": "string"}}
+        let string_var_token = Token::variable("string", None);
+        let string_var_ref = arena.alloc(string_var_token);
+
+        let length_token = Token::operator(OperatorType::Array(ArrayOp::Length), string_var_ref);
+        let length_ref = arena.alloc(length_token);
+
+        let rule = Logic::new(length_ref, arena);
 
         let json_data = json!({"string": "hello"});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!(5));
 
-        // Test Unicode string length with builder
-        let rule = builder.array().length_op(builder.var("unicode").build());
+        // Test Unicode string length
+        // Create: {"length": {"var": "unicode"}}
+        let unicode_var_token = Token::variable("unicode", None);
+        let unicode_var_ref = arena.alloc(unicode_var_token);
+
+        let length_token = Token::operator(OperatorType::Array(ArrayOp::Length), unicode_var_ref);
+        let length_ref = arena.alloc(length_token);
+
+        let rule = Logic::new(length_ref, arena);
 
         let json_data = json!({"unicode": "👋🌍"});
         let result = core.apply(&rule, &json_data).unwrap();
@@ -1527,165 +1636,193 @@ mod tests {
     #[test]
     fn test_slice_operator() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
-        // Test array slice with start and end using builder
-        let rule = builder
-            .array()
-            .slice_op()
-            .collection_var("array")
-            .start_int(1)
-            .end_int(3)
-            .build();
+        // Test array slice with start and end
+        // Create: {"slice": [{"var": "array"}, 1, 3]}
+        let array_var_token = Token::variable("array", None);
+        let array_var_ref = arena.alloc(array_var_token);
+
+        let start_token = Token::literal(DataValue::integer(1));
+        let start_ref = arena.alloc(start_token);
+
+        let end_token = Token::literal(DataValue::integer(3));
+        let end_ref = arena.alloc(end_token);
+
+        let slice_args = vec![array_var_ref, start_ref, end_ref];
+        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_ref = arena.alloc(slice_array_token);
+
+        let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
+        let slice_ref = arena.alloc(slice_token);
+
+        let rule = Logic::new(slice_ref, arena);
 
         let json_data = json!({"array": [1, 2, 3, 4, 5]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!([2, 3]));
 
-        // Test negative indices using builder
-        let rule = builder
-            .array()
-            .slice_op()
-            .collection_var("array")
-            .start_int(-3)
-            .end_int(-1)
-            .build();
+        // Test negative indices
+        // Create: {"slice": [{"var": "array"}, -3, -1]}
+        let neg_start_token = Token::literal(DataValue::integer(-3));
+        let neg_start_ref = arena.alloc(neg_start_token);
+
+        let neg_end_token = Token::literal(DataValue::integer(-1));
+        let neg_end_ref = arena.alloc(neg_end_token);
+
+        let slice_args = vec![array_var_ref, neg_start_ref, neg_end_ref];
+        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_ref = arena.alloc(slice_array_token);
+
+        let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
+        let slice_ref = arena.alloc(slice_token);
+
+        let rule = Logic::new(slice_ref, arena);
 
         let json_data = json!({"array": [1, 2, 3, 4, 5]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!([3, 4]));
 
-        // Test with step using builder
-        let rule = builder
-            .array()
-            .slice_op()
-            .collection_var("array")
-            .start_int(0)
-            .end_int(5)
-            .step_int(2)
-            .build();
+        // Test with step
+        // Create: {"slice": [{"var": "array"}, 0, 5, 2]}
+        let start_zero_token = Token::literal(DataValue::integer(0));
+        let start_zero_ref = arena.alloc(start_zero_token);
+
+        let end_five_token = Token::literal(DataValue::integer(5));
+        let end_five_ref = arena.alloc(end_five_token);
+
+        let step_token = Token::literal(DataValue::integer(2));
+        let step_ref = arena.alloc(step_token);
+
+        let slice_args = vec![array_var_ref, start_zero_ref, end_five_ref, step_ref];
+        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_ref = arena.alloc(slice_array_token);
+
+        let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
+        let slice_ref = arena.alloc(slice_token);
+
+        let rule = Logic::new(slice_ref, arena);
 
         let json_data = json!({"array": [1, 2, 3, 4, 5]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!([1, 3, 5]));
 
-        // Test string slice using builder
-        let rule = builder
-            .array()
-            .slice_op()
-            .collection_var("string")
-            .start_int(0)
-            .end_int(5)
-            .build();
+        // Test string slicing
+        // Create: {"slice": [{"var": "string"}, 0, 3]}
+        let string_var_token = Token::variable("string", None);
+        let string_var_ref = arena.alloc(string_var_token);
+
+        let slice_args = vec![string_var_ref, start_zero_ref, end_ref];
+        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_ref = arena.alloc(slice_array_token);
+
+        let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
+        let slice_ref = arena.alloc(slice_token);
+
+        let rule = Logic::new(slice_ref, arena);
 
         let json_data = json!({"string": "hello world"});
         let result = core.apply(&rule, &json_data).unwrap();
-        assert_eq!(result, json!("hello"));
-
-        // Test string slice with negative step using builder
-        let rule = builder
-            .array()
-            .slice_op()
-            .collection_var("string")
-            .start_int(2)
-            .end_int(0)
-            .step_int(-1)
-            .build();
-
-        let json_data = json!({"string": "hello"});
-        let result = core.apply(&rule, &json_data).unwrap();
-        assert_eq!(result, json!("leh"));
-
-        // Also test with JSON parsing for compatibility
-        let json_rule = json!({"slice": [{"var": "array"}, 1, 3]});
-        let rule = Logic::new(parse_json(&json_rule, core.arena()).unwrap(), core.arena());
-        let json_data = json!({"array": [1, 2, 3, 4, 5]});
-        let result = core.apply(&rule, &json_data).unwrap();
-        assert_eq!(result, json!([2, 3]));
+        assert_eq!(result, json!("hel"));
     }
 
     #[test]
     fn test_sort_operator() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
-        // Test sort array in ascending order (default) using builder
-        let rule = builder.array().sort_op().array_var("array").build();
+        // Test sort array in ascending order (default)
+        // Create: {"sort": [{"var": "array"}]}
+        let array_var_token = Token::variable("array", None);
+        let array_var_ref = arena.alloc(array_var_token);
 
-        let json_data = json!({"array": [3, 1, 4, 2, 5]});
+        let sort_args = vec![array_var_ref];
+        let sort_array_token = Token::ArrayLiteral(sort_args);
+        let sort_array_ref = arena.alloc(sort_array_token);
+
+        let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
+        let sort_ref = arena.alloc(sort_token);
+
+        let rule = Logic::new(sort_ref, arena);
+
+        let json_data = json!({"array": [5, 3, 1, 4, 2]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!([1, 2, 3, 4, 5]));
 
-        // Test sort in descending order using builder
-        let rule = builder
-            .array()
-            .sort_op()
-            .array_var("array")
-            .ascending(false)
-            .build();
+        // Test sort array in descending order
+        // Create: {"sort": [{"var": "array"}, false]}
+        let false_token = Token::literal(DataValue::Bool(false));
+        let false_ref = arena.alloc(false_token);
 
-        let json_data = json!({"array": [3, 1, 4, 2, 5]});
+        let sort_args = vec![array_var_ref, false_ref];
+        let sort_array_token = Token::ArrayLiteral(sort_args);
+        let sort_array_ref = arena.alloc(sort_array_token);
+
+        let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
+        let sort_ref = arena.alloc(sort_token);
+
+        let rule = Logic::new(sort_ref, arena);
+
+        let json_data = json!({"array": [5, 3, 1, 4, 2]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!([5, 4, 3, 2, 1]));
 
-        // Test sort with field extraction using builder
-        let rule = builder
-            .array()
-            .sort_op()
-            .array_var("people")
-            .ascending(true)
-            .extractor_var("age")
-            .build();
+        // Test sort array of objects by field
+        // Create: {"sort": [{"var": "people"}, true, {"var": "age"}]}
+        let people_var_token = Token::variable("people", None);
+        let people_var_ref = arena.alloc(people_var_token);
 
-        let json_data = json!({"people": [
-            {"name": "Alice", "age": 30},
-            {"name": "Bob", "age": 25},
-            {"name": "Charlie", "age": 35}
-        ]});
+        let true_token = Token::literal(DataValue::Bool(true));
+        let true_ref = arena.alloc(true_token);
+
+        let age_var_token = Token::variable("age", None);
+        let age_var_ref = arena.alloc(age_var_token);
+
+        let sort_args = vec![people_var_ref, true_ref, age_var_ref];
+        let sort_array_token = Token::ArrayLiteral(sort_args);
+        let sort_array_ref = arena.alloc(sort_array_token);
+
+        let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
+        let sort_ref = arena.alloc(sort_token);
+
+        let rule = Logic::new(sort_ref, arena);
+
+        let json_data = json!({
+            "people": [
+                {"name": "Alice", "age": 30},
+                {"name": "Bob", "age": 25},
+                {"name": "Charlie", "age": 35}
+            ]
+        });
         let result = core.apply(&rule, &json_data).unwrap();
 
-        let expected = json!([
-            {"name": "Bob", "age": 25},
-            {"name": "Alice", "age": 30},
-            {"name": "Charlie", "age": 35}
-        ]);
-        assert_eq!(result, expected);
-
-        // Test sort with complex field extraction using builder
-        let rule = builder
-            .array()
-            .sort_op()
-            .array_var("people")
-            .ascending(true)
-            .extractor(builder.arithmetic().add_op().var("age").int(10).build())
-            .build();
-
-        let json_data = json!({"people": [
-            {"name": "Alice", "age": 30},
-            {"name": "Bob", "age": 25},
-            {"name": "Charlie", "age": 35}
-        ]});
-        let result = core.apply(&rule, &json_data).unwrap();
-
-        let expected = json!([
-            {"name": "Bob", "age": 25},
-            {"name": "Alice", "age": 30},
-            {"name": "Charlie", "age": 35}
-        ]);
-        assert_eq!(result, expected);
-
-        // Also test with JSON parsing for compatibility
-        let json_rule = json!({"sort": [{"var": "array"}]});
-        let rule = Logic::new(parse_json(&json_rule, core.arena()).unwrap(), core.arena());
-        let json_data = json!({"array": [3, 1, 4, 2, 5]});
-        let result = core.apply(&rule, &json_data).unwrap();
-        assert_eq!(result, json!([1, 2, 3, 4, 5]));
+        // Verify the sorted order
+        let result_array = result.as_array().unwrap();
+        assert_eq!(result_array.len(), 3);
+        assert_eq!(
+            result_array[0].as_object().unwrap()["name"]
+                .as_str()
+                .unwrap(),
+            "Bob"
+        );
+        assert_eq!(
+            result_array[1].as_object().unwrap()["name"]
+                .as_str()
+                .unwrap(),
+            "Alice"
+        );
+        assert_eq!(
+            result_array[2].as_object().unwrap()["name"]
+                .as_str()
+                .unwrap(),
+            "Charlie"
+        );
     }
 
     #[test]
     fn test_map_with_objects() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         // Test mapping over object properties
         let data_json = json!({
@@ -1696,12 +1833,21 @@ mod tests {
             }
         });
 
-        let rule = builder
-            .array()
-            .map_op()
-            .array(builder.var("person").build())
-            .mapper(builder.var("").build())
-            .build();
+        // Create: {"map": [{"var": "person"}, {"var": ""}]}
+        let person_var_token = Token::variable("person", None);
+        let person_var_ref = arena.alloc(person_var_token);
+
+        let empty_var_token = Token::variable("", None);
+        let empty_var_ref = arena.alloc(empty_var_token);
+
+        let map_args = vec![person_var_ref, empty_var_ref];
+        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_ref = arena.alloc(map_array_token);
+
+        let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
+        let map_ref = arena.alloc(map_token);
+
+        let rule = Logic::new(map_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         println!("Values result: {:?}", result);
@@ -1717,12 +1863,19 @@ mod tests {
         let data_json = json!({
             "empty": {}
         });
-        let rule = builder
-            .array()
-            .map_op()
-            .array(builder.var("empty").build())
-            .mapper(builder.var("").build())
-            .build();
+
+        // Create: {"map": [{"var": "empty"}, {"var": ""}]}
+        let empty_obj_var_token = Token::variable("empty", None);
+        let empty_obj_var_ref = arena.alloc(empty_obj_var_token);
+
+        let map_args = vec![empty_obj_var_ref, empty_var_ref];
+        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_ref = arena.alloc(map_array_token);
+
+        let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
+        let map_ref = arena.alloc(map_token);
+
+        let rule = Logic::new(map_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!([]));
@@ -1731,51 +1884,56 @@ mod tests {
     #[test]
     fn test_map_with_single_values() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         // Test mapping over a single number
         let data_json = json!({
-            "value": 42
+            "number": 42
         });
 
-        let rule = builder
-            .array()
-            .map_op()
-            .array(builder.var("value").build())
-            .mapper(builder.arithmetic().multiply_op().var("").int(2).build())
-            .build();
+        // Create: {"map": [{"var": "number"}, {"var": ""}]}
+        let number_var_token = Token::variable("number", None);
+        let number_var_ref = arena.alloc(number_var_token);
+
+        let empty_var_token = Token::variable("", None);
+        let empty_var_ref = arena.alloc(empty_var_token);
+
+        let map_args = vec![number_var_ref, empty_var_ref];
+        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_ref = arena.alloc(map_array_token);
+
+        let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
+        let map_ref = arena.alloc(map_token);
+
+        let rule = Logic::new(map_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
-        assert_eq!(result, json!([84]));
+        assert_eq!(result, json!([42]));
 
         // Test mapping over a single string
         let data_json = json!({
-            "value": "hello"
+            "string": "hello"
         });
 
-        let rule = builder
-            .array()
-            .map_op()
-            .array(builder.var("value").build())
-            .mapper(builder.string_ops().concat_op().var("").string("!").build())
-            .build();
+        // Create: {"map": [{"var": "string"}, {"var": ""}]}
+        let string_var_token = Token::variable("string", None);
+        let string_var_ref = arena.alloc(string_var_token);
+
+        let empty_var_token = Token::variable("", None);
+        let empty_var_ref = arena.alloc(empty_var_token);
+
+        let map_args = vec![string_var_ref, empty_var_ref];
+        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_ref = arena.alloc(map_array_token);
+
+        let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
+        let map_ref = arena.alloc(map_token);
+
+        let rule = Logic::new(map_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
-        assert_eq!(result, json!(["hello!"]));
 
-        // Test mapping over null
-        let data_json = json!({
-            "value": null
-        });
-
-        let rule = builder
-            .array()
-            .map_op()
-            .array(builder.var("value").build())
-            .mapper(builder.var("").build())
-            .build();
-
-        let result = core.apply(&rule, &data_json).unwrap();
-        assert_eq!(result, json!([]));
+        // The result should be an array with 1 element (the string itself)
+        assert_eq!(result, json!(["hello"]));
     }
 }

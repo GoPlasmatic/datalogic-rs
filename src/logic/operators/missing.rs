@@ -113,12 +113,15 @@ pub fn eval_missing_some<'a>(
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_missing() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data = json!({
             "a": 1,
@@ -126,7 +129,19 @@ mod tests {
         });
 
         // Test missing with single value
-        let rule = builder.missing_var("b");
+        // Create {"missing": ["b"]}
+        let b_str_token = Token::literal(DataValue::string(arena, "b"));
+        let b_str_ref = arena.alloc(b_str_token);
+
+        let missing_args = vec![b_str_ref];
+        let missing_array_token = Token::ArrayLiteral(missing_args);
+        let missing_array_ref = arena.alloc(missing_array_token);
+
+        let missing_token = Token::operator(OperatorType::Missing, missing_array_ref);
+        let missing_ref = arena.alloc(missing_token);
+
+        let rule = Logic::new(missing_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
@@ -134,7 +149,28 @@ mod tests {
         assert_eq!(arr[0].as_str(), Some("b"));
 
         // Test missing with multiple values
-        let rule = builder.missing_vars(["a", "b", "c", "d"]);
+        // Create {"missing": ["a", "b", "c", "d"]}
+        let a_str_token = Token::literal(DataValue::string(arena, "a"));
+        let a_str_ref = arena.alloc(a_str_token);
+
+        let b_str_token = Token::literal(DataValue::string(arena, "b"));
+        let b_str_ref = arena.alloc(b_str_token);
+
+        let c_str_token = Token::literal(DataValue::string(arena, "c"));
+        let c_str_ref = arena.alloc(c_str_token);
+
+        let d_str_token = Token::literal(DataValue::string(arena, "d"));
+        let d_str_ref = arena.alloc(d_str_token);
+
+        let missing_args = vec![a_str_ref, b_str_ref, c_str_ref, d_str_ref];
+        let missing_array_token = Token::ArrayLiteral(missing_args);
+        let missing_array_ref = arena.alloc(missing_array_token);
+
+        let missing_token = Token::operator(OperatorType::Missing, missing_array_ref);
+        let missing_ref = arena.alloc(missing_token);
+
+        let rule = Logic::new(missing_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
@@ -143,14 +179,38 @@ mod tests {
         assert_eq!(arr[1].as_str(), Some("d"));
 
         // Test missing with empty list
-        let rule = builder.missing_op(builder.array().array_literal_op(vec![]));
+        // Create {"missing": []}
+        let empty_missing_args: Vec<&Token> = vec![];
+        let empty_missing_array_token = Token::ArrayLiteral(empty_missing_args);
+        let empty_missing_array_ref = arena.alloc(empty_missing_array_token);
+
+        let missing_token = Token::operator(OperatorType::Missing, empty_missing_array_ref);
+        let missing_ref = arena.alloc(missing_token);
+
+        let rule = Logic::new(missing_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);
 
         // Test missing with all present
-        let rule = builder.missing_vars(["a", "c"]);
+        // Create {"missing": ["a", "c"]}
+        let a_str_token = Token::literal(DataValue::string(arena, "a"));
+        let a_str_ref = arena.alloc(a_str_token);
+
+        let c_str_token = Token::literal(DataValue::string(arena, "c"));
+        let c_str_ref = arena.alloc(c_str_token);
+
+        let missing_args = vec![a_str_ref, c_str_ref];
+        let missing_array_token = Token::ArrayLiteral(missing_args);
+        let missing_array_ref = arena.alloc(missing_array_token);
+
+        let missing_token = Token::operator(OperatorType::Missing, missing_array_ref);
+        let missing_ref = arena.alloc(missing_token);
+
+        let rule = Logic::new(missing_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
@@ -160,7 +220,7 @@ mod tests {
     #[test]
     fn test_missing_some() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data = json!({
             "a": 1,
@@ -168,10 +228,29 @@ mod tests {
         });
 
         // Test missing_some with min_required=1, all missing
-        let vars = builder
-            .array()
-            .array_literal_op(vec![builder.string_value("b"), builder.string_value("d")]);
-        let rule = builder.missing_some_op(1, vars);
+        // Create {"missing_some": [1, ["b", "d"]]}
+        let one_token = Token::literal(DataValue::integer(1));
+        let one_ref = arena.alloc(one_token);
+
+        let b_str_token = Token::literal(DataValue::string(arena, "b"));
+        let b_str_ref = arena.alloc(b_str_token);
+
+        let d_str_token = Token::literal(DataValue::string(arena, "d"));
+        let d_str_ref = arena.alloc(d_str_token);
+
+        let vars_args = vec![b_str_ref, d_str_ref];
+        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_ref = arena.alloc(vars_array_token);
+
+        let missing_some_args = vec![one_ref, vars_array_ref];
+        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_ref = arena.alloc(missing_some_array_token);
+
+        let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
+        let missing_some_ref = arena.alloc(missing_some_token);
+
+        let rule = Logic::new(missing_some_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
@@ -180,26 +259,70 @@ mod tests {
         assert_eq!(arr[1].as_str(), Some("d"));
 
         // Test missing_some with min_required=1, some present
-        let vars = builder.array().array_literal_op(vec![
-            builder.string_value("a"),
-            builder.string_value("b"),
-            builder.string_value("c"),
-            builder.string_value("d"),
-        ]);
-        let rule = builder.missing_some_op(1, vars);
+        // Create {"missing_some": [1, ["a", "b", "c", "d"]]}
+        let one_token = Token::literal(DataValue::integer(1));
+        let one_ref = arena.alloc(one_token);
+
+        let a_str_token = Token::literal(DataValue::string(arena, "a"));
+        let a_str_ref = arena.alloc(a_str_token);
+
+        let b_str_token = Token::literal(DataValue::string(arena, "b"));
+        let b_str_ref = arena.alloc(b_str_token);
+
+        let c_str_token = Token::literal(DataValue::string(arena, "c"));
+        let c_str_ref = arena.alloc(c_str_token);
+
+        let d_str_token = Token::literal(DataValue::string(arena, "d"));
+        let d_str_ref = arena.alloc(d_str_token);
+
+        let vars_args = vec![a_str_ref, b_str_ref, c_str_ref, d_str_ref];
+        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_ref = arena.alloc(vars_array_token);
+
+        let missing_some_args = vec![one_ref, vars_array_ref];
+        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_ref = arena.alloc(missing_some_array_token);
+
+        let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
+        let missing_some_ref = arena.alloc(missing_some_token);
+
+        let rule = Logic::new(missing_some_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
         assert_eq!(arr.len(), 0);
 
         // Test missing_some with min_required=3, only 2 present
-        let vars = builder.array().array_literal_op(vec![
-            builder.string_value("a"),
-            builder.string_value("b"),
-            builder.string_value("c"),
-            builder.string_value("d"),
-        ]);
-        let rule = builder.missing_some_op(3, vars);
+        // Create {"missing_some": [3, ["a", "b", "c", "d"]]}
+        let three_token = Token::literal(DataValue::integer(3));
+        let three_ref = arena.alloc(three_token);
+
+        let a_str_token = Token::literal(DataValue::string(arena, "a"));
+        let a_str_ref = arena.alloc(a_str_token);
+
+        let b_str_token = Token::literal(DataValue::string(arena, "b"));
+        let b_str_ref = arena.alloc(b_str_token);
+
+        let c_str_token = Token::literal(DataValue::string(arena, "c"));
+        let c_str_ref = arena.alloc(c_str_token);
+
+        let d_str_token = Token::literal(DataValue::string(arena, "d"));
+        let d_str_ref = arena.alloc(d_str_token);
+
+        let vars_args = vec![a_str_ref, b_str_ref, c_str_ref, d_str_ref];
+        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_ref = arena.alloc(vars_array_token);
+
+        let missing_some_args = vec![three_ref, vars_array_ref];
+        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_ref = arena.alloc(missing_some_array_token);
+
+        let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
+        let missing_some_ref = arena.alloc(missing_some_token);
+
+        let rule = Logic::new(missing_some_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();
@@ -208,10 +331,29 @@ mod tests {
         assert_eq!(arr[1].as_str(), Some("d"));
 
         // Test missing_some with min_required=0
-        let vars = builder
-            .array()
-            .array_literal_op(vec![builder.string_value("b"), builder.string_value("d")]);
-        let rule = builder.missing_some_op(0, vars);
+        // Create {"missing_some": [0, ["b", "d"]]}
+        let zero_token = Token::literal(DataValue::integer(0));
+        let zero_ref = arena.alloc(zero_token);
+
+        let b_str_token = Token::literal(DataValue::string(arena, "b"));
+        let b_str_ref = arena.alloc(b_str_token);
+
+        let d_str_token = Token::literal(DataValue::string(arena, "d"));
+        let d_str_ref = arena.alloc(d_str_token);
+
+        let vars_args = vec![b_str_ref, d_str_ref];
+        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_ref = arena.alloc(vars_array_token);
+
+        let missing_some_args = vec![zero_ref, vars_array_ref];
+        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_ref = arena.alloc(missing_some_array_token);
+
+        let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
+        let missing_some_ref = arena.alloc(missing_some_token);
+
+        let rule = Logic::new(missing_some_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert!(result.is_array());
         let arr = result.as_array().unwrap();

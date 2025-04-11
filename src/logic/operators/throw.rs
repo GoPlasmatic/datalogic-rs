@@ -66,21 +66,30 @@ pub fn eval_throw<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::logic::datalogic_core::DataLogicCore;
-
+    use crate::logic::error::LogicError;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_evaluate_throw_string() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!(null);
 
-        // Now test using the builder API
-        let rule = builder.throw_op(builder.string_value("hello"));
+        // Create {"throw": "hello"}
+        let hello_token = Token::literal(DataValue::string(arena, "hello"));
+        let hello_ref = arena.alloc(hello_token);
+
+        let throw_token = Token::operator(OperatorType::Throw, hello_ref);
+        let throw_ref = arena.alloc(throw_token);
+
+        let rule = Logic::new(throw_ref, arena);
+
         let result = core.apply(&rule, &data_json);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
@@ -92,16 +101,23 @@ mod tests {
 
     #[test]
     fn test_evaluate_throw_object() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({
             "x": {"type": "Some error"}
         });
 
-        // Now test using the builder API
-        let rule = builder.throw_op(builder.val_str("x"));
+        // Create {"throw": {"var": "x"}}
+        let x_var_token = Token::variable("x", None);
+        let x_var_ref = arena.alloc(x_var_token);
+
+        let throw_token = Token::operator(OperatorType::Throw, x_var_ref);
+        let throw_ref = arena.alloc(throw_token);
+
+        let rule = Logic::new(throw_ref, arena);
+
         let result = core.apply(&rule, &data_json);
         assert!(result.is_err());
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {

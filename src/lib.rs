@@ -1,5 +1,4 @@
 // Core types and functionality
-pub use builder::RuleBuilder;
 pub use datalogic::{CustomOperator, DataLogic};
 pub use error::LogicError;
 pub use logic::{Logic, Result};
@@ -13,7 +12,6 @@ mod parser;
 
 // Public modules
 pub mod arena;
-pub mod builder;
 pub mod datalogic;
 pub mod error;
 pub mod logic;

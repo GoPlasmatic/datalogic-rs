@@ -239,7 +239,6 @@ mod tests {
     fn test_variable_lookup() {
         let arena = DataArena::new();
         let core = DataLogicCore::new();
-        let builder = core.builder();
 
         // Create test data object: { "a": 1, "b": { "c": 2 } }
         let data_json = json!({
@@ -271,19 +270,34 @@ mod tests {
         let result = evaluate_variable(path, &Some(default_token), &arena).unwrap();
         assert_eq!(result.as_str(), Some("default"));
 
-        // Test using builder API
-        // Simple variable access
-        let rule = builder.var("a").build();
+        // Test using direct token creation
+        // Simple variable access - create {"var": "a"}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let rule = Logic::new(a_var_ref, &arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(1));
 
-        // Nested variable access
-        let rule = builder.var("b.c").build();
+        // Nested variable access - create {"var": "b.c"}
+        let bc_var_token = Token::variable("b.c", None);
+        let bc_var_ref = arena.alloc(bc_var_token);
+
+        let rule = Logic::new(bc_var_ref, &arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(2));
 
-        // Missing variable with default
-        let rule = builder.var_with_default("d", builder.string_value("default"));
+        // Missing variable with default - create {"var": ["d", "default"]}
+        let default_str_token = Token::literal(DataValue::string(&arena, "default"));
+        let default_str_ref = arena.alloc(default_str_token);
+
+        let d_var_token = Token::variable("d", Some(default_str_ref));
+        let d_var_ref = arena.alloc(d_var_token);
+
+        let rule = Logic::new(d_var_ref, &arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("default"));
     }
@@ -291,7 +305,7 @@ mod tests {
     #[test]
     fn test_variable_with_array_path() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         // Test data with arrays
         let data_json = json!({
@@ -302,43 +316,74 @@ mod tests {
             ]
         });
 
-        // Test accessing array elements
-        let rule = builder.var("users.0.name").build();
+        // Test accessing array elements - create {"var": "users.0.name"}
+        let users_0_name_var_token = Token::variable("users.0.name", None);
+        let users_0_name_var_ref = arena.alloc(users_0_name_var_token);
+
+        let rule = Logic::new(users_0_name_var_ref, arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Alice"));
 
         // Test accessing multiple array elements with map function
-        let map_rule = builder
-            .array()
-            .map_op()
-            .array_var("users")
-            .mapper_var("name")
-            .build();
+        // Create {"map": [{"var": "users"}, {"var": "name"}]}
+        let users_var_token = Token::variable("users", None);
+        let users_var_ref = arena.alloc(users_var_token);
 
-        let result = core.apply(&map_rule, &data_json).unwrap();
+        let name_var_token = Token::variable("name", None);
+        let name_var_ref = arena.alloc(name_var_token);
+
+        let map_args = vec![users_var_ref, name_var_ref];
+        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_ref = arena.alloc(map_array_token);
+
+        let map_token = Token::operator(
+            OperatorType::Array(crate::logic::operators::array::ArrayOp::Map),
+            map_array_ref,
+        );
+        let map_ref = arena.alloc(map_token);
+
+        let rule = Logic::new(map_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(["Alice", "Bob", "Charlie"]));
     }
 
     #[test]
     fn test_variable_with_missing_data() {
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         // Empty data
         let data_json = json!({});
 
-        // Test with default value
-        let rule = builder.var_with_default("missing", builder.string_value("default"));
+        // Test with default value - create {"var": ["missing", "default"]}
+        let default_str_token = Token::literal(DataValue::string(arena, "default"));
+        let default_str_ref = arena.alloc(default_str_token);
+
+        let missing_var_token = Token::variable("missing", Some(default_str_ref));
+        let missing_var_ref = arena.alloc(missing_var_token);
+
+        let rule = Logic::new(missing_var_ref, arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("default"));
 
-        // Test without default (should return null)
-        let rule = builder.var("missing").build();
+        // Test without default (should return null) - create {"var": "missing"}
+        let missing_var_token = Token::variable("missing", None);
+        let missing_var_ref = arena.alloc(missing_var_token);
+
+        let rule = Logic::new(missing_var_ref, arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(null));
 
-        // Test deeply nested missing path
-        let rule = builder.var("a.b.c.d").build();
+        // Test deeply nested missing path - create {"var": "a.b.c.d"}
+        let nested_var_token = Token::variable("a.b.c.d", None);
+        let nested_var_ref = arena.alloc(nested_var_token);
+
+        let rule = Logic::new(nested_var_ref, arena);
+
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(null));
     }

@@ -266,45 +266,74 @@ pub fn eval_trim<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_cat() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"a": 10, "b": "hello", "c": true});
 
-        // Test concatenating strings
-        // Use StringBuilder's concat method (note: it's called concat not cat in the builder)
-        let rule = builder
-            .string_ops()
-            .concat_op()
-            .string("hello")
-            .string(" ")
-            .string("world")
-            .build();
+        // Test concatenating strings: {"cat": ["hello", " ", "world"]}
+        let hello = Token::literal(DataValue::string(arena, "hello"));
+        let hello_ref = arena.alloc(hello);
+
+        let space = Token::literal(DataValue::string(arena, " "));
+        let space_ref = arena.alloc(space);
+
+        let world = Token::literal(DataValue::string(arena, "world"));
+        let world_ref = arena.alloc(world);
+
+        let args = vec![hello_ref, space_ref, world_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let cat_token = Token::operator(OperatorType::String(super::StringOp::Cat), array_ref);
+        let cat_ref = arena.alloc(cat_token);
+
+        // Create Logic for result
+        let rule = Logic::new(cat_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello world"));
 
-        // Test concatenating different types
-        let rule = builder
-            .string_ops()
-            .concat_op()
-            .var("b")
-            .string(" ")
-            .var("a")
-            .string(" ")
-            .var("c")
-            .build();
+        // Test concatenating different types: {"cat": [{"var": "b"}, " ", {"var": "a"}, " ", {"var": "c"}]}
+        let var_b = Token::variable("b", None);
+        let var_b_ref = arena.alloc(var_b);
+
+        let var_a = Token::variable("a", None);
+        let var_a_ref = arena.alloc(var_a);
+
+        let var_c = Token::variable("c", None);
+        let var_c_ref = arena.alloc(var_c);
+
+        let args = vec![var_b_ref, space_ref, var_a_ref, space_ref, var_c_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let cat_token = Token::operator(OperatorType::String(super::StringOp::Cat), array_ref);
+        let cat_ref = arena.alloc(cat_token);
+
+        let rule = Logic::new(cat_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello 10 true"));
 
-        // Test empty cat
-        let rule = builder.string_ops().concat_op().build();
+        // Test empty cat: {"cat": []}
+        let empty_args: Vec<&Token> = vec![];
+        let empty_array_token = Token::ArrayLiteral(empty_args);
+        let empty_array_ref = arena.alloc(empty_array_token);
+
+        let empty_cat_token =
+            Token::operator(OperatorType::String(super::StringOp::Cat), empty_array_ref);
+        let empty_cat_ref = arena.alloc(empty_cat_token);
+
+        let rule = Logic::new(empty_cat_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
@@ -312,54 +341,82 @@ mod tests {
 
     #[test]
     fn test_substr() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"text": "hello world"});
 
-        // Test basic substring
-        let rule = builder
-            .string_ops()
-            .substr_op()
-            .var("text")
-            .start_at(0)
-            .take(5)
-            .build();
+        // Test basic substring: {"substr": [{"var": "text"}, 0, 5]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let start_token = Token::literal(DataValue::integer(0));
+        let start_ref = arena.alloc(start_token);
+
+        let length_token = Token::literal(DataValue::integer(5));
+        let length_ref = arena.alloc(length_token);
+
+        let args = vec![var_ref, start_ref, length_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let substr_token =
+            Token::operator(OperatorType::String(super::StringOp::Substr), array_ref);
+        let substr_ref = arena.alloc(substr_token);
+
+        let rule = Logic::new(substr_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello"));
 
-        // Test negative start
-        let rule = builder
-            .string_ops()
-            .substr_op()
-            .var("text")
-            .start_at(-5)
-            .build();
+        // Test negative start: {"substr": [{"var": "text"}, -5]}
+        let neg_start_token = Token::literal(DataValue::integer(-5));
+        let neg_start_ref = arena.alloc(neg_start_token);
+
+        let args = vec![var_ref, neg_start_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let substr_token =
+            Token::operator(OperatorType::String(super::StringOp::Substr), array_ref);
+        let substr_ref = arena.alloc(substr_token);
+
+        let rule = Logic::new(substr_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("world"));
 
-        // Test negative length
-        let rule = builder
-            .string_ops()
-            .substr_op()
-            .var("text")
-            .start_at(0)
-            .take(-6)
-            .build();
+        // Test negative length: {"substr": [{"var": "text"}, 0, -6]}
+        let neg_length_token = Token::literal(DataValue::integer(-6));
+        let neg_length_ref = arena.alloc(neg_length_token);
+
+        let args = vec![var_ref, start_ref, neg_length_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let substr_token =
+            Token::operator(OperatorType::String(super::StringOp::Substr), array_ref);
+        let substr_ref = arena.alloc(substr_token);
+
+        let rule = Logic::new(substr_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello"));
 
-        // Test out of bounds
-        let rule = builder
-            .string_ops()
-            .substr_op()
-            .var("text")
-            .start_at(20)
-            .build();
+        // Test out of bounds: {"substr": [{"var": "text"}, 20]}
+        let out_of_bounds_token = Token::literal(DataValue::integer(20));
+        let out_of_bounds_ref = arena.alloc(out_of_bounds_token);
+
+        let args = vec![var_ref, out_of_bounds_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let substr_token =
+            Token::operator(OperatorType::String(super::StringOp::Substr), array_ref);
+        let substr_ref = arena.alloc(substr_token);
+
+        let rule = Logic::new(substr_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(""));
@@ -367,41 +424,62 @@ mod tests {
 
     #[test]
     fn test_starts_with() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"text": "hello world"});
 
-        // Test positive case
-        let rule = builder
-            .string_ops()
-            .starts_with_op()
-            .var("text")
-            .string("hello")
-            .build();
+        // Test positive case: {"starts_with": [{"var": "text"}, "hello"]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let prefix_token = Token::literal(DataValue::string(arena, "hello"));
+        let prefix_ref = arena.alloc(prefix_token);
+
+        let args = vec![var_ref, prefix_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let starts_with_token =
+            Token::operator(OperatorType::String(super::StringOp::StartsWith), array_ref);
+        let starts_with_ref = arena.alloc(starts_with_token);
+
+        let rule = Logic::new(starts_with_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
-        // Test negative case
-        let rule = builder
-            .string_ops()
-            .starts_with_op()
-            .var("text")
-            .string("world")
-            .build();
+        // Test negative case: {"starts_with": [{"var": "text"}, "world"]}
+        let world_token = Token::literal(DataValue::string(arena, "world"));
+        let world_ref = arena.alloc(world_token);
+
+        let args = vec![var_ref, world_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let starts_with_token =
+            Token::operator(OperatorType::String(super::StringOp::StartsWith), array_ref);
+        let starts_with_ref = arena.alloc(starts_with_token);
+
+        let rule = Logic::new(starts_with_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
-        // Test case sensitivity
-        let rule = builder
-            .string_ops()
-            .starts_with_op()
-            .var("text")
-            .string("HELLO")
-            .build();
+        // Test case sensitivity: {"starts_with": [{"var": "text"}, "HELLO"]}
+        let upper_hello_token = Token::literal(DataValue::string(arena, "HELLO"));
+        let upper_hello_ref = arena.alloc(upper_hello_token);
+
+        let args = vec![var_ref, upper_hello_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let starts_with_token =
+            Token::operator(OperatorType::String(super::StringOp::StartsWith), array_ref);
+        let starts_with_ref = arena.alloc(starts_with_token);
+
+        let rule = Logic::new(starts_with_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -409,41 +487,62 @@ mod tests {
 
     #[test]
     fn test_ends_with() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"text": "hello world"});
 
-        // Test positive case
-        let rule = builder
-            .string_ops()
-            .ends_with_op()
-            .var("text")
-            .string("world")
-            .build();
+        // Test positive case: {"ends_with": [{"var": "text"}, "world"]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let suffix_token = Token::literal(DataValue::string(arena, "world"));
+        let suffix_ref = arena.alloc(suffix_token);
+
+        let args = vec![var_ref, suffix_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let ends_with_token =
+            Token::operator(OperatorType::String(super::StringOp::EndsWith), array_ref);
+        let ends_with_ref = arena.alloc(ends_with_token);
+
+        let rule = Logic::new(ends_with_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(true));
 
-        // Test negative case
-        let rule = builder
-            .string_ops()
-            .ends_with_op()
-            .var("text")
-            .string("hello")
-            .build();
+        // Test negative case: {"ends_with": [{"var": "text"}, "hello"]}
+        let hello_token = Token::literal(DataValue::string(arena, "hello"));
+        let hello_ref = arena.alloc(hello_token);
+
+        let args = vec![var_ref, hello_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let ends_with_token =
+            Token::operator(OperatorType::String(super::StringOp::EndsWith), array_ref);
+        let ends_with_ref = arena.alloc(ends_with_token);
+
+        let rule = Logic::new(ends_with_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
 
-        // Test case sensitivity
-        let rule = builder
-            .string_ops()
-            .ends_with_op()
-            .var("text")
-            .string("WORLD")
-            .build();
+        // Test case sensitivity: {"ends_with": [{"var": "text"}, "WORLD"]}
+        let upper_world_token = Token::literal(DataValue::string(arena, "WORLD"));
+        let upper_world_ref = arena.alloc(upper_world_token);
+
+        let args = vec![var_ref, upper_world_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let ends_with_token =
+            Token::operator(OperatorType::String(super::StringOp::EndsWith), array_ref);
+        let ends_with_ref = arena.alloc(ends_with_token);
+
+        let rule = Logic::new(ends_with_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!(false));
@@ -451,14 +550,24 @@ mod tests {
 
     #[test]
     fn test_upper() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"text": "Hello World"});
 
-        // Test uppercase
-        let rule = builder.string_ops().upper_op().var("text").build();
+        // Test uppercase: {"upper": [{"var": "text"}]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let args = vec![var_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let upper_token = Token::operator(OperatorType::String(super::StringOp::Upper), array_ref);
+        let upper_ref = arena.alloc(upper_token);
+
+        let rule = Logic::new(upper_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("HELLO WORLD"));
@@ -466,14 +575,24 @@ mod tests {
 
     #[test]
     fn test_lower() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"text": "Hello World"});
 
-        // Test lowercase
-        let rule = builder.string_ops().lower_op().var("text").build();
+        // Test lowercase: {"lower": [{"var": "text"}]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let args = vec![var_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let lower_token = Token::operator(OperatorType::String(super::StringOp::Lower), array_ref);
+        let lower_ref = arena.alloc(lower_token);
+
+        let rule = Logic::new(lower_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("hello world"));
@@ -481,14 +600,24 @@ mod tests {
 
     #[test]
     fn test_trim() {
-        // Create JSONLogic instance
+        // Create DataLogicCore instance
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data_json = json!({"text": "  Hello World  "});
 
-        // Test trim
-        let rule = builder.string_ops().trim_op().var("text").build();
+        // Test trim: {"trim": [{"var": "text"}]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let args = vec![var_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let trim_token = Token::operator(OperatorType::String(super::StringOp::Trim), array_ref);
+        let trim_ref = arena.alloc(trim_token);
+
+        let rule = Logic::new(trim_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Hello World"));

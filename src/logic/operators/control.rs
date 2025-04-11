@@ -139,13 +139,17 @@ pub fn eval_double_negation<'a>(
 #[cfg(test)]
 mod tests {
     use crate::logic::datalogic_core::DataLogicCore;
+    use crate::logic::operators::control::ControlOp;
+    use crate::logic::token::{OperatorType, Token};
+    use crate::logic::Logic;
+    use crate::value::DataValue;
     use serde_json::json;
 
     #[test]
     fn test_and() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data = json!({
             "a": 1,
@@ -153,31 +157,94 @@ mod tests {
         });
 
         // Test for true AND true
-        let rule = builder.control().and_op().bool(true).bool(true).build();
+        // Create {"and": [true, true]}
+        let true_token1 = Token::literal(DataValue::Bool(true));
+        let true_ref1 = arena.alloc(true_token1);
+
+        let true_token2 = Token::literal(DataValue::Bool(true));
+        let true_ref2 = arena.alloc(true_token2);
+
+        let and_args = vec![true_ref1, true_ref2];
+        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_ref = arena.alloc(and_array_token);
+
+        let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
+        let and_ref = arena.alloc(and_token);
+
+        let rule = Logic::new(and_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for true AND false
-        let rule = builder.control().and_op().bool(true).bool(false).build();
+        // Create {"and": [true, false]}
+        let true_token = Token::literal(DataValue::Bool(true));
+        let true_ref = arena.alloc(true_token);
+
+        let false_token = Token::literal(DataValue::Bool(false));
+        let false_ref = arena.alloc(false_token);
+
+        let and_args = vec![true_ref, false_ref];
+        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_ref = arena.alloc(and_array_token);
+
+        let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
+        let and_ref = arena.alloc(and_token);
+
+        let rule = Logic::new(and_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with variables
-        let rule = builder.control().and_op().var("a").var("b").build();
+        // Create {"and": [{"var": "a"}, {"var": "b"}]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let and_args = vec![a_var_ref, b_var_ref];
+        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_ref = arena.alloc(and_array_token);
+
+        let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
+        let and_ref = arena.alloc(and_token);
+
+        let rule = Logic::new(and_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(0));
 
         // Test with multiple values - should return last truthy value or first falsy
-        let rule = builder.control().and_op().int(1).int(2).int(3).build();
+        // Create {"and": [1, 2, 3]}
+        let one_token = Token::literal(DataValue::integer(1));
+        let one_ref = arena.alloc(one_token);
+
+        let two_token = Token::literal(DataValue::integer(2));
+        let two_ref = arena.alloc(two_token);
+
+        let three_token = Token::literal(DataValue::integer(3));
+        let three_ref = arena.alloc(three_token);
+
+        let and_args = vec![one_ref, two_ref, three_ref];
+        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_ref = arena.alloc(and_array_token);
+
+        let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
+        let and_ref = arena.alloc(and_token);
+
+        let rule = Logic::new(and_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(3));
     }
 
     #[test]
     fn test_or() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data = json!({
             "a": 1,
@@ -185,36 +252,111 @@ mod tests {
         });
 
         // Test for true OR true
-        let rule = builder.control().or_op().bool(true).bool(true).build();
+        // Create {"or": [true, true]}
+        let true_token1 = Token::literal(DataValue::Bool(true));
+        let true_ref1 = arena.alloc(true_token1);
+
+        let true_token2 = Token::literal(DataValue::Bool(true));
+        let true_ref2 = arena.alloc(true_token2);
+
+        let or_args = vec![true_ref1, true_ref2];
+        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_ref = arena.alloc(or_array_token);
+
+        let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
+        let or_ref = arena.alloc(or_token);
+
+        let rule = Logic::new(or_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for true OR false
-        let rule = builder.control().or_op().bool(true).bool(false).build();
+        // Create {"or": [true, false]}
+        let true_token = Token::literal(DataValue::Bool(true));
+        let true_ref = arena.alloc(true_token);
+
+        let false_token = Token::literal(DataValue::Bool(false));
+        let false_ref = arena.alloc(false_token);
+
+        let or_args = vec![true_ref, false_ref];
+        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_ref = arena.alloc(or_array_token);
+
+        let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
+        let or_ref = arena.alloc(or_token);
+
+        let rule = Logic::new(or_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for false OR true
-        let rule = builder.control().or_op().bool(false).bool(true).build();
+        // Create {"or": [false, true]}
+        let false_token = Token::literal(DataValue::Bool(false));
+        let false_ref = arena.alloc(false_token);
+
+        let true_token = Token::literal(DataValue::Bool(true));
+        let true_ref = arena.alloc(true_token);
+
+        let or_args = vec![false_ref, true_ref];
+        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_ref = arena.alloc(or_array_token);
+
+        let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
+        let or_ref = arena.alloc(or_token);
+
+        let rule = Logic::new(or_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test for false OR false
-        let rule = builder.control().or_op().bool(false).bool(false).build();
+        // Create {"or": [false, false]}
+        let false_token1 = Token::literal(DataValue::Bool(false));
+        let false_ref1 = arena.alloc(false_token1);
+
+        let false_token2 = Token::literal(DataValue::Bool(false));
+        let false_ref2 = arena.alloc(false_token2);
+
+        let or_args = vec![false_ref1, false_ref2];
+        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_ref = arena.alloc(or_array_token);
+
+        let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
+        let or_ref = arena.alloc(or_token);
+
+        let rule = Logic::new(or_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with variables
-        let rule = builder.control().or_op().var("a").var("b").build();
+        // Create {"or": [{"var": "a"}, {"var": "b"}]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let or_args = vec![a_var_ref, b_var_ref];
+        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_ref = arena.alloc(or_array_token);
+
+        let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
+        let or_ref = arena.alloc(or_token);
+
+        let rule = Logic::new(or_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(1));
     }
 
     #[test]
     fn test_not() {
-        // Create JSONLogic instance with arena
+        // Create DataLogic instance with arena
         let core = DataLogicCore::new();
-        let builder = core.builder();
+        let arena = core.arena();
 
         let data = json!({
             "a": 1,
@@ -222,22 +364,70 @@ mod tests {
         });
 
         // Test for NOT true
-        let rule = builder.control().not_op(builder.bool(true));
+        // Create {"!": [true]}
+        let true_token = Token::literal(DataValue::Bool(true));
+        let true_ref = arena.alloc(true_token);
+
+        let not_args = vec![true_ref];
+        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_ref = arena.alloc(not_array_token);
+
+        let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
+        let not_ref = arena.alloc(not_token);
+
+        let rule = Logic::new(not_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test for NOT false
-        let rule = builder.control().not_op(builder.bool(false));
+        // Create {"!": [false]}
+        let false_token = Token::literal(DataValue::Bool(false));
+        let false_ref = arena.alloc(false_token);
+
+        let not_args = vec![false_ref];
+        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_ref = arena.alloc(not_array_token);
+
+        let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
+        let not_ref = arena.alloc(not_token);
+
+        let rule = Logic::new(not_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
 
         // Test with variables
-        let rule = builder.control().not_op(builder.var("a").build());
+        // Create {"!": [{"var": "a"}]}
+        let a_var_token = Token::variable("a", None);
+        let a_var_ref = arena.alloc(a_var_token);
+
+        let not_args = vec![a_var_ref];
+        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_ref = arena.alloc(not_array_token);
+
+        let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
+        let not_ref = arena.alloc(not_token);
+
+        let rule = Logic::new(not_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(false));
 
         // Test with falsy variable
-        let rule = builder.control().not_op(builder.var("b").build());
+        // Create {"!": [{"var": "b"}]}
+        let b_var_token = Token::variable("b", None);
+        let b_var_ref = arena.alloc(b_var_token);
+
+        let not_args = vec![b_var_ref];
+        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_ref = arena.alloc(not_array_token);
+
+        let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
+        let not_ref = arena.alloc(not_token);
+
+        let rule = Logic::new(not_ref, arena);
+
         let result = core.apply(&rule, &data).unwrap();
         assert_eq!(result, json!(true));
     }
