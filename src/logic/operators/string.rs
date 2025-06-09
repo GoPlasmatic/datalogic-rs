@@ -26,6 +26,10 @@ pub enum StringOp {
     Lower,
     /// Trim whitespace from beginning and end of string
     Trim,
+    /// Replace occurrences of a string with another string
+    Replace,
+    /// Split string into array based on delimiter
+    Split,
 }
 
 /// Helper function to convert a value to a string representation
@@ -261,6 +265,55 @@ pub fn eval_trim<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
     let result = string_str.trim();
 
     Ok(arena.alloc(DataValue::String(arena.alloc_str(result))))
+}
+
+/// Evaluates a string replace operation.
+pub fn eval_replace<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.len() != 3 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let find = evaluate(args[1], arena)?;
+    let replace_with = evaluate(args[2], arena)?;
+
+    let string_str = value_to_string(string, arena);
+    let find_str = value_to_string(find, arena);
+    let replace_str = value_to_string(replace_with, arena);
+
+    // Replace all occurrences
+    let result = string_str.replace(find_str, replace_str);
+
+    Ok(arena.alloc(DataValue::String(arena.alloc_str(&result))))
+}
+
+/// Evaluates a string split operation.
+pub fn eval_split<'a>(
+    args: &'a [&'a Token<'a>],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.len() != 2 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let string = evaluate(args[0], arena)?;
+    let delimiter = evaluate(args[1], arena)?;
+
+    let string_str = value_to_string(string, arena);
+    let delimiter_str = value_to_string(delimiter, arena);
+
+    // Split the string by delimiter
+    let parts: Vec<DataValue> = string_str
+        .split(delimiter_str)
+        .map(|part| DataValue::String(arena.alloc_str(part)))
+        .collect();
+
+    // Create array of string parts using vec_into_slice
+    let result_array = arena.vec_into_slice(parts);
+    Ok(arena.alloc(DataValue::Array(result_array)))
 }
 
 #[cfg(test)]
@@ -621,5 +674,186 @@ mod tests {
 
         let result = core.apply(&rule, &data_json).unwrap();
         assert_eq!(result, json!("Hello World"));
+    }
+
+    #[test]
+    fn test_replace() {
+        // Create DataLogicCore instance
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let data_json = json!({"text": "hello world hello"});
+
+        // Test basic replace: {"replace": [{"var": "text"}, "hello", "hi"]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let find_token = Token::literal(DataValue::string(arena, "hello"));
+        let find_ref = arena.alloc(find_token);
+
+        let replace_token = Token::literal(DataValue::string(arena, "hi"));
+        let replace_ref = arena.alloc(replace_token);
+
+        let args = vec![var_ref, find_ref, replace_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_ref = arena.alloc(replace_op_token);
+
+        let rule = Logic::new(replace_op_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hi world hi"));
+
+        // Test case sensitivity: {"replace": [{"var": "text"}, "HELLO", "hi"]}
+        let find_upper_token = Token::literal(DataValue::string(arena, "HELLO"));
+        let find_upper_ref = arena.alloc(find_upper_token);
+
+        let args = vec![var_ref, find_upper_ref, replace_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_ref = arena.alloc(replace_op_token);
+
+        let rule = Logic::new(replace_op_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello world hello")); // No replacement should occur
+
+        // Test replace with empty string: {"replace": [{"var": "text"}, "hello", ""]}
+        let empty_token = Token::literal(DataValue::string(arena, ""));
+        let empty_ref = arena.alloc(empty_token);
+
+        let args = vec![var_ref, find_ref, empty_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_ref = arena.alloc(replace_op_token);
+
+        let rule = Logic::new(replace_op_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(" world "));
+
+        // Test replace non-existent: {"replace": [{"var": "text"}, "xyz", "abc"]}
+        let nonexistent_token = Token::literal(DataValue::string(arena, "xyz"));
+        let nonexistent_ref = arena.alloc(nonexistent_token);
+
+        let replacement_token = Token::literal(DataValue::string(arena, "abc"));
+        let replacement_ref = arena.alloc(replacement_token);
+
+        let args = vec![var_ref, nonexistent_ref, replacement_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_ref = arena.alloc(replace_op_token);
+
+        let rule = Logic::new(replace_op_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!("hello world hello")); // No change
+    }
+
+    #[test]
+    fn test_split() {
+        // Create DataLogicCore instance
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let data_json = json!({"text": "apple,banana,cherry"});
+
+        // Test basic split: {"split": [{"var": "text"}, ","]}
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let delimiter_token = Token::literal(DataValue::string(arena, ","));
+        let delimiter_ref = arena.alloc(delimiter_token);
+
+        let args = vec![var_ref, delimiter_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(["apple", "banana", "cherry"]));
+
+        // Test split by space: {"split": [{"var": "sentence"}, " "]}
+        let sentence_data = json!({"sentence": "hello world test"});
+
+        let sentence_var_token = Token::variable("sentence", None);
+        let sentence_var_ref = arena.alloc(sentence_var_token);
+
+        let space_token = Token::literal(DataValue::string(arena, " "));
+        let space_ref = arena.alloc(space_token);
+
+        let args = vec![sentence_var_ref, space_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &sentence_data).unwrap();
+        assert_eq!(result, json!(["hello", "world", "test"]));
+
+        // Test split with non-existent delimiter: {"split": [{"var": "text"}, ";"]}
+        let semicolon_token = Token::literal(DataValue::string(arena, ";"));
+        let semicolon_ref = arena.alloc(semicolon_token);
+
+        let args = vec![var_ref, semicolon_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!(["apple,banana,cherry"])); // Original string as single element
+
+        // Test split empty string: {"split": ["", ","]}
+        let empty_string_token = Token::literal(DataValue::string(arena, ""));
+        let empty_string_ref = arena.alloc(empty_string_token);
+
+        let args = vec![empty_string_ref, delimiter_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        assert_eq!(result, json!([""])); // Empty string results in array with one empty string
+
+        // Test split with empty delimiter: {"split": [{"var": "text"}, ""]}
+        let empty_delim_token = Token::literal(DataValue::string(arena, ""));
+        let empty_delim_ref = arena.alloc(empty_delim_token);
+
+        let args = vec![var_ref, empty_delim_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+        // Splitting by empty string should split into individual characters
+        // Note: Rust's split() with empty string includes empty strings at start and end
+        assert_eq!(result, json!(["", "a", "p", "p", "l", "e", ",", "b", "a", "n", "a", "n", "a", ",", "c", "h", "e", "r", "r", "y", ""]));
     }
 }

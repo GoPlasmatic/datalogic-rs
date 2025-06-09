@@ -77,6 +77,14 @@
                     <div class="mdc-chip__ripple"></div>
                     <span class="mdc-chip__text">substr</span>
                 </div>
+                <div class="mdc-chip" data-target="replace">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">replace</span>
+                </div>
+                <div class="mdc-chip" data-target="split">
+                    <div class="mdc-chip__ripple"></div>
+                    <span class="mdc-chip__text">split</span>
+                </div>
                 <div class="mdc-chip" data-target="starts_with">
                     <div class="mdc-chip__ripple"></div>
                     <span class="mdc-chip__text">starts_with</span>
@@ -271,6 +279,211 @@
                             <div class="editor-container result-container">
                                 <h4 class="mdc-typography--subtitle2">Result:</h4>
                                 <textarea class="result-editor" id="substr-end-result" readonly>"@example.com"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- replace operator -->
+            <div id="replace" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">replace</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>replace</code> operator replaces all occurrences of a specified string with another string.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "replace": [string, find, replacement] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The input string to perform replacement on</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">find</td>
+                                        <td class="mdc-data-table__cell">The string to find and replace</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">replacement</td>
+                                        <td class="mdc-data-table__cell">The string to replace matches with</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Simple Text Replacement</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="replace-simple-rule">{"replace": [{"var": "text"}, "hello", "hi"]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="replace-simple-data">{"text": "hello world hello"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="replace-simple-result" readonly>"hi world hi"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Remove Text (Replace with Empty String)</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="replace-remove-rule">{"replace": [{"var": "text"}, "unwanted", ""]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="replace-remove-data">{"text": "This unwanted text unwanted should be cleaned"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="replace-remove-result" readonly>"This  text  should be cleaned"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- split operator -->
+            <div id="split" class="operator-section">
+                <div class="operator-card mdc-card">
+                    <h2 class="mdc-typography--headline5">split</h2>
+                    <p class="mdc-typography--body1">
+                        The <code>split</code> operator splits a string into an array of substrings based on a delimiter.
+                    </p>
+                    
+                    <h3 class="mdc-typography--subtitle1">Syntax</h3>
+                    <div class="code-block">
+                        <pre><code class="language-json">{ "split": [string, delimiter] }</code></pre>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Parameters</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Parameter</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">string</td>
+                                        <td class="mdc-data-table__cell">The string to split</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">delimiter</td>
+                                        <td class="mdc-data-table__cell">The string to use as a separator</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Split CSV Data</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="split-csv-rule">{"split": [{"var": "csv"}, ","]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="split-csv-data">{"csv": "apple,banana,cherry,date"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="split-csv-result" readonly>["apple", "banana", "cherry", "date"]</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Split into Words</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="split-words-rule">{"split": [{"var": "sentence"}, " "]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="split-words-data">{"sentence": "The quick brown fox"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="split-words-result" readonly>["The", "quick", "brown", "fox"]</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Complex Processing with Split</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="split-complex-rule">{"filter": [
+  {"split": [{"var": "text"}, " "]},
+  {">=": [{"length": [{"var": ""}]}, 4]}
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="split-complex-data">{"text": "The quick brown fox jumps over lazy dog"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="split-complex-result" readonly>["quick", "brown", "jumps", "over", "lazy"]</textarea>
                             </div>
                         </div>
                         <div class="example-actions">

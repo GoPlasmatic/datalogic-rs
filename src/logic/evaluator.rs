@@ -333,6 +333,8 @@ fn evaluate_string_operator<'a>(
         string::StringOp::Upper => string::eval_upper(token_refs, arena),
         string::StringOp::Lower => string::eval_lower(token_refs, arena),
         string::StringOp::Trim => string::eval_trim(token_refs, arena),
+        string::StringOp::Replace => string::eval_replace(token_refs, arena),
+        string::StringOp::Split => string::eval_split(token_refs, arena),
     }
 }
 

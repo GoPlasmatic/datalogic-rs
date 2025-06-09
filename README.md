@@ -159,7 +159,34 @@ let result = dl.evaluate_str(
 assert_eq!(result.as_array().unwrap().len(), 2);
 ```
 
-### 3. DateTime Operations
+### 3. String Processing
+
+```rust
+use datalogic_rs::DataLogic;
+
+let dl = DataLogic::new();
+
+// Replace text and split into words
+let result = dl.evaluate_str(
+    r#"{
+        "split": [
+            {"replace": [
+                {"var": "message"}, 
+                "hello", 
+                "hi"
+            ]}, 
+            " "
+        ]
+    }"#,
+    r#"{"message": "hello world hello there"}"#,
+    None
+).unwrap();
+
+// Returns ["hi", "world", "hi", "there"]
+assert_eq!(result.as_array().unwrap().len(), 4);
+```
+
+### 4. DateTime Operations
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -353,7 +380,7 @@ let is_valid = dl.evaluate_str(validation_rule, form_data, None).unwrap().as_boo
 | **Arithmetic** | `+` (addition), `-` (subtraction), `*` (multiplication), `/` (division), `%` (modulo), `min`, `max`, `abs` (absolute value), `ceil` (round up), `floor` (round down) |
 | **Control Flow** | `if` (conditional), `?:` (ternary), `??` (nullish coalescing) |
 | **Arrays** | `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in` (contains), `length`, `slice`, `sort` |
-| **Strings** | `cat` (concatenate), `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim` |
+| **Strings** | `cat` (concatenate), `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `replace`, `split` |
 | **Data Access** | `var` (variable access), `val` (value access), `exists`, `missing`, `missing_some` |
 | **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
 | **Error Handling** | `throw`, `try` |

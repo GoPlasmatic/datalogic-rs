@@ -220,6 +220,8 @@ impl OperatorType {
                 StringOp::Upper => "upper",
                 StringOp::Lower => "lower",
                 StringOp::Trim => "trim",
+                StringOp::Replace => "replace",
+                StringOp::Split => "split",
             },
             OperatorType::Array(op) => match op {
                 ArrayOp::Map => "map",
@@ -291,6 +293,8 @@ impl FromStr for OperatorType {
             "upper" => Ok(OperatorType::String(StringOp::Upper)),
             "lower" => Ok(OperatorType::String(StringOp::Lower)),
             "trim" => Ok(OperatorType::String(StringOp::Trim)),
+            "replace" => Ok(OperatorType::String(StringOp::Replace)),
+            "split" => Ok(OperatorType::String(StringOp::Split)),
             "map" => Ok(OperatorType::Array(ArrayOp::Map)),
             "filter" => Ok(OperatorType::Array(ArrayOp::Filter)),
             "reduce" => Ok(OperatorType::Array(ArrayOp::Reduce)),
