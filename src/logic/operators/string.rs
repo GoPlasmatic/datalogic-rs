@@ -698,7 +698,8 @@ mod tests {
         let array_token = Token::ArrayLiteral(args);
         let array_ref = arena.alloc(array_token);
 
-        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_token =
+            Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
         let replace_op_ref = arena.alloc(replace_op_token);
 
         let rule = Logic::new(replace_op_ref, arena);
@@ -714,7 +715,8 @@ mod tests {
         let array_token = Token::ArrayLiteral(args);
         let array_ref = arena.alloc(array_token);
 
-        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_token =
+            Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
         let replace_op_ref = arena.alloc(replace_op_token);
 
         let rule = Logic::new(replace_op_ref, arena);
@@ -730,7 +732,8 @@ mod tests {
         let array_token = Token::ArrayLiteral(args);
         let array_ref = arena.alloc(array_token);
 
-        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_token =
+            Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
         let replace_op_ref = arena.alloc(replace_op_token);
 
         let rule = Logic::new(replace_op_ref, arena);
@@ -749,7 +752,8 @@ mod tests {
         let array_token = Token::ArrayLiteral(args);
         let array_ref = arena.alloc(array_token);
 
-        let replace_op_token = Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
+        let replace_op_token =
+            Token::operator(OperatorType::String(super::StringOp::Replace), array_ref);
         let replace_op_ref = arena.alloc(replace_op_token);
 
         let rule = Logic::new(replace_op_ref, arena);
@@ -854,6 +858,12 @@ mod tests {
         let result = core.apply(&rule, &data_json).unwrap();
         // Splitting by empty string should split into individual characters
         // Note: Rust's split() with empty string includes empty strings at start and end
-        assert_eq!(result, json!(["", "a", "p", "p", "l", "e", ",", "b", "a", "n", "a", "n", "a", ",", "c", "h", "e", "r", "r", "y", ""]));
+        assert_eq!(
+            result,
+            json!([
+                "", "a", "p", "p", "l", "e", ",", "b", "a", "n", "a", "n", "a", ",", "c", "h", "e",
+                "r", "r", "y", ""
+            ])
+        );
     }
 }
