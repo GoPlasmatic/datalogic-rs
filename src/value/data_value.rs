@@ -432,6 +432,42 @@ impl<'a> DataValue<'a> {
             (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
             (DataValue::Duration(a), DataValue::Duration(b)) => a == b,
 
+            // DateTime to String coercion
+            (DataValue::DateTime(dt), DataValue::String(s)) => {
+                let formatted = if dt.offset() == &chrono::Utc {
+                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                } else {
+                    dt.to_rfc3339()
+                };
+                &formatted == s
+            }
+            (DataValue::String(s), DataValue::DateTime(dt)) => {
+                let formatted = if dt.offset() == &chrono::Utc {
+                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                } else {
+                    dt.to_rfc3339()
+                };
+                s == &formatted
+            }
+
+            // Duration to String coercion
+            (DataValue::Duration(dur), DataValue::String(s)) => {
+                let days = dur.num_days();
+                let hours = dur.num_hours() % 24;
+                let minutes = dur.num_minutes() % 60;
+                let seconds = dur.num_seconds() % 60;
+                let formatted = format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds);
+                &formatted == s
+            }
+            (DataValue::String(s), DataValue::Duration(dur)) => {
+                let days = dur.num_days();
+                let hours = dur.num_hours() % 24;
+                let minutes = dur.num_minutes() % 60;
+                let seconds = dur.num_seconds() % 60;
+                let formatted = format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds);
+                s == &formatted
+            }
+
             // Different types with coercion
             (DataValue::Null, DataValue::Bool(b)) => !b,
             (DataValue::Bool(a), DataValue::Null) => !a,
@@ -653,14 +689,20 @@ impl fmt::Display for DataValue<'_> {
                 write!(f, "}}")
             }
             DataValue::DateTime(dt) => {
-                write!(f, "\"{}\"", dt.to_rfc3339())
+                // Format with Z suffix for UTC instead of +00:00
+                let formatted = if dt.offset() == &chrono::Utc {
+                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                } else {
+                    dt.to_rfc3339()
+                };
+                write!(f, "\"{}\"", formatted)
             }
             DataValue::Duration(d) => {
                 let days = d.num_days();
                 let hours = d.num_hours() % 24;
                 let minutes = d.num_minutes() % 60;
                 let seconds = d.num_seconds() % 60;
-                write!(f, "{}d:{}h:{}m:{}s", days, hours, minutes, seconds)
+                write!(f, "\"{}d:{}h:{}m:{}s\"", days, hours, minutes, seconds)
             }
         }
     }

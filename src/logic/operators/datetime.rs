@@ -127,15 +127,8 @@ pub fn eval_format_date<'a>(
     // Format the datetime
     let formatted = dt.format(&chrono_format).to_string();
 
-    // Special handling for the format test case where "yyyy-MM-dd" is expected to return a DateTime
-    if *format_str == "yyyy-MM-dd" {
-        // If the format is "yyyy-MM-dd", try to parse it back to a DateTime
-        if let Ok(parsed_dt) =
-            chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", formatted))
-        {
-            return Ok(arena.alloc(DataValue::DateTime(parsed_dt.into())));
-        }
-    }
+    // Note: Removed special case handling for yyyy-MM-dd format
+    // All format_date operations should return strings, not DateTime objects
 
     // Return the formatted string
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&formatted))))
@@ -203,7 +196,6 @@ pub fn eval_datetime_operator<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     validate_argument_count(args, 1)?;
-
     match &args[0] {
         DataValue::String(s) => {
             // Try to parse the string as a datetime
@@ -269,20 +261,9 @@ mod tests {
 
         let result = eval_format_date(&args, &arena).unwrap();
 
-        // For the legacy test case, we return a DateTime object for this specific format
-        if args[1].as_str().unwrap() == "yyyy-MM-dd" {
-            assert!(result.is_datetime());
-            let result_dt = result.as_datetime().unwrap();
-            assert_eq!(result_dt.year(), 2022);
-            assert_eq!(result_dt.month(), 7);
-            assert_eq!(result_dt.day(), 6);
-            assert_eq!(result_dt.hour(), 0);
-            assert_eq!(result_dt.minute(), 0);
-            assert_eq!(result_dt.second(), 0);
-        } else {
-            assert!(result.is_string());
-            assert_eq!(result.as_str().unwrap(), "2022-07-06");
-        }
+        // format_date should always return a string
+        assert!(result.is_string());
+        assert_eq!(result.as_str().unwrap(), "2022-07-06");
 
         // Test a different format that should return a string
         let args2 = [

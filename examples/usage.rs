@@ -6,6 +6,9 @@ fn main() {
 
     // Step-by-step usage
     step_by_step_example();
+
+    // Datetime example
+    datetime_example();
 }
 
 fn basic_example() {
@@ -42,4 +45,31 @@ fn step_by_step_example() {
     // 3. Evaluate the rule with the data
     let result = dl.evaluate(&rule, &data).unwrap();
     println!("Rule evaluation result: {}", result);
+}
+
+fn datetime_example() {
+    println!("Datetime example:");
+
+    let dl = DataLogic::new();
+
+    let result = dl
+        .evaluate_str(
+            r#"{
+  "cat": [
+    { "var": "dates" },
+    "T",
+    {
+      "format_date": [
+        { "now": [] },
+        "HH:mm:ss"
+      ]
+    },
+    "+00:00"
+  ]
+}"#,
+            r#"{ "dates": "2024-12-31"}"#,
+            None,
+        )
+        .unwrap();
+    println!("Datetime: {}\n", result);
 }

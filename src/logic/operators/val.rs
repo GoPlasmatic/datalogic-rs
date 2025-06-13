@@ -334,7 +334,15 @@ fn access_datetime_property<'a>(
         "minute" => Ok(arena.alloc(DataValue::integer(dt.minute() as i64))),
         "second" => Ok(arena.alloc(DataValue::integer(dt.second() as i64))),
         "timestamp" => Ok(arena.alloc(DataValue::integer(dt.timestamp()))),
-        "iso" => Ok(arena.alloc(DataValue::datetime(*dt))),
+        "iso" => {
+            // Format with Z suffix for UTC instead of +00:00
+            let formatted = if dt.offset() == &chrono::Utc {
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            } else {
+                dt.to_rfc3339()
+            };
+            Ok(arena.alloc(DataValue::string(arena, &formatted)))
+        }
         _ => Ok(arena.null_value()),
     }
 }

@@ -36,20 +36,7 @@ impl<'a> FromJson<'a> for DataValue<'a> {
                     DataValue::null()
                 }
             }
-            JsonValue::String(s) => {
-                // Try to parse as datetime
-                if let Ok(dt) = super::parse_datetime(s) {
-                    return DataValue::datetime(dt);
-                }
-
-                // Try to parse as duration
-                if let Ok(duration) = super::parse_duration(s) {
-                    return DataValue::duration(duration);
-                }
-
-                // Default to string
-                DataValue::string(arena, s)
-            }
+            JsonValue::String(s) => DataValue::string(arena, s),
             JsonValue::Array(arr) => {
                 // Pre-allocate space for the array elements
                 let mut values = Vec::with_capacity(arr.len());
@@ -63,6 +50,21 @@ impl<'a> FromJson<'a> for DataValue<'a> {
                 DataValue::array(arena, &values)
             }
             JsonValue::Object(obj) => {
+                // Check for special datetime/duration object patterns first
+                if obj.len() == 1 {
+                    if let Some(JsonValue::String(s)) = obj.get("datetime") {
+                        if let Ok(dt) = super::parse_datetime(s) {
+                            return DataValue::datetime(dt);
+                        }
+                    }
+
+                    if let Some(JsonValue::String(s)) = obj.get("timestamp") {
+                        if let Ok(dur) = super::parse_duration(s) {
+                            return DataValue::duration(dur);
+                        }
+                    }
+                }
+
                 // Pre-allocate space for the object entries
                 let mut entries = Vec::with_capacity(obj.len());
 
@@ -113,8 +115,13 @@ impl ToJson for DataValue<'_> {
                 JsonValue::Object(map)
             }
             DataValue::DateTime(dt) => {
-                // Format the datetime as an ISO8601 string
-                JsonValue::String(dt.to_rfc3339())
+                // Format the datetime as an ISO8601 string with Z suffix for UTC
+                let formatted = if dt.offset() == &chrono::Utc {
+                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                } else {
+                    dt.to_rfc3339()
+                };
+                JsonValue::String(formatted)
             }
             DataValue::Duration(d) => {
                 // Format the duration as a simplified string representation
