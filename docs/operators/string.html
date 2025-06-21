@@ -387,7 +387,9 @@
                 <div class="operator-card mdc-card">
                     <h2 class="mdc-typography--headline5">split</h2>
                     <p class="mdc-typography--body1">
-                        The <code>split</code> operator splits a string into an array of substrings based on a delimiter.
+                        The <code>split</code> operator splits a string into an array of substrings based on a delimiter. 
+                        When the delimiter contains regex named groups (using <code>(?P&lt;name&gt;...)</code> syntax), 
+                        it extracts those groups as an object instead of performing a normal split.
                     </p>
                     
                     <h3 class="mdc-typography--subtitle1">Syntax</h3>
@@ -408,11 +410,43 @@
                                 <tbody class="mdc-data-table__content">
                                     <tr class="mdc-data-table__row">
                                         <td class="mdc-data-table__cell">string</td>
-                                        <td class="mdc-data-table__cell">The string to split</td>
+                                        <td class="mdc-data-table__cell">The string to split or extract from</td>
                                     </tr>
                                     <tr class="mdc-data-table__row">
                                         <td class="mdc-data-table__cell">delimiter</td>
-                                        <td class="mdc-data-table__cell">The string to use as a separator</td>
+                                        <td class="mdc-data-table__cell">The string to use as a separator, or a regex pattern with named groups for extraction</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Return Value</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Condition</th>
+                                        <th class="mdc-data-table__header-cell">Return Type</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">Normal delimiter</td>
+                                        <td class="mdc-data-table__cell">Array of strings</td>
+                                        <td class="mdc-data-table__cell">Split string into array parts</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">Regex with named groups</td>
+                                        <td class="mdc-data-table__cell">Object</td>
+                                        <td class="mdc-data-table__cell">Extracted named groups as key-value pairs</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">Regex no match</td>
+                                        <td class="mdc-data-table__cell">Empty object</td>
+                                        <td class="mdc-data-table__cell">Returns <code>{}</code> when pattern doesn't match</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -493,6 +527,112 @@
                             </button>
                         </div>
                     </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Regex Extraction - IBAN Pattern</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="split-regex-rule">{"split": [
+  {"var": "iban"},
+  "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="split-regex-data">{"iban": "SBININBB101"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="split-regex-result" readonly>{
+  "bank": "SBIN",
+  "country": "IN", 
+  "location": "BB",
+  "branch": "101"
+}</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Regex Extraction - Email Pattern</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="split-email-rule">{"split": [
+  {"var": "email"},
+  "^(?P<username>[^@]+)@(?P<domain>[^.]+)\\.(?P<tld>.+)$"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="split-email-data">{"email": "john.doe@example.com"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="split-email-result" readonly>{
+  "username": "john.doe",
+  "domain": "example",
+  "tld": "com"
+}</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Fallback to Normal Split</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="split-fallback-rule">{"split": [
+  {"var": "text"},
+  "[0-9]+"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="split-fallback-data">{"text": "abc123def456ghi"}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="split-fallback-result" readonly>["abc123def456ghi"]</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Notes</h3>
+                    <ul class="mdc-list">
+                        <li class="mdc-list-item">
+                            <span class="mdc-list-item__text">For regex extraction, the delimiter must contain named groups using <code>(?P&lt;name&gt;...)</code> syntax</span>
+                        </li>
+                        <li class="mdc-list-item">
+                            <span class="mdc-list-item__text">Returns an object with extracted groups when regex named groups are found and match</span>
+                        </li>
+                        <li class="mdc-list-item">
+                            <span class="mdc-list-item__text">Returns empty object <code>{}</code> when regex doesn't match the input string</span>
+                        </li>
+                        <li class="mdc-list-item">
+                            <span class="mdc-list-item__text">Falls back to normal string splitting when regex compilation fails or no named groups are present</span>
+                        </li>
+                    </ul>
                 </div>
             </div>
 

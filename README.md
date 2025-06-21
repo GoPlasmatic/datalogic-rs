@@ -209,6 +209,31 @@ let result = dl.evaluate_str(
 assert!(result.as_bool().unwrap());
 ```
 
+### 5. Regex Extraction with Split
+
+```rust
+use datalogic_rs::DataLogic;
+
+let dl = DataLogic::new();
+
+// Extract structured data from IBAN using regex named groups
+let result = dl.evaluate_str(
+    r#"{
+        "split": [
+            "SBININBB101",
+            "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"
+        ]
+    }"#,
+    r#"{}"#,
+    None
+).unwrap();
+
+// Returns: {"bank": "SBIN", "country": "IN", "location": "BB", "branch": "101"}
+let obj = result.as_object().unwrap();
+assert_eq!(obj.get("bank").unwrap().as_str().unwrap(), "SBIN");
+assert_eq!(obj.get("country").unwrap().as_str().unwrap(), "IN");
+```
+
 ## Custom Operators
 
 Create domain-specific operators to extend the system:
@@ -371,6 +396,33 @@ let validation_rule = r#"{
 let is_valid = dl.evaluate_str(validation_rule, form_data, None).unwrap().as_bool().unwrap();
 ```
 
+### Data Extraction and Parsing
+Extract structured data using regex patterns:
+
+```rust
+let extraction_rule = r#"{
+    "split": [
+        {"var": "iban"},
+        "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"
+    ]
+}"#;
+
+let data = r#"{"iban": "SBININBB101"}"#;
+let parsed_iban = dl.evaluate_str(extraction_rule, data, None).unwrap();
+// Returns: {"bank": "SBIN", "country": "IN", "location": "BB", "branch": "101"}
+
+// Use extracted data for further validation
+let validation_rule = r#"{
+    "and": [
+        {"==": [{"var": "result.country"}, "IN"]},
+        {"in": [{"var": "result.bank"}, ["SBIN", "ICIC", "HDFC"]]}
+    ]
+}"#;
+
+let validation_data = format!(r#"{{"result": {}}}"#, parsed_iban);
+let is_valid_bank = dl.evaluate_str(validation_rule, &validation_data, None).unwrap().as_bool().unwrap();
+```
+
 ## Supported Operations
 
 | Category | Operators |
@@ -380,7 +432,7 @@ let is_valid = dl.evaluate_str(validation_rule, form_data, None).unwrap().as_boo
 | **Arithmetic** | `+` (addition), `-` (subtraction), `*` (multiplication), `/` (division), `%` (modulo), `min`, `max`, `abs` (absolute value), `ceil` (round up), `floor` (round down) |
 | **Control Flow** | `if` (conditional), `?:` (ternary), `??` (nullish coalescing) |
 | **Arrays** | `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in` (contains), `length`, `slice`, `sort` |
-| **Strings** | `cat` (concatenate), `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `replace`, `split` |
+| **Strings** | `cat` (concatenate), `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `replace`, `split` (with regex extraction) |
 | **Data Access** | `var` (variable access), `val` (value access), `exists`, `missing`, `missing_some` |
 | **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
 | **Error Handling** | `throw`, `try` |

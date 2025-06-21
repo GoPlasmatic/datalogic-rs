@@ -8,6 +8,7 @@ use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
+use regex::Regex;
 
 /// Enumeration of string operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,6 +292,8 @@ pub fn eval_replace<'a>(
 }
 
 /// Evaluates a string split operation.
+/// When the delimiter contains named groups (regex pattern), extracts those groups as an object.
+/// Otherwise, performs normal string splitting.
 pub fn eval_split<'a>(
     args: &'a [&'a Token<'a>],
     arena: &'a DataArena,
@@ -305,7 +308,44 @@ pub fn eval_split<'a>(
     let string_str = value_to_string(string, arena);
     let delimiter_str = value_to_string(delimiter, arena);
 
-    // Split the string by delimiter
+    // Check if the delimiter looks like a regex pattern with named groups
+    if delimiter_str.contains("(?P<") {
+        // Try to compile as a regex and extract named groups
+        match Regex::new(delimiter_str) {
+            Ok(regex) => {
+                // Check if there are any named groups
+                let group_names: Vec<_> = regex.capture_names().flatten().collect();
+                if !group_names.is_empty() {
+                    // Try to match the regex and extract named groups
+                    if let Some(captures) = regex.captures(string_str) {
+                        let mut entries = Vec::new();
+
+                        for name in group_names {
+                            let group_value = captures.name(name).map(|m| m.as_str()).unwrap_or("");
+
+                            let key = arena.alloc_str(name);
+                            let value = DataValue::String(arena.alloc_str(group_value));
+                            entries.push((key, value));
+                        }
+
+                        // Create object with extracted groups
+                        let result_entries = arena.vec_into_slice(entries);
+                        return Ok(arena.alloc(DataValue::Object(result_entries)));
+                    } else {
+                        // No match found, return empty object
+                        let empty_entries: Vec<(&str, DataValue)> = vec![];
+                        let result_entries = arena.vec_into_slice(empty_entries);
+                        return Ok(arena.alloc(DataValue::Object(result_entries)));
+                    }
+                }
+            }
+            Err(_) => {
+                // If regex compilation fails, fall through to normal split behavior
+            }
+        }
+    }
+
+    // Normal split behavior (original implementation)
     let parts: Vec<DataValue> = string_str
         .split(delimiter_str)
         .map(|part| DataValue::String(arena.alloc_str(part)))
@@ -865,5 +905,116 @@ mod tests {
                 "r", "r", "y", ""
             ])
         );
+    }
+
+    #[test]
+    fn test_split_with_regex_extraction() {
+        // Create DataLogicCore instance
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        // Test IBAN regex extraction: {"split": ["SBININBB101", "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"]}
+        let data_json = json!({"iban": "SBININBB101"});
+
+        let var_token = Token::variable("iban", None);
+        let var_ref = arena.alloc(var_token);
+
+        let regex_pattern = "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$";
+        let regex_token = Token::literal(DataValue::string(arena, regex_pattern));
+        let regex_ref = arena.alloc(regex_token);
+
+        let args = vec![var_ref, regex_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+
+        // Should return an object with extracted groups
+        let expected = json!({
+            "bank": "SBIN",
+            "country": "IN",
+            "location": "BB",
+            "branch": "101"
+        });
+        assert_eq!(result, expected);
+
+        // Test with non-matching pattern
+        let non_match_data = json!({"iban": "invalid"});
+        let result = core.apply(&rule, &non_match_data).unwrap();
+
+        // Should return empty object for non-matching patterns
+        assert_eq!(result, json!({}));
+
+        // Test with literal string: {"split": ["SBININBB101", "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"]}
+        let literal_string_token = Token::literal(DataValue::string(arena, "SBININBB101"));
+        let literal_string_ref = arena.alloc(literal_string_token);
+
+        let args = vec![literal_string_ref, regex_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &json!({})).unwrap();
+        assert_eq!(result, expected);
+
+        // Test partial match - country code regex: {"split": ["SBININBB101", "(?P<country>[A-Z]{2})"]}
+        let country_regex_token = Token::literal(DataValue::string(arena, "(?P<country>[A-Z]{2})"));
+        let country_regex_ref = arena.alloc(country_regex_token);
+
+        let args = vec![literal_string_ref, country_regex_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &json!({})).unwrap();
+
+        // Should extract first match (SB from SBIN)
+        let expected_partial = json!({
+            "country": "SB"
+        });
+        assert_eq!(result, expected_partial);
+    }
+
+    #[test]
+    fn test_split_regex_fallback_to_normal_split() {
+        // Create DataLogicCore instance
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        let data_json = json!({"text": "apple,banana,cherry"});
+
+        // Test with invalid regex that contains (?P< but is malformed
+        let var_token = Token::variable("text", None);
+        let var_ref = arena.alloc(var_token);
+
+        let invalid_regex_token = Token::literal(DataValue::string(arena, "(?P<invalid"));
+        let invalid_regex_ref = arena.alloc(invalid_regex_token);
+
+        let args = vec![var_ref, invalid_regex_ref];
+        let array_token = Token::ArrayLiteral(args);
+        let array_ref = arena.alloc(array_token);
+
+        let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
+        let split_ref = arena.alloc(split_token);
+
+        let rule = Logic::new(split_ref, arena);
+
+        let result = core.apply(&rule, &data_json).unwrap();
+
+        // Should fall back to normal split behavior
+        assert_eq!(result, json!(["apple,banana,cherry"])); // No split occurs with this "delimiter"
     }
 }
