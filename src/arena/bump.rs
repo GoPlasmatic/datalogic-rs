@@ -918,7 +918,7 @@ mod tests {
 
         // Allocate a significant amount of data
         for i in 0..1000 {
-            let _ = arena.alloc_str(&format!("test string {}", i));
+            let _ = arena.alloc_str(&format!("test string {i}"));
         }
 
         arena.reset();

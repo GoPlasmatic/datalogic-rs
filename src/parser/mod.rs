@@ -58,7 +58,7 @@ impl ParserRegistry {
             Ok(())
         } else {
             Err(LogicError::ParseError {
-                reason: format!("Unknown parser format: {}", format_name),
+                reason: format!("Unknown parser format: {format_name}"),
             })
         }
     }
@@ -76,7 +76,7 @@ impl ParserRegistry {
             parser.parse(input, arena)
         } else {
             Err(LogicError::ParseError {
-                reason: format!("Unknown parser format: {}", format),
+                reason: format!("Unknown parser format: {format}"),
             })
         }
     }
@@ -89,7 +89,7 @@ impl ParserRegistry {
     ) -> Result<&'a Token<'a>> {
         let format = format.unwrap_or(&self.default_parser);
         let parser = self.parsers.get(format).ok_or(LogicError::ParseError {
-            reason: format!("Unknown parser format: {}", format),
+            reason: format!("Unknown parser format: {format}"),
         })?;
         parser.parse_json(input, arena)
     }

@@ -101,7 +101,7 @@ impl CustomOperator for SimpleOperatorAdapter {
                     }
                     // Handle complex types like Array and Object by converting to string
                     DataValue::Array(_) | DataValue::Object(_) => {
-                        let str_rep = format!("{:?}", result);
+                        let str_rep = format!("{result:?}");
                         let s_arena = arena.alloc_str(&str_rep);
                         Ok(arena.alloc(DataValue::String(s_arena)))
                     }

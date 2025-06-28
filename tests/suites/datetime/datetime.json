@@ -18,6 +18,12 @@
         "data": null,
         "result": "2022-07-06"
     },
+    {
+        "description": "format_date with timezone offset (z format)",
+        "rule": {"format_date": [{"datetime": "2022-07-06T13:20:06+05:00"}, "z"]},
+        "data": null,
+        "result": "+0500"
+    },
 
     "# DateTime comparisons",
     {

@@ -50,10 +50,10 @@ impl fmt::Display for LogicError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LogicError::ParseError { reason } => {
-                write!(f, "Parse error: {}", reason)
+                write!(f, "Parse error: {reason}")
             }
             LogicError::VariableError { path, reason } => {
-                write!(f, "Variable '{}' error: {}", path, reason)
+                write!(f, "Variable '{path}' error: {reason}")
             }
             LogicError::NaNError => {
                 write!(f, "NaN error")
@@ -62,13 +62,13 @@ impl fmt::Display for LogicError {
                 write!(f, "Invalid arguments error")
             }
             LogicError::ThrownError { r#type } => {
-                write!(f, "Thrown error: {}", r#type)
+                write!(f, "Thrown error: {type}")
             }
             LogicError::Custom(msg) => {
-                write!(f, "{}", msg)
+                write!(f, "{msg}")
             }
             LogicError::OperatorNotFoundError { operator } => {
-                write!(f, "Operator '{}' not found", operator)
+                write!(f, "Operator '{operator}' not found")
             }
         }
     }
@@ -91,7 +91,7 @@ impl<T> LogicResultExt<T> for Result<T> {
     {
         self.map_err(|err| {
             let context = f();
-            LogicError::Custom(format!("{}: {}", context, err))
+            LogicError::Custom(format!("{context}: {err}"))
         })
     }
 }

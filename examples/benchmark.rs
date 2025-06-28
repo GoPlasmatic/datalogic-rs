@@ -61,8 +61,8 @@ fn main() {
 
     let avg_iteration_time = duration / (iterations * test_cases.len() as u32);
 
-    println!("Total time: {:?}", duration);
-    println!("Average iteration time: {:?}", avg_iteration_time);
+    println!("Total time: {duration:?}");
+    println!("Average iteration time: {avg_iteration_time:?}");
     println!(
         "Iterations per second: {:.2}",
         (iterations * test_cases.len() as u32) as f64 / duration.as_secs_f64()

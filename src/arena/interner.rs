@@ -204,7 +204,7 @@ mod tests {
 
         // Intern a large number of strings
         for i in 0..50 {
-            let s = format!("string{}", i);
+            let s = format!("string{i}");
             interner.intern(&s, &bump);
         }
 

@@ -2,7 +2,7 @@
 //!
 //! This module provides operators for working with datetime and duration values.
 
-use chrono::Utc;
+use chrono::{FixedOffset, Local, TimeZone};
 
 use crate::arena::DataArena;
 use crate::logic::error::{LogicError, Result};
@@ -43,33 +43,38 @@ fn convert_format_to_chrono(format: &str) -> String {
         .replace("HH", "%H")
         .replace("mm", "%M")
         .replace("ss", "%S")
+        .replace("z", "%z")
 }
 
 /// Extracts a datetime from a value, handling both direct and wrapped forms
 fn extract_datetime<'a>(
     value: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Result<&'a chrono::DateTime<Utc>> {
+) -> Result<&'a chrono::DateTime<FixedOffset>> {
     match value {
         DataValue::DateTime(dt) => Ok(dt),
         DataValue::Object(entries) => {
             // Look for a "datetime" entry
-            if let Some((_, DataValue::DateTime(dt))) = entries
+            entries
                 .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
-            {
-                Ok(dt)
-            } else {
-                Err(LogicError::InvalidArgumentsError)
-            }
+                .find(|(key, _)| *key == "datetime")
+                .and_then(|(_, value)| {
+                    if let DataValue::String(datetime_str) = value {
+                        Some(datetime_str)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or(LogicError::InvalidArgumentsError)
+                .and_then(|datetime_str| {
+                    parse_datetime(datetime_str)
+                        .map_err(|_e| LogicError::InvalidArgumentsError)
+                        .map(|dt| arena.alloc(dt))
+                })
         }
-        DataValue::String(s) => {
-            if let Ok(dt) = parse_datetime(s) {
-                Ok(arena.alloc(dt))
-            } else {
-                Err(LogicError::InvalidArgumentsError)
-            }
-        }
+        DataValue::String(datetime_str) => parse_datetime(datetime_str)
+            .map_err(|_e| LogicError::InvalidArgumentsError)
+            .map(|dt| arena.alloc(dt)),
         _ => Err(LogicError::InvalidArgumentsError),
     }
 }
@@ -99,7 +104,7 @@ pub fn eval_timestamp_operator<'a>(
 
 /// Gets the current date and time.
 pub fn eval_now(arena: &DataArena) -> Result<&DataValue<'_>> {
-    let now = Utc::now();
+    let now = Local::now().with_timezone(&FixedOffset::east_opt(0).unwrap());
     Ok(arena.alloc(DataValue::datetime(now)))
 }
 
@@ -151,20 +156,39 @@ pub fn eval_parse_date<'a>(
         _ => return Err(LogicError::InvalidArgumentsError),
     };
 
-    // Convert from our custom format to chrono's format
     let chrono_format = convert_format_to_chrono(format_str);
 
     // Use the non-deprecated method
-    match chrono::NaiveDateTime::parse_from_str(date_str, &chrono_format).map(|dt| dt.and_utc()) {
-        Ok(dt) => Ok(arena.alloc(DataValue::datetime(dt))),
+    match chrono::NaiveDateTime::parse_from_str(date_str, &chrono_format) {
+        Ok(naive_dt) => {
+            let dt = FixedOffset::east_opt(0)
+                .unwrap()
+                .from_utc_datetime(&naive_dt);
+            // Return formatted string instead of datetime object
+            let formatted = if dt.offset().local_minus_utc() == 0 {
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            } else {
+                dt.to_rfc3339()
+            };
+            Ok(arena.alloc(DataValue::string(arena, &formatted)))
+        }
         Err(_) => {
             // Try as date only
             match chrono::NaiveDate::parse_from_str(date_str, &chrono_format) {
                 Ok(date) => {
-                    let dt = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
-                    Ok(arena.alloc(DataValue::datetime(dt)))
+                    let naive_dt = date.and_hms_opt(0, 0, 0).unwrap();
+                    let dt = FixedOffset::east_opt(0)
+                        .unwrap()
+                        .from_utc_datetime(&naive_dt);
+                    // Return formatted string instead of datetime object
+                    let formatted = if dt.offset().local_minus_utc() == 0 {
+                        dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                    } else {
+                        dt.to_rfc3339()
+                    };
+                    Ok(arena.alloc(DataValue::string(arena, &formatted)))
                 }
-                Err(_) => Err(LogicError::InvalidArgumentsError),
+                Err(_e) => Err(LogicError::InvalidArgumentsError),
             }
         }
     }
@@ -186,7 +210,7 @@ pub fn eval_date_diff<'a>(
         _ => return Err(LogicError::InvalidArgumentsError),
     };
 
-    let diff = date_diff(dt1, dt2, unit);
+    let diff = date_diff(dt2, dt1, unit);
     Ok(arena.alloc(DataValue::integer(diff)))
 }
 
@@ -200,13 +224,26 @@ pub fn eval_datetime_operator<'a>(
         DataValue::String(s) => {
             // Try to parse the string as a datetime
             match parse_datetime(s) {
-                Ok(dt) => Ok(arena.alloc(DataValue::datetime(dt))),
+                Ok(dt) => {
+                    // Return formatted string instead of datetime object
+                    let formatted = if dt.offset().local_minus_utc() == 0 {
+                        dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                    } else {
+                        dt.to_rfc3339()
+                    };
+                    Ok(arena.alloc(DataValue::string(arena, &formatted)))
+                }
                 Err(_) => Err(LogicError::InvalidArgumentsError),
             }
         }
         DataValue::DateTime(dt) => {
-            // If already a datetime, wrap it in an object
-            Ok(arena.alloc(DataValue::datetime(*dt)))
+            // If already a datetime, return it as a formatted string
+            let formatted = if dt.offset().local_minus_utc() == 0 {
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            } else {
+                dt.to_rfc3339()
+            };
+            Ok(arena.alloc(DataValue::string(arena, &formatted)))
         }
         _ => Err(LogicError::InvalidArgumentsError),
     }
@@ -215,7 +252,7 @@ pub fn eval_datetime_operator<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Datelike, TimeZone, Timelike};
+    use chrono::TimeZone;
 
     #[test]
     fn test_eval_timestamp() {
@@ -251,7 +288,10 @@ mod tests {
     fn test_eval_format_date() {
         let arena = DataArena::new();
 
-        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
 
         // Test standard format that returns a string
         let args = [
@@ -286,14 +326,10 @@ mod tests {
         ];
 
         let result = eval_parse_date(&args, &arena).unwrap();
-        assert!(result.is_datetime());
+        assert!(result.is_string());
 
-        let dt = result.as_datetime().unwrap();
-        assert_eq!(dt.year(), 2022);
-        assert_eq!(dt.month(), 7);
-        assert_eq!(dt.day(), 6);
-        assert_eq!(dt.hour(), 0);
-        assert_eq!(dt.minute(), 0);
+        let formatted = result.as_str().unwrap();
+        assert_eq!(formatted, "2022-07-06T00:00:00Z");
     }
 
     #[test]
@@ -301,8 +337,14 @@ mod tests {
         let arena = DataArena::new();
 
         // Testing positive date difference
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 0, 0, 0).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 7, 0, 0, 0).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 0, 0, 0)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 7, 0, 0, 0)
+            .unwrap();
 
         let args = [
             DataValue::datetime(dt1),
@@ -311,7 +353,7 @@ mod tests {
         ];
 
         let result = eval_date_diff(&args, &arena).unwrap();
-        assert_eq!(result.as_i64().unwrap(), -1); // dt1 - dt2 = -1 day
+        assert_eq!(result.as_i64().unwrap(), -1); // dt1 - dt2 = -1 day (from dt2 to dt1)
 
         // Testing with reversed dates
         let args = [
@@ -321,7 +363,7 @@ mod tests {
         ];
 
         let result = eval_date_diff(&args, &arena).unwrap();
-        assert_eq!(result.as_i64().unwrap(), 1); // dt2 - dt1 = 1 day
+        assert_eq!(result.as_i64().unwrap(), 1); // dt2 - dt1 = 1 day (from dt1 to dt2)
     }
 
     #[test]
@@ -333,14 +375,9 @@ mod tests {
         let result = eval_datetime_operator(&args, &arena).unwrap();
 
         // Check that it's a datetime directly
-        assert!(result.is_datetime());
-        let dt = result.as_datetime().unwrap();
-        assert_eq!(dt.year(), 2022);
-        assert_eq!(dt.month(), 7);
-        assert_eq!(dt.day(), 6);
-        assert_eq!(dt.hour(), 13);
-        assert_eq!(dt.minute(), 20);
-        assert_eq!(dt.second(), 6);
+        assert!(result.is_string());
+        let formatted = result.as_str().unwrap();
+        assert_eq!(formatted, "2022-07-06T13:20:06Z");
 
         // Test with invalid datetime string
         let args = [DataValue::string(&arena, "invalid")];
@@ -348,12 +385,16 @@ mod tests {
         assert!(result.is_err());
 
         // Test with already a datetime
-        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
         let args = [DataValue::datetime(dt)];
         let result = eval_datetime_operator(&args, &arena).unwrap();
 
-        // Check that it returns a datetime directly
-        assert!(result.is_datetime());
-        assert_eq!(result.as_datetime().unwrap(), &dt);
+        // Check that it returns a formatted string
+        assert!(result.is_string());
+        let formatted = result.as_str().unwrap();
+        assert_eq!(formatted, "2022-07-06T13:20:06Z");
     }
 }

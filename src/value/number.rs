@@ -169,8 +169,8 @@ impl PartialOrd for NumberValue {
 impl fmt::Display for NumberValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            NumberValue::Integer(i) => write!(f, "{}", i),
-            NumberValue::Float(fl) => write!(f, "{}", fl),
+            NumberValue::Integer(i) => write!(f, "{i}"),
+            NumberValue::Float(fl) => write!(f, "{fl}"),
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset};
 
 /// Enumeration of comparison operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,24 +32,19 @@ pub enum ComparisonOp {
 }
 
 /// Helper function to extract a datetime from a direct DateTime value or an object with a "datetime" key
-fn extract_datetime<'a>(
+fn extract_datetime_for_comparison<'a>(
     value: &'a DataValue<'a>,
     arena: &'a DataArena,
-) -> Option<&'a DateTime<Utc>> {
+) -> Option<&'a DateTime<FixedOffset>> {
     match value {
         DataValue::DateTime(dt) => Some(dt),
-        DataValue::Object(entries) => {
-            // Look for a "datetime" entry
-            entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
-                .and_then(|(_, value)| {
-                    if let DataValue::DateTime(dt) = value {
-                        Some(dt)
-                    } else {
-                        None
-                    }
-                })
+        DataValue::String(s) => {
+            // Try to parse string as datetime and cache it in arena
+            if let Ok(dt) = crate::value::parse_datetime(s) {
+                Some(arena.alloc(dt))
+            } else {
+                None
+            }
         }
         _ => None,
     }
@@ -119,8 +114,8 @@ fn values_are_equal<'a>(
     }
 
     // Try to extract datetime values
-    let left_dt = extract_datetime(left, arena);
-    let right_dt = extract_datetime(right, arena);
+    let left_dt = extract_datetime_for_comparison(left, arena);
+    let right_dt = extract_datetime_for_comparison(right, arena);
 
     // If both values are datetimes, compare them
     if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
@@ -222,8 +217,8 @@ fn value_is_greater_than<'a>(
     arena: &'a DataArena,
 ) -> Result<bool> {
     // Try to extract datetime values
-    let left_dt = extract_datetime(left, arena);
-    let right_dt = extract_datetime(right, arena);
+    let left_dt = extract_datetime_for_comparison(left, arena);
+    let right_dt = extract_datetime_for_comparison(right, arena);
 
     // If both values are datetimes, compare them
     if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
@@ -259,8 +254,8 @@ fn value_is_greater_than_or_equal<'a>(
     arena: &'a DataArena,
 ) -> Result<bool> {
     // Try to extract datetime values
-    let left_dt = extract_datetime(left, arena);
-    let right_dt = extract_datetime(right, arena);
+    let left_dt = extract_datetime_for_comparison(left, arena);
+    let right_dt = extract_datetime_for_comparison(right, arena);
 
     // If both values are datetimes, compare them
     if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
@@ -296,8 +291,8 @@ fn value_is_less_than<'a>(
     arena: &'a DataArena,
 ) -> Result<bool> {
     // Try to extract datetime values
-    let left_dt = extract_datetime(left, arena);
-    let right_dt = extract_datetime(right, arena);
+    let left_dt = extract_datetime_for_comparison(left, arena);
+    let right_dt = extract_datetime_for_comparison(right, arena);
 
     // If both values are datetimes, compare them
     if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {
@@ -333,8 +328,8 @@ fn value_is_less_than_or_equal<'a>(
     arena: &'a DataArena,
 ) -> Result<bool> {
     // Try to extract datetime values
-    let left_dt = extract_datetime(left, arena);
-    let right_dt = extract_datetime(right, arena);
+    let left_dt = extract_datetime_for_comparison(left, arena);
+    let right_dt = extract_datetime_for_comparison(right, arena);
 
     // If both values are datetimes, compare them
     if let (Some(left_dt), Some(right_dt)) = (left_dt, right_dt) {

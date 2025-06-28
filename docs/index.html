@@ -145,6 +145,17 @@ fn main() {
         .unwrap();
     
     println!("Result3: {}", result3); // prints {"bank": "SBIN", "country": "IN", "location": "BB", "branch": "101"}
+    
+    // Method 4: Timezone offset extraction 
+    let result4 = dl
+        .evaluate_str(
+            r#"{ "format_date": [{"datetime": "2022-07-06T13:20:06+05:00"}, "z"] }"#,
+            r#"{}"#,
+            None,
+        )
+        .unwrap();
+    
+    println!("Result4: {}", result4); // prints "+0500"
 }</code></pre>
                 </div>
             </div>

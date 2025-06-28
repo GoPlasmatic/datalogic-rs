@@ -17,7 +17,7 @@ impl ExpressionParser for JsonLogicParser {
     fn parse<'a>(&self, input: &str, arena: &'a DataArena) -> Result<&'a Token<'a>> {
         // Parse the input string as JSON
         let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
-            reason: format!("Invalid JSON: {}", e),
+            reason: format!("Invalid JSON: {e}"),
         })?;
 
         // Use the JSONLogic parsing logic
@@ -64,7 +64,7 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                 Ok(Token::literal(DataValue::float(f)))
             } else {
                 Err(LogicError::ParseError {
-                    reason: format!("Invalid number: {}", n),
+                    reason: format!("Invalid number: {n}"),
                 })
             }
         }
@@ -243,8 +243,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                         _ => {
                             return Err(LogicError::ParseError {
                                 reason: format!(
-                                    "Variable path component must be a scalar value, found: {:?}",
-                                    item
+                                    "Variable path component must be a scalar value, found: {item:?}"
                                 ),
                             });
                         }
@@ -319,7 +318,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
 
         // Invalid variable reference
         _ => Err(LogicError::ParseError {
-            reason: format!("Invalid variable reference: {:?}", var_json),
+            reason: format!("Invalid variable reference: {var_json:?}"),
         }),
     }
 }
@@ -553,7 +552,7 @@ mod tests {
         if let Token::Literal(value) = token {
             assert_eq!(value.as_i64(), Some(42));
         } else {
-            panic!("Expected literal token, got: {:?}", token);
+            panic!("Expected literal token, got: {token:?}");
         }
 
         // Test preserve with an array
@@ -567,7 +566,7 @@ mod tests {
             assert_eq!(arr[1].as_i64(), Some(2));
             assert_eq!(arr[2].as_i64(), Some(3));
         } else {
-            panic!("Expected literal token, got: {:?}", token);
+            panic!("Expected literal token, got: {token:?}");
         }
 
         // Test preserve with an object
@@ -578,7 +577,7 @@ mod tests {
             let obj = value.as_object().unwrap();
             assert_eq!(obj.len(), 2);
         } else {
-            panic!("Expected literal token, got: {:?}", token);
+            panic!("Expected literal token, got: {token:?}");
         }
     }
 

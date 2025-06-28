@@ -115,8 +115,8 @@ impl ToJson for DataValue<'_> {
                 JsonValue::Object(map)
             }
             DataValue::DateTime(dt) => {
-                // Format the datetime as an ISO8601 string with Z suffix for UTC
-                let formatted = if dt.offset() == &chrono::Utc {
+                // Format with Z suffix for UTC, otherwise preserve timezone offset
+                let formatted = if dt.offset().local_minus_utc() == 0 {
                     dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
                 } else {
                     dt.to_rfc3339()
@@ -132,13 +132,13 @@ impl ToJson for DataValue<'_> {
                 let seconds = total_seconds % 60;
 
                 if days > 0 {
-                    JsonValue::String(format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds))
+                    JsonValue::String(format!("{days}d:{hours}h:{minutes}m:{seconds}s"))
                 } else if hours > 0 {
-                    JsonValue::String(format!("{}h:{}m:{}s", hours, minutes, seconds))
+                    JsonValue::String(format!("{hours}h:{minutes}m:{seconds}s"))
                 } else if minutes > 0 {
-                    JsonValue::String(format!("{}m:{}s", minutes, seconds))
+                    JsonValue::String(format!("{minutes}m:{seconds}s"))
                 } else {
-                    JsonValue::String(format!("{}s", seconds))
+                    JsonValue::String(format!("{seconds}s"))
                 }
             }
         }
@@ -245,7 +245,7 @@ mod tests {
                         assert_eq!(v, 3);
                         found_c = true;
                     }
-                    _ => panic!("Unexpected key: {}", key),
+                    _ => panic!("Unexpected key: {key}"),
                 }
             }
 
@@ -295,7 +295,7 @@ mod tests {
                     assert_eq!(value.as_bool(), Some(true));
                     found_is_active = true;
                 }
-                _ => panic!("Unexpected key: {}", key),
+                _ => panic!("Unexpected key: {key}"),
             }
         }
 
@@ -398,7 +398,7 @@ mod tests {
                                         assert_eq!(user_value.as_i64(), Some(25));
                                         found_age = true;
                                     }
-                                    _ => panic!("Unexpected user key: {}", user_key),
+                                    _ => panic!("Unexpected user key: {user_key}"),
                                 }
                             }
 
@@ -425,7 +425,7 @@ mod tests {
                                         assert_eq!(user_value.as_i64(), Some(30));
                                         found_age = true;
                                     }
-                                    _ => panic!("Unexpected user key: {}", user_key),
+                                    _ => panic!("Unexpected user key: {user_key}"),
                                 }
                             }
 
@@ -437,7 +437,7 @@ mod tests {
                             panic!("Expected user2 to be an object");
                         }
                     }
-                    _ => panic!("Unexpected key: {}", key),
+                    _ => panic!("Unexpected key: {key}"),
                 }
             }
         } else {

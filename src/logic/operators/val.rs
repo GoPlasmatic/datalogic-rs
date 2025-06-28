@@ -8,7 +8,7 @@ use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
 use crate::value::DataValue;
-use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, Timelike};
 
 /// Validates arguments for val operator
 fn validate_val_args(args: &[&Token]) -> Result<()> {
@@ -77,6 +77,15 @@ fn handle_property_access<'a>(
     Ok(arena.null_value())
 }
 
+/// Check if a property name is a datetime property
+#[inline]
+fn is_datetime_property(prop_name: &str) -> bool {
+    matches!(
+        prop_name,
+        "year" | "month" | "day" | "hour" | "minute" | "second" | "weekday" | "timestamp" | "iso"
+    )
+}
+
 /// Handle special object types like datetime and duration objects
 #[inline]
 fn handle_special_object_types<'a>(
@@ -84,22 +93,46 @@ fn handle_special_object_types<'a>(
     prop_name: &str,
     arena: &'a DataArena,
 ) -> Option<Result<&'a DataValue<'a>>> {
-    if let DataValue::Object(entries) = value {
-        // Handle datetime objects with {"datetime": dt} structure
-        if let Some((_, DataValue::DateTime(dt))) = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("datetime"))
-        {
-            return Some(access_datetime_property(dt, prop_name, arena));
-        }
+    match value {
+        DataValue::Object(entries) => {
+            // Handle datetime objects with {"datetime": dt} structure
+            if let Some((_, DataValue::DateTime(dt))) = entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("datetime"))
+            {
+                return Some(access_datetime_property(dt, prop_name, arena));
+            }
 
-        // Handle duration objects with {"timestamp": dur} structure
-        if let Some((_, DataValue::Duration(dur))) = entries
-            .iter()
-            .find(|(key, _)| *key == arena.intern_str("timestamp"))
-        {
-            return Some(access_duration_property(dur, prop_name, arena));
+            // Handle datetime objects with {"datetime": "string"} structure
+            if let Some((_, DataValue::String(dt_str))) = entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("datetime"))
+            {
+                if is_datetime_property(prop_name) {
+                    if let Ok(dt) = crate::value::parse_datetime(dt_str) {
+                        return Some(access_datetime_property(&dt, prop_name, arena));
+                    }
+                }
+            }
+
+            // Handle duration objects with {"timestamp": dur} structure
+            if let Some((_, DataValue::Duration(dur))) = entries
+                .iter()
+                .find(|(key, _)| *key == arena.intern_str("timestamp"))
+            {
+                return Some(access_duration_property(dur, prop_name, arena));
+            }
         }
+        DataValue::String(s) => {
+            // Check if this string looks like a datetime and the property is a datetime property
+            if is_datetime_property(prop_name) {
+                // Try to parse the string as a datetime
+                if let Ok(dt) = crate::value::parse_datetime(s) {
+                    return Some(access_datetime_property(&dt, prop_name, arena));
+                }
+            }
+        }
+        _ => {}
     }
 
     None
@@ -314,6 +347,15 @@ fn access_property<'a>(
             // Direct access to duration properties
             access_duration_property(dur, key, arena)
         }
+        DataValue::String(_) => {
+            // Check if this is a datetime string with datetime properties
+            let special_access = handle_special_object_types(data, key, arena);
+            if let Some(item) = special_access {
+                return item;
+            }
+            // Not a special string type or property not found
+            Ok(arena.null_value())
+        }
         // Not an object or array
         _ => Ok(arena.null_value()),
     }
@@ -322,21 +364,22 @@ fn access_property<'a>(
 /// Access properties of a DateTime value
 #[inline]
 fn access_datetime_property<'a>(
-    dt: &DateTime<Utc>,
-    key: &str,
+    dt: &DateTime<FixedOffset>,
+    prop_name: &str,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    match key {
+    match prop_name {
         "year" => Ok(arena.alloc(DataValue::integer(dt.year() as i64))),
         "month" => Ok(arena.alloc(DataValue::integer(dt.month() as i64))),
         "day" => Ok(arena.alloc(DataValue::integer(dt.day() as i64))),
         "hour" => Ok(arena.alloc(DataValue::integer(dt.hour() as i64))),
         "minute" => Ok(arena.alloc(DataValue::integer(dt.minute() as i64))),
         "second" => Ok(arena.alloc(DataValue::integer(dt.second() as i64))),
+        "weekday" => Ok(arena.alloc(DataValue::integer(dt.weekday().number_from_monday() as i64))),
         "timestamp" => Ok(arena.alloc(DataValue::integer(dt.timestamp()))),
         "iso" => {
-            // Format with Z suffix for UTC instead of +00:00
-            let formatted = if dt.offset() == &chrono::Utc {
+            // Format with Z suffix for UTC, otherwise preserve timezone offset
+            let formatted = if dt.offset().local_minus_utc() == 0 {
                 dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
             } else {
                 dt.to_rfc3339()

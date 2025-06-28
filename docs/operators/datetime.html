@@ -65,7 +65,7 @@
             
             <h1 class="mdc-typography--headline4">Date & Time Operators</h1>
             <p class="mdc-typography--body1">
-                Date and time operators allow you to work with date-related operations in DataLogic-rs.
+                Date and time operators allow you to work with date-related operations in DataLogic-rs. These operators preserve timezone information and support timezone offset extraction.
             </p>
             
             <div class="operator-chips">
@@ -100,7 +100,7 @@
                 <div class="operator-card mdc-card">
                     <h2 class="mdc-typography--headline5">datetime</h2>
                     <p class="mdc-typography--body1">
-                        The <code>datetime</code> operator converts a string to a datetime object.
+                        The <code>datetime</code> operator converts a string to a datetime object, preserving timezone information when present.
                     </p>
                     
                     <h3 class="mdc-typography--subtitle1">Syntax</h3>
@@ -121,7 +121,7 @@
                                 <tbody class="mdc-data-table__content">
                                     <tr class="mdc-data-table__row">
                                         <td class="mdc-data-table__cell">dateString</td>
-                                        <td class="mdc-data-table__cell">A string in ISO 8601 format (e.g., "2022-07-06T13:20:06Z")</td>
+                                        <td class="mdc-data-table__cell">A string in ISO 8601 format with optional timezone offset (e.g., "2022-07-06T13:20:06Z", "2022-07-06T13:20:06+05:00")</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -306,7 +306,59 @@
                                     </tr>
                                     <tr class="mdc-data-table__row">
                                         <td class="mdc-data-table__cell">formatString</td>
-                                        <td class="mdc-data-table__cell">Format pattern (e.g., "yyyy-MM-dd HH:mm:ss")</td>
+                                        <td class="mdc-data-table__cell">Format pattern (e.g., "yyyy-MM-dd HH:mm:ss", "z" for timezone offset)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Format Patterns</h3>
+                    <div class="mdc-data-table">
+                        <div class="mdc-data-table__table-container">
+                            <table class="mdc-data-table__table">
+                                <thead>
+                                    <tr class="mdc-data-table__header-row">
+                                        <th class="mdc-data-table__header-cell">Pattern</th>
+                                        <th class="mdc-data-table__header-cell">Description</th>
+                                        <th class="mdc-data-table__header-cell">Example</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="mdc-data-table__content">
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">yyyy</td>
+                                        <td class="mdc-data-table__cell">4-digit year</td>
+                                        <td class="mdc-data-table__cell">2022</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">MM</td>
+                                        <td class="mdc-data-table__cell">2-digit month</td>
+                                        <td class="mdc-data-table__cell">07</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">dd</td>
+                                        <td class="mdc-data-table__cell">2-digit day</td>
+                                        <td class="mdc-data-table__cell">06</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">HH</td>
+                                        <td class="mdc-data-table__cell">24-hour format hour</td>
+                                        <td class="mdc-data-table__cell">13</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">mm</td>
+                                        <td class="mdc-data-table__cell">Minutes</td>
+                                        <td class="mdc-data-table__cell">20</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">ss</td>
+                                        <td class="mdc-data-table__cell">Seconds</td>
+                                        <td class="mdc-data-table__cell">06</td>
+                                    </tr>
+                                    <tr class="mdc-data-table__row">
+                                        <td class="mdc-data-table__cell">z</td>
+                                        <td class="mdc-data-table__cell">Timezone offset in ±HHMM format</td>
+                                        <td class="mdc-data-table__cell">+0500, -0800</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -330,6 +382,60 @@
                             <div class="editor-container result-container">
                                 <h4 class="mdc-typography--subtitle2">Result:</h4>
                                 <textarea class="result-editor" id="format-date-result" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Extract timezone offset</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="format-timezone-rule">{"format_date": [
+  {"datetime": ["2022-07-06T13:20:06+05:00"]},
+  "z"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="format-timezone-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="format-timezone-result" readonly>"+0500"</textarea>
+                            </div>
+                        </div>
+                        <div class="example-actions">
+                            <button class="evaluate-button mdc-button mdc-button--raised">
+                                <span class="mdc-button__ripple"></span>
+                                <span class="mdc-button__label">Evaluate</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mdc-typography--subtitle1">Example: Preserve timezone in formatting</h3>
+                    <div class="example-card mdc-card">
+                        <div class="editors-container">
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Rule:</h4>
+                                <textarea class="rule-editor" id="format-preserve-rule">{"format_date": [
+  {"datetime": ["2022-07-06T13:20:06+05:00"]},
+  "yyyy-MM-ddTHH:mm:ssXXX"
+]}</textarea>
+                            </div>
+                            <div class="editor-container">
+                                <h4 class="mdc-typography--subtitle2">Data:</h4>
+                                <textarea class="data-editor" id="format-preserve-data">{}</textarea>
+                            </div>
+                            <div class="editor-container result-container">
+                                <h4 class="mdc-typography--subtitle2">Result:</h4>
+                                <textarea class="result-editor" id="format-preserve-result" readonly>"2022-07-06T13:20:06+05:00"</textarea>
                             </div>
                         </div>
                         <div class="example-actions">

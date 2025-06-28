@@ -21,7 +21,7 @@ fn basic_example() {
         .evaluate_str(r#"{"datetime": "2022-07-06T13:20:06Z"}"#, r#"{}"#, None)
         .unwrap();
 
-    println!("Datetime: {}\n", result);
+    println!("Datetime: {result}\n");
 }
 
 fn step_by_step_example() {
@@ -31,7 +31,7 @@ fn step_by_step_example() {
 
     // 1. Parse the data
     let data = dl.parse_data(r#"{ "adder": 10 }"#).unwrap();
-    println!("Parsed data: {}", data);
+    println!("Parsed data: {data}");
 
     // 2. Parse the logic rule
     let rule = dl
@@ -40,11 +40,11 @@ fn step_by_step_example() {
             None,
         )
         .unwrap();
-    println!("Parsed rule: {:?}", rule);
+    println!("Parsed rule: {rule:?}");
 
     // 3. Evaluate the rule with the data
     let result = dl.evaluate(&rule, &data).unwrap();
-    println!("Rule evaluation result: {}", result);
+    println!("Rule evaluation result: {result}");
 }
 
 fn datetime_example() {
@@ -71,5 +71,5 @@ fn datetime_example() {
             None,
         )
         .unwrap();
-    println!("Datetime: {}\n", result);
+    println!("Datetime: {result}\n");
 }

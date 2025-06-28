@@ -82,7 +82,7 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
                     }
                 }
             }
-            return Err(format!("Failed to parse rule: {}", e));
+            return Err(format!("Failed to parse rule: {e}"));
         }
     };
 
@@ -93,7 +93,7 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
     // Use DataLogic to parse the data
     let data = match dl.parse_data(&data_json.to_string()) {
         Ok(data) => data,
-        Err(e) => return Err(format!("Failed to parse data: {}", e)),
+        Err(e) => return Err(format!("Failed to parse data: {e}")),
     };
 
     // Evaluate the rule using DataLogic's evaluate method
@@ -130,13 +130,13 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
                     }
                 }
             }
-            return Err(format!("Failed to evaluate rule: {}", e));
+            return Err(format!("Failed to evaluate rule: {e}"));
         }
     };
 
     // If we expected an error but didn't get one, that's a failure
     if test_case.error.is_some() {
-        return Err(format!("Expected an error but got result: {}", result));
+        return Err(format!("Expected an error but got result: {result}"));
     }
 
     // If a specific result is expected
@@ -144,17 +144,14 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
         // Convert the expected result to DataValue for comparison
         let expected = match dl.parse_data(&expected_result.to_string()) {
             Ok(value) => value,
-            Err(e) => return Err(format!("Failed to parse expected result: {}", e)),
+            Err(e) => return Err(format!("Failed to parse expected result: {e}")),
         };
 
         // Compare the results
         if result.equals(&expected) {
             Ok(())
         } else {
-            Err(format!(
-                "Test failed: expected {}, got {}",
-                expected, result
-            ))
+            Err(format!("Test failed: expected {expected}, got {result}"))
         }
     } else {
         // No specific result expected
@@ -194,7 +191,7 @@ fn run_test_suite(test_file_path: &Path) -> (usize, usize) {
             Err(e) => {
                 failed += 1;
                 println!("  ❌ {}: {}", i + 1, test_case.description);
-                println!("     Error: {}", e);
+                println!("     Error: {e}");
                 println!("     Rule: {}", test_case.rule);
                 println!(
                     "     Data: {}",
@@ -204,7 +201,7 @@ fn run_test_suite(test_file_path: &Path) -> (usize, usize) {
         }
     }
 
-    println!("  Results: {} passed, {} failed", passed, failed);
+    println!("  Results: {passed} passed, {failed} failed");
 
     (passed, failed)
 }
@@ -240,7 +237,7 @@ mod tests {
                     return arr
                         .iter()
                         .filter_map(|v| v.as_str())
-                        .map(|s| PathBuf::from(format!("tests/suites/{}", s)))
+                        .map(|s| PathBuf::from(format!("tests/suites/{s}")))
                         .collect();
                 }
             }
@@ -263,11 +260,8 @@ mod tests {
             total_failed += failed;
         }
 
-        println!(
-            "\nTotal Results: {} passed, {} failed",
-            total_passed, total_failed
-        );
+        println!("\nTotal Results: {total_passed} passed, {total_failed} failed");
 
-        assert_eq!(total_failed, 0, "{} tests failed", total_failed);
+        assert_eq!(total_failed, 0, "{total_failed} tests failed");
     }
 }

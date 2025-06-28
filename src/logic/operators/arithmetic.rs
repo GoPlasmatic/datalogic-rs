@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use crate::arena::DataArena;
 use crate::logic::error::{LogicError, Result};
 use crate::value::DataValue;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset};
 
 /// Enumeration of arithmetic operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,22 +55,23 @@ fn create_number(value: f64, arena: &DataArena) -> &DataValue<'_> {
 }
 
 /// Helper function to extract a datetime from a direct DateTime value or an object with a "datetime" key
-fn extract_datetime<'a>(value: &'a DataValue<'a>, arena: &'a DataArena) -> Option<DateTime<Utc>> {
+fn extract_datetime<'a>(
+    value: &'a DataValue<'a>,
+    arena: &'a DataArena,
+) -> Option<DateTime<FixedOffset>> {
     match value {
         DataValue::DateTime(dt) => Some(*dt),
-        DataValue::Object(entries) => {
-            // Look for a "datetime" entry
-            entries
-                .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
-                .and_then(|(_, value)| {
-                    if let DataValue::DateTime(dt) = value {
-                        Some(*dt)
-                    } else {
-                        None
-                    }
-                })
-        }
+        DataValue::Object(entries) => entries
+            .iter()
+            .find(|(key, _)| *key == arena.intern_str("datetime"))
+            .and_then(|(_, value)| {
+                if let DataValue::String(datetime_str) = value {
+                    crate::value::parse_datetime(datetime_str).ok()
+                } else {
+                    None
+                }
+            }),
+        DataValue::String(datetime_str) => crate::value::parse_datetime(datetime_str).ok(),
         _ => None,
     }
 }
@@ -109,14 +110,32 @@ fn process_datetime_duration_add<'a>(
     let left_dt = extract_datetime(&args[0], arena);
     let right_dur = extract_duration(&args[1], arena);
     if let (Some(dt), Some(dur)) = (left_dt, right_dur) {
-        return Some(arena.alloc(DataValue::datetime(dt + dur)));
+        let dt_utc = dt.naive_utc().and_utc();
+        let result_utc = dt_utc + dur;
+        let result_with_tz = result_utc.with_timezone(&dt.timezone());
+        // Return formatted string instead of datetime object
+        let formatted = if result_with_tz.offset().local_minus_utc() == 0 {
+            result_with_tz.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+        } else {
+            result_with_tz.to_rfc3339()
+        };
+        return Some(arena.alloc(DataValue::string(arena, &formatted)));
     }
 
     // Check for duration + datetime (reverse order)
     let left_dur = extract_duration(&args[0], arena);
     let right_dt = extract_datetime(&args[1], arena);
     if let (Some(dur), Some(dt)) = (left_dur, right_dt) {
-        return Some(arena.alloc(DataValue::datetime(dt + dur)));
+        let dt_utc = dt.naive_utc().and_utc();
+        let result_utc = dt_utc + dur;
+        let result_with_tz = result_utc.with_timezone(&dt.timezone());
+        // Return formatted string instead of datetime object
+        let formatted = if result_with_tz.offset().local_minus_utc() == 0 {
+            result_with_tz.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+        } else {
+            result_with_tz.to_rfc3339()
+        };
+        return Some(arena.alloc(DataValue::string(arena, &formatted)));
     }
 
     // Check for duration + duration
@@ -147,7 +166,16 @@ fn process_datetime_duration_sub<'a>(
     // Check for datetime - duration = datetime
     let right_dur = extract_duration(&args[1], arena);
     if let (Some(dt), Some(dur)) = (left_dt, right_dur) {
-        return Some(arena.alloc(DataValue::datetime(dt - dur)));
+        let dt_utc = dt.naive_utc().and_utc();
+        let result_utc = dt_utc - dur;
+        let result_with_tz = result_utc.with_timezone(&dt.timezone());
+        // Return formatted string instead of datetime object
+        let formatted = if result_with_tz.offset().local_minus_utc() == 0 {
+            result_with_tz.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+        } else {
+            result_with_tz.to_rfc3339()
+        };
+        return Some(arena.alloc(DataValue::string(arena, &formatted)));
     }
 
     // Check for duration - duration = duration
@@ -600,7 +628,7 @@ pub fn eval_floor<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
+    use chrono::{FixedOffset, TimeZone};
 
     #[test]
     fn test_numeric_operations() {
@@ -637,25 +665,29 @@ mod tests {
         let arena = DataArena::new();
 
         // Create test values
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 7, 13, 20, 6).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 7, 13, 20, 6)
+            .unwrap();
         let duration = Duration::days(1);
 
         // Test adding duration to datetime
         let args = [DataValue::datetime(dt1), DataValue::duration(duration)];
         let result = eval_add(&args, &arena).unwrap();
-        assert!(result.is_datetime());
-
-        let result_dt = result.as_datetime().unwrap();
-        assert_eq!(*result_dt, dt2);
+        assert!(result.is_string());
+        let result_str = result.as_str().unwrap();
+        assert_eq!(result_str, "2022-07-07T13:20:06Z");
 
         // Test subtracting duration from datetime
         let args = [DataValue::datetime(dt2), DataValue::duration(duration)];
         let result = eval_sub(&args, &arena).unwrap();
-        assert!(result.is_datetime());
-
-        let result_dt = result.as_datetime().unwrap();
-        assert_eq!(*result_dt, dt1);
+        assert!(result.is_string());
+        let result_str = result.as_str().unwrap();
+        assert_eq!(result_str, "2022-07-06T13:20:06Z");
 
         // Test calculating duration between two datetimes
         let args = [DataValue::datetime(dt2), DataValue::datetime(dt1)];
@@ -732,15 +764,21 @@ mod tests {
         assert_eq!(result.as_i64().unwrap(), 10);
 
         // Test min with datetimes
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 7, 13, 20, 6).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 7, 13, 20, 6)
+            .unwrap();
         let args = [DataValue::datetime(dt1), DataValue::datetime(dt2)];
         let result = eval_min(&args).unwrap();
-        assert_eq!(*result.as_datetime().unwrap(), dt1);
+        assert_eq!(result.as_datetime().unwrap().timestamp(), dt1.timestamp());
 
         // Test max with datetimes
         let result = eval_max(&args).unwrap();
-        assert_eq!(*result.as_datetime().unwrap(), dt2);
+        assert_eq!(result.as_datetime().unwrap().timestamp(), dt2.timestamp());
 
         // Test min with durations
         let duration1 = Duration::days(1);

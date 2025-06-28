@@ -212,7 +212,7 @@ mod tests {
         if let Err(LogicError::ThrownError { r#type: error_type }) = result {
             assert_eq!(error_type, "Another error");
         } else {
-            panic!("Expected ThrownError, got: {:?}", result);
+            panic!("Expected ThrownError, got: {result:?}");
         }
     }
 

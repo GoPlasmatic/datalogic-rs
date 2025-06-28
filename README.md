@@ -209,7 +209,43 @@ let result = dl.evaluate_str(
 assert!(result.as_bool().unwrap());
 ```
 
-### 5. Regex Extraction with Split
+### 5. Timezone Offset Extraction
+
+```rust
+use datalogic_rs::DataLogic;
+
+let dl = DataLogic::new();
+
+// Extract timezone offset from datetime with timezone info
+let result = dl.evaluate_str(
+    r#"{
+        "format_date": [
+            {"datetime": "2022-07-06T13:20:06+05:00"}, 
+            "z"
+        ]
+    }"#,
+    r#"{}"#,
+    None
+).unwrap();
+
+assert_eq!(result.as_str().unwrap(), "+0500");
+
+// Timezone-aware datetime operations preserve original timezone
+let result = dl.evaluate_str(
+    r#"{
+        "format_date": [
+            {"datetime": "2022-07-06T13:20:06+05:00"}, 
+            "yyyy-MM-ddTHH:mm:ssXXX"
+        ]
+    }"#,
+    r#"{}"#,
+    None
+).unwrap();
+
+assert_eq!(result.as_str().unwrap(), "2022-07-06T13:20:06+05:00");
+```
+
+### 6. Regex Extraction with Split
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -434,7 +470,7 @@ let is_valid_bank = dl.evaluate_str(validation_rule, &validation_data, None).unw
 | **Arrays** | `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in` (contains), `length`, `slice`, `sort` |
 | **Strings** | `cat` (concatenate), `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `replace`, `split` (with regex extraction) |
 | **Data Access** | `var` (variable access), `val` (value access), `exists`, `missing`, `missing_some` |
-| **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
+| **DateTime** | `datetime`, `timestamp`, `now`, `parse_date`, `format_date` (with timezone offset support), `date_diff` |
 | **Error Handling** | `throw`, `try` |
 | **Custom** | Support for user-defined operators |
 

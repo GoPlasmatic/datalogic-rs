@@ -1850,7 +1850,7 @@ mod tests {
         let rule = Logic::new(map_ref, arena);
 
         let result = core.apply(&rule, &data_json).unwrap();
-        println!("Values result: {:?}", result);
+        println!("Values result: {result:?}");
 
         // Verify the values are returned
         let values: Vec<serde_json::Value> = serde_json::from_value(result).unwrap();

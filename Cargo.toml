@@ -7,8 +7,8 @@ authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
 readme = "README.md"
-homepage = "https://github.com/codetiger/datalogic-rs"
-repository = "https://github.com/codetiger/datalogic-rs"
+homepage = "https://github.com/GoPlasmatic/datalogic-rs"
+repository = "https://github.com/GoPlasmatic/datalogic-rs"
 keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 

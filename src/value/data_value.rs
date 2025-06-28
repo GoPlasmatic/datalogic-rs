@@ -5,7 +5,7 @@
 
 use super::number::NumberValue;
 use crate::arena::DataArena;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset};
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -33,8 +33,8 @@ pub enum DataValue<'a> {
     /// Represents an object with key-value pairs (arena-allocated)
     Object(&'a [(&'a str, DataValue<'a>)]),
 
-    /// Represents a datetime value
-    DateTime(DateTime<Utc>),
+    /// Represents a datetime value with timezone information
+    DateTime(DateTime<FixedOffset>),
 
     /// Represents a duration value
     Duration(Duration),
@@ -73,8 +73,8 @@ impl<'a> DataValue<'a> {
         }
     }
 
-    /// Creates a datetime value from a `chrono::DateTime<Utc>`.
-    pub fn datetime(value: DateTime<Utc>) -> Self {
+    /// Creates a datetime value from a `chrono::DateTime<FixedOffset>`.
+    pub fn datetime(value: DateTime<FixedOffset>) -> Self {
         DataValue::DateTime(value)
     }
 
@@ -185,7 +185,7 @@ impl<'a> DataValue<'a> {
     }
 
     /// Returns the value as a datetime, if it is a datetime.
-    pub fn as_datetime(&self) -> Option<&DateTime<Utc>> {
+    pub fn as_datetime(&self) -> Option<&DateTime<FixedOffset>> {
         match self {
             DataValue::DateTime(dt) => Some(dt),
             _ => None,
@@ -355,9 +355,13 @@ impl<'a> DataValue<'a> {
             }
             DataValue::Object(_) => DataValue::String(arena.alloc_str("[object Object]")),
             DataValue::DateTime(dt) => {
-                // Format datetime in ISO 8601 format
-                let iso_string = dt.to_rfc3339();
-                DataValue::String(arena.alloc_str(&iso_string))
+                // Format with Z suffix for UTC, otherwise preserve timezone offset
+                let formatted = if dt.offset().local_minus_utc() == 0 {
+                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                } else {
+                    dt.to_rfc3339()
+                };
+                DataValue::String(arena.alloc_str(&formatted))
             }
             DataValue::Duration(d) => {
                 // Format duration as 1d:2h:3m:4s
@@ -365,7 +369,7 @@ impl<'a> DataValue<'a> {
                 let hours = d.num_hours() % 24;
                 let minutes = d.num_minutes() % 60;
                 let seconds = d.num_seconds() % 60;
-                let formatted = format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds);
+                let formatted = format!("{days}d:{hours}h:{minutes}m:{seconds}s");
                 DataValue::String(arena.alloc_str(&formatted))
             }
         }
@@ -434,19 +438,11 @@ impl<'a> DataValue<'a> {
 
             // DateTime to String coercion
             (DataValue::DateTime(dt), DataValue::String(s)) => {
-                let formatted = if dt.offset() == &chrono::Utc {
-                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
-                } else {
-                    dt.to_rfc3339()
-                };
+                let formatted = dt.to_rfc3339();
                 &formatted == s
             }
             (DataValue::String(s), DataValue::DateTime(dt)) => {
-                let formatted = if dt.offset() == &chrono::Utc {
-                    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
-                } else {
-                    dt.to_rfc3339()
-                };
+                let formatted = dt.to_rfc3339();
                 s == &formatted
             }
 
@@ -456,7 +452,7 @@ impl<'a> DataValue<'a> {
                 let hours = dur.num_hours() % 24;
                 let minutes = dur.num_minutes() % 60;
                 let seconds = dur.num_seconds() % 60;
-                let formatted = format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds);
+                let formatted = format!("{days}d:{hours}h:{minutes}m:{seconds}s");
                 &formatted == s
             }
             (DataValue::String(s), DataValue::Duration(dur)) => {
@@ -464,7 +460,7 @@ impl<'a> DataValue<'a> {
                 let hours = dur.num_hours() % 24;
                 let minutes = dur.num_minutes() % 60;
                 let seconds = dur.num_seconds() % 60;
-                let formatted = format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds);
+                let formatted = format!("{days}d:{hours}h:{minutes}m:{seconds}s");
                 s == &formatted
             }
 
@@ -536,7 +532,10 @@ impl<'a> DataValue<'a> {
             (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
             (DataValue::Number(a), DataValue::Number(b)) => a == b,
             (DataValue::String(a), DataValue::String(b)) => a == b,
-            (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
+            (DataValue::DateTime(a), DataValue::DateTime(b)) => {
+                // Strict equality requires same timezone AND same instant
+                a.offset() == b.offset() && a.timestamp() == b.timestamp()
+            }
             (DataValue::Duration(a), DataValue::Duration(b)) => a == b,
             (DataValue::Array(a), DataValue::Array(b)) => {
                 if a.len() != b.len() {
@@ -593,7 +592,10 @@ impl PartialOrd for DataValue<'_> {
             (DataValue::Null, DataValue::Null) => Some(Ordering::Equal),
 
             // DateTime and Duration comparisons
-            (DataValue::DateTime(a), DataValue::DateTime(b)) => a.partial_cmp(b),
+            (DataValue::DateTime(a), DataValue::DateTime(b)) => {
+                // Compare instants in time regardless of timezone
+                a.timestamp().partial_cmp(&b.timestamp())
+            }
             (DataValue::Duration(a), DataValue::Duration(b)) => a.partial_cmp(b),
 
             (DataValue::Array(a), DataValue::Array(b)) => {
@@ -665,8 +667,8 @@ impl fmt::Display for DataValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DataValue::Null => write!(f, "null"),
-            DataValue::Bool(b) => write!(f, "{}", b),
-            DataValue::Number(n) => write!(f, "{}", n),
+            DataValue::Bool(b) => write!(f, "{b}"),
+            DataValue::Number(n) => write!(f, "{n}"),
             DataValue::String(s) => write!(f, "\"{}\"", s.replace('"', "\\\"")),
             DataValue::Array(a) => {
                 write!(f, "[")?;
@@ -674,7 +676,7 @@ impl fmt::Display for DataValue<'_> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", v)?;
+                    write!(f, "{v}")?;
                 }
                 write!(f, "]")
             }
@@ -684,25 +686,25 @@ impl fmt::Display for DataValue<'_> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "\"{}\": {}", k, v)?;
+                    write!(f, "\"{k}\": {v}")?;
                 }
                 write!(f, "}}")
             }
             DataValue::DateTime(dt) => {
-                // Format with Z suffix for UTC instead of +00:00
-                let formatted = if dt.offset() == &chrono::Utc {
+                // Format with Z suffix for UTC, otherwise preserve timezone offset
+                let formatted = if dt.offset().local_minus_utc() == 0 {
                     dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
                 } else {
                     dt.to_rfc3339()
                 };
-                write!(f, "\"{}\"", formatted)
+                write!(f, "{formatted}")
             }
             DataValue::Duration(d) => {
                 let days = d.num_days();
                 let hours = d.num_hours() % 24;
                 let minutes = d.num_minutes() % 60;
                 let seconds = d.num_seconds() % 60;
-                write!(f, "\"{}d:{}h:{}m:{}s\"", days, hours, minutes, seconds)
+                write!(f, "\"{days}d:{hours}h:{minutes}m:{seconds}s\"")
             }
         }
     }
@@ -739,7 +741,10 @@ mod tests {
     #[test]
     fn test_datetime_and_duration() {
         // Test datetime creation and access
-        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
         let dt_value = DataValue::datetime(dt);
 
         assert!(dt_value.is_datetime());
@@ -799,7 +804,10 @@ mod tests {
         assert!(DataValue::string(&arena, "hello").coerce_to_bool());
 
         // Test datetime and duration boolean coercion
-        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
         assert!(DataValue::datetime(dt).coerce_to_bool());
 
         let duration = Duration::seconds(0);
@@ -827,7 +835,10 @@ mod tests {
         );
 
         // Test datetime and duration number coercion
-        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
         let dt_num = DataValue::datetime(dt).coerce_to_number();
         assert!(dt_num.is_some());
 
@@ -852,7 +863,10 @@ mod tests {
         );
 
         // Test datetime and duration string coercion
-        let dt = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
+        let dt = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
         let dt_value = DataValue::datetime(dt).coerce_to_string(&arena);
         let dt_str = dt_value.as_str();
         assert!(dt_str.is_some());
@@ -878,8 +892,14 @@ mod tests {
         assert!(DataValue::string(&arena, "world") > DataValue::string(&arena, "hello"));
 
         // Test datetime comparison
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 13, 20, 6).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 7, 13, 20, 6).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 13, 20, 6)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 7, 13, 20, 6)
+            .unwrap();
 
         assert!(DataValue::datetime(dt1) < DataValue::datetime(dt2));
         assert!(DataValue::datetime(dt2) > DataValue::datetime(dt1));

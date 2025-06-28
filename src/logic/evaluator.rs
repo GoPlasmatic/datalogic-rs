@@ -94,10 +94,9 @@ fn convert_to_path_string<'a>(
             }
         }
         _ => Err(LogicError::VariableError {
-            path: format!("{:?}", path_value),
+            path: format!("{path_value:?}"),
             reason: format!(
-                "Dynamic variable path must evaluate to a scalar value, got: {:?}",
-                path_value
+                "Dynamic variable path must evaluate to a scalar value, got: {path_value:?}"
             ),
         }),
     }
@@ -540,23 +539,8 @@ mod tests {
 
         let result = evaluate(arena.alloc(dt_token), &arena).unwrap();
 
-        // Check if it's a datetime value directly
-        assert!(result.is_datetime());
-
-        // Now proceed with format test using the datetime
-        // Since we can't easily compare the exact datetime directly, verify that
-        // it converts back to the expected string format using format_date
-        let format_arg = arena.vec_into_slice(vec![
-            result.clone(),
-            DataValue::string(&arena, "yyyy-MM-ddTHH:mm:ssZ"),
-        ]);
-        let format_array = DataValue::Array(format_arg);
-        let format_token = Token::operator(
-            OperatorType::DateTime(DateTimeOp::FormatDate),
-            arena.alloc(Token::literal(format_array)),
-        );
-
-        let formatted = evaluate(arena.alloc(format_token), &arena).unwrap();
-        assert_eq!(formatted.as_str().unwrap(), "2022-07-06T13:20:06Z");
+        // Check if it's a string value (datetime operator now returns formatted strings)
+        assert!(result.is_string());
+        assert_eq!(result.as_str().unwrap(), "2022-07-06T13:20:06Z");
     }
 }

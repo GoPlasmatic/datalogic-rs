@@ -3,27 +3,18 @@
 //! This module provides functions for parsing and formatting datetime and duration values.
 
 use chrono::Datelike;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset, ParseError};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::error::Error;
 
-/// Parses a datetime string into a `chrono::DateTime<Utc>`.
-pub fn parse_datetime(datetime_str: &str) -> Result<DateTime<Utc>, Box<dyn Error>> {
-    // Try to parse as RFC3339/ISO8601 format
+/// Parses an RFC3339 datetime string into a chrono DateTime with preserved timezone offset.
+///
+/// This function preserves the original timezone information from the input string.
+/// If the input has a timezone offset (like "+05:00"), it will be preserved.
+/// If the input ends with "Z" (UTC), it will be treated as +00:00 offset.
+pub fn parse_datetime(datetime_str: &str) -> Result<DateTime<FixedOffset>, ParseError> {
     DateTime::parse_from_rfc3339(datetime_str)
-        .map(|dt| dt.with_timezone(&Utc))
-        .or_else(|_| {
-            // Try as ISO8601 without time
-            chrono::NaiveDate::parse_from_str(datetime_str, "%Y-%m-%d")
-                .map(|date| date.and_hms_opt(0, 0, 0).unwrap().and_utc())
-        })
-        .or_else(|_| {
-            // Try other common formats (could add more as needed)
-            chrono::NaiveDateTime::parse_from_str(datetime_str, "%Y-%m-%d %H:%M:%S")
-                .map(|dt| dt.and_utc())
-        })
-        .map_err(|e| e.into())
 }
 
 /// Parses a duration string into a `chrono::Duration`.
@@ -105,55 +96,45 @@ pub fn format_duration(duration: &Duration) -> String {
     let seconds = total_seconds % 60;
 
     if days > 0 {
-        format!("{}d:{}h:{}m:{}s", days, hours, minutes, seconds)
+        format!("{days}d:{hours}h:{minutes}m:{seconds}s")
     } else if hours > 0 {
-        format!("{}h:{}m:{}s", hours, minutes, seconds)
+        format!("{hours}h:{minutes}m:{seconds}s")
     } else if minutes > 0 {
-        format!("{}m:{}s", minutes, seconds)
+        format!("{minutes}m:{seconds}s")
     } else {
-        format!("{}s", seconds)
+        format!("{seconds}s")
     }
 }
 
 /// Calculates the difference between two datetimes in the specified unit.
-///
-/// Supported units:
-/// - "years", "year", "y"
-/// - "months", "month", "M"
-/// - "days", "day", "d"
-/// - "hours", "hour", "h"
-/// - "minutes", "minute", "m"
-/// - "seconds", "second", "s"
-pub fn date_diff(dt1: &DateTime<Utc>, dt2: &DateTime<Utc>, unit: &str) -> i64 {
-    let duration = *dt1 - *dt2;
-
-    match unit.to_lowercase().as_str() {
-        "years" | "year" | "y" => {
-            let years = dt1.year() - dt2.year();
-            // Adjust for not having completed a full year
-            if dt1.month() < dt2.month() || (dt1.month() == dt2.month() && dt1.day() < dt2.day()) {
-                (years - 1) as i64
-            } else {
-                years as i64
-            }
+pub fn date_diff(dt1: &DateTime<FixedOffset>, dt2: &DateTime<FixedOffset>, unit: &str) -> i64 {
+    match unit {
+        "year" | "years" => {
+            let years_diff = dt2.year() - dt1.year();
+            years_diff as i64
         }
-        "months" | "month" | "M" => {
-            let year_diff = dt1.year() - dt2.year();
-            let month_diff = dt1.month() as i32 - dt2.month() as i32;
-            let total_months = year_diff * 12 + month_diff;
-
-            // Adjust for not having completed a full month
-            if dt1.day() < dt2.day() {
-                (total_months - 1) as i64
-            } else {
-                total_months as i64
-            }
+        "month" | "months" => {
+            let years_diff = dt2.year() - dt1.year();
+            let months_diff = dt2.month() as i32 - dt1.month() as i32;
+            (years_diff * 12 + months_diff) as i64
         }
-        "days" | "day" | "d" => duration.num_days(),
-        "hours" | "hour" | "h" => duration.num_hours(),
-        "minutes" | "minute" | "m" => duration.num_minutes(),
-        "seconds" | "second" | "s" => duration.num_seconds(),
-        _ => duration.num_seconds(), // Default to seconds
+        "day" | "days" => {
+            let duration = dt2.signed_duration_since(*dt1);
+            duration.num_days()
+        }
+        "hour" | "hours" => {
+            let duration = dt2.signed_duration_since(*dt1);
+            duration.num_hours()
+        }
+        "minute" | "minutes" => {
+            let duration = dt2.signed_duration_since(*dt1);
+            duration.num_minutes()
+        }
+        "second" | "seconds" => {
+            let duration = dt2.signed_duration_since(*dt1);
+            duration.num_seconds()
+        }
+        _ => 0, // Unknown unit
     }
 }
 
@@ -174,14 +155,15 @@ mod tests {
         assert_eq!(dt.minute(), 20);
         assert_eq!(dt.second(), 6);
 
-        // Test date-only ISO8601
-        let dt = parse_datetime("2022-07-06").unwrap();
+        // Test with timezone offset
+        let dt = parse_datetime("2022-07-06T13:20:06+05:00").unwrap();
         assert_eq!(dt.year(), 2022);
         assert_eq!(dt.month(), 7);
         assert_eq!(dt.day(), 6);
-        assert_eq!(dt.hour(), 0);
-        assert_eq!(dt.minute(), 0);
-        assert_eq!(dt.second(), 0);
+        assert_eq!(dt.hour(), 13);
+        assert_eq!(dt.minute(), 20);
+        assert_eq!(dt.second(), 6);
+        assert_eq!(dt.offset().local_minus_utc(), 5 * 3600); // +5 hours in seconds
     }
 
     #[test]
@@ -233,28 +215,52 @@ mod tests {
     #[test]
     fn test_date_diff() {
         // Test days difference
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 0, 0, 0).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 7, 0, 0, 0).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 0, 0, 0)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 7, 0, 0, 0)
+            .unwrap();
 
-        assert_eq!(date_diff(&dt2, &dt1, "days"), 1);
-        assert_eq!(date_diff(&dt1, &dt2, "days"), -1);
+        assert_eq!(date_diff(&dt1, &dt2, "days"), 1);
+        assert_eq!(date_diff(&dt2, &dt1, "days"), -1);
 
         // Test hours difference
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 6, 10, 0, 0).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 6, 15, 0, 0).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 10, 0, 0)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 15, 0, 0)
+            .unwrap();
 
-        assert_eq!(date_diff(&dt2, &dt1, "hours"), 5);
+        assert_eq!(date_diff(&dt1, &dt2, "hours"), 5);
 
         // Test months difference
-        let dt1 = Utc.with_ymd_and_hms(2022, 7, 15, 0, 0, 0).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 10, 15, 0, 0, 0).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 15, 0, 0, 0)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 10, 15, 0, 0, 0)
+            .unwrap();
 
-        assert_eq!(date_diff(&dt2, &dt1, "months"), 3);
+        assert_eq!(date_diff(&dt1, &dt2, "months"), 3);
 
         // Test years difference
-        let dt1 = Utc.with_ymd_and_hms(2020, 7, 6, 0, 0, 0).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2022, 7, 6, 0, 0, 0).unwrap();
+        let dt1 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2020, 7, 6, 0, 0, 0)
+            .unwrap();
+        let dt2 = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2022, 7, 6, 0, 0, 0)
+            .unwrap();
 
-        assert_eq!(date_diff(&dt2, &dt1, "years"), 2);
+        assert_eq!(date_diff(&dt1, &dt2, "years"), 2);
     }
 }

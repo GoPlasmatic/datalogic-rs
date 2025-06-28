@@ -153,8 +153,16 @@ function __wbg_get_imports() {
         const ret = arg0.getTime();
         return ret;
     };
+    imports.wbg.__wbg_getTimezoneOffset_6b5752021c499c47 = function(arg0) {
+        const ret = arg0.getTimezoneOffset();
+        return ret;
+    };
     imports.wbg.__wbg_new0_f788a2397c7ca929 = function() {
         const ret = new Date();
+        return ret;
+    };
+    imports.wbg.__wbg_new_31a97dac4f10fab7 = function(arg0) {
+        const ret = new Date(arg0);
         return ret;
     };
     imports.wbg.__wbindgen_init_externref_table = function() {
@@ -166,6 +174,10 @@ function __wbg_get_imports() {
         table.set(offset + 2, true);
         table.set(offset + 3, false);
         ;
+    };
+    imports.wbg.__wbindgen_number_new = function(arg0) {
+        const ret = arg0;
+        return ret;
     };
     imports.wbg.__wbindgen_string_new = function(arg0, arg1) {
         const ret = getStringFromWasm0(arg0, arg1);
