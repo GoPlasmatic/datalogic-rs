@@ -14,6 +14,7 @@ struct TestCase {
     result: Option<JsonValue>,
     error: Option<JsonValue>,
     format: Option<String>,
+    preserve_structure: Option<bool>,
 }
 
 fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
@@ -43,6 +44,9 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
             let format = obj
                 .get("format")
                 .map(|v| v.as_str().unwrap_or("").to_string());
+            let preserve_structure = obj
+                .get("preserve_structure")
+                .map(|v| v.as_bool().unwrap_or(false));
 
             test_cases.push(TestCase {
                 description,
@@ -51,6 +55,7 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
                 result,
                 error,
                 format,
+                preserve_structure,
             });
         }
     }
@@ -60,7 +65,11 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
 
 fn run_test_case(test_case: &TestCase) -> TestResult<()> {
     // Create a DataLogic instance which manages the arena and parsers
-    let dl = DataLogic::new();
+    let dl = if test_case.preserve_structure == Some(true) {
+        DataLogic::with_preserve_structure()
+    } else {
+        DataLogic::new()
+    };
 
     // Parse the rule using DataLogic's parse_logic method
     let rule_str = test_case.rule.to_string();

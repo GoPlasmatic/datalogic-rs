@@ -50,6 +50,12 @@ pub enum Token<'a> {
         /// The arguments to the operator.
         args: &'a Token<'a>,
     },
+
+    /// A structured object with preserved keys and evaluated values.
+    StructuredObject {
+        /// The fields of the object (key-value pairs).
+        fields: &'a [(&'a str, &'a Token<'a>)],
+    },
 }
 
 /// The type of operator.
@@ -113,6 +119,11 @@ impl<'a> Token<'a> {
         Token::CustomOperator { name, args }
     }
 
+    /// Creates a new structured object token.
+    pub fn structured_object(fields: &'a [(&'a str, &'a Token<'a>)]) -> Self {
+        Token::StructuredObject { fields }
+    }
+
     /// Returns true if this token is a literal.
     pub fn is_literal(&self) -> bool {
         matches!(self, Token::Literal(_))
@@ -136,6 +147,11 @@ impl<'a> Token<'a> {
     /// Returns true if this token is an array literal.
     pub fn is_array_literal(&self) -> bool {
         matches!(self, Token::ArrayLiteral(_))
+    }
+
+    /// Returns true if this token is a structured object.
+    pub fn is_structured_object(&self) -> bool {
+        matches!(self, Token::StructuredObject { .. })
     }
 
     /// Returns the literal value if this token is a literal.
@@ -174,6 +190,14 @@ impl<'a> Token<'a> {
     pub fn as_array_literal(&self) -> Option<&Vec<&'a Token<'a>>> {
         match self {
             Token::ArrayLiteral(tokens) => Some(tokens),
+            _ => None,
+        }
+    }
+
+    /// Returns the fields if this token is a structured object.
+    pub fn as_structured_object(&self) -> Option<&'a [(&'a str, &'a Token<'a>)]> {
+        match self {
+            Token::StructuredObject { fields } => Some(fields),
             _ => None,
         }
     }

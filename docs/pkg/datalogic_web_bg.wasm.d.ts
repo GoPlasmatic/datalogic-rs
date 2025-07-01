@@ -3,6 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_jsjsonlogic_free: (a: number, b: number) => void;
 export const jsjsonlogic_new: () => number;
+export const jsjsonlogic_new_with_preserve_structure: (a: number) => number;
 export const jsjsonlogic_apply: (a: number, b: number, c: number, d: number, e: number) => any;
 export const jsjsonlogic_reset: (a: number) => void;
 export const __wbindgen_export_0: WebAssembly.Table;

@@ -13,6 +13,7 @@ A **lightweight, high-performance** Rust implementation of [JSONLogic](http://js
 - 🔒 **Thread-safe**: Designed for parallel execution
 - ⚡ **Optimized for production**: Static dispatch and rule optimization
 - 🔌 **Extensible**: Support for custom operators
+- 🏗️ **Structured output**: Support for structured object preservation and templating
 
 ## Overview
 
@@ -26,6 +27,7 @@ datalogic-rs provides a robust implementation of JSONLogic rules with arena-base
 - Zero copy rule creation and evaluation
 - High test coverage and compatibility with standard JSONLogic
 - Intuitive API for creating, parsing, and evaluating rules
+- Structured object preservation for powerful output templating
 
 ## Installation
 
@@ -268,6 +270,38 @@ let result = dl.evaluate_str(
 let obj = result.as_object().unwrap();
 assert_eq!(obj.get("bank").unwrap().as_str().unwrap(), "SBIN");
 assert_eq!(obj.get("country").unwrap().as_str().unwrap(), "IN");
+```
+
+### 7. Structured Object Preservation
+
+Create structured output objects with non-operator keys:
+
+```rust
+use datalogic_rs::DataLogic;
+
+// Enable structured object preservation
+let dl = DataLogic::with_preserve_structure();
+
+// Create structured output with evaluated fields
+let result = dl.evaluate_str(
+    r#"{
+        "result": {"==": [1, 1]},
+        "score": {"+": [85, 10, 5]},
+        "grade": {"if": [
+            {">": [{"var": "score"}, 90]}, 
+            "A", 
+            "B"
+        ]}
+    }"#,
+    r#"{"score": 95}"#,
+    None
+).unwrap();
+
+// Returns: {"result": true, "score": 100, "grade": "A"}
+let obj = result.as_object().unwrap();
+assert_eq!(obj["result"].as_bool().unwrap(), true);
+assert_eq!(obj["score"].as_i64().unwrap(), 100);
+assert_eq!(obj["grade"].as_str().unwrap(), "A");
 ```
 
 ## Custom Operators

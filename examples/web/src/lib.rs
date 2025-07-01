@@ -16,6 +16,17 @@ impl JsJsonLogic {
     }
 
     #[wasm_bindgen]
+    pub fn new_with_preserve_structure(preserve_structure: bool) -> Self {
+        Self {
+            inner: if preserve_structure {
+                DataLogic::with_preserve_structure()
+            } else {
+                DataLogic::new()
+            },
+        }
+    }
+
+    #[wasm_bindgen]
     pub fn apply(&self, rules: &str, data: &str) -> JsValue {
         // First, validate the input strings
         if rules.is_empty() || data.is_empty() {

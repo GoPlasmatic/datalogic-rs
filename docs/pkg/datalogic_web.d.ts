@@ -3,6 +3,7 @@
 export class JsJsonLogic {
   free(): void;
   constructor();
+  static new_with_preserve_structure(preserve_structure: boolean): JsJsonLogic;
   apply(rules: string, data: string): any;
   reset(): void;
 }
@@ -13,6 +14,7 @@ export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_jsjsonlogic_free: (a: number, b: number) => void;
   readonly jsjsonlogic_new: () => number;
+  readonly jsjsonlogic_new_with_preserve_structure: (a: number) => number;
   readonly jsjsonlogic_apply: (a: number, b: number, c: number, d: number, e: number) => any;
   readonly jsjsonlogic_reset: (a: number) => void;
   readonly __wbindgen_export_0: WebAssembly.Table;

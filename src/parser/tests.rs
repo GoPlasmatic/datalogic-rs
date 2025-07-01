@@ -77,6 +77,29 @@ mod tests {
             ))))
         }
 
+        fn parse_with_preserve<'a>(
+            &self,
+            _input: &str,
+            arena: &'a DataArena,
+            _preserve_structure: bool,
+        ) -> crate::logic::Result<&'a Token<'a>> {
+            // Always returns a literal token with the value "mock"
+            Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
+                arena, "mock",
+            ))))
+        }
+
+        fn parse_json_with_preserve<'a>(
+            &self,
+            _input: &JsonValue,
+            arena: &'a DataArena,
+            _preserve_structure: bool,
+        ) -> crate::logic::Result<&'a Token<'a>> {
+            Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
+                arena, "mock",
+            ))))
+        }
+
         fn format_name(&self) -> &'static str {
             "mock"
         }

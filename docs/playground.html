@@ -83,6 +83,10 @@
                         <span class="mdc-button__ripple"></span>
                         <span class="mdc-button__label">Complex Logic</span>
                     </button>
+                    <button class="sample-button mdc-button mdc-button--outlined" data-sample="structured">
+                        <span class="mdc-button__ripple"></span>
+                        <span class="mdc-button__label">Structured Objects</span>
+                    </button>
                 </div>
             </div>
 
@@ -118,6 +122,23 @@
                         </div>
                     </div>
 
+                    <!-- Options and Buttons -->
+                    <div class="options-container">
+                        <div class="mdc-form-field">
+                            <div class="mdc-checkbox">
+                                <input type="checkbox" class="mdc-checkbox__native-control" id="preserve-structure-checkbox"/>
+                                <div class="mdc-checkbox__background">
+                                    <svg class="mdc-checkbox__checkmark" viewBox="0 0 24 24">
+                                        <path class="mdc-checkbox__checkmark-path" fill="none" d="M1.73,12.91 8.1,19.28 22.79,4.59"/>
+                                    </svg>
+                                    <div class="mdc-checkbox__mixedmark"></div>
+                                </div>
+                                <div class="mdc-checkbox__ripple"></div>
+                            </div>
+                            <label for="preserve-structure-checkbox" class="mdc-typography--body2">Enable Structured Object Preservation</label>
+                        </div>
+                    </div>
+                    
                     <!-- Buttons -->
                     <div class="button-container">
                         <button class="mdc-button mdc-button--outlined" id="clear-button">
@@ -179,6 +200,7 @@
 
         let evaluator;
         let rulesEditor, dataEditor, resultEditor;
+        let preserveStructureCheckbox;
 
         const samples = {
             basic: {
@@ -248,12 +270,39 @@
                     "purchases": 7,
                     "username": "gooduser123"
                 }
+            },
+            structured: {
+                rules: {
+                    "greeting": {"cat": ["Hello ", {"val": "name"}]},
+                    "age": {"val": "age"},
+                    "isAdult": {">=": [{"val": "age"}, 18]},
+                    "meta": {
+                        "processed": true,
+                        "timestamp": 1640995200
+                    }
+                },
+                data: {
+                    "name": "John",
+                    "age": 25
+                },
+                preserveStructure: true
             }
         };
 
         async function initWasm() {
-            evaluator = new JsonLogicEvaluator();
-            await evaluator.initialize();
+            // We'll initialize the evaluator dynamically based on checkbox state
+        }
+
+        async function getEvaluator() {
+            const preserveStructure = preserveStructureCheckbox ? preserveStructureCheckbox.checked : false;
+            
+            // Create new evaluator if needed or if preserve_structure setting changed
+            if (!evaluator || evaluator.preserveStructure !== preserveStructure) {
+                evaluator = new JsonLogicEvaluator(preserveStructure);
+                await evaluator.initialize();
+            }
+            
+            return evaluator;
         }
 
         async function evaluate() {
@@ -265,7 +314,8 @@
                     data = JSON.parse(dataValue);
                 }
                 
-                const result = await evaluator.evaluate(rules, data);
+                const currentEvaluator = await getEvaluator();
+                const result = await currentEvaluator.evaluate(rules, data);
                 
                 if (result.success) {
                     // Update the result editor with properly formatted JSON
@@ -300,6 +350,12 @@
             if (sample) {
                 rulesEditor.setValue(JSON.stringify(sample.rules, null, 2));
                 dataEditor.setValue(JSON.stringify(sample.data, null, 2));
+                
+                // Update preserve structure checkbox if the sample specifies it
+                if (preserveStructureCheckbox && sample.preserveStructure !== undefined) {
+                    preserveStructureCheckbox.checked = sample.preserveStructure;
+                }
+                
                 evaluate();
             }
         }
@@ -311,8 +367,11 @@
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
-            // Initialize WASM
+            // Initialize WASM (will be done dynamically)
             await initWasm();
+            
+            // Initialize preserve structure checkbox
+            preserveStructureCheckbox = document.getElementById('preserve-structure-checkbox');
 
             // Initialize CodeMirror editors
             rulesEditor = CodeMirror.fromTextArea(document.getElementById('rules-editor'), {
@@ -367,6 +426,11 @@
             // Set up event listeners
             document.getElementById('evaluate-button').addEventListener('click', evaluate);
             document.getElementById('clear-button').addEventListener('click', clearEditors);
+            
+            // Add checkbox change listener to re-evaluate when preserve_structure changes
+            if (preserveStructureCheckbox) {
+                preserveStructureCheckbox.addEventListener('change', evaluate);
+            }
             
             // Set up sample buttons
             const sampleButtons = document.querySelectorAll('.sample-button');

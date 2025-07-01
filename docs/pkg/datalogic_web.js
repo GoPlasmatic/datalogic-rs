@@ -80,6 +80,14 @@ const JsJsonLogicFinalization = (typeof FinalizationRegistry === 'undefined')
 
 export class JsJsonLogic {
 
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(JsJsonLogic.prototype);
+        obj.__wbg_ptr = ptr;
+        JsJsonLogicFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
@@ -96,6 +104,14 @@ export class JsJsonLogic {
         this.__wbg_ptr = ret >>> 0;
         JsJsonLogicFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @param {boolean} preserve_structure
+     * @returns {JsJsonLogic}
+     */
+    static new_with_preserve_structure(preserve_structure) {
+        const ret = wasm.jsjsonlogic_new_with_preserve_structure(preserve_structure);
+        return JsJsonLogic.__wrap(ret);
     }
     /**
      * @param {string} rules

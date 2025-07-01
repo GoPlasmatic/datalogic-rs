@@ -98,6 +98,7 @@
                     <li><a href="#core-api-methods">Core API Methods</a></li>
                     <li><a href="#arena-memory">Arena Memory Management</a></li>
                     <li><a href="#custom-operators">Custom Operators</a></li>
+                    <li><a href="#structured-objects">Structured Object Preservation</a></li>
                     <li><a href="#wasm-support">WebAssembly Support</a></li>
                     <li><a href="#next-steps">Next Steps</a></li>
                 </ul>
@@ -554,6 +555,203 @@ Ok(arena.alloc(DataValue::Array(result_slice)))</code></pre>
                 </p>
             </section>
             
+            <section id="structured-objects" class="tutorial-section">
+                <h2 class="mdc-typography--headline5">Structured Object Preservation</h2>
+                <p class="mdc-typography--body1">
+                    DataLogic-rs supports structured object preservation, which allows you to create structured output objects with non-operator keys while still evaluating inner JSONLogic operations. This feature enables building complex, structured responses from JSONLogic rules.
+                </p>
+                
+                <h3 class="mdc-typography--subtitle1">Basic Structured Objects</h3>
+                <p class="mdc-typography--body1">
+                    With structured object preservation enabled, unknown operators are treated as object keys rather than throwing errors:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    // Create a DataLogic instance with structured object preservation enabled
+    let dl = DataLogic::with_preserve_structure();
+    
+    // Define a rule with unknown operator "isEqual"
+    let rule_str = r#"{"isEqual": {"==": [1, 1]}}"#;
+    let data_str = r#"{}"#;
+    
+    // This creates a structured object with evaluated inner logic
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    
+    println!("Result: {}", result); 
+    // Prints: {"isEqual": true}
+}</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Creating Complex Structured Responses</h3>
+                <p class="mdc-typography--body1">
+                    You can build complex nested structures while still benefiting from JSONLogic evaluation:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    let dl = DataLogic::with_preserve_structure();
+    
+    // Complex rule that creates a structured response
+    let rule_str = r#"{
+        "user": {
+            "fullName": {"cat": [{"var": "firstName"}, " ", {"var": "lastName"}]},
+            "isAdult": {">=": [{"var": "age"}, 18]},
+            "canDrive": {">=": [{"var": "age"}, 16]}
+        },
+        "meta": {
+            "processed": true,
+            "timestamp": {"var": "now"}
+        }
+    }"#;
+    
+    let data_str = r#"{
+        "firstName": "Jane",
+        "lastName": "Doe", 
+        "age": 25,
+        "now": 1640995200
+    }"#;
+    
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    
+    println!("Result: {}", result);
+    // Prints: {
+    //   "user": {
+    //     "fullName": "Jane Doe",
+    //     "isAdult": true,
+    //     "canDrive": true
+    //   },
+    //   "meta": {
+    //     "processed": true,
+    //     "timestamp": 1640995200
+    //   }
+    // }
+}</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Mixed Operations and Literals</h3>
+                <p class="mdc-typography--body1">
+                    Structured objects can contain a mix of JSONLogic operations, variables, and literal values:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    let dl = DataLogic::with_preserve_structure();
+    
+    let rule_str = r#"{
+        "staticValue": "hello",
+        "computed": {"+": [10, 20]},
+        "fromVariable": {"var": "input"},
+        "conditional": {"if": [{"var": "enabled"}, "active", "inactive"]}
+    }"#;
+    
+    let data_str = r#"{
+        "input": "dynamic value",
+        "enabled": true
+    }"#;
+    
+    let result = dl.evaluate_str(rule_str, data_str, None).unwrap();
+    
+    println!("Result: {}", result);
+    // Prints: {
+    //   "staticValue": "hello",
+    //   "computed": 30,
+    //   "fromVariable": "dynamic value", 
+    //   "conditional": "active"
+    // }
+}</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Backward Compatibility</h3>
+                <p class="mdc-typography--body1">
+                    Structured object preservation is disabled by default to maintain backward compatibility. When disabled, unknown operators throw an error as expected:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+fn main() {
+    // Default behavior - unknown operators throw errors
+    let dl = DataLogic::new();
+    
+    let rule_str = r#"{"unknownOp": true}"#;
+    let result = dl.evaluate_str(rule_str, "{}", None);
+    
+    // This will return an OperatorNotFoundError
+    assert!(result.is_err());
+    
+    // With structured preservation enabled
+    let dl_preserve = DataLogic::with_preserve_structure();
+    let result = dl_preserve.evaluate_str(rule_str, "{}", None).unwrap();
+    
+    println!("With preservation: {}", result);
+    // Prints: {"unknownOp": true}
+}</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Constructor Options</h3>
+                <p class="mdc-typography--body1">
+                    DataLogic provides several constructors for different configuration needs:
+                </p>
+                
+                <div class="code-block mdc-card">
+                    <pre><code class="language-rust">use datalogic_rs::DataLogic;
+
+// Standard constructor (preserve_structure = false)
+let dl_standard = DataLogic::new();
+
+// Enable structured object preservation
+let dl_preserve = DataLogic::with_preserve_structure();
+
+// Custom chunk size with standard behavior
+let dl_custom_chunk = DataLogic::with_chunk_size(2048);
+
+// Custom chunk size with structured preservation
+let dl_both = DataLogic::with_chunk_size_and_preserve_structure(2048, true);</code></pre>
+                </div>
+                
+                <h3 class="mdc-typography--subtitle1">Use Cases</h3>
+                <p class="mdc-typography--body1">
+                    Structured object preservation is particularly useful for:
+                </p>
+                <ul class="mdc-typography--body1">
+                    <li>Building API responses with dynamic content</li>
+                    <li>Creating configuration objects with computed values</li>
+                    <li>Generating reports with both static metadata and dynamic calculations</li>
+                    <li>Template rendering systems that need structured output</li>
+                    <li>Data transformation pipelines that preserve object structure</li>
+                </ul>
+                
+                <h3 class="mdc-typography--subtitle1">Interactive Example</h3>
+                <p class="mdc-typography--body1">
+                    Try structured object preservation in the interactive editor below:
+                </p>
+                
+                <div class="demo-container mdc-card">
+                    <h4 class="mdc-typography--subtitle2">Structured Object Demo</h4>
+                    <div class="demo-editors">
+                        <div class="demo-editor">
+                            <label class="mdc-typography--caption">Rule:</label>
+                            <textarea id="structured-rule-editor">{"greeting": {"cat": ["Hello ", {"var": "name"}]}, "age": {"var": "age"}}</textarea>
+                        </div>
+                        <div class="demo-editor">
+                            <label class="mdc-typography--caption">Data:</label>
+                            <textarea id="structured-data-editor">{"name": "John", "age": 30}</textarea>
+                        </div>
+                        <div class="demo-editor">
+                            <label class="mdc-typography--caption">Result:</label>
+                            <textarea id="structured-result-editor" readonly></textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
             <section id="wasm-support" class="tutorial-section">
                 <h2 class="mdc-typography--headline5">WebAssembly Support</h2>
                 <p class="mdc-typography--body1">
@@ -645,6 +843,15 @@ try {
             await evaluator.initialize();
         }
 
+        async function getStructuredEvaluator() {
+            // For the structured object demo, we need preserve_structure enabled
+            if (!window.structuredEvaluator) {
+                window.structuredEvaluator = new JsonLogicEvaluator(true);
+                await window.structuredEvaluator.initialize();
+            }
+            return window.structuredEvaluator;
+        }
+
         function setupEditor(ruleId, dataId, resultId, initialRule, initialData) {
             const rulesEditor = CodeMirror.fromTextArea(document.getElementById(ruleId), {
                 mode: { name: 'javascript', json: true },
@@ -696,7 +903,10 @@ try {
                         return;
                     }
                     
-                    const result = await evaluator.evaluate(rules, data);
+                    // Use structured evaluator for structured-rule-editor
+                    const currentEvaluator = ruleId === 'structured-rule-editor' ? 
+                        await getStructuredEvaluator() : evaluator;
+                    const result = await currentEvaluator.evaluate(rules, data);
                     
                     if (result.success) {
                         resultEditor.setValue(JSON.stringify(result.result, null, 2));
@@ -757,6 +967,10 @@ try {
             setupEditor('try-rule-editor', 'try-data-editor', 'try-result-editor', 
                 { "try": [{ "val": ["non_existent", "property"] }, { "throw": "Property not found!" }] }, 
                 {});
+                
+            setupEditor('structured-rule-editor', 'structured-data-editor', 'structured-result-editor', 
+                { "greeting": { "cat": ["Hello ", { "var": "name" }] }, "age": { "var": "age" } }, 
+                { name: "John", age: 30 });
                 
             // Set up navigation
             const navLinks = document.querySelectorAll('.tutorial-nav-list a');

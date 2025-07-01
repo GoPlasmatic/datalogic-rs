@@ -28,6 +28,30 @@ impl ExpressionParser for JsonLogicParser {
         parse_json(input, arena)
     }
 
+    fn parse_with_preserve<'a>(
+        &self,
+        input: &str,
+        arena: &'a DataArena,
+        preserve_structure: bool,
+    ) -> Result<&'a Token<'a>> {
+        // Parse the input string as JSON
+        let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
+            reason: format!("Invalid JSON: {e}"),
+        })?;
+
+        // Use the JSONLogic parsing logic with preserve structure option
+        parse_json_with_preserve(&json, arena, preserve_structure)
+    }
+
+    fn parse_json_with_preserve<'a>(
+        &self,
+        input: &JsonValue,
+        arena: &'a DataArena,
+        preserve_structure: bool,
+    ) -> Result<&'a Token<'a>> {
+        parse_json_with_preserve(input, arena, preserve_structure)
+    }
+
     fn format_name(&self) -> &'static str {
         "jsonlogic"
     }
@@ -47,12 +71,26 @@ fn is_json_literal(value: &JsonValue) -> bool {
 
 /// Parses a logic expression from a JSON value.
 pub fn parse_json<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
-    let token = parse_json_internal(json, arena)?;
+    let token = parse_json_internal(json, arena, false)?;
+    Ok(arena.alloc(token))
+}
+
+/// Parses a logic expression from a JSON value with structure preservation option.
+pub fn parse_json_with_preserve<'a>(
+    json: &JsonValue,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<&'a Token<'a>> {
+    let token = parse_json_internal(json, arena, preserve_structure)?;
     Ok(arena.alloc(token))
 }
 
 /// Internal function for parsing a JSON value into a token.
-fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Token<'a>> {
+fn parse_json_internal<'a>(
+    json: &JsonValue,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<Token<'a>> {
     match json {
         // Simple literals
         JsonValue::Null => Ok(Token::literal(DataValue::null())),
@@ -94,7 +132,7 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
                 // Otherwise, create an array of tokens and allocate them in the arena
                 let mut tokens = Vec::with_capacity(arr.len());
                 for item in arr {
-                    let token = parse_json_internal(item, arena)?;
+                    let token = parse_json_internal(item, arena, preserve_structure)?;
                     let token_ref = arena.alloc(token);
                     tokens.push(token_ref);
                 }
@@ -103,24 +141,28 @@ fn parse_json_internal<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<Tok
         }
 
         // Objects could be operators or literal objects
-        JsonValue::Object(obj) => parse_object(obj, arena),
+        JsonValue::Object(obj) => parse_object(obj, arena, preserve_structure),
     }
 }
 
 /// Parses a JSON object into a token.
-fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> Result<Token<'a>> {
+fn parse_object<'a>(
+    obj: &JsonMap<String, JsonValue>,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<Token<'a>> {
     // If the object has exactly one key, it might be an operator
     if obj.len() == 1 {
         let (key, value) = obj.iter().next().unwrap();
 
         match key.as_str() {
-            "var" => parse_variable(value, arena),
+            "var" => parse_variable(value, arena, preserve_structure),
             "val" => {
-                let token = parse_json_internal(value, arena)?;
+                let token = parse_json_internal(value, arena, preserve_structure)?;
                 let args_token = arena.alloc(token);
                 Ok(Token::operator(OperatorType::Val, args_token))
             }
-            "exists" => parse_exists_operator(value, arena),
+            "exists" => parse_exists_operator(value, arena, preserve_structure),
             "preserve" => {
                 // The preserve operator returns its argument as-is without parsing it as an operator
                 let preserved_value = DataValue::from_json(value, arena);
@@ -129,11 +171,22 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
             _ => {
                 // Check if it's a standard operator
                 if let Ok(op_type) = OperatorType::from_str(key) {
-                    return parse_operator(op_type, value, arena);
+                    return parse_operator(op_type, value, arena, preserve_structure);
                 }
 
-                // Otherwise, treat it as a custom operator
-                parse_custom_operator(key, value, arena)
+                // Check if structure preservation is enabled for unknown operators
+                if preserve_structure {
+                    // Create a structured object with this single field
+                    let value_token = parse_json_internal(value, arena, preserve_structure)?;
+                    let value_token_ref = arena.alloc(value_token);
+                    let key_str = arena.intern_str(key);
+                    let fields = vec![(key_str, value_token_ref)];
+                    let fields_slice = arena.vec_into_slice(fields);
+                    Ok(Token::structured_object(fields_slice))
+                } else {
+                    // Otherwise, treat it as a custom operator
+                    parse_custom_operator(key, value, arena, preserve_structure)
+                }
             }
         }
     } else if obj.is_empty() {
@@ -142,20 +195,38 @@ fn parse_object<'a>(obj: &JsonMap<String, JsonValue>, arena: &'a DataArena) -> R
             arena.vec_into_slice(vec![]),
         )))
     } else {
-        // For multi-key objects, treat the first key as an unknown operator
-        // This matches the JSONLogic behavior where multi-key objects should
-        // fail as unknown operators rather than parse errors
-        let (key, _) = obj.iter().next().unwrap();
+        // Multi-key objects
+        if preserve_structure {
+            // When structure preservation is enabled, create a structured object
+            let mut fields = Vec::with_capacity(obj.len());
+            for (key, value) in obj {
+                let value_token = parse_json_internal(value, arena, preserve_structure)?;
+                let value_token_ref = arena.alloc(value_token);
+                let key_str = arena.intern_str(key);
+                fields.push((key_str, value_token_ref));
+            }
+            let fields_slice = arena.vec_into_slice(fields);
+            Ok(Token::structured_object(fields_slice))
+        } else {
+            // Original behavior: treat the first key as an unknown operator
+            // This matches the JSONLogic behavior where multi-key objects should
+            // fail as unknown operators rather than parse errors
+            let (key, _) = obj.iter().next().unwrap();
 
-        // Return an OperatorNotFoundError instead of a ParseError
-        Err(LogicError::OperatorNotFoundError {
-            operator: key.clone(),
-        })
+            // Return an OperatorNotFoundError instead of a ParseError
+            Err(LogicError::OperatorNotFoundError {
+                operator: key.clone(),
+            })
+        }
     }
 }
 
 /// Parses a variable reference.
-fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Token<'a>> {
+fn parse_variable<'a>(
+    var_json: &JsonValue,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<Token<'a>> {
     match var_json {
         // Simple variable reference
         JsonValue::String(path) => {
@@ -190,12 +261,12 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 && !arr[0].is_null()
             {
                 // Parse the path expression
-                let path_expr = parse_json_internal(&arr[0], arena)?;
+                let path_expr = parse_json_internal(&arr[0], arena, preserve_structure)?;
                 let path_token = arena.alloc(path_expr);
 
                 // If there's a default value, parse it
                 let default = if arr.len() >= 2 {
-                    let default_token = parse_json_internal(&arr[1], arena)?;
+                    let default_token = parse_json_internal(&arr[1], arena, preserve_structure)?;
                     Some(arena.alloc(default_token))
                 } else {
                     None
@@ -221,7 +292,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
                 };
 
                 // Parse the default value
-                let default_token = parse_json_internal(&arr[1], arena)?;
+                let default_token = parse_json_internal(&arr[1], arena, preserve_structure)?;
                 let default = arena.alloc(default_token);
 
                 return Ok(Token::variable(path, Some(default)));
@@ -278,7 +349,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
 
             // If there are two or more elements, the second is the default
             // Parse the default value
-            let default_token = parse_json_internal(&arr[1], arena)?;
+            let default_token = parse_json_internal(&arr[1], arena, preserve_structure)?;
             let default = arena.alloc(default_token);
 
             Ok(Token::variable(path, Some(default)))
@@ -309,7 +380,7 @@ fn parse_variable<'a>(var_json: &JsonValue, arena: &'a DataArena) -> Result<Toke
         // Handle object as variable path (e.g., {"cat": ["te", "st"]})
         JsonValue::Object(_) => {
             // Parse the object as a regular expression
-            let path_expr = parse_json_internal(var_json, arena)?;
+            let path_expr = parse_json_internal(var_json, arena, preserve_structure)?;
             let path_token = arena.alloc(path_expr);
 
             // Create a dynamic variable reference where the path will be evaluated at runtime
@@ -328,9 +399,10 @@ fn parse_operator<'a>(
     op_type: OperatorType,
     args_json: &JsonValue,
     arena: &'a DataArena,
+    preserve_structure: bool,
 ) -> Result<Token<'a>> {
     // Parse the arguments
-    let args = parse_arguments(args_json, arena)?;
+    let args = parse_arguments(args_json, arena, preserve_structure)?;
 
     // Create the operator token
     Ok(Token::operator(op_type, args))
@@ -341,20 +413,25 @@ fn parse_custom_operator<'a>(
     name: &str,
     args_json: &JsonValue,
     arena: &'a DataArena,
+    preserve_structure: bool,
 ) -> Result<Token<'a>> {
     // Parse the arguments
-    let args = parse_arguments(args_json, arena)?;
+    let args = parse_arguments(args_json, arena, preserve_structure)?;
 
     // Create the custom operator token
     Ok(Token::custom_operator(arena.intern_str(name), args))
 }
 
 /// Parses the arguments for an operator.
-fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
+fn parse_arguments<'a>(
+    args_json: &JsonValue,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<&'a Token<'a>> {
     match args_json {
         // Single argument that's not an array - no need for ArrayLiteral
         _ if !args_json.is_array() => {
-            let arg = parse_json_internal(args_json, arena)?;
+            let arg = parse_json_internal(args_json, arena, preserve_structure)?;
             Ok(arena.alloc(arg))
         }
 
@@ -370,7 +447,7 @@ fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'
 
             // Parse each argument
             for arg_json in arr {
-                let arg = parse_json_internal(arg_json, arena)?;
+                let arg = parse_json_internal(arg_json, arena, preserve_structure)?;
                 let arg_ref = arena.alloc(arg);
                 tokens.push(arg_ref);
             }
@@ -386,9 +463,13 @@ fn parse_arguments<'a>(args_json: &JsonValue, arena: &'a DataArena) -> Result<&'
 }
 
 /// Parses the exists operator application.
-fn parse_exists_operator<'a>(value: &JsonValue, arena: &'a DataArena) -> Result<Token<'a>> {
+fn parse_exists_operator<'a>(
+    value: &JsonValue,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<Token<'a>> {
     // Parse the arguments for exists operator
-    let args = parse_arguments(value, arena)?;
+    let args = parse_arguments(value, arena, preserve_structure)?;
 
     // Create the exists operator token
     Ok(Token::operator(OperatorType::Exists, args))

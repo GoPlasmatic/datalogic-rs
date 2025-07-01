@@ -25,3 +25,5 @@ Cargo.lock
 /target
 .DS_Store
 node_modules
+.claude/
+CLAUDE.md

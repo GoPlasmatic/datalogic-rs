@@ -15,6 +15,22 @@ pub trait ExpressionParser: Send + Sync {
     /// Parse the input JSON into a Token
     fn parse_json<'a>(&self, input: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>>;
 
+    /// Parse the input string into a Token with structure preservation option
+    fn parse_with_preserve<'a>(
+        &self,
+        input: &str,
+        arena: &'a DataArena,
+        preserve_structure: bool,
+    ) -> Result<&'a Token<'a>>;
+
+    /// Parse the input JSON into a Token with structure preservation option
+    fn parse_json_with_preserve<'a>(
+        &self,
+        input: &JsonValue,
+        arena: &'a DataArena,
+        preserve_structure: bool,
+    ) -> Result<&'a Token<'a>>;
+
     /// Get the name of this parser format
     fn format_name(&self) -> &'static str;
 }
@@ -92,5 +108,39 @@ impl ParserRegistry {
             reason: format!("Unknown parser format: {format}"),
         })?;
         parser.parse_json(input, arena)
+    }
+
+    /// Parse an expression with structure preservation using the specified parser
+    pub fn parse_with_preserve<'a>(
+        &self,
+        input: &str,
+        format: Option<&str>,
+        arena: &'a DataArena,
+        preserve_structure: bool,
+    ) -> Result<&'a Token<'a>> {
+        let format = format.unwrap_or(&self.default_parser);
+
+        if let Some(parser) = self.parsers.get(format) {
+            parser.parse_with_preserve(input, arena, preserve_structure)
+        } else {
+            Err(LogicError::ParseError {
+                reason: format!("Unknown parser format: {format}"),
+            })
+        }
+    }
+
+    /// Parse a JSON expression with structure preservation using the specified parser
+    pub fn parse_json_with_preserve<'a>(
+        &self,
+        input: &JsonValue,
+        format: Option<&str>,
+        arena: &'a DataArena,
+        preserve_structure: bool,
+    ) -> Result<&'a Token<'a>> {
+        let format = format.unwrap_or(&self.default_parser);
+        let parser = self.parsers.get(format).ok_or(LogicError::ParseError {
+            reason: format!("Unknown parser format: {format}"),
+        })?;
+        parser.parse_json_with_preserve(input, arena, preserve_structure)
     }
 }

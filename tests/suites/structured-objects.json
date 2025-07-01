@@ -1,0 +1,107 @@
+[
+  {
+    "description": "Basic structured object with unknown operator key",
+    "rule": { "isEqual": { "==": [1, 1] } },
+    "data": {},
+    "result": { "isEqual": true },
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with nested operators",
+    "rule": { "result": { "value": { "+": [1, 2, 3] } } },
+    "data": {},
+    "result": { "result": { "value": 6 } },
+    "preserve_structure": true
+  },
+  {
+    "description": "Multiple fields with mixed operations",
+    "rule": { "sum": { "+": [1, 2] }, "product": { "*": [3, 4] }, "literal": 42 },
+    "data": {},
+    "result": { "sum": 3, "product": 12, "literal": 42 },
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with variable references",
+    "rule": { "greeting": { "cat": ["Hello ", { "var": "name" }] }, "age": { "var": "age" } },
+    "data": { "name": "John", "age": 30 },
+    "result": { "greeting": "Hello John", "age": 30 },
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with array operations",
+    "rule": { "filtered": { "filter": [[1, 2, 3, 4], { "<": [{ "var": "" }, 3] }] }, "mapped": { "map": [[1, 2, 3], { "*": [{ "var": "" }, 2] }] } },
+    "data": {},
+    "result": { "filtered": [1, 2], "mapped": [2, 4, 6] },
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with conditional logic",
+    "rule": { "grade": { "if": [{ ">": [{ "var": "score" }, 90] }, "A", "B"] }, "passed": { ">": [{ "var": "score" }, 60] } },
+    "data": { "score": 95 },
+    "result": { "grade": "A", "passed": true },
+    "preserve_structure": true
+  },
+  {
+    "description": "Complex nested structured object",
+    "rule": { "user": { "fullName": { "cat": [{ "var": "firstName" }, " ", { "var": "lastName" }] }, "isAdult": { ">=": [{ "var": "age" }, 18] } }, "meta": { "processed": true, "timestamp": 12345 } },
+    "data": { "firstName": "Jane", "lastName": "Doe", "age": 25 },
+    "result": { "user": { "fullName": "Jane Doe", "isAdult": true }, "meta": { "processed": true, "timestamp": 12345 } },
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with string operations",
+    "rule": { "uppercase": { "upper": { "var": "text" } }, "length": { "length": { "var": "text" } }, "contains": { "in": ["world", { "var": "text" }] } },
+    "data": { "text": "hello world" },
+    "result": { "uppercase": "HELLO WORLD", "length": 11, "contains": true },
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with datetime operations",
+    "rule": { "parsed": { "datetime": "2023-07-15T08:30:00Z" }, "formatted": { "format_date": [{ "datetime": "2023-07-15T08:30:00Z" }, "yyyy-MM-dd"] } },
+    "data": {},
+    "result": { "parsed": "2023-07-15T08:30:00Z", "formatted": "2023-07-15" },
+    "preserve_structure": true
+  },
+  {
+    "description": "Ensure normal behavior unchanged when preserve_structure is false",
+    "rule": { "isEqual": { "==": [1, 1] } },
+    "data": {},
+    "error": { "type": "Unknown Operator" },
+    "preserve_structure": false
+  },
+  {
+    "description": "Single-key objects with valid operators work normally in preserve mode",
+    "rule": { "==": [1, 1] },
+    "data": {},
+    "result": true,
+    "preserve_structure": true
+  },
+  {
+    "description": "Preserve operator still works with structure preservation enabled",
+    "rule": { "preserve": { "==": [1, 2] } },
+    "data": {},
+    "result": { "==": [1, 2] },
+    "preserve_structure": true
+  },
+  {
+    "description": "Mixed literal and operator values",
+    "rule": { "staticValue": "hello", "computed": { "+": [10, 20] }, "fromVar": { "var": "input" } },
+    "data": { "input": "dynamic" },
+    "result": { "staticValue": "hello", "computed": 30, "fromVar": "dynamic" },
+    "preserve_structure": true
+  },
+  {
+    "description": "Empty object handling in preserve mode",
+    "rule": {},
+    "data": {},
+    "result": {},
+    "preserve_structure": true
+  },
+  {
+    "description": "Structured object with error handling operations",
+    "rule": { "safe": { "try": [{ "/": [10, 0] }, "division error"] }, "unsafe": { "/": [10, 2] } },
+    "data": {},
+    "result": { "safe": "division error", "unsafe": 5 },
+    "preserve_structure": true
+  }
+]

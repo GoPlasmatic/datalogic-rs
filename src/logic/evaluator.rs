@@ -51,6 +51,9 @@ pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a Da
             let data_values = evaluate_arguments(args, arena)?;
             evaluate_custom_operator(name, data_values, arena)
         }
+
+        // Structured objects evaluate each field value while preserving keys
+        Token::StructuredObject { fields } => evaluate_structured_object(fields, arena),
     }
 }
 
@@ -392,6 +395,26 @@ fn eval_coalesce<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 
     // If all values are null, return null
     Ok(arena.null_value())
+}
+
+/// Evaluates a structured object by evaluating each field value while preserving keys
+fn evaluate_structured_object<'a>(
+    fields: &'a [(&'a str, &'a Token<'a>)],
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Create a vector to hold the evaluated field-value pairs
+    let mut evaluated_fields = Vec::with_capacity(fields.len());
+
+    // Evaluate each field value
+    for (key, value_token) in fields {
+        let evaluated_value = evaluate(value_token, arena)?;
+        evaluated_fields.push((*key, evaluated_value.clone()));
+    }
+
+    // Convert to a slice and create the object
+    let fields_slice = arena.vec_into_slice(evaluated_fields);
+    let result = DataValue::Object(fields_slice);
+    Ok(arena.alloc(result))
 }
 
 #[cfg(test)]

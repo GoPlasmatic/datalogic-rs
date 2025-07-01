@@ -1,15 +1,18 @@
 import init, { JsJsonLogic } from './pkg/datalogic_web.js';
 
 export class JsonLogicEvaluator {
-    constructor() {
+    constructor(preserveStructure = false) {
         this.logic = null;
         this.initialized = false;
+        this.preserveStructure = preserveStructure;
     }
 
     async initialize() {
         if (!this.initialized) {
             await init();
-            this.logic = new JsJsonLogic();
+            this.logic = this.preserveStructure 
+                ? JsJsonLogic.new_with_preserve_structure(true)
+                : new JsJsonLogic();
             this.initialized = true;
         }
     }

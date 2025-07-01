@@ -145,5 +145,34 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
             // Return the optimized custom operator
             Ok(arena.alloc(Token::custom_operator(name, optimized_args)))
         }
+
+        // Structured objects can optimize their field values
+        Token::StructuredObject { fields } => {
+            // Optimize each field value
+            let mut optimized_fields = Vec::with_capacity(fields.len());
+            let mut any_changed = false;
+
+            for (key, value_token) in fields.iter() {
+                let optimized_value = optimize(value_token, arena)?;
+                optimized_fields.push((*key, optimized_value));
+
+                // Check if this field was optimized
+                if !std::ptr::eq(
+                    *value_token as *const Token<'_>,
+                    optimized_value as *const Token<'_>,
+                ) {
+                    any_changed = true;
+                }
+            }
+
+            // If any field was optimized, create a new structured object
+            if any_changed {
+                let fields_slice = arena.vec_into_slice(optimized_fields);
+                Ok(arena.alloc(Token::structured_object(fields_slice)))
+            } else {
+                // If nothing changed, return the original token
+                Ok(token)
+            }
+        }
     }
 }

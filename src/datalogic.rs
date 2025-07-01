@@ -32,6 +32,7 @@ pub use crate::arena::CustomOperator;
 pub struct DataLogic {
     arena: DataArena,
     parsers: ParserRegistry,
+    preserve_structure: bool,
 }
 
 impl DataLogic {
@@ -40,6 +41,7 @@ impl DataLogic {
         Self {
             arena: DataArena::new(),
             parsers: ParserRegistry::new(),
+            preserve_structure: false,
         }
     }
 
@@ -48,6 +50,42 @@ impl DataLogic {
         Self {
             arena: DataArena::with_chunk_size(chunk_size),
             parsers: ParserRegistry::new(),
+            preserve_structure: false,
+        }
+    }
+
+    /// Create a new DataLogic instance with structure preservation enabled
+    ///
+    /// When enabled, multi-key objects will preserve their structure and evaluate
+    /// inner values instead of throwing OperatorNotFoundError.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let dl = DataLogic::with_preserve_structure();
+    /// let result = dl.evaluate_str(
+    ///     r#"{"isEqual": {"==": [1, 1]}}"#,
+    ///     r#"{}"#,
+    ///     None
+    /// ).unwrap();
+    /// // Returns: {"isEqual": true}
+    /// ```
+    pub fn with_preserve_structure() -> Self {
+        Self {
+            arena: DataArena::new(),
+            parsers: ParserRegistry::new(),
+            preserve_structure: true,
+        }
+    }
+
+    /// Create a new DataLogic instance with both custom chunk size and structure preservation
+    pub fn with_chunk_size_and_preserve_structure(chunk_size: usize) -> Self {
+        Self {
+            arena: DataArena::with_chunk_size(chunk_size),
+            parsers: ParserRegistry::new(),
+            preserve_structure: true,
         }
     }
 
@@ -57,6 +95,11 @@ impl DataLogic {
     /// won't need to access this directly.
     pub fn arena(&self) -> &DataArena {
         &self.arena
+    }
+
+    /// Check if structure preservation is enabled
+    pub fn preserve_structure(&self) -> bool {
+        self.preserve_structure
     }
 
     /// Reset the internal arena to free memory
@@ -136,7 +179,12 @@ impl DataLogic {
 
     /// Parse a logic expression using the specified parser format
     pub fn parse_logic(&self, source: &str, format: Option<&str>) -> Result<Logic> {
-        let token = self.parsers.parse(source, format, &self.arena)?;
+        let token = if self.preserve_structure {
+            self.parsers
+                .parse_with_preserve(source, format, &self.arena, true)?
+        } else {
+            self.parsers.parse(source, format, &self.arena)?
+        };
 
         // Apply static optimization
         let optimized_token = optimize(token, &self.arena)?;
@@ -146,7 +194,12 @@ impl DataLogic {
 
     /// Parse a JSON logic expression into a Token
     pub fn parse_logic_json(&self, source: &JsonValue, format: Option<&str>) -> Result<Logic> {
-        let token = self.parsers.parse_json(source, format, &self.arena)?;
+        let token = if self.preserve_structure {
+            self.parsers
+                .parse_json_with_preserve(source, format, &self.arena, true)?
+        } else {
+            self.parsers.parse_json(source, format, &self.arena)?
+        };
         Ok(Logic::new(token, &self.arena))
     }
 
