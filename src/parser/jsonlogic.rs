@@ -174,8 +174,11 @@ fn parse_object<'a>(
                     return parse_operator(op_type, value, arena, preserve_structure);
                 }
 
-                // Check if structure preservation is enabled for unknown operators
-                if preserve_structure {
+                // Check if this is a registered custom operator
+                if arena.has_custom_operator(key) {
+                    // Always treat registered custom operators as operators, regardless of preserve_structure
+                    parse_custom_operator(key, value, arena, preserve_structure)
+                } else if preserve_structure {
                     // Create a structured object with this single field
                     let value_token = parse_json_internal(value, arena, preserve_structure)?;
                     let value_token_ref = arena.alloc(value_token);
