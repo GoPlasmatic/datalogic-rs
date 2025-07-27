@@ -54,11 +54,7 @@ fn test_parser_registry_with_invalid_parser() {
 struct MockParser;
 
 impl ExpressionParser for MockParser {
-    fn parse<'a>(
-        &self,
-        _input: &str,
-        arena: &'a DataArena,
-    ) -> crate::logic::Result<&'a Token<'a>> {
+    fn parse<'a>(&self, _input: &str, arena: &'a DataArena) -> crate::logic::Result<&'a Token<'a>> {
         // Always returns a literal token with the value "mock"
         Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
             arena, "mock",
