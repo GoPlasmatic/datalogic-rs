@@ -723,7 +723,7 @@ mod tests {
         let null = DataValue::null();
         let boolean = DataValue::bool(true);
         let integer = DataValue::integer(42);
-        let float = DataValue::float(3.14);
+        let float = DataValue::float(3.5);
         let string = DataValue::string(&arena, "hello");
 
         assert!(null.is_null());
@@ -734,7 +734,7 @@ mod tests {
 
         assert_eq!(boolean.as_bool(), Some(true));
         assert_eq!(integer.as_i64(), Some(42));
-        assert_eq!(float.as_f64(), Some(3.14));
+        assert_eq!(float.as_f64(), Some(3.5));
         assert_eq!(string.as_str(), Some("hello"));
     }
 
@@ -830,8 +830,8 @@ mod tests {
             Some(NumberValue::Integer(42))
         );
         assert_eq!(
-            DataValue::string(&arena, "3.14").coerce_to_number(),
-            Some(NumberValue::Float(3.14))
+            DataValue::string(&arena, "3.5").coerce_to_number(),
+            Some(NumberValue::Float(3.5))
         );
 
         // Test datetime and duration number coercion
@@ -887,7 +887,7 @@ mod tests {
         assert!(DataValue::null() == DataValue::null());
         assert!(DataValue::bool(true) > DataValue::bool(false));
         assert!(DataValue::integer(5) > DataValue::integer(3));
-        assert!(DataValue::float(3.14) > DataValue::float(2.71));
+        assert!(DataValue::float(3.5) > DataValue::float(2.71));
         assert!(DataValue::string(&arena, "hello") == DataValue::string(&arena, "hello"));
         assert!(DataValue::string(&arena, "world") > DataValue::string(&arena, "hello"));
 

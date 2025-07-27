@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn test_number_creation() {
         let int = NumberValue::from_i64(42);
-        let float = NumberValue::from_f64(3.14);
+        let float = NumberValue::from_f64(3.5);
         let int_from_float = NumberValue::from_f64(42.0);
 
         assert!(int.is_integer());
@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(int_from_float.as_i64(), Some(42));
 
         assert_eq!(int.as_f64(), 42.0);
-        assert_eq!(float.as_f64(), 3.14);
+        assert_eq!(float.as_f64(), 3.5);
     }
 
     #[test]

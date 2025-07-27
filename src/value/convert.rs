@@ -188,7 +188,7 @@ mod tests {
             "null": null,
             "bool": true,
             "integer": 42,
-            "float": 3.14,
+            "float": 3.5,
             "string": "hello",
             "array": [1, 2, 3],
             "object": {

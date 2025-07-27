@@ -505,9 +505,9 @@ mod tests {
         assert_eq!(token.as_literal().unwrap().as_i64(), Some(42));
 
         // Parse float
-        let token = parse_json(&json!(3.14), &arena).unwrap();
+        let token = parse_json(&json!(3.5), &arena).unwrap();
         assert!(token.is_literal());
-        assert_eq!(token.as_literal().unwrap().as_f64(), Some(3.14));
+        assert_eq!(token.as_literal().unwrap().as_f64(), Some(3.5));
 
         // Parse string
         let token = parse_json(&json!("hello"), &arena).unwrap();
