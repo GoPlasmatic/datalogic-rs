@@ -12,19 +12,6 @@ use std::mem;
 
 use bumpalo::Bump;
 
-/// A reference to a string in the interner.
-///
-/// This is a newtype wrapper around a reference to a string,
-/// with lifetime parameters to ensure memory safety.
-#[derive(Debug, PartialEq, Eq)]
-pub struct StringRef<'a>(pub &'a str);
-
-impl Hash for StringRef<'_> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-
 /// Computes a hash for the given string.
 ///
 /// This function uses the DefaultHasher from the standard library.

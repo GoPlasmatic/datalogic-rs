@@ -575,7 +575,7 @@ impl DataArena {
     ///
     /// The context data value, or None if no context is set
     #[inline]
-    pub fn current_context(&self, scope_jump: usize) -> Option<&DataValue> {
+    pub fn current_context(&self, scope_jump: usize) -> Option<&DataValue<'_>> {
         // Fast path for the common case (no scope jump)
         if scope_jump == 0 {
             return *self.current_context.borrow();
@@ -593,7 +593,7 @@ impl DataArena {
     ///
     /// The root context data value, or None if no root context is set
     #[inline]
-    pub fn root_context(&self) -> Option<&DataValue> {
+    pub fn root_context(&self) -> Option<&DataValue<'_>> {
         // Reset the path chain when getting root context
         self.path_chain.borrow_mut().clear();
         *self.root_context.borrow()
@@ -626,7 +626,7 @@ impl DataArena {
     /// The context data value after jumping up the scope chain
     #[cold]
     #[inline(never)]
-    fn root_context_with_jump(&self, scope_jump: usize) -> Option<&DataValue> {
+    fn root_context_with_jump(&self, scope_jump: usize) -> Option<&DataValue<'_>> {
         if scope_jump == 0 {
             return *self.current_context.borrow();
         }
@@ -766,7 +766,7 @@ impl DataArena {
     ///
     /// The removed path component, or None if the path chain is empty
     #[inline]
-    pub fn pop_path_component(&self) -> Option<&DataValue> {
+    pub fn pop_path_component(&self) -> Option<&DataValue<'_>> {
         // SAFETY: The static lifetime can be safely narrowed
         self.path_chain
             .borrow_mut()
@@ -790,7 +790,7 @@ impl DataArena {
     ///
     /// This allocates a new vector.
     #[inline]
-    pub fn path_chain_as_slice(&self) -> Vec<&DataValue> {
+    pub fn path_chain_as_slice(&self) -> Vec<&DataValue<'_>> {
         let chain = self.path_chain.borrow();
         chain
             .as_slice()
@@ -827,7 +827,7 @@ impl DataArena {
     ///
     /// The last path component, or None if the path chain is empty
     #[inline]
-    pub fn last_path_component(&self) -> Option<&DataValue> {
+    pub fn last_path_component(&self) -> Option<&DataValue<'_>> {
         // SAFETY: The static lifetime can be safely narrowed
         self.path_chain
             .borrow()

@@ -178,7 +178,7 @@ impl DataLogic {
     }
 
     /// Parse a logic expression using the specified parser format
-    pub fn parse_logic(&self, source: &str, format: Option<&str>) -> Result<Logic> {
+    pub fn parse_logic(&self, source: &str, format: Option<&str>) -> Result<Logic<'_>> {
         let token = if self.preserve_structure {
             self.parsers
                 .parse_with_preserve(source, format, &self.arena, true)?
@@ -193,7 +193,7 @@ impl DataLogic {
     }
 
     /// Parse a JSON logic expression into a Token
-    pub fn parse_logic_json(&self, source: &JsonValue, format: Option<&str>) -> Result<Logic> {
+    pub fn parse_logic_json(&self, source: &JsonValue, format: Option<&str>) -> Result<Logic<'_>> {
         let token = if self.preserve_structure {
             self.parsers
                 .parse_json_with_preserve(source, format, &self.arena, true)?
@@ -204,7 +204,7 @@ impl DataLogic {
     }
 
     /// Parse a JSON data string into a DataValue
-    pub fn parse_data(&self, source: &str) -> Result<DataValue> {
+    pub fn parse_data(&self, source: &str) -> Result<DataValue<'_>> {
         let json = serde_json::from_str(source).map_err(|e| LogicError::ParseError {
             reason: e.to_string(),
         })?;
@@ -212,7 +212,7 @@ impl DataLogic {
     }
 
     /// Parse a JSON data string into a DataValue
-    pub fn parse_data_json(&self, source: &JsonValue) -> Result<DataValue> {
+    pub fn parse_data_json(&self, source: &JsonValue) -> Result<DataValue<'_>> {
         Ok(DataValue::from_json(source, &self.arena))
     }
 
