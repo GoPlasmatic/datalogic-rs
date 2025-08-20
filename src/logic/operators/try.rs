@@ -131,10 +131,10 @@ pub fn eval_try<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 
 #[cfg(test)]
 mod tests {
+    use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::error::LogicError;
     use crate::logic::token::{OperatorType, Token};
-    use crate::logic::Logic;
     use crate::value::DataValue;
     use serde_json::json;
 

@@ -198,25 +198,25 @@ fn process_duration_multiplication<'a>(
 
     // Check for duration * number
     let left_dur = extract_duration(&args[0], arena);
-    if let Some(dur) = left_dur {
-        if let DataValue::Number(n) = &args[1] {
-            let factor = n.as_f64();
-            if factor.fract() == 0.0 && factor >= 0.0 {
-                let result_dur = dur * (factor as i32);
-                return Some(arena.alloc(DataValue::duration(result_dur)));
-            }
+    if let Some(dur) = left_dur
+        && let DataValue::Number(n) = &args[1]
+    {
+        let factor = n.as_f64();
+        if factor.fract() == 0.0 && factor >= 0.0 {
+            let result_dur = dur * (factor as i32);
+            return Some(arena.alloc(DataValue::duration(result_dur)));
         }
     }
 
     // Check for number * duration (reverse order)
     let right_dur = extract_duration(&args[1], arena);
-    if let Some(dur) = right_dur {
-        if let DataValue::Number(n) = &args[0] {
-            let factor = n.as_f64();
-            if factor.fract() == 0.0 && factor >= 0.0 {
-                let result_dur = dur * (factor as i32);
-                return Some(arena.alloc(DataValue::duration(result_dur)));
-            }
+    if let Some(dur) = right_dur
+        && let DataValue::Number(n) = &args[0]
+    {
+        let factor = n.as_f64();
+        if factor.fract() == 0.0 && factor >= 0.0 {
+            let result_dur = dur * (factor as i32);
+            return Some(arena.alloc(DataValue::duration(result_dur)));
         }
     }
 
@@ -234,13 +234,13 @@ fn process_duration_division<'a>(
 
     // Check for duration / number
     let left_dur = extract_duration(&args[0], arena);
-    if let Some(dur) = left_dur {
-        if let DataValue::Number(n) = &args[1] {
-            let divisor = n.as_f64();
-            if divisor.fract() == 0.0 && divisor > 0.0 {
-                let result_dur = dur / (divisor as i32);
-                return Some(arena.alloc(DataValue::duration(result_dur)));
-            }
+    if let Some(dur) = left_dur
+        && let DataValue::Number(n) = &args[1]
+    {
+        let divisor = n.as_f64();
+        if divisor.fract() == 0.0 && divisor > 0.0 {
+            let result_dur = dur / (divisor as i32);
+            return Some(arena.alloc(DataValue::duration(result_dur)));
         }
     }
 

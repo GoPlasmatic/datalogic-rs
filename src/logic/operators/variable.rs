@@ -204,10 +204,10 @@ fn find_in_small_object<'a>(
 /// Helper function to get an index from an array
 #[inline]
 fn get_array_index<'a>(arr: &'a DataValue<'a>, index: usize) -> Option<&'a DataValue<'a>> {
-    if let DataValue::Array(items) = arr {
-        if index < items.len() {
-            return Some(&items[index]);
-        }
+    if let DataValue::Array(items) = arr
+        && index < items.len()
+    {
+        return Some(&items[index]);
     }
     None
 }

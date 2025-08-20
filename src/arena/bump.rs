@@ -7,8 +7,8 @@
 //! The `DataArena` maintains shared references and context for evaluating
 //! logic expressions.
 
-use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
+use bumpalo::collections::Vec as BumpVec;
 use std::cell::RefCell;
 use std::fmt;
 use std::mem;
@@ -746,15 +746,15 @@ impl DataArena {
         current: &mut &'a DataValue<'a>,
         n: &NumberValue,
     ) -> bool {
-        if let Some(idx) = n.as_i64() {
-            if idx >= 0 {
-                let index = idx as usize;
-                if let DataValue::Array(items) = *current {
-                    if index < items.len() {
-                        *current = &items[index];
-                        return true;
-                    }
-                }
+        if let Some(idx) = n.as_i64()
+            && idx >= 0
+        {
+            let index = idx as usize;
+            if let DataValue::Array(items) = *current
+                && index < items.len()
+            {
+                *current = &items[index];
+                return true;
             }
         }
         false

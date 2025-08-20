@@ -26,10 +26,10 @@ fn extract_error_message<'a>(error_value: &'a DataValue<'a>) -> String {
     // Handle object values with a "type" field
     if let Some(obj) = error_value.as_object() {
         for (key, value) in obj {
-            if *key == "type" {
-                if let Some(type_str) = value.as_str() {
-                    return type_str.to_string();
-                }
+            if *key == "type"
+                && let Some(type_str) = value.as_str()
+            {
+                return type_str.to_string();
             }
         }
     }
@@ -66,10 +66,10 @@ pub fn eval_throw<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::error::LogicError;
     use crate::logic::token::{OperatorType, Token};
-    use crate::logic::Logic;
     use crate::value::DataValue;
     use serde_json::json;
 

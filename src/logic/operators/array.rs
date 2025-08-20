@@ -445,14 +445,13 @@ fn is_arithmetic_reduce_pattern<'a>(function: &'a Token<'a>) -> Option<Arithmeti
         op_type: OperatorType::Arithmetic(arith_op),
         args: Token::ArrayLiteral(fn_args_tokens),
     } = function
+        && fn_args_tokens.len() == 2
     {
-        if fn_args_tokens.len() == 2 {
-            let is_var_current = is_var_with_path(fn_args_tokens[0], "current");
-            let is_var_acc = is_var_with_path(fn_args_tokens[1], "accumulator");
+        let is_var_current = is_var_with_path(fn_args_tokens[0], "current");
+        let is_var_acc = is_var_with_path(fn_args_tokens[1], "accumulator");
 
-            if is_var_current && is_var_acc {
-                return Some(*arith_op);
-            }
+        if is_var_current && is_var_acc {
+            return Some(*arith_op);
         }
     }
     None
@@ -1388,11 +1387,11 @@ pub fn eval_sort<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 
 #[cfg(test)]
 mod tests {
+    use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::operators::arithmetic::ArithmeticOp;
     use crate::logic::operators::array::ArrayOp;
     use crate::logic::token::{OperatorType, Token};
-    use crate::logic::Logic;
     use crate::parser::jsonlogic::parse_json;
     use crate::value::DataValue;
     use serde_json::json;

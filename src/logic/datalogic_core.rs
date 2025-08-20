@@ -1,6 +1,6 @@
 use super::error::Result;
 use crate::arena::DataArena;
-use crate::logic::{evaluate, Logic};
+use crate::logic::{Logic, evaluate};
 use crate::value::{DataValue, FromJson, ToJson};
 
 /// The main engine implementation for DataLogic expressions.

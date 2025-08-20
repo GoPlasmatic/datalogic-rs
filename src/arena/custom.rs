@@ -1,7 +1,7 @@
+use crate::LogicError;
 use crate::arena::DataArena;
 use crate::logic::Result;
 use crate::value::DataValue;
-use crate::LogicError;
 use std::collections::HashMap;
 use std::fmt;
 

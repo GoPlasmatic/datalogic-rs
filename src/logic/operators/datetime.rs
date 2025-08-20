@@ -6,7 +6,7 @@ use chrono::{FixedOffset, Local, TimeZone};
 
 use crate::arena::DataArena;
 use crate::logic::error::{LogicError, Result};
-use crate::value::{date_diff, parse_datetime, parse_duration, DataValue};
+use crate::value::{DataValue, date_diff, parse_datetime, parse_duration};
 
 /// Enumeration of datetime operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

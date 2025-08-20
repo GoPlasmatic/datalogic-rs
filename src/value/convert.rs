@@ -52,16 +52,16 @@ impl<'a> FromJson<'a> for DataValue<'a> {
             JsonValue::Object(obj) => {
                 // Check for special datetime/duration object patterns first
                 if obj.len() == 1 {
-                    if let Some(JsonValue::String(s)) = obj.get("datetime") {
-                        if let Ok(dt) = super::parse_datetime(s) {
-                            return DataValue::datetime(dt);
-                        }
+                    if let Some(JsonValue::String(s)) = obj.get("datetime")
+                        && let Ok(dt) = super::parse_datetime(s)
+                    {
+                        return DataValue::datetime(dt);
                     }
 
-                    if let Some(JsonValue::String(s)) = obj.get("timestamp") {
-                        if let Ok(dur) = super::parse_duration(s) {
-                            return DataValue::duration(dur);
-                        }
+                    if let Some(JsonValue::String(s)) = obj.get("timestamp")
+                        && let Ok(dur) = super::parse_duration(s)
+                    {
+                        return DataValue::duration(dur);
                     }
                 }
 

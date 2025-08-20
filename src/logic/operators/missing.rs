@@ -43,10 +43,10 @@ pub fn eval_missing<'a>(
             DataValue::Array(names) => {
                 // Process each variable name in the array
                 for name_value in *names {
-                    if let DataValue::String(name) = name_value {
-                        if !variable_exists(name, arena) {
-                            missing.push(DataValue::String(name));
-                        }
+                    if let DataValue::String(name) = name_value
+                        && !variable_exists(name, arena)
+                    {
+                        missing.push(DataValue::String(name));
                     }
                     // Ignore non-string names
                 }
@@ -112,9 +112,9 @@ pub fn eval_missing_some<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::token::{OperatorType, Token};
-    use crate::logic::Logic;
     use crate::value::DataValue;
     use serde_json::json;
 

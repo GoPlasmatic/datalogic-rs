@@ -358,9 +358,9 @@ pub fn eval_split<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::token::{OperatorType, Token};
-    use crate::logic::Logic;
     use crate::value::DataValue;
     use serde_json::json;
 

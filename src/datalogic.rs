@@ -3,12 +3,12 @@
 //! This module provides the DataLogic struct which is the primary entry point
 //! for parsing and evaluating logic expressions.
 
+use crate::LogicError;
 use crate::arena::DataArena;
 use crate::arena::{SimpleOperatorAdapter, SimpleOperatorFn};
-use crate::logic::{evaluate, optimize, Logic, Result};
+use crate::logic::{Logic, Result, evaluate, optimize};
 use crate::parser::{ExpressionParser, ParserRegistry};
 use crate::value::{DataValue, FromJson, ToJson};
-use crate::LogicError;
 use serde_json::Value as JsonValue;
 
 /// Trait for custom JSONLogic operators

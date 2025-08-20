@@ -107,12 +107,10 @@ fn handle_special_object_types<'a>(
             if let Some((_, DataValue::String(dt_str))) = entries
                 .iter()
                 .find(|(key, _)| *key == arena.intern_str("datetime"))
+                && is_datetime_property(prop_name)
+                && let Ok(dt) = crate::value::parse_datetime(dt_str)
             {
-                if is_datetime_property(prop_name) {
-                    if let Ok(dt) = crate::value::parse_datetime(dt_str) {
-                        return Some(access_datetime_property(&dt, prop_name, arena));
-                    }
-                }
+                return Some(access_datetime_property(&dt, prop_name, arena));
             }
 
             // Handle duration objects with {"timestamp": dur} structure
@@ -158,11 +156,11 @@ fn handle_string_path<'a>(
 #[inline]
 fn get_current_index(arena: &DataArena) -> Result<&DataValue<'_>> {
     // Check if we're in a scope with an array index
-    if let Some(DataValue::Number(n)) = arena.last_path_component() {
-        if let Some(idx) = n.as_i64() {
-            // Return the array index as a DataValue
-            return Ok(arena.alloc(DataValue::integer(idx)));
-        }
+    if let Some(DataValue::Number(n)) = arena.last_path_component()
+        && let Some(idx) = n.as_i64()
+    {
+        // Return the array index as a DataValue
+        return Ok(arena.alloc(DataValue::integer(idx)));
     }
     // If we can't find a valid index, return 0
     Ok(arena.alloc(DataValue::integer(0)))
@@ -195,10 +193,10 @@ fn process_complex_path<'a>(
 
         // Case 3: Array path for nested access
         DataValue::Array(path_components) => {
-            if let DataValue::Array(jumps) = path_components[0] {
-                if jumps.len() == 1 {
-                    return handle_scope_jump(jumps, path_components, arena);
-                }
+            if let DataValue::Array(jumps) = path_components[0]
+                && jumps.len() == 1
+            {
+                return handle_scope_jump(jumps, path_components, arena);
             }
 
             navigate_nested_path(current_context, path_components, arena)
@@ -287,12 +285,12 @@ fn handle_index_with_jump(jump: i64, arena: &DataArena) -> Result<&DataValue<'_>
         return arena.with_path_chain(|path_components| {
             let idx_position = path_len - jump_level;
 
-            if idx_position > 0 && idx_position <= path_components.len() {
-                if let DataValue::Number(n) = path_components[idx_position - 1] {
-                    if let Some(idx) = n.as_i64() {
-                        return Ok(arena.alloc(DataValue::integer(idx)));
-                    }
-                }
+            if idx_position > 0
+                && idx_position <= path_components.len()
+                && let DataValue::Number(n) = path_components[idx_position - 1]
+                && let Some(idx) = n.as_i64()
+            {
+                return Ok(arena.alloc(DataValue::integer(idx)));
             }
 
             // If we can't find a valid index, return 0
@@ -331,10 +329,10 @@ fn access_property<'a>(
         }
         DataValue::Array(items) => {
             // Try to parse the key as an array index
-            if let Ok(index) = key.parse::<usize>() {
-                if index < items.len() {
-                    return Ok(&items[index]);
-                }
+            if let Ok(index) = key.parse::<usize>()
+                && index < items.len()
+            {
+                return Ok(&items[index]);
             }
             // Invalid index or out of bounds
             Ok(arena.null_value())
@@ -414,10 +412,10 @@ fn access_array_index<'a>(
     index: usize,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    if let DataValue::Array(items) = data {
-        if index < items.len() {
-            return Ok(&items[index]);
-        }
+    if let DataValue::Array(items) = data
+        && index < items.len()
+    {
+        return Ok(&items[index]);
     }
     // Not an array or index out of bounds
     Ok(arena.null_value())
@@ -480,10 +478,10 @@ fn handle_string_component<'a>(
         }
         DataValue::Array(items) => {
             // Try to parse the key as an array index
-            if let Ok(index) = key.parse::<usize>() {
-                if index < items.len() {
-                    return Ok(Some(&items[index]));
-                }
+            if let Ok(index) = key.parse::<usize>()
+                && index < items.len()
+            {
+                return Ok(Some(&items[index]));
             }
             // Invalid index or out of bounds
             Ok(None)
@@ -501,14 +499,14 @@ fn handle_number_component<'a>(
     current: &'a DataValue<'a>,
     n: &crate::value::NumberValue,
 ) -> Result<Option<&'a DataValue<'a>>> {
-    if let Some(idx) = n.as_i64() {
-        if idx >= 0 {
-            let index = idx as usize;
-            if let DataValue::Array(items) = current {
-                if index < items.len() {
-                    return Ok(Some(&items[index]));
-                }
-            }
+    if let Some(idx) = n.as_i64()
+        && idx >= 0
+    {
+        let index = idx as usize;
+        if let DataValue::Array(items) = current
+            && index < items.len()
+        {
+            return Ok(Some(&items[index]));
         }
     }
     // Not an array, index out of bounds, or invalid index
@@ -613,14 +611,14 @@ fn check_number_component_exists<'a>(
     data: &'a DataValue<'a>,
     n: &crate::value::NumberValue,
 ) -> Option<&'a DataValue<'a>> {
-    if let Some(idx) = n.as_i64() {
-        if idx >= 0 {
-            let idx_usize = idx as usize;
-            if let DataValue::Array(arr) = data {
-                if idx_usize < arr.len() {
-                    return Some(&arr[idx_usize]);
-                }
-            }
+    if let Some(idx) = n.as_i64()
+        && idx >= 0
+    {
+        let idx_usize = idx as usize;
+        if let DataValue::Array(arr) = data
+            && idx_usize < arr.len()
+        {
+            return Some(&arr[idx_usize]);
         }
     }
     None
@@ -629,9 +627,9 @@ fn check_number_component_exists<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::Logic;
     use crate::logic::OperatorType;
+    use crate::logic::datalogic_core::DataLogicCore;
     use serde_json::json;
 
     #[test]

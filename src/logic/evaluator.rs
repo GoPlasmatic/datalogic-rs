@@ -4,7 +4,7 @@
 
 use super::error::{LogicError, Result};
 use super::operators::{
-    arithmetic, array, comparison, control, datetime, missing, r#try, string, throw, type_op, val,
+    arithmetic, array, comparison, control, datetime, missing, string, throw, r#try, type_op, val,
     variable,
 };
 use super::token::{OperatorType, Token};
