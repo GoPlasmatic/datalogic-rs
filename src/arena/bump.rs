@@ -565,6 +565,24 @@ impl DataArena {
         self.push_path_key(key);
     }
 
+    /// Restores the current context without modifying the path chain.
+    /// This is used to restore context after array operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The context to restore (or None to clear)
+    #[inline]
+    pub fn restore_context<'a>(&self, context: Option<&'a DataValue<'a>>) {
+        if let Some(ctx) = context {
+            // SAFETY: Widening the lifetime is safe because the arena manages the memory
+            let static_context =
+                unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(ctx) };
+            self.current_context.replace(Some(static_context));
+        } else {
+            self.current_context.replace(None);
+        }
+    }
+
     /// Returns the current context for the arena.
     ///
     /// # Arguments

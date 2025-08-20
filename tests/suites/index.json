@@ -36,6 +36,7 @@
     "scopes.json",
     "empty-objects.json",
     "preserve.json",
+    "structured-objects.json",
     "unknown-operators.json",
     "throw.json",
     "try.json",

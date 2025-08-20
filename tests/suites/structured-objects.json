@@ -103,5 +103,46 @@
     "data": {},
     "result": { "safe": "division error", "unsafe": 5 },
     "preserve_structure": true
+  },
+  {
+    "description": "Context loss bug with array operators - 'some' followed by 'var' (Issue #42)",
+    "rule": { 
+      "a": { "some": [[1, 2], { "==": [{ "var": "" }, 2] }] },
+      "b": { "var": "x" }
+    },
+    "data": { "x": "test" },
+    "result": { "a": true, "b": "test" },
+    "preserve_structure": true
+  },
+  {
+    "description": "Context loss bug with array operators - 'filter' followed by 'var' (Issue #42)",
+    "rule": {
+      "filtered": { "filter": [[1, 2, 3], { ">": [{ "var": "" }, 1] }] },
+      "value": { "var": "y" }
+    },
+    "data": { "y": "preserved" },
+    "result": { "filtered": [2, 3], "value": "preserved" },
+    "preserve_structure": true
+  },
+  {
+    "description": "Context loss bug with array operators - 'reduce' followed by 'var' (Issue #42)",
+    "rule": {
+      "sum": { "reduce": [[1, 2, 3], { "+": [{ "var": "current" }, { "var": "accumulator" }] }, 0] },
+      "original": { "var": "data" }
+    },
+    "data": { "data": "should_be_preserved" },
+    "result": { "sum": 6, "original": "should_be_preserved" },
+    "preserve_structure": true
+  },
+  {
+    "description": "Context loss bug with nested array operators (Issue #42)",
+    "rule": {
+      "first": { "var": "name" },
+      "middle": { "some": [[true, false], { "var": "" }] },
+      "last": { "var": "name" }
+    },
+    "data": { "name": "context_test" },
+    "result": { "first": "context_test", "middle": true, "last": "context_test" },
+    "preserve_structure": true
   }
 ]

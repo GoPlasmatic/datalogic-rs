@@ -110,6 +110,9 @@ fn eval_predicate<'a>(
         PredicateOp::None => true,
     };
 
+    // Save the current context before array iteration
+    let saved_context = arena.current_context(0);
+
     // Evaluate the items
     for (index, item) in items.iter().enumerate() {
         // Store the current path chain length to preserve parent contexts
@@ -151,6 +154,9 @@ fn eval_predicate<'a>(
             }
         }
     }
+
+    // Restore the original context after array iteration
+    arena.restore_context(saved_context);
 
     // Return result based on the final boolean
     if result {
@@ -220,6 +226,9 @@ fn with_array_item_context<'a, F, T>(
 where
     F: FnOnce() -> T,
 {
+    // Save the current context before changing it
+    let saved_context = arena.current_context(0);
+    
     // Store the current path chain length to preserve parent contexts
     let current_chain_len = arena.path_chain_len();
 
@@ -234,6 +243,9 @@ where
     while arena.path_chain_len() > current_chain_len {
         arena.pop_path_component();
     }
+    
+    // Restore the original context
+    arena.restore_context(saved_context);
 
     result
 }
@@ -273,6 +285,9 @@ pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
     if collection.is_null() {
         return Ok(arena.empty_array_value());
     }
+
+    // Save the current context before array iteration
+    let saved_context = arena.current_context(0);
 
     // Get a vector from the arena's pool for results
     let mut result_values = arena.get_data_value_vec();
@@ -352,6 +367,9 @@ pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
             }
         }
     }
+
+    // Restore the original context after array iteration
+    arena.restore_context(saved_context);
 
     // Create and return the result array
     let result = DataValue::Array(arena.bump_vec_into_slice(result_values));
@@ -624,6 +642,9 @@ pub fn eval_reduce<'a>(
         };
     }
 
+    // Save the current context before reduction
+    let saved_context = arena.current_context(0);
+
     // For the generic case, create a context object with current item and accumulator
     let curr_key = arena.intern_str("current");
     let acc_key = arena.intern_str("accumulator");
@@ -649,6 +670,9 @@ pub fn eval_reduce<'a>(
             arena.pop_path_component();
         }
     }
+
+    // Restore the original context after reduction
+    arena.restore_context(saved_context);
 
     Ok(acc)
 }
