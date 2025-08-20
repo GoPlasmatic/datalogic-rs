@@ -228,7 +228,7 @@ where
 {
     // Save the current context before changing it
     let saved_context = arena.current_context(0);
-    
+
     // Store the current path chain length to preserve parent contexts
     let current_chain_len = arena.path_chain_len();
 
@@ -243,7 +243,7 @@ where
     while arena.path_chain_len() > current_chain_len {
         arena.pop_path_component();
     }
-    
+
     // Restore the original context
     arena.restore_context(saved_context);
 
