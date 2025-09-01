@@ -42,7 +42,7 @@ fn step_by_step_example() {
     println!("Parsed rule: {rule:?}");
 
     // 3. Evaluate the rule with the data
-    let result = dl.evaluate(&rule, &data).unwrap();
+    let result = dl.evaluate(&rule, data).unwrap();
     println!("Rule evaluation result: {result}");
 }
 

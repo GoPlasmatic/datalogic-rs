@@ -483,7 +483,7 @@ mod tests {
     fn test_evaluate_literal() {
         let arena = DataArena::new();
         let root = arena.null_value();
-        let context = EvalContext::new(root, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(root, &EMPTY_OPERATORS);
 
         // Null
         let token = Token::literal(DataValue::null());
@@ -503,7 +503,7 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"foo": 42, "bar": "hello"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        let context = EvalContext::new(&data, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(&data, &EMPTY_OPERATORS);
 
         // Equal - create token structure directly:
         // {"==": [{"var": "foo"}, 42]}
@@ -529,7 +529,7 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"person": {"name": "John"}, "name": "Jane"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        let context = EvalContext::new(&data, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(&data, &EMPTY_OPERATORS);
 
         // Create {"??": [{"var": "name"}]}
         // Instead of using a string literal, we need to use a variable reference
@@ -567,7 +567,7 @@ mod tests {
         ]);
         let data = DataValue::Object(entries);
         let data_ref = arena.alloc(data.clone());
-        let context = EvalContext::new(data_ref, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(data_ref, &EMPTY_OPERATORS);
 
         // Test simple val: { "val": "hello" }
         let val_arg = Token::literal(DataValue::string(&arena, "hello"));
@@ -607,7 +607,7 @@ mod tests {
 
         let arena = DataArena::new();
         let root = arena.null_value();
-        let context = EvalContext::new(root, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(root, &EMPTY_OPERATORS);
 
         // Test simple datetime conversion: { "datetime": "2022-07-06T13:20:06Z" }
         let dt_arg = Token::literal(DataValue::string(&arena, "2022-07-06T13:20:06Z"));

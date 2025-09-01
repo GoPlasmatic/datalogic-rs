@@ -53,11 +53,11 @@ fn main() {
         for _ in 0..iterations {
             let _ = eval_logic.evaluate(rule, data_value);
         }
-        eval_logic.reset_arena();
+        eval_logic.reset_eval_arena();
     }
 
     let duration = start.elapsed();
-    println!("Memory usage: {:?}", eval_logic.arena().memory_usage());
+    println!("Memory usage: {:?}", eval_logic.eval_arena().memory_usage());
 
     let avg_iteration_time = duration / (iterations * test_cases.len() as u32);
 

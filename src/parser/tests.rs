@@ -21,7 +21,7 @@ fn test_parse_jsonlogic_string() {
     let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
 
     // Parse the JSONLogic expression
-    let token = parse_jsonlogic(json_str, &arena, &*EMPTY_OPERATORS).unwrap();
+    let token = parse_jsonlogic(json_str, &arena, &EMPTY_OPERATORS).unwrap();
 
     // Verify the token
     assert!(token.is_operator());
@@ -35,7 +35,7 @@ fn test_parse_jsonlogic_json_value() {
     let json_value: JsonValue = json!({"==": [{"var": "a"}, 42]});
 
     // Parse the JSONLogic expression from JsonValue
-    let token = parse_jsonlogic_json(&json_value, &arena, &*EMPTY_OPERATORS).unwrap();
+    let token = parse_jsonlogic_json(&json_value, &arena, &EMPTY_OPERATORS).unwrap();
 
     // Verify the token
     assert!(token.is_operator());
@@ -49,11 +49,11 @@ fn test_parse_jsonlogic_with_preserve() {
 
     // Test with preserve_structure = false (should error on multi-key object)
     let json_str = r#"{"result": true, "count": 3}"#;
-    let result = parse_jsonlogic_with_preserve(json_str, &arena, false, &*EMPTY_OPERATORS);
+    let result = parse_jsonlogic_with_preserve(json_str, &arena, false, &EMPTY_OPERATORS);
     assert!(result.is_err());
 
     // Test with preserve_structure = true (should create structured object)
-    let token = parse_jsonlogic_with_preserve(json_str, &arena, true, &*EMPTY_OPERATORS).unwrap();
+    let token = parse_jsonlogic_with_preserve(json_str, &arena, true, &EMPTY_OPERATORS).unwrap();
     assert!(token.is_structured_object());
 }
 
@@ -63,12 +63,12 @@ fn test_parse_jsonlogic_json_with_preserve() {
     let json_value: JsonValue = json!({"result": {"==": [1, 1]}, "count": {"+": [1, 2]}});
 
     // Test with preserve_structure = false (should error)
-    let result = parse_jsonlogic_json_with_preserve(&json_value, &arena, false, &*EMPTY_OPERATORS);
+    let result = parse_jsonlogic_json_with_preserve(&json_value, &arena, false, &EMPTY_OPERATORS);
     assert!(result.is_err());
 
     // Test with preserve_structure = true (should create structured object)
     let token =
-        parse_jsonlogic_json_with_preserve(&json_value, &arena, true, &*EMPTY_OPERATORS).unwrap();
+        parse_jsonlogic_json_with_preserve(&json_value, &arena, true, &EMPTY_OPERATORS).unwrap();
     assert!(token.is_structured_object());
 }
 
@@ -77,7 +77,7 @@ fn test_parse_invalid_json() {
     let arena = DataArena::new();
     let invalid_json = r#"{"==": [{"var": "a"}, 42"#; // Missing closing braces
 
-    let result = parse_jsonlogic(invalid_json, &arena, &*EMPTY_OPERATORS);
+    let result = parse_jsonlogic(invalid_json, &arena, &EMPTY_OPERATORS);
     assert!(result.is_err());
 }
 
@@ -96,7 +96,7 @@ fn test_parse_literals() {
     ];
 
     for (json_str, should_be_literal) in test_cases {
-        let token = parse_jsonlogic(json_str, &arena, &*EMPTY_OPERATORS).unwrap();
+        let token = parse_jsonlogic(json_str, &arena, &EMPTY_OPERATORS).unwrap();
         assert_eq!(
             token.is_literal(),
             should_be_literal,
@@ -120,7 +120,7 @@ fn test_parse_operators() {
     ];
 
     for json_str in test_cases {
-        let token = parse_jsonlogic(json_str, &arena, &*EMPTY_OPERATORS).unwrap();
+        let token = parse_jsonlogic(json_str, &arena, &EMPTY_OPERATORS).unwrap();
         assert!(
             token.is_operator() || token.is_variable(),
             "Failed for: {}",

@@ -14,10 +14,11 @@ fn double<'r>(
         // If no arguments are provided, try to use a "value" from the data context
         if let Some(obj) = data.as_object() {
             for (key, val) in obj {
-                if *key == "value" && val.is_number() {
-                    if let Some(n) = val.as_f64() {
-                        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
-                    }
+                if *key == "value"
+                    && val.is_number()
+                    && let Some(n) = val.as_f64()
+                {
+                    return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
                 }
             }
         }
@@ -43,12 +44,13 @@ fn to_uppercase<'r>(
         // If no arguments are provided, try to use a "text" from the data context
         if let Some(obj) = data.as_object() {
             for (key, val) in obj {
-                if *key == "text" && val.is_string() {
-                    if let Some(s) = val.as_str() {
-                        let upper = s.to_uppercase();
-                        let upper_str = Box::leak(upper.into_boxed_str());
-                        return Ok(DataValue::String(upper_str));
-                    }
+                if *key == "text"
+                    && val.is_string()
+                    && let Some(s) = val.as_str()
+                {
+                    let upper = s.to_uppercase();
+                    let upper_str = Box::leak(upper.into_boxed_str());
+                    return Ok(DataValue::String(upper_str));
                 }
             }
         }
@@ -75,10 +77,11 @@ fn is_even<'r>(
         // If no arguments are provided, try to use a "number" from the data context
         if let Some(obj) = data.as_object() {
             for (key, val) in obj {
-                if *key == "number" && val.is_number() {
-                    if let Some(n) = val.as_i64() {
-                        return Ok(DataValue::Bool(n % 2 == 0));
-                    }
+                if *key == "number"
+                    && val.is_number()
+                    && let Some(n) = val.as_i64()
+                {
+                    return Ok(DataValue::Bool(n % 2 == 0));
                 }
             }
         }

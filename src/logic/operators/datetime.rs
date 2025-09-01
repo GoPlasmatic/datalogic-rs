@@ -273,7 +273,7 @@ mod tests {
         // Test with valid duration string
         let args = [DataValue::string(&arena, "1d:2h:3m:4s")];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_timestamp_operator(&args, &dummy_context, &arena).unwrap();
 
         // Check that it's a duration directly
@@ -287,7 +287,7 @@ mod tests {
         // Test with invalid duration string
         let args = [DataValue::string(&arena, "invalid")];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_timestamp_operator(&args, &dummy_context, &arena);
         assert!(result.is_err());
     }
@@ -296,7 +296,7 @@ mod tests {
     fn test_eval_now() {
         let arena = DataArena::new();
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
 
         let result = eval_now(&dummy_context, &arena).unwrap();
         assert!(result.is_datetime());
@@ -317,7 +317,7 @@ mod tests {
             DataValue::string(&arena, "yyyy-MM-dd"),
         ];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_format_date(&args, &dummy_context, &arena).unwrap();
 
         // format_date should always return a string
@@ -330,7 +330,7 @@ mod tests {
             DataValue::string(&arena, "yyyy/MM/dd HH:mm"),
         ];
         let dummy_data2 = arena.alloc(DataValue::Null);
-        let dummy_context2 = crate::context::EvalContext::new(dummy_data2, &*EMPTY_OPERATORS);
+        let dummy_context2 = crate::context::EvalContext::new(dummy_data2, &EMPTY_OPERATORS);
         let result2 = eval_format_date(&args2, &dummy_context2, &arena).unwrap();
         assert!(result2.is_string());
         assert_eq!(result2.as_str().unwrap(), "2022/07/06 13:20");
@@ -345,7 +345,7 @@ mod tests {
             DataValue::string(&arena, "yyyy-MM-dd"),
         ];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_parse_date(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_string());
 
@@ -373,7 +373,7 @@ mod tests {
             DataValue::string(&arena, "days"),
         ];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_date_diff(&args, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_i64().unwrap(), -1); // dt1 - dt2 = -1 day (from dt2 to dt1)
 
@@ -384,7 +384,7 @@ mod tests {
             DataValue::string(&arena, "days"),
         ];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_date_diff(&args, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_i64().unwrap(), 1); // dt2 - dt1 = 1 day (from dt1 to dt2)
     }
@@ -396,7 +396,7 @@ mod tests {
         // Test with valid datetime string
         let args = [DataValue::string(&arena, "2022-07-06T13:20:06Z")];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_datetime_operator(&args, &dummy_context, &arena).unwrap();
 
         // Check that it's a datetime directly
@@ -407,7 +407,7 @@ mod tests {
         // Test with invalid datetime string
         let args = [DataValue::string(&arena, "invalid")];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_datetime_operator(&args, &dummy_context, &arena);
         assert!(result.is_err());
 
@@ -418,7 +418,7 @@ mod tests {
             .unwrap();
         let args = [DataValue::datetime(dt)];
         let dummy_data = arena.alloc(DataValue::Null);
-        let dummy_context = crate::context::EvalContext::new(dummy_data, &*EMPTY_OPERATORS);
+        let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
         let result = eval_datetime_operator(&args, &dummy_context, &arena).unwrap();
 
         // Check that it returns a formatted string

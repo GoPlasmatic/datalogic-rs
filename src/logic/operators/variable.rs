@@ -261,7 +261,7 @@ mod tests {
         // For low-level testing, convert to DataValue
         let data = DataValue::from_json(&data_json, &arena);
         let data_ref = arena.alloc(data.clone());
-        let context = EvalContext::new(data_ref, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(data_ref, &EMPTY_OPERATORS);
 
         // Test simple variable access
         let path = "a";
@@ -413,7 +413,7 @@ mod tests {
 
         let data = DataValue::from_json(&data_json, &arena);
         let data_ref = arena.alloc(data.clone());
-        let context = EvalContext::new(data_ref, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(data_ref, &EMPTY_OPERATORS);
 
         // Test single path exists
         let path = DataValue::string(&arena, "a");

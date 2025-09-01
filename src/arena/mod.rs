@@ -4,10 +4,12 @@
 //! significantly improving performance by reducing allocation overhead
 //! and improving memory locality.
 
+mod arena_ref;
 mod bump;
 mod custom;
 
 // Re-export the main types
+pub use arena_ref::ArenaRef;
 pub use bump::DataArena;
 
 // Re-export the simplified operator types from custom_operator

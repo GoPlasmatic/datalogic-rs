@@ -1561,7 +1561,7 @@ mod tests {
         // Also test with JSON parsing for compatibility
         let json_rule = json!({"length": {"var": "array"}});
         let rule = Logic::new(
-            parse_json(&json_rule, core.arena(), &*EMPTY_OPERATORS).unwrap(),
+            parse_json(&json_rule, core.arena(), &EMPTY_OPERATORS).unwrap(),
             core.arena(),
         );
         let json_data = json!({"array": [1, 2, 3, 4, 5]});

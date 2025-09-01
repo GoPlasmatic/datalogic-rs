@@ -743,7 +743,7 @@ mod tests {
         });
 
         let data = <DataValue as crate::value::FromJson>::from_json(&data_json, &arena);
-        let context = EvalContext::new(&data, &*EMPTY_OPERATORS);
+        let context = EvalContext::new(&data, &EMPTY_OPERATORS);
 
         // Test single path exists
         let path = DataValue::string(&arena, "a");

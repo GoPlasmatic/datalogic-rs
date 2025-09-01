@@ -73,17 +73,16 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
         Ok(logic) => logic,
         Err(e) => {
             // If we expect an error, check if it's the right type
-            if let Some(expected_error) = &test_case.error {
-                if let Some(error_obj) = expected_error.as_object() {
-                    if let Some(error_type) = error_obj.get("type") {
-                        if error_type.as_str() == Some("NaN") && e.to_string().contains("NaN") {
-                            return Ok(());
-                        } else if error_type.as_str() == Some("Unknown Operator") {
-                            if let LogicError::OperatorNotFoundError { operator: _ } = e {
-                                return Ok(());
-                            }
-                        }
-                    }
+            if let Some(expected_error) = &test_case.error
+                && let Some(error_obj) = expected_error.as_object()
+                && let Some(error_type) = error_obj.get("type")
+            {
+                if error_type.as_str() == Some("NaN") && e.to_string().contains("NaN") {
+                    return Ok(());
+                } else if error_type.as_str() == Some("Unknown Operator")
+                    && let LogicError::OperatorNotFoundError { operator: _ } = e
+                {
+                    return Ok(());
                 }
             }
             return Err(format!("Failed to parse rule: {e}"));
@@ -101,37 +100,35 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
     };
 
     // Evaluate the rule using DataLogic's evaluate method
-    let result = match dl.evaluate(&rule_logic, &data) {
+    let result = match dl.evaluate(&rule_logic, data) {
         Ok(value) => value,
         Err(e) => {
             // If we expect an error, check if it's the right type
-            if let Some(expected_error) = &test_case.error {
-                if let Some(error_obj) = expected_error.as_object() {
-                    if let Some(error_type) = error_obj.get("type") {
-                        if error_type.as_str() == Some("NaN") {
-                            if let LogicError::NaNError = e {
-                                return Ok(());
-                            } else if let LogicError::ThrownError { r#type } = &e {
-                                if r#type == "NaN" {
-                                    return Ok(());
-                                }
-                            }
-                        } else if error_type.as_str() == Some("Invalid Arguments") {
-                            if let LogicError::InvalidArgumentsError = e {
-                                return Ok(());
-                            }
-                        } else if error_type.as_str() == Some("Unknown Operator") {
-                            if let LogicError::OperatorNotFoundError { operator: _ } = e {
-                                return Ok(());
-                            }
-                        } else if let LogicError::ThrownError { r#type } = &e {
-                            if let Some(expected_type) = error_type.as_str() {
-                                if expected_type == r#type {
-                                    return Ok(());
-                                }
-                            }
-                        }
+            if let Some(expected_error) = &test_case.error
+                && let Some(error_obj) = expected_error.as_object()
+                && let Some(error_type) = error_obj.get("type")
+            {
+                if error_type.as_str() == Some("NaN") {
+                    if let LogicError::NaNError = e {
+                        return Ok(());
+                    } else if let LogicError::ThrownError { r#type } = &e
+                        && r#type == "NaN"
+                    {
+                        return Ok(());
                     }
+                } else if error_type.as_str() == Some("Invalid Arguments") {
+                    if let LogicError::InvalidArgumentsError = e {
+                        return Ok(());
+                    }
+                } else if error_type.as_str() == Some("Unknown Operator") {
+                    if let LogicError::OperatorNotFoundError { operator: _ } = e {
+                        return Ok(());
+                    }
+                } else if let LogicError::ThrownError { r#type } = &e
+                    && let Some(expected_type) = error_type.as_str()
+                    && expected_type == r#type
+                {
+                    return Ok(());
                 }
             }
             return Err(format!("Failed to evaluate rule: {e}"));
@@ -152,7 +149,7 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
         };
 
         // Compare the results
-        if result.equals(&expected) {
+        if result.equals(expected) {
             Ok(())
         } else {
             Err(format!("Test failed: expected {expected}, got {result}"))
@@ -234,16 +231,16 @@ mod tests {
 
         // Default: Run all test files from the index
         let index_file = PathBuf::from("tests/suites/index.json");
-        if index_file.exists() {
-            if let Ok(content) = fs::read_to_string(&index_file) {
-                let json: JsonValue = serde_json::from_str(&content).unwrap_or_else(|_| json!([]));
-                if let Some(arr) = json.as_array() {
-                    return arr
-                        .iter()
-                        .filter_map(|v| v.as_str())
-                        .map(|s| PathBuf::from(format!("tests/suites/{s}")))
-                        .collect();
-                }
+        if index_file.exists()
+            && let Ok(content) = fs::read_to_string(&index_file)
+        {
+            let json: JsonValue = serde_json::from_str(&content).unwrap_or_else(|_| json!([]));
+            if let Some(arr) = json.as_array() {
+                return arr
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| PathBuf::from(format!("tests/suites/{s}")))
+                    .collect();
             }
         }
 
