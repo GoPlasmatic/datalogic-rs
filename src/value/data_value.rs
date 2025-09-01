@@ -778,8 +778,8 @@ mod tests {
         assert_eq!(array.get_index(1).unwrap().as_i64(), Some(2));
 
         // Create object
-        let key1 = arena.intern_str("a");
-        let key2 = arena.intern_str("b");
+        let key1 = arena.alloc_str("a");
+        let key2 = arena.alloc_str("b");
 
         let object = DataValue::object(
             &arena,

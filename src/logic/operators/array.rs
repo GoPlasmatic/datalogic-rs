@@ -571,8 +571,8 @@ pub fn eval_reduce<'a>(
     }
 
     // For the generic case, create a context object with current item and accumulator
-    let curr_key = arena.intern_str("current");
-    let acc_key = arena.intern_str("accumulator");
+    let curr_key = arena.alloc_str("current");
+    let acc_key = arena.alloc_str("accumulator");
     let mut acc = initial;
 
     // Reduce the array using the generic approach

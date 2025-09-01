@@ -19,7 +19,7 @@ pub enum PathSegment<'a> {
 impl<'a> PathSegment<'a> {
     /// Creates a new key segment.
     pub fn key(arena: &'a DataArena, key: &str) -> Self {
-        PathSegment::Key(arena.intern_str(key))
+        PathSegment::Key(arena.alloc_str(key))
     }
 
     /// Creates a new index segment.
@@ -32,7 +32,7 @@ impl<'a> PathSegment<'a> {
         if let Ok(index) = segment.parse::<usize>() {
             PathSegment::Index(index)
         } else {
-            PathSegment::Key(arena.intern_str(segment))
+            PathSegment::Key(arena.alloc_str(segment))
         }
     }
 }
@@ -138,7 +138,7 @@ mod tests {
         let key = PathSegment::parse(&arena, "name");
         let index = PathSegment::parse(&arena, "42");
 
-        assert_eq!(key, PathSegment::Key(arena.intern_str("name")));
+        assert_eq!(key, PathSegment::Key(arena.alloc_str("name")));
         assert_eq!(index, PathSegment::Index(42));
     }
 
@@ -150,23 +150,23 @@ mod tests {
         let user = DataValue::object(
             &arena,
             &[
-                (arena.intern_str("name"), DataValue::string(&arena, "John")),
-                (arena.intern_str("age"), DataValue::integer(30)),
+                (arena.alloc_str("name"), DataValue::string(&arena, "John")),
+                (arena.alloc_str("age"), DataValue::integer(30)),
                 (
-                    arena.intern_str("address"),
+                    arena.alloc_str("address"),
                     DataValue::object(
                         &arena,
                         &[
                             (
-                                arena.intern_str("city"),
+                                arena.alloc_str("city"),
                                 DataValue::string(&arena, "New York"),
                             ),
-                            (arena.intern_str("zip"), DataValue::string(&arena, "10001")),
+                            (arena.alloc_str("zip"), DataValue::string(&arena, "10001")),
                         ],
                     ),
                 ),
                 (
-                    arena.intern_str("scores"),
+                    arena.alloc_str("scores"),
                     DataValue::array(
                         &arena,
                         &[

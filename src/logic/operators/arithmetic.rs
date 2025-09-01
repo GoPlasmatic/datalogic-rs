@@ -64,7 +64,7 @@ fn extract_datetime<'a>(
         DataValue::DateTime(dt) => Some(*dt),
         DataValue::Object(entries) => entries
             .iter()
-            .find(|(key, _)| *key == arena.intern_str("datetime"))
+            .find(|(key, _)| *key == arena.alloc_str("datetime"))
             .and_then(|(_, value)| {
                 if let DataValue::String(datetime_str) = value {
                     crate::value::parse_datetime(datetime_str).ok()
@@ -85,7 +85,7 @@ fn extract_duration<'a>(value: &'a DataValue<'a>, arena: &'a DataArena) -> Optio
             // Look for a "timestamp" entry
             entries
                 .iter()
-                .find(|(key, _)| *key == arena.intern_str("timestamp"))
+                .find(|(key, _)| *key == arena.alloc_str("timestamp"))
                 .and_then(|(_, value)| {
                     if let DataValue::Duration(dur) = value {
                         Some(*dur)

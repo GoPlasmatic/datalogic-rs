@@ -51,7 +51,7 @@ impl<'a> Logic<'a> {
 
     /// Creates a new variable logic expression.
     pub fn variable(path: &str, default: Option<Logic<'a>>, arena: &'a DataArena) -> Self {
-        let path_str = arena.intern_str(path);
+        let path_str = arena.alloc_str(path);
         let default_token = default.map(|d| d.root);
         let token = Token::variable(path_str, default_token);
         Self::from_token(token, arena)
@@ -90,7 +90,7 @@ impl<'a> Logic<'a> {
         let array_token = arena.alloc(array_literal);
 
         // Create the custom operator token
-        let name_str = arena.intern_str(name);
+        let name_str = arena.alloc_str(name);
         let token = Token::custom_operator(name_str, array_token);
 
         Self::from_token(token, arena)

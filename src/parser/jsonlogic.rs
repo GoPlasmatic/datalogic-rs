@@ -200,7 +200,7 @@ fn parse_object<'a>(
                     let value_token =
                         parse_json_internal(value, arena, preserve_structure, custom_operators)?;
                     let value_token_ref = arena.alloc(value_token);
-                    let key_str = arena.intern_str(key);
+                    let key_str = arena.alloc_str(key);
                     let fields = vec![(key_str, value_token_ref)];
                     let fields_slice = arena.vec_into_slice(fields);
                     Ok(Token::structured_object(fields_slice))
@@ -224,7 +224,7 @@ fn parse_object<'a>(
                 let value_token =
                     parse_json_internal(value, arena, preserve_structure, custom_operators)?;
                 let value_token_ref = arena.alloc(value_token);
-                let key_str = arena.intern_str(key);
+                let key_str = arena.alloc_str(key);
                 fields.push((key_str, value_token_ref));
             }
             let fields_slice = arena.vec_into_slice(fields);
@@ -263,17 +263,17 @@ fn parse_variable<'a>(
                 }
 
                 let path = path_parts.join(".");
-                return Ok(Token::variable(arena.intern_str(&path), None));
+                return Ok(Token::variable(arena.alloc_str(&path), None));
             }
 
-            Ok(Token::variable(arena.intern_str(path), None))
+            Ok(Token::variable(arena.alloc_str(path), None))
         }
 
         // Variable reference with default value
         JsonValue::Array(arr) => {
             // Handle empty array - treat it as a reference to the data itself
             if arr.is_empty() {
-                return Ok(Token::variable(arena.intern_str(""), None));
+                return Ok(Token::variable(arena.alloc_str(""), None));
             }
 
             // For complex expressions in the path, we need to create a special token
@@ -309,10 +309,10 @@ fn parse_variable<'a>(
                     || arr[0].is_null())
             {
                 let path = match &arr[0] {
-                    JsonValue::String(s) => arena.intern_str(s),
-                    JsonValue::Number(n) => arena.intern_str(&n.to_string()),
-                    JsonValue::Bool(b) => arena.intern_str(&b.to_string()),
-                    JsonValue::Null => arena.intern_str(""),
+                    JsonValue::String(s) => arena.alloc_str(s),
+                    JsonValue::Number(n) => arena.alloc_str(&n.to_string()),
+                    JsonValue::Bool(b) => arena.alloc_str(&b.to_string()),
+                    JsonValue::Null => arena.alloc_str(""),
                     _ => unreachable!(),
                 };
 
@@ -349,15 +349,15 @@ fn parse_variable<'a>(
                 }
 
                 let path = path_parts.join(".");
-                return Ok(Token::variable(arena.intern_str(&path), None));
+                return Ok(Token::variable(arena.alloc_str(&path), None));
             }
 
             // Parse the path
             let path = match &arr[0] {
-                JsonValue::String(s) => arena.intern_str(s),
-                JsonValue::Number(n) => arena.intern_str(&n.to_string()),
-                JsonValue::Bool(b) => arena.intern_str(&b.to_string()),
-                JsonValue::Null => arena.intern_str(""),
+                JsonValue::String(s) => arena.alloc_str(s),
+                JsonValue::Number(n) => arena.alloc_str(&n.to_string()),
+                JsonValue::Bool(b) => arena.alloc_str(&b.to_string()),
+                JsonValue::Null => arena.alloc_str(""),
                 _ => {
                     return Err(LogicError::ParseError {
                         reason: format!(
@@ -395,14 +395,14 @@ fn parse_variable<'a>(
                 }
 
                 let path = path_parts.join(".");
-                return Ok(Token::variable(arena.intern_str(&path), None));
+                return Ok(Token::variable(arena.alloc_str(&path), None));
             }
 
-            Ok(Token::variable(arena.intern_str(&n_str), None))
+            Ok(Token::variable(arena.alloc_str(&n_str), None))
         }
 
         // Handle null variable reference (reference to the data itself)
-        JsonValue::Null => Ok(Token::variable(arena.intern_str(""), None)),
+        JsonValue::Null => Ok(Token::variable(arena.alloc_str(""), None)),
 
         // Handle object as variable path (e.g., {"cat": ["te", "st"]})
         JsonValue::Object(_) => {
@@ -449,7 +449,7 @@ fn parse_custom_operator<'a>(
     let args = parse_arguments(args_json, arena, preserve_structure, custom_operators)?;
 
     // Create the custom operator token
-    Ok(Token::custom_operator(arena.intern_str(name), args))
+    Ok(Token::custom_operator(arena.alloc_str(name), args))
 }
 
 /// Parses the arguments for an operator.

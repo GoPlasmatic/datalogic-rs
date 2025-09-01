@@ -6,7 +6,6 @@
 
 mod bump;
 mod custom;
-mod interner;
 
 // Re-export the main types
 pub use bump::DataArena;
@@ -29,19 +28,5 @@ mod tests {
 
         // Different allocations should yield different references
         assert_ne!(s1.as_ptr(), s2.as_ptr());
-    }
-
-    #[test]
-    fn test_string_interning() {
-        let arena = DataArena::new();
-        let s1 = arena.intern_str("hello");
-        let s2 = arena.intern_str("hello");
-        let s3 = arena.intern_str("world");
-
-        // Same strings should yield same references
-        assert_eq!(s1.as_ptr(), s2.as_ptr());
-
-        // Different strings should yield different references
-        assert_ne!(s1.as_ptr(), s3.as_ptr());
     }
 }

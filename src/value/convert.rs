@@ -70,7 +70,7 @@ impl<'a> FromJson<'a> for DataValue<'a> {
 
                 // Convert each key-value pair in the object
                 for (key, value) in obj.iter() {
-                    let interned_key = arena.intern_str(key);
+                    let interned_key = arena.alloc_str(key);
                     entries.push((interned_key, DataValue::from_json(value, arena)));
                 }
 
@@ -164,7 +164,7 @@ pub fn hash_map_to_data_value<'a, V>(
     let entries: Vec<(&'a str, DataValue<'a>)> = map
         .iter()
         .map(|(key, value)| {
-            let interned_key = arena.intern_str(key);
+            let interned_key = arena.alloc_str(key);
             let data_value = value_converter(value, arena);
             (interned_key, data_value)
         })
@@ -313,9 +313,9 @@ mod tests {
         let data_value = DataValue::object(
             &arena,
             &[
-                (arena.intern_str("name"), DataValue::string(&arena, "Alice")),
+                (arena.alloc_str("name"), DataValue::string(&arena, "Alice")),
                 (
-                    arena.intern_str("scores"),
+                    arena.alloc_str("scores"),
                     DataValue::array(
                         &arena,
                         &[
@@ -370,8 +370,8 @@ mod tests {
             DataValue::object(
                 arena,
                 &[
-                    (arena.intern_str("name"), DataValue::string(arena, name)),
-                    (arena.intern_str("age"), DataValue::integer(age)),
+                    (arena.alloc_str("name"), DataValue::string(arena, name)),
+                    (arena.alloc_str("age"), DataValue::integer(age)),
                 ],
             )
         });

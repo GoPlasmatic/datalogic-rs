@@ -9,11 +9,9 @@
 
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use std::cell::RefCell;
 use std::fmt;
 use std::mem;
 
-use super::interner::StringInterner;
 use crate::value::DataValue;
 
 /// Default allocation size for vectors
@@ -26,9 +24,6 @@ const DEFAULT_VECTOR_CAPACITY: usize = 8;
 pub struct DataArena {
     /// The underlying bump allocator
     bump: Bump,
-
-    /// String interner for efficient string storage
-    interner: RefCell<StringInterner>,
 
     /// Chunk size for allocations (in bytes)
     chunk_size: usize,
@@ -105,7 +100,6 @@ impl DataArena {
 
         Self {
             bump,
-            interner: RefCell::new(StringInterner::with_capacity(64)), // Start with reasonable capacity
             chunk_size,
             null_value: &NULL_VALUE,
             true_value: &TRUE_VALUE,
@@ -234,31 +228,11 @@ impl DataArena {
         self.bump.alloc_str(s)
     }
 
-    /// Interns a string, returning a reference to a unique instance.
-    ///
-    /// This uses the string interner to deduplicate strings, reducing memory usage.
-    ///
-    /// # Arguments
-    ///
-    /// * `s` - The string to intern
-    ///
-    /// # Returns
-    ///
-    /// A reference to the interned string, valid for the lifetime of the arena
-    #[inline]
-    pub fn intern_str<'a>(&'a self, s: &str) -> &'a str {
-        if s.is_empty() {
-            return self.empty_string();
-        }
-        self.interner.borrow_mut().intern(s, &self.bump)
-    }
-
     /// Resets the arena, freeing all allocations.
     ///
     /// This clears all allocated memory.
     pub fn reset(&mut self) {
         self.bump.reset();
-        self.interner = RefCell::new(StringInterner::with_capacity(64));
     }
 
     /// Returns the current memory usage of the arena in bytes.

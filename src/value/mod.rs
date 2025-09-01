@@ -80,8 +80,8 @@ mod tests {
         let object = DataValue::object(
             &arena,
             &[
-                (arena.intern_str("a"), DataValue::integer(1)),
-                (arena.intern_str("b"), DataValue::integer(2)),
+                (arena.alloc_str("a"), DataValue::integer(1)),
+                (arena.alloc_str("b"), DataValue::integer(2)),
             ],
         );
 

@@ -558,12 +558,12 @@ mod tests {
 
         // Create test data: { "hello": 0, "nested": { "world": 1 } }
         let world_entries =
-            arena.vec_into_slice(vec![(arena.intern_str("world"), DataValue::integer(1))]);
+            arena.vec_into_slice(vec![(arena.alloc_str("world"), DataValue::integer(1))]);
         let nested_obj = DataValue::Object(world_entries);
 
         let entries = arena.vec_into_slice(vec![
-            (arena.intern_str("hello"), DataValue::integer(0)),
-            (arena.intern_str("nested"), nested_obj),
+            (arena.alloc_str("hello"), DataValue::integer(0)),
+            (arena.alloc_str("nested"), nested_obj),
         ]);
         let data = DataValue::Object(entries);
         let data_ref = arena.alloc(data.clone());

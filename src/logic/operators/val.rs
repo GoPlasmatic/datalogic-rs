@@ -102,7 +102,7 @@ fn handle_special_object_types<'a>(
             // Handle datetime objects with {"datetime": dt} structure
             if let Some((_, DataValue::DateTime(dt))) = entries
                 .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
+                .find(|(key, _)| *key == arena.alloc_str("datetime"))
             {
                 return Some(access_datetime_property(dt, prop_name, arena));
             }
@@ -110,7 +110,7 @@ fn handle_special_object_types<'a>(
             // Handle datetime objects with {"datetime": "string"} structure
             if let Some((_, DataValue::String(dt_str))) = entries
                 .iter()
-                .find(|(key, _)| *key == arena.intern_str("datetime"))
+                .find(|(key, _)| *key == arena.alloc_str("datetime"))
                 && is_datetime_property(prop_name)
                 && let Ok(dt) = crate::value::parse_datetime(dt_str)
             {
@@ -120,7 +120,7 @@ fn handle_special_object_types<'a>(
             // Handle duration objects with {"timestamp": dur} structure
             if let Some((_, DataValue::Duration(dur))) = entries
                 .iter()
-                .find(|(key, _)| *key == arena.intern_str("timestamp"))
+                .find(|(key, _)| *key == arena.alloc_str("timestamp"))
             {
                 return Some(access_duration_property(dur, prop_name, arena));
             }
