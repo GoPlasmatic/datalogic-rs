@@ -5,7 +5,7 @@
 
 use crate::LogicError;
 use crate::arena::DataArena;
-use crate::arena::{SimpleOperatorAdapter, SimpleOperatorFn};
+use crate::arena::{CustomOperatorRegistry, SimpleOperatorAdapter, SimpleOperatorFn};
 use crate::context::EvalContext;
 use crate::logic::{Logic, Result, evaluate, optimize};
 use crate::parser::{
@@ -35,6 +35,7 @@ pub use crate::arena::CustomOperator;
 pub struct DataLogic {
     arena: DataArena,
     preserve_structure: bool,
+    custom_operators: CustomOperatorRegistry,
 }
 
 impl DataLogic {
@@ -43,6 +44,7 @@ impl DataLogic {
         Self {
             arena: DataArena::new(),
             preserve_structure: false,
+            custom_operators: CustomOperatorRegistry::new(),
         }
     }
 
@@ -51,6 +53,7 @@ impl DataLogic {
         Self {
             arena: DataArena::with_chunk_size(chunk_size),
             preserve_structure: false,
+            custom_operators: CustomOperatorRegistry::new(),
         }
     }
 
@@ -75,6 +78,7 @@ impl DataLogic {
         Self {
             arena: DataArena::new(),
             preserve_structure: true,
+            custom_operators: CustomOperatorRegistry::new(),
         }
     }
 
@@ -83,6 +87,7 @@ impl DataLogic {
         Self {
             arena: DataArena::with_chunk_size(chunk_size),
             preserve_structure: true,
+            custom_operators: CustomOperatorRegistry::new(),
         }
     }
 
@@ -155,20 +160,20 @@ impl DataLogic {
     /// assert_eq!(result.as_f64().unwrap(), 24.0);
     /// ```
     pub fn register_custom_operator(&mut self, name: &str, operator: Box<dyn CustomOperator>) {
-        self.arena.register_custom_operator(name, operator);
+        self.custom_operators.register(name, operator);
     }
 
     /// Check if a custom operator is registered
     pub fn has_custom_operator(&self, name: &str) -> bool {
-        self.arena.has_custom_operator(name)
+        self.custom_operators.get(name).is_some()
     }
 
     /// Parse a logic expression from a string
     pub fn parse_logic(&self, source: &str) -> Result<Logic<'_>> {
         let token = if self.preserve_structure {
-            parse_jsonlogic_with_preserve(source, &self.arena, true)?
+            parse_jsonlogic_with_preserve(source, &self.arena, true, &self.custom_operators)?
         } else {
-            parse_jsonlogic(source, &self.arena)?
+            parse_jsonlogic(source, &self.arena, &self.custom_operators)?
         };
 
         // Apply static optimization
@@ -180,9 +185,9 @@ impl DataLogic {
     /// Parse a JSON logic expression into a Token
     pub fn parse_logic_json(&self, source: &JsonValue) -> Result<Logic<'_>> {
         let token = if self.preserve_structure {
-            parse_jsonlogic_json_with_preserve(source, &self.arena, true)?
+            parse_jsonlogic_json_with_preserve(source, &self.arena, true, &self.custom_operators)?
         } else {
-            parse_jsonlogic_json(source, &self.arena)?
+            parse_jsonlogic_json(source, &self.arena, &self.custom_operators)?
         };
         Ok(Logic::new(token, &self.arena))
     }
@@ -230,8 +235,8 @@ impl DataLogic {
         rule: &'a Logic,
         data: &'a DataValue,
     ) -> Result<&'a DataValue<'a>> {
-        // Create evaluation context with the data as root
-        let context = EvalContext::new(data);
+        // Create evaluation context with the data as root and custom operators
+        let context = EvalContext::new(data, &self.custom_operators);
 
         // Evaluate the rule with the data as context
         evaluate(rule.root(), &context, &self.arena)

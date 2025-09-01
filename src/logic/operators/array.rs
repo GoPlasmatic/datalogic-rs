@@ -1291,6 +1291,7 @@ pub fn eval_sort<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::arena::CustomOperatorRegistry;
     use crate::logic::Logic;
     use crate::logic::datalogic_core::DataLogicCore;
     use crate::logic::operators::arithmetic::ArithmeticOp;
@@ -1299,6 +1300,11 @@ mod tests {
     use crate::parser::jsonlogic::parse_json;
     use crate::value::DataValue;
     use serde_json::json;
+    use std::sync::LazyLock;
+
+    // Static empty operator registry for tests
+    static EMPTY_OPERATORS: LazyLock<CustomOperatorRegistry> =
+        LazyLock::new(CustomOperatorRegistry::new);
 
     #[test]
     fn test_map_with_op_syntax() {
@@ -1554,7 +1560,10 @@ mod tests {
 
         // Also test with JSON parsing for compatibility
         let json_rule = json!({"length": {"var": "array"}});
-        let rule = Logic::new(parse_json(&json_rule, core.arena()).unwrap(), core.arena());
+        let rule = Logic::new(
+            parse_json(&json_rule, core.arena(), &*EMPTY_OPERATORS).unwrap(),
+            core.arena(),
+        );
         let json_data = json!({"array": [1, 2, 3, 4, 5]});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!(5));

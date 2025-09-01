@@ -1,3 +1,4 @@
+use crate::arena::CustomOperatorRegistry;
 use crate::value::DataValue;
 use smallvec::SmallVec;
 
@@ -15,11 +16,13 @@ pub struct EvalContext<'a> {
     context_stack: SmallVec<[&'a DataValue<'a>; 8]>,
     /// Stores iteration metadata (index for arrays, key for objects)
     metadata_stack: SmallVec<[Option<ContextMetadata<'a>>; 8]>,
+    /// Registry of custom operators available during evaluation
+    custom_operators: &'a CustomOperatorRegistry,
 }
 
 impl<'a> EvalContext<'a> {
     #[inline]
-    pub fn new(root: &'a DataValue<'a>) -> Self {
+    pub fn new(root: &'a DataValue<'a>, custom_operators: &'a CustomOperatorRegistry) -> Self {
         let mut stack = SmallVec::new();
         stack.push(root);
         let mut metadata_stack = SmallVec::new();
@@ -27,6 +30,7 @@ impl<'a> EvalContext<'a> {
         Self {
             context_stack: stack,
             metadata_stack,
+            custom_operators,
         }
     }
 
@@ -53,6 +57,7 @@ impl<'a> EvalContext<'a> {
         Self {
             context_stack: new_stack,
             metadata_stack: new_metadata_stack,
+            custom_operators: self.custom_operators,
         }
     }
 
@@ -79,6 +84,7 @@ impl<'a> EvalContext<'a> {
         Self {
             context_stack: new_stack,
             metadata_stack: new_metadata_stack,
+            custom_operators: self.custom_operators,
         }
     }
 
@@ -115,6 +121,7 @@ impl<'a> EvalContext<'a> {
         Self {
             context_stack: new_stack,
             metadata_stack: new_metadata_stack,
+            custom_operators: self.custom_operators,
         }
     }
 
@@ -161,5 +168,11 @@ impl<'a> EvalContext<'a> {
     #[inline]
     pub fn context_at_scope(&self, scope_jump: usize) -> &'a DataValue<'a> {
         self.at_depth(scope_jump).unwrap_or_else(|| self.root())
+    }
+
+    /// Get the custom operators registry
+    #[inline]
+    pub fn custom_operators(&self) -> &'a CustomOperatorRegistry {
+        self.custom_operators
     }
 }

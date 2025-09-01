@@ -4,25 +4,33 @@
 
 use std::str::FromStr;
 
-use crate::arena::DataArena;
+use crate::arena::{CustomOperatorRegistry, DataArena};
 use crate::logic::{LogicError, OperatorType, Result, Token};
 use crate::value::{DataValue, FromJson};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
 /// Parses a JSONLogic expression from a string.
-pub fn parse_jsonlogic<'a>(input: &str, arena: &'a DataArena) -> Result<&'a Token<'a>> {
+pub fn parse_jsonlogic<'a>(
+    input: &str,
+    arena: &'a DataArena,
+    custom_operators: &CustomOperatorRegistry,
+) -> Result<&'a Token<'a>> {
     // Parse the input string as JSON
     let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
         reason: format!("Invalid JSON: {e}"),
     })?;
 
     // Use the JSONLogic parsing logic
-    parse_json(&json, arena)
+    parse_json(&json, arena, custom_operators)
 }
 
 /// Parses a JSONLogic expression from a JSON value.
-pub fn parse_jsonlogic_json<'a>(input: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
-    parse_json(input, arena)
+pub fn parse_jsonlogic_json<'a>(
+    input: &JsonValue,
+    arena: &'a DataArena,
+    custom_operators: &CustomOperatorRegistry,
+) -> Result<&'a Token<'a>> {
+    parse_json(input, arena, custom_operators)
 }
 
 /// Parses a JSONLogic expression from a string with structure preservation option.
@@ -30,6 +38,7 @@ pub fn parse_jsonlogic_with_preserve<'a>(
     input: &str,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<&'a Token<'a>> {
     // Parse the input string as JSON
     let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
@@ -37,7 +46,7 @@ pub fn parse_jsonlogic_with_preserve<'a>(
     })?;
 
     // Use the JSONLogic parsing logic with preserve structure option
-    parse_json_with_preserve(&json, arena, preserve_structure)
+    parse_json_with_preserve(&json, arena, preserve_structure, custom_operators)
 }
 
 /// Parses a JSONLogic expression from a JSON value with structure preservation option.
@@ -45,8 +54,9 @@ pub fn parse_jsonlogic_json_with_preserve<'a>(
     input: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<&'a Token<'a>> {
-    parse_json_with_preserve(input, arena, preserve_structure)
+    parse_json_with_preserve(input, arena, preserve_structure, custom_operators)
 }
 
 /// Checks if a JSON value is a literal.
@@ -62,8 +72,12 @@ fn is_json_literal(value: &JsonValue) -> bool {
 }
 
 /// Parses a logic expression from a JSON value.
-pub fn parse_json<'a>(json: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
-    let token = parse_json_internal(json, arena, false)?;
+pub fn parse_json<'a>(
+    json: &JsonValue,
+    arena: &'a DataArena,
+    custom_operators: &CustomOperatorRegistry,
+) -> Result<&'a Token<'a>> {
+    let token = parse_json_internal(json, arena, false, custom_operators)?;
     Ok(arena.alloc(token))
 }
 
@@ -72,8 +86,9 @@ pub fn parse_json_with_preserve<'a>(
     json: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<&'a Token<'a>> {
-    let token = parse_json_internal(json, arena, preserve_structure)?;
+    let token = parse_json_internal(json, arena, preserve_structure, custom_operators)?;
     Ok(arena.alloc(token))
 }
 
@@ -82,6 +97,7 @@ fn parse_json_internal<'a>(
     json: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<Token<'a>> {
     match json {
         // Simple literals
@@ -124,7 +140,8 @@ fn parse_json_internal<'a>(
                 // Otherwise, create an array of tokens and allocate them in the arena
                 let mut tokens = Vec::with_capacity(arr.len());
                 for item in arr {
-                    let token = parse_json_internal(item, arena, preserve_structure)?;
+                    let token =
+                        parse_json_internal(item, arena, preserve_structure, custom_operators)?;
                     let token_ref = arena.alloc(token);
                     tokens.push(token_ref);
                 }
@@ -133,7 +150,7 @@ fn parse_json_internal<'a>(
         }
 
         // Objects could be operators or literal objects
-        JsonValue::Object(obj) => parse_object(obj, arena, preserve_structure),
+        JsonValue::Object(obj) => parse_object(obj, arena, preserve_structure, custom_operators),
     }
 }
 
@@ -142,19 +159,21 @@ fn parse_object<'a>(
     obj: &JsonMap<String, JsonValue>,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<Token<'a>> {
     // If the object has exactly one key, it might be an operator
     if obj.len() == 1 {
         let (key, value) = obj.iter().next().unwrap();
 
         match key.as_str() {
-            "var" => parse_variable(value, arena, preserve_structure),
+            "var" => parse_variable(value, arena, preserve_structure, custom_operators),
             "val" => {
-                let token = parse_json_internal(value, arena, preserve_structure)?;
+                let token =
+                    parse_json_internal(value, arena, preserve_structure, custom_operators)?;
                 let args_token = arena.alloc(token);
                 Ok(Token::operator(OperatorType::Val, args_token))
             }
-            "exists" => parse_exists_operator(value, arena, preserve_structure),
+            "exists" => parse_exists_operator(value, arena, preserve_structure, custom_operators),
             "preserve" => {
                 // The preserve operator returns its argument as-is without parsing it as an operator
                 let preserved_value = DataValue::from_json(value, arena);
@@ -163,16 +182,23 @@ fn parse_object<'a>(
             _ => {
                 // Check if it's a standard operator
                 if let Ok(op_type) = OperatorType::from_str(key) {
-                    return parse_operator(op_type, value, arena, preserve_structure);
+                    return parse_operator(
+                        op_type,
+                        value,
+                        arena,
+                        preserve_structure,
+                        custom_operators,
+                    );
                 }
 
                 // Check if this is a registered custom operator
-                if arena.has_custom_operator(key) {
+                if custom_operators.get(key).is_some() {
                     // Always treat registered custom operators as operators, regardless of preserve_structure
-                    parse_custom_operator(key, value, arena, preserve_structure)
+                    parse_custom_operator(key, value, arena, preserve_structure, custom_operators)
                 } else if preserve_structure {
                     // Create a structured object with this single field
-                    let value_token = parse_json_internal(value, arena, preserve_structure)?;
+                    let value_token =
+                        parse_json_internal(value, arena, preserve_structure, custom_operators)?;
                     let value_token_ref = arena.alloc(value_token);
                     let key_str = arena.intern_str(key);
                     let fields = vec![(key_str, value_token_ref)];
@@ -180,7 +206,7 @@ fn parse_object<'a>(
                     Ok(Token::structured_object(fields_slice))
                 } else {
                     // Otherwise, treat it as a custom operator
-                    parse_custom_operator(key, value, arena, preserve_structure)
+                    parse_custom_operator(key, value, arena, preserve_structure, custom_operators)
                 }
             }
         }
@@ -195,7 +221,8 @@ fn parse_object<'a>(
             // When structure preservation is enabled, create a structured object
             let mut fields = Vec::with_capacity(obj.len());
             for (key, value) in obj {
-                let value_token = parse_json_internal(value, arena, preserve_structure)?;
+                let value_token =
+                    parse_json_internal(value, arena, preserve_structure, custom_operators)?;
                 let value_token_ref = arena.alloc(value_token);
                 let key_str = arena.intern_str(key);
                 fields.push((key_str, value_token_ref));
@@ -221,6 +248,7 @@ fn parse_variable<'a>(
     var_json: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<Token<'a>> {
     match var_json {
         // Simple variable reference
@@ -256,12 +284,14 @@ fn parse_variable<'a>(
                 && !arr[0].is_null()
             {
                 // Parse the path expression
-                let path_expr = parse_json_internal(&arr[0], arena, preserve_structure)?;
+                let path_expr =
+                    parse_json_internal(&arr[0], arena, preserve_structure, custom_operators)?;
                 let path_token = arena.alloc(path_expr);
 
                 // If there's a default value, parse it
                 let default = if arr.len() >= 2 {
-                    let default_token = parse_json_internal(&arr[1], arena, preserve_structure)?;
+                    let default_token =
+                        parse_json_internal(&arr[1], arena, preserve_structure, custom_operators)?;
                     Some(arena.alloc(default_token))
                 } else {
                     None
@@ -287,7 +317,8 @@ fn parse_variable<'a>(
                 };
 
                 // Parse the default value
-                let default_token = parse_json_internal(&arr[1], arena, preserve_structure)?;
+                let default_token =
+                    parse_json_internal(&arr[1], arena, preserve_structure, custom_operators)?;
                 let default = arena.alloc(default_token);
 
                 return Ok(Token::variable(path, Some(default)));
@@ -344,7 +375,8 @@ fn parse_variable<'a>(
 
             // If there are two or more elements, the second is the default
             // Parse the default value
-            let default_token = parse_json_internal(&arr[1], arena, preserve_structure)?;
+            let default_token =
+                parse_json_internal(&arr[1], arena, preserve_structure, custom_operators)?;
             let default = arena.alloc(default_token);
 
             Ok(Token::variable(path, Some(default)))
@@ -375,7 +407,8 @@ fn parse_variable<'a>(
         // Handle object as variable path (e.g., {"cat": ["te", "st"]})
         JsonValue::Object(_) => {
             // Parse the object as a regular expression
-            let path_expr = parse_json_internal(var_json, arena, preserve_structure)?;
+            let path_expr =
+                parse_json_internal(var_json, arena, preserve_structure, custom_operators)?;
             let path_token = arena.alloc(path_expr);
 
             // Create a dynamic variable reference where the path will be evaluated at runtime
@@ -395,9 +428,10 @@ fn parse_operator<'a>(
     args_json: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<Token<'a>> {
     // Parse the arguments
-    let args = parse_arguments(args_json, arena, preserve_structure)?;
+    let args = parse_arguments(args_json, arena, preserve_structure, custom_operators)?;
 
     // Create the operator token
     Ok(Token::operator(op_type, args))
@@ -409,9 +443,10 @@ fn parse_custom_operator<'a>(
     args_json: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<Token<'a>> {
     // Parse the arguments
-    let args = parse_arguments(args_json, arena, preserve_structure)?;
+    let args = parse_arguments(args_json, arena, preserve_structure, custom_operators)?;
 
     // Create the custom operator token
     Ok(Token::custom_operator(arena.intern_str(name), args))
@@ -422,11 +457,12 @@ fn parse_arguments<'a>(
     args_json: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<&'a Token<'a>> {
     match args_json {
         // Single argument that's not an array - no need for ArrayLiteral
         _ if !args_json.is_array() => {
-            let arg = parse_json_internal(args_json, arena, preserve_structure)?;
+            let arg = parse_json_internal(args_json, arena, preserve_structure, custom_operators)?;
             Ok(arena.alloc(arg))
         }
 
@@ -442,7 +478,8 @@ fn parse_arguments<'a>(
 
             // Parse each argument
             for arg_json in arr {
-                let arg = parse_json_internal(arg_json, arena, preserve_structure)?;
+                let arg =
+                    parse_json_internal(arg_json, arena, preserve_structure, custom_operators)?;
                 let arg_ref = arena.alloc(arg);
                 tokens.push(arg_ref);
             }
@@ -462,9 +499,10 @@ fn parse_exists_operator<'a>(
     value: &JsonValue,
     arena: &'a DataArena,
     preserve_structure: bool,
+    custom_operators: &CustomOperatorRegistry,
 ) -> Result<Token<'a>> {
     // Parse the arguments for exists operator
-    let args = parse_arguments(value, arena, preserve_structure)?;
+    let args = parse_arguments(value, arena, preserve_structure, custom_operators)?;
 
     // Create the exists operator token
     Ok(Token::operator(OperatorType::Exists, args))
@@ -480,34 +518,35 @@ mod tests {
     #[test]
     fn test_parse_literals() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Parse null
-        let token = parse_json(&json!(null), &arena).unwrap();
+        let token = parse_json(&json!(null), &arena, &custom_operators).unwrap();
         assert!(token.is_literal());
         assert!(token.as_literal().unwrap().is_null());
 
         // Parse boolean
-        let token = parse_json(&json!(true), &arena).unwrap();
+        let token = parse_json(&json!(true), &arena, &custom_operators).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_bool(), Some(true));
 
         // Parse integer
-        let token = parse_json(&json!(42), &arena).unwrap();
+        let token = parse_json(&json!(42), &arena, &custom_operators).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_i64(), Some(42));
 
         // Parse float
-        let token = parse_json(&json!(3.5), &arena).unwrap();
+        let token = parse_json(&json!(3.5), &arena, &custom_operators).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_f64(), Some(3.5));
 
         // Parse string
-        let token = parse_json(&json!("hello"), &arena).unwrap();
+        let token = parse_json(&json!("hello"), &arena, &custom_operators).unwrap();
         assert!(token.is_literal());
         assert_eq!(token.as_literal().unwrap().as_str(), Some("hello"));
 
         // Parse array
-        let token = parse_json(&json!([1, 2, 3]), &arena).unwrap();
+        let token = parse_json(&json!([1, 2, 3]), &arena, &custom_operators).unwrap();
         assert!(token.is_literal());
         let array = token.as_literal().unwrap().as_array().unwrap();
         assert_eq!(array.len(), 3);
@@ -519,16 +558,22 @@ mod tests {
     #[test]
     fn test_parse_variable() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Parse simple variable
-        let token = parse_json(&json!({"var": "user.name"}), &arena).unwrap();
+        let token = parse_json(&json!({"var": "user.name"}), &arena, &custom_operators).unwrap();
         assert!(token.is_variable());
         let (path, default) = token.as_variable().unwrap();
         assert_eq!(path, "user.name");
         assert!(default.is_none());
 
         // Parse variable with default
-        let token = parse_json(&json!({"var": ["user.name", "Anonymous"]}), &arena).unwrap();
+        let token = parse_json(
+            &json!({"var": ["user.name", "Anonymous"]}),
+            &arena,
+            &custom_operators,
+        )
+        .unwrap();
         assert!(token.is_variable());
         let (path, default) = token.as_variable().unwrap();
         assert_eq!(path, "user.name");
@@ -544,23 +589,24 @@ mod tests {
     #[test]
     fn test_parse_operator() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Parse comparison operator
-        let token = parse_json(&json!({"==": [1, 2]}), &arena).unwrap();
+        let token = parse_json(&json!({"==": [1, 2]}), &arena, &custom_operators).unwrap();
         assert!(token.is_operator());
 
         let (op_type, _args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
 
         // Parse arithmetic operator
-        let token = parse_json(&json!({"+": [1, 2, 3]}), &arena).unwrap();
+        let token = parse_json(&json!({"+": [1, 2, 3]}), &arena, &custom_operators).unwrap();
         assert!(token.is_operator());
 
         let (op_type, _args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Arithmetic(ArithmeticOp::Add));
 
         // Parse logical operator
-        let token = parse_json(&json!({"and": [true, false]}), &arena).unwrap();
+        let token = parse_json(&json!({"and": [true, false]}), &arena, &custom_operators).unwrap();
         assert!(token.is_operator());
 
         let (op_type, _args) = token.as_operator().unwrap();
@@ -570,9 +616,10 @@ mod tests {
     #[test]
     fn test_parse_custom_operator() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Parse custom operator
-        let token = parse_json(&json!({"my_op": [1, 2, 3]}), &arena).unwrap();
+        let token = parse_json(&json!({"my_op": [1, 2, 3]}), &arena, &custom_operators).unwrap();
         assert!(token.is_custom_operator());
 
         let (name, _args) = token.as_custom_operator().unwrap();
@@ -582,6 +629,7 @@ mod tests {
     #[test]
     fn test_parse_complex_expression() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Parse complex expression
         let json = json!({
@@ -593,7 +641,7 @@ mod tests {
             ]
         });
 
-        let token = parse_json(&json, &arena).unwrap();
+        let token = parse_json(&json, &arena, &custom_operators).unwrap();
         assert!(token.is_operator());
 
         let (op_type, _args) = token.as_operator().unwrap();
@@ -603,10 +651,11 @@ mod tests {
     #[test]
     fn test_parser_interface() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Test the parser interface
         let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
-        let token = parse_jsonlogic(json_str, &arena).unwrap();
+        let token = parse_jsonlogic(json_str, &arena, &custom_operators).unwrap();
 
         // Verify the token
         assert!(token.is_operator());
@@ -617,10 +666,11 @@ mod tests {
     #[test]
     fn test_parse_preserve_operator() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Test preserve with a literal
         let json = json!({"preserve": 42});
-        let token = parse_json(&json, &arena).unwrap();
+        let token = parse_json(&json, &arena, &custom_operators).unwrap();
         if let Token::Literal(value) = token {
             assert_eq!(value.as_i64(), Some(42));
         } else {
@@ -629,7 +679,7 @@ mod tests {
 
         // Test preserve with an array
         let json = json!({"preserve": [1, 2, 3]});
-        let token = parse_json(&json, &arena).unwrap();
+        let token = parse_json(&json, &arena, &custom_operators).unwrap();
         if let Token::Literal(value) = token {
             assert!(value.is_array());
             let arr = value.as_array().unwrap();
@@ -643,7 +693,7 @@ mod tests {
 
         // Test preserve with an object
         let json = json!({"preserve": {"a": 1, "b": 2}});
-        let token = parse_json(&json, &arena).unwrap();
+        let token = parse_json(&json, &arena, &custom_operators).unwrap();
         if let Token::Literal(value) = token {
             assert!(value.is_object());
             let obj = value.as_object().unwrap();
@@ -656,10 +706,16 @@ mod tests {
     #[test]
     fn test_parse_val_operator() {
         let arena = DataArena::new();
+        let custom_operators = CustomOperatorRegistry::new();
 
         // Test simple val operator: {"val": "hello"}
         let json_str = r#"{"val": "hello"}"#;
-        let token = parse_json(&serde_json::from_str(json_str).unwrap(), &arena).unwrap();
+        let token = parse_json(
+            &serde_json::from_str(json_str).unwrap(),
+            &arena,
+            &custom_operators,
+        )
+        .unwrap();
 
         // Check that it's a Val operator
         let (op_type, _args) = token.as_operator().unwrap();
@@ -667,7 +723,12 @@ mod tests {
 
         // Test nested val operator: {"val": ["hello", "world"]}
         let json_str = r#"{"val": ["hello", "world"]}"#;
-        let token = parse_json(&serde_json::from_str(json_str).unwrap(), &arena).unwrap();
+        let token = parse_json(
+            &serde_json::from_str(json_str).unwrap(),
+            &arena,
+            &custom_operators,
+        )
+        .unwrap();
 
         // Check that it's a Val operator
         let (op_type, _args) = token.as_operator().unwrap();

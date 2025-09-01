@@ -234,12 +234,16 @@ fn use_default_or_null<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arena::DataArena;
+    use crate::arena::{CustomOperatorRegistry, DataArena};
     use crate::logic::operators::val::eval_exists;
     use crate::logic::{DataLogicCore, Logic, OperatorType};
     use crate::value::{DataValue, FromJson};
-
     use serde_json::json;
+    use std::sync::LazyLock;
+
+    // Static empty operator registry for tests
+    static EMPTY_OPERATORS: LazyLock<CustomOperatorRegistry> =
+        LazyLock::new(CustomOperatorRegistry::new);
 
     #[test]
     fn test_variable_lookup() {
@@ -257,7 +261,7 @@ mod tests {
         // For low-level testing, convert to DataValue
         let data = DataValue::from_json(&data_json, &arena);
         let data_ref = arena.alloc(data.clone());
-        let context = EvalContext::new(data_ref);
+        let context = EvalContext::new(data_ref, &*EMPTY_OPERATORS);
 
         // Test simple variable access
         let path = "a";
@@ -409,7 +413,7 @@ mod tests {
 
         let data = DataValue::from_json(&data_json, &arena);
         let data_ref = arena.alloc(data.clone());
-        let context = EvalContext::new(data_ref);
+        let context = EvalContext::new(data_ref, &*EMPTY_OPERATORS);
 
         // Test single path exists
         let path = DataValue::string(&arena, "a");

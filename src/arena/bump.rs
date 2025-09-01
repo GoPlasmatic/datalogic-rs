@@ -13,9 +13,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::mem;
 
-use super::custom::{CustomOperator, CustomOperatorRegistry};
 use super::interner::StringInterner;
-use crate::logic::Result;
 use crate::value::DataValue;
 
 /// Default allocation size for vectors
@@ -31,9 +29,6 @@ pub struct DataArena {
 
     /// String interner for efficient string storage
     interner: RefCell<StringInterner>,
-
-    /// Custom operator registry for evaluating custom operators
-    custom_operators: RefCell<CustomOperatorRegistry>,
 
     /// Chunk size for allocations (in bytes)
     chunk_size: usize,
@@ -111,7 +106,6 @@ impl DataArena {
         Self {
             bump,
             interner: RefCell::new(StringInterner::with_capacity(64)), // Start with reasonable capacity
-            custom_operators: RefCell::new(CustomOperatorRegistry::new()),
             chunk_size,
             null_value: &NULL_VALUE,
             true_value: &TRUE_VALUE,
@@ -444,34 +438,6 @@ impl DataArena {
             }
             2..=8 => self.vec_into_slice(values.to_vec()),
             _ => unreachable!("This method is only for arrays up to 8 elements"),
-        }
-    }
-
-    /// Register a custom operator
-    pub fn register_custom_operator(&self, name: &str, operator: Box<dyn CustomOperator>) {
-        self.custom_operators.borrow_mut().register(name, operator);
-    }
-
-    /// Check if a custom operator exists
-    pub fn has_custom_operator(&self, name: &str) -> bool {
-        self.custom_operators.borrow().get(name).is_some()
-    }
-
-    /// Evaluate a custom operator with the given name and arguments
-    pub fn evaluate_custom_operator<'a>(
-        &'a self,
-        name: &str,
-        args: &'a [DataValue<'a>],
-        context: &crate::context::EvalContext<'a>,
-    ) -> Result<&'a DataValue<'a>> {
-        // Get the custom operator
-        if let Some(op) = self.custom_operators.borrow().get(name) {
-            // Call the custom operator with owned values to get an owned DataValue
-            op.evaluate(args, context, self)
-        } else {
-            Err(crate::logic::LogicError::OperatorNotFoundError {
-                operator: name.to_string(),
-            })
         }
     }
 }

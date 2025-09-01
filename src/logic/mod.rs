@@ -38,10 +38,15 @@ pub fn optimize<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arena::DataArena;
+    use crate::arena::{CustomOperatorRegistry, DataArena};
     use crate::parser::jsonlogic;
     use crate::value::{DataValue, FromJson};
     use serde_json::json;
+    use std::sync::LazyLock;
+
+    // Static empty operator registry for tests
+    static EMPTY_OPERATORS: LazyLock<CustomOperatorRegistry> =
+        LazyLock::new(CustomOperatorRegistry::new);
 
     #[test]
     fn test_simple_logic() {
@@ -51,14 +56,14 @@ mod tests {
         let rule_json = json!({"==": [{"var": "a"}, 10]});
 
         // Use the parser from the parser module
-        let token = jsonlogic::parse_json(&rule_json, &arena).unwrap();
+        let token = jsonlogic::parse_json(&rule_json, &arena, &*EMPTY_OPERATORS).unwrap();
         let logic = Logic::new(token, &arena);
 
         // Create test data
         let data_json = json!({"a": 10});
         let data = DataValue::from_json(&data_json, &arena);
         let data_ref = arena.alloc(data);
-        let context = crate::context::EvalContext::new(data_ref);
+        let context = crate::context::EvalContext::new(data_ref, &*EMPTY_OPERATORS);
         // Evaluate logic
         let result = evaluate(logic.root(), &context, &arena).unwrap();
 
@@ -77,7 +82,7 @@ mod tests {
         ]});
 
         // Use the parser from the parser module
-        let token = jsonlogic::parse_json(&rule_json, &arena).unwrap();
+        let token = jsonlogic::parse_json(&rule_json, &arena, &*EMPTY_OPERATORS).unwrap();
         let optimized_token = optimizer::optimize(token, &arena).unwrap();
         let logic = Logic::new(optimized_token, &arena);
 
@@ -101,7 +106,7 @@ mod tests {
         let data_json = json!({"a": 10});
         let data = DataValue::from_json(&data_json, &arena);
         let data_ref = arena.alloc(data);
-        let context = crate::context::EvalContext::new(data_ref);
+        let context = crate::context::EvalContext::new(data_ref, &*EMPTY_OPERATORS);
         // Evaluate logic
         let result = evaluate(logic.root(), &context, &arena).unwrap();
 

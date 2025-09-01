@@ -5,9 +5,14 @@
 
 use super::error::Result;
 use super::token::{OperatorType, Token};
-use crate::arena::DataArena;
+use crate::arena::{CustomOperatorRegistry, DataArena};
 use crate::logic::evaluator::evaluate;
 use crate::value::DataValue;
+use std::sync::LazyLock;
+
+// Static empty operator registry for optimization passes
+static EMPTY_OPERATORS: LazyLock<CustomOperatorRegistry> =
+    LazyLock::new(CustomOperatorRegistry::new);
 
 /// Optimizes a token by evaluating static parts of the expression.
 pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a Token<'a>> {
@@ -54,7 +59,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
             if is_static {
                 // Create a dummy data value and context for evaluation
                 let dummy_data = arena.alloc(DataValue::Null);
-                let dummy_context = crate::context::EvalContext::new(dummy_data);
+                let dummy_context = crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
 
                 // Create the operator token in the arena
                 let op_token = arena.alloc(Token::operator(*op_type, optimized_args));
@@ -112,7 +117,8 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
                     if all_literals {
                         // Create a dummy data value and context for evaluation
                         let dummy_data = arena.alloc(DataValue::Null);
-                        let dummy_context = crate::context::EvalContext::new(dummy_data);
+                        let dummy_context =
+                            crate::context::EvalContext::new(dummy_data, &EMPTY_OPERATORS);
                         // Create the operator token in the arena
                         let op_token = arena.alloc(Token::operator(*op_type, new_array_token));
 

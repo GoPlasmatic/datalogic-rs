@@ -1,5 +1,5 @@
 use super::error::Result;
-use crate::arena::DataArena;
+use crate::arena::{CustomOperatorRegistry, DataArena};
 use crate::context::EvalContext;
 use crate::logic::{Logic, evaluate};
 use crate::value::{DataValue, FromJson, ToJson};
@@ -10,6 +10,8 @@ use crate::value::{DataValue, FromJson, ToJson};
 pub struct DataLogicCore {
     /// The arena in which all allocations will be made.
     arena: DataArena,
+    /// Custom operator registry for this core instance
+    custom_operators: CustomOperatorRegistry,
 }
 
 impl DataLogicCore {
@@ -17,6 +19,7 @@ impl DataLogicCore {
     pub fn new() -> Self {
         Self {
             arena: DataArena::new(),
+            custom_operators: CustomOperatorRegistry::new(),
         }
     }
 
@@ -32,7 +35,7 @@ impl DataLogicCore {
         let data_ref = self.arena.alloc(data_value);
 
         // Create evaluation context with the data as root
-        let context = EvalContext::new(data_ref);
+        let context = EvalContext::new(data_ref, &self.custom_operators);
 
         // Evaluate the rule
         let result = evaluate(logic.root(), &context, &self.arena)?;

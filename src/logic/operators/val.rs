@@ -636,10 +636,16 @@ fn check_number_component_exists<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arena::CustomOperatorRegistry;
     use crate::logic::Logic;
     use crate::logic::OperatorType;
     use crate::logic::datalogic_core::DataLogicCore;
     use serde_json::json;
+    use std::sync::LazyLock;
+
+    // Static empty operator registry for tests
+    static EMPTY_OPERATORS: LazyLock<CustomOperatorRegistry> =
+        LazyLock::new(CustomOperatorRegistry::new);
 
     #[test]
     fn test_eval_val_with_path_components() {
@@ -737,7 +743,7 @@ mod tests {
         });
 
         let data = <DataValue as crate::value::FromJson>::from_json(&data_json, &arena);
-        let context = EvalContext::new(&data);
+        let context = EvalContext::new(&data, &*EMPTY_OPERATORS);
 
         // Test single path exists
         let path = DataValue::string(&arena, "a");

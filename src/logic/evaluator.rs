@@ -142,8 +142,14 @@ fn evaluate_custom_operator<'a>(
     context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    // Use the arena's evaluate_custom_operator method
-    arena.evaluate_custom_operator(name, args, context)
+    // Get the custom operator from the context
+    if let Some(op) = context.custom_operators().get(name) {
+        op.evaluate(args, context, arena)
+    } else {
+        Err(LogicError::OperatorNotFoundError {
+            operator: name.to_string(),
+        })
+    }
 }
 
 /// Evaluates arguments and returns them as a slice of DataValues
@@ -462,16 +468,22 @@ fn evaluate_structured_object<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arena::CustomOperatorRegistry;
     use crate::logic::operators::comparison::ComparisonOp;
     use crate::logic::token::{OperatorType, Token};
     use crate::value::FromJson;
     use serde_json::json;
+    use std::sync::LazyLock;
+
+    // Static empty operator registry for tests
+    static EMPTY_OPERATORS: LazyLock<CustomOperatorRegistry> =
+        LazyLock::new(CustomOperatorRegistry::new);
 
     #[test]
     fn test_evaluate_literal() {
         let arena = DataArena::new();
         let root = arena.null_value();
-        let context = EvalContext::new(root);
+        let context = EvalContext::new(root, &*EMPTY_OPERATORS);
 
         // Null
         let token = Token::literal(DataValue::null());
@@ -491,7 +503,7 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"foo": 42, "bar": "hello"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        let context = EvalContext::new(&data);
+        let context = EvalContext::new(&data, &*EMPTY_OPERATORS);
 
         // Equal - create token structure directly:
         // {"==": [{"var": "foo"}, 42]}
@@ -517,7 +529,7 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"person": {"name": "John"}, "name": "Jane"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        let context = EvalContext::new(&data);
+        let context = EvalContext::new(&data, &*EMPTY_OPERATORS);
 
         // Create {"??": [{"var": "name"}]}
         // Instead of using a string literal, we need to use a variable reference
@@ -555,7 +567,7 @@ mod tests {
         ]);
         let data = DataValue::Object(entries);
         let data_ref = arena.alloc(data.clone());
-        let context = EvalContext::new(data_ref);
+        let context = EvalContext::new(data_ref, &*EMPTY_OPERATORS);
 
         // Test simple val: { "val": "hello" }
         let val_arg = Token::literal(DataValue::string(&arena, "hello"));
@@ -595,7 +607,7 @@ mod tests {
 
         let arena = DataArena::new();
         let root = arena.null_value();
-        let context = EvalContext::new(root);
+        let context = EvalContext::new(root, &*EMPTY_OPERATORS);
 
         // Test simple datetime conversion: { "datetime": "2022-07-06T13:20:06Z" }
         let dt_arg = Token::literal(DataValue::string(&arena, "2022-07-06T13:20:06Z"));
