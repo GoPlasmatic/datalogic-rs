@@ -6,6 +6,7 @@
 use crate::LogicError;
 use crate::arena::DataArena;
 use crate::arena::{SimpleOperatorAdapter, SimpleOperatorFn};
+use crate::context::EvalContext;
 use crate::logic::{Logic, Result, evaluate, optimize};
 use crate::parser::{ExpressionParser, ParserRegistry};
 use crate::value::{DataValue, FromJson, ToJson};
@@ -128,7 +129,7 @@ impl DataLogic {
     /// # Examples
     ///
     /// ```
-    /// use datalogic_rs::{DataLogic, DataValue, LogicError, Result, CustomOperator};
+    /// use datalogic_rs::{DataLogic, DataValue, LogicError, Result, CustomOperator, EvalContext};
     /// use datalogic_rs::value::NumberValue;
     /// use std::fmt::Debug;
     /// use datalogic_rs::arena::DataArena;
@@ -138,7 +139,7 @@ impl DataLogic {
     /// struct MultiplyAll;
     ///
     /// impl CustomOperator for MultiplyAll {
-    ///     fn evaluate<'a>(&self, args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+    ///     fn evaluate<'a>(&self, args: &'a [DataValue<'a>], _context: &EvalContext<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
     ///         // Default to 1 if no arguments provided
     ///         if args.is_empty() {
     ///             return Ok(arena.alloc(DataValue::Number(NumberValue::from_i64(1))));
@@ -246,13 +247,11 @@ impl DataLogic {
         rule: &'a Logic,
         data: &'a DataValue,
     ) -> Result<&'a DataValue<'a>> {
-        // Set both current context and root context to the data
-        self.arena.set_root_context(data);
-        self.arena
-            .set_current_context(data, &DataValue::String("$"));
+        // Create evaluation context with the data as root
+        let context = EvalContext::new(data);
 
         // Evaluate the rule with the data as context
-        evaluate(rule.root(), &self.arena)
+        evaluate(rule.root(), &context, &self.arena)
     }
 
     /// Evaluate using JSON values directly
@@ -392,6 +391,7 @@ mod tests {
         fn evaluate<'a>(
             &self,
             args: &'a [DataValue<'a>],
+            _context: &crate::context::EvalContext<'a>,
             arena: &'a DataArena,
         ) -> Result<&'a DataValue<'a>> {
             // Default to 1 if no arguments provided

@@ -4,6 +4,7 @@
 //! such as cat, substr, etc.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -88,14 +89,18 @@ fn calculate_substr_length(len_value: i64, char_count: usize, start_pos: usize) 
 }
 
 /// Evaluates a string concatenation operation.
-pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_cat<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(arena.empty_string_value());
     }
 
     // For a single argument, convert directly to string
     if args.len() == 1 {
-        let value = evaluate(args[0], arena)?;
+        let value = evaluate(args[0], context, arena)?;
 
         // If it's already a string, return it directly
         if let DataValue::String(_) = value {
@@ -117,7 +122,7 @@ pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
     let mut result = String::new();
 
     for arg in args {
-        let value = evaluate(arg, arena)?;
+        let value = evaluate(arg, context, arena)?;
         match value {
             DataValue::String(s) => result.push_str(s),
             DataValue::Array(arr) => {
@@ -137,18 +142,19 @@ pub fn eval_cat<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 /// Evaluates a substring operation.
 pub fn eval_substr<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     validate_substr_args(args)?;
 
-    let string = evaluate(args[0], arena)?;
+    let string = evaluate(args[0], context, arena)?;
     let string_str = value_to_string(string, arena);
 
     // Convert to char array for proper handling of multi-byte characters
     let chars: Vec<char> = string_str.chars().collect();
     let char_count = chars.len();
 
-    let start = evaluate(args[1], arena)?;
+    let start = evaluate(args[1], context, arena)?;
     let start_idx_signed = start
         .coerce_to_number()
         .map(|num| num.as_i64().unwrap_or(0))
@@ -163,7 +169,7 @@ pub fn eval_substr<'a>(
     }
 
     let length = if args.len() == 3 {
-        let len = evaluate(args[2], arena)?;
+        let len = evaluate(args[2], context, arena)?;
         len.coerce_to_number()
             .map(|num| {
                 let len_signed = num.as_i64().unwrap_or(0);
@@ -184,14 +190,15 @@ pub fn eval_substr<'a>(
 /// Evaluates a "starts with" operation.
 pub fn eval_starts_with<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
-    let prefix = evaluate(args[1], arena)?;
+    let string = evaluate(args[0], context, arena)?;
+    let prefix = evaluate(args[1], context, arena)?;
 
     let string_str = value_to_string(string, arena);
     let prefix_str = value_to_string(prefix, arena);
@@ -202,14 +209,15 @@ pub fn eval_starts_with<'a>(
 /// Evaluates an "ends with" operation.
 pub fn eval_ends_with<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
-    let suffix = evaluate(args[1], arena)?;
+    let string = evaluate(args[0], context, arena)?;
+    let suffix = evaluate(args[1], context, arena)?;
 
     let string_str = value_to_string(string, arena);
     let suffix_str = value_to_string(suffix, arena);
@@ -220,13 +228,14 @@ pub fn eval_ends_with<'a>(
 /// Evaluates a string uppercase operation.
 pub fn eval_upper<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
+    let string = evaluate(args[0], context, arena)?;
     let string_str = value_to_string(string, arena);
 
     // Convert to uppercase
@@ -238,13 +247,14 @@ pub fn eval_upper<'a>(
 /// Evaluates a string lowercase operation.
 pub fn eval_lower<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
+    let string = evaluate(args[0], context, arena)?;
     let string_str = value_to_string(string, arena);
 
     // Convert to lowercase
@@ -254,12 +264,16 @@ pub fn eval_lower<'a>(
 }
 
 /// Evaluates a string trim operation.
-pub fn eval_trim<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_trim<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
+    let string = evaluate(args[0], context, arena)?;
     let string_str = value_to_string(string, arena);
 
     // Trim whitespace
@@ -271,15 +285,16 @@ pub fn eval_trim<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 /// Evaluates a string replace operation.
 pub fn eval_replace<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 3 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
-    let find = evaluate(args[1], arena)?;
-    let replace_with = evaluate(args[2], arena)?;
+    let string = evaluate(args[0], context, arena)?;
+    let find = evaluate(args[1], context, arena)?;
+    let replace_with = evaluate(args[2], context, arena)?;
 
     let string_str = value_to_string(string, arena);
     let find_str = value_to_string(find, arena);
@@ -296,14 +311,15 @@ pub fn eval_replace<'a>(
 /// Otherwise, performs normal string splitting.
 pub fn eval_split<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let string = evaluate(args[0], arena)?;
-    let delimiter = evaluate(args[1], arena)?;
+    let string = evaluate(args[0], context, arena)?;
+    let delimiter = evaluate(args[1], context, arena)?;
 
     let string_str = value_to_string(string, arena);
     let delimiter_str = value_to_string(delimiter, arena);

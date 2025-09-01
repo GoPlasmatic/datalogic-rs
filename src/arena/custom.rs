@@ -1,5 +1,6 @@
 use crate::LogicError;
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::Result;
 use crate::value::DataValue;
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ pub trait CustomOperator: fmt::Debug + Send + Sync {
     fn evaluate<'a>(
         &self,
         args: &'a [DataValue<'a>],
+        context: &EvalContext<'a>,
         arena: &'a DataArena,
     ) -> Result<&'a DataValue<'a>>;
 }
@@ -75,16 +77,14 @@ impl CustomOperator for SimpleOperatorAdapter {
     fn evaluate<'a>(
         &self,
         args: &'a [DataValue<'a>],
+        context: &EvalContext<'a>,
         arena: &'a DataArena,
     ) -> Result<&'a DataValue<'a>> {
         // Convert arena-referenced DataValues to owned DataValues
         let owned_args = args.to_vec();
 
         // Get the current data context and convert to owned DataValue
-        let data_context = match arena.current_context(0) {
-            Some(ctx) => ctx.clone(),
-            None => DataValue::Null,
-        };
+        let data_context = context.current().clone();
 
         // Call the user's simple function that works with owned values
         match (self.function)(owned_args, data_context) {

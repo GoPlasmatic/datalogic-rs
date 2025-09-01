@@ -4,6 +4,7 @@
 //! such as and, or, not, etc.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -25,7 +26,11 @@ pub enum ControlOp {
 }
 
 /// Evaluates an if operation.
-pub fn eval_if<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_if<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.is_empty() {
         return Ok(arena.null_value());
@@ -35,11 +40,11 @@ pub fn eval_if<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'
     let mut i = 0;
     while i + 1 < args.len() {
         // Evaluate the condition
-        let condition = evaluate(args[i], arena)?;
+        let condition = evaluate(args[i], context, arena)?;
 
         // If the condition is true, return the value
         if condition.coerce_to_bool() {
-            return evaluate(args[i + 1], arena);
+            return evaluate(args[i + 1], context, arena);
         }
 
         // Move to the next pair
@@ -48,7 +53,7 @@ pub fn eval_if<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'
 
     // If there's an odd number of arguments, the last one is the "else" value
     if i < args.len() {
-        return evaluate(args[i], arena);
+        return evaluate(args[i], context, arena);
     }
 
     // No conditions matched and no else value
@@ -56,7 +61,11 @@ pub fn eval_if<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'
 }
 
 /// Evaluates an AND operation.
-pub fn eval_and<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_and<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
     if args.is_empty() {
         return Ok(arena.null_value());
@@ -64,14 +73,14 @@ pub fn eval_and<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 
     // Fast path for single argument
     if args.len() == 1 {
-        return evaluate(args[0], arena);
+        return evaluate(args[0], context, arena);
     }
 
     // Evaluate each argument with short-circuit evaluation
     let mut last_value = arena.null_value();
 
     for arg in args {
-        let value = evaluate(arg, arena)?;
+        let value = evaluate(arg, context, arena)?;
         last_value = value;
 
         // If any argument is false, short-circuit and return that value
@@ -85,7 +94,11 @@ pub fn eval_and<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Evaluates an OR operation.
-pub fn eval_or<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_or<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Fast path for empty arguments
     if args.is_empty() {
         return Ok(arena.false_value());
@@ -93,14 +106,14 @@ pub fn eval_or<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'
 
     // Fast path for single argument
     if args.len() == 1 {
-        return evaluate(args[0], arena);
+        return evaluate(args[0], context, arena);
     }
 
     // Evaluate each argument with short-circuit evaluation
     let mut last_value = arena.false_value();
 
     for arg in args {
-        let value = evaluate(arg, arena)?;
+        let value = evaluate(arg, context, arena)?;
         last_value = value;
 
         // If any argument is true, short-circuit and return that value
@@ -114,25 +127,30 @@ pub fn eval_or<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'
 }
 
 /// Evaluates a logical NOT operation.
-pub fn eval_not<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
-    if args.len() != 1 {
-        return Err(LogicError::InvalidArgumentsError);
-    }
-
-    let value = evaluate(args[0], arena)?;
-    Ok(arena.alloc(DataValue::Bool(!value.coerce_to_bool())))
-}
-
-/// Evaluates a logical double negation (!!).
-pub fn eval_double_negation<'a>(
+pub fn eval_not<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let value = evaluate(args[0], arena)?;
+    let value = evaluate(args[0], context, arena)?;
+    Ok(arena.alloc(DataValue::Bool(!value.coerce_to_bool())))
+}
+
+/// Evaluates a logical double negation (!!).
+pub fn eval_double_negation<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    if args.len() != 1 {
+        return Err(LogicError::InvalidArgumentsError);
+    }
+
+    let value = evaluate(args[0], context, arena)?;
     Ok(arena.alloc(DataValue::Bool(value.coerce_to_bool())))
 }
 

@@ -16,84 +16,10 @@ use std::mem;
 use super::custom::{CustomOperator, CustomOperatorRegistry};
 use super::interner::StringInterner;
 use crate::logic::Result;
-use crate::value::{DataValue, NumberValue};
-
-/// Maximum number of path components in the fixed-size array
-const PATH_CHAIN_CAPACITY: usize = 16;
+use crate::value::DataValue;
 
 /// Default allocation size for vectors
 const DEFAULT_VECTOR_CAPACITY: usize = 8;
-
-/// A wrapper for path chain that maintains safety around lifetimes
-///
-/// This struct helps track the path from root to current position
-/// in a data structure, while handling lifetimes safely.
-struct PathChainVec {
-    /// The inner vector, using 'static lifetimes to avoid borrow checker issues
-    vec: Vec<&'static DataValue<'static>>,
-    /// Capacity reserved for the vector to avoid reallocations
-    capacity: usize,
-}
-
-impl PathChainVec {
-    /// Create a new path chain with default capacity
-    fn new() -> Self {
-        Self {
-            vec: Vec::with_capacity(PATH_CHAIN_CAPACITY),
-            capacity: PATH_CHAIN_CAPACITY,
-        }
-    }
-
-    /// Push a new element to the path chain
-    fn push(&mut self, value: &'static DataValue<'static>) {
-        self.vec.push(value);
-    }
-
-    /// Pop the last element from the path chain
-    fn pop(&mut self) -> Option<&'static DataValue<'static>> {
-        self.vec.pop()
-    }
-
-    /// Clear the path chain
-    fn clear(&mut self) {
-        self.vec.clear();
-    }
-
-    /// Get the length of the path chain
-    fn len(&self) -> usize {
-        self.vec.len()
-    }
-
-    /// Check if the path chain is empty
-    fn _is_empty(&self) -> bool {
-        self.vec.is_empty()
-    }
-
-    /// Get an element at the specified index
-    fn _get(&self, index: usize) -> Option<&'static DataValue<'static>> {
-        self.vec.get(index).copied()
-    }
-
-    /// Get the last element in the path chain
-    fn last(&self) -> Option<&'static DataValue<'static>> {
-        self.vec.last().copied()
-    }
-
-    /// Get a slice of the path chain
-    fn as_slice(&self) -> &[&'static DataValue<'static>] {
-        &self.vec
-    }
-}
-
-impl fmt::Debug for PathChainVec {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PathChainVec")
-            .field("len", &self.len())
-            .field("capacity", &self.capacity)
-            .field("elements", &self.vec)
-            .finish()
-    }
-}
 
 /// An arena allocator for efficient data allocation.
 ///
@@ -132,15 +58,6 @@ pub struct DataArena {
 
     /// Preallocated empty array value
     empty_array_value: &'static DataValue<'static>,
-
-    /// Current context (root data)
-    current_context: RefCell<Option<&'static DataValue<'static>>>,
-
-    /// Preallocated root context
-    root_context: RefCell<Option<&'static DataValue<'static>>>,
-
-    /// Current path chain - represents the path from root to current position
-    path_chain: RefCell<PathChainVec>,
 }
 
 impl Default for DataArena {
@@ -153,7 +70,6 @@ impl fmt::Debug for DataArena {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataArena")
             .field("chunk_size", &self.chunk_size)
-            .field("path_chain", &self.path_chain)
             .finish()
     }
 }
@@ -204,9 +120,6 @@ impl DataArena {
             empty_string_value: &EMPTY_STRING_VALUE,
             empty_array: &EMPTY_ARRAY,
             empty_array_value: &EMPTY_ARRAY_VALUE,
-            current_context: RefCell::new(None),
-            root_context: RefCell::new(None),
-            path_chain: RefCell::new(PathChainVec::new()),
         }
     }
 
@@ -348,19 +261,10 @@ impl DataArena {
 
     /// Resets the arena, freeing all allocations.
     ///
-    /// This clears all allocated memory, contexts, and path chains.
+    /// This clears all allocated memory.
     pub fn reset(&mut self) {
         self.bump.reset();
         self.interner = RefCell::new(StringInterner::with_capacity(64));
-        self.clear_contexts_and_paths();
-    }
-
-    /// Clears all contexts and path information.
-    #[inline]
-    fn clear_contexts_and_paths(&mut self) {
-        self.current_context.replace(None);
-        self.root_context.replace(None);
-        self.path_chain.replace(PathChainVec::new());
     }
 
     /// Returns the current memory usage of the arena in bytes.
@@ -543,339 +447,6 @@ impl DataArena {
         }
     }
 
-    //
-    // Context management methods
-    //
-
-    /// Sets the current context for the arena.
-    ///
-    /// This establishes a new current context and records the path component.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The context data value
-    /// * `key` - The key for this context in the path chain
-    #[inline]
-    pub fn set_current_context<'a>(&self, context: &'a DataValue<'a>, key: &'a DataValue<'a>) {
-        // SAFETY: Widening the lifetime is safe because the arena manages the memory
-        let static_context =
-            unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context) };
-
-        self.current_context.replace(Some(static_context));
-        self.push_path_key(key);
-    }
-
-    /// Restores the current context without modifying the path chain.
-    /// This is used to restore context after array operations.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The context to restore (or None to clear)
-    #[inline]
-    pub fn restore_context<'a>(&self, context: Option<&'a DataValue<'a>>) {
-        if let Some(ctx) = context {
-            // SAFETY: Widening the lifetime is safe because the arena manages the memory
-            let static_context =
-                unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(ctx) };
-            self.current_context.replace(Some(static_context));
-        } else {
-            self.current_context.replace(None);
-        }
-    }
-
-    /// Returns the current context for the arena.
-    ///
-    /// # Arguments
-    ///
-    /// * `scope_jump` - How many levels to jump up the scope chain (0 means current context)
-    ///
-    /// # Returns
-    ///
-    /// The context data value, or None if no context is set
-    #[inline]
-    pub fn current_context(&self, scope_jump: usize) -> Option<&DataValue<'_>> {
-        // Fast path for the common case (no scope jump)
-        if scope_jump == 0 {
-            return *self.current_context.borrow();
-        } else {
-            // Cold path for scope jumps
-            self.root_context_with_jump(scope_jump)
-        }
-    }
-
-    /// Returns the root context for the arena.
-    ///
-    /// This also resets the path chain.
-    ///
-    /// # Returns
-    ///
-    /// The root context data value, or None if no root context is set
-    #[inline]
-    pub fn root_context(&self) -> Option<&DataValue<'_>> {
-        // Reset the path chain when getting root context
-        self.path_chain.borrow_mut().clear();
-        *self.root_context.borrow()
-    }
-
-    /// Sets the root context for the arena.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The root context data value
-    #[inline]
-    pub fn set_root_context<'a>(&self, context: &'a DataValue<'a>) {
-        // SAFETY: Widening the lifetime is safe because the arena manages the memory
-        let static_context =
-            unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(context) };
-
-        self.root_context.replace(Some(static_context));
-    }
-
-    /// Get a context after jumping up the scope chain.
-    ///
-    /// This is a cold path for handling scope jumps.
-    ///
-    /// # Arguments
-    ///
-    /// * `scope_jump` - How many levels to jump up the scope chain
-    ///
-    /// # Returns
-    ///
-    /// The context data value after jumping up the scope chain
-    #[cold]
-    #[inline(never)]
-    fn root_context_with_jump(&self, scope_jump: usize) -> Option<&DataValue<'_>> {
-        if scope_jump == 0 {
-            return *self.current_context.borrow();
-        }
-
-        // Get the current path chain
-        let chain_len = self.path_chain_len();
-
-        if scope_jump >= chain_len {
-            // If trying to jump beyond the root, return the root context
-            // We must always return a valid context, never None
-            return match *self.root_context.borrow() {
-                Some(ctx) => Some(ctx),
-                None => Some(self.null_value()), // Return null if no root context
-            };
-        }
-
-        // Get the root context, never returning None
-        let root = match *self.root_context.borrow() {
-            Some(ctx) => ctx,
-            None => return Some(self.null_value()), // Return null if no root context
-        };
-
-        // Use an optimization to avoid allocating a new vector when possible
-        let path_chain = self.path_chain.borrow();
-        let path_slice = path_chain.as_slice();
-
-        // Navigate to the correct context without creating intermediate vectors
-        self.navigate_to_context(root, path_slice, chain_len - scope_jump)
-    }
-
-    /// Helper function to navigate through a context without allocating
-    ///
-    /// # Arguments
-    ///
-    /// * `root` - The root context to start from
-    /// * `path_components` - The path components to navigate through
-    /// * `depth` - How many components to include in the navigation
-    ///
-    /// # Returns
-    ///
-    /// The context data value after navigating to the specified depth
-    #[inline(never)]
-    fn navigate_to_context<'a>(
-        &'a self,
-        root: &'a DataValue<'a>,
-        path_components: &[&'a DataValue<'a>],
-        depth: usize,
-    ) -> Option<&'a DataValue<'a>> {
-        let mut current = root;
-
-        // Only navigate to the specified depth
-        for component in path_components.iter().take(depth) {
-            match component {
-                DataValue::String(key) => {
-                    if !self.navigate_by_string_key(&mut current, key) {
-                        return Some(self.null_value());
-                    }
-                }
-                DataValue::Number(n) => {
-                    if !self.navigate_by_array_index(&mut current, n) {
-                        return Some(self.null_value());
-                    }
-                }
-                _ => return Some(self.null_value()),
-            }
-        }
-
-        Some(current)
-    }
-
-    /// Navigate an object by string key
-    ///
-    /// # Returns
-    ///
-    /// `true` if navigation succeeded, `false` if key not found or not an object
-    #[inline]
-    fn navigate_by_string_key<'a>(&'a self, current: &mut &'a DataValue<'a>, key: &str) -> bool {
-        if let DataValue::Object(entries) = *current {
-            for &(k, ref v) in *entries {
-                if k == key {
-                    *current = v;
-                    return true;
-                }
-            }
-            false // Key not found
-        } else {
-            false // Not an object
-        }
-    }
-
-    /// Navigate an array by index
-    ///
-    /// # Returns
-    ///
-    /// `true` if navigation succeeded, `false` if invalid index or not an array
-    #[inline]
-    fn navigate_by_array_index<'a>(
-        &'a self,
-        current: &mut &'a DataValue<'a>,
-        n: &NumberValue,
-    ) -> bool {
-        if let Some(idx) = n.as_i64()
-            && idx >= 0
-        {
-            let index = idx as usize;
-            if let DataValue::Array(items) = *current
-                && index < items.len()
-            {
-                *current = &items[index];
-                return true;
-            }
-        }
-        false
-    }
-
-    //
-    // Path chain management methods
-    //
-
-    /// Appends a key component to the current path chain.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key to append to the path chain
-    #[inline]
-    pub fn push_path_key<'a>(&self, key: &'a DataValue<'a>) {
-        // SAFETY: Widening the lifetime is safe because the arena manages the memory
-        let static_key =
-            unsafe { mem::transmute::<&'a DataValue<'a>, &'static DataValue<'static>>(key) };
-
-        self.path_chain.borrow_mut().push(static_key);
-    }
-
-    /// Removes the last component from the path chain.
-    ///
-    /// # Returns
-    ///
-    /// The removed path component, or None if the path chain is empty
-    #[inline]
-    pub fn pop_path_component(&self) -> Option<&DataValue<'_>> {
-        // SAFETY: The static lifetime can be safely narrowed
-        self.path_chain
-            .borrow_mut()
-            .pop()
-            .map(|v| self.transmute_lifetime(v))
-    }
-
-    /// Clears the path chain.
-    #[inline]
-    pub fn clear_path_chain(&self) {
-        self.path_chain.borrow_mut().clear();
-    }
-
-    /// Returns the length of the path chain.
-    #[inline]
-    pub fn path_chain_len(&self) -> usize {
-        self.path_chain.borrow().len()
-    }
-
-    /// Returns the current path chain as a slice.
-    ///
-    /// This allocates a new vector.
-    #[inline]
-    pub fn path_chain_as_slice(&self) -> Vec<&DataValue<'_>> {
-        let chain = self.path_chain.borrow();
-        chain
-            .as_slice()
-            .iter()
-            .map(|&v| self.transmute_lifetime(v))
-            .collect()
-    }
-
-    /// Efficiently access the path chain without allocating a new vector.
-    ///
-    /// # Arguments
-    ///
-    /// * `f` - A function that takes a slice of the path chain and returns a result
-    ///
-    /// # Returns
-    ///
-    /// The result of calling the function with the path chain slice
-    #[inline]
-    pub fn with_path_chain<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&[&DataValue]) -> R,
-    {
-        let chain = self.path_chain.borrow();
-        // SAFETY: The static lifetime can be safely narrowed
-        let path_slice: &[&DataValue] = unsafe {
-            mem::transmute::<&[&'static DataValue<'static>], &[&DataValue]>(chain.as_slice())
-        };
-        f(path_slice)
-    }
-
-    /// Returns the last path component.
-    ///
-    /// # Returns
-    ///
-    /// The last path component, or None if the path chain is empty
-    #[inline]
-    pub fn last_path_component(&self) -> Option<&DataValue<'_>> {
-        // SAFETY: The static lifetime can be safely narrowed
-        self.path_chain
-            .borrow()
-            .last()
-            .map(|v| self.transmute_lifetime(v))
-    }
-
-    /// Batch appends multiple path components in one operation.
-    ///
-    /// # Arguments
-    ///
-    /// * `keys` - The keys to append to the path chain
-    #[inline]
-    pub fn push_path_components<'a, 'b>(&'a self, keys: &'b [&'b DataValue<'b>])
-    where
-        'b: 'a,
-    {
-        if keys.is_empty() {
-            return;
-        }
-
-        let mut path_chain = self.path_chain.borrow_mut();
-        for &key in keys {
-            // SAFETY: Widening the lifetime is safe because the arena manages the memory
-            let static_key =
-                unsafe { mem::transmute::<&'b DataValue<'b>, &'static DataValue<'static>>(key) };
-            path_chain.push(static_key);
-        }
-    }
-
     /// Register a custom operator
     pub fn register_custom_operator(&self, name: &str, operator: Box<dyn CustomOperator>) {
         self.custom_operators.borrow_mut().register(name, operator);
@@ -891,11 +462,12 @@ impl DataArena {
         &'a self,
         name: &str,
         args: &'a [DataValue<'a>],
+        context: &crate::context::EvalContext<'a>,
     ) -> Result<&'a DataValue<'a>> {
         // Get the custom operator
         if let Some(op) = self.custom_operators.borrow().get(name) {
             // Call the custom operator with owned values to get an owned DataValue
-            op.evaluate(args, self)
+            op.evaluate(args, context, self)
         } else {
             Err(crate::logic::LogicError::OperatorNotFoundError {
                 operator: name.to_string(),
@@ -971,56 +543,5 @@ mod tests {
         vec.push(DataValue::integer(2));
         let slice = arena.bump_vec_into_slice(vec);
         assert_eq!(slice.len(), 2);
-    }
-
-    #[test]
-    fn test_path_chain() {
-        let arena = DataArena::new();
-
-        // Test pushing and popping
-        arena.push_path_key(&DataValue::string(&arena, "key1"));
-        arena.push_path_key(&DataValue::string(&arena, "key2"));
-
-        assert_eq!(arena.path_chain_len(), 2);
-
-        let last = arena.last_path_component().unwrap();
-        assert_eq!(last.as_str(), Some("key2"));
-
-        let popped = arena.pop_path_component().unwrap();
-        assert_eq!(popped.as_str(), Some("key2"));
-
-        assert_eq!(arena.path_chain_len(), 1);
-
-        // Test clearing
-        arena.clear_path_chain();
-        assert_eq!(arena.path_chain_len(), 0);
-    }
-
-    #[test]
-    fn test_context_management() {
-        let arena = DataArena::new();
-
-        // Test setting and getting contexts
-        let root = arena.alloc(DataValue::object(
-            &arena,
-            &[(arena.intern_str("root"), DataValue::integer(1))],
-        ));
-
-        arena.set_root_context(root);
-        let retrieved_root = arena.root_context().unwrap();
-
-        assert!(matches!(retrieved_root, DataValue::Object(_)));
-
-        // Test current context
-        let current = arena.alloc(DataValue::object(
-            &arena,
-            &[(arena.intern_str("current"), DataValue::integer(2))],
-        ));
-
-        let key = arena.alloc(DataValue::string(&arena, "key"));
-        arena.set_current_context(current, key);
-
-        let retrieved_current = arena.current_context(0).unwrap();
-        assert!(matches!(retrieved_current, DataValue::Object(_)));
     }
 }

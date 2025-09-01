@@ -8,6 +8,7 @@ use core::f64;
 use std::cmp::Ordering;
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::value::DataValue;
 use chrono::{DateTime, FixedOffset};
@@ -376,7 +377,11 @@ fn process_numeric_div<'a>(
 }
 
 /// Evaluates an addition operation.
-pub fn eval_add<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_add<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // First check for datetime/duration operations
     if let Some(result) = process_datetime_duration_add(args, arena) {
         return Ok(result);
@@ -387,7 +392,11 @@ pub fn eval_add<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Evaluates a subtraction operation.
-pub fn eval_sub<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_sub<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // First check for datetime/duration operations
     if let Some(result) = process_datetime_duration_sub(args, arena) {
         return Ok(result);
@@ -398,7 +407,11 @@ pub fn eval_sub<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Evaluates a multiplication operation.
-pub fn eval_mul<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_mul<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // First check for duration operations
     if let Some(result) = process_duration_multiplication(args, arena) {
         return Ok(result);
@@ -409,7 +422,11 @@ pub fn eval_mul<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Evaluates a division operation.
-pub fn eval_div<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_div<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // First check for duration operations
     if let Some(result) = process_duration_division(args, arena) {
         return Ok(result);
@@ -420,7 +437,11 @@ pub fn eval_div<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Evaluates a modulo operation.
-pub fn eval_mod<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_mod<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     match args.len() {
         0 => Err(LogicError::InvalidArgumentsError),
         1 => Err(LogicError::InvalidArgumentsError), // Can't do modulo with a single value
@@ -442,7 +463,11 @@ pub fn eval_mod<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Common implementation for min and max operations
-fn eval_min_max<'a>(args: &'a [DataValue<'a>], is_min: bool) -> Result<&'a DataValue<'a>> {
+fn eval_min_max<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    is_min: bool,
+) -> Result<&'a DataValue<'a>> {
     match args.len() {
         0 => Err(LogicError::InvalidArgumentsError),
         1 => {
@@ -520,17 +545,27 @@ fn eval_min_max<'a>(args: &'a [DataValue<'a>], is_min: bool) -> Result<&'a DataV
 }
 
 /// Evaluates a min operation with a single argument.
-pub fn eval_min<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
-    eval_min_max(args, true)
+pub fn eval_min<'a>(
+    args: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
+) -> Result<&'a DataValue<'a>> {
+    eval_min_max(args, context, true)
 }
 
 /// Evaluates a max operation with a single argument.
-pub fn eval_max<'a>(args: &'a [DataValue<'a>]) -> Result<&'a DataValue<'a>> {
-    eval_min_max(args, false)
+pub fn eval_max<'a>(
+    args: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
+) -> Result<&'a DataValue<'a>> {
+    eval_min_max(args, context, false)
 }
 
 /// Evaluates an absolute value operation.
-pub fn eval_abs<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_abs<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
@@ -561,7 +596,11 @@ pub fn eval_abs<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&
 }
 
 /// Evaluates a ceiling operation.
-pub fn eval_ceil<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_ceil<'a>(
+    args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
@@ -594,6 +633,7 @@ pub fn eval_ceil<'a>(args: &'a [DataValue<'a>], arena: &'a DataArena) -> Result<
 /// Evaluates a floor operation.
 pub fn eval_floor<'a>(
     args: &'a [DataValue<'a>],
+    _context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -635,28 +675,38 @@ mod tests {
         let arena = DataArena::new();
 
         // Addition
-        let args = [DataValue::integer(3), DataValue::integer(4)];
-        let result = eval_add(&args, &arena).unwrap();
+        let args1 = [DataValue::integer(3), DataValue::integer(4)];
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_add(&args1, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_f64().unwrap(), 7.0);
 
         // Subtraction
-        let args = [DataValue::integer(7), DataValue::integer(3)];
-        let result = eval_sub(&args, &arena).unwrap();
+        let args2 = [DataValue::integer(7), DataValue::integer(3)];
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_sub(&args2, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_f64().unwrap(), 4.0);
 
         // Multiplication
-        let args = [DataValue::integer(3), DataValue::integer(4)];
-        let result = eval_mul(&args, &arena).unwrap();
+        let args3 = [DataValue::integer(3), DataValue::integer(4)];
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_mul(&args3, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_f64().unwrap(), 12.0);
 
         // Division
-        let args = [DataValue::integer(12), DataValue::integer(4)];
-        let result = eval_div(&args, &arena).unwrap();
+        let args4 = [DataValue::integer(12), DataValue::integer(4)];
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_div(&args4, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_f64().unwrap(), 3.0);
 
         // Modulo
-        let args = [DataValue::integer(7), DataValue::integer(3)];
-        let result = eval_mod(&args, &arena).unwrap();
+        let args5 = [DataValue::integer(7), DataValue::integer(3)];
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_mod(&args5, &dummy_context, &arena).unwrap();
         assert_eq!(result.as_f64().unwrap(), 1.0);
     }
 
@@ -677,21 +727,27 @@ mod tests {
 
         // Test adding duration to datetime
         let args = [DataValue::datetime(dt1), DataValue::duration(duration)];
-        let result = eval_add(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_add(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_string());
         let result_str = result.as_str().unwrap();
         assert_eq!(result_str, "2022-07-07T13:20:06Z");
 
         // Test subtracting duration from datetime
         let args = [DataValue::datetime(dt2), DataValue::duration(duration)];
-        let result = eval_sub(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_sub(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_string());
         let result_str = result.as_str().unwrap();
         assert_eq!(result_str, "2022-07-06T13:20:06Z");
 
         // Test calculating duration between two datetimes
         let args = [DataValue::datetime(dt2), DataValue::datetime(dt1)];
-        let result = eval_sub(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_sub(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_duration());
 
         let result_dur = result.as_duration().unwrap();
@@ -711,7 +767,9 @@ mod tests {
             DataValue::duration(duration1),
             DataValue::duration(duration2),
         ];
-        let result = eval_add(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_add(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_duration());
 
         let result_dur = result.as_duration().unwrap();
@@ -722,7 +780,9 @@ mod tests {
             DataValue::duration(duration1),
             DataValue::duration(duration2),
         ];
-        let result = eval_sub(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_sub(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_duration());
 
         let result_dur = result.as_duration().unwrap();
@@ -730,7 +790,9 @@ mod tests {
 
         // Test multiplying duration by number
         let args = [DataValue::duration(duration2), DataValue::integer(2)];
-        let result = eval_mul(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_mul(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_duration());
 
         let result_dur = result.as_duration().unwrap();
@@ -738,7 +800,9 @@ mod tests {
 
         // Test dividing duration by number
         let args = [DataValue::duration(duration1), DataValue::integer(2)];
-        let result = eval_div(&args, &arena).unwrap();
+        let dummy_data = arena.alloc(DataValue::Null);
+        let dummy_context = crate::context::EvalContext::new(dummy_data);
+        let result = eval_div(&args, &dummy_context, &arena).unwrap();
         assert!(result.is_duration());
 
         let result_dur = result.as_duration().unwrap();
@@ -747,7 +811,7 @@ mod tests {
 
     #[test]
     fn test_min_max() {
-        let _arena = DataArena::new();
+        let arena = DataArena::new();
 
         // Test min with numbers
         let args = [
@@ -755,12 +819,14 @@ mod tests {
             DataValue::integer(5),
             DataValue::integer(2),
         ];
-        let result = eval_min(&args).unwrap();
+        let context = EvalContext::new(arena.null_value());
+        let result = eval_min(&args, &context).unwrap();
         assert_eq!(result.as_i64().unwrap(), 2);
 
         // Test max with numbers
         let args = [DataValue::integer(5), DataValue::integer(10)];
-        let result = eval_max(&args).unwrap();
+        let context = EvalContext::new(arena.null_value());
+        let result = eval_max(&args, &context).unwrap();
         assert_eq!(result.as_i64().unwrap(), 10);
 
         // Test min with datetimes
@@ -773,11 +839,13 @@ mod tests {
             .with_ymd_and_hms(2022, 7, 7, 13, 20, 6)
             .unwrap();
         let args = [DataValue::datetime(dt1), DataValue::datetime(dt2)];
-        let result = eval_min(&args).unwrap();
+        let context = EvalContext::new(arena.null_value());
+        let result = eval_min(&args, &context).unwrap();
         assert_eq!(result.as_datetime().unwrap().timestamp(), dt1.timestamp());
 
         // Test max with datetimes
-        let result = eval_max(&args).unwrap();
+        let context = EvalContext::new(arena.null_value());
+        let result = eval_max(&args, &context).unwrap();
         assert_eq!(result.as_datetime().unwrap().timestamp(), dt2.timestamp());
 
         // Test min with durations
@@ -787,11 +855,17 @@ mod tests {
             DataValue::duration(duration1),
             DataValue::duration(duration2),
         ];
-        let result = eval_min(&args).unwrap();
+        let context = EvalContext::new(arena.null_value());
+        let result = eval_min(&args, &context).unwrap();
         assert_eq!(result.as_duration().unwrap().num_days(), 1);
 
         // Test max with durations
-        let result = eval_max(&args).unwrap();
+        let args = [
+            DataValue::duration(duration1),
+            DataValue::duration(duration2),
+        ];
+        let context = EvalContext::new(arena.null_value());
+        let result = eval_max(&args, &context).unwrap();
         assert_eq!(result.as_duration().unwrap().num_days(), 2);
     }
 }

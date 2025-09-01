@@ -4,6 +4,7 @@
 //! which returns the type of a value as a string.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -23,14 +24,18 @@ use crate::value::DataValue;
 /// {"type": true} => "boolean"
 /// ```
 #[inline]
-pub fn eval_type<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_type<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Validate arguments: we need exactly one argument
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
     // Evaluate the argument to get its value
-    let value = evaluate(args[0], arena)?;
+    let value = evaluate(args[0], context, arena)?;
 
     // Get the type name as a string
     let type_name = value.type_name();

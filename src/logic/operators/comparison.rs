@@ -4,6 +4,7 @@
 //! such as equal, not equal, greater than, etc.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -82,6 +83,7 @@ fn validate_arguments(args: &[&Token]) -> Result<()> {
 /// Helper function to evaluate all pairs of arguments with a comparison function
 fn evaluate_pairwise<'a, F>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
     comparator: F,
 ) -> Result<&'a DataValue<'a>>
@@ -91,8 +93,8 @@ where
     validate_arguments(args)?;
 
     for i in 0..args.len() - 1 {
-        let left = evaluate(args[i], arena)?;
-        let right = evaluate(args[i + 1], arena)?;
+        let left = evaluate(args[i], context, arena)?;
+        let right = evaluate(args[i + 1], context, arena)?;
 
         if !comparator(left, right)? {
             return Ok(arena.false_value());
@@ -361,9 +363,10 @@ fn value_is_less_than_or_equal<'a>(
 /// Evaluates an equality comparison.
 pub fn eval_equal<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         values_are_equal(left, right, arena)
     })
 }
@@ -371,9 +374,10 @@ pub fn eval_equal<'a>(
 /// Evaluates a strict equality comparison.
 pub fn eval_strict_equal<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         values_are_strict_equal(left, right)
     })
 }
@@ -381,9 +385,10 @@ pub fn eval_strict_equal<'a>(
 /// Evaluates a not equal comparison.
 pub fn eval_not_equal<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         values_are_not_equal(left, right, arena)
     })
 }
@@ -391,9 +396,10 @@ pub fn eval_not_equal<'a>(
 /// Evaluates a strict not-equal comparison.
 pub fn eval_strict_not_equal<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         values_are_strict_not_equal(left, right)
     })
 }
@@ -401,9 +407,10 @@ pub fn eval_strict_not_equal<'a>(
 /// Evaluates a greater-than comparison.
 pub fn eval_greater_than<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         value_is_greater_than(left, right, arena)
     })
 }
@@ -411,9 +418,10 @@ pub fn eval_greater_than<'a>(
 /// Evaluates a greater-than-or-equal comparison.
 pub fn eval_greater_than_or_equal<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         value_is_greater_than_or_equal(left, right, arena)
     })
 }
@@ -421,9 +429,10 @@ pub fn eval_greater_than_or_equal<'a>(
 /// Evaluates a less-than comparison.
 pub fn eval_less_than<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         value_is_less_than(left, right, arena)
     })
 }
@@ -431,9 +440,10 @@ pub fn eval_less_than<'a>(
 /// Evaluates a less-than-or-equal comparison.
 pub fn eval_less_than_or_equal<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_pairwise(args, arena, |left, right| {
+    evaluate_pairwise(args, context, arena, |left, right| {
         value_is_less_than_or_equal(left, right, arena)
     })
 }

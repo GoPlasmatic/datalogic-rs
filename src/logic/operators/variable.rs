@@ -3,6 +3,7 @@
 //! This module provides the implementation of the variable operator.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::Result;
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -13,9 +14,10 @@ use crate::value::DataValue;
 pub fn evaluate_variable<'a>(
     path: &str,
     default: &Option<&'a Token<'a>>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    let current_context = arena.current_context(0).unwrap();
+    let current_context = context.current();
 
     // Handle empty path as a reference to the data itself
     if path.is_empty() {
@@ -24,11 +26,11 @@ pub fn evaluate_variable<'a>(
 
     // Fast path for direct property access (no dots)
     if !path.contains('.') {
-        return evaluate_simple_path(path, default, current_context, arena);
+        return evaluate_simple_path(path, default, current_context, context, arena);
     }
 
     // For paths with dots, process nested path
-    process_nested_path(path, default, current_context, arena)
+    process_nested_path(path, default, current_context, context, arena)
 }
 
 /// Process a nested path (with dots)
@@ -37,6 +39,7 @@ fn process_nested_path<'a>(
     path: &str,
     default: &Option<&'a Token<'a>>,
     current_context: &'a DataValue<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     let mut current = current_context;
@@ -56,18 +59,18 @@ fn process_nested_path<'a>(
             DataValue::Object(_) => {
                 current = match process_object_component(current, component) {
                     Some(value) => value,
-                    None => return use_default_or_null(default, arena),
+                    None => return use_default_or_null(default, context, arena),
                 }
             }
             DataValue::Array(_) => {
                 current = match process_array_component(current, component) {
                     Some(value) => value,
-                    None => return use_default_or_null(default, arena),
+                    None => return use_default_or_null(default, context, arena),
                 }
             }
             _ => {
                 // Not an object or array, use default
-                return use_default_or_null(default, arena);
+                return use_default_or_null(default, context, arena);
             }
         }
 
@@ -126,11 +129,12 @@ fn evaluate_simple_path<'a>(
     path: &str,
     default: &Option<&'a Token<'a>>,
     data: &'a DataValue<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Special case for numeric indices - direct array access
     if let Ok(index) = path.parse::<usize>() {
-        return handle_array_index_access(data, index, default, arena);
+        return handle_array_index_access(data, index, default, context, arena);
     }
 
     // Otherwise, look for a matching property in the object
@@ -139,7 +143,7 @@ fn evaluate_simple_path<'a>(
     }
 
     // Not found, use default
-    use_default_or_null(default, arena)
+    use_default_or_null(default, context, arena)
 }
 
 /// Handle direct array index access for simple paths
@@ -148,6 +152,7 @@ fn handle_array_index_access<'a>(
     data: &'a DataValue<'a>,
     index: usize,
     default: &Option<&'a Token<'a>>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if let Some(value) = get_array_index(data, index) {
@@ -155,7 +160,7 @@ fn handle_array_index_access<'a>(
     }
 
     // Not found or not an array, use default
-    use_default_or_null(default, arena)
+    use_default_or_null(default, context, arena)
 }
 
 /// Helper function to find a key in an object
@@ -216,10 +221,11 @@ fn get_array_index<'a>(arr: &'a DataValue<'a>, index: usize) -> Option<&'a DataV
 #[inline]
 fn use_default_or_null<'a>(
     default: &Option<&'a Token<'a>>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     if let Some(default_token) = default {
-        evaluate(default_token, arena)
+        evaluate(default_token, context, arena)
     } else {
         Ok(arena.null_value())
     }
@@ -250,24 +256,24 @@ mod tests {
 
         // For low-level testing, convert to DataValue
         let data = DataValue::from_json(&data_json, &arena);
-        let key = DataValue::String("$");
-        arena.set_current_context(&data, &key);
+        let data_ref = arena.alloc(data.clone());
+        let context = EvalContext::new(data_ref);
 
         // Test simple variable access
         let path = "a";
-        let result = evaluate_variable(path, &None, &arena).unwrap();
+        let result = evaluate_variable(path, &None, &context, &arena).unwrap();
         assert_eq!(result.as_i64(), Some(1));
 
         // Test nested variable access
         let path = "b.c";
-        let result = evaluate_variable(path, &None, &arena).unwrap();
+        let result = evaluate_variable(path, &None, &context, &arena).unwrap();
         assert_eq!(result.as_i64(), Some(2));
 
         // Test missing variable with default
         let path = "d";
         let default_value = Token::literal(DataValue::string(&arena, "default"));
         let default_token = arena.alloc(default_value);
-        let result = evaluate_variable(path, &Some(default_token), &arena).unwrap();
+        let result = evaluate_variable(path, &Some(default_token), &context, &arena).unwrap();
         assert_eq!(result.as_str(), Some("default"));
 
         // Test using direct token creation
@@ -402,13 +408,13 @@ mod tests {
         });
 
         let data = DataValue::from_json(&data_json, &arena);
-        let key = DataValue::String("$");
-        arena.set_current_context(&data, &key);
+        let data_ref = arena.alloc(data.clone());
+        let context = EvalContext::new(data_ref);
 
         // Test single path exists
         let path = DataValue::string(&arena, "a");
         let path_slice = arena.vec_into_slice(vec![path]);
-        let result = eval_exists(path_slice, &arena).unwrap();
+        let result = eval_exists(path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
 
         // Test nested path exists
@@ -417,13 +423,13 @@ mod tests {
             DataValue::string(&arena, "c"),
         ]));
         let nested_path_slice = arena.vec_into_slice(vec![nested_path]);
-        let result = eval_exists(nested_path_slice, &arena).unwrap();
+        let result = eval_exists(nested_path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
 
         // Test path doesn't exist
         let nonexistent_path = DataValue::string(&arena, "nonexistent");
         let nonexistent_path_slice = arena.vec_into_slice(vec![nonexistent_path]);
-        let result = eval_exists(nonexistent_path_slice, &arena).unwrap();
+        let result = eval_exists(nonexistent_path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
 
         // Test nested path doesn't exist
@@ -432,7 +438,7 @@ mod tests {
             DataValue::string(&arena, "nonexistent"),
         ]));
         let nonexistent_nested_path_slice = arena.vec_into_slice(vec![nonexistent_nested_path]);
-        let result = eval_exists(nonexistent_nested_path_slice, &arena).unwrap();
+        let result = eval_exists(nonexistent_nested_path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
 
         // Test using direct operator creation

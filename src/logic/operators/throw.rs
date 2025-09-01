@@ -3,6 +3,7 @@
 //! This module provides the implementation of the throw operator.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -53,12 +54,13 @@ fn extract_error_message<'a>(error_value: &'a DataValue<'a>) -> String {
 #[inline]
 pub fn eval_throw<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     validate_throw_args(args)?;
 
     // Evaluate the first argument to get the error value/type
-    let error_value = evaluate(args[0], arena)?;
+    let error_value = evaluate(args[0], context, arena)?;
     let error_message = extract_error_message(error_value);
 
     Err(LogicError::thrown_error(error_message))

@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "3.0.37"
+version = "3.1.0"
 edition = "2024"
 exclude = [".DS_Store", "/target", ".vscode", ".github"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
@@ -18,4 +18,5 @@ thiserror = "2.0"
 lazy_static = "1.5.0"
 bumpalo = { version = "3.19", features = ["collections", "boxed", "serde"] }
 chrono = "0.4.41"
-regex = "1.11.1"
+regex = "1.11.2"
+smallvec = "1.15"

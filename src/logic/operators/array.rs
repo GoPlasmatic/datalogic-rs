@@ -4,6 +4,7 @@
 //! such as map, filter, reduce, etc.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::operators::arithmetic::ArithmeticOp;
@@ -58,6 +59,7 @@ enum PredicateOp {
 fn eval_predicate<'a>(
     args: &'a [&'a Token<'a>],
     op_type: PredicateOp,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -66,11 +68,7 @@ fn eval_predicate<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], arena)?;
-    if let Token::Variable { path, .. } = args[0] {
-        let key = DataValue::String(path);
-        arena.push_path_key(arena.alloc(key));
-    }
+    let array = evaluate(args[0], context, arena)?;
 
     // Check that the first argument is an array
     let items = match array {
@@ -110,24 +108,13 @@ fn eval_predicate<'a>(
         PredicateOp::None => true,
     };
 
-    // Save the current context before array iteration
-    let saved_context = arena.current_context(0);
-
     // Evaluate the items
     for (index, item) in items.iter().enumerate() {
-        // Store the current path chain length to preserve parent contexts
-        let current_chain_len = arena.path_chain_len();
-
-        let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-        arena.set_current_context(item, arena.alloc(key));
+        // Create new context with the current item and index
+        let item_context = context.push_with_index(item, index);
 
         // Evaluate the condition with the item as context
-        let item_matches = evaluate(condition, arena)?.coerce_to_bool();
-
-        // Restore the path chain to its original state
-        while arena.path_chain_len() > current_chain_len {
-            arena.pop_path_component();
-        }
+        let item_matches = evaluate(condition, &item_context, arena)?.coerce_to_bool();
 
         // Early return optimization based on operation type
         match op_type {
@@ -155,9 +142,6 @@ fn eval_predicate<'a>(
         }
     }
 
-    // Restore the original context after array iteration
-    arena.restore_context(saved_context);
-
     // Return result based on the final boolean
     if result {
         Ok(arena.true_value())
@@ -167,24 +151,37 @@ fn eval_predicate<'a>(
 }
 
 /// Evaluates an all operation.
-pub fn eval_all<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
-    eval_predicate(args, PredicateOp::All, arena)
+pub fn eval_all<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    eval_predicate(args, PredicateOp::All, context, arena)
 }
 
 /// Evaluates a some operation.
-pub fn eval_some<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
-    eval_predicate(args, PredicateOp::Some, arena)
+pub fn eval_some<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    eval_predicate(args, PredicateOp::Some, context, arena)
 }
 
 /// Evaluates a none operation.
-pub fn eval_none<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
-    eval_predicate(args, PredicateOp::None, arena)
+pub fn eval_none<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    eval_predicate(args, PredicateOp::None, context, arena)
 }
 
 /// Helper function to safely evaluate the first argument as an array and handle common edge cases.
 /// Returns the array items or appropriate defaults for null/empty arrays.
 fn get_array_items<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<Option<&'a [DataValue<'a>]>> {
     if args.is_empty() {
@@ -192,13 +189,7 @@ fn get_array_items<'a>(
     }
 
     // Evaluate the first argument to get the array
-    let array = evaluate(args[0], arena)?;
-
-    // Add path key if this is a variable path
-    if let Token::Variable { path, .. } = args[0] {
-        let key = DataValue::String(path);
-        arena.push_path_key(arena.alloc(key));
-    }
+    let array = evaluate(args[0], context, arena)?;
 
     // Check that the first argument is an array
     match array {
@@ -213,41 +204,6 @@ fn get_array_items<'a>(
         DataValue::Null => Ok(None),
         _ => Err(LogicError::InvalidArgumentsError),
     }
-}
-
-/// Helper function to evaluate a function with an array item as context
-/// and properly manage the path chain state.
-fn with_array_item_context<'a, F, T>(
-    item: &'a DataValue<'a>,
-    index: usize,
-    arena: &'a DataArena,
-    callback: F,
-) -> T
-where
-    F: FnOnce() -> T,
-{
-    // Save the current context before changing it
-    let saved_context = arena.current_context(0);
-
-    // Store the current path chain length to preserve parent contexts
-    let current_chain_len = arena.path_chain_len();
-
-    // Set the current item as context with the index as key
-    let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-    arena.set_current_context(item, arena.alloc(key));
-
-    // Call the function with the item as context
-    let result = callback();
-
-    // Restore the path chain to its original state
-    while arena.path_chain_len() > current_chain_len {
-        arena.pop_path_component();
-    }
-
-    // Restore the original context
-    arena.restore_context(saved_context);
-
-    result
 }
 
 /// Evaluates a map operation.
@@ -268,26 +224,23 @@ where
 /// ```json
 /// {"map": [{"var": "person"}, {"cat": [{"var": "key"}, ":", {"var": ""}]}]}
 /// ```
-pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_map<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
     // Evaluate the first argument to get the collection
-    let collection = evaluate(args[0], arena)?;
-    if let Token::Variable { path, .. } = args[0] {
-        let key = DataValue::String(path);
-        arena.push_path_key(arena.alloc(key));
-    }
+    let collection = evaluate(args[0], context, arena)?;
 
     // Handle null case - return empty array
     if collection.is_null() {
         return Ok(arena.empty_array_value());
     }
-
-    // Save the current context before array iteration
-    let saved_context = arena.current_context(0);
 
     // Get a vector from the arena's pool for results
     let mut result_values = arena.get_data_value_vec();
@@ -299,21 +252,13 @@ pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 
             // Apply the function to each item
             for (index, item) in items.iter().enumerate() {
-                // Store the current path chain length to preserve parent contexts
-                let current_chain_len = arena.path_chain_len();
-
-                let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-                arena.set_current_context(item, arena.alloc(key));
+                // Create new context with the current item and index
+                let item_context = context.push_with_index(item, index);
 
                 // Evaluate the function with the item as context
-                let result = evaluate(args[1], arena)?;
+                let result = evaluate(args[1], &item_context, arena)?;
 
                 result_values.push(result.clone());
-
-                // Restore the path chain to its original state
-                while arena.path_chain_len() > current_chain_len {
-                    arena.pop_path_component();
-                }
             }
         }
 
@@ -327,22 +272,14 @@ pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
             entry_refs.sort_by(|a, b| a.0.cmp(b.0));
 
             // Apply the function to each property value
-            for (key, value) in entry_refs {
-                // Store the current path chain length to preserve parent contexts
-                let current_chain_len = arena.path_chain_len();
-
-                let key_value = DataValue::String(key);
-                arena.set_current_context(value, arena.alloc(key_value));
+            for (index, (key, value)) in entry_refs.iter().enumerate() {
+                // Create new context with the property value, index, and key
+                let item_context = context.push_with_index_and_key(value, index, key);
 
                 // Evaluate the function with the property value as context
-                let result = evaluate(args[1], arena)?;
+                let result = evaluate(args[1], &item_context, arena)?;
 
                 result_values.push(result.clone());
-
-                // Restore the path chain to its original state
-                while arena.path_chain_len() > current_chain_len {
-                    arena.pop_path_component();
-                }
             }
         }
 
@@ -350,26 +287,15 @@ pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
         _ => {
             result_values.reserve(1);
 
-            // Store the current path chain length to preserve parent contexts
-            let current_chain_len = arena.path_chain_len();
-
-            let key = DataValue::Number(crate::value::NumberValue::from_f64(0.0));
-            arena.set_current_context(collection, arena.alloc(key));
+            // Create new context with the single value
+            let item_context = context.push(collection);
 
             // Evaluate the function with the value as context
-            let result = evaluate(args[1], arena)?;
+            let result = evaluate(args[1], &item_context, arena)?;
 
             result_values.push(result.clone());
-
-            // Restore the path chain to its original state
-            while arena.path_chain_len() > current_chain_len {
-                arena.pop_path_component();
-            }
         }
     }
-
-    // Restore the original context after array iteration
-    arena.restore_context(saved_context);
 
     // Create and return the result array
     let result = DataValue::Array(arena.bump_vec_into_slice(result_values));
@@ -391,6 +317,7 @@ pub fn eval_map<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 /// ```
 pub fn eval_filter<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for invalid arguments
@@ -399,7 +326,7 @@ pub fn eval_filter<'a>(
     }
 
     // Get the array items and handle empty/null arrays
-    let items_opt = get_array_items(args, arena)?;
+    let items_opt = get_array_items(args, context, arena)?;
 
     // Handle null or empty arrays
     if items_opt.is_none() || items_opt.unwrap().is_empty() {
@@ -415,10 +342,11 @@ pub fn eval_filter<'a>(
 
     // Filter the array
     for (index, item) in items.iter().enumerate() {
+        // Create new context with the current item and index
+        let item_context = context.push_with_index(item, index);
+
         // Evaluate condition with item as context
-        let item_matches = with_array_item_context(item, index, arena, || {
-            evaluate(condition, arena).map(|v| v.coerce_to_bool())
-        })?;
+        let item_matches = evaluate(condition, &item_context, arena)?.coerce_to_bool();
 
         // Add the item to results if it matches the condition
         if item_matches {
@@ -587,6 +515,7 @@ fn reduce_max<'a>(
 /// ```
 pub fn eval_reduce<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Validate argument count
@@ -595,7 +524,7 @@ pub fn eval_reduce<'a>(
     }
 
     // Get the array items and handle empty/null arrays
-    let items_opt = get_array_items(args, arena)?;
+    let items_opt = get_array_items(args, context, arena)?;
 
     // Handle null or empty arrays
     let items = match items_opt {
@@ -603,7 +532,7 @@ pub fn eval_reduce<'a>(
         _ => {
             // For empty arrays, return the initial value if provided
             return if args.len() == 3 {
-                evaluate(args[2], arena)
+                evaluate(args[2], context, arena)
             } else {
                 Err(LogicError::InvalidArgumentsError)
             };
@@ -612,7 +541,7 @@ pub fn eval_reduce<'a>(
 
     // Get the initial value
     let initial = if args.len() == 3 {
-        evaluate(args[2], arena)?
+        evaluate(args[2], context, arena)?
     } else {
         // If no initial value is provided, use the first item
         &items[0]
@@ -641,37 +570,22 @@ pub fn eval_reduce<'a>(
         };
     }
 
-    // Save the current context before reduction
-    let saved_context = arena.current_context(0);
-
     // For the generic case, create a context object with current item and accumulator
     let curr_key = arena.intern_str("current");
     let acc_key = arena.intern_str("accumulator");
     let mut acc = initial;
 
     // Reduce the array using the generic approach
-    for (index, item) in items.iter().enumerate().skip(start_idx) {
-        // Call with context containing both current item and accumulator
-        let current_chain_len = arena.path_chain_len();
-        let index_key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-
+    for (_index, item) in items.iter().enumerate().skip(start_idx) {
         // Create context object with current item and accumulator
         let entries = vec![(curr_key, item.clone()), (acc_key, acc.clone())];
         let context_entries = arena.vec_into_slice(entries);
-        let context = arena.alloc(DataValue::Object(context_entries));
+        let context_obj = arena.alloc(DataValue::Object(context_entries));
 
-        // Set context and evaluate
-        arena.set_current_context(context, &index_key);
-        acc = evaluate(function, arena)?;
-
-        // Restore path chain
-        while arena.path_chain_len() > current_chain_len {
-            arena.pop_path_component();
-        }
+        // Create new context with the reduce context object
+        let reduce_context = context.push(context_obj);
+        acc = evaluate(function, &reduce_context, arena)?;
     }
-
-    // Restore the original context after reduction
-    arena.restore_context(saved_context);
 
     Ok(acc)
 }
@@ -687,6 +601,7 @@ pub fn eval_reduce<'a>(
 /// ```
 pub fn eval_merge<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Fast path for no arguments
@@ -701,7 +616,7 @@ pub fn eval_merge<'a>(
 
     // Process each argument
     for arg in args {
-        let value = evaluate(arg, arena)?;
+        let value = evaluate(arg, context, arena)?;
 
         match value {
             DataValue::Array(items) => {
@@ -740,15 +655,19 @@ pub fn eval_merge<'a>(
 /// ```json
 /// {"in": ["apple", {"var": "fruits"}]}
 /// ```
-pub fn eval_in<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_in<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Validate arguments
     if args.len() != 2 {
         return Err(LogicError::InvalidArgumentsError);
     }
 
     // Evaluate the needle and haystack
-    let needle = evaluate(args[0], arena)?;
-    let haystack = evaluate(args[1], arena)?;
+    let needle = evaluate(args[0], context, arena)?;
+    let haystack = evaluate(args[1], context, arena)?;
 
     // Search based on haystack type
     let result = match haystack {
@@ -811,6 +730,7 @@ pub fn eval_in<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'
 /// ```
 pub fn eval_length<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Validate arguments
@@ -819,7 +739,7 @@ pub fn eval_length<'a>(
     }
 
     // Evaluate the argument to get the array or string
-    let value = evaluate(args[0], arena)?;
+    let value = evaluate(args[0], context, arena)?;
 
     // Calculate length based on type
     match value {
@@ -1103,6 +1023,7 @@ fn eval_string_slice<'a>(
 /// ```
 pub fn eval_slice<'a>(
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Validate arguments
@@ -1111,7 +1032,7 @@ pub fn eval_slice<'a>(
     }
 
     // Evaluate the collection (array or string)
-    let collection = evaluate(args[0], arena)?;
+    let collection = evaluate(args[0], context, arena)?;
 
     // Handle null case
     if collection.is_null() {
@@ -1120,19 +1041,19 @@ pub fn eval_slice<'a>(
 
     // Get slice parameters (start, end, step)
     let start = if args.len() > 1 {
-        Some(evaluate(args[1], arena)?)
+        Some(evaluate(args[1], context, arena)?)
     } else {
         None
     };
 
     let end = if args.len() > 2 {
-        Some(evaluate(args[2], arena)?)
+        Some(evaluate(args[2], context, arena)?)
     } else {
         None
     };
 
     let step = if args.len() > 3 {
-        Some(evaluate(args[3], arena)?)
+        Some(evaluate(args[3], context, arena)?)
     } else {
         None
     };
@@ -1142,35 +1063,6 @@ pub fn eval_slice<'a>(
         DataValue::Array(array) => eval_array_slice(array, start, end, step, arena),
         DataValue::String(s) => eval_string_slice(s, start, end, step, arena),
         _ => Err(LogicError::InvalidArgumentsError),
-    }
-}
-
-/// Helper function to extract a field value from an item for sorting
-fn extract_field_value<'a>(
-    item: &'a DataValue<'a>,
-    extractor: Option<&'a Token<'a>>,
-    arena: &'a DataArena,
-) -> Result<&'a DataValue<'a>> {
-    if let Some(extractor_token) = extractor {
-        // Store current context and key
-        let current_context = arena.current_context(0);
-        let current_key = arena.last_path_component();
-
-        // Set the item as the context for field extraction
-        arena.set_current_context(item, &DataValue::String(""));
-
-        // Evaluate the extractor with the item as context
-        let result = evaluate(extractor_token, arena);
-
-        // Restore original context if it exists
-        if let (Some(ctx), Some(key)) = (current_context, current_key) {
-            arena.set_current_context(ctx, key);
-        }
-
-        result
-    } else {
-        // If no extractor, use the item itself
-        Ok(item)
     }
 }
 
@@ -1302,14 +1194,18 @@ fn compare_values<'a>(a: &'a DataValue<'a>, b: &'a DataValue<'a>) -> std::cmp::O
 /// ```json
 /// {"sort": [{"var": "myArray"}, false, {"var": "fieldName"}]}
 /// ```
-pub fn eval_sort<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_sort<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // Validate arguments
     if args.is_empty() {
         return Err(LogicError::InvalidArgumentsError);
     }
 
     // Evaluate the array
-    let array_value = evaluate(args[0], arena)?;
+    let array_value = evaluate(args[0], context, arena)?;
 
     // Handle special cases for null/empty
     if args.len() == 1 && args[0].is_literal() && array_value.is_null() {
@@ -1337,7 +1233,7 @@ pub fn eval_sort<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
     // Parse sort direction from second argument
     let mut ascending = true;
     if args.len() > 1 {
-        let dir_value = evaluate(args[1], arena)?;
+        let dir_value = evaluate(args[1], context, arena)?;
         if let Some(dir_bool) = dir_value.as_bool() {
             ascending = dir_bool;
         } else if let Some(dir_str) = dir_value.as_str() {
@@ -1354,24 +1250,32 @@ pub fn eval_sort<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 
     // Sort the array based on field extractor presence
     if let Some(extractor) = field_extractor {
-        // Sort using extracted field values
-        result.sort_by(|a, b| {
-            // Extract field values for comparison
-            let a_field = extract_field_value(a, Some(extractor), arena);
-            let b_field = extract_field_value(b, Some(extractor), arena);
+        // Extract field values for sorting
+        // We need to evaluate the extractor for each item and store the results
+        let mut items_with_keys: Vec<(&DataValue, DataValue)> = Vec::with_capacity(result.len());
 
-            match (a_field, b_field) {
-                (Ok(a_val), Ok(b_val)) => {
-                    if ascending {
-                        compare_values(a_val, b_val)
-                    } else {
-                        compare_values(b_val, a_val)
-                    }
-                }
-                // If extraction fails, treat elements as equal
-                _ => std::cmp::Ordering::Equal,
-            }
-        });
+        for item in &result {
+            // Create new context with the item as current
+            let item_ref = arena.alloc(item.clone());
+            let item_context = context.push(item_ref);
+
+            // Evaluate the extractor to get the sort key
+            let sort_key = evaluate(extractor, &item_context, arena)?;
+            items_with_keys.push((item, sort_key.clone()));
+        }
+
+        // Sort by the extracted keys
+        if ascending {
+            items_with_keys.sort_by(|a, b| compare_values(&a.1, &b.1));
+        } else {
+            items_with_keys.sort_by(|a, b| compare_values(&b.1, &a.1));
+        }
+
+        // Extract just the items in sorted order
+        result = items_with_keys
+            .into_iter()
+            .map(|(item, _)| item.clone())
+            .collect();
     } else {
         // Direct item comparison without extraction
         if ascending {
@@ -1747,6 +1651,51 @@ mod tests {
         let json_data = json!({"string": "hello world"});
         let result = core.apply(&rule, &json_data).unwrap();
         assert_eq!(result, json!("hel"));
+    }
+
+    #[test]
+    fn test_sort_with_field_extraction() {
+        // Test that field extraction works correctly when sorting objects
+        let core = DataLogicCore::new();
+        let arena = core.arena();
+
+        // Create objects where field extraction would give different order than object comparison
+        let data_json = json!({
+            "items": [
+                {"a_field": 3, "z_value": 1},  // z_value=1 should be first when sorting by z_value
+                {"a_field": 1, "z_value": 3},  // z_value=3 should be last
+                {"a_field": 2, "z_value": 2}   // z_value=2 should be middle
+            ]
+        });
+
+        // Sort by z_value field
+        let items_var = Token::variable("items", None);
+        let items_ref = arena.alloc(items_var);
+
+        let true_token = Token::literal(DataValue::Bool(true));
+        let true_ref = arena.alloc(true_token);
+
+        let z_value_var = Token::variable("z_value", None);
+        let z_value_ref = arena.alloc(z_value_var);
+
+        let sort_args = vec![items_ref, true_ref, z_value_ref];
+        let sort_array = Token::ArrayLiteral(sort_args);
+        let sort_array_ref = arena.alloc(sort_array);
+
+        let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
+        let sort_ref = arena.alloc(sort_token);
+
+        let rule = Logic::new(sort_ref, arena);
+        let result = core.apply(&rule, &data_json).unwrap();
+
+        // If field extraction worked, first item should have z_value=1
+        let result_array = result.as_array().unwrap();
+        let first_item = result_array[0].as_object().unwrap();
+        let first_z_value = first_item["z_value"].as_i64().unwrap();
+
+        // Verify that field extraction works correctly
+        // Should sort by z_value field, not by object comparison
+        assert_eq!(first_z_value, 1, "Should sort by z_value field");
     }
 
     #[test]

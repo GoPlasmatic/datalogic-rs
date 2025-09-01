@@ -4,6 +4,7 @@
 //! which is a replacement for the var operator.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -21,29 +22,31 @@ fn validate_val_args(args: &[&Token]) -> Result<()> {
 /// The val operator is used to access properties from the data context
 /// Examples: {"val": "a"}, {"val": ["a", "b", "c"]}, {"val": 0}
 #[inline]
-pub fn eval_val<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_val<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     validate_val_args(args)?;
 
     // Evaluate the first argument to get the path
-    let first_arg = evaluate(args[0], arena)?;
+    let first_arg = evaluate(args[0], context, arena)?;
 
     // If we have a second argument, it's a property access on the first argument
     if args.len() > 1 {
-        return handle_property_access(first_arg, args, arena);
+        return handle_property_access(first_arg, args, context, arena);
     }
 
     // Regular val operator behavior (accessing data context)
-    let current_context = arena
-        .current_context(0)
-        .unwrap_or_else(|| arena.null_value());
+    let current_context = context.current();
 
     // Fast path: String path access without scope jump (most common case)
     if let DataValue::String(path_str) = first_arg {
-        return handle_string_path(path_str, current_context, arena);
+        return handle_string_path(path_str, current_context, context, arena);
     }
 
     // Process other path types (slower paths)
-    process_complex_path(first_arg, current_context, arena)
+    process_complex_path(first_arg, current_context, context, arena)
 }
 
 /// Handles property access when we have a second argument
@@ -51,9 +54,10 @@ pub fn eval_val<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
 fn handle_property_access<'a>(
     first_arg: &'a DataValue<'a>,
     args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
-    let property = evaluate(args[1], arena)?;
+    let property = evaluate(args[1], context, arena)?;
 
     if let DataValue::String(prop_name) = property {
         // Handle special object types first (datetime, duration)
@@ -141,8 +145,20 @@ fn handle_special_object_types<'a>(
 fn handle_string_path<'a>(
     path_str: &str,
     current_context: &'a DataValue<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
+    // Check for special properties first
+    if path_str == "index" {
+        if let Some(index) = context.current_index() {
+            return Ok(arena.alloc(DataValue::integer(index as i64)));
+        }
+    } else if path_str == "key"
+        && let Some(key) = context.current_key()
+    {
+        return Ok(arena.alloc(DataValue::string(arena, key)));
+    }
+
     // Handle empty string as a reference to the property with empty key
     if path_str.is_empty() {
         return access_property(current_context, "", arena);
@@ -152,27 +168,24 @@ fn handle_string_path<'a>(
     access_property(current_context, path_str, arena)
 }
 
-/// Get the current index in an array operation context
+/// Handle the special case of accessing "key" with a scope jump
 #[inline]
-fn get_current_index(arena: &DataArena) -> Result<&DataValue<'_>> {
-    // Check if we're in a scope with an array index
-    if let Some(DataValue::Number(n)) = arena.last_path_component()
-        && let Some(idx) = n.as_i64()
-    {
-        // Return the array index as a DataValue
-        return Ok(arena.alloc(DataValue::integer(idx)));
-    }
-    // If we can't find a valid index, return 0
-    Ok(arena.alloc(DataValue::integer(0)))
-}
+fn handle_key_with_jump<'a>(
+    _jump: i64,
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Special case: "key" always refers to the current iteration key,
+    // regardless of the jump value. The jump determines which context to access,
+    // but "key" is metadata about the current iteration, not a property of that context.
 
-/// Get the current key in an array operation context
-#[inline]
-fn get_current_key(arena: &DataArena) -> Result<&DataValue<'_>> {
-    if let Some(DataValue::String(key)) = arena.last_path_component() {
-        return Ok(arena.alloc(DataValue::string(arena, key)));
+    // Get the current iteration key
+    if let Some(key) = context.current_key() {
+        Ok(arena.alloc(DataValue::string(arena, key)))
+    } else {
+        // No key tracked for current iteration
+        Ok(arena.null_value())
     }
-    Ok(arena.null_value())
 }
 
 /// Process complex path expressions that may involve scope jumps or nested access
@@ -181,6 +194,7 @@ fn get_current_key(arena: &DataArena) -> Result<&DataValue<'_>> {
 fn process_complex_path<'a>(
     path_value: &'a DataValue<'a>,
     current_context: &'a DataValue<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     match path_value {
@@ -196,7 +210,7 @@ fn process_complex_path<'a>(
             if let DataValue::Array(jumps) = path_components[0]
                 && jumps.len() == 1
             {
-                return handle_scope_jump(jumps, path_components, arena);
+                return handle_scope_jump(jumps, path_components, context, arena);
             }
 
             navigate_nested_path(current_context, path_components, arena)
@@ -235,26 +249,40 @@ fn handle_numeric_path<'a>(
 fn handle_scope_jump<'a>(
     jumps: &'a [DataValue<'a>],
     path_components: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     let jump = jumps[0].as_i64().unwrap_or(0);
 
+    // Jump values are always relative - the sign doesn't matter
+    // 0 = current context (depth 0)
+    // ±1 = parent context (depth 1)
+    // ±2 = grandparent context (depth 2)
+    // etc.
+    // If the requested depth is beyond the stack, clamp to the root (maximum depth)
+    let requested_depth = jump.unsigned_abs() as usize;
+    let max_depth = context.depth().saturating_sub(1);
+    let depth = requested_depth.min(max_depth);
+
     // Get the context after jumping up the scope chain
-    let jumped_context = arena
-        .current_context(jump.unsigned_abs() as usize)
+    let jumped_context = context
+        .at_depth(depth)
         .unwrap_or_else(|| arena.null_value());
 
     // If there are additional path components beyond the jump, navigate them
     if path_components.len() > 1 {
-        // Special case for accessing the index after a scope jump
-        if path_components.len() == 2 {
-            if matches!(path_components[1], DataValue::String(key) if key == "index") {
-                return handle_index_with_jump(jump, arena);
-            } else if matches!(path_components[1], DataValue::String(key) if key == "key") {
-                return get_current_key(arena);
+        // Check if the next component is a special property (index or key)
+        if let DataValue::String(prop_name) = &path_components[1] {
+            if *prop_name == "index" {
+                // Get the index at the jumped-to depth
+                return handle_index_with_jump(jump, context, arena);
+            } else if *prop_name == "key" {
+                // Get the key at the jumped-to depth (for object iteration)
+                return handle_key_with_jump(jump, context, arena);
             }
         }
 
+        // Not a special property, navigate normally
         return navigate_nested_path(jumped_context, &path_components[1..], arena);
     }
 
@@ -264,42 +292,22 @@ fn handle_scope_jump<'a>(
 /// Handle the special case of accessing "index" with a scope jump
 #[cold]
 #[inline(never)]
-fn handle_index_with_jump(jump: i64, arena: &DataArena) -> Result<&DataValue<'_>> {
-    let path_len = arena.path_chain_len();
+fn handle_index_with_jump<'a>(
+    _jump: i64,
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
+    // Special case: "index" always refers to the current iteration index,
+    // regardless of the jump value. The jump determines which context to access,
+    // but "index" is metadata about the current iteration, not a property of that context.
 
-    // For positive jump, we need to get the current array index
-    // A jump of +1 means look at the current array index
-    if jump > 0 && jump <= path_len as i64 {
-        return get_current_index(arena);
+    // Get the current iteration index
+    if let Some(index) = context.current_index() {
+        Ok(arena.alloc(DataValue::integer(index as i64)))
+    } else {
+        // No index tracked for current iteration
+        Ok(arena.null_value())
     }
-
-    // For negative jump, check if we're looking at the current array index
-    let jump_level = jump.unsigned_abs() as usize;
-    if jump == -1 {
-        // For -1 jump, prioritize checking the current array index
-        return get_current_index(arena);
-    }
-
-    // For other negative jumps, use path chain navigation
-    if jump_level < path_len {
-        return arena.with_path_chain(|path_components| {
-            let idx_position = path_len - jump_level;
-
-            if idx_position > 0
-                && idx_position <= path_components.len()
-                && let DataValue::Number(n) = path_components[idx_position - 1]
-                && let Some(idx) = n.as_i64()
-            {
-                return Ok(arena.alloc(DataValue::integer(idx)));
-            }
-
-            // If we can't find a valid index, return 0
-            Ok(arena.alloc(DataValue::integer(0)))
-        });
-    }
-
-    // If we can't find a valid index, return 0
-    Ok(arena.alloc(DataValue::integer(0)))
 }
 
 /// Access a property from an object or an array using a string key
@@ -516,6 +524,7 @@ fn handle_number_component<'a>(
 /// Evaluates if a path exists in the input data.
 pub fn eval_exists<'a>(
     args: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Validate arguments
@@ -523,7 +532,7 @@ pub fn eval_exists<'a>(
         return Err(LogicError::InvalidArgumentsError);
     }
 
-    let current_context = arena.current_context(0).unwrap();
+    let current_context = context.current();
 
     // Single string key case
     if args.len() == 1 {
@@ -728,13 +737,12 @@ mod tests {
         });
 
         let data = <DataValue as crate::value::FromJson>::from_json(&data_json, &arena);
-        let key = DataValue::String("$");
-        arena.set_current_context(&data, &key);
+        let context = EvalContext::new(&data);
 
         // Test single path exists
         let path = DataValue::string(&arena, "a");
         let path_slice = arena.vec_into_slice(vec![path]);
-        let result = eval_exists(path_slice, &arena).unwrap();
+        let result = eval_exists(path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
 
         // Test nested path exists
@@ -743,13 +751,13 @@ mod tests {
             DataValue::string(&arena, "c"),
         ]));
         let nested_path_slice = arena.vec_into_slice(vec![nested_path]);
-        let result = eval_exists(nested_path_slice, &arena).unwrap();
+        let result = eval_exists(nested_path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
 
         // Test path doesn't exist
         let nonexistent_path = DataValue::string(&arena, "nonexistent");
         let nonexistent_path_slice = arena.vec_into_slice(vec![nonexistent_path]);
-        let result = eval_exists(nonexistent_path_slice, &arena).unwrap();
+        let result = eval_exists(nonexistent_path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
 
         // Test nested path doesn't exist
@@ -758,7 +766,7 @@ mod tests {
             DataValue::string(&arena, "nonexistent"),
         ]));
         let nonexistent_nested_path_slice = arena.vec_into_slice(vec![nonexistent_nested_path]);
-        let result = eval_exists(nonexistent_nested_path_slice, &arena).unwrap();
+        let result = eval_exists(nonexistent_nested_path_slice, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(false));
 
         // Test using direct operator creation

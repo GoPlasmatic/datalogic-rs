@@ -9,6 +9,7 @@ use super::operators::{
 };
 use super::token::{OperatorType, Token};
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::value::DataValue;
 
 /// Helper function to convert a token to a TokenRefs wrapper
@@ -27,33 +28,39 @@ fn convert_to_token_refs<'a>(args: &'a Token<'a>, arena: &'a DataArena) -> &'a [
 
 /// Evaluates a logic expression.
 #[inline]
-pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn evaluate<'a>(
+    token: &'a Token<'a>,
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     match token {
         // Fast path for literals - most common case
         Token::Literal(value) => Ok(value),
 
         // Fast path for variables - second most common case
-        Token::Variable { path, default } => variable::evaluate_variable(path, default, arena),
+        Token::Variable { path, default } => {
+            variable::evaluate_variable(path, default, context, arena)
+        }
 
         // Dynamic variables evaluate the path expression first
         Token::DynamicVariable { path_expr, default } => {
-            evaluate_dynamic_variable(path_expr, default, arena)
+            evaluate_dynamic_variable(path_expr, default, context, arena)
         }
 
         // Array literals evaluate each element
-        Token::ArrayLiteral(items) => evaluate_array_literal(items, arena),
+        Token::ArrayLiteral(items) => evaluate_array_literal(items, context, arena),
 
         // Operators apply a function to their arguments
-        Token::Operator { op_type, args } => evaluate_operator(*op_type, args, arena),
+        Token::Operator { op_type, args } => evaluate_operator(*op_type, args, context, arena),
 
         // Custom operators are looked up in a registry
         Token::CustomOperator { name, args } => {
-            let data_values = evaluate_arguments(args, arena)?;
-            evaluate_custom_operator(name, data_values, arena)
+            let data_values = evaluate_arguments(args, context, arena)?;
+            evaluate_custom_operator(name, data_values, context, arena)
         }
 
         // Structured objects evaluate each field value while preserving keys
-        Token::StructuredObject { fields } => evaluate_structured_object(fields, arena),
+        Token::StructuredObject { fields } => evaluate_structured_object(fields, context, arena),
     }
 }
 
@@ -62,16 +69,17 @@ pub fn evaluate<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a Da
 fn evaluate_dynamic_variable<'a>(
     path_expr: &'a Token<'a>,
     default: &Option<&'a Token<'a>>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Evaluate the path expression
-    let path_value = evaluate(path_expr, arena)?;
+    let path_value = evaluate(path_expr, context, arena)?;
 
     // Convert the path value to a string
     let path_str = convert_to_path_string(path_value, arena)?;
 
     // Evaluate the variable with the computed path
-    variable::evaluate_variable(path_str, default, arena)
+    variable::evaluate_variable(path_str, default, context, arena)
 }
 
 /// Converts a data value to a string for use as a variable path
@@ -109,6 +117,7 @@ fn convert_to_path_string<'a>(
 #[inline]
 fn evaluate_array_literal<'a>(
     items: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Get a vector from the arena's pool
@@ -116,7 +125,7 @@ fn evaluate_array_literal<'a>(
 
     // Evaluate each item in the array
     for item in items {
-        let value = evaluate(item, arena)?;
+        let value = evaluate(item, context, arena)?;
         values.push(value.clone());
     }
 
@@ -130,10 +139,11 @@ fn evaluate_array_literal<'a>(
 fn evaluate_custom_operator<'a>(
     name: &'a str,
     args: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Use the arena's evaluate_custom_operator method
-    arena.evaluate_custom_operator(name, args)
+    arena.evaluate_custom_operator(name, args, context)
 }
 
 /// Evaluates arguments and returns them as a slice of DataValues
@@ -141,6 +151,7 @@ fn evaluate_custom_operator<'a>(
 #[inline]
 fn evaluate_arguments<'a>(
     args: &'a Token<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a [DataValue<'a>]> {
     match args {
@@ -156,7 +167,7 @@ fn evaluate_arguments<'a>(
 
             // Evaluate each item in the array
             for item in items {
-                let value = evaluate(item, arena)?;
+                let value = evaluate(item, context, arena)?;
                 values.push(value.clone());
             }
 
@@ -166,7 +177,7 @@ fn evaluate_arguments<'a>(
 
         // For other token types, evaluate to a single value and wrap in a slice
         _ => {
-            let value = evaluate(args, arena)?;
+            let value = evaluate(args, context, arena)?;
             match value {
                 // If the result is already an array, use it directly
                 DataValue::Array(items) => Ok(items),
@@ -187,6 +198,7 @@ fn evaluate_arguments<'a>(
 fn evaluate_operator<'a>(
     op_type: OperatorType,
     args: &'a Token<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Get token references for lazy evaluation
@@ -194,35 +206,39 @@ fn evaluate_operator<'a>(
 
     match op_type {
         OperatorType::Comparison(comp_op) => {
-            evaluate_comparison_operator(comp_op, token_refs, arena)
+            evaluate_comparison_operator(comp_op, token_refs, context, arena)
         }
-        OperatorType::Array(array_op) => evaluate_array_operator(array_op, token_refs, arena),
+        OperatorType::Array(array_op) => {
+            evaluate_array_operator(array_op, token_refs, context, arena)
+        }
         OperatorType::Arithmetic(arith_op) => {
             // Evaluate arguments once and pass to the appropriate function
-            let args_result = evaluate_arguments(args, arena)?;
-            evaluate_arithmetic_operator(arith_op, args_result, arena)
+            let args_result = evaluate_arguments(args, context, arena)?;
+            evaluate_arithmetic_operator(arith_op, args_result, context, arena)
         }
         OperatorType::Control(control_op) => {
-            evaluate_control_operator(control_op, args, token_refs, arena)
+            evaluate_control_operator(control_op, args, token_refs, context, arena)
         }
-        OperatorType::String(string_op) => evaluate_string_operator(string_op, token_refs, arena),
+        OperatorType::String(string_op) => {
+            evaluate_string_operator(string_op, token_refs, context, arena)
+        }
         OperatorType::DateTime(datetime_op) => {
             // Evaluate arguments once and pass to the appropriate function
-            let args_result = evaluate_arguments(args, arena)?;
-            evaluate_datetime_operator(datetime_op, args_result, arena)
+            let args_result = evaluate_arguments(args, context, arena)?;
+            evaluate_datetime_operator(datetime_op, args_result, context, arena)
         }
-        OperatorType::Missing => missing::eval_missing(token_refs, arena),
-        OperatorType::MissingSome => missing::eval_missing_some(token_refs, arena),
+        OperatorType::Missing => missing::eval_missing(token_refs, context, arena),
+        OperatorType::MissingSome => missing::eval_missing_some(token_refs, context, arena),
         OperatorType::Exists => {
-            let args_result = evaluate_arguments(args, arena)?;
-            val::eval_exists(args_result, arena)
+            let args_result = evaluate_arguments(args, context, arena)?;
+            val::eval_exists(args_result, context, arena)
         }
-        OperatorType::Coalesce => eval_coalesce(token_refs, arena),
-        OperatorType::Throw => throw::eval_throw(token_refs, arena),
-        OperatorType::Try => r#try::eval_try(token_refs, arena),
-        OperatorType::Val => val::eval_val(token_refs, arena),
-        OperatorType::Type => type_op::eval_type(token_refs, arena),
-        OperatorType::ArrayLiteral => evaluate_array_literal_operator(token_refs, arena),
+        OperatorType::Coalesce => eval_coalesce(token_refs, context, arena),
+        OperatorType::Throw => throw::eval_throw(token_refs, context, arena),
+        OperatorType::Try => r#try::eval_try(token_refs, context, arena),
+        OperatorType::Val => val::eval_val(token_refs, context, arena),
+        OperatorType::Type => type_op::eval_type(token_refs, context, arena),
+        OperatorType::ArrayLiteral => evaluate_array_literal_operator(token_refs, context, arena),
     }
 }
 
@@ -231,22 +247,31 @@ fn evaluate_operator<'a>(
 fn evaluate_comparison_operator<'a>(
     comp_op: comparison::ComparisonOp,
     token_refs: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     match comp_op {
-        comparison::ComparisonOp::Equal => comparison::eval_equal(token_refs, arena),
-        comparison::ComparisonOp::StrictEqual => comparison::eval_strict_equal(token_refs, arena),
-        comparison::ComparisonOp::NotEqual => comparison::eval_not_equal(token_refs, arena),
+        comparison::ComparisonOp::Equal => comparison::eval_equal(token_refs, context, arena),
+        comparison::ComparisonOp::StrictEqual => {
+            comparison::eval_strict_equal(token_refs, context, arena)
+        }
+        comparison::ComparisonOp::NotEqual => {
+            comparison::eval_not_equal(token_refs, context, arena)
+        }
         comparison::ComparisonOp::StrictNotEqual => {
-            comparison::eval_strict_not_equal(token_refs, arena)
+            comparison::eval_strict_not_equal(token_refs, context, arena)
         }
-        comparison::ComparisonOp::GreaterThan => comparison::eval_greater_than(token_refs, arena),
+        comparison::ComparisonOp::GreaterThan => {
+            comparison::eval_greater_than(token_refs, context, arena)
+        }
         comparison::ComparisonOp::GreaterThanOrEqual => {
-            comparison::eval_greater_than_or_equal(token_refs, arena)
+            comparison::eval_greater_than_or_equal(token_refs, context, arena)
         }
-        comparison::ComparisonOp::LessThan => comparison::eval_less_than(token_refs, arena),
+        comparison::ComparisonOp::LessThan => {
+            comparison::eval_less_than(token_refs, context, arena)
+        }
         comparison::ComparisonOp::LessThanOrEqual => {
-            comparison::eval_less_than_or_equal(token_refs, arena)
+            comparison::eval_less_than_or_equal(token_refs, context, arena)
         }
     }
 }
@@ -256,20 +281,21 @@ fn evaluate_comparison_operator<'a>(
 fn evaluate_array_operator<'a>(
     array_op: array::ArrayOp,
     token_refs: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     match array_op {
-        array::ArrayOp::Map => array::eval_map(token_refs, arena),
-        array::ArrayOp::Filter => array::eval_filter(token_refs, arena),
-        array::ArrayOp::Reduce => array::eval_reduce(token_refs, arena),
-        array::ArrayOp::All => array::eval_all(token_refs, arena),
-        array::ArrayOp::Some => array::eval_some(token_refs, arena),
-        array::ArrayOp::None => array::eval_none(token_refs, arena),
-        array::ArrayOp::Merge => array::eval_merge(token_refs, arena),
-        array::ArrayOp::In => array::eval_in(token_refs, arena),
-        array::ArrayOp::Length => array::eval_length(token_refs, arena),
-        array::ArrayOp::Slice => array::eval_slice(token_refs, arena),
-        array::ArrayOp::Sort => array::eval_sort(token_refs, arena),
+        array::ArrayOp::Map => array::eval_map(token_refs, context, arena),
+        array::ArrayOp::Filter => array::eval_filter(token_refs, context, arena),
+        array::ArrayOp::Reduce => array::eval_reduce(token_refs, context, arena),
+        array::ArrayOp::All => array::eval_all(token_refs, context, arena),
+        array::ArrayOp::Some => array::eval_some(token_refs, context, arena),
+        array::ArrayOp::None => array::eval_none(token_refs, context, arena),
+        array::ArrayOp::Merge => array::eval_merge(token_refs, context, arena),
+        array::ArrayOp::In => array::eval_in(token_refs, context, arena),
+        array::ArrayOp::Length => array::eval_length(token_refs, context, arena),
+        array::ArrayOp::Slice => array::eval_slice(token_refs, context, arena),
+        array::ArrayOp::Sort => array::eval_sort(token_refs, context, arena),
     }
 }
 
@@ -278,19 +304,20 @@ fn evaluate_array_operator<'a>(
 fn evaluate_arithmetic_operator<'a>(
     arith_op: arithmetic::ArithmeticOp,
     args_result: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     match arith_op {
-        arithmetic::ArithmeticOp::Add => arithmetic::eval_add(args_result, arena),
-        arithmetic::ArithmeticOp::Subtract => arithmetic::eval_sub(args_result, arena),
-        arithmetic::ArithmeticOp::Multiply => arithmetic::eval_mul(args_result, arena),
-        arithmetic::ArithmeticOp::Divide => arithmetic::eval_div(args_result, arena),
-        arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(args_result, arena),
-        arithmetic::ArithmeticOp::Min => arithmetic::eval_min(args_result),
-        arithmetic::ArithmeticOp::Max => arithmetic::eval_max(args_result),
-        arithmetic::ArithmeticOp::Abs => arithmetic::eval_abs(args_result, arena),
-        arithmetic::ArithmeticOp::Ceil => arithmetic::eval_ceil(args_result, arena),
-        arithmetic::ArithmeticOp::Floor => arithmetic::eval_floor(args_result, arena),
+        arithmetic::ArithmeticOp::Add => arithmetic::eval_add(args_result, context, arena),
+        arithmetic::ArithmeticOp::Subtract => arithmetic::eval_sub(args_result, context, arena),
+        arithmetic::ArithmeticOp::Multiply => arithmetic::eval_mul(args_result, context, arena),
+        arithmetic::ArithmeticOp::Divide => arithmetic::eval_div(args_result, context, arena),
+        arithmetic::ArithmeticOp::Modulo => arithmetic::eval_mod(args_result, context, arena),
+        arithmetic::ArithmeticOp::Min => arithmetic::eval_min(args_result, context),
+        arithmetic::ArithmeticOp::Max => arithmetic::eval_max(args_result, context),
+        arithmetic::ArithmeticOp::Abs => arithmetic::eval_abs(args_result, context, arena),
+        arithmetic::ArithmeticOp::Ceil => arithmetic::eval_ceil(args_result, context, arena),
+        arithmetic::ArithmeticOp::Floor => arithmetic::eval_floor(args_result, context, arena),
     }
 }
 
@@ -300,6 +327,7 @@ fn evaluate_control_operator<'a>(
     control_op: control::ControlOp,
     args: &'a Token<'a>,
     token_refs: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Validate array literals for certain control operations
@@ -312,11 +340,13 @@ fn evaluate_control_operator<'a>(
     }
 
     match control_op {
-        control::ControlOp::If => control::eval_if(token_refs, arena),
-        control::ControlOp::And => control::eval_and(token_refs, arena),
-        control::ControlOp::Or => control::eval_or(token_refs, arena),
-        control::ControlOp::Not => control::eval_not(token_refs, arena),
-        control::ControlOp::DoubleNegation => control::eval_double_negation(token_refs, arena),
+        control::ControlOp::If => control::eval_if(token_refs, context, arena),
+        control::ControlOp::And => control::eval_and(token_refs, context, arena),
+        control::ControlOp::Or => control::eval_or(token_refs, context, arena),
+        control::ControlOp::Not => control::eval_not(token_refs, context, arena),
+        control::ControlOp::DoubleNegation => {
+            control::eval_double_negation(token_refs, context, arena)
+        }
     }
 }
 
@@ -325,18 +355,19 @@ fn evaluate_control_operator<'a>(
 fn evaluate_string_operator<'a>(
     string_op: string::StringOp,
     token_refs: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     match string_op {
-        string::StringOp::Cat => string::eval_cat(token_refs, arena),
-        string::StringOp::Substr => string::eval_substr(token_refs, arena),
-        string::StringOp::StartsWith => string::eval_starts_with(token_refs, arena),
-        string::StringOp::EndsWith => string::eval_ends_with(token_refs, arena),
-        string::StringOp::Upper => string::eval_upper(token_refs, arena),
-        string::StringOp::Lower => string::eval_lower(token_refs, arena),
-        string::StringOp::Trim => string::eval_trim(token_refs, arena),
-        string::StringOp::Replace => string::eval_replace(token_refs, arena),
-        string::StringOp::Split => string::eval_split(token_refs, arena),
+        string::StringOp::Cat => string::eval_cat(token_refs, context, arena),
+        string::StringOp::Substr => string::eval_substr(token_refs, context, arena),
+        string::StringOp::StartsWith => string::eval_starts_with(token_refs, context, arena),
+        string::StringOp::EndsWith => string::eval_ends_with(token_refs, context, arena),
+        string::StringOp::Upper => string::eval_upper(token_refs, context, arena),
+        string::StringOp::Lower => string::eval_lower(token_refs, context, arena),
+        string::StringOp::Trim => string::eval_trim(token_refs, context, arena),
+        string::StringOp::Replace => string::eval_replace(token_refs, context, arena),
+        string::StringOp::Split => string::eval_split(token_refs, context, arena),
     }
 }
 
@@ -345,15 +376,20 @@ fn evaluate_string_operator<'a>(
 fn evaluate_datetime_operator<'a>(
     datetime_op: datetime::DateTimeOp,
     args_result: &'a [DataValue<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     match datetime_op {
-        datetime::DateTimeOp::DateTime => datetime::eval_datetime_operator(args_result, arena),
-        datetime::DateTimeOp::Timestamp => datetime::eval_timestamp_operator(args_result, arena),
-        datetime::DateTimeOp::Now => datetime::eval_now(arena),
-        datetime::DateTimeOp::ParseDate => datetime::eval_parse_date(args_result, arena),
-        datetime::DateTimeOp::FormatDate => datetime::eval_format_date(args_result, arena),
-        datetime::DateTimeOp::DateDiff => datetime::eval_date_diff(args_result, arena),
+        datetime::DateTimeOp::DateTime => {
+            datetime::eval_datetime_operator(args_result, context, arena)
+        }
+        datetime::DateTimeOp::Timestamp => {
+            datetime::eval_timestamp_operator(args_result, context, arena)
+        }
+        datetime::DateTimeOp::Now => datetime::eval_now(context, arena),
+        datetime::DateTimeOp::ParseDate => datetime::eval_parse_date(args_result, context, arena),
+        datetime::DateTimeOp::FormatDate => datetime::eval_format_date(args_result, context, arena),
+        datetime::DateTimeOp::DateDiff => datetime::eval_date_diff(args_result, context, arena),
     }
 }
 
@@ -361,13 +397,14 @@ fn evaluate_datetime_operator<'a>(
 #[inline]
 fn evaluate_array_literal_operator<'a>(
     token_refs: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Just evaluate all elements as an array
     let mut values = arena.get_data_value_vec();
 
     for token in token_refs {
-        let value = evaluate(token, arena)?;
+        let value = evaluate(token, context, arena)?;
         values.push(value.clone());
     }
 
@@ -377,7 +414,11 @@ fn evaluate_array_literal_operator<'a>(
 }
 
 /// Evaluates a coalesce operation, which returns the first non-null value.
-fn eval_coalesce<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+fn eval_coalesce<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     // If no arguments, return null
     if args.is_empty() {
         return Ok(arena.null_value());
@@ -385,7 +426,7 @@ fn eval_coalesce<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 
     // Return the first non-null value
     for arg in args {
-        let value = evaluate(arg, arena)?;
+        let value = evaluate(arg, context, arena)?;
 
         // Check if the value is null
         if !value.is_null() {
@@ -400,6 +441,7 @@ fn eval_coalesce<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<
 /// Evaluates a structured object by evaluating each field value while preserving keys
 fn evaluate_structured_object<'a>(
     fields: &'a [(&'a str, &'a Token<'a>)],
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Create a vector to hold the evaluated field-value pairs
@@ -407,7 +449,7 @@ fn evaluate_structured_object<'a>(
 
     // Evaluate each field value
     for (key, value_token) in fields {
-        let evaluated_value = evaluate(value_token, arena)?;
+        let evaluated_value = evaluate(value_token, context, arena)?;
         evaluated_fields.push((*key, evaluated_value.clone()));
     }
 
@@ -428,17 +470,19 @@ mod tests {
     #[test]
     fn test_evaluate_literal() {
         let arena = DataArena::new();
+        let root = arena.null_value();
+        let context = EvalContext::new(root);
 
         // Null
         let token = Token::literal(DataValue::null());
         let token_ref = arena.alloc(token);
-        let result = evaluate(token_ref, &arena).unwrap();
+        let result = evaluate(token_ref, &context, &arena).unwrap();
         assert!(result.is_null());
 
         // Boolean
         let token = Token::literal(DataValue::bool(true));
         let token_ref = arena.alloc(token);
-        let result = evaluate(token_ref, &arena).unwrap();
+        let result = evaluate(token_ref, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -447,8 +491,7 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"foo": 42, "bar": "hello"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        arena.set_current_context(&data, &DataValue::String("$"));
-        arena.set_root_context(&data);
+        let context = EvalContext::new(&data);
 
         // Equal - create token structure directly:
         // {"==": [{"var": "foo"}, 42]}
@@ -465,7 +508,7 @@ mod tests {
         let equal_token = Token::operator(OperatorType::Comparison(ComparisonOp::Equal), array_ref);
         let equal_ref = arena.alloc(equal_token);
 
-        let result = evaluate(equal_ref, &arena).unwrap();
+        let result = evaluate(equal_ref, &context, &arena).unwrap();
         assert_eq!(result.as_bool(), Some(true));
     }
 
@@ -474,8 +517,7 @@ mod tests {
         let arena = DataArena::new();
         let data_json = json!({"person": {"name": "John"}, "name": "Jane"});
         let data = <DataValue as FromJson>::from_json(&data_json, &arena);
-        arena.set_current_context(&data, &DataValue::String("$"));
-        arena.set_root_context(&data);
+        let context = EvalContext::new(&data);
 
         // Create {"??": [{"var": "name"}]}
         // Instead of using a string literal, we need to use a variable reference
@@ -489,7 +531,7 @@ mod tests {
         let coalesce_token = Token::operator(OperatorType::Coalesce, array_ref);
         let coalesce_ref = arena.alloc(coalesce_token);
 
-        let result = evaluate(coalesce_ref, &arena).unwrap();
+        let result = evaluate(coalesce_ref, &context, &arena).unwrap();
         assert_eq!(result.as_str(), Some("Jane"));
     }
 
@@ -512,14 +554,14 @@ mod tests {
             (arena.intern_str("nested"), nested_obj),
         ]);
         let data = DataValue::Object(entries);
-        arena.set_current_context(&data, &DataValue::String("$"));
-        arena.set_root_context(&data);
+        let data_ref = arena.alloc(data.clone());
+        let context = EvalContext::new(data_ref);
 
         // Test simple val: { "val": "hello" }
         let val_arg = Token::literal(DataValue::string(&arena, "hello"));
         let val_token = Token::operator(OperatorType::Val, arena.alloc(val_arg));
 
-        let result = evaluate(arena.alloc(val_token), &arena).unwrap();
+        let result = evaluate(arena.alloc(val_token), &context, &arena).unwrap();
         assert_eq!(*result, DataValue::integer(0));
 
         // Test nested val: { "val": ["nested", "world"] }
@@ -531,7 +573,7 @@ mod tests {
         let nested_val_arg = Token::literal(nested_array);
         let nested_val_token = Token::operator(OperatorType::Val, arena.alloc(nested_val_arg));
 
-        let result = evaluate(arena.alloc(nested_val_token), &arena).unwrap();
+        let result = evaluate(arena.alloc(nested_val_token), &context, &arena).unwrap();
         assert_eq!(*result, DataValue::integer(1));
 
         // Test val with empty array (should return the entire data)
@@ -539,7 +581,7 @@ mod tests {
         let empty_val_arg = Token::literal(empty_array);
         let empty_val_token = Token::operator(OperatorType::Val, arena.alloc(empty_val_arg));
 
-        let result = evaluate(arena.alloc(empty_val_token), &arena).unwrap();
+        let result = evaluate(arena.alloc(empty_val_token), &context, &arena).unwrap();
         assert_eq!(*result, data);
     }
 
@@ -552,6 +594,8 @@ mod tests {
         use crate::value::DataValue;
 
         let arena = DataArena::new();
+        let root = arena.null_value();
+        let context = EvalContext::new(root);
 
         // Test simple datetime conversion: { "datetime": "2022-07-06T13:20:06Z" }
         let dt_arg = Token::literal(DataValue::string(&arena, "2022-07-06T13:20:06Z"));
@@ -560,7 +604,7 @@ mod tests {
             arena.alloc(dt_arg),
         );
 
-        let result = evaluate(arena.alloc(dt_token), &arena).unwrap();
+        let result = evaluate(arena.alloc(dt_token), &context, &arena).unwrap();
 
         // Check if it's a string value (datetime operator now returns formatted strings)
         assert!(result.is_string());

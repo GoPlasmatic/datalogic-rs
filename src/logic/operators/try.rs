@@ -3,6 +3,7 @@
 //! This module provides the implementation of the try operator for error handling.
 
 use crate::arena::DataArena;
+use crate::context::EvalContext;
 use crate::logic::error::{LogicError, Result};
 use crate::logic::evaluator::evaluate;
 use crate::logic::token::Token;
@@ -49,34 +50,23 @@ fn create_error_context<'a>(error: &LogicError, arena: &'a DataArena) -> &'a Dat
 /// Try to evaluate a single expression, returning the result or the error
 fn try_evaluate_expression<'a>(
     expr: &'a Token<'a>,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
 ) -> std::result::Result<&'a DataValue<'a>, LogicError> {
-    evaluate(expr, arena)
+    evaluate(expr, context, arena)
 }
 
-/// Setup error context for next evaluation
-fn setup_error_context<'a>(
+/// Create error context for next evaluation by pushing onto existing context
+fn create_error_context_for_eval<'a>(
     error: &LogicError,
-    index: usize,
+    context: &EvalContext<'a>,
     arena: &'a DataArena,
-    original_root: Option<&'a DataValue<'a>>,
-) -> usize {
-    // Store the current path chain length to preserve parent contexts
-    let current_chain_len = arena.path_chain_len();
-
+) -> EvalContext<'a> {
     // Create error context
     let error_context = create_error_context(error, arena);
 
-    // Set the error context as current but restore the original root context
-    let key = DataValue::Number(crate::value::NumberValue::from_f64(index as f64));
-    arena.set_current_context(error_context, &key);
-
-    // Make sure the root context is still available for scope jumps
-    if let Some(root) = original_root {
-        arena.set_root_context(root);
-    }
-
-    current_chain_len
+    // Push error context onto existing context stack
+    context.push(error_context)
 }
 
 /// Evaluates a try operation.
@@ -87,16 +77,17 @@ fn setup_error_context<'a>(
 /// When an error occurs, subsequent expressions are evaluated with the error
 /// as the context, allowing them to examine the error's properties.
 #[inline]
-pub fn eval_try<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&'a DataValue<'a>> {
+pub fn eval_try<'a>(
+    args: &'a [&'a Token<'a>],
+    context: &EvalContext<'a>,
+    arena: &'a DataArena,
+) -> Result<&'a DataValue<'a>> {
     validate_try_args(args)?;
 
     // Special case for a single argument - just evaluate it
     if args.len() == 1 {
-        return evaluate(args[0], arena);
+        return evaluate(args[0], context, arena);
     }
-
-    // Preserve the original root context for later use
-    let original_root = arena.root_context();
 
     // Try each expression in sequence
     let mut last_error = None;
@@ -104,23 +95,18 @@ pub fn eval_try<'a>(args: &'a [&'a Token<'a>], arena: &'a DataArena) -> Result<&
     for (i, arg) in args.iter().enumerate() {
         // For the first expression, use the original data context
         if i == 0 {
-            match try_evaluate_expression(arg, arena) {
+            match try_evaluate_expression(arg, context, arena) {
                 Ok(result) => return Ok(result),
                 Err(e) => last_error = Some(e),
             }
         } else if let Some(ref error) = last_error {
-            // Setup error context for this evaluation
-            let current_chain_len = setup_error_context(error, i, arena, original_root);
+            // Create error context for this evaluation
+            let error_context = create_error_context_for_eval(error, context, arena);
 
             // Evaluate with the error context
-            match try_evaluate_expression(arg, arena) {
+            match try_evaluate_expression(arg, &error_context, arena) {
                 Ok(result) => return Ok(result),
                 Err(e) => last_error = Some(e),
-            }
-
-            // Restore the path chain to its original state
-            while arena.path_chain_len() > current_chain_len {
-                arena.pop_path_component();
             }
         }
     }

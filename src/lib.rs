@@ -6,8 +6,11 @@ pub use value::{DataValue, FromDataValue, FromJson, IntoDataValue, ToJson};
 
 // Re-export the simple operator types
 pub use arena::{SimpleOperatorAdapter, SimpleOperatorFn};
+// Re-export EvalContext as it's needed for CustomOperator implementations
+pub use context::EvalContext;
 
 // Internal modules with implementation details
+pub mod context; // Made public as EvalContext is needed for CustomOperator trait
 mod parser;
 
 // Public modules

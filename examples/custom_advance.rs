@@ -1,6 +1,6 @@
 use datalogic_rs::arena::DataArena;
 use datalogic_rs::value::NumberValue;
-use datalogic_rs::{CustomOperator, DataLogic, DataValue, Result};
+use datalogic_rs::{CustomOperator, DataLogic, DataValue, EvalContext, Result};
 use serde_json::json;
 use std::fmt::Debug;
 
@@ -12,6 +12,7 @@ impl CustomOperator for MultiplyAll {
     fn evaluate<'a>(
         &self,
         args: &'a [DataValue<'a>],
+        _context: &EvalContext<'a>,
         arena: &'a DataArena,
     ) -> Result<&'a DataValue<'a>> {
         // Default to 1 if no arguments provided
@@ -40,6 +41,7 @@ impl CustomOperator for Median {
     fn evaluate<'a>(
         &self,
         args: &'a [DataValue<'a>],
+        _context: &EvalContext<'a>,
         arena: &'a DataArena,
     ) -> Result<&'a DataValue<'a>> {
         // Collect all numeric values
