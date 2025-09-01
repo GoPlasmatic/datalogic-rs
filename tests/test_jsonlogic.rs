@@ -13,7 +13,6 @@ struct TestCase {
     data: Option<JsonValue>,
     result: Option<JsonValue>,
     error: Option<JsonValue>,
-    format: Option<String>,
     preserve_structure: Option<bool>,
 }
 
@@ -41,9 +40,6 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
             let data = obj.get("data").cloned();
             let result = obj.get("result").cloned();
             let error = obj.get("error").cloned();
-            let format = obj
-                .get("format")
-                .map(|v| v.as_str().unwrap_or("").to_string());
             let preserve_structure = obj
                 .get("preserve_structure")
                 .map(|v| v.as_bool().unwrap_or(false));
@@ -54,7 +50,6 @@ fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
                 data,
                 result,
                 error,
-                format,
                 preserve_structure,
             });
         }
@@ -74,7 +69,7 @@ fn run_test_case(test_case: &TestCase) -> TestResult<()> {
     // Parse the rule using DataLogic's parse_logic method
     let rule_str = test_case.rule.to_string();
 
-    let rule_logic = match dl.parse_logic(&rule_str, test_case.format.as_deref()) {
+    let rule_logic = match dl.parse_logic(&rule_str) {
         Ok(logic) => logic,
         Err(e) => {
             // If we expect an error, check if it's the right type

@@ -6,55 +6,47 @@ use std::str::FromStr;
 
 use crate::arena::DataArena;
 use crate::logic::{LogicError, OperatorType, Result, Token};
-use crate::parser::ExpressionParser;
 use crate::value::{DataValue, FromJson};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
-/// Parser for JSONLogic expressions
-pub struct JsonLogicParser;
+/// Parses a JSONLogic expression from a string.
+pub fn parse_jsonlogic<'a>(input: &str, arena: &'a DataArena) -> Result<&'a Token<'a>> {
+    // Parse the input string as JSON
+    let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
+        reason: format!("Invalid JSON: {e}"),
+    })?;
 
-impl ExpressionParser for JsonLogicParser {
-    fn parse<'a>(&self, input: &str, arena: &'a DataArena) -> Result<&'a Token<'a>> {
-        // Parse the input string as JSON
-        let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
-            reason: format!("Invalid JSON: {e}"),
-        })?;
+    // Use the JSONLogic parsing logic
+    parse_json(&json, arena)
+}
 
-        // Use the JSONLogic parsing logic
-        parse_json(&json, arena)
-    }
+/// Parses a JSONLogic expression from a JSON value.
+pub fn parse_jsonlogic_json<'a>(input: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
+    parse_json(input, arena)
+}
 
-    fn parse_json<'a>(&self, input: &JsonValue, arena: &'a DataArena) -> Result<&'a Token<'a>> {
-        parse_json(input, arena)
-    }
+/// Parses a JSONLogic expression from a string with structure preservation option.
+pub fn parse_jsonlogic_with_preserve<'a>(
+    input: &str,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<&'a Token<'a>> {
+    // Parse the input string as JSON
+    let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
+        reason: format!("Invalid JSON: {e}"),
+    })?;
 
-    fn parse_with_preserve<'a>(
-        &self,
-        input: &str,
-        arena: &'a DataArena,
-        preserve_structure: bool,
-    ) -> Result<&'a Token<'a>> {
-        // Parse the input string as JSON
-        let json: JsonValue = serde_json::from_str(input).map_err(|e| LogicError::ParseError {
-            reason: format!("Invalid JSON: {e}"),
-        })?;
+    // Use the JSONLogic parsing logic with preserve structure option
+    parse_json_with_preserve(&json, arena, preserve_structure)
+}
 
-        // Use the JSONLogic parsing logic with preserve structure option
-        parse_json_with_preserve(&json, arena, preserve_structure)
-    }
-
-    fn parse_json_with_preserve<'a>(
-        &self,
-        input: &JsonValue,
-        arena: &'a DataArena,
-        preserve_structure: bool,
-    ) -> Result<&'a Token<'a>> {
-        parse_json_with_preserve(input, arena, preserve_structure)
-    }
-
-    fn format_name(&self) -> &'static str {
-        "jsonlogic"
-    }
+/// Parses a JSONLogic expression from a JSON value with structure preservation option.
+pub fn parse_jsonlogic_json_with_preserve<'a>(
+    input: &JsonValue,
+    arena: &'a DataArena,
+    preserve_structure: bool,
+) -> Result<&'a Token<'a>> {
+    parse_json_with_preserve(input, arena, preserve_structure)
 }
 
 /// Checks if a JSON value is a literal.
@@ -611,19 +603,15 @@ mod tests {
     #[test]
     fn test_parser_interface() {
         let arena = DataArena::new();
-        let parser = JsonLogicParser;
 
         // Test the parser interface
         let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
-        let token = parser.parse(json_str, &arena).unwrap();
+        let token = parse_jsonlogic(json_str, &arena).unwrap();
 
         // Verify the token
         assert!(token.is_operator());
         let (op_type, _args) = token.as_operator().unwrap();
         assert_eq!(op_type, OperatorType::Comparison(ComparisonOp::Equal));
-
-        // Check the format name
-        assert_eq!(parser.format_name(), "jsonlogic");
     }
 
     #[test]

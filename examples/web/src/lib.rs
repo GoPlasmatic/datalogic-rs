@@ -34,7 +34,7 @@ impl JsJsonLogic {
         }
 
         // Evaluate the logic
-        match self.inner.evaluate_str(rules, data, None) {
+        match self.inner.evaluate_str(rules, data) {
             Ok(v) => {
                 // The value is already properly formatted, just pass it through
                 JsValue::from_str(&v.to_string())

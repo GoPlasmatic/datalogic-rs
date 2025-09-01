@@ -18,7 +18,7 @@ fn basic_example() {
 
     // Parse and evaluate in one step
     let result = dl
-        .evaluate_str(r#"{"datetime": "2022-07-06T13:20:06Z"}"#, r#"{}"#, None)
+        .evaluate_str(r#"{"datetime": "2022-07-06T13:20:06Z"}"#, r#"{}"#)
         .unwrap();
 
     println!("Datetime: {result}\n");
@@ -37,7 +37,6 @@ fn step_by_step_example() {
     let rule = dl
         .parse_logic(
             r#"{ "map": [[1,2,3], { "+": [{ "val": [] }, { "val": [[-1], "index"] }] }] }"#,
-            None,
         )
         .unwrap();
     println!("Parsed rule: {rule:?}");
@@ -68,7 +67,6 @@ fn datetime_example() {
   ]
 }"#,
             r#"{ "dates": "2024-12-31"}"#,
-            None,
         )
         .unwrap();
     println!("Datetime: {result}\n");

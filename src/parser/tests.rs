@@ -1,22 +1,22 @@
-//! Tests for the Parser Registry and parsers
+//! Tests for the JSONLogic parser
 //!
-//! This module contains tests for the parser registry and the included parsers.
+//! This module contains tests for the JSONLogic parser functions.
 
 use crate::arena::DataArena;
-use crate::logic::{ComparisonOp, OperatorType, Token};
-use crate::parser::{ExpressionParser, ParserRegistry};
-use serde_json::Value as JsonValue;
+use crate::logic::{ComparisonOp, OperatorType};
+use crate::parser::{
+    parse_jsonlogic, parse_jsonlogic_json, parse_jsonlogic_json_with_preserve,
+    parse_jsonlogic_with_preserve,
+};
+use serde_json::{Value as JsonValue, json};
 
 #[test]
-fn test_parser_registry_creation() {
-    let registry = ParserRegistry::new();
-
-    // Default parser should be jsonlogic
+fn test_parse_jsonlogic_string() {
     let arena = DataArena::new();
     let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
 
-    // Parse with default parser
-    let token = registry.parse(json_str, None, &arena).unwrap();
+    // Parse the JSONLogic expression
+    let token = parse_jsonlogic(json_str, &arena).unwrap();
 
     // Verify the token
     assert!(token.is_operator());
@@ -25,13 +25,12 @@ fn test_parser_registry_creation() {
 }
 
 #[test]
-fn test_parser_registry_with_specified_parser() {
-    let registry = ParserRegistry::new();
+fn test_parse_jsonlogic_json_value() {
     let arena = DataArena::new();
-    let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
+    let json_value: JsonValue = json!({"==": [{"var": "a"}, 42]});
 
-    // Parse with explicitly specified parser
-    let token = registry.parse(json_str, Some("jsonlogic"), &arena).unwrap();
+    // Parse the JSONLogic expression from JsonValue
+    let token = parse_jsonlogic_json(&json_value, &arena).unwrap();
 
     // Verify the token
     assert!(token.is_operator());
@@ -40,82 +39,86 @@ fn test_parser_registry_with_specified_parser() {
 }
 
 #[test]
-fn test_parser_registry_with_invalid_parser() {
-    let registry = ParserRegistry::new();
+fn test_parse_jsonlogic_with_preserve() {
     let arena = DataArena::new();
-    let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
 
-    // Parse with non-existent parser
-    let result = registry.parse(json_str, Some("not_exists"), &arena);
+    // Test with preserve_structure = false (should error on multi-key object)
+    let json_str = r#"{"result": true, "count": 3}"#;
+    let result = parse_jsonlogic_with_preserve(json_str, &arena, false);
+    assert!(result.is_err());
+
+    // Test with preserve_structure = true (should create structured object)
+    let token = parse_jsonlogic_with_preserve(json_str, &arena, true).unwrap();
+    assert!(token.is_structured_object());
+}
+
+#[test]
+fn test_parse_jsonlogic_json_with_preserve() {
+    let arena = DataArena::new();
+    let json_value: JsonValue = json!({"result": {"==": [1, 1]}, "count": {"+": [1, 2]}});
+
+    // Test with preserve_structure = false (should error)
+    let result = parse_jsonlogic_json_with_preserve(&json_value, &arena, false);
+    assert!(result.is_err());
+
+    // Test with preserve_structure = true (should create structured object)
+    let token = parse_jsonlogic_json_with_preserve(&json_value, &arena, true).unwrap();
+    assert!(token.is_structured_object());
+}
+
+#[test]
+fn test_parse_invalid_json() {
+    let arena = DataArena::new();
+    let invalid_json = r#"{"==": [{"var": "a"}, 42"#; // Missing closing braces
+
+    let result = parse_jsonlogic(invalid_json, &arena);
     assert!(result.is_err());
 }
 
-// This is a mock parser for testing purposes
-struct MockParser;
+#[test]
+fn test_parse_literals() {
+    let arena = DataArena::new();
 
-impl ExpressionParser for MockParser {
-    fn parse<'a>(&self, _input: &str, arena: &'a DataArena) -> crate::logic::Result<&'a Token<'a>> {
-        // Always returns a literal token with the value "mock"
-        Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
-            arena, "mock",
-        ))))
-    }
+    // Test parsing various literals
+    let test_cases = vec![
+        (r#"null"#, true),
+        (r#"true"#, true),
+        (r#"42"#, true),
+        (r#"3.14"#, true),
+        (r#""hello""#, true),
+        (r#"[1, 2, 3]"#, true),
+    ];
 
-    fn parse_json<'a>(
-        &self,
-        _input: &JsonValue,
-        arena: &'a DataArena,
-    ) -> crate::logic::Result<&'a Token<'a>> {
-        Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
-            arena, "mock",
-        ))))
-    }
-
-    fn parse_with_preserve<'a>(
-        &self,
-        _input: &str,
-        arena: &'a DataArena,
-        _preserve_structure: bool,
-    ) -> crate::logic::Result<&'a Token<'a>> {
-        // Always returns a literal token with the value "mock"
-        Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
-            arena, "mock",
-        ))))
-    }
-
-    fn parse_json_with_preserve<'a>(
-        &self,
-        _input: &JsonValue,
-        arena: &'a DataArena,
-        _preserve_structure: bool,
-    ) -> crate::logic::Result<&'a Token<'a>> {
-        Ok(arena.alloc(Token::literal(crate::value::DataValue::string(
-            arena, "mock",
-        ))))
-    }
-
-    fn format_name(&self) -> &'static str {
-        "mock"
+    for (json_str, should_be_literal) in test_cases {
+        let token = parse_jsonlogic(json_str, &arena).unwrap();
+        assert_eq!(
+            token.is_literal(),
+            should_be_literal,
+            "Failed for: {}",
+            json_str
+        );
     }
 }
 
 #[test]
-fn test_multiple_parsers() {
-    let mut registry = ParserRegistry::new();
+fn test_parse_operators() {
     let arena = DataArena::new();
 
-    // Register the mock parser
-    registry.register(Box::new(MockParser));
+    // Test parsing various operators
+    let test_cases = vec![
+        r#"{"==": [1, 1]}"#,
+        r#"{"+": [1, 2, 3]}"#,
+        r#"{"and": [true, false]}"#,
+        r#"{"if": [true, "yes", "no"]}"#,
+        r#"{"var": "name"}"#,
+    ];
 
-    // Parse with both parsers
-    let json_str = r#"{"==": [{"var": "a"}, 42]}"#;
-
-    // JSONLogic parser should return an operator
-    let jsonlogic_token = registry.parse(json_str, Some("jsonlogic"), &arena).unwrap();
-    assert!(jsonlogic_token.is_operator());
-
-    // Mock parser should return a literal "mock"
-    let mock_token = registry.parse(json_str, Some("mock"), &arena).unwrap();
-    assert!(mock_token.is_literal());
-    assert_eq!(mock_token.as_literal().unwrap().as_str(), Some("mock"));
+    for json_str in test_cases {
+        let token = parse_jsonlogic(json_str, &arena).unwrap();
+        assert!(
+            token.is_operator() || token.is_variable(),
+            "Failed for: {}",
+            json_str
+        );
+    }
 }

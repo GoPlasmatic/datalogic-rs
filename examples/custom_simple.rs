@@ -102,38 +102,33 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
     dl.register_simple_operator("is_even", is_even);
 
     // Example 1: Double a number
-    let result = dl.evaluate_str(r#"{"double": 5}"#, r#"{}"#, None)?;
+    let result = dl.evaluate_str(r#"{"double": 5}"#, r#"{}"#)?;
     println!("Double 5 = {result}"); // Should print: Double 5 = 10
 
     // Example 2: Use the custom operator with a variable
-    let result = dl.evaluate_str(r#"{"double": {"var": "value"}}"#, r#"{"value": 7.5}"#, None)?;
+    let result = dl.evaluate_str(r#"{"double": {"var": "value"}}"#, r#"{"value": 7.5}"#)?;
     println!("Double 7.5 = {result}"); // Should print: Double 7.5 = 15
 
     // Example 3: Convert a string to uppercase
-    let result = dl.evaluate_str(r#"{"to_uppercase": "hello world"}"#, r#"{}"#, None)?;
+    let result = dl.evaluate_str(r#"{"to_uppercase": "hello world"}"#, r#"{}"#)?;
     println!("Uppercase 'hello world' = {result}"); // Should print: HELLO WORLD
 
     // Example 4: Check if a number is even
-    let result = dl.evaluate_str(r#"{"is_even": 42}"#, r#"{}"#, None)?;
+    let result = dl.evaluate_str(r#"{"is_even": 42}"#, r#"{}"#)?;
     println!("Is 42 even? {result}"); // Should print: true
 
     // Example 5: Check if a number is even with a variable
-    let result = dl.evaluate_str(
-        r#"{"is_even": {"var": "number"}}"#,
-        r#"{"number": 7}"#,
-        None,
-    )?;
+    let result = dl.evaluate_str(r#"{"is_even": {"var": "number"}}"#, r#"{"number": 7}"#)?;
     println!("Is 7 even? {result}"); // Should print: false
 
     // Example 6: Using an operator with empty args - falling back to data context
-    let result = dl.evaluate_str(r#"{"double": []}"#, r#"{"value": 3}"#, None)?;
+    let result = dl.evaluate_str(r#"{"double": []}"#, r#"{"value": 3}"#)?;
     println!("Double from context = {result}"); // Should print: Double from context = 6
 
     // Example 7: Using an operator with empty args - falling back to data context
     let result = dl.evaluate_str(
         r#"{"to_uppercase": []}"#,
         r#"{"text": "direct from context"}"#,
-        None,
     )?;
     println!("Uppercase from context = {result}"); // Should print: DIRECT FROM CONTEXT
 

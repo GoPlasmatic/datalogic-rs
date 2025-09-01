@@ -8,7 +8,10 @@ use crate::arena::DataArena;
 use crate::arena::{SimpleOperatorAdapter, SimpleOperatorFn};
 use crate::context::EvalContext;
 use crate::logic::{Logic, Result, evaluate, optimize};
-use crate::parser::{ExpressionParser, ParserRegistry};
+use crate::parser::{
+    parse_jsonlogic, parse_jsonlogic_json, parse_jsonlogic_json_with_preserve,
+    parse_jsonlogic_with_preserve,
+};
 use crate::value::{DataValue, FromJson, ToJson};
 use serde_json::Value as JsonValue;
 
@@ -26,13 +29,11 @@ pub use crate::arena::CustomOperator;
 /// let result = dl.evaluate_str(
 ///     r#"{ ">": [{"var": "temp"}, 100] }"#,
 ///     r#"{"temp": 110, "name": "user"}"#,
-///     None
 /// ).unwrap();
 /// assert_eq!(result.to_string(), "true");
 /// ```
 pub struct DataLogic {
     arena: DataArena,
-    parsers: ParserRegistry,
     preserve_structure: bool,
 }
 
@@ -41,7 +42,6 @@ impl DataLogic {
     pub fn new() -> Self {
         Self {
             arena: DataArena::new(),
-            parsers: ParserRegistry::new(),
             preserve_structure: false,
         }
     }
@@ -50,7 +50,6 @@ impl DataLogic {
     pub fn with_chunk_size(chunk_size: usize) -> Self {
         Self {
             arena: DataArena::with_chunk_size(chunk_size),
-            parsers: ParserRegistry::new(),
             preserve_structure: false,
         }
     }
@@ -69,14 +68,12 @@ impl DataLogic {
     /// let result = dl.evaluate_str(
     ///     r#"{"isEqual": {"==": [1, 1]}}"#,
     ///     r#"{}"#,
-    ///     None
     /// ).unwrap();
     /// // Returns: {"isEqual": true}
     /// ```
     pub fn with_preserve_structure() -> Self {
         Self {
             arena: DataArena::new(),
-            parsers: ParserRegistry::new(),
             preserve_structure: true,
         }
     }
@@ -85,7 +82,6 @@ impl DataLogic {
     pub fn with_chunk_size_and_preserve_structure(chunk_size: usize) -> Self {
         Self {
             arena: DataArena::with_chunk_size(chunk_size),
-            parsers: ParserRegistry::new(),
             preserve_structure: true,
         }
     }
@@ -109,16 +105,6 @@ impl DataLogic {
     /// existing DataValue or Logic instances.
     pub fn reset_arena(&mut self) {
         self.arena.reset();
-    }
-
-    /// Register a parser for a specific expression format
-    pub fn register_parser(&mut self, parser: Box<dyn ExpressionParser>) {
-        self.parsers.register(parser);
-    }
-
-    /// Set the default parser
-    pub fn set_default_parser(&mut self, format_name: &str) -> Result<()> {
-        self.parsers.set_default(format_name)
     }
 
     /// Register a custom operator implementation
@@ -165,7 +151,6 @@ impl DataLogic {
     /// let result = dl.evaluate_str(
     ///     r#"{"multiply_all": [2, 3, 4]}"#,
     ///     r#"{}"#,
-    ///     None
     /// ).unwrap();
     /// assert_eq!(result.as_f64().unwrap(), 24.0);
     /// ```
@@ -178,13 +163,12 @@ impl DataLogic {
         self.arena.has_custom_operator(name)
     }
 
-    /// Parse a logic expression using the specified parser format
-    pub fn parse_logic(&self, source: &str, format: Option<&str>) -> Result<Logic<'_>> {
+    /// Parse a logic expression from a string
+    pub fn parse_logic(&self, source: &str) -> Result<Logic<'_>> {
         let token = if self.preserve_structure {
-            self.parsers
-                .parse_with_preserve(source, format, &self.arena, true)?
+            parse_jsonlogic_with_preserve(source, &self.arena, true)?
         } else {
-            self.parsers.parse(source, format, &self.arena)?
+            parse_jsonlogic(source, &self.arena)?
         };
 
         // Apply static optimization
@@ -194,12 +178,11 @@ impl DataLogic {
     }
 
     /// Parse a JSON logic expression into a Token
-    pub fn parse_logic_json(&self, source: &JsonValue, format: Option<&str>) -> Result<Logic<'_>> {
+    pub fn parse_logic_json(&self, source: &JsonValue) -> Result<Logic<'_>> {
         let token = if self.preserve_structure {
-            self.parsers
-                .parse_json_with_preserve(source, format, &self.arena, true)?
+            parse_jsonlogic_json_with_preserve(source, &self.arena, true)?
         } else {
-            self.parsers.parse_json(source, format, &self.arena)?
+            parse_jsonlogic_json(source, &self.arena)?
         };
         Ok(Logic::new(token, &self.arena))
     }
@@ -237,7 +220,7 @@ impl DataLogic {
     /// use datalogic_rs::DataLogic;
     ///
     /// let dl = DataLogic::new();
-    /// let rule = dl.parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#, None).unwrap();
+    /// let rule = dl.parse_logic(r#"{ ">": [{"var": "temp"}, 100] }"#).unwrap();
     /// let data = dl.parse_data(r#"{"temp": 110}"#).unwrap();
     /// let result = dl.evaluate(&rule, &data).unwrap();
     /// assert_eq!(result.to_string(), "true");
@@ -264,7 +247,6 @@ impl DataLogic {
     ///
     /// * `logic` - The logic rule as a JsonValue
     /// * `data` - The data context as a JsonValue
-    /// * `format` - Optional format name for the parser to use
     ///
     /// # Returns
     ///
@@ -279,29 +261,19 @@ impl DataLogic {
     /// let dl = DataLogic::new();
     /// let logic = json!({"ceil": 3.14});
     /// let data = json!({});
-    /// let result = dl.evaluate_json(&logic, &data, None).unwrap();
+    /// let result = dl.evaluate_json(&logic, &data).unwrap();
     /// assert_eq!(result.as_i64().unwrap(), 4);
     /// ```
-    pub fn evaluate_json(
-        &self,
-        logic: &JsonValue,
-        data: &JsonValue,
-        format: Option<&str>,
-    ) -> Result<JsonValue> {
-        let rule = self.parse_logic_json(logic, format)?;
+    pub fn evaluate_json(&self, logic: &JsonValue, data: &JsonValue) -> Result<JsonValue> {
+        let rule = self.parse_logic_json(logic)?;
         let data_value = self.parse_data_json(data)?;
         let result = self.evaluate(&rule, &data_value)?;
         Ok(result.to_json())
     }
 
     /// Parse and evaluate in one step, returning a JSON value
-    pub fn evaluate_str(
-        &self,
-        logic_source: &str,
-        data_source: &str,
-        format: Option<&str>,
-    ) -> Result<JsonValue> {
-        let rule = self.parse_logic(logic_source, format)?;
+    pub fn evaluate_str(&self, logic_source: &str, data_source: &str) -> Result<JsonValue> {
+        let rule = self.parse_logic(logic_source)?;
         let data_value = self.parse_data(data_source)?;
         let result = self.evaluate(&rule, &data_value)?;
         Ok(result.to_json())
@@ -351,7 +323,6 @@ impl DataLogic {
     /// let result = dl.evaluate_str(
     ///     r#"{"double": 5}"#,
     ///     r#"{}"#,
-    ///     None
     /// ).unwrap();
     ///
     /// assert_eq!(result.as_f64().unwrap(), 10.0);
@@ -360,7 +331,6 @@ impl DataLogic {
     /// let result = dl.evaluate_str(
     ///     r#"{"double": []}"#,
     ///     r#"{"value": 7}"#,
-    ///     None
     /// ).unwrap();
     ///
     /// assert_eq!(result.as_f64().unwrap(), 14.0);
@@ -421,14 +391,14 @@ mod tests {
 
         // Test with JSON values
         let result = dl
-            .evaluate_json(&json!({"multiply_all": [2, 3, 4]}), &json!({}), None)
+            .evaluate_json(&json!({"multiply_all": [2, 3, 4]}), &json!({}))
             .unwrap();
 
         assert_eq!(result.as_f64().unwrap(), 24.0);
 
         // Test with string values
         let result = dl
-            .evaluate_str(r#"{"multiply_all": [2, 3, 4]}"#, r#"{}"#, None)
+            .evaluate_str(r#"{"multiply_all": [2, 3, 4]}"#, r#"{}"#)
             .unwrap();
 
         assert_eq!(result.as_f64().unwrap(), 24.0);

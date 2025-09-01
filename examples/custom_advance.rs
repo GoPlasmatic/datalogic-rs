@@ -97,14 +97,14 @@ fn main() {
 
     // Example 1: Multiply numbers
     let result = dl
-        .evaluate_str(r#"{"multiply_all": [2, 3, 4]}"#, r#"{}"#, None)
+        .evaluate_str(r#"{"multiply_all": [2, 3, 4]}"#, r#"{}"#)
         .unwrap();
 
     println!("Product of [2, 3, 4] = {result}");
 
     // Example 2: Find median of a set of numbers
     let result = dl
-        .evaluate_json(&json!({"median": [7, 3, 5, 9, 1]}), &json!({}), None)
+        .evaluate_json(&json!({"median": [7, 3, 5, 9, 1]}), &json!({}))
         .unwrap();
 
     println!("Median of [7, 3, 5, 9, 1] = {result}");
@@ -125,7 +125,7 @@ fn main() {
         "class_scores": [60, 70, 80, 90, 100]
     });
 
-    let result = dl.evaluate_json(&complex_logic, &data, None).unwrap();
+    let result = dl.evaluate_json(&complex_logic, &data).unwrap();
     println!("Student result: {result}");
 
     // Example 4: Combine custom operators
@@ -137,6 +137,6 @@ fn main() {
         ]
     });
 
-    let result = dl.evaluate_json(&combined_logic, &json!({}), None).unwrap();
+    let result = dl.evaluate_json(&combined_logic, &json!({})).unwrap();
     println!("2 * median([1, 2, 3, 4, 5]) * 4 = {result}");
 }
