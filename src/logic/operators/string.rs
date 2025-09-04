@@ -399,7 +399,7 @@ mod tests {
         let world_ref = arena.alloc(world);
 
         let args = vec![hello_ref, space_ref, world_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let cat_token = Token::operator(OperatorType::String(super::StringOp::Cat), array_ref);
@@ -422,7 +422,7 @@ mod tests {
         let var_c_ref = arena.alloc(var_c);
 
         let args = vec![var_b_ref, space_ref, var_a_ref, space_ref, var_c_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let cat_token = Token::operator(OperatorType::String(super::StringOp::Cat), array_ref);
@@ -435,7 +435,7 @@ mod tests {
 
         // Test empty cat: {"cat": []}
         let empty_args: Vec<&Token> = vec![];
-        let empty_array_token = Token::ArrayLiteral(empty_args);
+        let empty_array_token = Token::ArrayLiteral(&empty_args);
         let empty_array_ref = arena.alloc(empty_array_token);
 
         let empty_cat_token =
@@ -467,7 +467,7 @@ mod tests {
         let length_ref = arena.alloc(length_token);
 
         let args = vec![var_ref, start_ref, length_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let substr_token =
@@ -484,7 +484,7 @@ mod tests {
         let neg_start_ref = arena.alloc(neg_start_token);
 
         let args = vec![var_ref, neg_start_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let substr_token =
@@ -501,7 +501,7 @@ mod tests {
         let neg_length_ref = arena.alloc(neg_length_token);
 
         let args = vec![var_ref, start_ref, neg_length_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let substr_token =
@@ -518,7 +518,7 @@ mod tests {
         let out_of_bounds_ref = arena.alloc(out_of_bounds_token);
 
         let args = vec![var_ref, out_of_bounds_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let substr_token =
@@ -547,7 +547,7 @@ mod tests {
         let prefix_ref = arena.alloc(prefix_token);
 
         let args = vec![var_ref, prefix_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let starts_with_token =
@@ -564,7 +564,7 @@ mod tests {
         let world_ref = arena.alloc(world_token);
 
         let args = vec![var_ref, world_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let starts_with_token =
@@ -581,7 +581,7 @@ mod tests {
         let upper_hello_ref = arena.alloc(upper_hello_token);
 
         let args = vec![var_ref, upper_hello_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let starts_with_token =
@@ -610,7 +610,7 @@ mod tests {
         let suffix_ref = arena.alloc(suffix_token);
 
         let args = vec![var_ref, suffix_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let ends_with_token =
@@ -627,7 +627,7 @@ mod tests {
         let hello_ref = arena.alloc(hello_token);
 
         let args = vec![var_ref, hello_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let ends_with_token =
@@ -644,7 +644,7 @@ mod tests {
         let upper_world_ref = arena.alloc(upper_world_token);
 
         let args = vec![var_ref, upper_world_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let ends_with_token =
@@ -670,7 +670,7 @@ mod tests {
         let var_ref = arena.alloc(var_token);
 
         let args = vec![var_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let upper_token = Token::operator(OperatorType::String(super::StringOp::Upper), array_ref);
@@ -695,7 +695,7 @@ mod tests {
         let var_ref = arena.alloc(var_token);
 
         let args = vec![var_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let lower_token = Token::operator(OperatorType::String(super::StringOp::Lower), array_ref);
@@ -720,7 +720,7 @@ mod tests {
         let var_ref = arena.alloc(var_token);
 
         let args = vec![var_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let trim_token = Token::operator(OperatorType::String(super::StringOp::Trim), array_ref);
@@ -751,7 +751,7 @@ mod tests {
         let replace_ref = arena.alloc(replace_token);
 
         let args = vec![var_ref, find_ref, replace_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let replace_op_token =
@@ -768,7 +768,7 @@ mod tests {
         let find_upper_ref = arena.alloc(find_upper_token);
 
         let args = vec![var_ref, find_upper_ref, replace_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let replace_op_token =
@@ -785,7 +785,7 @@ mod tests {
         let empty_ref = arena.alloc(empty_token);
 
         let args = vec![var_ref, find_ref, empty_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let replace_op_token =
@@ -805,7 +805,7 @@ mod tests {
         let replacement_ref = arena.alloc(replacement_token);
 
         let args = vec![var_ref, nonexistent_ref, replacement_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let replace_op_token =
@@ -834,7 +834,7 @@ mod tests {
         let delimiter_ref = arena.alloc(delimiter_token);
 
         let args = vec![var_ref, delimiter_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -855,7 +855,7 @@ mod tests {
         let space_ref = arena.alloc(space_token);
 
         let args = vec![sentence_var_ref, space_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -871,7 +871,7 @@ mod tests {
         let semicolon_ref = arena.alloc(semicolon_token);
 
         let args = vec![var_ref, semicolon_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -887,7 +887,7 @@ mod tests {
         let empty_string_ref = arena.alloc(empty_string_token);
 
         let args = vec![empty_string_ref, delimiter_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -903,7 +903,7 @@ mod tests {
         let empty_delim_ref = arena.alloc(empty_delim_token);
 
         let args = vec![var_ref, empty_delim_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -940,7 +940,7 @@ mod tests {
         let regex_ref = arena.alloc(regex_token);
 
         let args = vec![var_ref, regex_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -971,7 +971,7 @@ mod tests {
         let literal_string_ref = arena.alloc(literal_string_token);
 
         let args = vec![literal_string_ref, regex_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -987,7 +987,7 @@ mod tests {
         let country_regex_ref = arena.alloc(country_regex_token);
 
         let args = vec![literal_string_ref, country_regex_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);
@@ -1020,7 +1020,7 @@ mod tests {
         let invalid_regex_ref = arena.alloc(invalid_regex_token);
 
         let args = vec![var_ref, invalid_regex_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let split_token = Token::operator(OperatorType::String(super::StringOp::Split), array_ref);

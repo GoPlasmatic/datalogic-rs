@@ -183,7 +183,7 @@ mod tests {
         let true_ref2 = arena.alloc(true_token2);
 
         let and_args = vec![true_ref1, true_ref2];
-        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_token = Token::ArrayLiteral(&and_args);
         let and_array_ref = arena.alloc(and_array_token);
 
         let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
@@ -203,7 +203,7 @@ mod tests {
         let false_ref = arena.alloc(false_token);
 
         let and_args = vec![true_ref, false_ref];
-        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_token = Token::ArrayLiteral(&and_args);
         let and_array_ref = arena.alloc(and_array_token);
 
         let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
@@ -223,7 +223,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let and_args = vec![a_var_ref, b_var_ref];
-        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_token = Token::ArrayLiteral(&and_args);
         let and_array_ref = arena.alloc(and_array_token);
 
         let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
@@ -246,7 +246,7 @@ mod tests {
         let three_ref = arena.alloc(three_token);
 
         let and_args = vec![one_ref, two_ref, three_ref];
-        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_token = Token::ArrayLiteral(&and_args);
         let and_array_ref = arena.alloc(and_array_token);
 
         let and_token = Token::operator(OperatorType::Control(ControlOp::And), and_array_ref);
@@ -278,7 +278,7 @@ mod tests {
         let true_ref2 = arena.alloc(true_token2);
 
         let or_args = vec![true_ref1, true_ref2];
-        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_token = Token::ArrayLiteral(&or_args);
         let or_array_ref = arena.alloc(or_array_token);
 
         let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
@@ -298,7 +298,7 @@ mod tests {
         let false_ref = arena.alloc(false_token);
 
         let or_args = vec![true_ref, false_ref];
-        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_token = Token::ArrayLiteral(&or_args);
         let or_array_ref = arena.alloc(or_array_token);
 
         let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
@@ -318,7 +318,7 @@ mod tests {
         let true_ref = arena.alloc(true_token);
 
         let or_args = vec![false_ref, true_ref];
-        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_token = Token::ArrayLiteral(&or_args);
         let or_array_ref = arena.alloc(or_array_token);
 
         let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
@@ -338,7 +338,7 @@ mod tests {
         let false_ref2 = arena.alloc(false_token2);
 
         let or_args = vec![false_ref1, false_ref2];
-        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_token = Token::ArrayLiteral(&or_args);
         let or_array_ref = arena.alloc(or_array_token);
 
         let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
@@ -358,7 +358,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let or_args = vec![a_var_ref, b_var_ref];
-        let or_array_token = Token::ArrayLiteral(or_args);
+        let or_array_token = Token::ArrayLiteral(&or_args);
         let or_array_ref = arena.alloc(or_array_token);
 
         let or_token = Token::operator(OperatorType::Control(ControlOp::Or), or_array_ref);
@@ -387,7 +387,7 @@ mod tests {
         let true_ref = arena.alloc(true_token);
 
         let not_args = vec![true_ref];
-        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_token = Token::ArrayLiteral(&not_args);
         let not_array_ref = arena.alloc(not_array_token);
 
         let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
@@ -404,7 +404,7 @@ mod tests {
         let false_ref = arena.alloc(false_token);
 
         let not_args = vec![false_ref];
-        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_token = Token::ArrayLiteral(&not_args);
         let not_array_ref = arena.alloc(not_array_token);
 
         let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
@@ -421,7 +421,7 @@ mod tests {
         let a_var_ref = arena.alloc(a_var_token);
 
         let not_args = vec![a_var_ref];
-        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_token = Token::ArrayLiteral(&not_args);
         let not_array_ref = arena.alloc(not_array_token);
 
         let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);
@@ -438,7 +438,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let not_args = vec![b_var_ref];
-        let not_array_token = Token::ArrayLiteral(not_args);
+        let not_array_token = Token::ArrayLiteral(&not_args);
         let not_array_ref = arena.alloc(not_array_token);
 
         let not_token = Token::operator(OperatorType::Control(ControlOp::Not), not_array_ref);

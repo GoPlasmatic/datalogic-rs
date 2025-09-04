@@ -133,6 +133,27 @@ impl DataArena {
         BumpVec::with_capacity_in(capacity, &self.bump)
     }
 
+    /// Gets a BumpVec for Token references with specified capacity
+    pub fn get_token_vec<'a>(
+        &'a self,
+        capacity: usize,
+    ) -> BumpVec<'a, &'a crate::logic::Token<'a>> {
+        BumpVec::with_capacity_in(capacity, &self.bump)
+    }
+
+    /// Gets a BumpVec for structured object fields with specified capacity
+    pub fn get_fields_vec<'a>(
+        &'a self,
+        capacity: usize,
+    ) -> BumpVec<'a, (&'a str, &'a crate::logic::Token<'a>)> {
+        BumpVec::with_capacity_in(capacity, &self.bump)
+    }
+
+    /// Gets an empty slice for object entries
+    pub fn empty_object_entries(&self) -> &[(&str, DataValue<'_>)] {
+        &[]
+    }
+
     /// Converts a BumpVec into a slice allocated in the arena.
     ///
     /// This efficiently transfers ownership of the vector's memory to the arena.
@@ -358,7 +379,10 @@ impl DataArena {
         if vals.is_empty() {
             return self.empty_array();
         }
-        self.vec_into_slice(vals.to_vec())
+        // Use BumpVec to allocate in the arena instead of std::Vec
+        let mut vec = BumpVec::with_capacity_in(vals.len(), &self.bump);
+        vec.extend_from_slice(vals);
+        self.bump_vec_into_slice(vec)
     }
 
     /// Allocates a slice of object entries in the arena.
@@ -379,7 +403,10 @@ impl DataArena {
             return &[];
         }
 
-        self.vec_into_slice(entries.to_vec())
+        // Use BumpVec to allocate in the arena instead of std::Vec
+        let mut vec = BumpVec::with_capacity_in(entries.len(), &self.bump);
+        vec.extend_from_slice(entries);
+        self.bump_vec_into_slice(vec)
     }
 
     /// Allocates a small array of DataValues (up to 8 elements) in the arena.

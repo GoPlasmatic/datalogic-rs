@@ -18,9 +18,9 @@ use crate::value::DataValue;
 fn convert_to_token_refs<'a>(args: &'a Token<'a>, arena: &'a DataArena) -> &'a [&'a Token<'a>] {
     match args {
         // Fast path for ArrayLiteral with 0 items
-        Token::ArrayLiteral(items) if items.is_empty() => &[],
+        Token::ArrayLiteral([]) => &[],
         // For ArrayLiteral with items, just use the references directly
-        Token::ArrayLiteral(items) => items.as_slice(),
+        Token::ArrayLiteral(items) => items,
         // Fast path for the single argument case
         _ => arena.alloc_slice_copy(&[args]),
     }
@@ -172,7 +172,7 @@ fn evaluate_arguments<'a>(
             let mut values = arena.get_data_value_vec_with_capacity(items.len());
 
             // Evaluate each item in the array
-            for item in items {
+            for item in items.iter() {
                 let value = evaluate(item, context, arena)?;
                 values.push(value.clone());
             }
@@ -451,7 +451,7 @@ fn evaluate_structured_object<'a>(
     arena: &'a DataArena,
 ) -> Result<&'a DataValue<'a>> {
     // Create a vector to hold the evaluated field-value pairs
-    let mut evaluated_fields = Vec::with_capacity(fields.len());
+    let mut evaluated_fields = arena.get_object_entries_vec(fields.len());
 
     // Evaluate each field value
     for (key, value_token) in fields {
@@ -460,7 +460,7 @@ fn evaluate_structured_object<'a>(
     }
 
     // Convert to a slice and create the object
-    let fields_slice = arena.vec_into_slice(evaluated_fields);
+    let fields_slice = arena.bump_vec_into_slice(evaluated_fields);
     let result = DataValue::Object(fields_slice);
     Ok(arena.alloc(result))
 }
@@ -513,8 +513,8 @@ mod tests {
         let literal_token = Token::literal(DataValue::integer(42));
         let literal_ref = arena.alloc(literal_token);
 
-        let args = vec![var_ref, literal_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let args = arena.alloc_slice_copy(&[var_ref, literal_ref]);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let equal_token = Token::operator(OperatorType::Comparison(ComparisonOp::Equal), array_ref);
@@ -536,8 +536,8 @@ mod tests {
         let name_var_token = Token::variable("name", None);
         let name_var_ref = arena.alloc(name_var_token);
 
-        let args = vec![name_var_ref];
-        let array_token = Token::ArrayLiteral(args);
+        let args = arena.alloc_slice_copy(&[name_var_ref]);
+        let array_token = Token::ArrayLiteral(&args);
         let array_ref = arena.alloc(array_token);
 
         let coalesce_token = Token::operator(OperatorType::Coalesce, array_ref);
@@ -557,14 +557,15 @@ mod tests {
         let arena = DataArena::new();
 
         // Create test data: { "hello": 0, "nested": { "world": 1 } }
-        let world_entries =
-            arena.vec_into_slice(vec![(arena.alloc_str("world"), DataValue::integer(1))]);
+        let mut world_entries_vec = arena.get_object_entries_vec(1);
+        world_entries_vec.push((arena.alloc_str("world"), DataValue::integer(1)));
+        let world_entries = arena.bump_vec_into_slice(world_entries_vec);
         let nested_obj = DataValue::Object(world_entries);
 
-        let entries = arena.vec_into_slice(vec![
-            (arena.alloc_str("hello"), DataValue::integer(0)),
-            (arena.alloc_str("nested"), nested_obj),
-        ]);
+        let mut entries_vec = arena.get_object_entries_vec(2);
+        entries_vec.push((arena.alloc_str("hello"), DataValue::integer(0)));
+        entries_vec.push((arena.alloc_str("nested"), nested_obj));
+        let entries = arena.bump_vec_into_slice(entries_vec);
         let data = DataValue::Object(entries);
         let data_ref = arena.alloc(data.clone());
         let context = EvalContext::new(data_ref, &EMPTY_OPERATORS);
@@ -577,10 +578,10 @@ mod tests {
         assert_eq!(*result, DataValue::integer(0));
 
         // Test nested val: { "val": ["nested", "world"] }
-        let nested_args = arena.vec_into_slice(vec![
-            DataValue::string(&arena, "nested"),
-            DataValue::string(&arena, "world"),
-        ]);
+        let mut nested_args_vec = arena.get_data_value_vec_with_capacity(2);
+        nested_args_vec.push(DataValue::string(&arena, "nested"));
+        nested_args_vec.push(DataValue::string(&arena, "world"));
+        let nested_args = arena.bump_vec_into_slice(nested_args_vec);
         let nested_array = DataValue::Array(nested_args);
         let nested_val_arg = Token::literal(nested_array);
         let nested_val_token = Token::operator(OperatorType::Val, arena.alloc(nested_val_arg));
@@ -589,7 +590,7 @@ mod tests {
         assert_eq!(*result, DataValue::integer(1));
 
         // Test val with empty array (should return the entire data)
-        let empty_array = DataValue::Array(arena.vec_into_slice(vec![]));
+        let empty_array = DataValue::Array(arena.empty_array());
         let empty_val_arg = Token::literal(empty_array);
         let empty_val_token = Token::operator(OperatorType::Val, arena.alloc(empty_val_arg));
 

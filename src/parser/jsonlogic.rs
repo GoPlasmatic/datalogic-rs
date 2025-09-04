@@ -129,23 +129,24 @@ fn parse_json_internal<'a>(
 
             // If all elements are literals, create a literal array
             if all_literals {
-                let mut values = Vec::with_capacity(arr.len());
+                let mut values = arena.get_data_value_vec_with_capacity(arr.len());
                 for item in arr {
                     let value = DataValue::from_json(item, arena);
                     values.push(value);
                 }
-                let values_slice = arena.vec_into_slice(values);
+                let values_slice = arena.bump_vec_into_slice(values);
                 Ok(Token::literal(DataValue::Array(values_slice)))
             } else {
                 // Otherwise, create an array of tokens and allocate them in the arena
-                let mut tokens = Vec::with_capacity(arr.len());
+                let mut tokens = arena.get_token_vec(arr.len());
                 for item in arr {
                     let token =
                         parse_json_internal(item, arena, preserve_structure, custom_operators)?;
                     let token_ref = arena.alloc(token);
                     tokens.push(token_ref);
                 }
-                Ok(Token::ArrayLiteral(tokens))
+                let tokens_slice = arena.bump_vec_into_slice(tokens);
+                Ok(Token::ArrayLiteral(tokens_slice))
             }
         }
 
@@ -201,8 +202,7 @@ fn parse_object<'a>(
                         parse_json_internal(value, arena, preserve_structure, custom_operators)?;
                     let value_token_ref = arena.alloc(value_token);
                     let key_str = arena.alloc_str(key);
-                    let fields = vec![(key_str, value_token_ref)];
-                    let fields_slice = arena.vec_into_slice(fields);
+                    let fields_slice = arena.alloc_slice_copy(&[(key_str, value_token_ref)]);
                     Ok(Token::structured_object(fields_slice))
                 } else {
                     // Otherwise, treat it as a custom operator
@@ -213,13 +213,13 @@ fn parse_object<'a>(
     } else if obj.is_empty() {
         // Empty object literal
         Ok(Token::literal(DataValue::Object(
-            arena.vec_into_slice(vec![]),
+            arena.empty_object_entries(),
         )))
     } else {
         // Multi-key objects
         if preserve_structure {
             // When structure preservation is enabled, create a structured object
-            let mut fields = Vec::with_capacity(obj.len());
+            let mut fields = arena.get_fields_vec(obj.len());
             for (key, value) in obj {
                 let value_token =
                     parse_json_internal(value, arena, preserve_structure, custom_operators)?;
@@ -227,7 +227,7 @@ fn parse_object<'a>(
                 let key_str = arena.alloc_str(key);
                 fields.push((key_str, value_token_ref));
             }
-            let fields_slice = arena.vec_into_slice(fields);
+            let fields_slice = arena.bump_vec_into_slice(fields);
             Ok(Token::structured_object(fields_slice))
         } else {
             // Original behavior: treat the first key as an unknown operator
@@ -256,14 +256,8 @@ fn parse_variable<'a>(
             // For compatibility with the test suite, if the path contains dots,
             // we need to split it and handle it as a multi-level path
             if path.contains('.') {
-                let parts: Vec<&str> = path.split('.').collect();
-                let mut path_parts = Vec::with_capacity(parts.len());
-                for part in parts {
-                    path_parts.push(part.to_string());
-                }
-
-                let path = path_parts.join(".");
-                return Ok(Token::variable(arena.alloc_str(&path), None));
+                // Just use the path as-is, no need to split and rejoin
+                return Ok(Token::variable(arena.alloc_str(path), None));
             }
 
             Ok(Token::variable(arena.alloc_str(path), None))
@@ -330,13 +324,17 @@ fn parse_variable<'a>(
                 item.is_string() || item.is_number() || item.is_boolean() || item.is_null()
             }) {
                 // Convert all elements to strings and join with dots
-                let mut path_parts = Vec::with_capacity(arr.len());
-                for item in arr {
-                    let part = match item {
-                        JsonValue::String(s) => s.clone(),
-                        JsonValue::Number(n) => n.to_string(),
-                        JsonValue::Bool(b) => b.to_string(),
-                        JsonValue::Null => "".to_string(),
+                // Use arena's string building capabilities
+                let mut path = String::new();
+                for (i, item) in arr.iter().enumerate() {
+                    if i > 0 {
+                        path.push('.');
+                    }
+                    match item {
+                        JsonValue::String(s) => path.push_str(s),
+                        JsonValue::Number(n) => path.push_str(&n.to_string()),
+                        JsonValue::Bool(b) => path.push_str(&b.to_string()),
+                        JsonValue::Null => {}
                         _ => {
                             return Err(LogicError::ParseError {
                                 reason: format!(
@@ -344,11 +342,8 @@ fn parse_variable<'a>(
                                 ),
                             });
                         }
-                    };
-                    path_parts.push(part);
+                    }
                 }
-
-                let path = path_parts.join(".");
                 return Ok(Token::variable(arena.alloc_str(&path), None));
             }
 
@@ -388,14 +383,8 @@ fn parse_variable<'a>(
             // we need to split it and handle it as a multi-level path
             let n_str = n.to_string();
             if n_str.contains('.') {
-                let parts: Vec<&str> = n_str.split('.').collect();
-                let mut path_parts = Vec::with_capacity(parts.len());
-                for part in parts {
-                    path_parts.push(part.to_string());
-                }
-
-                let path = path_parts.join(".");
-                return Ok(Token::variable(arena.alloc_str(&path), None));
+                // Just use the string as-is, no need to split and rejoin
+                return Ok(Token::variable(arena.alloc_str(&n_str), None));
             }
 
             Ok(Token::variable(arena.alloc_str(&n_str), None))
@@ -468,13 +457,13 @@ fn parse_arguments<'a>(
 
         // Empty array - create an empty ArrayLiteral
         JsonValue::Array(arr) if arr.is_empty() => {
-            let empty_array_token = Token::ArrayLiteral(Vec::new());
+            let empty_array_token = Token::ArrayLiteral(&[]);
             Ok(arena.alloc(empty_array_token))
         }
 
         // Multiple arguments as array
         JsonValue::Array(arr) => {
-            let mut tokens = Vec::with_capacity(arr.len());
+            let mut tokens = arena.get_token_vec(arr.len());
 
             // Parse each argument
             for arg_json in arr {
@@ -485,7 +474,8 @@ fn parse_arguments<'a>(
             }
 
             // Create an array literal token
-            let array_token = Token::ArrayLiteral(tokens);
+            let tokens_slice = arena.bump_vec_into_slice(tokens);
+            let array_token = Token::ArrayLiteral(tokens_slice);
             Ok(arena.alloc(array_token))
         }
 

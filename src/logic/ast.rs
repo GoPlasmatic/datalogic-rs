@@ -60,14 +60,15 @@ impl<'a> Logic<'a> {
     /// Creates an operator logic expression.
     pub fn operator(op_type: OperatorType, args: Vec<Logic<'a>>, arena: &'a DataArena) -> Self {
         // Extract the root tokens from the arguments
-        let mut arg_tokens = Vec::with_capacity(args.len());
+        let mut arg_tokens = arena.get_token_vec(args.len());
         for arg in &args {
             let token_ref = arg.root;
             arg_tokens.push(token_ref);
         }
 
         // Allocate the argument tokens in the arena
-        let array_literal = Token::ArrayLiteral(arg_tokens);
+        let arg_tokens_slice = arena.bump_vec_into_slice(arg_tokens);
+        let array_literal = Token::ArrayLiteral(arg_tokens_slice);
         let array_token = arena.alloc(array_literal);
 
         // Create the operator token
@@ -79,14 +80,15 @@ impl<'a> Logic<'a> {
     /// Creates a custom operator logic expression.
     pub fn custom_operator(name: &str, args: Vec<Logic<'a>>, arena: &'a DataArena) -> Self {
         // Extract the root tokens from the arguments
-        let mut arg_tokens = Vec::with_capacity(args.len());
+        let mut arg_tokens = arena.get_token_vec(args.len());
         for arg in &args {
             let token_ref = arg.root;
             arg_tokens.push(token_ref);
         }
 
         // Allocate the argument tokens in the arena
-        let array_literal = Token::ArrayLiteral(arg_tokens);
+        let arg_tokens_slice = arena.bump_vec_into_slice(arg_tokens);
+        let array_literal = Token::ArrayLiteral(arg_tokens_slice);
         let array_token = arena.alloc(array_literal);
 
         // Create the custom operator token

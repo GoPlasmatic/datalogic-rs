@@ -473,7 +473,7 @@ mod tests {
         let ten_ref = arena.alloc(ten_token);
 
         let equal_args = vec![a_var_ref, ten_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let equal_token = Token::operator(
@@ -493,7 +493,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let equal_args = vec![a_var_ref, b_var_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let equal_token = Token::operator(
@@ -513,7 +513,7 @@ mod tests {
         let c_var_ref = arena.alloc(c_var_token);
 
         let equal_args = vec![a_var_ref, c_var_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let equal_token = Token::operator(
@@ -533,7 +533,7 @@ mod tests {
         let d_var_ref = arena.alloc(d_var_token);
 
         let equal_args = vec![a_var_ref, d_var_ref, ten_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let equal_token = Token::operator(
@@ -550,7 +550,7 @@ mod tests {
         // Test variadic equal failing (a = c = 10)
         // Create {"==": [{"var": "a"}, {"var": "c"}, 10]}
         let equal_args = vec![a_var_ref, c_var_ref, ten_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let equal_token = Token::operator(
@@ -581,7 +581,7 @@ mod tests {
         let c_var_ref = arena.alloc(c_var_token);
 
         let not_equal_args = vec![a_var_ref, c_var_ref];
-        let not_equal_array_token = Token::ArrayLiteral(not_equal_args);
+        let not_equal_array_token = Token::ArrayLiteral(&not_equal_args);
         let not_equal_array_ref = arena.alloc(not_equal_array_token);
 
         let not_equal_token = Token::operator(
@@ -601,7 +601,7 @@ mod tests {
         let ten_ref = arena.alloc(ten_token);
 
         let not_equal_args = vec![a_var_ref, ten_ref];
-        let not_equal_array_token = Token::ArrayLiteral(not_equal_args);
+        let not_equal_array_token = Token::ArrayLiteral(&not_equal_args);
         let not_equal_array_ref = arena.alloc(not_equal_array_token);
 
         let not_equal_token = Token::operator(
@@ -622,7 +622,7 @@ mod tests {
 
         // {"!=": [{"var": "a"}, 10]}
         let ne1_args = vec![a_var_ref, ten_ref];
-        let ne1_array_token = Token::ArrayLiteral(ne1_args);
+        let ne1_array_token = Token::ArrayLiteral(&ne1_args);
         let ne1_array_ref = arena.alloc(ne1_array_token);
 
         let ne1_token = Token::operator(
@@ -633,7 +633,7 @@ mod tests {
 
         // {"!=": [{"var": "b"}, 10]}
         let ne2_args = vec![b_var_ref, ten_ref];
-        let ne2_array_token = Token::ArrayLiteral(ne2_args);
+        let ne2_array_token = Token::ArrayLiteral(&ne2_args);
         let ne2_array_ref = arena.alloc(ne2_array_token);
 
         let ne2_token = Token::operator(
@@ -644,7 +644,7 @@ mod tests {
 
         // {"!=": [{"var": "c"}, 10]}
         let ne3_args = vec![c_var_ref, ten_ref];
-        let ne3_array_token = Token::ArrayLiteral(ne3_args);
+        let ne3_array_token = Token::ArrayLiteral(&ne3_args);
         let ne3_array_ref = arena.alloc(ne3_array_token);
 
         let ne3_token = Token::operator(
@@ -655,7 +655,7 @@ mod tests {
 
         // Create {"and": [{"!=": [{"var": "a"}, 10]}, {"!=": [{"var": "b"}, 10]}, {"!=": [{"var": "c"}, 10]}]}
         let and_args = vec![ne1_ref, ne2_ref, ne3_ref];
-        let and_array_token = Token::ArrayLiteral(and_args);
+        let and_array_token = Token::ArrayLiteral(&and_args);
         let and_array_ref = arena.alloc(and_array_token);
 
         let and_token = Token::operator(
@@ -686,7 +686,7 @@ mod tests {
         let ten_ref = arena.alloc(ten_token);
 
         let equal_args = vec![a_var_ref, ten_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let strict_equal_token = Token::operator(
@@ -706,7 +706,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let equal_args = vec![a_var_ref, b_var_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let strict_equal_token = Token::operator(
@@ -737,7 +737,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let gt_args = vec![a_var_ref, b_var_ref];
-        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_token = Token::ArrayLiteral(&gt_args);
         let gt_array_ref = arena.alloc(gt_array_token);
 
         let gt_token = Token::operator(
@@ -757,7 +757,7 @@ mod tests {
         let c_var_ref = arena.alloc(c_var_token);
 
         let gt_args = vec![c_var_ref, a_var_ref];
-        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_token = Token::ArrayLiteral(&gt_args);
         let gt_array_ref = arena.alloc(gt_array_token);
 
         let gt_token = Token::operator(
@@ -780,7 +780,7 @@ mod tests {
         let e_var_ref = arena.alloc(e_var_token);
 
         let gt_args = vec![d_var_ref, a_var_ref, b_var_ref, e_var_ref];
-        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_token = Token::ArrayLiteral(&gt_args);
         let gt_array_ref = arena.alloc(gt_array_token);
 
         let gt_token = Token::operator(
@@ -797,7 +797,7 @@ mod tests {
         // Test variadic greater than (a > b > c)
         // Create {">": [{"var": "a"}, {"var": "b"}, {"var": "c"}]}
         let gt_args = vec![a_var_ref, b_var_ref, c_var_ref];
-        let gt_array_token = Token::ArrayLiteral(gt_args);
+        let gt_array_token = Token::ArrayLiteral(&gt_args);
         let gt_array_ref = arena.alloc(gt_array_token);
 
         let gt_token = Token::operator(
@@ -828,7 +828,7 @@ mod tests {
         let b_var_ref = arena.alloc(b_var_token);
 
         let lt_args = vec![b_var_ref, a_var_ref];
-        let lt_array_token = Token::ArrayLiteral(lt_args);
+        let lt_array_token = Token::ArrayLiteral(&lt_args);
         let lt_array_ref = arena.alloc(lt_array_token);
 
         let lt_token = Token::operator(
@@ -848,7 +848,7 @@ mod tests {
         let c_var_ref = arena.alloc(c_var_token);
 
         let lt_args = vec![a_var_ref, c_var_ref];
-        let lt_array_token = Token::ArrayLiteral(lt_args);
+        let lt_array_token = Token::ArrayLiteral(&lt_args);
         let lt_array_ref = arena.alloc(lt_array_token);
 
         let lt_token = Token::operator(
@@ -865,7 +865,7 @@ mod tests {
         // Test variadic less than (b < a < c)
         // Create {"<": [{"var": "b"}, {"var": "a"}, {"var": "c"}]}
         let lt_args = vec![b_var_ref, a_var_ref, c_var_ref];
-        let lt_array_token = Token::ArrayLiteral(lt_args);
+        let lt_array_token = Token::ArrayLiteral(&lt_args);
         let lt_array_ref = arena.alloc(lt_array_token);
 
         let lt_token = Token::operator(

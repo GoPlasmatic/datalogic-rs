@@ -344,7 +344,7 @@ mod tests {
         let name_var_ref = arena.alloc(name_var_token);
 
         let map_args = vec![users_var_ref, name_var_ref];
-        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_token = Token::ArrayLiteral(&map_args);
         let map_array_ref = arena.alloc(map_array_token);
 
         let map_token = Token::operator(

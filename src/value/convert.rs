@@ -38,8 +38,8 @@ impl<'a> FromJson<'a> for DataValue<'a> {
             }
             JsonValue::String(s) => DataValue::string(arena, s),
             JsonValue::Array(arr) => {
-                // Pre-allocate space for the array elements
-                let mut values = Vec::with_capacity(arr.len());
+                // Pre-allocate space for the array elements using arena's BumpVec
+                let mut values = arena.get_data_value_vec_with_capacity(arr.len());
 
                 // Convert each element in the array
                 for item in arr.iter() {
@@ -65,8 +65,8 @@ impl<'a> FromJson<'a> for DataValue<'a> {
                     }
                 }
 
-                // Pre-allocate space for the object entries
-                let mut entries = Vec::with_capacity(obj.len());
+                // Pre-allocate space for the object entries using arena's BumpVec
+                let mut entries = arena.get_object_entries_vec(obj.len());
 
                 // Convert each key-value pair in the object
                 for (key, value) in obj.iter() {
@@ -161,14 +161,12 @@ pub fn hash_map_to_data_value<'a, V>(
     arena: &'a DataArena,
     value_converter: impl Fn(&V, &'a DataArena) -> DataValue<'a>,
 ) -> DataValue<'a> {
-    let entries: Vec<(&'a str, DataValue<'a>)> = map
-        .iter()
-        .map(|(key, value)| {
-            let interned_key = arena.alloc_str(key);
-            let data_value = value_converter(value, arena);
-            (interned_key, data_value)
-        })
-        .collect();
+    let mut entries = arena.get_object_entries_vec(map.len());
+    for (key, value) in map {
+        let interned_key = arena.alloc_str(key);
+        let data_value = value_converter(value, arena);
+        entries.push((interned_key, data_value));
+    }
 
     // Create the object DataValue
     DataValue::object(arena, &entries)

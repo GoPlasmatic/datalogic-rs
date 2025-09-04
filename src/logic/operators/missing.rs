@@ -137,7 +137,7 @@ mod tests {
         let b_str_ref = arena.alloc(b_str_token);
 
         let missing_args = vec![b_str_ref];
-        let missing_array_token = Token::ArrayLiteral(missing_args);
+        let missing_array_token = Token::ArrayLiteral(&missing_args);
         let missing_array_ref = arena.alloc(missing_array_token);
 
         let missing_token = Token::operator(OperatorType::Missing, missing_array_ref);
@@ -166,7 +166,7 @@ mod tests {
         let d_str_ref = arena.alloc(d_str_token);
 
         let missing_args = vec![a_str_ref, b_str_ref, c_str_ref, d_str_ref];
-        let missing_array_token = Token::ArrayLiteral(missing_args);
+        let missing_array_token = Token::ArrayLiteral(&missing_args);
         let missing_array_ref = arena.alloc(missing_array_token);
 
         let missing_token = Token::operator(OperatorType::Missing, missing_array_ref);
@@ -184,7 +184,7 @@ mod tests {
         // Test missing with empty list
         // Create {"missing": []}
         let empty_missing_args: Vec<&Token> = vec![];
-        let empty_missing_array_token = Token::ArrayLiteral(empty_missing_args);
+        let empty_missing_array_token = Token::ArrayLiteral(&empty_missing_args);
         let empty_missing_array_ref = arena.alloc(empty_missing_array_token);
 
         let missing_token = Token::operator(OperatorType::Missing, empty_missing_array_ref);
@@ -206,7 +206,7 @@ mod tests {
         let c_str_ref = arena.alloc(c_str_token);
 
         let missing_args = vec![a_str_ref, c_str_ref];
-        let missing_array_token = Token::ArrayLiteral(missing_args);
+        let missing_array_token = Token::ArrayLiteral(&missing_args);
         let missing_array_ref = arena.alloc(missing_array_token);
 
         let missing_token = Token::operator(OperatorType::Missing, missing_array_ref);
@@ -242,11 +242,11 @@ mod tests {
         let d_str_ref = arena.alloc(d_str_token);
 
         let vars_args = vec![b_str_ref, d_str_ref];
-        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_token = Token::ArrayLiteral(&vars_args);
         let vars_array_ref = arena.alloc(vars_array_token);
 
         let missing_some_args = vec![one_ref, vars_array_ref];
-        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_token = Token::ArrayLiteral(&missing_some_args);
         let missing_some_array_ref = arena.alloc(missing_some_array_token);
 
         let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
@@ -279,11 +279,11 @@ mod tests {
         let d_str_ref = arena.alloc(d_str_token);
 
         let vars_args = vec![a_str_ref, b_str_ref, c_str_ref, d_str_ref];
-        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_token = Token::ArrayLiteral(&vars_args);
         let vars_array_ref = arena.alloc(vars_array_token);
 
         let missing_some_args = vec![one_ref, vars_array_ref];
-        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_token = Token::ArrayLiteral(&missing_some_args);
         let missing_some_array_ref = arena.alloc(missing_some_array_token);
 
         let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
@@ -314,11 +314,11 @@ mod tests {
         let d_str_ref = arena.alloc(d_str_token);
 
         let vars_args = vec![a_str_ref, b_str_ref, c_str_ref, d_str_ref];
-        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_token = Token::ArrayLiteral(&vars_args);
         let vars_array_ref = arena.alloc(vars_array_token);
 
         let missing_some_args = vec![three_ref, vars_array_ref];
-        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_token = Token::ArrayLiteral(&missing_some_args);
         let missing_some_array_ref = arena.alloc(missing_some_array_token);
 
         let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);
@@ -345,11 +345,11 @@ mod tests {
         let d_str_ref = arena.alloc(d_str_token);
 
         let vars_args = vec![b_str_ref, d_str_ref];
-        let vars_array_token = Token::ArrayLiteral(vars_args);
+        let vars_array_token = Token::ArrayLiteral(&vars_args);
         let vars_array_ref = arena.alloc(vars_array_token);
 
         let missing_some_args = vec![zero_ref, vars_array_ref];
-        let missing_some_array_token = Token::ArrayLiteral(missing_some_args);
+        let missing_some_array_token = Token::ArrayLiteral(&missing_some_args);
         let missing_some_array_ref = arena.alloc(missing_some_array_token);
 
         let missing_some_token = Token::operator(OperatorType::MissingSome, missing_some_array_ref);

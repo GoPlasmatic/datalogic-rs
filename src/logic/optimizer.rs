@@ -79,7 +79,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
 
             // If not all arguments are static, check if we can optimize nested expressions
             if let Token::ArrayLiteral(items) = optimized_args {
-                let mut all_optimized_items = Vec::with_capacity(items.len());
+                let mut all_optimized_items = arena.get_token_vec(items.len());
                 let mut any_changed = false;
 
                 // Try to optimize each item
@@ -111,7 +111,8 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
                         .all(|item| matches!(item, Token::Literal(_)));
 
                     // Create a new array literal
-                    let new_array_literal = Token::ArrayLiteral(all_optimized_items);
+                    let all_optimized_items_slice = arena.bump_vec_into_slice(all_optimized_items);
+                    let new_array_literal = Token::ArrayLiteral(all_optimized_items_slice);
                     let new_array_token = arena.alloc(new_array_literal);
 
                     if all_literals {
@@ -155,7 +156,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
         // Structured objects can optimize their field values
         Token::StructuredObject { fields } => {
             // Optimize each field value
-            let mut optimized_fields = Vec::with_capacity(fields.len());
+            let mut optimized_fields = arena.get_fields_vec(fields.len());
             let mut any_changed = false;
 
             for (key, value_token) in fields.iter() {
@@ -173,7 +174,7 @@ pub fn optimize<'a>(token: &'a Token<'a>, arena: &'a DataArena) -> Result<&'a To
 
             // If any field was optimized, create a new structured object
             if any_changed {
-                let fields_slice = arena.vec_into_slice(optimized_fields);
+                let fields_slice = arena.bump_vec_into_slice(optimized_fields);
                 Ok(arena.alloc(Token::structured_object(fields_slice)))
             } else {
                 // If nothing changed, return the original token

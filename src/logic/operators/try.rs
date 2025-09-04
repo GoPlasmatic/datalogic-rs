@@ -147,7 +147,7 @@ mod tests {
 
         // Create the try with both arguments
         let try_args = vec![throw_ref, one_ref];
-        let try_array_token = Token::ArrayLiteral(try_args);
+        let try_array_token = Token::ArrayLiteral(&try_args);
         let try_array_ref = arena.alloc(try_array_token);
 
         let try_token = Token::operator(OperatorType::Try, try_array_ref);
@@ -185,7 +185,7 @@ mod tests {
 
         // Create the try with both throw arguments
         let try_args = vec![throw1_ref, throw2_ref];
-        let try_array_token = Token::ArrayLiteral(try_args);
+        let try_array_token = Token::ArrayLiteral(&try_args);
         let try_array_ref = arena.alloc(try_array_token);
 
         let try_token = Token::operator(OperatorType::Try, try_array_ref);
@@ -225,7 +225,7 @@ mod tests {
 
         // Create the try with both arguments
         let try_args = vec![throw_ref, type_var_ref];
-        let try_array_token = Token::ArrayLiteral(try_args);
+        let try_array_token = Token::ArrayLiteral(&try_args);
         let try_array_ref = arena.alloc(try_array_token);
 
         let try_token = Token::operator(OperatorType::Try, try_array_ref);

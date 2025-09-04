@@ -17,7 +17,7 @@ pub enum Token<'a> {
     Literal(DataValue<'a>),
 
     /// An array literal.
-    ArrayLiteral(Vec<&'a Token<'a>>),
+    ArrayLiteral(&'a [&'a Token<'a>]),
 
     /// A variable reference.
     Variable {
@@ -187,7 +187,7 @@ impl<'a> Token<'a> {
     }
 
     /// Returns the array tokens if this token is an array literal.
-    pub fn as_array_literal(&self) -> Option<&Vec<&'a Token<'a>>> {
+    pub fn as_array_literal(&self) -> Option<&[&'a Token<'a>]> {
         match self {
             Token::ArrayLiteral(tokens) => Some(tokens),
             _ => None,

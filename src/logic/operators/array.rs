@@ -371,8 +371,9 @@ fn is_var_with_path(token: &Token, path: &str) -> bool {
 fn is_arithmetic_reduce_pattern<'a>(function: &'a Token<'a>) -> Option<ArithmeticOp> {
     if let Token::Operator {
         op_type: OperatorType::Arithmetic(arith_op),
-        args: Token::ArrayLiteral(fn_args_tokens),
+        args,
     } = function
+        && let Token::ArrayLiteral(fn_args_tokens) = args
         && fn_args_tokens.len() == 2
     {
         let is_var_current = is_var_with_path(fn_args_tokens[0], "current");
@@ -1332,7 +1333,7 @@ mod tests {
 
         // Create {"*": [{"var": ""}, 2]}
         let mul_args = vec![empty_var_ref, two_ref];
-        let mul_array_token = Token::ArrayLiteral(mul_args);
+        let mul_array_token = Token::ArrayLiteral(&mul_args);
         let mul_array_ref = arena.alloc(mul_array_token);
 
         let mul_token = Token::operator(
@@ -1343,7 +1344,7 @@ mod tests {
 
         // Create {"map": [{"var": "numbers"}, {"*": [{"var": ""}, 2]}]}
         let map_args = vec![numbers_var_ref, mul_ref];
-        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_token = Token::ArrayLiteral(&map_args);
         let map_array_ref = arena.alloc(map_array_token);
 
         let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
@@ -1391,7 +1392,7 @@ mod tests {
 
         // Create {"mod": [{"var": ""}, 2]}
         let mod_args = vec![empty_var_ref, two_ref];
-        let mod_array_token = Token::ArrayLiteral(mod_args);
+        let mod_array_token = Token::ArrayLiteral(&mod_args);
         let mod_array_ref = arena.alloc(mod_array_token);
 
         let mod_token = Token::operator(
@@ -1402,7 +1403,7 @@ mod tests {
 
         // Create {"==": [{"mod": [{"var": ""}, 2]}, 0]}
         let equal_args = vec![mod_ref, zero_ref];
-        let equal_array_token = Token::ArrayLiteral(equal_args);
+        let equal_array_token = Token::ArrayLiteral(&equal_args);
         let equal_array_ref = arena.alloc(equal_array_token);
 
         let equal_token = Token::operator(
@@ -1413,7 +1414,7 @@ mod tests {
 
         // Create {"filter": [{"var": "numbers"}, {"==": [{"mod": [{"var": ""}, 2]}, 0]}]}
         let filter_args = vec![numbers_var_ref, equal_ref];
-        let filter_array_token = Token::ArrayLiteral(filter_args);
+        let filter_array_token = Token::ArrayLiteral(&filter_args);
         let filter_array_ref = arena.alloc(filter_array_token);
 
         let filter_token = Token::operator(OperatorType::Array(ArrayOp::Filter), filter_array_ref);
@@ -1457,7 +1458,7 @@ mod tests {
 
         // Create {"+": [{"var": "current"}, {"var": "accumulator"}]}
         let add_args = vec![current_var_ref, accumulator_var_ref];
-        let add_array_token = Token::ArrayLiteral(add_args);
+        let add_array_token = Token::ArrayLiteral(&add_args);
         let add_array_ref = arena.alloc(add_array_token);
 
         let add_token = Token::operator(OperatorType::Arithmetic(ArithmeticOp::Add), add_array_ref);
@@ -1469,7 +1470,7 @@ mod tests {
 
         // Create {"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 0]}
         let reduce_args = vec![numbers_var_ref, add_ref, zero_ref];
-        let reduce_array_token = Token::ArrayLiteral(reduce_args);
+        let reduce_array_token = Token::ArrayLiteral(&reduce_args);
         let reduce_array_ref = arena.alloc(reduce_array_token);
 
         let reduce_token = Token::operator(OperatorType::Array(ArrayOp::Reduce), reduce_array_ref);
@@ -1496,7 +1497,7 @@ mod tests {
 
         // Create {"reduce": [{"var": "numbers"}, {"+": [{"var": "current"}, {"var": "accumulator"}]}, 10]}
         let reduce_args = vec![numbers_var_ref, add_ref, ten_ref];
-        let reduce_array_token = Token::ArrayLiteral(reduce_args);
+        let reduce_array_token = Token::ArrayLiteral(&reduce_args);
         let reduce_array_ref = arena.alloc(reduce_array_token);
 
         let reduce_token = Token::operator(OperatorType::Array(ArrayOp::Reduce), reduce_array_ref);
@@ -1586,7 +1587,7 @@ mod tests {
         let end_ref = arena.alloc(end_token);
 
         let slice_args = vec![array_var_ref, start_ref, end_ref];
-        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_token = Token::ArrayLiteral(&slice_args);
         let slice_array_ref = arena.alloc(slice_array_token);
 
         let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
@@ -1607,7 +1608,7 @@ mod tests {
         let neg_end_ref = arena.alloc(neg_end_token);
 
         let slice_args = vec![array_var_ref, neg_start_ref, neg_end_ref];
-        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_token = Token::ArrayLiteral(&slice_args);
         let slice_array_ref = arena.alloc(slice_array_token);
 
         let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
@@ -1631,7 +1632,7 @@ mod tests {
         let step_ref = arena.alloc(step_token);
 
         let slice_args = vec![array_var_ref, start_zero_ref, end_five_ref, step_ref];
-        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_token = Token::ArrayLiteral(&slice_args);
         let slice_array_ref = arena.alloc(slice_array_token);
 
         let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
@@ -1649,7 +1650,7 @@ mod tests {
         let string_var_ref = arena.alloc(string_var_token);
 
         let slice_args = vec![string_var_ref, start_zero_ref, end_ref];
-        let slice_array_token = Token::ArrayLiteral(slice_args);
+        let slice_array_token = Token::ArrayLiteral(&slice_args);
         let slice_array_ref = arena.alloc(slice_array_token);
 
         let slice_token = Token::operator(OperatorType::Array(ArrayOp::Slice), slice_array_ref);
@@ -1688,7 +1689,7 @@ mod tests {
         let z_value_ref = arena.alloc(z_value_var);
 
         let sort_args = vec![items_ref, true_ref, z_value_ref];
-        let sort_array = Token::ArrayLiteral(sort_args);
+        let sort_array = Token::ArrayLiteral(&sort_args);
         let sort_array_ref = arena.alloc(sort_array);
 
         let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
@@ -1718,7 +1719,7 @@ mod tests {
         let array_var_ref = arena.alloc(array_var_token);
 
         let sort_args = vec![array_var_ref];
-        let sort_array_token = Token::ArrayLiteral(sort_args);
+        let sort_array_token = Token::ArrayLiteral(&sort_args);
         let sort_array_ref = arena.alloc(sort_array_token);
 
         let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
@@ -1736,7 +1737,7 @@ mod tests {
         let false_ref = arena.alloc(false_token);
 
         let sort_args = vec![array_var_ref, false_ref];
-        let sort_array_token = Token::ArrayLiteral(sort_args);
+        let sort_array_token = Token::ArrayLiteral(&sort_args);
         let sort_array_ref = arena.alloc(sort_array_token);
 
         let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
@@ -1760,7 +1761,7 @@ mod tests {
         let age_var_ref = arena.alloc(age_var_token);
 
         let sort_args = vec![people_var_ref, true_ref, age_var_ref];
-        let sort_array_token = Token::ArrayLiteral(sort_args);
+        let sort_array_token = Token::ArrayLiteral(&sort_args);
         let sort_array_ref = arena.alloc(sort_array_token);
 
         let sort_token = Token::operator(OperatorType::Array(ArrayOp::Sort), sort_array_ref);
@@ -1822,7 +1823,7 @@ mod tests {
         let empty_var_ref = arena.alloc(empty_var_token);
 
         let map_args = vec![person_var_ref, empty_var_ref];
-        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_token = Token::ArrayLiteral(&map_args);
         let map_array_ref = arena.alloc(map_array_token);
 
         let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
@@ -1850,7 +1851,7 @@ mod tests {
         let empty_obj_var_ref = arena.alloc(empty_obj_var_token);
 
         let map_args = vec![empty_obj_var_ref, empty_var_ref];
-        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_token = Token::ArrayLiteral(&map_args);
         let map_array_ref = arena.alloc(map_array_token);
 
         let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
@@ -1880,7 +1881,7 @@ mod tests {
         let empty_var_ref = arena.alloc(empty_var_token);
 
         let map_args = vec![number_var_ref, empty_var_ref];
-        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_token = Token::ArrayLiteral(&map_args);
         let map_array_ref = arena.alloc(map_array_token);
 
         let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
@@ -1904,7 +1905,7 @@ mod tests {
         let empty_var_ref = arena.alloc(empty_var_token);
 
         let map_args = vec![string_var_ref, empty_var_ref];
-        let map_array_token = Token::ArrayLiteral(map_args);
+        let map_array_token = Token::ArrayLiteral(&map_args);
         let map_array_ref = arena.alloc(map_array_token);
 
         let map_token = Token::operator(OperatorType::Array(ArrayOp::Map), map_array_ref);
