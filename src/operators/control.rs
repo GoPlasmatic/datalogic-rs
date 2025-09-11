@@ -77,3 +77,31 @@ impl Operator for TernaryOperator {
         }
     }
 }
+
+/// Coalesce operator (??) - returns first non-null value
+pub struct CoalesceOperator;
+
+impl Operator for CoalesceOperator {
+    fn evaluate(
+        &self,
+        args: &[Value],
+        context: &mut ContextStack,
+        evaluator: &dyn Evaluator,
+    ) -> Result<Value> {
+        // Empty args returns null
+        if args.is_empty() {
+            return Ok(Value::Null);
+        }
+
+        // Return the first non-null value
+        for arg in args {
+            let value = evaluator.evaluate(arg, context)?;
+            if value != Value::Null {
+                return Ok(value);
+            }
+        }
+
+        // All values were null
+        Ok(Value::Null)
+    }
+}

@@ -63,24 +63,26 @@ impl Operator for ValOperator {
             return Ok(context.current().data.clone());
         }
 
-        // Check if we have two arguments: [level_array, path] or two path segments
-        // This is the case for {"val": [[1], "index"]} or {"val": ["user", "admin"]}
-        if args.len() == 2 {
+        // Check if we have level access: [[level], path...]
+        // This handles both {"val": [[1], "index"]} and {"val": [[2], "", "", "/"]}
+        if args.len() >= 2 {
             // First check if it's level access
             if let Value::Array(level_arr) = &args[0]
                 && let Some(Value::Number(level_num)) = level_arr.first()
                 && let Some(level) = level_num.as_i64()
             {
-                // Access path in the request
-                let path = args[1].as_str().unwrap_or("");
+                // For metadata keys, only check if we have exactly 2 args
+                if args.len() == 2 {
+                    let path = args[1].as_str().unwrap_or("");
 
-                // Special handling for metadata keys like "index" and "key"
-                // These are always in the current frame's metadata, regardless of level
-                if (path == "index" || path == "key")
-                    && let Some(metadata) = &context.current().metadata
-                    && let Some(value) = metadata.get(path)
-                {
-                    return Ok(value.clone());
+                    // Special handling for metadata keys like "index" and "key"
+                    // These are always in the current frame's metadata, regardless of level
+                    if (path == "index" || path == "key")
+                        && let Some(metadata) = &context.current().metadata
+                        && let Some(value) = metadata.get(path)
+                    {
+                        return Ok(value.clone());
+                    }
                 }
 
                 // Get frame at relative level for normal data access
@@ -90,9 +92,14 @@ impl Operator for ValOperator {
                     .get_at_level(level as isize)
                     .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-                // Normal path access in the target frame
-                return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
-            } else {
+                // Chain path access through remaining arguments
+                let mut result = frame.data.clone();
+                for item in args.iter().skip(1) {
+                    let path = item.as_str().unwrap_or("");
+                    result = access_path(&result, path).unwrap_or(Value::Null);
+                }
+                return Ok(result);
+            } else if args.len() == 2 {
                 // Two arguments - check for datetime/duration property access first
                 let first = evaluator.evaluate(&args[0], context)?;
                 let second_val = evaluator.evaluate(&args[1], context)?;
@@ -184,27 +191,29 @@ impl Operator for ValOperator {
         // Single argument - evaluate it
         let path_value = evaluator.evaluate(&args[0], context)?;
 
-        // Handle array notation for context levels: [[level], "path"]
+        // Handle array notation for context levels: [[level], "path", ...]
         // Level indicates how many levels to go up from current
         // Sign doesn't matter: [1] and [-1] both mean parent
         // [2] and [-2] both mean grandparent, etc.
         if let Value::Array(arr) = &path_value {
-            // Check if it's a level access array: [[level], "path"]
-            if arr.len() == 2
+            // Check if first element is a level access array: [[level], ...]
+            if arr.len() >= 2
                 && let Value::Array(level_arr) = &arr[0]
                 && let Some(Value::Number(level_num)) = level_arr.first()
                 && let Some(level) = level_num.as_i64()
             {
-                // Access path in the request
-                let path = arr[1].as_str().unwrap_or("");
+                // Special case for metadata keys with exactly 2 elements
+                if arr.len() == 2 {
+                    let path = arr[1].as_str().unwrap_or("");
 
-                // Special handling for metadata keys like "index" and "key"
-                // These are always in the current frame's metadata, regardless of level
-                if (path == "index" || path == "key")
-                    && let Some(metadata) = &context.current().metadata
-                    && let Some(value) = metadata.get(path)
-                {
-                    return Ok(value.clone());
+                    // Special handling for metadata keys like "index" and "key"
+                    // These are always in the current frame's metadata, regardless of level
+                    if (path == "index" || path == "key")
+                        && let Some(metadata) = &context.current().metadata
+                        && let Some(value) = metadata.get(path)
+                    {
+                        return Ok(value.clone());
+                    }
                 }
 
                 // Get frame at relative level for normal data access
@@ -214,8 +223,16 @@ impl Operator for ValOperator {
                     .get_at_level(level as isize)
                     .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-                // Normal path access in the target frame
-                return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
+                // Chain path access through remaining elements
+                let mut result = frame.data.clone();
+                for item in args.iter().skip(1) {
+                    if let Some(path) = item.as_str() {
+                        result = access_path(&result, path).unwrap_or(Value::Null);
+                    } else {
+                        return Ok(Value::Null);
+                    }
+                }
+                return Ok(result);
             } else {
                 // Array of paths like ["user", "admin"] - chain access
                 let mut result = context.current().data.clone();
@@ -234,5 +251,111 @@ impl Operator for ValOperator {
         // Standard path access in current context
         let path = path_value.as_str().unwrap_or("");
         Ok(access_path(&context.current().data, path).unwrap_or(Value::Null))
+    }
+}
+
+/// Exists operator - checks if a key exists in the data
+pub struct ExistsOperator;
+
+impl Operator for ExistsOperator {
+    fn evaluate(
+        &self,
+        args: &[Value],
+        context: &mut ContextStack,
+        evaluator: &dyn Evaluator,
+    ) -> Result<Value> {
+        if args.is_empty() {
+            return Ok(Value::Bool(false));
+        }
+
+        // If we have a single argument, evaluate it
+        if args.len() == 1 {
+            let path_arg = evaluator.evaluate(&args[0], context)?;
+
+            // Handle different path formats
+            match path_arg {
+                Value::String(path) => {
+                    // Simple string path
+                    Ok(Value::Bool(key_exists(&context.current().data, &path)))
+                }
+                Value::Array(paths) => {
+                    // Array of path segments for nested access
+                    if paths.is_empty() {
+                        return Ok(Value::Bool(false));
+                    }
+
+                    let mut current = &context.current().data;
+
+                    for (i, path_val) in paths.iter().enumerate() {
+                        if let Value::String(path) = path_val {
+                            if let Value::Object(obj) = current {
+                                // For the last path segment, just check if key exists
+                                if i == paths.len() - 1 {
+                                    return Ok(Value::Bool(obj.contains_key(path)));
+                                }
+                                // For intermediate segments, navigate deeper
+                                if let Some(next) = obj.get(path) {
+                                    current = next;
+                                } else {
+                                    return Ok(Value::Bool(false));
+                                }
+                            } else {
+                                return Ok(Value::Bool(false));
+                            }
+                        } else {
+                            return Ok(Value::Bool(false));
+                        }
+                    }
+
+                    // Should not reach here if paths is non-empty
+                    Ok(Value::Bool(true))
+                }
+                _ => Ok(Value::Bool(false)),
+            }
+        } else {
+            // Multiple arguments - treat as path segments for nested access
+            // First evaluate all args to get the path segments
+            let mut paths = Vec::new();
+            for arg in args {
+                let path_val = evaluator.evaluate(arg, context)?;
+                if let Value::String(path) = path_val {
+                    paths.push(path);
+                } else {
+                    return Ok(Value::Bool(false));
+                }
+            }
+
+            // Now navigate through the paths
+            let mut current = &context.current().data;
+
+            for (i, path) in paths.iter().enumerate() {
+                if let Value::Object(obj) = current {
+                    // For the last path segment, just check if key exists
+                    if i == paths.len() - 1 {
+                        return Ok(Value::Bool(obj.contains_key(path)));
+                    }
+                    // For intermediate segments, navigate deeper
+                    if let Some(next) = obj.get(path) {
+                        current = next;
+                    } else {
+                        return Ok(Value::Bool(false));
+                    }
+                } else {
+                    return Ok(Value::Bool(false));
+                }
+            }
+
+            // Should not reach here if paths is non-empty
+            Ok(Value::Bool(true))
+        }
+    }
+}
+
+/// Helper function to check if a key exists in an object
+fn key_exists(value: &Value, key: &str) -> bool {
+    if let Value::Object(obj) = value {
+        obj.contains_key(key)
+    } else {
+        false
     }
 }

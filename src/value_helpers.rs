@@ -10,6 +10,22 @@ pub fn access_path(value: &Value, path: &str) -> Option<Value> {
         return Some(value.clone());
     }
 
+    // If the path doesn't contain dots, try direct key access first
+    // This handles special keys like "../" or keys with slashes
+    if !path.contains('.') {
+        if let Value::Object(obj) = value
+            && let Some(val) = obj.get(path)
+        {
+            return Some(val.clone());
+        }
+        // Also try array index access for simple numeric paths
+        if let Ok(index) = path.parse::<usize>()
+            && let Value::Array(arr) = value
+        {
+            return arr.get(index).cloned();
+        }
+    }
+
     // Use serde_json's pointer method for JSON pointer syntax
     // Convert dot notation to JSON pointer format
     let pointer = if path.starts_with('/') {
@@ -79,50 +95,88 @@ pub fn try_coerce_to_integer(value: &Value) -> Option<i64> {
     }
 }
 
-/// Compare two values with loose equality (JavaScript ==)
-pub fn loose_equals(left: &Value, right: &Value) -> bool {
+/// Compare two values with strict equality (JavaScript ===)
+pub fn strict_equals(left: &Value, right: &Value) -> bool {
+    left == right
+}
+
+/// Compare two values with loose equality, returning error for incompatible types
+pub fn loose_equals_with_error(left: &Value, right: &Value) -> crate::Result<bool> {
     match (left, right) {
-        (Value::Null, Value::Null) => true,
-        (Value::Bool(a), Value::Bool(b)) => a == b,
+        (Value::Null, Value::Null) => Ok(true),
+        (Value::Bool(a), Value::Bool(b)) => Ok(a == b),
         (Value::Number(a), Value::Number(b)) => {
             let a_f = a.as_f64().unwrap_or(f64::NAN);
             let b_f = b.as_f64().unwrap_or(f64::NAN);
             if a_f.is_nan() && b_f.is_nan() {
-                false // NaN != NaN in JavaScript
+                Ok(false) // NaN != NaN in JavaScript
             } else {
-                a_f == b_f
+                Ok(a_f == b_f)
             }
         }
-        (Value::String(a), Value::String(b)) => a == b,
+        (Value::String(a), Value::String(b)) => Ok(a == b),
         // Type coercion cases
         (Value::Number(n), Value::String(s)) | (Value::String(s), Value::Number(n)) => {
-            if let (Some(n_f), Ok(s_f)) = (n.as_f64(), s.parse::<f64>()) {
-                n_f == s_f
+            if let Some(n_f) = n.as_f64() {
+                if let Ok(s_f) = s.parse::<f64>() {
+                    Ok(n_f == s_f)
+                } else {
+                    // Non-numeric string compared with number
+                    Err(crate::Error::InvalidArguments("NaN".to_string()))
+                }
             } else {
-                false
+                Ok(false)
             }
         }
         (Value::Number(n), Value::Bool(b)) | (Value::Bool(b), Value::Number(n)) => {
             let b_val = if *b { 1.0 } else { 0.0 };
-            n.as_f64() == Some(b_val)
+            Ok(n.as_f64() == Some(b_val))
         }
         (Value::String(s), Value::Bool(b)) | (Value::Bool(b), Value::String(s)) => {
             let b_str = if *b { "true" } else { "false" };
-            s == b_str
+            Ok(s == b_str)
         }
         // Null coerces to 0 in loose equality
         (Value::Null, Value::Number(n)) | (Value::Number(n), Value::Null) => {
-            n.as_f64() == Some(0.0)
+            Ok(n.as_f64() == Some(0.0))
         }
         // Null coerces to false in loose equality
-        (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => !*b,
+        (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => Ok(!*b),
         // Null coerces to empty string in loose equality
-        (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => s.is_empty(),
-        _ => false,
+        (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => Ok(s.is_empty()),
+        // Arrays compared to primitives
+        (Value::Array(_), Value::Number(_))
+        | (Value::Number(_), Value::Array(_))
+        | (Value::Array(_), Value::String(_))
+        | (Value::String(_), Value::Array(_))
+        | (Value::Array(_), Value::Bool(_))
+        | (Value::Bool(_), Value::Array(_)) => {
+            Err(crate::Error::InvalidArguments("NaN".to_string()))
+        }
+        // Objects compared to primitives
+        (Value::Object(_), Value::Number(_))
+        | (Value::Number(_), Value::Object(_))
+        | (Value::Object(_), Value::String(_))
+        | (Value::String(_), Value::Object(_))
+        | (Value::Object(_), Value::Bool(_))
+        | (Value::Bool(_), Value::Object(_)) => {
+            Err(crate::Error::InvalidArguments("NaN".to_string()))
+        }
+        // Arrays/objects to arrays/objects (different instances)
+        (Value::Array(a), Value::Array(b)) => {
+            if a.len() != b.len() {
+                // Different arrays should throw NaN error
+                Err(crate::Error::InvalidArguments("NaN".to_string()))
+            } else {
+                // Check if contents are equal
+                for (av, bv) in a.iter().zip(b.iter()) {
+                    if av != bv {
+                        return Err(crate::Error::InvalidArguments("NaN".to_string()));
+                    }
+                }
+                Ok(true)
+            }
+        }
+        _ => Ok(false),
     }
-}
-
-/// Compare two values with strict equality (JavaScript ===)
-pub fn strict_equals(left: &Value, right: &Value) -> bool {
-    left == right
 }

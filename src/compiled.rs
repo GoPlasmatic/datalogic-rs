@@ -50,6 +50,12 @@ impl CompiledLogic {
     /// Compile a single node
     fn compile_node(value: &Value, engine: Option<&DataLogic>) -> Result<CompiledNode> {
         match value {
+            Value::Object(obj) if obj.len() > 1 => {
+                // Multi-key objects are not valid operators
+                Err(crate::error::Error::InvalidOperator(
+                    "Unknown Operator".to_string(),
+                ))
+            }
             Value::Object(obj) if obj.len() == 1 => {
                 // Single key object is an operator
                 let (op_name, args_value) = obj.iter().next().unwrap();
@@ -181,6 +187,10 @@ impl CompiledLogic {
                     // Merge is not statically evaluated because max/min need to distinguish
                     // between literal arrays and arrays from operators
                     Merge => false,
+                    // Coalesce can be static if its args are
+                    Coalesce => args.iter().all(Self::node_is_static),
+                    // Exists depends on context
+                    Exists => false,
                 }
             }
             CompiledNode::CustomOperator { .. } => {

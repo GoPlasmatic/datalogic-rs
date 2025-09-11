@@ -163,6 +163,21 @@ fn run_test_file(engine: &DataLogic, test_file: &str) -> (usize, usize) {
                                     println!("  Got error:      {:?}", error_obj);
                                     failed += 1;
                                 }
+                            } else if let datalogic_rs::Error::InvalidOperator(_msg) = &e {
+                                // Check if it's an InvalidOperator error
+                                let error_obj = serde_json::json!({"type": "Unknown Operator"});
+                                if &error_obj == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", error_obj);
+                                    failed += 1;
+                                }
                             } else {
                                 println!("✗ Test {}: {}", index, description);
                                 println!("  Expected error: {:?}", expected_error_obj);
@@ -183,11 +198,37 @@ fn run_test_file(engine: &DataLogic, test_file: &str) -> (usize, usize) {
                 }
             },
             Err(e) => {
-                println!(
-                    "✗ Test {}: {} - Compilation error: {}",
-                    index, description, e
-                );
-                failed += 1;
+                if expects_error {
+                    // Check if the compilation error matches expected error
+                    if let Some(expected_error_obj) = expected_error {
+                        if let datalogic_rs::Error::InvalidOperator(_msg) = &e {
+                            let error_obj = serde_json::json!({"type": "Unknown Operator"});
+                            if &error_obj == expected_error_obj {
+                                println!("✓ Test {}: {} (error as expected)", index, description);
+                                passed += 1;
+                            } else {
+                                println!("✗ Test {}: {}", index, description);
+                                println!("  Expected error: {:?}", expected_error_obj);
+                                println!("  Got error:      {:?}", error_obj);
+                                failed += 1;
+                            }
+                        } else {
+                            println!("✗ Test {}: {}", index, description);
+                            println!("  Expected error: {:?}", expected_error_obj);
+                            println!("  Got compilation error: {:?}", e);
+                            failed += 1;
+                        }
+                    } else {
+                        println!("✓ Test {}: {} (error as expected)", index, description);
+                        passed += 1;
+                    }
+                } else {
+                    println!(
+                        "✗ Test {}: {} - Compilation error: {}",
+                        index, description, e
+                    );
+                    failed += 1;
+                }
             }
         }
     }

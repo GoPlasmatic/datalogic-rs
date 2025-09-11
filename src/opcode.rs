@@ -83,11 +83,13 @@ pub enum OpCode {
     Preserve = 52,
     Sort = 54,
     Slice = 55,
+    Coalesce = 56,
+    Exists = 57,
 }
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 56;
+    pub const COUNT: usize = 58;
 
     /// Convert a string to an OpCode
     pub fn from_str(s: &str) -> Option<OpCode> {
@@ -148,6 +150,8 @@ impl OpCode {
             "length" => Some(OpCode::Length),
             "sort" => Some(OpCode::Sort),
             "slice" => Some(OpCode::Slice),
+            "??" => Some(OpCode::Coalesce),
+            "exists" => Some(OpCode::Exists),
             _ => None,
         }
     }
@@ -211,6 +215,8 @@ impl OpCode {
             OpCode::Length => "length",
             OpCode::Sort => "sort",
             OpCode::Slice => "slice",
+            OpCode::Coalesce => "??",
+            OpCode::Exists => "exists",
         }
     }
 }

@@ -37,6 +37,7 @@ impl DataLogic {
         // Variable access
         self.builtin_operators[OpCode::Var as usize] = Some(Box::new(VarOperator));
         self.builtin_operators[OpCode::Val as usize] = Some(Box::new(ValOperator));
+        self.builtin_operators[OpCode::Exists as usize] = Some(Box::new(ExistsOperator));
 
         // Comparison operators
         self.builtin_operators[OpCode::Equals as usize] =
@@ -63,6 +64,7 @@ impl DataLogic {
         // Control flow
         self.builtin_operators[OpCode::If as usize] = Some(Box::new(IfOperator));
         self.builtin_operators[OpCode::Ternary as usize] = Some(Box::new(TernaryOperator));
+        self.builtin_operators[OpCode::Coalesce as usize] = Some(Box::new(CoalesceOperator));
 
         // Arithmetic operators
         self.builtin_operators[OpCode::Add as usize] = Some(Box::new(AddOperator));

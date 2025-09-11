@@ -16,12 +16,25 @@ impl Operator for CatOperator {
 
         for arg in args {
             let value = evaluator.evaluate(arg, context)?;
-            match value {
-                Value::String(s) => result.push_str(&s),
-                Value::Number(n) => result.push_str(&n.to_string()),
-                Value::Bool(b) => result.push_str(&b.to_string()),
-                Value::Null => result.push_str("null"),
-                _ => result.push_str(&value.to_string()),
+            // If the value is an array, concatenate its elements
+            if let Value::Array(arr) = value {
+                for item in arr {
+                    match item {
+                        Value::String(s) => result.push_str(&s),
+                        Value::Number(n) => result.push_str(&n.to_string()),
+                        Value::Bool(b) => result.push_str(&b.to_string()),
+                        Value::Null => result.push_str("null"),
+                        _ => result.push_str(&item.to_string()),
+                    }
+                }
+            } else {
+                match value {
+                    Value::String(s) => result.push_str(&s),
+                    Value::Number(n) => result.push_str(&n.to_string()),
+                    Value::Bool(b) => result.push_str(&b.to_string()),
+                    Value::Null => result.push_str("null"),
+                    _ => result.push_str(&value.to_string()),
+                }
             }
         }
 
