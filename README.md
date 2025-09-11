@@ -24,38 +24,41 @@
 
 `datalogic-rs` is a Rust implementation of [JSONLogic](http://jsonlogic.com) designed for performance, safety, and ease of use. Whether you're building a feature flagging system, a dynamic pricing engine, or a complex validation pipeline, `datalogic-rs` provides the power and flexibility you need.
 
-Our secret sauce? An arena-based memory model that delivers zero-copy parsing and evaluation, making it up to **30% faster** than other implementations.
+**Version 4 Update:** We've moved to a more ergonomic API in v4, prioritizing developer experience and maintainability over micro-optimizations. If you need ultra-high performance with arena allocation (30x faster for specific workloads), v3 is still maintained and available. Both v3 and v4 will continue to exist in parallel, letting you choose between maximum performance (v3) or better ergonomics (v4).
 
-## 🚀 What Makes `datalogic-rs` Awesome?
+## 🚀 What Makes `datalogic-rs` v4 Awesome?
 
-- **Blazing Fast:** Our arena-based allocator minimizes memory overhead and maximizes speed.
+- **Thread-Safe by Design:** Compile once, evaluate across multiple threads with zero synchronization overhead.
+- **Ergonomic API:** Simple, intuitive API using standard `serde_json::Value` types.
 - **100% JSONLogic Compliant:** Full compatibility with the official JSONLogic test suite.
-- **Extensible:** Easily add your own custom operators with our simple or advanced APIs.
+- **Extensible:** Easily add custom operators with our straightforward trait system.
 - **Powerful Templating:** Preserve object structures for dynamic, structured output.
-- **Ready for Production:** Thread-safe, statically dispatched, and optimized for real-world workloads.
+- **Production Ready:** Proven in real-world workloads with comprehensive test coverage.
 - **Batteries Included:** Over 50 built-in operators, including datetime and regex support.
-- **WASM Support:** Compile to WebAssembly for use in browser environments.
+- **Async Compatible:** Works seamlessly with Tokio and other async runtimes.
 
-## 🏗️ How It Works: The Arena Advantage
+## 🏗️ How It Works: Compilation-Based Optimization
 
-`datalogic-rs` uses an arena allocator for memory-efficient evaluation. This means we can parse a rule once and evaluate it many times with minimal overhead.
+`datalogic-rs` v4 uses a compilation step to optimize rule evaluation. Parse and compile your rules once, then evaluate them many times across different threads with zero overhead.
 
 ```rust
 use datalogic_rs::DataLogic;
+use serde_json::json;
+use std::sync::Arc;
 
-// Create an evaluator with a custom arena chunk size.
-let dl = DataLogic::with_chunk_size(8192);
+// Create an engine
+let engine = Arc::new(DataLogic::new());
 
-// Parse your rule and data once.
-let rule = dl.parse_logic(r#"{ ">": [{ "var": "temp" }, 100] }"#).unwrap();
-let data = dl.parse_data(r#"{ "temp": 110 }"#).unwrap();
+// Compile your rule once
+let logic = json!({ ">": [{ "var": "temp" }, 100] });
+let compiled = engine.compile(&logic).unwrap(); // Returns Arc<CompiledLogic>
 
-// Evaluate efficiently.
-let result = dl.evaluate(&rule, &data).unwrap();
-assert!(result.to_json().as_bool().unwrap());
-
-// Reset the arena to reuse memory for the next batch of evaluations.
-dl.reset_arena();
+// Evaluate across multiple threads
+let handle = std::thread::spawn(move || {
+    let data = json!({ "temp": 110 });
+    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    assert_eq!(result, json!(true));
+});
 ```
 
 ### Structured Object Preservation
@@ -64,18 +67,21 @@ Generate powerful, structured outputs by preserving non-operator keys in your JS
 
 ```rust
 use datalogic_rs::DataLogic;
+use serde_json::json;
 
-// Enable structure preservation for templating.
-let dl = DataLogic::with_preserve_structure();
+// Enable structure preservation for templating
+let engine = DataLogic::with_preserve_structure();
 
-let result = dl.evaluate_str(
-    r#"{
-        "status": { "if": [{ ">=": [{ "var": "score" }, 90] }, "pass", "fail"] },
-        "grade": { "+": [{ "var": "score" }, { "var": "bonus" }] },
-        "timestamp": { "now": [] }
-    }"#,
-    r#"{ "score": 85, "bonus": 10 }"#,
-).unwrap();
+let logic = json!({
+    "status": { "if": [{ ">=": [{ "var": "score" }, 90] }, "pass", "fail"] },
+    "grade": { "+": [{ "var": "score" }, { "var": "bonus" }] },
+    "timestamp": { "now": [] }
+});
+
+let data = json!({ "score": 85, "bonus": 10 });
+
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, data).unwrap();
 
 // The result is a structured object with evaluated fields.
 // { "status": "pass", "grade": 95, "timestamp": "2024-01-15T10:30:00Z" }
@@ -83,63 +89,84 @@ let result = dl.evaluate_str(
 
 ## 🎯 Getting Started: Core API
 
-### 1. `evaluate` - For Reusable Rules & Data
+### 1. `compile` + `evaluate` - For Maximum Performance
 
-Ideal for scenarios where you need to run the same rule against different data.
-
-```rust
-use datalogic_rs::DataLogic;
-
-let dl = DataLogic::new();
-
-// Parse the rule and data once.
-let rule = dl.parse_logic(r#"{ ">": [{ "var": "temp" }, 100] }"#).unwrap();
-let data = dl.parse_data(r#"{ "temp": 110 }"#).unwrap();
-
-// Evaluate as many times as you need.
-let result = dl.evaluate(&rule, &data).unwrap();
-assert!(result.to_json().as_bool().unwrap());
-```
-
-### 2. `evaluate_str` - For Quick, One-Shot Evaluations
-
-Perfect for when your rules are dynamic or you only need a single evaluation.
-
-```rust
-use datalogic_rs::DataLogic;
-
-let dl = DataLogic::new();
-
-let result = dl.evaluate_str(
-    r#"{ "abs": -42 }"#,
-    r#"{}"#, // No data needed for this rule.
-).unwrap();
-
-assert_eq!(result.as_i64().unwrap(), 42);
-```
-
-### 3. `evaluate_json` - For Seamless JSON Integration
-
-Works directly with `serde_json::Value` for easy integration into your existing JSON workflows.
+Compile once, evaluate many times across threads with zero overhead.
 
 ```rust
 use datalogic_rs::DataLogic;
 use serde_json::json;
 
-let dl = DataLogic::new();
+let engine = DataLogic::new();
+
+// Compile the rule once
+let logic = json!({ ">": [{ "var": "temp" }, 100] });
+let compiled = engine.compile(&logic).unwrap(); // Returns Arc<CompiledLogic>
+
+// Evaluate with different data
+let result1 = engine.evaluate_owned(&compiled, json!({ "temp": 110 })).unwrap();
+let result2 = engine.evaluate_owned(&compiled, json!({ "temp": 90 })).unwrap();
+
+assert_eq!(result1, json!(true));
+assert_eq!(result2, json!(false));
+```
+
+### 2. `evaluate_json` - For Quick Evaluations
+
+Perfect for one-shot evaluations or when you don't need to reuse compiled logic.
+
+```rust
+use datalogic_rs::DataLogic;
+
+let engine = DataLogic::new();
+
+let result = engine.evaluate_json(
+    r#"{ "abs": -42 }"#,
+    r#"{}"#, // No data needed for this rule
+).unwrap();
+
+assert_eq!(result, json!(42));
+```
+
+### 3. Thread-Safe Evaluation
+
+Share compiled logic across threads for parallel processing.
+
+```rust
+use datalogic_rs::DataLogic;
+use serde_json::json;
+use std::sync::Arc;
+use std::thread;
+
+let engine = Arc::new(DataLogic::new());
 
 let logic = json!({
     "if": [
-        { ">": [{ "var": "cart.total" }, 100] },
-        "Premium",
-        "Standard"
+        { ">": [{ "var": "score" }, 90] },
+        "excellent",
+        "good"
     ]
 });
 
-let data = json!({ "cart": { "total": 120 } });
+let compiled = engine.compile(&logic).unwrap();
 
-let result = dl.evaluate_json(&logic, &data).unwrap();
-assert_eq!(result.as_str().unwrap(), "Premium");
+// Spawn multiple threads
+let handles: Vec<_> = vec![95, 85, 92]
+    .into_iter()
+    .map(|score| {
+        let engine = Arc::clone(&engine);
+        let compiled = Arc::clone(&compiled);
+        
+        thread::spawn(move || {
+            let data = json!({ "score": score });
+            engine.evaluate_owned(&compiled, data).unwrap()
+        })
+    })
+    .collect();
+
+// Collect results
+let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+assert_eq!(results, vec![json!("excellent"), json!("good"), json!("excellent")]);
 ```
 
 ## 🔧 Installation
@@ -148,7 +175,10 @@ Add `datalogic-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-datalogic-rs = "3.0"
+datalogic-rs = "4.0"
+
+# Or use v3 if you need arena-based allocation for maximum performance
+# datalogic-rs = "3.0"
 ```
 
 ## 📖 Real-World Examples
@@ -159,24 +189,26 @@ Check for multi-condition eligibility with nested logic.
 
 ```rust
 use datalogic_rs::DataLogic;
+use serde_json::json;
 
-let dl = DataLogic::new();
+let engine = DataLogic::new();
 
-let result = dl.evaluate_str(
-    r#"{
-        "and": [
-            { ">=": [{ "var": "age" }, 18] },
-            { "<": [{ "var": "age" }, 65] },
-            { "or": [
-                { "==": [{ "var": "subscription" }, "premium"] },
-                { ">=": [{ "var": "purchases" }, 5] }
-            ] }
-        ]
-    }"#,
-    r#"{ "age": 25, "subscription": "basic", "purchases": 7 }"#,
-).unwrap();
+let logic = json!({
+    "and": [
+        { ">=": [{ "var": "age" }, 18] },
+        { "<": [{ "var": "age" }, 65] },
+        { "or": [
+            { "==": [{ "var": "subscription" }, "premium"] },
+            { ">=": [{ "var": "purchases" }, 5] }
+        ] }
+    ]
+});
 
-assert!(result.as_bool().unwrap());
+let compiled = engine.compile(&logic).unwrap();
+let data = json!({ "age": 25, "subscription": "basic", "purchases": 7 });
+let result = engine.evaluate_owned(&compiled, data).unwrap();
+
+assert_eq!(result, json!(true));
 ```
 
 ### Array Processing & Filtering
@@ -185,32 +217,35 @@ Filter and map user data with ease.
 
 ```rust
 use datalogic_rs::DataLogic;
+use serde_json::json;
 
-let dl = DataLogic::new();
+let engine = DataLogic::new();
 
-let result = dl.evaluate_str(
-    r#"{
-        "map": [
-            {
-                "filter": [
-                    { "var": "users" },
-                    { ">=": [{ "var": "age" }, 18] }
-                ]
-            },
-            { "var": "name" }
-        ]
-    }"#,
-    r#"{
-        "users": [
-            { "name": "Alice", "age": 20 },
-            { "name": "Bob", "age": 15 },
-            { "name": "Charlie", "age": 25 }
-        ]
-    }"#,
-).unwrap();
+let logic = json!({
+    "map": [
+        {
+            "filter": [
+                { "var": "users" },
+                { ">=": [{ "var": "age" }, 18] }
+            ]
+        },
+        { "var": "name" }
+    ]
+});
+
+let data = json!({
+    "users": [
+        { "name": "Alice", "age": 20 },
+        { "name": "Bob", "age": 15 },
+        { "name": "Charlie", "age": 25 }
+    ]
+});
+
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, data).unwrap();
 
 // Returns ["Alice", "Charlie"]
-assert_eq!(result.as_array().unwrap().len(), 2);
+assert_eq!(result, json!(["Alice", "Charlie"]));
 ```
 
 ### DateTime Operations
@@ -219,23 +254,24 @@ Perform date arithmetic with timezone support.
 
 ```rust
 use datalogic_rs::DataLogic;
+use serde_json::json;
 
-let dl = DataLogic::new();
+let engine = DataLogic::new();
 
-let result = dl.evaluate_str(
-    r#"{
-        ">": [
-            { "+": [
-                { "datetime": "2023-07-15T08:30:00Z" },
-                { "duration": "2d" }
-            ] },
-            { "datetime": "2023-07-16T08:30:00Z" }
-        ]
-    }"#,
-    r#"{}"#,
-).unwrap();
+let logic = json!({
+    ">": [
+        { "+": [
+            { "datetime": "2023-07-15T08:30:00Z" },
+            { "duration": "2d" }
+        ] },
+        { "datetime": "2023-07-16T08:30:00Z" }
+    ]
+});
 
-assert!(result.as_bool().unwrap());
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+
+assert_eq!(result, json!(true));
 ```
 
 ### Regex Data Extraction
@@ -244,22 +280,23 @@ Extract structured data from strings using named capture groups.
 
 ```rust
 use datalogic_rs::DataLogic;
+use serde_json::json;
 
-let dl = DataLogic::new();
+let engine = DataLogic::new();
 
-let result = dl.evaluate_str(
-    r#"{
-        "split": [
-            "SBININBB101",
-            "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"
-        ]
-    }"#,
-    r#"{}"#,
-).unwrap();
+let logic = json!({
+    "split": [
+        "SBININBB101",
+        "^(?P<bank>[A-Z]{4})(?P<country>[A-Z]{2})(?P<location>[A-Z0-9]{2})(?P<branch>[A-Z0-9]{3})?$"
+    ]
+});
+
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
 
 // Returns: { "bank": "SBIN", "country": "IN", "location": "BB", "branch": "101" }
-let obj = result.as_object().unwrap();
-assert_eq!(obj.get("bank").unwrap().as_str().unwrap(), "SBIN");
+assert_eq!(result["bank"], "SBIN");
+assert_eq!(result["country"], "IN");
 ```
 
 ## 🔌 Custom Operators
@@ -267,38 +304,76 @@ assert_eq!(obj.get("bank").unwrap().as_str().unwrap(), "SBIN");
 Extend `datalogic-rs` with your own domain-specific logic.
 
 ```rust
-use datalogic_rs::{DataLogic, DataValue};
-use datalogic_rs::value::NumberValue;
+use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result};
+use serde_json::{json, Value};
 
-// Define a custom operator that doubles a number.
-fn double(args: Vec<DataValue>, _data: DataValue) -> Result<DataValue, String> {
-    if let Some(n) = args.first().and_then(|v| v.as_f64()) {
-        return Ok(DataValue::Number(NumberValue::from_f64(n * 2.0)));
+// Define a custom operator that doubles a number
+struct DoubleOperator;
+
+impl Operator for DoubleOperator {
+    fn evaluate(
+        &self,
+        args: &[Value],
+        _context: &mut ContextStack,
+        _evaluator: &dyn Evaluator,
+    ) -> Result<Value> {
+        if let Some(n) = args.first().and_then(|v| v.as_f64()) {
+            Ok(json!(n * 2.0))
+        } else {
+            Err("Argument must be a number".into())
+        }
     }
-    Err("Argument must be a number".to_string())
 }
 
-let mut dl = DataLogic::new();
-dl.register_simple_operator("double", double);
+let mut engine = DataLogic::new();
+engine.add_operator("double".to_string(), Box::new(DoubleOperator));
 
-// Use your custom operator in a rule.
-let result = dl.evaluate_str(r#"{ "double": 21 }"#, r#"{}"#).unwrap();
+// Use your custom operator in a rule
+let logic = json!({ "double": 21 });
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
 
-assert_eq!(result.as_f64().unwrap(), 42.0);
+assert_eq!(result, json!(42.0));
 ```
 
-## 📊 Performance
+## 🚀 Async & Tokio Support
 
-`datalogic-rs` is fast. Here's how it stacks up against other implementations on an Apple M2 Pro:
+`datalogic-rs` v4 is fully compatible with async runtimes like Tokio:
 
-| Implementation                    | Execution Time | Relative Performance |
-| --------------------------------- | -------------- | -------------------- |
-| **`datalogic-rs`**                | **380ms**      | **1.0x (baseline)**  |
-| `json-logic-engine` (pre-compiled) | 417ms          | 1.1x slower          |
-| `json-logic-engine` (interpreted) | 986ms          | 2.6x slower          |
-| `json-logic-js`                   | 5,755ms        | 15.1x slower         |
+```rust
+use datalogic_rs::DataLogic;
+use serde_json::json;
+use std::sync::Arc;
 
-*Benchmarks run on the standard JSONLogic test suite.*
+#[tokio::main]
+async fn main() {
+    let engine = Arc::new(DataLogic::new());
+    
+    // Compile logic once
+    let logic = json!({ "filter": [{ "var": "items" }, { ">": [{ "var": "score" }, 90] }] });
+    let compiled = engine.compile(&logic).unwrap();
+    
+    // Process data concurrently
+    let mut handles = vec![];
+    
+    for batch in data_batches {
+        let engine = Arc::clone(&engine);
+        let compiled = Arc::clone(&compiled);
+        
+        handles.push(tokio::spawn(async move {
+            // For CPU-intensive operations, use spawn_blocking
+            tokio::task::spawn_blocking(move || {
+                engine.evaluate_owned(&compiled, batch)
+            }).await.unwrap()
+        }));
+    }
+    
+    // Collect all results
+    let results = futures::future::join_all(handles).await;
+}
+```
+
+Perfect for web servers, microservices, and real-time data processing pipelines.
 
 ## 🎯 Use Cases
 
@@ -367,9 +442,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for de
 
 Check out our other projects:
 
-- [SwiftMTMessage](https://github.com/GoPlasmatic/SwiftMTMessage): A library for parsing SWIFT MT messages with CBPR+ compliance.
-- [Reframe](https://github.com/GoPlasmatic/Reframe): A transformation engine for converting SWIFT MT messages to ISO 20022.
-- [MXMessage](https://github.com/GoPlasmatic/MXMessage): A library for parsing ISO 20022 (MX) messages.
+- [DataFlow-rs](https://github.com/GoPlasmatic/dataflow-rs): An event-driven workflow orchestration engine written in Rust that empowers you to define and execute data pipelines as code.
 
 ## 📄 License
 

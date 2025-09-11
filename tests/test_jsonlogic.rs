@@ -10,7 +10,6 @@ fn test_jsonlogic() {
     // Get test file from environment variable, or run all tests from index.json
     let test_file = env::var("JSONLOGIC_TEST_FILE");
 
-    let engine = DataLogic::new();
     let mut total_passed = 0;
     let mut total_failed = 0;
 
@@ -18,7 +17,7 @@ fn test_jsonlogic() {
         Ok(file) => {
             // Run single test file
             println!("Running tests from: {}", file);
-            let (passed, failed) = run_test_file(&engine, &file);
+            let (passed, failed) = run_test_file(&file);
             total_passed += passed;
             total_failed += failed;
         }
@@ -42,7 +41,7 @@ fn test_jsonlogic() {
                 }
 
                 println!("\n=== Running tests from: {} ===", test_file);
-                let (passed, failed) = run_test_file(&engine, &test_path);
+                let (passed, failed) = run_test_file(&test_path);
                 total_passed += passed;
                 total_failed += failed;
 
@@ -63,7 +62,7 @@ fn test_jsonlogic() {
     }
 }
 
-fn run_test_file(engine: &DataLogic, test_file: &str) -> (usize, usize) {
+fn run_test_file(test_file: &str) -> (usize, usize) {
     // Read and parse test file
     let contents = fs::read_to_string(test_file)
         .unwrap_or_else(|_| panic!("Failed to read test file: {}", test_file));
