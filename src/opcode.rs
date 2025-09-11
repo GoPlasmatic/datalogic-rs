@@ -50,15 +50,30 @@ pub enum OpCode {
     // Missing operators
     Missing = 33,
     MissingSome = 34,
-    
+
     // Error handling operators
     Try = 35,
     Throw = 36,
+
+    // Type operator
+    Type = 37,
+
+    // String operators
+    StartsWith = 38,
+    EndsWith = 39,
+    Upper = 40,
+    Lower = 41,
+    Trim = 42,
+    Split = 43,
+
+    // Datetime operators (placeholder)
+    Datetime = 44,
+    Timestamp = 45,
 }
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 37;
+    pub const COUNT: usize = 46;
 
     /// Convert a string to an OpCode
     pub fn from_str(s: &str) -> Option<OpCode> {
@@ -100,6 +115,15 @@ impl OpCode {
             "missing_some" => Some(OpCode::MissingSome),
             "try" => Some(OpCode::Try),
             "throw" => Some(OpCode::Throw),
+            "type" => Some(OpCode::Type),
+            "starts_with" => Some(OpCode::StartsWith),
+            "ends_with" => Some(OpCode::EndsWith),
+            "upper" => Some(OpCode::Upper),
+            "lower" => Some(OpCode::Lower),
+            "trim" => Some(OpCode::Trim),
+            "split" => Some(OpCode::Split),
+            "datetime" => Some(OpCode::Datetime),
+            "timestamp" => Some(OpCode::Timestamp),
             _ => None,
         }
     }
@@ -144,6 +168,15 @@ impl OpCode {
             OpCode::MissingSome => "missing_some",
             OpCode::Try => "try",
             OpCode::Throw => "throw",
+            OpCode::Type => "type",
+            OpCode::StartsWith => "starts_with",
+            OpCode::EndsWith => "ends_with",
+            OpCode::Upper => "upper",
+            OpCode::Lower => "lower",
+            OpCode::Trim => "trim",
+            OpCode::Split => "split",
+            OpCode::Datetime => "datetime",
+            OpCode::Timestamp => "timestamp",
         }
     }
 }

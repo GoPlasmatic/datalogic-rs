@@ -142,6 +142,12 @@ impl CompiledLogic {
                     Map | Filter | Reduce | All | Some | None => false,
                     // Error handling operators may depend on context
                     Try | Throw => false,
+                    // Type and string operators can be static if their args are
+                    Type | StartsWith | EndsWith | Upper | Lower | Trim | Split => {
+                        args.iter().all(Self::node_is_static)
+                    }
+                    // Datetime operators are static-ish
+                    Datetime | Timestamp => args.iter().all(Self::node_is_static),
                     // These operators never depend on context
                     Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
                     | StrictEquals | NotEquals | StrictNotEquals | GreaterThan

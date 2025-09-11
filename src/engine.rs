@@ -90,10 +90,25 @@ impl DataLogic {
         // Missing operators
         self.builtin_operators[OpCode::Missing as usize] = Some(Box::new(MissingOperator));
         self.builtin_operators[OpCode::MissingSome as usize] = Some(Box::new(MissingSomeOperator));
-        
+
         // Error handling operators
         self.builtin_operators[OpCode::Try as usize] = Some(Box::new(TryOperator));
         self.builtin_operators[OpCode::Throw as usize] = Some(Box::new(ThrowOperator));
+
+        // Type operator
+        self.builtin_operators[OpCode::Type as usize] = Some(Box::new(TypeOperator));
+
+        // String operators
+        self.builtin_operators[OpCode::StartsWith as usize] = Some(Box::new(StartsWithOperator));
+        self.builtin_operators[OpCode::EndsWith as usize] = Some(Box::new(EndsWithOperator));
+        self.builtin_operators[OpCode::Upper as usize] = Some(Box::new(UpperOperator));
+        self.builtin_operators[OpCode::Lower as usize] = Some(Box::new(LowerOperator));
+        self.builtin_operators[OpCode::Trim as usize] = Some(Box::new(TrimOperator));
+        self.builtin_operators[OpCode::Split as usize] = Some(Box::new(SplitOperator));
+
+        // Datetime operators (placeholder)
+        self.builtin_operators[OpCode::Datetime as usize] = Some(Box::new(DatetimeOperator));
+        self.builtin_operators[OpCode::Timestamp as usize] = Some(Box::new(TimestampOperator));
     }
 
     /// Register a custom operator

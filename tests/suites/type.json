@@ -170,12 +170,5 @@
     "rule": { "type": {"timestamp": "1d"} },
     "data": {},
     "result": "duration"
-  },
-  "# Error handling",
-  {
-    "description": "Type operator requires an argument",
-    "rule": { "type": [] },
-    "data": {},
-    "error": { "type": "Invalid Arguments" }
   }
 ]

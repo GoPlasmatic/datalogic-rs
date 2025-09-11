@@ -110,7 +110,7 @@ impl Operator for ValOperator {
                 return Ok(result);
             }
         }
-        
+
         // Handle multiple arguments (>2) as path chain
         if args.len() > 2 {
             let mut result = context.current().data.clone();

@@ -66,7 +66,9 @@ impl Operator for TryOperator {
         // Return the last error
         match last_error {
             Some(err) => Err(err),
-            None => Err(Error::InvalidArguments("try: no arguments provided".to_string())),
+            None => Err(Error::InvalidArguments(
+                "try: no arguments provided".to_string(),
+            )),
         }
     }
 }

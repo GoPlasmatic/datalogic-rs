@@ -86,12 +86,30 @@ fn test_jsonlogic() {
                             // Extract the error type from the thrown error
                             if let datalogic_rs::Error::Thrown(thrown_value) = &e {
                                 if thrown_value == expected_error_obj {
-                                    println!("✓ Test {}: {} (error as expected)", index, description);
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
                                     passed += 1;
                                 } else {
                                     println!("✗ Test {}: {}", index, description);
                                     println!("  Expected error: {:?}", expected_error_obj);
                                     println!("  Got error:      {:?}", thrown_value);
+                                    failed += 1;
+                                }
+                            } else if let datalogic_rs::Error::InvalidArguments(msg) = &e {
+                                // Check if it's an InvalidArguments error
+                                let error_obj = serde_json::json!({"type": msg});
+                                if &error_obj == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", error_obj);
                                     failed += 1;
                                 }
                             } else {
@@ -124,10 +142,7 @@ fn test_jsonlogic() {
     }
 
     println!("\n========================================");
-    println!(
-        "Results: {} passed, {} failed",
-        passed, failed
-    );
+    println!("Results: {} passed, {} failed", passed, failed);
     println!("========================================");
 
     if failed > 0 {
