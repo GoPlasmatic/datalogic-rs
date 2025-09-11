@@ -175,7 +175,7 @@ impl CompiledLogic {
                     Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
                     | StrictEquals | NotEquals | StrictNotEquals | GreaterThan
                     | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And | Or
-                    | Ternary | If | Cat | Substr | In | Length => {
+                    | Ternary | If | Cat | Substr | In | Length | Sort | Slice => {
                         args.iter().all(Self::node_is_static)
                     }
                     // Merge is not statically evaluated because max/min need to distinguish

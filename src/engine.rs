@@ -87,6 +87,8 @@ impl DataLogic {
         self.builtin_operators[OpCode::All as usize] = Some(Box::new(AllOperator));
         self.builtin_operators[OpCode::Some as usize] = Some(Box::new(SomeOperator));
         self.builtin_operators[OpCode::None as usize] = Some(Box::new(NoneOperator));
+        self.builtin_operators[OpCode::Sort as usize] = Some(Box::new(SortOperator));
+        self.builtin_operators[OpCode::Slice as usize] = Some(Box::new(SliceOperator));
 
         // Missing operators
         self.builtin_operators[OpCode::Missing as usize] = Some(Box::new(MissingOperator));

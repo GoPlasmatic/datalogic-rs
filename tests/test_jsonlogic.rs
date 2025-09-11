@@ -3,17 +3,69 @@ use serde_json::{Value, json};
 
 use std::env;
 use std::fs;
+use std::path::Path;
 
 #[test]
 fn test_jsonlogic() {
-    // Get test file from environment variable
-    let test_file = env::var("JSONLOGIC_TEST_FILE")
-        .unwrap_or_else(|_| "tests/suites/compatible.json".to_string());
+    // Get test file from environment variable, or run all tests from index.json
+    let test_file = env::var("JSONLOGIC_TEST_FILE");
 
-    println!("Running tests from: {}", test_file);
+    let engine = DataLogic::new();
+    let mut total_passed = 0;
+    let mut total_failed = 0;
 
+    match test_file {
+        Ok(file) => {
+            // Run single test file
+            println!("Running tests from: {}", file);
+            let (passed, failed) = run_test_file(&engine, &file);
+            total_passed += passed;
+            total_failed += failed;
+        }
+        Err(_) => {
+            // Run all tests from index.json
+            println!("No JSONLOGIC_TEST_FILE specified, running all tests from index.json\n");
+
+            let index_path = "tests/suites/index.json";
+            let index_contents = fs::read_to_string(index_path).expect("Failed to read index.json");
+
+            let index: Vec<String> =
+                serde_json::from_str(&index_contents).expect("Failed to parse index.json");
+
+            for test_file in index {
+                let test_path = format!("tests/suites/{}", test_file);
+
+                // Check if file exists
+                if !Path::new(&test_path).exists() {
+                    println!("WARNING: Skipping {} (file not found)\n", test_file);
+                    continue;
+                }
+
+                println!("\n=== Running tests from: {} ===", test_file);
+                let (passed, failed) = run_test_file(&engine, &test_path);
+                total_passed += passed;
+                total_failed += failed;
+
+                println!("  Results: {} passed, {} failed", passed, failed);
+            }
+        }
+    }
+
+    println!("\n========================================");
+    println!(
+        "TOTAL RESULTS: {} passed, {} failed",
+        total_passed, total_failed
+    );
+    println!("========================================");
+
+    if total_failed > 0 {
+        panic!("Some tests failed!");
+    }
+}
+
+fn run_test_file(engine: &DataLogic, test_file: &str) -> (usize, usize) {
     // Read and parse test file
-    let contents = fs::read_to_string(&test_file)
+    let contents = fs::read_to_string(test_file)
         .unwrap_or_else(|_| panic!("Failed to read test file: {}", test_file));
 
     let test_cases: Value = serde_json::from_str(&contents)
@@ -23,7 +75,6 @@ fn test_jsonlogic() {
         .as_array()
         .expect("Test file should contain an array of test cases");
 
-    let engine = DataLogic::new();
     let mut passed = 0;
     let mut failed = 0;
 
@@ -141,11 +192,5 @@ fn test_jsonlogic() {
         }
     }
 
-    println!("\n========================================");
-    println!("Results: {} passed, {} failed", passed, failed);
-    println!("========================================");
-
-    if failed > 0 {
-        panic!("Some tests failed!");
-    }
+    (passed, failed)
 }
