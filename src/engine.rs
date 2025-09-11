@@ -90,6 +90,10 @@ impl DataLogic {
         // Missing operators
         self.builtin_operators[OpCode::Missing as usize] = Some(Box::new(MissingOperator));
         self.builtin_operators[OpCode::MissingSome as usize] = Some(Box::new(MissingSomeOperator));
+        
+        // Error handling operators
+        self.builtin_operators[OpCode::Try as usize] = Some(Box::new(TryOperator));
+        self.builtin_operators[OpCode::Throw as usize] = Some(Box::new(ThrowOperator));
     }
 
     /// Register a custom operator

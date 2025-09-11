@@ -62,10 +62,10 @@ impl Operator for ValOperator {
             return Ok(context.current().data.clone());
         }
 
-        // Check if we have two arguments: [level_array, path]
-        // This is the case for {"val": [[1], "index"]}
+        // Check if we have two arguments: [level_array, path] or two path segments
+        // This is the case for {"val": [[1], "index"]} or {"val": ["user", "admin"]}
         if args.len() == 2 {
-            // First arg should be an array with level, second is the path
+            // First check if it's level access
             if let Value::Array(level_arr) = &args[0]
                 && let Some(Value::Number(level_num)) = level_arr.first()
                 && let Some(level) = level_num.as_i64()
@@ -91,7 +91,43 @@ impl Operator for ValOperator {
 
                 // Normal path access in the target frame
                 return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
+            } else {
+                // Two string arguments - chain access like ["user", "admin"]
+                let mut result = context.current().data.clone();
+                for arg in args {
+                    if let Some(path_str) = arg.as_str() {
+                        result = access_path(&result, path_str).unwrap_or(Value::Null);
+                    } else {
+                        // Non-string element, evaluate it first
+                        let evaluated = evaluator.evaluate(arg, context)?;
+                        if let Some(path_str) = evaluated.as_str() {
+                            result = access_path(&result, path_str).unwrap_or(Value::Null);
+                        } else {
+                            return Ok(Value::Null);
+                        }
+                    }
+                }
+                return Ok(result);
             }
+        }
+        
+        // Handle multiple arguments (>2) as path chain
+        if args.len() > 2 {
+            let mut result = context.current().data.clone();
+            for arg in args {
+                if let Some(path_str) = arg.as_str() {
+                    result = access_path(&result, path_str).unwrap_or(Value::Null);
+                } else {
+                    // Non-string element, evaluate it first
+                    let evaluated = evaluator.evaluate(arg, context)?;
+                    if let Some(path_str) = evaluated.as_str() {
+                        result = access_path(&result, path_str).unwrap_or(Value::Null);
+                    } else {
+                        return Ok(Value::Null);
+                    }
+                }
+            }
+            return Ok(result);
         }
 
         // Single argument - evaluate it
@@ -101,33 +137,47 @@ impl Operator for ValOperator {
         // Level indicates how many levels to go up from current
         // Sign doesn't matter: [1] and [-1] both mean parent
         // [2] and [-2] both mean grandparent, etc.
-        if let Value::Array(arr) = &path_value
-            && arr.len() == 2
-            && let Value::Array(level_arr) = &arr[0]
-            && let Some(Value::Number(level_num)) = level_arr.first()
-            && let Some(level) = level_num.as_i64()
-        {
-            // Access path in the request
-            let path = arr[1].as_str().unwrap_or("");
-
-            // Special handling for metadata keys like "index" and "key"
-            // These are always in the current frame's metadata, regardless of level
-            if (path == "index" || path == "key")
-                && let Some(metadata) = &context.current().metadata
-                && let Some(value) = metadata.get(path)
+        if let Value::Array(arr) = &path_value {
+            // Check if it's a level access array: [[level], "path"]
+            if arr.len() == 2
+                && let Value::Array(level_arr) = &arr[0]
+                && let Some(Value::Number(level_num)) = level_arr.first()
+                && let Some(level) = level_num.as_i64()
             {
-                return Ok(value.clone());
+                // Access path in the request
+                let path = arr[1].as_str().unwrap_or("");
+
+                // Special handling for metadata keys like "index" and "key"
+                // These are always in the current frame's metadata, regardless of level
+                if (path == "index" || path == "key")
+                    && let Some(metadata) = &context.current().metadata
+                    && let Some(value) = metadata.get(path)
+                {
+                    return Ok(value.clone());
+                }
+
+                // Get frame at relative level for normal data access
+                // Both [1] and [-1] go up 1 level to parent
+                // Both [2] and [-2] go up 2 levels to grandparent
+                let frame = context
+                    .get_at_level(level as isize)
+                    .ok_or(Error::InvalidContextLevel(level as isize))?;
+
+                // Normal path access in the target frame
+                return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
+            } else {
+                // Array of paths like ["user", "admin"] - chain access
+                let mut result = context.current().data.clone();
+                for path_elem in arr {
+                    if let Some(path_str) = path_elem.as_str() {
+                        result = access_path(&result, path_str).unwrap_or(Value::Null);
+                    } else {
+                        // Non-string element, can't use as path
+                        return Ok(Value::Null);
+                    }
+                }
+                return Ok(result);
             }
-
-            // Get frame at relative level for normal data access
-            // Both [1] and [-1] go up 1 level to parent
-            // Both [2] and [-2] go up 2 levels to grandparent
-            let frame = context
-                .get_at_level(level as isize)
-                .ok_or(Error::InvalidContextLevel(level as isize))?;
-
-            // Normal path access in the target frame
-            return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
         }
 
         // Standard path access in current context

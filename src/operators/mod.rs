@@ -5,6 +5,8 @@ pub mod control;
 pub mod logical;
 pub mod missing;
 pub mod string;
+pub mod throw;
+pub mod try_op;
 pub mod variable;
 
 pub use arithmetic::*;
@@ -14,4 +16,6 @@ pub use control::*;
 pub use logical::*;
 pub use missing::*;
 pub use string::*;
+pub use throw::*;
+pub use try_op::*;
 pub use variable::*;

@@ -49,30 +49,68 @@ fn test_jsonlogic() {
 
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
 
-        let expected = test_obj
-            .get("result")
-            .unwrap_or_else(|| panic!("Test case {} missing 'result'", index));
+        // Check if this test expects an error or a result
+        let expects_error = test_obj.contains_key("error");
+        let expected_error = test_obj.get("error");
+        let expected_result = test_obj.get("result");
+
+        if !expects_error && expected_result.is_none() {
+            panic!("Test case {} missing 'result' or 'error'", index);
+        }
 
         // Compile and evaluate
         match engine.compile(rule) {
             Ok(compiled) => match engine.evaluate_owned(&compiled, data.clone()) {
                 Ok(result) => {
-                    if &result == expected {
-                        println!("✓ Test {}: {}", index, description);
-                        passed += 1;
-                    } else {
+                    if expects_error {
                         println!("✗ Test {}: {}", index, description);
-                        println!("  Expected: {:?}", expected);
-                        println!("  Got:      {:?}", result);
+                        println!("  Expected error: {:?}", expected_error);
+                        println!("  Got result:     {:?}", result);
                         failed += 1;
+                    } else if let Some(expected) = expected_result {
+                        if &result == expected {
+                            println!("✓ Test {}: {}", index, description);
+                            passed += 1;
+                        } else {
+                            println!("✗ Test {}: {}", index, description);
+                            println!("  Expected: {:?}", expected);
+                            println!("  Got:      {:?}", result);
+                            failed += 1;
+                        }
                     }
                 }
                 Err(e) => {
-                    println!(
-                        "✗ Test {}: {} - Evaluation error: {}",
-                        index, description, e
-                    );
-                    failed += 1;
+                    if expects_error {
+                        // Check if the error matches expected error
+                        if let Some(expected_error_obj) = expected_error {
+                            // Extract the error type from the thrown error
+                            if let datalogic_rs::Error::Thrown(thrown_value) = &e {
+                                if thrown_value == expected_error_obj {
+                                    println!("✓ Test {}: {} (error as expected)", index, description);
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", thrown_value);
+                                    failed += 1;
+                                }
+                            } else {
+                                println!("✗ Test {}: {}", index, description);
+                                println!("  Expected error: {:?}", expected_error_obj);
+                                println!("  Got error:      {:?}", e);
+                                failed += 1;
+                            }
+                        } else {
+                            println!("✓ Test {}: {} (error as expected)", index, description);
+                            passed += 1;
+                        }
+                    } else {
+                        println!(
+                            "✗ Test {}: {} - Unexpected evaluation error: {}",
+                            index, description, e
+                        );
+                        failed += 1;
+                    }
                 }
             },
             Err(e) => {

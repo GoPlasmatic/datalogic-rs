@@ -140,6 +140,8 @@ impl CompiledLogic {
                     Var | Val | Missing | MissingSome => false,
                     // Array operations depend on their arguments
                     Map | Filter | Reduce | All | Some | None => false,
+                    // Error handling operators may depend on context
+                    Try | Throw => false,
                     // These operators never depend on context
                     Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
                     | StrictEquals | NotEquals | StrictNotEquals | GreaterThan

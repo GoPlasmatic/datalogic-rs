@@ -50,11 +50,15 @@ pub enum OpCode {
     // Missing operators
     Missing = 33,
     MissingSome = 34,
+    
+    // Error handling operators
+    Try = 35,
+    Throw = 36,
 }
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 35;
+    pub const COUNT: usize = 37;
 
     /// Convert a string to an OpCode
     pub fn from_str(s: &str) -> Option<OpCode> {
@@ -94,6 +98,8 @@ impl OpCode {
             "none" => Some(OpCode::None),
             "missing" => Some(OpCode::Missing),
             "missing_some" => Some(OpCode::MissingSome),
+            "try" => Some(OpCode::Try),
+            "throw" => Some(OpCode::Throw),
             _ => None,
         }
     }
@@ -136,6 +142,8 @@ impl OpCode {
             OpCode::None => "none",
             OpCode::Missing => "missing",
             OpCode::MissingSome => "missing_some",
+            OpCode::Try => "try",
+            OpCode::Throw => "throw",
         }
     }
 }

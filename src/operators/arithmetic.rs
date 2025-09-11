@@ -186,7 +186,7 @@ impl Operator for DivideOperator {
             try_coerce_to_integer(&second),
         ) {
             if i2 == 0 {
-                return Err(Error::DivisionByZero);
+                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
             }
             // Check if division is exact (no remainder)
             if i1 % i2 == 0 {
@@ -200,7 +200,7 @@ impl Operator for DivideOperator {
             .ok_or_else(|| Error::TypeError("Cannot convert to number".to_string()))?;
 
         if second_num == 0.0 {
-            return Err(Error::DivisionByZero);
+            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
         }
 
         Ok(serde_json::Number::from_f64(first_num / second_num)
@@ -231,7 +231,7 @@ impl Operator for ModuloOperator {
             && let (Some(i1), Some(i2)) = (n1.as_i64(), n2.as_i64())
         {
             if i2 == 0 {
-                return Err(Error::DivisionByZero);
+                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
             }
             return Ok(Value::Number((i1 % i2).into()));
         }
@@ -242,7 +242,7 @@ impl Operator for ModuloOperator {
             .ok_or_else(|| Error::TypeError("Cannot convert to number".to_string()))?;
 
         if second_num == 0.0 {
-            return Err(Error::DivisionByZero);
+            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
         }
 
         Ok(serde_json::Number::from_f64(first_num % second_num)
