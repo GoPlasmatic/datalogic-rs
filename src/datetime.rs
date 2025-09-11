@@ -176,6 +176,16 @@ impl DataDuration {
             }
         }
 
+        // Only return a duration if we found at least one unit
+        if days == 0
+            && hours == 0
+            && minutes == 0
+            && seconds == 0
+            && !s.contains(['d', 'h', 'm', 's'])
+        {
+            return None;
+        }
+
         let total_seconds = days * 86400 + hours * 3600 + minutes * 60 + seconds;
         Some(DataDuration(Duration::seconds(total_seconds)))
     }

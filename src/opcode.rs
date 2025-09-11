@@ -72,11 +72,19 @@ pub enum OpCode {
     ParseDate = 46,
     FormatDate = 47,
     DateDiff = 48,
+
+    // Math operators
+    Abs = 49,
+    Ceil = 50,
+    Floor = 51,
+
+    // Utility operators
+    Preserve = 52,
 }
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 49;
+    pub const COUNT: usize = 53;
 
     /// Convert a string to an OpCode
     pub fn from_str(s: &str) -> Option<OpCode> {
@@ -130,6 +138,10 @@ impl OpCode {
             "parse_date" => Some(OpCode::ParseDate),
             "format_date" => Some(OpCode::FormatDate),
             "date_diff" => Some(OpCode::DateDiff),
+            "abs" => Some(OpCode::Abs),
+            "ceil" => Some(OpCode::Ceil),
+            "floor" => Some(OpCode::Floor),
+            "preserve" => Some(OpCode::Preserve),
             _ => None,
         }
     }
@@ -186,6 +198,10 @@ impl OpCode {
             OpCode::ParseDate => "parse_date",
             OpCode::FormatDate => "format_date",
             OpCode::DateDiff => "date_diff",
+            OpCode::Abs => "abs",
+            OpCode::Ceil => "ceil",
+            OpCode::Floor => "floor",
+            OpCode::Preserve => "preserve",
         }
     }
 }

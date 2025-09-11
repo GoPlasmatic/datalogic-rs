@@ -47,7 +47,13 @@ pub fn is_truthy(value: &Value) -> bool {
 pub fn coerce_to_number(value: &Value) -> Option<f64> {
     match value {
         Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.parse().ok(),
+        Value::String(s) => {
+            if s.is_empty() {
+                Some(0.0)
+            } else {
+                s.parse().ok()
+            }
+        }
         Value::Bool(true) => Some(1.0),
         Value::Bool(false) => Some(0.0),
         Value::Null => Some(0.0),
@@ -59,7 +65,13 @@ pub fn coerce_to_number(value: &Value) -> Option<f64> {
 pub fn try_coerce_to_integer(value: &Value) -> Option<i64> {
     match value {
         Value::Number(n) => n.as_i64(),
-        Value::String(s) => s.parse().ok(),
+        Value::String(s) => {
+            if s.is_empty() {
+                Some(0)
+            } else {
+                s.parse().ok()
+            }
+        }
         Value::Bool(true) => Some(1),
         Value::Bool(false) => Some(0),
         Value::Null => Some(0),

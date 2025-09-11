@@ -150,13 +150,18 @@ impl CompiledLogic {
                     Datetime | Timestamp | ParseDate | FormatDate | DateDiff => {
                         args.iter().all(Self::node_is_static)
                     }
+                    // Math operators are static if their args are
+                    Abs | Ceil | Floor => args.iter().all(Self::node_is_static),
+                    // Preserve should not be static - operators need to know it's from an operator
+                    Preserve => false,
                     // These operators never depend on context
                     Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
                     | StrictEquals | NotEquals | StrictNotEquals | GreaterThan
                     | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And | Or
-                    | Ternary | If | Cat | Substr | In | Merge => {
-                        args.iter().all(Self::node_is_static)
-                    }
+                    | Ternary | If | Cat | Substr | In => args.iter().all(Self::node_is_static),
+                    // Merge is not statically evaluated because max/min need to distinguish
+                    // between literal arrays and arrays from operators
+                    Merge => false,
                 }
             }
             CompiledNode::CustomOperator { .. } => {

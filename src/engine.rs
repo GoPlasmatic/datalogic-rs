@@ -112,6 +112,14 @@ impl DataLogic {
         self.builtin_operators[OpCode::ParseDate as usize] = Some(Box::new(ParseDateOperator));
         self.builtin_operators[OpCode::FormatDate as usize] = Some(Box::new(FormatDateOperator));
         self.builtin_operators[OpCode::DateDiff as usize] = Some(Box::new(DateDiffOperator));
+
+        // Math operators
+        self.builtin_operators[OpCode::Abs as usize] = Some(Box::new(AbsOperator));
+        self.builtin_operators[OpCode::Ceil as usize] = Some(Box::new(CeilOperator));
+        self.builtin_operators[OpCode::Floor as usize] = Some(Box::new(FloorOperator));
+
+        // Utility operators
+        self.builtin_operators[OpCode::Preserve as usize] = Some(Box::new(PreserveOperator));
     }
 
     /// Register a custom operator
