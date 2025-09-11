@@ -1,24 +1,36 @@
 use serde_json::Value;
-use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+// Interned strings for common metadata keys
+static INDEX_KEY: OnceLock<String> = OnceLock::new();
+static KEY_KEY: OnceLock<String> = OnceLock::new();
+
+pub fn index_key() -> &'static String {
+    INDEX_KEY.get_or_init(|| "index".to_string())
+}
+
+pub fn key_key() -> &'static String {
+    KEY_KEY.get_or_init(|| "key".to_string())
+}
 
 /// A single frame in the context stack
-pub struct ContextFrame<'a> {
+pub struct ContextFrame {
     /// The data value at this context level
-    pub data: Cow<'a, Value>,
+    pub data: Value,
     /// Optional metadata for this frame (e.g., "index", "key" in map operations)
-    pub metadata: Option<HashMap<String, Cow<'a, Value>>>,
+    pub metadata: Option<HashMap<String, Value>>,
 }
 
 /// Context stack for nested evaluations
-pub struct ContextStack<'a> {
+pub struct ContextStack {
     /// Stack of context frames, with the root data at index 0
-    frames: Vec<ContextFrame<'a>>,
+    frames: Vec<ContextFrame>,
 }
 
-impl<'a> ContextStack<'a> {
+impl ContextStack {
     /// Create a new context stack with root data
-    pub fn new(root: Cow<'a, Value>) -> Self {
+    pub fn new(root: Value) -> Self {
         Self {
             frames: vec![ContextFrame {
                 data: root,
@@ -28,7 +40,7 @@ impl<'a> ContextStack<'a> {
     }
 
     /// Push a new context frame for nested evaluation
-    pub fn push(&mut self, data: Cow<'a, Value>) {
+    pub fn push(&mut self, data: Value) {
         self.frames.push(ContextFrame {
             data,
             metadata: None,
@@ -36,11 +48,7 @@ impl<'a> ContextStack<'a> {
     }
 
     /// Push a frame with metadata (e.g., for map with index)
-    pub fn push_with_metadata(
-        &mut self,
-        data: Cow<'a, Value>,
-        metadata: HashMap<String, Cow<'a, Value>>,
-    ) {
+    pub fn push_with_metadata(&mut self, data: Value, metadata: HashMap<String, Value>) {
         self.frames.push(ContextFrame {
             data,
             metadata: Some(metadata),
@@ -48,7 +56,7 @@ impl<'a> ContextStack<'a> {
     }
 
     /// Pop the current context frame
-    pub fn pop(&mut self) -> Option<ContextFrame<'a>> {
+    pub fn pop(&mut self) -> Option<ContextFrame> {
         // Never pop the root frame
         if self.frames.len() > 1 {
             self.frames.pop()
@@ -63,7 +71,7 @@ impl<'a> ContextStack<'a> {
     /// - 1 or -1: go up 1 level (parent)
     /// - 2 or -2: go up 2 levels (grandparent)
     /// - N or -N: go up N levels
-    pub fn get_at_level(&self, level: isize) -> Option<&ContextFrame<'a>> {
+    pub fn get_at_level(&self, level: isize) -> Option<&ContextFrame> {
         // Get absolute value - sign doesn't matter
         let levels_up = level.unsigned_abs();
 
@@ -85,14 +93,14 @@ impl<'a> ContextStack<'a> {
     }
 
     /// Get the current context frame (top of stack)
-    pub fn current(&self) -> &ContextFrame<'a> {
+    pub fn current(&self) -> &ContextFrame {
         self.frames
             .last()
             .expect("Context stack should never be empty")
     }
 
     /// Get the root context frame
-    pub fn root(&self) -> &ContextFrame<'a> {
+    pub fn root(&self) -> &ContextFrame {
         &self.frames[0]
     }
 

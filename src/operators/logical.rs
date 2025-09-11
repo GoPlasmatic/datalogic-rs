@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::borrow::Cow;
 
 use crate::value_helpers::is_truthy;
 use crate::{ContextStack, Evaluator, Operator, Result};
@@ -8,19 +7,19 @@ use crate::{ContextStack, Evaluator, Operator, Result};
 pub struct NotOperator;
 
 impl Operator for NotOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         let value = if args.is_empty() {
-            Cow::Owned(Value::Null)
+            Value::Null
         } else {
             evaluator.evaluate(&args[0], context)?
         };
 
-        Ok(Cow::Owned(Value::Bool(!is_truthy(value.as_ref()))))
+        Ok(Value::Bool(!is_truthy(&value)))
     }
 }
 
@@ -28,19 +27,19 @@ impl Operator for NotOperator {
 pub struct DoubleNotOperator;
 
 impl Operator for DoubleNotOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         let value = if args.is_empty() {
-            Cow::Owned(Value::Null)
+            Value::Null
         } else {
             evaluator.evaluate(&args[0], context)?
         };
 
-        Ok(Cow::Owned(Value::Bool(is_truthy(value.as_ref()))))
+        Ok(Value::Bool(is_truthy(&value)))
     }
 }
 
@@ -48,21 +47,21 @@ impl Operator for DoubleNotOperator {
 pub struct AndOperator;
 
 impl Operator for AndOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.is_empty() {
-            return Ok(Cow::Owned(Value::Bool(true)));
+            return Ok(Value::Bool(true));
         }
 
-        let mut last_value = Cow::Owned(Value::Bool(true));
+        let mut last_value = Value::Bool(true);
 
         for arg in args {
             let value = evaluator.evaluate(arg, context)?;
-            if !is_truthy(value.as_ref()) {
+            if !is_truthy(&value) {
                 return Ok(value);
             }
             last_value = value;
@@ -76,21 +75,21 @@ impl Operator for AndOperator {
 pub struct OrOperator;
 
 impl Operator for OrOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.is_empty() {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
-        let mut last_value = Cow::Owned(Value::Bool(false));
+        let mut last_value = Value::Bool(false);
 
         for arg in args {
             let value = evaluator.evaluate(arg, context)?;
-            if is_truthy(value.as_ref()) {
+            if is_truthy(&value) {
                 return Ok(value);
             }
             last_value = value;

@@ -1,14 +1,13 @@
 use serde_json::Value;
-use std::borrow::Cow;
 
 /// Access a path in a JSON value using dot notation
 /// Supports:
 /// - Object field access: "field" or "field.nested"
 /// - Array index access: "0" or "field.0"
 /// - Mixed: "field.0.nested"
-pub fn access_path<'a>(value: &'a Value, path: &str) -> Option<Cow<'a, Value>> {
-    if path.is_empty() || path.is_empty() {
-        return Some(Cow::Borrowed(value));
+pub fn access_path(value: &Value, path: &str) -> Option<Value> {
+    if path.is_empty() {
+        return Some(value.clone());
     }
 
     // Use serde_json's pointer method for JSON pointer syntax
@@ -23,7 +22,7 @@ pub fn access_path<'a>(value: &'a Value, path: &str) -> Option<Cow<'a, Value>> {
         pointer
     };
 
-    value.pointer(&pointer).map(Cow::Borrowed)
+    value.pointer(&pointer).cloned()
 }
 
 /// Coerce a value to boolean (JavaScript-like truthiness)

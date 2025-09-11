@@ -1,6 +1,6 @@
 use datalogic_rs::DataLogic;
 use serde_json::{Value, json};
-use std::borrow::Cow;
+
 use std::env;
 use std::fs;
 
@@ -26,13 +26,11 @@ fn test_jsonlogic() {
     let engine = DataLogic::new();
     let mut passed = 0;
     let mut failed = 0;
-    let mut skipped = 0;
 
     for (index, test_case) in test_array.iter().enumerate() {
         // Skip string entries (they're usually section headers)
         if test_case.is_string() {
             println!("\n{}", test_case.as_str().unwrap());
-            skipped += 1;
             continue;
         }
 
@@ -56,7 +54,7 @@ fn test_jsonlogic() {
             .unwrap_or_else(|| panic!("Test case {} missing 'result'", index));
 
         // Compile and evaluate
-        match engine.compile(Cow::Borrowed(rule)) {
+        match engine.compile(rule) {
             Ok(compiled) => match engine.evaluate_owned(&compiled, data.clone()) {
                 Ok(result) => {
                     if &result == expected {
@@ -89,8 +87,8 @@ fn test_jsonlogic() {
 
     println!("\n========================================");
     println!(
-        "Results: {} passed, {} failed, {} skipped",
-        passed, failed, skipped
+        "Results: {} passed, {} failed",
+        passed, failed
     );
     println!("========================================");
 

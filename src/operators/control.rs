@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::borrow::Cow;
 
 use crate::value_helpers::is_truthy;
 use crate::{ContextStack, Evaluator, Operator, Result};
@@ -8,14 +7,14 @@ use crate::{ContextStack, Evaluator, Operator, Result};
 pub struct IfOperator;
 
 impl Operator for IfOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.is_empty() {
-            return Ok(Cow::Owned(Value::Null));
+            return Ok(Value::Null);
         }
 
         // Support variadic if/elseif/else chains
@@ -28,7 +27,7 @@ impl Operator for IfOperator {
 
             // Evaluate condition
             let condition = evaluator.evaluate(&args[i], context)?;
-            if is_truthy(condition.as_ref()) {
+            if is_truthy(&condition) {
                 // Evaluate then branch
                 if i + 1 < args.len() {
                     return evaluator.evaluate(&args[i + 1], context);
@@ -41,7 +40,7 @@ impl Operator for IfOperator {
             i += 2;
         }
 
-        Ok(Cow::Owned(Value::Null))
+        Ok(Value::Null)
     }
 }
 
@@ -49,19 +48,19 @@ impl Operator for IfOperator {
 pub struct TernaryOperator;
 
 impl Operator for TernaryOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 3 {
-            return Ok(Cow::Owned(Value::Null));
+            return Ok(Value::Null);
         }
 
         let condition = evaluator.evaluate(&args[0], context)?;
 
-        if is_truthy(condition.as_ref()) {
+        if is_truthy(&condition) {
             evaluator.evaluate(&args[1], context)
         } else {
             evaluator.evaluate(&args[2], context)

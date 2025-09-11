@@ -1,13 +1,16 @@
 use serde_json::Value;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::opcode::OpCode;
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
 /// Main DataLogic engine
 pub struct DataLogic {
-    operators: HashMap<String, Box<dyn Operator>>,
+    /// Array for built-in operators (fast lookup)
+    builtin_operators: [Option<Box<dyn Operator>>; OpCode::COUNT],
+    /// HashMap for custom operators only
+    custom_operators: HashMap<String, Box<dyn Operator>>,
 }
 
 impl Default for DataLogic {
@@ -20,7 +23,8 @@ impl DataLogic {
     /// Create a new DataLogic engine with built-in operators
     pub fn new() -> Self {
         let mut engine = Self {
-            operators: HashMap::new(),
+            builtin_operators: std::array::from_fn(|_| None),
+            custom_operators: HashMap::new(),
         };
         engine.register_builtin_operators();
         engine
@@ -31,130 +35,88 @@ impl DataLogic {
         use crate::operators::*;
 
         // Variable access
-        self.operators
-            .insert("var".to_string(), Box::new(VarOperator));
-        self.operators
-            .insert("val".to_string(), Box::new(ValOperator));
+        self.builtin_operators[OpCode::Var as usize] = Some(Box::new(VarOperator));
+        self.builtin_operators[OpCode::Val as usize] = Some(Box::new(ValOperator));
 
         // Comparison operators
-        self.operators
-            .insert("==".to_string(), Box::new(EqualsOperator { strict: false }));
-        self.operators
-            .insert("===".to_string(), Box::new(EqualsOperator { strict: true }));
-        self.operators.insert(
-            "!=".to_string(),
-            Box::new(NotEqualsOperator { strict: false }),
-        );
-        self.operators.insert(
-            "!==".to_string(),
-            Box::new(NotEqualsOperator { strict: true }),
-        );
-        self.operators
-            .insert(">".to_string(), Box::new(GreaterThanOperator));
-        self.operators
-            .insert(">=".to_string(), Box::new(GreaterThanEqualOperator));
-        self.operators
-            .insert("<".to_string(), Box::new(LessThanOperator));
-        self.operators
-            .insert("<=".to_string(), Box::new(LessThanEqualOperator));
+        self.builtin_operators[OpCode::Equals as usize] =
+            Some(Box::new(EqualsOperator { strict: false }));
+        self.builtin_operators[OpCode::StrictEquals as usize] =
+            Some(Box::new(EqualsOperator { strict: true }));
+        self.builtin_operators[OpCode::NotEquals as usize] =
+            Some(Box::new(NotEqualsOperator { strict: false }));
+        self.builtin_operators[OpCode::StrictNotEquals as usize] =
+            Some(Box::new(NotEqualsOperator { strict: true }));
+        self.builtin_operators[OpCode::GreaterThan as usize] = Some(Box::new(GreaterThanOperator));
+        self.builtin_operators[OpCode::GreaterThanEqual as usize] =
+            Some(Box::new(GreaterThanEqualOperator));
+        self.builtin_operators[OpCode::LessThan as usize] = Some(Box::new(LessThanOperator));
+        self.builtin_operators[OpCode::LessThanEqual as usize] =
+            Some(Box::new(LessThanEqualOperator));
 
         // Logical operators
-        self.operators
-            .insert("!".to_string(), Box::new(NotOperator));
-        self.operators
-            .insert("!!".to_string(), Box::new(DoubleNotOperator));
-        self.operators
-            .insert("and".to_string(), Box::new(AndOperator));
-        self.operators
-            .insert("or".to_string(), Box::new(OrOperator));
+        self.builtin_operators[OpCode::Not as usize] = Some(Box::new(NotOperator));
+        self.builtin_operators[OpCode::DoubleNot as usize] = Some(Box::new(DoubleNotOperator));
+        self.builtin_operators[OpCode::And as usize] = Some(Box::new(AndOperator));
+        self.builtin_operators[OpCode::Or as usize] = Some(Box::new(OrOperator));
 
         // Control flow
-        self.operators
-            .insert("if".to_string(), Box::new(IfOperator));
-        self.operators
-            .insert("?:".to_string(), Box::new(TernaryOperator));
+        self.builtin_operators[OpCode::If as usize] = Some(Box::new(IfOperator));
+        self.builtin_operators[OpCode::Ternary as usize] = Some(Box::new(TernaryOperator));
 
         // Arithmetic operators
-        self.operators
-            .insert("+".to_string(), Box::new(AddOperator));
-        self.operators
-            .insert("-".to_string(), Box::new(SubtractOperator));
-        self.operators
-            .insert("*".to_string(), Box::new(MultiplyOperator));
-        self.operators
-            .insert("/".to_string(), Box::new(DivideOperator));
-        self.operators
-            .insert("%".to_string(), Box::new(ModuloOperator));
-        self.operators
-            .insert("max".to_string(), Box::new(MaxOperator));
-        self.operators
-            .insert("min".to_string(), Box::new(MinOperator));
+        self.builtin_operators[OpCode::Add as usize] = Some(Box::new(AddOperator));
+        self.builtin_operators[OpCode::Subtract as usize] = Some(Box::new(SubtractOperator));
+        self.builtin_operators[OpCode::Multiply as usize] = Some(Box::new(MultiplyOperator));
+        self.builtin_operators[OpCode::Divide as usize] = Some(Box::new(DivideOperator));
+        self.builtin_operators[OpCode::Modulo as usize] = Some(Box::new(ModuloOperator));
+        self.builtin_operators[OpCode::Max as usize] = Some(Box::new(MaxOperator));
+        self.builtin_operators[OpCode::Min as usize] = Some(Box::new(MinOperator));
 
         // String operators
-        self.operators
-            .insert("cat".to_string(), Box::new(CatOperator));
-        self.operators
-            .insert("substr".to_string(), Box::new(SubstrOperator));
-        self.operators
-            .insert("in".to_string(), Box::new(InOperator));
+        self.builtin_operators[OpCode::Cat as usize] = Some(Box::new(CatOperator));
+        self.builtin_operators[OpCode::Substr as usize] = Some(Box::new(SubstrOperator));
+        self.builtin_operators[OpCode::In as usize] = Some(Box::new(InOperator));
 
         // Array operators
-        self.operators
-            .insert("merge".to_string(), Box::new(MergeOperator));
-        self.operators
-            .insert("filter".to_string(), Box::new(FilterOperator));
-        self.operators
-            .insert("map".to_string(), Box::new(MapOperator));
-        self.operators
-            .insert("reduce".to_string(), Box::new(ReduceOperator));
-        self.operators
-            .insert("all".to_string(), Box::new(AllOperator));
-        self.operators
-            .insert("some".to_string(), Box::new(SomeOperator));
-        self.operators
-            .insert("none".to_string(), Box::new(NoneOperator));
+        self.builtin_operators[OpCode::Merge as usize] = Some(Box::new(MergeOperator));
+        self.builtin_operators[OpCode::Filter as usize] = Some(Box::new(FilterOperator));
+        self.builtin_operators[OpCode::Map as usize] = Some(Box::new(MapOperator));
+        self.builtin_operators[OpCode::Reduce as usize] = Some(Box::new(ReduceOperator));
+        self.builtin_operators[OpCode::All as usize] = Some(Box::new(AllOperator));
+        self.builtin_operators[OpCode::Some as usize] = Some(Box::new(SomeOperator));
+        self.builtin_operators[OpCode::None as usize] = Some(Box::new(NoneOperator));
 
         // Missing operators
-        self.operators
-            .insert("missing".to_string(), Box::new(MissingOperator));
-        self.operators
-            .insert("missing_some".to_string(), Box::new(MissingSomeOperator));
+        self.builtin_operators[OpCode::Missing as usize] = Some(Box::new(MissingOperator));
+        self.builtin_operators[OpCode::MissingSome as usize] = Some(Box::new(MissingSomeOperator));
     }
 
     /// Register a custom operator
     pub fn add_operator(&mut self, name: String, operator: Box<dyn Operator>) {
-        self.operators.insert(name, operator);
+        self.custom_operators.insert(name, operator);
     }
 
-    /// Compile a logic expression
-    pub fn compile(&self, logic: Cow<'_, Value>) -> Result<Arc<CompiledLogic>> {
-        let compiled = CompiledLogic::compile(logic.as_ref())?;
+    /// Compile a logic expression with static evaluation
+    pub fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
+        let compiled = CompiledLogic::compile_with_static_eval(logic, self)?;
         Ok(Arc::new(compiled))
     }
 
     /// Evaluate compiled logic with data
-    pub fn evaluate<'a>(
-        &self,
-        compiled: &CompiledLogic,
-        data: Cow<'a, Value>,
-    ) -> Result<Cow<'a, Value>> {
+    pub fn evaluate(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
         let mut context = ContextStack::new(data);
         self.evaluate_node(&compiled.root, &mut context)
     }
 
     /// Convenience method for owned values
     pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
-        self.evaluate(compiled, Cow::Owned(data))
-            .map(|cow| cow.into_owned())
+        self.evaluate(compiled, data)
     }
 
     /// Convenience method for borrowed values
-    pub fn evaluate_ref<'a>(
-        &self,
-        compiled: &CompiledLogic,
-        data: &'a Value,
-    ) -> Result<Cow<'a, Value>> {
-        self.evaluate(compiled, Cow::Borrowed(data))
+    pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+        self.evaluate(compiled, data.clone())
     }
 
     /// Convenience method for JSON strings
@@ -162,52 +124,59 @@ impl DataLogic {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
 
-        let compiled = self.compile(Cow::Borrowed(&logic_value))?;
+        let compiled = self.compile(&logic_value)?;
         self.evaluate_owned(&compiled, data_value)
     }
 
     /// Evaluate a compiled node
-    fn evaluate_node<'a>(
-        &self,
-        node: &CompiledNode,
-        context: &mut ContextStack<'a>,
-    ) -> Result<Cow<'a, Value>> {
+    pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
         match node {
-            CompiledNode::Value(val) => Ok(Cow::Owned(val.clone())),
+            CompiledNode::Value(val) => Ok(val.clone()),
 
             CompiledNode::Array(nodes) => {
                 let mut results = Vec::with_capacity(nodes.len());
                 for node in nodes {
-                    results.push(self.evaluate_node(node, context)?.into_owned());
+                    results.push(self.evaluate_node(node, context)?);
                 }
-                Ok(Cow::Owned(Value::Array(results)))
+                Ok(Value::Array(results))
             }
 
-            CompiledNode::Operator { name, args } => {
-                // Look up the operator
+            CompiledNode::BuiltinOperator { opcode, args } => {
+                // Direct array access - super fast!
+                let operator = self.builtin_operators[*opcode as usize]
+                    .as_ref()
+                    .expect("Built-in operator not found");
+
+                // Prepare arguments as Values - don't evaluate yet
+                let arg_values: Vec<Value> =
+                    args.iter().map(|arg| self.node_to_value(arg)).collect();
+
+                // Create an evaluator wrapper for this engine with cached compiled nodes
+                let evaluator = FastEvaluator {
+                    engine: self,
+                    nodes: args,
+                };
+
+                // Execute the operator
+                operator.evaluate(&arg_values, context, &evaluator)
+            }
+
+            CompiledNode::CustomOperator { name, args } => {
+                // HashMap lookup only for custom operators
                 let operator = self
-                    .operators
+                    .custom_operators
                     .get(name)
                     .ok_or_else(|| Error::InvalidOperator(name.clone()))?;
 
-                // Prepare arguments as Cow values
-                let arg_values: Vec<Cow<'_, Value>> = args
-                    .iter()
-                    .map(|arg| {
-                        // Instead of evaluating here, pass the node as a Value
-                        // The operator will evaluate if needed
-                        match arg {
-                            CompiledNode::Value(v) => Cow::Owned(v.clone()),
-                            _ => {
-                                // Convert node back to JSON for operator to evaluate
-                                Cow::Owned(self.node_to_value(arg))
-                            }
-                        }
-                    })
-                    .collect();
+                // Prepare arguments as Values - don't evaluate yet
+                let arg_values: Vec<Value> =
+                    args.iter().map(|arg| self.node_to_value(arg)).collect();
 
-                // Create an evaluator wrapper for this engine
-                let evaluator = EngineEvaluator { engine: self };
+                // Create an evaluator wrapper for this engine with cached compiled nodes
+                let evaluator = FastEvaluator {
+                    engine: self,
+                    nodes: args,
+                };
 
                 // Execute the operator
                 operator.evaluate(&arg_values, context, &evaluator)
@@ -226,7 +195,17 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
     match node {
         CompiledNode::Value(val) => val.clone(),
         CompiledNode::Array(nodes) => Value::Array(nodes.iter().map(node_to_value_impl).collect()),
-        CompiledNode::Operator { name, args } => {
+        CompiledNode::BuiltinOperator { opcode, args } => {
+            let mut obj = serde_json::Map::new();
+            let args_value = if args.len() == 1 {
+                node_to_value_impl(&args[0])
+            } else {
+                Value::Array(args.iter().map(node_to_value_impl).collect())
+            };
+            obj.insert(opcode.as_str().to_string(), args_value);
+            Value::Object(obj)
+        }
+        CompiledNode::CustomOperator { name, args } => {
             let mut obj = serde_json::Map::new();
             let args_value = if args.len() == 1 {
                 node_to_value_impl(&args[0])
@@ -239,19 +218,65 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
     }
 }
 
-/// Evaluator implementation that wraps the engine
-struct EngineEvaluator<'e> {
+/// Fast evaluator that avoids recompilation
+struct FastEvaluator<'e> {
     engine: &'e DataLogic,
+    nodes: &'e [CompiledNode],
 }
 
-impl Evaluator for EngineEvaluator<'_> {
-    fn evaluate<'a>(
-        &self,
-        logic: &Cow<'a, Value>,
-        context: &mut ContextStack<'a>,
-    ) -> Result<Cow<'a, Value>> {
-        // Properly compile and evaluate the logic
-        let compiled = CompiledLogic::compile(logic.as_ref())?;
-        self.engine.evaluate_node(&compiled.root, context)
+impl Evaluator for FastEvaluator<'_> {
+    fn evaluate(&self, logic: &Value, context: &mut ContextStack) -> Result<Value> {
+        // Fast path: check if this is a simple value first
+        match logic {
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                return Ok(logic.clone());
+            }
+            _ => {}
+        }
+
+        // Try to find the corresponding pre-compiled node
+        // This avoids recompilation of operator arguments
+        for node in self.nodes.iter() {
+            // Quick check if this could be the right node
+            match (node, logic) {
+                (CompiledNode::Value(v), val) if v == val => {
+                    return self.engine.evaluate_node(node, context);
+                }
+                (CompiledNode::BuiltinOperator { .. }, Value::Object(obj)) if obj.len() == 1 => {
+                    // Check if this operator matches
+                    let node_val = node_to_value_impl(node);
+                    if &node_val == logic {
+                        return self.engine.evaluate_node(node, context);
+                    }
+                }
+                (CompiledNode::CustomOperator { .. }, Value::Object(obj)) if obj.len() == 1 => {
+                    // Check if this operator matches
+                    let node_val = node_to_value_impl(node);
+                    if &node_val == logic {
+                        return self.engine.evaluate_node(node, context);
+                    }
+                }
+                (CompiledNode::Array(_), Value::Array(_)) => {
+                    let node_val = node_to_value_impl(node);
+                    if &node_val == logic {
+                        return self.engine.evaluate_node(node, context);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Fallback: compile and evaluate
+        match logic {
+            Value::Object(obj) if obj.len() == 1 => {
+                let compiled = CompiledLogic::compile(logic)?;
+                self.engine.evaluate_node(&compiled.root, context)
+            }
+            Value::Array(_) => {
+                let compiled = CompiledLogic::compile(logic)?;
+                self.engine.evaluate_node(&compiled.root, context)
+            }
+            _ => Ok(logic.clone()),
+        }
     }
 }

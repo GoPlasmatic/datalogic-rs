@@ -2,6 +2,7 @@ mod compiled;
 mod context;
 mod engine;
 mod error;
+mod opcode;
 mod operators;
 mod value_helpers;
 
@@ -11,26 +12,21 @@ pub use engine::DataLogic;
 pub use error::Error;
 
 use serde_json::Value;
-use std::borrow::Cow;
 
 /// Result type for DataLogic operations
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Evaluator trait for recursive evaluation
 pub trait Evaluator {
-    fn evaluate<'a>(
-        &self,
-        logic: &Cow<'a, Value>,
-        context: &mut ContextStack<'a>,
-    ) -> Result<Cow<'a, Value>>;
+    fn evaluate(&self, logic: &Value, context: &mut ContextStack) -> Result<Value>;
 }
 
 /// Operator trait for all operators
 pub trait Operator: Send + Sync {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>>;
+    ) -> Result<Value>;
 }

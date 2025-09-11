@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::borrow::Cow;
 
 use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
 use crate::{ContextStack, Evaluator, Operator, Result};
@@ -10,26 +9,26 @@ pub struct EqualsOperator {
 }
 
 impl Operator for EqualsOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(true)));
+            return Ok(Value::Bool(true));
         }
 
         let left = evaluator.evaluate(&args[0], context)?;
         let right = evaluator.evaluate(&args[1], context)?;
 
         let result = if self.strict {
-            strict_equals(left.as_ref(), right.as_ref())
+            strict_equals(&left, &right)
         } else {
-            loose_equals(left.as_ref(), right.as_ref())
+            loose_equals(&left, &right)
         };
 
-        Ok(Cow::Owned(Value::Bool(result)))
+        Ok(Value::Bool(result))
     }
 }
 
@@ -39,26 +38,26 @@ pub struct NotEqualsOperator {
 }
 
 impl Operator for NotEqualsOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
         let left = evaluator.evaluate(&args[0], context)?;
         let right = evaluator.evaluate(&args[1], context)?;
 
         let result = if self.strict {
-            !strict_equals(left.as_ref(), right.as_ref())
+            !strict_equals(&left, &right)
         } else {
-            !loose_equals(left.as_ref(), right.as_ref())
+            !loose_equals(&left, &right)
         };
 
-        Ok(Cow::Owned(Value::Bool(result)))
+        Ok(Value::Bool(result))
     }
 }
 
@@ -66,28 +65,25 @@ impl Operator for NotEqualsOperator {
 pub struct GreaterThanOperator;
 
 impl Operator for GreaterThanOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
         let left = evaluator.evaluate(&args[0], context)?;
         let right = evaluator.evaluate(&args[1], context)?;
 
-        let result = match (
-            coerce_to_number(left.as_ref()),
-            coerce_to_number(right.as_ref()),
-        ) {
+        let result = match (coerce_to_number(&left), coerce_to_number(&right)) {
             (Some(l), Some(r)) => l > r,
             _ => false,
         };
 
-        Ok(Cow::Owned(Value::Bool(result)))
+        Ok(Value::Bool(result))
     }
 }
 
@@ -95,28 +91,25 @@ impl Operator for GreaterThanOperator {
 pub struct GreaterThanEqualOperator;
 
 impl Operator for GreaterThanEqualOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
         let left = evaluator.evaluate(&args[0], context)?;
         let right = evaluator.evaluate(&args[1], context)?;
 
-        let result = match (
-            coerce_to_number(left.as_ref()),
-            coerce_to_number(right.as_ref()),
-        ) {
+        let result = match (coerce_to_number(&left), coerce_to_number(&right)) {
             (Some(l), Some(r)) => l >= r,
             _ => false,
         };
 
-        Ok(Cow::Owned(Value::Bool(result)))
+        Ok(Value::Bool(result))
     }
 }
 
@@ -124,14 +117,14 @@ impl Operator for GreaterThanEqualOperator {
 pub struct LessThanOperator;
 
 impl Operator for LessThanOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
         let mut prev = evaluator.evaluate(&args[0], context)?;
@@ -139,22 +132,19 @@ impl Operator for LessThanOperator {
         for item in args.iter().skip(1) {
             let current = evaluator.evaluate(item, context)?;
 
-            let result = match (
-                coerce_to_number(prev.as_ref()),
-                coerce_to_number(current.as_ref()),
-            ) {
+            let result = match (coerce_to_number(&prev), coerce_to_number(&current)) {
                 (Some(l), Some(r)) => l < r,
-                _ => return Ok(Cow::Owned(Value::Bool(false))),
+                _ => return Ok(Value::Bool(false)),
             };
 
             if !result {
-                return Ok(Cow::Owned(Value::Bool(false)));
+                return Ok(Value::Bool(false));
             }
 
             prev = current;
         }
 
-        Ok(Cow::Owned(Value::Bool(true)))
+        Ok(Value::Bool(true))
     }
 }
 
@@ -162,14 +152,14 @@ impl Operator for LessThanOperator {
 pub struct LessThanEqualOperator;
 
 impl Operator for LessThanEqualOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
         let mut prev = evaluator.evaluate(&args[0], context)?;
@@ -177,21 +167,18 @@ impl Operator for LessThanEqualOperator {
         for item in args.iter().skip(1) {
             let current = evaluator.evaluate(item, context)?;
 
-            let result = match (
-                coerce_to_number(prev.as_ref()),
-                coerce_to_number(current.as_ref()),
-            ) {
+            let result = match (coerce_to_number(&prev), coerce_to_number(&current)) {
                 (Some(l), Some(r)) => l <= r,
-                _ => return Ok(Cow::Owned(Value::Bool(false))),
+                _ => return Ok(Value::Bool(false)),
             };
 
             if !result {
-                return Ok(Cow::Owned(Value::Bool(false)));
+                return Ok(Value::Bool(false));
             }
 
             prev = current;
         }
 
-        Ok(Cow::Owned(Value::Bool(true)))
+        Ok(Value::Bool(true))
     }
 }

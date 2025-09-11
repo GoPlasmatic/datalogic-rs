@@ -1,6 +1,5 @@
 use datalogic_rs::DataLogic;
 use serde_json::json;
-use std::borrow::Cow;
 
 #[test]
 fn test_basic_equality() {
@@ -10,7 +9,7 @@ fn test_basic_equality() {
     let logic = json!({"==": [1, 1]});
     let data = json!({});
 
-    let compiled = engine.compile(Cow::Borrowed(&logic)).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, data).unwrap();
 
     assert_eq!(result, json!(true));
@@ -24,7 +23,7 @@ fn test_variable_access() {
     let logic = json!({"var": "name"});
     let data = json!({"name": "Alice"});
 
-    let compiled = engine.compile(Cow::Borrowed(&logic)).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, data).unwrap();
 
     assert_eq!(result, json!("Alice"));
@@ -44,7 +43,7 @@ fn test_if_then_else() {
     });
 
     let data1 = json!({"temp": 100});
-    let compiled = engine.compile(Cow::Borrowed(&logic)).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
     let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
     assert_eq!(result1, json!("hot"));
 
@@ -67,7 +66,7 @@ fn test_map_with_context() {
     });
 
     let data = json!({});
-    let compiled = engine.compile(Cow::Borrowed(&logic)).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, data).unwrap();
 
     assert_eq!(result, json!([1, 3, 5]));

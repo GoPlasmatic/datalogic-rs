@@ -1,6 +1,5 @@
 use datalogic_rs::DataLogic;
 use serde_json::Value;
-use std::borrow::Cow;
 use std::fs;
 use std::time::Instant;
 
@@ -29,14 +28,14 @@ fn main() {
                 let data = test_case.get("data").cloned().unwrap_or(Value::Null);
 
                 // Compile the logic once
-                if let Ok(compiled) = engine.compile(Cow::Borrowed(logic)) {
+                if let Ok(compiled) = engine.compile(logic) {
                     test_cases.push((compiled, data));
                 }
             }
         }
     }
 
-    let iterations = 100000u32; // Reasonable number of iterations for benchmarking
+    let iterations = 100000; // Reasonable number of iterations for benchmarking
     println!(
         "Running {} iterations for {} test cases",
         iterations,
@@ -45,7 +44,7 @@ fn main() {
 
     // Warm-up run
     for (compiled_logic, data) in &test_cases {
-        let _ = engine.evaluate_owned(compiled_logic, data.clone());
+        let _ = engine.evaluate_ref(compiled_logic, data);
     }
 
     let start = Instant::now();
@@ -53,7 +52,7 @@ fn main() {
     // Run benchmark
     for (compiled_logic, data) in &test_cases {
         for _ in 0..iterations {
-            let _ = engine.evaluate_owned(compiled_logic, data.clone());
+            let _ = engine.evaluate_ref(compiled_logic, data);
         }
     }
 
@@ -63,15 +62,5 @@ fn main() {
 
     println!("\n=== Benchmark Results ===");
     println!("Total time: {duration:?}");
-    println!("Total operations: {}", total_operations);
     println!("Average operation time: {avg_iteration_time:?}");
-    println!(
-        "Operations per second: {:.0}",
-        total_operations as f64 / duration.as_secs_f64()
-    );
-
-    // Calculate throughput
-    let throughput_mb =
-        (total_operations as f64 * 1000.0) / (1024.0 * 1024.0) / duration.as_secs_f64();
-    println!("Estimated throughput: {:.2} MB/s", throughput_mb);
 }

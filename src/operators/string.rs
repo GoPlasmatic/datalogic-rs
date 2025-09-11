@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::borrow::Cow;
 
 use crate::{ContextStack, Evaluator, Operator, Result};
 
@@ -7,18 +6,18 @@ use crate::{ContextStack, Evaluator, Operator, Result};
 pub struct CatOperator;
 
 impl Operator for CatOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         let mut result = String::new();
 
         for arg in args {
             let value = evaluator.evaluate(arg, context)?;
-            match value.as_ref() {
-                Value::String(s) => result.push_str(s),
+            match value {
+                Value::String(s) => result.push_str(&s),
                 Value::Number(n) => result.push_str(&n.to_string()),
                 Value::Bool(b) => result.push_str(&b.to_string()),
                 Value::Null => result.push_str("null"),
@@ -26,7 +25,7 @@ impl Operator for CatOperator {
             }
         }
 
-        Ok(Cow::Owned(Value::String(result)))
+        Ok(Value::String(result))
     }
 }
 
@@ -34,18 +33,18 @@ impl Operator for CatOperator {
 pub struct SubstrOperator;
 
 impl Operator for SubstrOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.is_empty() {
-            return Ok(Cow::Owned(Value::String(String::new())));
+            return Ok(Value::String(String::new()));
         }
 
         let string_val = evaluator.evaluate(&args[0], context)?;
-        let string = match string_val.as_ref() {
+        let string = match &string_val {
             Value::String(s) => s.clone(),
             _ => string_val.to_string(),
         };
@@ -90,7 +89,7 @@ impl Operator for SubstrOperator {
             string.chars().skip(actual_start).collect()
         };
 
-        Ok(Cow::Owned(Value::String(result)))
+        Ok(Value::String(result))
     }
 }
 
@@ -98,28 +97,28 @@ impl Operator for SubstrOperator {
 pub struct InOperator;
 
 impl Operator for InOperator {
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        args: &[Cow<'a, Value>],
-        context: &mut ContextStack<'a>,
+        args: &[Value],
+        context: &mut ContextStack,
         evaluator: &dyn Evaluator,
-    ) -> Result<Cow<'a, Value>> {
+    ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Cow::Owned(Value::Bool(false)));
+            return Ok(Value::Bool(false));
         }
 
         let needle = evaluator.evaluate(&args[0], context)?;
         let haystack = evaluator.evaluate(&args[1], context)?;
 
-        let result = match haystack.as_ref() {
-            Value::String(s) => match needle.as_ref() {
+        let result = match &haystack {
+            Value::String(s) => match &needle {
                 Value::String(n) => s.contains(n.as_str()),
                 _ => false,
             },
-            Value::Array(arr) => arr.iter().any(|v| v == needle.as_ref()),
+            Value::Array(arr) => arr.iter().any(|v| v == &needle),
             _ => false,
         };
 
-        Ok(Cow::Owned(Value::Bool(result)))
+        Ok(Value::Bool(result))
     }
 }
