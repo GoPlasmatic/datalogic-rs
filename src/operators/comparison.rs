@@ -17,61 +17,78 @@ impl Operator for EqualsOperator {
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Value::Bool(true));
+            return Err(crate::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
         }
 
-        let left = evaluator.evaluate(&args[0], context)?;
-        let right = evaluator.evaluate(&args[1], context)?;
+        // For chained equality (3+ arguments), check if all are equal
+        let first = evaluator.evaluate(&args[0], context)?;
 
-        // Handle datetime comparisons - both objects and strings
-        let left_dt = if is_datetime_object(&left) {
-            extract_datetime(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+        for item in args.iter().skip(1) {
+            let current = evaluator.evaluate(item, context)?;
 
-        let right_dt = if is_datetime_object(&right) {
-            extract_datetime(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+            // Compare first == current
+            let result = compare_equals(&first, &current, self.strict);
 
-        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-            return Ok(Value::Bool(dt1 == dt2));
+            if !result {
+                // Short-circuit on first inequality
+                return Ok(Value::Bool(false));
+            }
         }
 
-        // Handle duration comparisons - both objects and strings
-        let left_dur = if is_duration_object(&left) {
-            extract_duration(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
+        Ok(Value::Bool(true))
+    }
+}
 
-        let right_dur = if is_duration_object(&right) {
-            extract_duration(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
+// Helper function for == and === comparison
+fn compare_equals(left: &Value, right: &Value, strict: bool) -> bool {
+    // Handle datetime comparisons - both objects and strings
+    let left_dt = if is_datetime_object(left) {
+        extract_datetime(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
 
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(Value::Bool(dur1 == dur2));
-        }
+    let right_dt = if is_datetime_object(right) {
+        extract_datetime(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
 
-        let result = if self.strict {
-            strict_equals(&left, &right)
-        } else {
-            loose_equals(&left, &right)
-        };
+    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+        return dt1 == dt2;
+    }
 
-        Ok(Value::Bool(result))
+    // Handle duration comparisons - both objects and strings
+    let left_dur = if is_duration_object(left) {
+        extract_duration(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    let right_dur = if is_duration_object(right) {
+        extract_duration(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return dur1 == dur2;
+    }
+
+    if strict {
+        strict_equals(left, right)
+    } else {
+        loose_equals(left, right)
     }
 }
 
@@ -88,61 +105,29 @@ impl Operator for NotEqualsOperator {
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
         if args.len() < 2 {
-            return Ok(Value::Bool(false));
+            return Err(crate::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
         }
 
-        let left = evaluator.evaluate(&args[0], context)?;
-        let right = evaluator.evaluate(&args[1], context)?;
+        // For != with multiple arguments, it returns true if first is not equal to ALL others
+        // In other words, if first equals ANY of the others, return false
+        let first = evaluator.evaluate(&args[0], context)?;
 
-        // Handle datetime comparisons - both objects and strings
-        let left_dt = if is_datetime_object(&left) {
-            extract_datetime(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+        for item in args.iter().skip(1) {
+            let current = evaluator.evaluate(item, context)?;
 
-        let right_dt = if is_datetime_object(&right) {
-            extract_datetime(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+            // Compare first == current
+            let equals = compare_equals(&first, &current, self.strict);
 
-        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-            return Ok(Value::Bool(dt1 != dt2));
+            if equals {
+                // If first equals any other value, != returns false
+                return Ok(Value::Bool(false));
+            }
         }
 
-        // Handle duration comparisons - both objects and strings
-        let left_dur = if is_duration_object(&left) {
-            extract_duration(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        let right_dur = if is_duration_object(&right) {
-            extract_duration(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(Value::Bool(dur1 != dur2));
-        }
-
-        let result = if self.strict {
-            !strict_equals(&left, &right)
-        } else {
-            !loose_equals(&left, &right)
-        };
-
-        Ok(Value::Bool(result))
+        // First is not equal to any of the others
+        Ok(Value::Bool(true))
     }
 }
 
@@ -156,62 +141,107 @@ impl Operator for GreaterThanOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
+        // Require at least 2 arguments
         if args.len() < 2 {
-            return Ok(Value::Bool(false));
+            return Err(crate::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
         }
 
-        let left = evaluator.evaluate(&args[0], context)?;
-        let right = evaluator.evaluate(&args[1], context)?;
+        // For chained comparisons (3+ arguments), check a > b > c > ...
+        // This should be evaluated lazily - stop at first false
+        let mut prev = evaluator.evaluate(&args[0], context)?;
 
-        // Handle datetime comparisons - both objects and strings
-        let left_dt = if is_datetime_object(&left) {
-            extract_datetime(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+        for item in args.iter().skip(1) {
+            let curr = evaluator.evaluate(item, context)?;
 
-        let right_dt = if is_datetime_object(&right) {
-            extract_datetime(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+            // Compare prev > curr
+            let result = compare_greater_than(&prev, &curr)?;
 
-        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-            return Ok(Value::Bool(dt1 > dt2));
+            if !result {
+                // Short-circuit on first false
+                return Ok(Value::Bool(false));
+            }
+
+            prev = curr;
         }
 
-        // Handle duration comparisons - both objects and strings
-        let left_dur = if is_duration_object(&left) {
-            extract_duration(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        let right_dur = if is_duration_object(&right) {
-            extract_duration(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(Value::Bool(dur1 > dur2));
-        }
-
-        let result = match (coerce_to_number(&left), coerce_to_number(&right)) {
-            (Some(l), Some(r)) => l > r,
-            _ => false,
-        };
-
-        Ok(Value::Bool(result))
+        Ok(Value::Bool(true))
     }
+}
+
+// Helper function for > comparison
+fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
+    // Arrays and objects cannot be compared
+    if matches!(left, Value::Array(_) | Value::Object(_))
+        || matches!(right, Value::Array(_) | Value::Object(_))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    // Handle datetime comparisons - both objects and strings
+    let left_dt = if is_datetime_object(left) {
+        extract_datetime(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    let right_dt = if is_datetime_object(right) {
+        extract_datetime(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+        return Ok(dt1 > dt2);
+    }
+
+    // Handle duration comparisons - both objects and strings
+    let left_dur = if is_duration_object(left) {
+        extract_duration(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    let right_dur = if is_duration_object(right) {
+        extract_duration(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return Ok(dur1 > dur2);
+    }
+
+    // If both are strings, do string comparison
+    if let (Value::String(l), Value::String(r)) = (left, right) {
+        return Ok(l > r);
+    }
+
+    // Check if both can be coerced to numbers
+    let left_num = coerce_to_number(left);
+    let right_num = coerce_to_number(right);
+
+    if let (Some(l), Some(r)) = (left_num, right_num) {
+        return Ok(l > r);
+    }
+
+    // If one is a number and the other is a string that can't be coerced, throw NaN
+    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
+        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    Ok(false)
 }
 
 /// Greater than or equal operator (>=)
@@ -224,62 +254,107 @@ impl Operator for GreaterThanEqualOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
+        // Require at least 2 arguments
         if args.len() < 2 {
-            return Ok(Value::Bool(false));
+            return Err(crate::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
         }
 
-        let left = evaluator.evaluate(&args[0], context)?;
-        let right = evaluator.evaluate(&args[1], context)?;
+        // For chained comparisons (3+ arguments), check a >= b >= c >= ...
+        // This should be evaluated lazily - stop at first false
+        let mut prev = evaluator.evaluate(&args[0], context)?;
 
-        // Handle datetime comparisons - both objects and strings
-        let left_dt = if is_datetime_object(&left) {
-            extract_datetime(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+        for item in args.iter().skip(1) {
+            let curr = evaluator.evaluate(item, context)?;
 
-        let right_dt = if is_datetime_object(&right) {
-            extract_datetime(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
+            // Compare prev >= curr
+            let result = compare_greater_than_equal(&prev, &curr)?;
 
-        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-            return Ok(Value::Bool(dt1 >= dt2));
+            if !result {
+                // Short-circuit on first false
+                return Ok(Value::Bool(false));
+            }
+
+            prev = curr;
         }
 
-        // Handle duration comparisons - both objects and strings
-        let left_dur = if is_duration_object(&left) {
-            extract_duration(&left)
-        } else if let Value::String(s) = &left {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        let right_dur = if is_duration_object(&right) {
-            extract_duration(&right)
-        } else if let Value::String(s) = &right {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(Value::Bool(dur1 >= dur2));
-        }
-
-        let result = match (coerce_to_number(&left), coerce_to_number(&right)) {
-            (Some(l), Some(r)) => l >= r,
-            _ => false,
-        };
-
-        Ok(Value::Bool(result))
+        Ok(Value::Bool(true))
     }
+}
+
+// Helper function for >= comparison
+fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
+    // Arrays and objects cannot be compared
+    if matches!(left, Value::Array(_) | Value::Object(_))
+        || matches!(right, Value::Array(_) | Value::Object(_))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    // Handle datetime comparisons - both objects and strings
+    let left_dt = if is_datetime_object(left) {
+        extract_datetime(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    let right_dt = if is_datetime_object(right) {
+        extract_datetime(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+        return Ok(dt1 >= dt2);
+    }
+
+    // Handle duration comparisons - both objects and strings
+    let left_dur = if is_duration_object(left) {
+        extract_duration(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    let right_dur = if is_duration_object(right) {
+        extract_duration(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return Ok(dur1 >= dur2);
+    }
+
+    // If both are strings, do string comparison
+    if let (Value::String(l), Value::String(r)) = (left, right) {
+        return Ok(l >= r);
+    }
+
+    // Check if both can be coerced to numbers
+    let left_num = coerce_to_number(left);
+    let right_num = coerce_to_number(right);
+
+    if let (Some(l), Some(r)) = (left_num, right_num) {
+        return Ok(l >= r);
+    }
+
+    // If one is a number and the other is a string that can't be coerced, throw NaN
+    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
+        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    Ok(false)
 }
 
 /// Less than operator (<) - supports variadic arguments
@@ -292,71 +367,25 @@ impl Operator for LessThanOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
+        // Require at least 2 arguments
         if args.len() < 2 {
-            return Ok(Value::Bool(false));
+            return Err(crate::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
         }
 
+        // For chained comparisons (3+ arguments), check a < b < c < ...
+        // This should be evaluated lazily - stop at first false
         let mut prev = evaluator.evaluate(&args[0], context)?;
 
         for item in args.iter().skip(1) {
             let current = evaluator.evaluate(item, context)?;
 
-            // Handle datetime comparisons - both objects and strings
-            let prev_dt = if is_datetime_object(&prev) {
-                extract_datetime(&prev)
-            } else if let Value::String(s) = &prev {
-                crate::datetime::DataDateTime::parse(s)
-            } else {
-                None
-            };
-
-            let curr_dt = if is_datetime_object(&current) {
-                extract_datetime(&current)
-            } else if let Value::String(s) = &current {
-                crate::datetime::DataDateTime::parse(s)
-            } else {
-                None
-            };
-
-            if let (Some(dt1), Some(dt2)) = (prev_dt, curr_dt) {
-                if dt1 >= dt2 {
-                    return Ok(Value::Bool(false));
-                }
-                prev = current;
-                continue;
-            }
-
-            // Handle duration comparisons - both objects and strings
-            let prev_dur = if is_duration_object(&prev) {
-                extract_duration(&prev)
-            } else if let Value::String(s) = &prev {
-                crate::datetime::DataDuration::parse(s)
-            } else {
-                None
-            };
-
-            let curr_dur = if is_duration_object(&current) {
-                extract_duration(&current)
-            } else if let Value::String(s) = &current {
-                crate::datetime::DataDuration::parse(s)
-            } else {
-                None
-            };
-
-            if let (Some(dur1), Some(dur2)) = (prev_dur, curr_dur) {
-                if dur1 >= dur2 {
-                    return Ok(Value::Bool(false));
-                }
-                prev = current;
-                continue;
-            }
-
-            let result = match (coerce_to_number(&prev), coerce_to_number(&current)) {
-                (Some(l), Some(r)) => l < r,
-                _ => return Ok(Value::Bool(false)),
-            };
+            // Compare prev < current
+            let result = compare_less_than(&prev, &current)?;
 
             if !result {
+                // Short-circuit on first false
                 return Ok(Value::Bool(false));
             }
 
@@ -365,6 +394,80 @@ impl Operator for LessThanOperator {
 
         Ok(Value::Bool(true))
     }
+}
+
+// Helper function for < comparison
+fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
+    // Arrays and objects cannot be compared
+    if matches!(left, Value::Array(_) | Value::Object(_))
+        || matches!(right, Value::Array(_) | Value::Object(_))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    // Handle datetime comparisons - both objects and strings
+    let left_dt = if is_datetime_object(left) {
+        extract_datetime(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    let right_dt = if is_datetime_object(right) {
+        extract_datetime(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+        return Ok(dt1 < dt2);
+    }
+
+    // Handle duration comparisons - both objects and strings
+    let left_dur = if is_duration_object(left) {
+        extract_duration(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    let right_dur = if is_duration_object(right) {
+        extract_duration(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return Ok(dur1 < dur2);
+    }
+
+    // If both are strings, do string comparison
+    if let (Value::String(l), Value::String(r)) = (left, right) {
+        return Ok(l < r);
+    }
+
+    // Check if both can be coerced to numbers
+    let left_num = coerce_to_number(left);
+    let right_num = coerce_to_number(right);
+
+    if let (Some(l), Some(r)) = (left_num, right_num) {
+        return Ok(l < r);
+    }
+
+    // If one is a number and the other is a string that can't be coerced, throw NaN
+    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
+        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    Ok(false)
 }
 
 /// Less than or equal operator (<=) - supports variadic arguments
@@ -377,71 +480,25 @@ impl Operator for LessThanEqualOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
+        // Require at least 2 arguments
         if args.len() < 2 {
-            return Ok(Value::Bool(false));
+            return Err(crate::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
         }
 
+        // For chained comparisons (3+ arguments), check a <= b <= c <= ...
+        // This should be evaluated lazily - stop at first false
         let mut prev = evaluator.evaluate(&args[0], context)?;
 
         for item in args.iter().skip(1) {
             let current = evaluator.evaluate(item, context)?;
 
-            // Handle datetime comparisons - both objects and strings
-            let prev_dt = if is_datetime_object(&prev) {
-                extract_datetime(&prev)
-            } else if let Value::String(s) = &prev {
-                crate::datetime::DataDateTime::parse(s)
-            } else {
-                None
-            };
-
-            let curr_dt = if is_datetime_object(&current) {
-                extract_datetime(&current)
-            } else if let Value::String(s) = &current {
-                crate::datetime::DataDateTime::parse(s)
-            } else {
-                None
-            };
-
-            if let (Some(dt1), Some(dt2)) = (prev_dt, curr_dt) {
-                if dt1 > dt2 {
-                    return Ok(Value::Bool(false));
-                }
-                prev = current;
-                continue;
-            }
-
-            // Handle duration comparisons - both objects and strings
-            let prev_dur = if is_duration_object(&prev) {
-                extract_duration(&prev)
-            } else if let Value::String(s) = &prev {
-                crate::datetime::DataDuration::parse(s)
-            } else {
-                None
-            };
-
-            let curr_dur = if is_duration_object(&current) {
-                extract_duration(&current)
-            } else if let Value::String(s) = &current {
-                crate::datetime::DataDuration::parse(s)
-            } else {
-                None
-            };
-
-            if let (Some(dur1), Some(dur2)) = (prev_dur, curr_dur) {
-                if dur1 > dur2 {
-                    return Ok(Value::Bool(false));
-                }
-                prev = current;
-                continue;
-            }
-
-            let result = match (coerce_to_number(&prev), coerce_to_number(&current)) {
-                (Some(l), Some(r)) => l <= r,
-                _ => return Ok(Value::Bool(false)),
-            };
+            // Compare prev <= current
+            let result = compare_less_than_equal(&prev, &current)?;
 
             if !result {
+                // Short-circuit on first false
                 return Ok(Value::Bool(false));
             }
 
@@ -450,4 +507,78 @@ impl Operator for LessThanEqualOperator {
 
         Ok(Value::Bool(true))
     }
+}
+
+// Helper function for <= comparison
+fn compare_less_than_equal(left: &Value, right: &Value) -> Result<bool> {
+    // Arrays and objects cannot be compared
+    if matches!(left, Value::Array(_) | Value::Object(_))
+        || matches!(right, Value::Array(_) | Value::Object(_))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    // Handle datetime comparisons - both objects and strings
+    let left_dt = if is_datetime_object(left) {
+        extract_datetime(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    let right_dt = if is_datetime_object(right) {
+        extract_datetime(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDateTime::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+        return Ok(dt1 <= dt2);
+    }
+
+    // Handle duration comparisons - both objects and strings
+    let left_dur = if is_duration_object(left) {
+        extract_duration(left)
+    } else if let Value::String(s) = left {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    let right_dur = if is_duration_object(right) {
+        extract_duration(right)
+    } else if let Value::String(s) = right {
+        crate::datetime::DataDuration::parse(s)
+    } else {
+        None
+    };
+
+    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+        return Ok(dur1 <= dur2);
+    }
+
+    // If both are strings, do string comparison
+    if let (Value::String(l), Value::String(r)) = (left, right) {
+        return Ok(l <= r);
+    }
+
+    // Check if both can be coerced to numbers
+    let left_num = coerce_to_number(left);
+    let right_num = coerce_to_number(right);
+
+    if let (Some(l), Some(r)) = (left_num, right_num) {
+        return Ok(l <= r);
+    }
+
+    // If one is a number and the other is a string that can't be coerced, throw NaN
+    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
+        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+    }
+
+    Ok(false)
 }

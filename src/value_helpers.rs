@@ -110,6 +110,14 @@ pub fn loose_equals(left: &Value, right: &Value) -> bool {
             let b_str = if *b { "true" } else { "false" };
             s == b_str
         }
+        // Null coerces to 0 in loose equality
+        (Value::Null, Value::Number(n)) | (Value::Number(n), Value::Null) => {
+            n.as_f64() == Some(0.0)
+        }
+        // Null coerces to false in loose equality
+        (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => !*b,
+        // Null coerces to empty string in loose equality
+        (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => s.is_empty(),
         _ => false,
     }
 }
