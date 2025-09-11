@@ -11,6 +11,8 @@ pub struct DataLogic {
     builtin_operators: [Option<Box<dyn Operator>>; OpCode::COUNT],
     /// HashMap for custom operators only
     custom_operators: HashMap<String, Box<dyn Operator>>,
+    /// Flag to preserve structure of objects with unknown operators
+    preserve_structure: bool,
 }
 
 impl Default for DataLogic {
@@ -25,9 +27,31 @@ impl DataLogic {
         let mut engine = Self {
             builtin_operators: std::array::from_fn(|_| None),
             custom_operators: HashMap::new(),
+            preserve_structure: false,
         };
         engine.register_builtin_operators();
         engine
+    }
+
+    /// Create a new DataLogic engine with preserve_structure enabled
+    pub fn with_preserve_structure() -> Self {
+        let mut engine = Self {
+            builtin_operators: std::array::from_fn(|_| None),
+            custom_operators: HashMap::new(),
+            preserve_structure: true,
+        };
+        engine.register_builtin_operators();
+        engine
+    }
+
+    /// Set the preserve_structure flag
+    pub fn set_preserve_structure(&mut self, preserve: bool) {
+        self.preserve_structure = preserve;
+    }
+
+    /// Get the preserve_structure flag
+    pub fn preserve_structure(&self) -> bool {
+        self.preserve_structure
     }
 
     /// Register all built-in operators
@@ -216,6 +240,16 @@ impl DataLogic {
                 // Execute the operator
                 operator.evaluate(&arg_values, context, &evaluator)
             }
+
+            CompiledNode::StructuredObject(fields) => {
+                // Evaluate each field independently and build the result object
+                let mut result = serde_json::Map::new();
+                for (key, node) in fields {
+                    let value = self.evaluate_node(node, context)?;
+                    result.insert(key.clone(), value);
+                }
+                Ok(Value::Object(result))
+            }
         }
     }
 
@@ -248,6 +282,13 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
                 Value::Array(args.iter().map(node_to_value_impl).collect())
             };
             obj.insert(name.clone(), args_value);
+            Value::Object(obj)
+        }
+        CompiledNode::StructuredObject(fields) => {
+            let mut obj = serde_json::Map::new();
+            for (key, node) in fields {
+                obj.insert(key.clone(), node_to_value_impl(node));
+            }
             Value::Object(obj)
         }
     }

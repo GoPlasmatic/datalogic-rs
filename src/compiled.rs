@@ -21,6 +21,9 @@ pub enum CompiledNode {
         name: String,
         args: Vec<CompiledNode>,
     },
+
+    /// Structured object (for preserve_structure mode)
+    StructuredObject(Vec<(String, CompiledNode)>),
 }
 
 /// Compiled logic that can be evaluated multiple times
@@ -37,24 +40,39 @@ impl CompiledLogic {
 
     /// Compile a JSON value into a compiled logic structure
     pub fn compile(logic: &Value) -> Result<Self> {
-        let root = Self::compile_node(logic, None)?;
+        let root = Self::compile_node(logic, None, false)?;
         Ok(Self::new(root))
     }
 
     /// Compile with static evaluation using the provided engine
     pub fn compile_with_static_eval(logic: &Value, engine: &DataLogic) -> Result<Self> {
-        let root = Self::compile_node(logic, Some(engine))?;
+        let root = Self::compile_node(logic, Some(engine), engine.preserve_structure())?;
         Ok(Self::new(root))
     }
 
     /// Compile a single node
-    fn compile_node(value: &Value, engine: Option<&DataLogic>) -> Result<CompiledNode> {
+    fn compile_node(
+        value: &Value,
+        engine: Option<&DataLogic>,
+        preserve_structure: bool,
+    ) -> Result<CompiledNode> {
         match value {
             Value::Object(obj) if obj.len() > 1 => {
-                // Multi-key objects are not valid operators
-                Err(crate::error::Error::InvalidOperator(
-                    "Unknown Operator".to_string(),
-                ))
+                if preserve_structure {
+                    // In preserve_structure mode, treat multi-key objects as structured objects
+                    // We'll create a special StructuredObject node that gets evaluated field by field
+                    let mut fields = Vec::new();
+                    for (key, val) in obj.iter() {
+                        let compiled_val = Self::compile_node(val, engine, preserve_structure)?;
+                        fields.push((key.clone(), compiled_val));
+                    }
+                    Ok(CompiledNode::StructuredObject(fields))
+                } else {
+                    // Multi-key objects are not valid operators
+                    Err(crate::error::Error::InvalidOperator(
+                        "Unknown Operator".to_string(),
+                    ))
+                }
             }
             Value::Object(obj) if obj.len() == 1 => {
                 // Single key object is an operator
@@ -88,7 +106,7 @@ impl CompiledLogic {
                             _ => vec![CompiledNode::Value(args_value.clone())],
                         }
                     } else {
-                        Self::compile_args(args_value, engine)?
+                        Self::compile_args(args_value, engine, preserve_structure)?
                     };
                     let node = CompiledNode::BuiltinOperator { opcode, args };
 
@@ -106,8 +124,15 @@ impl CompiledLogic {
                     }
 
                     Ok(node)
+                } else if preserve_structure {
+                    // In preserve_structure mode, treat unknown operators as object keys
+                    let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
+                    Ok(CompiledNode::StructuredObject(vec![(
+                        op_name.clone(),
+                        compiled_val,
+                    )]))
                 } else {
-                    let args = Self::compile_args(args_value, engine)?;
+                    let args = Self::compile_args(args_value, engine, preserve_structure)?;
                     // Fall back to custom operator - don't pre-evaluate custom operators
                     Ok(CompiledNode::CustomOperator {
                         name: op_name.clone(),
@@ -119,7 +144,7 @@ impl CompiledLogic {
                 // Array of logic expressions
                 let nodes = arr
                     .iter()
-                    .map(|v| Self::compile_node(v, engine))
+                    .map(|v| Self::compile_node(v, engine, preserve_structure))
                     .collect::<Result<Vec<_>>>()?;
 
                 let node = CompiledNode::Array(nodes.into_boxed_slice());
@@ -144,15 +169,19 @@ impl CompiledLogic {
     }
 
     /// Compile operator arguments
-    fn compile_args(value: &Value, engine: Option<&DataLogic>) -> Result<Vec<CompiledNode>> {
+    fn compile_args(
+        value: &Value,
+        engine: Option<&DataLogic>,
+        preserve_structure: bool,
+    ) -> Result<Vec<CompiledNode>> {
         match value {
             Value::Array(arr) => arr
                 .iter()
-                .map(|v| Self::compile_node(v, engine))
+                .map(|v| Self::compile_node(v, engine, preserve_structure))
                 .collect::<Result<Vec<_>>>(),
             _ => {
                 // Single argument - compile it
-                Ok(vec![Self::compile_node(value, engine)?])
+                Ok(vec![Self::compile_node(value, engine, preserve_structure)?])
             }
         }
     }
@@ -207,6 +236,10 @@ impl CompiledLogic {
             CompiledNode::CustomOperator { .. } => {
                 // Unknown operators are assumed to be non-static
                 false
+            }
+            CompiledNode::StructuredObject(fields) => {
+                // Structured objects are static if all their fields are static
+                fields.iter().all(|(_, node)| Self::node_is_static(node))
             }
         }
     }

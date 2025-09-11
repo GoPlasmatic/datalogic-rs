@@ -201,13 +201,6 @@ fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
         return Ok(dt1 > dt2);
     }
 
-    // Arrays and objects cannot be compared (after checking for special objects)
-    if matches!(left, Value::Array(_) | Value::Object(_))
-        || matches!(right, Value::Array(_) | Value::Object(_))
-    {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
-    }
-
     // Handle duration comparisons - both objects and strings
     let left_dur = if is_duration_object(left) {
         extract_duration(left)
@@ -227,6 +220,13 @@ fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
 
     if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
         return Ok(dur1 > dur2);
+    }
+
+    // Arrays and objects cannot be compared (after checking for special objects)
+    if matches!(left, Value::Array(_) | Value::Object(_))
+        || matches!(right, Value::Array(_) | Value::Object(_))
+    {
+        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
     }
 
     // If both are strings, do string comparison

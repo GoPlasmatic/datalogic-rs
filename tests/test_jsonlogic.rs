@@ -100,6 +100,19 @@ fn run_test_file(engine: &DataLogic, test_file: &str) -> (usize, usize) {
 
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
 
+        // Check for preserve_structure flag
+        let preserve_structure = test_obj
+            .get("preserve_structure")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Create engine with appropriate preserve_structure setting
+        let test_engine = if preserve_structure {
+            DataLogic::with_preserve_structure()
+        } else {
+            DataLogic::new()
+        };
+
         // Check if this test expects an error or a result
         let expects_error = test_obj.contains_key("error");
         let expected_error = test_obj.get("error");
@@ -110,8 +123,8 @@ fn run_test_file(engine: &DataLogic, test_file: &str) -> (usize, usize) {
         }
 
         // Compile and evaluate
-        match engine.compile(rule) {
-            Ok(compiled) => match engine.evaluate_owned(&compiled, data.clone()) {
+        match test_engine.compile(rule) {
+            Ok(compiled) => match test_engine.evaluate_owned(&compiled, data.clone()) {
                 Ok(result) => {
                     if expects_error {
                         println!("✗ Test {}: {}", index, description);
