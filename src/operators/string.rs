@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Evaluator, Operator, Result};
+use crate::{ContextStack, Evaluator, Operator, Result, error::Error};
 
 /// String concatenation operator (cat) - variadic
 pub struct CatOperator;
@@ -120,5 +120,37 @@ impl Operator for InOperator {
         };
 
         Ok(Value::Bool(result))
+    }
+}
+
+/// Length operator - returns the length of a string or array
+pub struct LengthOperator;
+
+impl Operator for LengthOperator {
+    fn evaluate(
+        &self,
+        args: &[Value],
+        context: &mut ContextStack,
+        evaluator: &dyn Evaluator,
+    ) -> Result<Value> {
+        if args.is_empty() || args.len() > 1 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        }
+
+        // First evaluate the argument
+        let value = evaluator.evaluate(&args[0], context)?;
+
+        match value {
+            Value::String(s) => {
+                // Count Unicode code points (characters)
+                let char_count = s.chars().count();
+                Ok(Value::Number(serde_json::Number::from(char_count as i64)))
+            }
+            Value::Array(arr) => Ok(Value::Number(serde_json::Number::from(arr.len() as i64))),
+            // For null, numbers, booleans, and objects, length is invalid
+            Value::Null | Value::Number(_) | Value::Bool(_) | Value::Object(_) => {
+                Err(Error::InvalidArguments("Invalid Arguments".to_string()))
+            }
+        }
     }
 }

@@ -37,6 +37,7 @@ pub enum OpCode {
     Cat = 23,
     Substr = 24,
     In = 25,
+    Length = 53,
 
     // Array operators
     Merge = 26,
@@ -84,7 +85,7 @@ pub enum OpCode {
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 53;
+    pub const COUNT: usize = 54;
 
     /// Convert a string to an OpCode
     pub fn from_str(s: &str) -> Option<OpCode> {
@@ -142,6 +143,7 @@ impl OpCode {
             "ceil" => Some(OpCode::Ceil),
             "floor" => Some(OpCode::Floor),
             "preserve" => Some(OpCode::Preserve),
+            "length" => Some(OpCode::Length),
             _ => None,
         }
     }
@@ -202,6 +204,7 @@ impl OpCode {
             OpCode::Ceil => "ceil",
             OpCode::Floor => "floor",
             OpCode::Preserve => "preserve",
+            OpCode::Length => "length",
         }
     }
 }

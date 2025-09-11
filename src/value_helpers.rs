@@ -39,7 +39,7 @@ pub fn is_truthy(value: &Value) -> bool {
         }
         Value::String(s) => !s.is_empty(),
         Value::Array(a) => !a.is_empty(),
-        Value::Object(_) => true,
+        Value::Object(o) => !o.is_empty(),
     }
 }
 

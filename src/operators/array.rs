@@ -79,7 +79,18 @@ impl Operator for MapOperator {
 
                 Ok(Value::Array(results))
             }
-            _ => Ok(Value::Array(vec![])),
+            Value::Null => Ok(Value::Array(vec![])),
+            // For primitive values (number, string, bool), treat as single-element collection
+            _ => {
+                let mut metadata = HashMap::with_capacity(1);
+                metadata.insert(index_key().clone(), Value::Number(0.into()));
+
+                context.push_with_metadata(collection, metadata);
+                let result = evaluator.evaluate(logic, context)?;
+                context.pop();
+
+                Ok(Value::Array(vec![result]))
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{ContextStack, DataLogic, Result, opcode::OpCode};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// Compiled node representing a single operation or value
 #[derive(Debug, Clone)]
@@ -53,14 +53,30 @@ impl CompiledLogic {
             Value::Object(obj) if obj.len() == 1 => {
                 // Single key object is an operator
                 let (op_name, args_value) = obj.iter().next().unwrap();
-                let args = Self::compile_args(args_value, engine)?;
 
                 // Try to parse as built-in operator first
                 if let Some(opcode) = OpCode::from_str(op_name) {
+                    // Check if this operator requires array arguments
+                    let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
+
+                    // For operators that require arrays, check the raw value
+                    if requires_array && !matches!(args_value, Value::Array(_)) {
+                        // Create a special marker node for invalid arguments
+                        let node = CompiledNode::BuiltinOperator {
+                            opcode,
+                            args: vec![CompiledNode::Value(json!({
+                                "__invalid_args__": true,
+                                "value": args_value
+                            }))],
+                        };
+                        return Ok(node);
+                    }
+
+                    let args = Self::compile_args(args_value, engine)?;
                     let node = CompiledNode::BuiltinOperator { opcode, args };
 
                     // If engine is provided and node is static, evaluate it
-                    if let Some(eng) = engine
+                    if let std::option::Option::Some(eng) = engine
                         && Self::node_is_static(&node)
                     {
                         // Evaluate with empty context since it's static
@@ -74,6 +90,7 @@ impl CompiledLogic {
 
                     Ok(node)
                 } else {
+                    let args = Self::compile_args(args_value, engine)?;
                     // Fall back to custom operator - don't pre-evaluate custom operators
                     Ok(CompiledNode::CustomOperator {
                         name: op_name.clone(),
@@ -91,7 +108,7 @@ impl CompiledLogic {
                 let node = CompiledNode::Array(nodes.into_boxed_slice());
 
                 // If engine is provided and array is static, evaluate it
-                if let Some(eng) = engine
+                if let std::option::Option::Some(eng) = engine
                     && Self::node_is_static(&node)
                 {
                     let mut context = ContextStack::new(Value::Null);
@@ -117,7 +134,7 @@ impl CompiledLogic {
                 .map(|v| Self::compile_node(v, engine))
                 .collect::<Result<Vec<_>>>(),
             _ => {
-                // Single argument
+                // Single argument - compile it
                 Ok(vec![Self::compile_node(value, engine)?])
             }
         }
@@ -158,7 +175,9 @@ impl CompiledLogic {
                     Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
                     | StrictEquals | NotEquals | StrictNotEquals | GreaterThan
                     | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And | Or
-                    | Ternary | If | Cat | Substr | In => args.iter().all(Self::node_is_static),
+                    | Ternary | If | Cat | Substr | In | Length => {
+                        args.iter().all(Self::node_is_static)
+                    }
                     // Merge is not statically evaluated because max/min need to distinguish
                     // between literal arrays and arrays from operators
                     Merge => false,

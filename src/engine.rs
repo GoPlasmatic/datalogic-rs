@@ -77,6 +77,7 @@ impl DataLogic {
         self.builtin_operators[OpCode::Cat as usize] = Some(Box::new(CatOperator));
         self.builtin_operators[OpCode::Substr as usize] = Some(Box::new(SubstrOperator));
         self.builtin_operators[OpCode::In as usize] = Some(Box::new(InOperator));
+        self.builtin_operators[OpCode::Length as usize] = Some(Box::new(LengthOperator));
 
         // Array operators
         self.builtin_operators[OpCode::Merge as usize] = Some(Box::new(MergeOperator));

@@ -13,6 +13,16 @@ impl Operator for IfOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
+        // Check for invalid arguments marker
+        if args.len() == 1
+            && let Value::Object(obj) = &args[0]
+            && obj.contains_key("__invalid_args__")
+        {
+            return Err(crate::error::Error::InvalidArguments(
+                "Invalid Arguments".to_string(),
+            ));
+        }
+
         if args.is_empty() {
             return Ok(Value::Null);
         }
