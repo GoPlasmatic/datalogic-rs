@@ -92,7 +92,13 @@ impl Operator for ValOperator {
                     .get_at_level(level as isize)
                     .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-                // Chain path access through remaining arguments
+                // For simple two-arg case [[level], path], just access the path
+                if args.len() == 2 {
+                    let path = args[1].as_str().unwrap_or("");
+                    return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
+                }
+
+                // For multi-arg case, chain path access
                 let mut result = frame.data.clone();
                 for item in args.iter().skip(1) {
                     let path = item.as_str().unwrap_or("");
@@ -150,19 +156,45 @@ impl Operator for ValOperator {
                     }
                 }
 
-                // Two string arguments - chain access like ["user", "admin"]
+                // Two arguments - chain access like ["user", "admin"] or [1, 1]
                 let mut result = context.current().data.clone();
                 for arg in args {
-                    if let Some(path_str) = arg.as_str() {
-                        result = access_path(&result, path_str).unwrap_or(Value::Null);
+                    // Evaluate the argument if needed
+                    let evaluated = if arg.is_string() || arg.is_number() {
+                        arg.clone()
                     } else {
-                        // Non-string element, evaluate it first
-                        let evaluated = evaluator.evaluate(arg, context)?;
-                        if let Some(path_str) = evaluated.as_str() {
-                            result = access_path(&result, path_str).unwrap_or(Value::Null);
-                        } else {
-                            return Ok(Value::Null);
+                        evaluator.evaluate(arg, context)?
+                    };
+
+                    match &evaluated {
+                        Value::String(path_str) => {
+                            // Try direct object key access first for simple keys
+                            if let Value::Object(obj) = &result {
+                                if let Some(val) = obj.get(path_str) {
+                                    result = val.clone();
+                                } else {
+                                    result = Value::Null;
+                                }
+                            } else {
+                                result = access_path(&result, path_str).unwrap_or(Value::Null);
+                            }
                         }
+                        Value::Number(n) => {
+                            // Handle numeric index for array access
+                            if let Some(index) = n.as_u64() {
+                                if let Value::Array(arr) = result {
+                                    result =
+                                        arr.get(index as usize).cloned().unwrap_or(Value::Null);
+                                } else {
+                                    // Try as string key for object
+                                    let key = n.to_string();
+                                    result = access_path(&result, &key).unwrap_or(Value::Null);
+                                }
+                            } else {
+                                return Ok(Value::Null);
+                            }
+                        }
+                        _ => return Ok(Value::Null),
                     }
                 }
                 return Ok(result);
@@ -173,16 +205,41 @@ impl Operator for ValOperator {
         if args.len() > 2 {
             let mut result = context.current().data.clone();
             for arg in args {
-                if let Some(path_str) = arg.as_str() {
-                    result = access_path(&result, path_str).unwrap_or(Value::Null);
+                // Evaluate the argument first
+                let evaluated = if arg.is_string() || arg.is_number() {
+                    arg.clone()
                 } else {
-                    // Non-string element, evaluate it first
-                    let evaluated = evaluator.evaluate(arg, context)?;
-                    if let Some(path_str) = evaluated.as_str() {
-                        result = access_path(&result, path_str).unwrap_or(Value::Null);
-                    } else {
-                        return Ok(Value::Null);
+                    evaluator.evaluate(arg, context)?
+                };
+
+                match &evaluated {
+                    Value::String(path_str) => {
+                        // Try direct object key access first for simple keys
+                        if let Value::Object(obj) = &result {
+                            if let Some(val) = obj.get(path_str) {
+                                result = val.clone();
+                            } else {
+                                result = Value::Null;
+                            }
+                        } else {
+                            result = access_path(&result, path_str).unwrap_or(Value::Null);
+                        }
                     }
+                    Value::Number(n) => {
+                        // Handle numeric index for array access
+                        if let Some(index) = n.as_u64() {
+                            if let Value::Array(arr) = result {
+                                result = arr.get(index as usize).cloned().unwrap_or(Value::Null);
+                            } else {
+                                // Try as string key for object
+                                let key = n.to_string();
+                                result = access_path(&result, &key).unwrap_or(Value::Null);
+                            }
+                        } else {
+                            return Ok(Value::Null);
+                        }
+                    }
+                    _ => return Ok(Value::Null),
                 }
             }
             return Ok(result);
@@ -225,7 +282,7 @@ impl Operator for ValOperator {
 
                 // Chain path access through remaining elements
                 let mut result = frame.data.clone();
-                for item in args.iter().skip(1) {
+                for item in arr.iter().skip(1) {
                     if let Some(path) = item.as_str() {
                         result = access_path(&result, path).unwrap_or(Value::Null);
                     } else {
@@ -234,14 +291,41 @@ impl Operator for ValOperator {
                 }
                 return Ok(result);
             } else {
-                // Array of paths like ["user", "admin"] - chain access
+                // Array of paths like ["user", "admin"] or [1, 1] - chain access
                 let mut result = context.current().data.clone();
                 for path_elem in arr {
-                    if let Some(path_str) = path_elem.as_str() {
-                        result = access_path(&result, path_str).unwrap_or(Value::Null);
-                    } else {
-                        // Non-string element, can't use as path
-                        return Ok(Value::Null);
+                    match path_elem {
+                        Value::String(path_str) => {
+                            // Try direct object key access first for simple keys
+                            if let Value::Object(obj) = &result {
+                                if let Some(val) = obj.get(path_str) {
+                                    result = val.clone();
+                                } else {
+                                    result = Value::Null;
+                                }
+                            } else {
+                                result = access_path(&result, path_str).unwrap_or(Value::Null);
+                            }
+                        }
+                        Value::Number(n) => {
+                            // Handle numeric index for array access
+                            if let Some(index) = n.as_u64() {
+                                if let Value::Array(arr_val) = result {
+                                    result =
+                                        arr_val.get(index as usize).cloned().unwrap_or(Value::Null);
+                                } else {
+                                    // Try as string key for object
+                                    let key = n.to_string();
+                                    result = access_path(&result, &key).unwrap_or(Value::Null);
+                                }
+                            } else {
+                                return Ok(Value::Null);
+                            }
+                        }
+                        _ => {
+                            // Non-string/number element, can't use as path
+                            return Ok(Value::Null);
+                        }
                     }
                 }
                 return Ok(result);
@@ -249,8 +333,34 @@ impl Operator for ValOperator {
         }
 
         // Standard path access in current context
-        let path = path_value.as_str().unwrap_or("");
-        Ok(access_path(&context.current().data, path).unwrap_or(Value::Null))
+        match &path_value {
+            Value::String(s) => {
+                // For single string arguments, try direct object key access first
+                // This handles empty string keys and keys with dots correctly
+                if let Value::Object(obj) = &context.current().data
+                    && let Some(val) = obj.get(s)
+                {
+                    return Ok(val.clone());
+                }
+                // Fall back to access_path for complex paths
+                Ok(access_path(&context.current().data, s).unwrap_or(Value::Null))
+            }
+            Value::Number(n) => {
+                // Handle numeric index for array access
+                if let Some(index) = n.as_u64() {
+                    if let Value::Array(arr) = &context.current().data {
+                        Ok(arr.get(index as usize).cloned().unwrap_or(Value::Null))
+                    } else {
+                        // Try converting to string for object key access
+                        let key = n.to_string();
+                        Ok(access_path(&context.current().data, &key).unwrap_or(Value::Null))
+                    }
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            _ => Ok(Value::Null),
+        }
     }
 }
 

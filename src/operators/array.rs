@@ -41,8 +41,8 @@ impl Operator for MapOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        if args.len() < 2 {
-            return Ok(Value::Array(vec![]));
+        if args.len() != 2 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         let collection = evaluator.evaluate(&args[0], context)?;
@@ -106,8 +106,8 @@ impl Operator for FilterOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        if args.len() < 2 {
-            return Ok(Value::Array(vec![]));
+        if args.len() != 2 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         let collection = evaluator.evaluate(&args[0], context)?;
@@ -158,7 +158,8 @@ impl Operator for FilterOperator {
 
                 Ok(Value::Object(result_obj))
             }
-            _ => Ok(Value::Array(vec![])),
+            Value::Null => Ok(Value::Array(vec![])),
+            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
         }
     }
 }
@@ -173,8 +174,8 @@ impl Operator for ReduceOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        if args.len() < 3 {
-            return Ok(Value::Null);
+        if args.len() != 3 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         let array = evaluator.evaluate(&args[0], context)?;
@@ -201,7 +202,8 @@ impl Operator for ReduceOperator {
 
                 Ok(accumulator)
             }
-            _ => Ok(initial),
+            Value::Null => Ok(initial),
+            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
         }
     }
 }
@@ -216,8 +218,8 @@ impl Operator for AllOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        if args.len() < 2 {
-            return Ok(Value::Bool(false));
+        if args.len() != 2 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         let collection = evaluator.evaluate(&args[0], context)?;
@@ -246,7 +248,9 @@ impl Operator for AllOperator {
                 }
                 Ok(Value::Bool(true))
             }
-            _ => Ok(Value::Bool(false)),
+            Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
+            Value::Null => Ok(Value::Bool(false)),
+            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
         }
     }
 }
@@ -261,8 +265,8 @@ impl Operator for SomeOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        if args.len() < 2 {
-            return Ok(Value::Bool(false));
+        if args.len() != 2 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         let collection = evaluator.evaluate(&args[0], context)?;
@@ -291,7 +295,8 @@ impl Operator for SomeOperator {
                 }
                 Ok(Value::Bool(false))
             }
-            _ => Ok(Value::Bool(false)),
+            Value::Null => Ok(Value::Bool(false)),
+            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
         }
     }
 }
@@ -306,8 +311,8 @@ impl Operator for NoneOperator {
         context: &mut ContextStack,
         evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        if args.len() < 2 {
-            return Ok(Value::Bool(true));
+        if args.len() != 2 {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         let collection = evaluator.evaluate(&args[0], context)?;
@@ -336,7 +341,8 @@ impl Operator for NoneOperator {
                 }
                 Ok(Value::Bool(true))
             }
-            _ => Ok(Value::Bool(true)),
+            Value::Null => Ok(Value::Bool(true)),
+            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
         }
     }
 }

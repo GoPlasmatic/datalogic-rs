@@ -78,7 +78,18 @@ impl CompiledLogic {
                         return Ok(node);
                     }
 
-                    let args = Self::compile_args(args_value, engine)?;
+                    // Special handling for preserve operator - don't compile its arguments
+                    let args = if opcode == OpCode::Preserve {
+                        // Preserve takes raw values, not compiled logic
+                        match args_value {
+                            Value::Array(arr) => {
+                                arr.iter().map(|v| CompiledNode::Value(v.clone())).collect()
+                            }
+                            _ => vec![CompiledNode::Value(args_value.clone())],
+                        }
+                    } else {
+                        Self::compile_args(args_value, engine)?
+                    };
                     let node = CompiledNode::BuiltinOperator { opcode, args };
 
                     // If engine is provided and node is static, evaluate it
