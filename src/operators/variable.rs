@@ -1,5 +1,6 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
+use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::access_path;
 use crate::{ContextStack, Error, Evaluator, Operator, Result};
 
@@ -92,6 +93,56 @@ impl Operator for ValOperator {
                 // Normal path access in the target frame
                 return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
             } else {
+                // Two arguments - check for datetime/duration property access first
+                let first = evaluator.evaluate(&args[0], context)?;
+                let second_val = evaluator.evaluate(&args[1], context)?;
+                let second_str = second_val.as_str();
+
+                if let Some(prop) = second_str {
+                    // Check for datetime property access (both objects and strings)
+                    let dt = if is_datetime_object(&first) {
+                        extract_datetime(&first)
+                    } else if let Value::String(s) = &first {
+                        crate::datetime::DataDateTime::parse(s)
+                    } else {
+                        None
+                    };
+
+                    if let Some(datetime) = dt {
+                        return Ok(match prop {
+                            "year" => json!(datetime.year()),
+                            "month" => json!(datetime.month()),
+                            "day" => json!(datetime.day()),
+                            "hour" => json!(datetime.hour()),
+                            "minute" => json!(datetime.minute()),
+                            "second" => json!(datetime.second()),
+                            "timestamp" => json!(datetime.timestamp()),
+                            "iso" => Value::String(datetime.to_iso_string()),
+                            _ => Value::Null,
+                        });
+                    }
+
+                    // Check for duration property access (both objects and strings)
+                    let dur = if is_duration_object(&first) {
+                        extract_duration(&first)
+                    } else if let Value::String(s) = &first {
+                        crate::datetime::DataDuration::parse(s)
+                    } else {
+                        None
+                    };
+
+                    if let Some(duration) = dur {
+                        return Ok(match prop {
+                            "days" => json!(duration.days()),
+                            "hours" => json!(duration.hours()),
+                            "minutes" => json!(duration.minutes()),
+                            "seconds" => json!(duration.seconds()),
+                            "total_seconds" => json!(duration.total_seconds()),
+                            _ => Value::Null,
+                        });
+                    }
+                }
+
                 // Two string arguments - chain access like ["user", "admin"]
                 let mut result = context.current().data.clone();
                 for arg in args {

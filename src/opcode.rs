@@ -66,14 +66,17 @@ pub enum OpCode {
     Trim = 42,
     Split = 43,
 
-    // Datetime operators (placeholder)
+    // Datetime operators
     Datetime = 44,
     Timestamp = 45,
+    ParseDate = 46,
+    FormatDate = 47,
+    DateDiff = 48,
 }
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 46;
+    pub const COUNT: usize = 49;
 
     /// Convert a string to an OpCode
     pub fn from_str(s: &str) -> Option<OpCode> {
@@ -124,6 +127,9 @@ impl OpCode {
             "split" => Some(OpCode::Split),
             "datetime" => Some(OpCode::Datetime),
             "timestamp" => Some(OpCode::Timestamp),
+            "parse_date" => Some(OpCode::ParseDate),
+            "format_date" => Some(OpCode::FormatDate),
+            "date_diff" => Some(OpCode::DateDiff),
             _ => None,
         }
     }
@@ -177,6 +183,9 @@ impl OpCode {
             OpCode::Split => "split",
             OpCode::Datetime => "datetime",
             OpCode::Timestamp => "timestamp",
+            OpCode::ParseDate => "parse_date",
+            OpCode::FormatDate => "format_date",
+            OpCode::DateDiff => "date_diff",
         }
     }
 }

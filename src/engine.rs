@@ -106,9 +106,12 @@ impl DataLogic {
         self.builtin_operators[OpCode::Trim as usize] = Some(Box::new(TrimOperator));
         self.builtin_operators[OpCode::Split as usize] = Some(Box::new(SplitOperator));
 
-        // Datetime operators (placeholder)
+        // Datetime operators
         self.builtin_operators[OpCode::Datetime as usize] = Some(Box::new(DatetimeOperator));
         self.builtin_operators[OpCode::Timestamp as usize] = Some(Box::new(TimestampOperator));
+        self.builtin_operators[OpCode::ParseDate as usize] = Some(Box::new(ParseDateOperator));
+        self.builtin_operators[OpCode::FormatDate as usize] = Some(Box::new(FormatDateOperator));
+        self.builtin_operators[OpCode::DateDiff as usize] = Some(Box::new(DateDiffOperator));
     }
 
     /// Register a custom operator

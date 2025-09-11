@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{ContextStack, Error, Evaluator, Operator, Result};
 
@@ -17,6 +18,57 @@ impl Operator for AddOperator {
             return Ok(Value::Number(0.into()));
         }
 
+        // Special case for datetime/duration arithmetic
+        if args.len() == 2 {
+            let first = evaluator.evaluate(&args[0], context)?;
+            let second = evaluator.evaluate(&args[1], context)?;
+
+            // DateTime + Duration
+            let first_dt = if is_datetime_object(&first) {
+                extract_datetime(&first)
+            } else if let Value::String(s) = &first {
+                crate::datetime::DataDateTime::parse(s)
+            } else {
+                None
+            };
+
+            let second_dur = if is_duration_object(&second) {
+                extract_duration(&second)
+            } else if let Value::String(s) = &second {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            if let (Some(dt), Some(dur)) = (first_dt, second_dur) {
+                let result = dt.add_duration(&dur);
+                return Ok(Value::String(result.to_iso_string()));
+            }
+
+            // Duration + Duration
+            let first_dur = if is_duration_object(&first) {
+                extract_duration(&first)
+            } else if let Value::String(s) = &first {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            let second_dur2 = if is_duration_object(&second) {
+                extract_duration(&second)
+            } else if let Value::String(s) = &second {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            if let (Some(dur1), Some(dur2)) = (first_dur, second_dur2) {
+                let result = dur1.add(&dur2);
+                return Ok(Value::String(result.to_string()));
+            }
+        }
+
+        // Regular numeric addition
         // Check if all values are integers
         let mut all_integers = true;
         let mut int_sum: i64 = 0;
@@ -86,6 +138,57 @@ impl Operator for SubtractOperator {
             // Subtraction
             let second = evaluator.evaluate(&args[1], context)?;
 
+            // Try to parse as datetime/duration
+            let first_dt = if is_datetime_object(&first) {
+                extract_datetime(&first)
+            } else if let Value::String(s) = &first {
+                crate::datetime::DataDateTime::parse(s)
+            } else {
+                None
+            };
+
+            let second_dt = if is_datetime_object(&second) {
+                extract_datetime(&second)
+            } else if let Value::String(s) = &second {
+                crate::datetime::DataDateTime::parse(s)
+            } else {
+                None
+            };
+
+            let first_dur = if is_duration_object(&first) {
+                extract_duration(&first)
+            } else if let Value::String(s) = &first {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            let second_dur = if is_duration_object(&second) {
+                extract_duration(&second)
+            } else if let Value::String(s) = &second {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            // DateTime - DateTime = Duration (check this first)
+            if let (Some(dt1), Some(dt2)) = (&first_dt, &second_dt) {
+                let result = dt1.diff(dt2);
+                return Ok(Value::String(result.to_string()));
+            }
+
+            // DateTime - Duration
+            if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
+                let result = dt.sub_duration(dur);
+                return Ok(Value::String(result.to_iso_string()));
+            }
+
+            // Duration - Duration
+            if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
+                let result = dur1.sub(dur2);
+                return Ok(Value::String(result.to_string()));
+            }
+
             // Try integer coercion first for both operands
             if let (Some(i1), Some(i2)) = (
                 try_coerce_to_integer(&first),
@@ -120,6 +223,45 @@ impl Operator for MultiplyOperator {
             return Ok(Value::Number(1.into()));
         }
 
+        // Special case for duration * number
+        if args.len() == 2 {
+            let first = evaluator.evaluate(&args[0], context)?;
+            let second = evaluator.evaluate(&args[1], context)?;
+
+            // Duration * Number
+            let first_dur = if is_duration_object(&first) {
+                extract_duration(&first)
+            } else if let Value::String(s) = &first {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            if let Some(dur) = first_dur
+                && let Some(factor) = coerce_to_number(&second)
+            {
+                let result = dur.multiply(factor);
+                return Ok(Value::String(result.to_string()));
+            }
+
+            // Number * Duration
+            let second_dur = if is_duration_object(&second) {
+                extract_duration(&second)
+            } else if let Value::String(s) = &second {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            };
+
+            if let Some(dur) = second_dur
+                && let Some(factor) = coerce_to_number(&first)
+            {
+                let result = dur.multiply(factor);
+                return Ok(Value::String(result.to_string()));
+            }
+        }
+
+        // Regular numeric multiplication
         // Check if all values are integers
         let mut all_integers = true;
         let mut int_product: i64 = 1;
@@ -179,6 +321,25 @@ impl Operator for DivideOperator {
 
         let first = evaluator.evaluate(&args[0], context)?;
         let second = evaluator.evaluate(&args[1], context)?;
+
+        // Duration / Number
+        let first_dur = if is_duration_object(&first) {
+            extract_duration(&first)
+        } else if let Value::String(s) = &first {
+            crate::datetime::DataDuration::parse(s)
+        } else {
+            None
+        };
+
+        if let Some(dur) = first_dur
+            && let Some(divisor) = coerce_to_number(&second)
+        {
+            if divisor == 0.0 {
+                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            }
+            let result = dur.divide(divisor);
+            return Ok(Value::String(result.to_string()));
+        }
 
         // Try integer division first if both can be coerced to integers
         if let (Some(i1), Some(i2)) = (

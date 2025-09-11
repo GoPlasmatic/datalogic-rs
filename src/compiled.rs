@@ -147,7 +147,9 @@ impl CompiledLogic {
                         args.iter().all(Self::node_is_static)
                     }
                     // Datetime operators are static-ish
-                    Datetime | Timestamp => args.iter().all(Self::node_is_static),
+                    Datetime | Timestamp | ParseDate | FormatDate | DateDiff => {
+                        args.iter().all(Self::node_is_static)
+                    }
                     // These operators never depend on context
                     Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
                     | StrictEquals | NotEquals | StrictNotEquals | GreaterThan

@@ -56,12 +56,12 @@
     },
     {
         "description": "Access timestamp property from datetime",
-        "rule": {"val": [
+        "rule": {"type": {"val": [
             {"datetime": "2022-07-06T13:20:06Z"},
             "timestamp"
-        ]},
+        ]}},
         "data": null,
-        "result_type": "number"
+        "result": "number"
     },
     {
         "description": "Access iso property from datetime",
