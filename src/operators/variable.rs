@@ -34,7 +34,7 @@ impl Operator for VarOperator {
         };
 
         // Access the variable in current context
-        match access_path(&context.current().data, path) {
+        match access_path(context.current().data(), path) {
             Some(result) => Ok(result),
             None => {
                 // If not found and there's a default value, use it
@@ -60,7 +60,7 @@ impl Operator for ValOperator {
     ) -> Result<Value> {
         if args.is_empty() {
             // No args means current context
-            return Ok(context.current().data.clone());
+            return Ok(context.current().data().clone());
         }
 
         // Check if we have level access: [[level], path...]
@@ -78,7 +78,7 @@ impl Operator for ValOperator {
                     // Special handling for metadata keys like "index" and "key"
                     // These are always in the current frame's metadata, regardless of level
                     if (path == "index" || path == "key")
-                        && let Some(metadata) = &context.current().metadata
+                        && let Some(metadata) = context.current().metadata()
                         && let Some(value) = metadata.get(path)
                     {
                         return Ok(value.clone());
@@ -95,11 +95,11 @@ impl Operator for ValOperator {
                 // For simple two-arg case [[level], path], just access the path
                 if args.len() == 2 {
                     let path = args[1].as_str().unwrap_or("");
-                    return Ok(access_path(&frame.data, path).unwrap_or(Value::Null));
+                    return Ok(access_path(frame.data(), path).unwrap_or(Value::Null));
                 }
 
                 // For multi-arg case, chain path access
-                let mut result = frame.data.clone();
+                let mut result = frame.data().clone();
                 for item in args.iter().skip(1) {
                     let path = item.as_str().unwrap_or("");
                     result = access_path(&result, path).unwrap_or(Value::Null);
@@ -157,7 +157,7 @@ impl Operator for ValOperator {
                 }
 
                 // Two arguments - chain access like ["user", "admin"] or [1, 1]
-                let mut result = context.current().data.clone();
+                let mut result = context.current().data().clone();
                 for arg in args {
                     // Evaluate the argument if needed
                     let evaluated = if arg.is_string() || arg.is_number() {
@@ -203,7 +203,7 @@ impl Operator for ValOperator {
 
         // Handle multiple arguments (>2) as path chain
         if args.len() > 2 {
-            let mut result = context.current().data.clone();
+            let mut result = context.current().data().clone();
             for arg in args {
                 // Evaluate the argument first
                 let evaluated = if arg.is_string() || arg.is_number() {
@@ -266,7 +266,7 @@ impl Operator for ValOperator {
                     // Special handling for metadata keys like "index" and "key"
                     // These are always in the current frame's metadata, regardless of level
                     if (path == "index" || path == "key")
-                        && let Some(metadata) = &context.current().metadata
+                        && let Some(metadata) = context.current().metadata()
                         && let Some(value) = metadata.get(path)
                     {
                         return Ok(value.clone());
@@ -281,7 +281,7 @@ impl Operator for ValOperator {
                     .ok_or(Error::InvalidContextLevel(level as isize))?;
 
                 // Chain path access through remaining elements
-                let mut result = frame.data.clone();
+                let mut result = frame.data().clone();
                 for item in arr.iter().skip(1) {
                     if let Some(path) = item.as_str() {
                         result = access_path(&result, path).unwrap_or(Value::Null);
@@ -292,7 +292,7 @@ impl Operator for ValOperator {
                 return Ok(result);
             } else {
                 // Array of paths like ["user", "admin"] or [1, 1] - chain access
-                let mut result = context.current().data.clone();
+                let mut result = context.current().data().clone();
                 for path_elem in arr {
                     match path_elem {
                         Value::String(path_str) => {
@@ -337,23 +337,23 @@ impl Operator for ValOperator {
             Value::String(s) => {
                 // For single string arguments, try direct object key access first
                 // This handles empty string keys and keys with dots correctly
-                if let Value::Object(obj) = &context.current().data
+                if let Value::Object(obj) = context.current().data()
                     && let Some(val) = obj.get(s)
                 {
                     return Ok(val.clone());
                 }
                 // Fall back to access_path for complex paths
-                Ok(access_path(&context.current().data, s).unwrap_or(Value::Null))
+                Ok(access_path(context.current().data(), s).unwrap_or(Value::Null))
             }
             Value::Number(n) => {
                 // Handle numeric index for array access
                 if let Some(index) = n.as_u64() {
-                    if let Value::Array(arr) = &context.current().data {
+                    if let Value::Array(arr) = context.current().data() {
                         Ok(arr.get(index as usize).cloned().unwrap_or(Value::Null))
                     } else {
                         // Try converting to string for object key access
                         let key = n.to_string();
-                        Ok(access_path(&context.current().data, &key).unwrap_or(Value::Null))
+                        Ok(access_path(context.current().data(), &key).unwrap_or(Value::Null))
                     }
                 } else {
                     Ok(Value::Null)
@@ -386,7 +386,7 @@ impl Operator for ExistsOperator {
             match path_arg {
                 Value::String(path) => {
                     // Simple string path
-                    Ok(Value::Bool(key_exists(&context.current().data, &path)))
+                    Ok(Value::Bool(key_exists(context.current().data(), &path)))
                 }
                 Value::Array(paths) => {
                     // Array of path segments for nested access
@@ -394,7 +394,8 @@ impl Operator for ExistsOperator {
                         return Ok(Value::Bool(false));
                     }
 
-                    let mut current = &context.current().data;
+                    let current_frame = context.current();
+                    let mut current = current_frame.data();
 
                     for (i, path_val) in paths.iter().enumerate() {
                         if let Value::String(path) = path_val {
@@ -436,7 +437,8 @@ impl Operator for ExistsOperator {
             }
 
             // Now navigate through the paths
-            let mut current = &context.current().data;
+            let current_frame = context.current();
+            let mut current = current_frame.data();
 
             for (i, path) in paths.iter().enumerate() {
                 if let Value::Object(obj) = current {

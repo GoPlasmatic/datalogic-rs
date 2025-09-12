@@ -1,6 +1,7 @@
 use datalogic_rs::DataLogic;
 use serde_json::Value;
 use std::fs;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn main() {
@@ -26,10 +27,11 @@ fn main() {
             // Get rule and data
             if let Some(logic) = test_case.get("rule") {
                 let data = test_case.get("data").cloned().unwrap_or(Value::Null);
+                let data_arc = Arc::new(data.clone());
 
                 // Compile the logic once
                 if let Ok(compiled) = engine.compile(logic) {
-                    test_cases.push((compiled, data));
+                    test_cases.push((compiled, data_arc));
                 }
             }
         }
@@ -44,7 +46,7 @@ fn main() {
 
     // Warm-up run
     for (compiled_logic, data) in &test_cases {
-        let _ = engine.evaluate_ref(compiled_logic, data);
+        let _ = engine.evaluate(compiled_logic, data.clone());
     }
 
     let start = Instant::now();
@@ -52,7 +54,7 @@ fn main() {
     // Run benchmark
     for (compiled_logic, data) in &test_cases {
         for _ in 0..iterations {
-            let _ = engine.evaluate_ref(compiled_logic, data);
+            let _ = engine.evaluate(compiled_logic, data.clone());
         }
     }
 

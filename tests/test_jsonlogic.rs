@@ -98,6 +98,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
             .unwrap_or_else(|| panic!("Test case {} missing 'rule'", index));
 
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
+        let data_arc = std::sync::Arc::new(data);
 
         // Check for preserve_structure flag
         let preserve_structure = test_obj
@@ -123,7 +124,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
 
         // Compile and evaluate
         match test_engine.compile(rule) {
-            Ok(compiled) => match test_engine.evaluate_owned(&compiled, data.clone()) {
+            Ok(compiled) => match test_engine.evaluate(&compiled, data_arc) {
                 Ok(result) => {
                     if expects_error {
                         println!("✗ Test {}: {}", index, description);

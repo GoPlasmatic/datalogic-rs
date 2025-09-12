@@ -1,5 +1,6 @@
 use datalogic_rs::DataLogic;
 use serde_json::json;
+use std::sync::Arc;
 
 #[test]
 fn test_basic_equality() {
@@ -10,7 +11,7 @@ fn test_basic_equality() {
     let data = json!({});
 
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
 
     assert_eq!(result, json!(true));
 }
@@ -24,7 +25,7 @@ fn test_variable_access() {
     let data = json!({"name": "Alice"});
 
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
 
     assert_eq!(result, json!("Alice"));
 }
@@ -44,11 +45,11 @@ fn test_if_then_else() {
 
     let data1 = json!({"temp": 100});
     let compiled = engine.compile(&logic).unwrap();
-    let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
+    let result1 = engine.evaluate(&compiled, Arc::new(data1)).unwrap();
     assert_eq!(result1, json!("hot"));
 
     let data2 = json!({"temp": 50});
-    let result2 = engine.evaluate_owned(&compiled, data2).unwrap();
+    let result2 = engine.evaluate(&compiled, Arc::new(data2)).unwrap();
     assert_eq!(result2, json!("cold"));
 }
 
@@ -67,7 +68,7 @@ fn test_map_with_context() {
 
     let data = json!({});
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
 
     assert_eq!(result, json!([1, 3, 5]));
 }

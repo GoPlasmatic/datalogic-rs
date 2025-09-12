@@ -55,9 +55,10 @@ mod thread_safety_tests {
             .map(|(data, expected)| {
                 let engine = Arc::clone(&engine);
                 let compiled = Arc::clone(&compiled);
+                let data = Arc::new(data);
 
                 thread::spawn(move || {
-                    let result = engine.evaluate_owned(&compiled, data).unwrap();
+                    let result = engine.evaluate(&compiled, data).unwrap();
                     assert_eq!(result.as_str().unwrap(), expected);
                 })
             })
@@ -78,9 +79,10 @@ mod thread_safety_tests {
                     let engine = DataLogic::new();
                     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
                     let data = json!({"a": i, "b": i * 2});
+                    let data = Arc::new(data);
 
                     let compiled = engine.compile(&logic).unwrap();
-                    let result = engine.evaluate_owned(&compiled, data).unwrap();
+                    let result = engine.evaluate(&compiled, data).unwrap();
 
                     assert_eq!(result.as_i64().unwrap(), i + i * 2);
                 })
@@ -123,11 +125,12 @@ mod thread_safety_tests {
             .enumerate()
             .map(|(idx, data)| {
                 let compiled = Arc::clone(&compiled);
+                let data = Arc::new(data);
 
                 thread::spawn(move || {
                     // Each thread creates its own engine
                     let engine = DataLogic::new();
-                    let result = engine.evaluate_owned(&compiled, data).unwrap();
+                    let result = engine.evaluate(&compiled, data).unwrap();
 
                     // Verify results based on thread index (multiply by 2)
                     let arr = result.as_array().unwrap();
@@ -186,8 +189,9 @@ mod async_tests {
                         {"name": format!("Adult{}", i), "age": 30 + i},
                     ]
                 });
+                let data = Arc::new(data);
 
-                let result = engine.evaluate_owned(&compiled, data).unwrap();
+                let result = engine.evaluate(&compiled, data).unwrap();
                 let filtered = result.as_array().unwrap();
 
                 // Should filter out the "Kid" entries
@@ -223,10 +227,11 @@ mod async_tests {
 
         for logic in logics {
             let engine = Arc::clone(&engine);
+            let data = Arc::new(json!({})); // Empty data for these tests
 
             let task = tokio::spawn(async move {
                 let compiled = engine.compile(&logic).unwrap();
-                let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+                let result = engine.evaluate(&compiled, data).unwrap();
 
                 // Return the result for verification
                 result
@@ -264,8 +269,9 @@ mod async_tests {
             let data = json!({
                 "numbers": (1..=1000).collect::<Vec<i32>>()
             });
+            let data = Arc::new(data);
 
-            engine.evaluate_owned(&compiled, data).unwrap()
+            engine.evaluate(&compiled, data).unwrap()
         });
 
         let result = handle.await.unwrap();

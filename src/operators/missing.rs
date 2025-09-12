@@ -22,14 +22,14 @@ impl Operator for MissingOperator {
                 Value::Array(arr) => {
                     for v in arr {
                         if let Some(path) = v.as_str()
-                            && access_path(&context.current().data, path).is_none()
+                            && access_path(context.current().data(), path).is_none()
                         {
                             missing.push(Value::String(path.to_string()));
                         }
                     }
                 }
                 Value::String(s) => {
-                    if access_path(&context.current().data, s).is_none() {
+                    if access_path(context.current().data(), s).is_none() {
                         missing.push(Value::String(s.clone()));
                     }
                 }
@@ -68,7 +68,7 @@ impl Operator for MissingSomeOperator {
         if let Value::Array(arr) = &paths_val {
             for v in arr {
                 if let Some(path) = v.as_str() {
-                    if access_path(&context.current().data, path).is_none() {
+                    if access_path(context.current().data(), path).is_none() {
                         missing.push(Value::String(path.to_string()));
                     } else {
                         present_count += 1;

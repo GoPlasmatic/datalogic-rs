@@ -162,29 +162,21 @@ impl DataLogic {
         Ok(Arc::new(compiled))
     }
 
-    /// Evaluate compiled logic with data
-    pub fn evaluate(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
+    /// Evaluate compiled logic with Arc data
+    /// Use this when you already have data in an Arc to avoid re-wrapping
+    pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
         let mut context = ContextStack::new(data);
         self.evaluate_node(&compiled.root, &mut context)
-    }
-
-    /// Convenience method for owned values
-    pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
-        self.evaluate(compiled, data)
-    }
-
-    /// Convenience method for borrowed values
-    pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        self.evaluate(compiled, data.clone())
     }
 
     /// Convenience method for JSON strings
     pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
+        let data_arc = Arc::new(data_value);
 
         let compiled = self.compile(&logic_value)?;
-        self.evaluate_owned(&compiled, data_value)
+        self.evaluate(&compiled, data_arc)
     }
 
     /// Evaluate a compiled node

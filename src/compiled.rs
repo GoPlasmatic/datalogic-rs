@@ -1,5 +1,6 @@
 use crate::{ContextStack, DataLogic, Result, opcode::OpCode};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 /// Compiled node representing a single operation or value
 #[derive(Debug, Clone)]
@@ -115,7 +116,7 @@ impl CompiledLogic {
                         && Self::node_is_static(&node)
                     {
                         // Evaluate with empty context since it's static
-                        let mut context = ContextStack::new(Value::Null);
+                        let mut context = ContextStack::new(Arc::new(Value::Null));
                         match eng.evaluate_node(&node, &mut context) {
                             Ok(value) => return Ok(CompiledNode::Value(value)),
                             // If evaluation fails, keep as operator node
@@ -153,7 +154,7 @@ impl CompiledLogic {
                 if let std::option::Option::Some(eng) = engine
                     && Self::node_is_static(&node)
                 {
-                    let mut context = ContextStack::new(Value::Null);
+                    let mut context = ContextStack::new(Arc::new(Value::Null));
                     if let Ok(value) = eng.evaluate_node(&node, &mut context) {
                         return Ok(CompiledNode::Value(value));
                     }
