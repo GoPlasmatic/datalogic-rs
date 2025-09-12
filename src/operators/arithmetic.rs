@@ -53,9 +53,18 @@ impl Operator for AddOperator {
                     // Array elements are already evaluated values
                     if let Some(i) = try_coerce_to_integer(elem) {
                         if all_integers {
-                            int_sum = int_sum.saturating_add(i);
+                            // Check for overflow before adding
+                            match int_sum.checked_add(i) {
+                                Some(sum) => int_sum = sum,
+                                None => {
+                                    // Overflow detected, switch to float
+                                    all_integers = false;
+                                    float_sum = int_sum as f64 + i as f64;
+                                }
+                            }
+                        } else {
+                            float_sum += i as f64;
                         }
-                        float_sum += i as f64;
                     } else if let Some(f) = coerce_to_number(elem) {
                         all_integers = false;
                         float_sum += f;
@@ -134,9 +143,18 @@ impl Operator for AddOperator {
             // Try integer coercion first
             if let Some(i) = try_coerce_to_integer(&value) {
                 if all_integers {
-                    int_sum = int_sum.saturating_add(i);
+                    // Check for overflow before adding
+                    match int_sum.checked_add(i) {
+                        Some(sum) => int_sum = sum,
+                        None => {
+                            // Overflow detected, switch to float
+                            all_integers = false;
+                            float_sum = int_sum as f64 + i as f64;
+                        }
+                    }
+                } else {
+                    float_sum += i as f64;
                 }
-                float_sum += i as f64;
             } else if let Some(f) = coerce_to_number(&value) {
                 all_integers = false;
                 float_sum += f;
@@ -251,7 +269,13 @@ impl Operator for SubtractOperator {
                 try_coerce_to_integer(&first),
                 try_coerce_to_integer(&second),
             ) {
-                return Ok(Value::Number((i1 - i2).into()));
+                // Check for overflow in subtraction
+                match i1.checked_sub(i2) {
+                    Some(result) => return Ok(Value::Number(result.into())),
+                    None => {
+                        // Overflow, fall through to float calculation
+                    }
+                }
             }
 
             let first_num = coerce_to_number(&first)
@@ -282,7 +306,15 @@ impl Operator for SubtractOperator {
 
                 if all_integers {
                     if let Some(i) = try_coerce_to_integer(&value) {
-                        int_result -= i;
+                        // Check for overflow in subtraction
+                        match int_result.checked_sub(i) {
+                            Some(result) => int_result = result,
+                            None => {
+                                // Overflow detected, switch to float
+                                all_integers = false;
+                                float_result = int_result as f64 - i as f64;
+                            }
+                        }
                     } else if let Some(f) = coerce_to_number(&value) {
                         all_integers = false;
                         float_result = int_result as f64 - f;
@@ -490,12 +522,17 @@ impl Operator for DivideOperator {
                 return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
             }
 
-            // Try to preserve integer type
+            // Try to preserve integer type with overflow check
             if let Some(i) = try_coerce_to_integer(&value)
                 && i != 0
-                && 1 % i == 0
             {
-                return Ok(Value::Number((1 / i).into()));
+                // Special case: avoid overflow when dividing by -1
+                if i == -1 {
+                    return Ok(Value::Number((-1).into()));
+                }
+                if 1 % i == 0 {
+                    return Ok(Value::Number((1 / i).into()));
+                }
             }
 
             return Ok(number_value(1.0 / num));
@@ -532,6 +569,11 @@ impl Operator for DivideOperator {
             ) {
                 if i2 == 0 {
                     return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                }
+                // Special case: avoid overflow when dividing MIN by -1
+                if i1 == i64::MIN && i2 == -1 {
+                    // This would overflow, use float instead
+                    return Ok(number_value(-(i64::MIN as f64)));
                 }
                 // Check if division is exact (no remainder)
                 if i1 % i2 == 0 {
@@ -570,8 +612,12 @@ impl Operator for DivideOperator {
                         if divisor == 0 {
                             return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                         }
-                        // Check if division is exact
-                        if int_result % divisor == 0 {
+                        // Special case: avoid overflow when dividing MIN by -1
+                        if int_result == i64::MIN && divisor == -1 {
+                            all_integers = false;
+                            float_result = -(i64::MIN as f64);
+                        } else if int_result % divisor == 0 {
+                            // Check if division is exact
                             int_result /= divisor;
                         } else {
                             // Switch to float
@@ -648,6 +694,10 @@ impl Operator for ModuloOperator {
             {
                 if i2 == 0 {
                     return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                }
+                // Special case: i64::MIN % -1 would overflow in some contexts
+                if i1 == i64::MIN && i2 == -1 {
+                    return Ok(Value::Number(0.into()));
                 }
                 return Ok(Value::Number((i1 % i2).into()));
             }

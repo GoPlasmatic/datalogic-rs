@@ -577,14 +577,16 @@ fn slice_sequence(
 ) -> Vec<Value> {
     let mut result = Vec::new();
 
-    // Normalize indices
+    // Normalize indices with overflow protection
     let (actual_start, actual_end) = if step > 0 {
         let s = normalize_index(start.unwrap_or(0), len);
         let e = normalize_index(end.unwrap_or(len), len);
         (s, e)
     } else {
         // For negative step, defaults are reversed
-        let s = normalize_index(start.unwrap_or(len - 1), len);
+        // Use saturating_sub to prevent underflow
+        let default_start = len.saturating_sub(1);
+        let s = normalize_index(start.unwrap_or(default_start), len);
         let e = if let Some(e) = end {
             normalize_index(e, len)
         } else {
@@ -593,30 +595,45 @@ fn slice_sequence(
         (s, e)
     };
 
-    // Collect elements
+    // Collect elements with overflow-safe iteration
     if step > 0 {
         let mut i = actual_start;
         while i < actual_end && i < len {
-            if i >= 0 {
+            if i >= 0 && (i as usize) < arr.len() {
                 result.push(arr[i as usize].clone());
             }
-            i += step;
+            // Use saturating_add to prevent overflow
+            i = i.saturating_add(step);
+            // Break if we've wrapped around
+            if step > 0 && i < actual_start {
+                break;
+            }
         }
     } else {
         let mut i = actual_start;
         while i > actual_end && i >= 0 && i < len {
-            result.push(arr[i as usize].clone());
-            i += step; // step is negative
+            if (i as usize) < arr.len() {
+                result.push(arr[i as usize].clone());
+            }
+            // Use saturating_add for negative step (step is negative)
+            let next_i = i.saturating_add(step);
+            // Break if we've wrapped around
+            if step < 0 && next_i > i {
+                break;
+            }
+            i = next_i;
         }
     }
 
     result
 }
 
-// Helper function to normalize slice indices
+// Helper function to normalize slice indices with overflow protection
 fn normalize_index(index: i64, len: i64) -> i64 {
     if index < 0 {
-        (len + index).max(0)
+        // Use saturating_add to prevent overflow when index is very negative
+        let adjusted = len.saturating_add(index);
+        adjusted.max(0)
     } else {
         index.min(len)
     }

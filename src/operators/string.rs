@@ -62,43 +62,65 @@ impl Operator for SubstrOperator {
             _ => string_val.to_string(),
         };
 
+        // Get character count for proper bounds checking
+        let char_count = string.chars().count();
+
         let start = if args.len() > 1 {
             let start_val = evaluator.evaluate(&args[1], context)?;
-            start_val.as_i64().unwrap_or(0) as isize
+            start_val.as_i64().unwrap_or(0)
         } else {
             0
         };
 
         let length = if args.len() > 2 {
             let length_val = evaluator.evaluate(&args[2], context)?;
-            Some(length_val.as_i64().unwrap_or(string.len() as i64) as isize)
+            length_val.as_i64()
         } else {
             None
         };
 
-        let str_len = string.len() as isize;
+        // Safe bounds checking with overflow protection
         let actual_start = if start < 0 {
-            ((str_len + start).max(0)) as usize
+            // Safely handle negative indices
+            let abs_start = start.saturating_abs() as usize;
+            char_count.saturating_sub(abs_start)
         } else {
-            start.min(str_len) as usize
+            // Safely handle positive indices
+            (start as usize).min(char_count)
         };
 
         let result = if let Some(len) = length {
             if len < 0 {
-                let end = (str_len + len).max(actual_start as isize) as usize;
-                string
-                    .chars()
-                    .skip(actual_start)
-                    .take(end - actual_start)
-                    .collect()
+                // Special case: negative length means use it as end position (like slice)
+                // This mimics JSONLogic's behavior which differs from JavaScript's substr
+                let end_pos = if len < 0 {
+                    // Negative end position counts from end of string
+                    let abs_end = len.saturating_abs() as usize;
+                    char_count.saturating_sub(abs_end)
+                } else {
+                    0
+                };
+
+                // Take characters from actual_start to end_pos
+                if end_pos > actual_start {
+                    string
+                        .chars()
+                        .skip(actual_start)
+                        .take(end_pos - actual_start)
+                        .collect()
+                } else {
+                    String::new()
+                }
+            } else if len == 0 {
+                // Zero length returns empty string
+                String::new()
             } else {
-                string
-                    .chars()
-                    .skip(actual_start)
-                    .take(len as usize)
-                    .collect()
+                // Positive length - take from start position
+                let take_count = (len as usize).min(char_count.saturating_sub(actual_start));
+                string.chars().skip(actual_start).take(take_count).collect()
             }
         } else {
+            // No length specified - take rest of string
             string.chars().skip(actual_start).collect()
         };
 
@@ -157,9 +179,19 @@ impl Operator for LengthOperator {
             Value::String(s) => {
                 // Count Unicode code points (characters)
                 let char_count = s.chars().count();
+                // Ensure count fits in i64 (though this is practically impossible to overflow)
+                if char_count > i64::MAX as usize {
+                    return Err(Error::InvalidArguments("String too long".to_string()));
+                }
                 Ok(Value::Number(serde_json::Number::from(char_count as i64)))
             }
-            Value::Array(arr) => Ok(Value::Number(serde_json::Number::from(arr.len() as i64))),
+            Value::Array(arr) => {
+                // Ensure array length fits in i64
+                if arr.len() > i64::MAX as usize {
+                    return Err(Error::InvalidArguments("Array too long".to_string()));
+                }
+                Ok(Value::Number(serde_json::Number::from(arr.len() as i64)))
+            }
             // For null, numbers, booleans, and objects, length is invalid
             Value::Null | Value::Number(_) | Value::Bool(_) | Value::Object(_) => {
                 Err(Error::InvalidArguments("Invalid Arguments".to_string()))
