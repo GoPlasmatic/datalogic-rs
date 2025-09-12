@@ -325,6 +325,13 @@ impl Evaluator for FastEvaluator<'_> {
                         return self.engine.evaluate_node(node, context);
                     }
                 }
+                (CompiledNode::StructuredObject(_), Value::Object(_)) => {
+                    // Check if this structured object matches
+                    let node_val = node_to_value_impl(node);
+                    if &node_val == logic {
+                        return self.engine.evaluate_node(node, context);
+                    }
+                }
                 (CompiledNode::Array(_), Value::Array(_)) => {
                     let node_val = node_to_value_impl(node);
                     if &node_val == logic {
@@ -335,14 +342,20 @@ impl Evaluator for FastEvaluator<'_> {
             }
         }
 
-        // Fallback: compile and evaluate
+        // Fallback: compile and evaluate with proper preserve_structure setting
         match logic {
             Value::Object(obj) if obj.len() == 1 => {
-                let compiled = CompiledLogic::compile(logic)?;
+                // Use compile_with_static_eval to respect preserve_structure flag
+                let compiled = CompiledLogic::compile_with_static_eval(logic, self.engine)?;
+                self.engine.evaluate_node(&compiled.root, context)
+            }
+            Value::Object(obj) if obj.len() > 1 && self.engine.preserve_structure => {
+                // Multi-key object in preserve_structure mode
+                let compiled = CompiledLogic::compile_with_static_eval(logic, self.engine)?;
                 self.engine.evaluate_node(&compiled.root, context)
             }
             Value::Array(_) => {
-                let compiled = CompiledLogic::compile(logic)?;
+                let compiled = CompiledLogic::compile_with_static_eval(logic, self.engine)?;
                 self.engine.evaluate_node(&compiled.root, context)
             }
             _ => Ok(logic.clone()),

@@ -144,5 +144,74 @@
     "data": { "name": "context_test" },
     "result": { "first": "context_test", "middle": true, "last": "context_test" },
     "preserve_structure": true
+  },
+  {
+    "description": "Deeply nested structured object with variable resolution",
+    "rule": {
+      "Fr": {
+        "FIId": {
+          "FinInstnId": {
+            "BICFI": { "var": "Sender" }
+          }
+        }
+      }
+    },
+    "data": { "Sender": "BICFIDATA" },
+    "result": {
+      "Fr": {
+        "FIId": {
+          "FinInstnId": {
+            "BICFI": "BICFIDATA"
+          }
+        }
+      }
+    },
+    "preserve_structure": true
+  },
+  {
+    "description": "Conditional logic in structured object - BIC code present",
+    "rule": {
+      "FinInstnId": {
+        "if": [
+          { "var": "has_bic" },
+          { "BICFI": { "var": "bic_code" } },
+          { "Nm": { "var": "bank_name" } }
+        ]
+      }
+    },
+    "data": {
+      "has_bic": true,
+      "bic_code": "DEUTDEFFAXXX",
+      "bank_name": "Deutsche Bank"
+    },
+    "result": {
+      "FinInstnId": {
+        "BICFI": "DEUTDEFFAXXX"
+      }
+    },
+    "preserve_structure": true
+  },
+  {
+    "description": "Conditional logic in structured object - BIC code absent, use bank name",
+    "rule": {
+      "FinInstnId": {
+        "if": [
+          { "var": "has_bic" },
+          { "BICFI": { "var": "bic_code" } },
+          { "Nm": { "var": "bank_name" } }
+        ]
+      }
+    },
+    "data": {
+      "has_bic": false,
+      "bic_code": "DEUTDEFFAXXX",
+      "bank_name": "Deutsche Bank"
+    },
+    "result": {
+      "FinInstnId": {
+        "Nm": "Deutsche Bank"
+      }
+    },
+    "preserve_structure": true
   }
 ]
