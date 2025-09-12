@@ -1,3 +1,4 @@
+use chrono::Utc;
 use serde_json::{Value, json};
 
 use crate::datetime::{
@@ -212,5 +213,29 @@ impl Operator for DateDiffOperator {
         Err(Error::InvalidArguments(
             "Failed to calculate date difference".to_string(),
         ))
+    }
+}
+
+/// NowOperator - returns the current datetime
+pub struct NowOperator;
+
+impl Operator for NowOperator {
+    fn evaluate(
+        &self,
+        _args: &[Value],
+        _context: &mut ContextStack,
+        _evaluator: &dyn Evaluator,
+    ) -> Result<Value> {
+        // Get current UTC datetime
+        let now = Utc::now();
+
+        // Create a DataDateTime with current time
+        let data_dt = DataDateTime {
+            dt: now,
+            original_offset: Some(0), // UTC offset
+        };
+
+        // Return as ISO string
+        Ok(Value::String(data_dt.to_iso_string()))
     }
 }

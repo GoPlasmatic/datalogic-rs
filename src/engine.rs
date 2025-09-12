@@ -141,6 +141,7 @@ impl DataLogic {
         self.builtin_operators[OpCode::ParseDate as usize] = Some(Box::new(ParseDateOperator));
         self.builtin_operators[OpCode::FormatDate as usize] = Some(Box::new(FormatDateOperator));
         self.builtin_operators[OpCode::DateDiff as usize] = Some(Box::new(DateDiffOperator));
+        self.builtin_operators[OpCode::Now as usize] = Some(Box::new(NowOperator));
 
         // Math operators
         self.builtin_operators[OpCode::Abs as usize] = Some(Box::new(AbsOperator));

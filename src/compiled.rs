@@ -210,10 +210,12 @@ impl CompiledLogic {
                     Type | StartsWith | EndsWith | Upper | Lower | Trim | Split => {
                         args.iter().all(Self::node_is_static)
                     }
-                    // Datetime operators are static-ish
+                    // Datetime operators are static-ish (except Now which always returns current time)
                     Datetime | Timestamp | ParseDate | FormatDate | DateDiff => {
                         args.iter().all(Self::node_is_static)
                     }
+                    // Now always returns current time, so it's never static
+                    Now => false,
                     // Math operators are static if their args are
                     Abs | Ceil | Floor => args.iter().all(Self::node_is_static),
                     // Preserve should not be static - operators need to know it's from an operator

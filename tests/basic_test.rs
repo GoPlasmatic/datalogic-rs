@@ -1,3 +1,4 @@
+use chrono::DateTime;
 use datalogic_rs::DataLogic;
 use serde_json::json;
 use std::sync::Arc;
@@ -71,4 +72,39 @@ fn test_map_with_context() {
     let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
 
     assert_eq!(result, json!([1, 3, 5]));
+}
+
+#[test]
+fn test_now_operator() {
+    let engine = DataLogic::new();
+
+    // Test the now operator
+    let logic = json!({"now": []});
+    let data = json!({});
+
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
+
+    // Verify it's a string
+    assert!(result.is_string(), "Now operator should return a string");
+
+    // Verify it's a valid ISO datetime format
+    if let serde_json::Value::String(datetime_str) = &result {
+        let parsed = DateTime::parse_from_rfc3339(datetime_str);
+        assert!(
+            parsed.is_ok(),
+            "Now operator should return valid ISO datetime format"
+        );
+    }
+
+    // Test that two calls return different times (with a small delay)
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    let result2 = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+
+    // Note: We can't guarantee they'll be different due to timing precision,
+    // but both should be valid datetime strings
+    assert!(
+        result2.is_string(),
+        "Second call to now should also return a string"
+    );
 }
