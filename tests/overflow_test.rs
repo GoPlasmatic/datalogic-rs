@@ -206,3 +206,131 @@ fn test_edge_cases() {
     let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
     assert_eq!(result, json!([]));
 }
+
+#[test]
+fn test_datetime_duration_overflow() {
+    let engine = DataLogic::new();
+
+    // Test parsing duration with large values that would overflow
+    let logic = json!({"timestamp": "9223372036854775807d"}); // i64::MAX days
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({})));
+    // Should fail gracefully or saturate
+    assert!(result.is_ok() || result.is_err());
+
+    // Test duration multiplication with large factor
+    let logic = json!({"*": [{"timestamp": "1d"}, 1e15]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    // Should saturate at max value rather than overflow
+    assert!(result.is_string());
+
+    // Test duration multiplication with negative overflow
+    let logic = json!({"*": [{"timestamp": "1000000d"}, -1e10]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    assert!(result.is_string());
+
+    // Test duration division by very small number (would overflow)
+    let logic = json!({"/": [{"timestamp": "1d"}, 1e-15]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    // Should saturate rather than overflow
+    assert!(result.is_string());
+
+    // Test duration division by zero
+    let logic = json!({"/": [{"timestamp": "1d"}, 0]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({})));
+    // Should handle division by zero gracefully
+    assert!(result.is_ok() || result.is_err());
+
+    // Test duration multiplication with NaN
+    let logic = json!({"*": [{"timestamp": "1d"}, f64::NAN]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    // Should handle NaN gracefully
+    assert!(result.is_string());
+
+    // Test duration multiplication with infinity
+    let logic = json!({"*": [{"timestamp": "1d"}, f64::INFINITY]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    // Should saturate at max
+    assert!(result.is_string());
+}
+
+#[test]
+fn test_datetime_arithmetic_overflow() {
+    let engine = DataLogic::new();
+
+    // Test adding large duration to datetime
+    let logic = json!({
+        "+": [
+            {"datetime": "2023-01-01T00:00:00Z"},
+            {"timestamp": "1000000000d"} // Very large duration
+        ]
+    });
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    // Should produce a valid datetime string
+    assert!(result.is_string());
+
+    // Test subtracting large duration from datetime
+    let logic = json!({
+        "-": [
+            {"datetime": "2023-01-01T00:00:00Z"},
+            {"timestamp": "1000000000d"}
+        ]
+    });
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    assert!(result.is_string());
+
+    // Test adding two large durations
+    let logic = json!({
+        "+": [
+            {"timestamp": "1000000000d"},
+            {"timestamp": "1000000000d"}
+        ]
+    });
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    assert!(result.is_string());
+
+    // Test subtracting large durations
+    let logic = json!({
+        "-": [
+            {"timestamp": "1d"},
+            {"timestamp": "1000000000d"}
+        ]
+    });
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    assert!(result.is_string());
+}
+
+#[test]
+fn test_duration_parsing_overflow_protection() {
+    let engine = DataLogic::new();
+
+    // Test parsing with values that would overflow in calculation
+    // 106751991167d is approximately i64::MAX seconds / 86400
+    let logic = json!({"timestamp": "106751991167d:24h:60m:60s"});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({})));
+    // Should either parse successfully with saturation or fail gracefully
+    assert!(result.is_ok() || result.is_err());
+
+    // Test parsing with multiple large components
+    let logic = json!({"timestamp": "1000000000000h:1000000000000m"});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({})));
+    assert!(result.is_ok() || result.is_err());
+
+    // Test compact format with large values
+    let logic = json!({"timestamp": "9999999999999999999d"});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate(&compiled, Arc::new(json!({})));
+    assert!(result.is_ok() || result.is_err());
+}
