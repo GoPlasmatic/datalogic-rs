@@ -88,13 +88,21 @@ impl ContextStack {
     }
 
     /// Access data at a context level relative to current
-    /// The sign is ignored - both positive and negative mean the same thing
-    /// - 0: current context
-    /// - 1 or -1: go up 1 level (parent)
-    /// - 2 or -2: go up 2 levels (grandparent)
-    /// - N or -N: go up N levels
+    ///
+    /// # Arguments
+    /// * `level` - The number of levels to traverse up the context stack
+    ///   - 0: returns the current context
+    ///   - N (positive or negative): goes up N levels from current
+    ///
+    /// # Note
+    /// The sign of the level is ignored; both positive and negative values
+    /// traverse up the stack the same way. This maintains backward compatibility
+    /// with existing usage patterns.
+    ///
+    /// # Returns
+    /// The context frame at the specified level, or the root if level exceeds stack depth
     pub fn get_at_level(&self, level: isize) -> Option<ContextFrameRef<'_>> {
-        // Get absolute value - sign doesn't matter
+        // Get absolute value - sign doesn't matter (for backward compatibility)
         let levels_up = level.unsigned_abs();
 
         if levels_up == 0 {

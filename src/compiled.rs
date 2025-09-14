@@ -210,50 +210,46 @@ impl CompiledLogic {
             CompiledNode::Value { .. } => true,
             CompiledNode::Array { nodes, .. } => nodes.iter().all(Self::node_is_static),
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                // Only certain operators can be static
-                use OpCode::*;
-                match opcode {
-                    // These operators always depend on context
-                    Var | Val | Missing | MissingSome => false,
-                    // Array operations depend on their arguments
-                    Map | Filter | Reduce | All | Some | None => false,
-                    // Error handling operators may depend on context
-                    Try | Throw => false,
-                    // Type and string operators can be static if their args are
-                    Type | StartsWith | EndsWith | Upper | Lower | Trim | Split => {
-                        args.iter().all(Self::node_is_static)
-                    }
-                    // Datetime operators are static-ish (except Now which always returns current time)
-                    Datetime | Timestamp | ParseDate | FormatDate | DateDiff => {
-                        args.iter().all(Self::node_is_static)
-                    }
-                    // Now always returns current time, so it's never static
-                    Now => false,
-                    // Math operators are static if their args are
-                    Abs | Ceil | Floor => args.iter().all(Self::node_is_static),
-                    // Preserve should not be static - operators need to know it's from an operator
-                    Preserve => false,
-                    // These operators never depend on context
-                    Add | Subtract | Multiply | Divide | Modulo | Equals | StrictEquals
-                    | NotEquals | StrictNotEquals | GreaterThan | GreaterThanEqual | LessThan
-                    | LessThanEqual | Not | DoubleNot | And | Or | Ternary | If | Cat | Substr
-                    | In | Length | Sort | Slice => args.iter().all(Self::node_is_static),
-                    // Merge, Min, Max are not statically evaluated because they need to distinguish
-                    // between literal arrays and arrays from operators
-                    Merge | Min | Max => false,
-                    // Coalesce can be static if its args are
-                    Coalesce => args.iter().all(Self::node_is_static),
-                    // Exists depends on context
-                    Exists => false,
-                }
+                Self::opcode_is_static(opcode, args)
             }
-            CompiledNode::CustomOperator { .. } => {
-                // Unknown operators are assumed to be non-static
-                false
-            }
+            CompiledNode::CustomOperator { .. } => false, // Unknown operators are non-static
             CompiledNode::StructuredObject { fields, .. } => {
-                // Structured objects are static if all their fields are static
                 fields.iter().all(|(_, node)| Self::node_is_static(node))
+            }
+        }
+    }
+
+    /// Check if an operator can be statically evaluated
+    fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
+        use OpCode::*;
+
+        // Check if all arguments are static first (common pattern)
+        let args_static = || args.iter().all(Self::node_is_static);
+
+        match opcode {
+            // Context-dependent operators - always dynamic
+            Var | Val | Missing | MissingSome | Exists => false,
+
+            // Array iteration operators - always dynamic
+            Map | Filter | Reduce | All | Some | None => false,
+
+            // Error handling - dynamic
+            Try | Throw => false,
+
+            // Time-dependent - Now is always dynamic
+            Now => false,
+
+            // Special operators that need runtime info
+            Preserve => false, // Operators need to know it's from an operator
+            Merge | Min | Max => false, // Need to distinguish literal vs operator arrays
+
+            // Static if arguments are static
+            Type | StartsWith | EndsWith | Upper | Lower | Trim | Split | Datetime | Timestamp
+            | ParseDate | FormatDate | DateDiff | Abs | Ceil | Floor | Add | Subtract
+            | Multiply | Divide | Modulo | Equals | StrictEquals | NotEquals | StrictNotEquals
+            | GreaterThan | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And
+            | Or | Ternary | If | Cat | Substr | In | Length | Sort | Slice | Coalesce => {
+                args_static()
             }
         }
     }

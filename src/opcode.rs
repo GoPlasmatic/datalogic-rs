@@ -4,11 +4,12 @@ use std::str::FromStr;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpCode {
-    // Variable operators
+    // === Variable & Data Access ===
     Var = 0,
     Val = 1,
+    Exists = 57,
 
-    // Comparison operators
+    // === Comparison Operators ===
     Equals = 2,
     StrictEquals = 3,
     NotEquals = 4,
@@ -18,15 +19,18 @@ pub enum OpCode {
     LessThan = 8,
     LessThanEqual = 9,
 
-    // Logical operators
+    // === Logical Operators ===
     Not = 10,
     DoubleNot = 11,
     And = 12,
     Or = 13,
+
+    // === Control Flow ===
     If = 14,
     Ternary = 15,
+    Coalesce = 56,
 
-    // Arithmetic operators
+    // === Arithmetic Operators ===
     Add = 16,
     Subtract = 17,
     Multiply = 18,
@@ -34,34 +38,15 @@ pub enum OpCode {
     Modulo = 20,
     Max = 21,
     Min = 22,
+    Abs = 49,
+    Ceil = 50,
+    Floor = 51,
 
-    // String operators
+    // === String Operations ===
     Cat = 23,
     Substr = 24,
     In = 25,
     Length = 53,
-
-    // Array operators
-    Merge = 26,
-    Filter = 27,
-    Map = 28,
-    Reduce = 29,
-    All = 30,
-    Some = 31,
-    None = 32,
-
-    // Missing operators
-    Missing = 33,
-    MissingSome = 34,
-
-    // Error handling operators
-    Try = 35,
-    Throw = 36,
-
-    // Type operator
-    Type = 37,
-
-    // String operators
     StartsWith = 38,
     EndsWith = 39,
     Upper = 40,
@@ -69,7 +54,18 @@ pub enum OpCode {
     Trim = 42,
     Split = 43,
 
-    // Datetime operators
+    // === Array Operations ===
+    Merge = 26,
+    Filter = 27,
+    Map = 28,
+    Reduce = 29,
+    All = 30,
+    Some = 31,
+    None = 32,
+    Sort = 54,
+    Slice = 55,
+
+    // === DateTime Operations ===
     Datetime = 44,
     Timestamp = 45,
     ParseDate = 46,
@@ -77,17 +73,19 @@ pub enum OpCode {
     DateDiff = 48,
     Now = 58,
 
-    // Math operators
-    Abs = 49,
-    Ceil = 50,
-    Floor = 51,
+    // === Error Handling ===
+    Try = 35,
+    Throw = 36,
 
-    // Utility operators
+    // === Type Operations ===
+    Type = 37,
+
+    // === Missing Value Handling ===
+    Missing = 33,
+    MissingSome = 34,
+
+    // === Special Operations ===
     Preserve = 52,
-    Sort = 54,
-    Slice = 55,
-    Coalesce = 56,
-    Exists = 57,
 }
 
 impl FromStr for OpCode {

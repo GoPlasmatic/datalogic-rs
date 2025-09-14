@@ -101,8 +101,7 @@ impl DataLogic {
                     .get(name)
                     .ok_or_else(|| Error::InvalidOperator(name.clone()))?;
 
-                let arg_values: Vec<Value> =
-                    args.iter().map(|arg| self.node_to_value(arg)).collect();
+                let arg_values: Vec<Value> = args.iter().map(node_to_value).collect();
                 let evaluator = SimpleEvaluator::new(self);
 
                 operator.evaluate(&arg_values, context, &evaluator)
@@ -118,26 +117,21 @@ impl DataLogic {
             }
         }
     }
-
-    /// Convert a compiled node back to a JSON value (only for custom operators)
-    fn node_to_value(&self, node: &CompiledNode) -> Value {
-        node_to_value_impl(node)
-    }
 }
 
-/// Convert a compiled node back to a JSON value (standalone helper)
-fn node_to_value_impl(node: &CompiledNode) -> Value {
+/// Convert a compiled node back to a JSON value (for custom operators)
+fn node_to_value(node: &CompiledNode) -> Value {
     match node {
         CompiledNode::Value { value, .. } => value.clone(),
         CompiledNode::Array { nodes, .. } => {
-            Value::Array(nodes.iter().map(node_to_value_impl).collect())
+            Value::Array(nodes.iter().map(node_to_value).collect())
         }
         CompiledNode::BuiltinOperator { opcode, args, .. } => {
             let mut obj = serde_json::Map::new();
             let args_value = if args.len() == 1 {
-                node_to_value_impl(&args[0])
+                node_to_value(&args[0])
             } else {
-                Value::Array(args.iter().map(node_to_value_impl).collect())
+                Value::Array(args.iter().map(node_to_value).collect())
             };
             obj.insert(opcode.as_str().into(), args_value);
             Value::Object(obj)
@@ -145,9 +139,9 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
         CompiledNode::CustomOperator { name, args, .. } => {
             let mut obj = serde_json::Map::new();
             let args_value = if args.len() == 1 {
-                node_to_value_impl(&args[0])
+                node_to_value(&args[0])
             } else {
-                Value::Array(args.iter().map(node_to_value_impl).collect())
+                Value::Array(args.iter().map(node_to_value).collect())
             };
             obj.insert(name.clone(), args_value);
             Value::Object(obj)
@@ -155,7 +149,7 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
         CompiledNode::StructuredObject { fields, .. } => {
             let mut obj = serde_json::Map::new();
             for (key, node) in fields {
-                obj.insert(key.clone(), node_to_value_impl(node));
+                obj.insert(key.clone(), node_to_value(node));
             }
             Value::Object(obj)
         }
@@ -176,18 +170,9 @@ impl<'e> SimpleEvaluator<'e> {
 
 impl Evaluator for SimpleEvaluator<'_> {
     fn evaluate(&self, logic: &Value, context: &mut ContextStack) -> Result<Value> {
-        // Fast path: check if this is a simple value first
-        match logic {
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
-                return Ok(logic.clone());
-            }
-            _ => {}
-        }
-
-        // Compile and evaluate
+        // Compile and evaluate - compilation already handles simple values efficiently
         match logic {
             Value::Object(obj) if obj.len() == 1 => {
-                // Use compile_with_static_eval to respect preserve_structure flag
                 let compiled = CompiledLogic::compile_with_static_eval(logic, self.engine)?;
                 self.engine.evaluate_node(&compiled.root, context)
             }

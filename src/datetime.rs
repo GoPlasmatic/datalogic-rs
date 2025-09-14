@@ -12,6 +12,15 @@ pub struct DataDateTime {
 pub struct DataDuration(pub Duration);
 
 impl DataDateTime {
+    /// Saturate datetime to max/min bounds on overflow
+    fn saturate_datetime(dt: Option<DateTime<Utc>>, is_positive: bool) -> DateTime<Utc> {
+        dt.unwrap_or(if is_positive {
+            DateTime::<Utc>::MAX_UTC
+        } else {
+            DateTime::<Utc>::MIN_UTC
+        })
+    }
+
     pub fn parse(s: &str) -> Option<Self> {
         // Try parsing as RFC3339/ISO8601
         if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
@@ -102,44 +111,24 @@ impl DataDateTime {
     }
 
     pub fn add_duration(&self, duration: &DataDuration) -> DataDateTime {
-        // Use checked_add to prevent overflow
-        match self.dt.checked_add_signed(duration.0) {
-            Some(result) => DataDateTime {
-                dt: result,
-                original_offset: self.original_offset,
-            },
-            None => {
-                // Overflow occurred, saturate at max/min DateTime
-                DataDateTime {
-                    dt: if duration.0.num_seconds() > 0 {
-                        DateTime::<Utc>::MAX_UTC
-                    } else {
-                        DateTime::<Utc>::MIN_UTC
-                    },
-                    original_offset: self.original_offset,
-                }
-            }
+        let dt = Self::saturate_datetime(
+            self.dt.checked_add_signed(duration.0),
+            duration.0.num_seconds() > 0,
+        );
+        DataDateTime {
+            dt,
+            original_offset: self.original_offset,
         }
     }
 
     pub fn sub_duration(&self, duration: &DataDuration) -> DataDateTime {
-        // Use checked_sub to prevent overflow
-        match self.dt.checked_sub_signed(duration.0) {
-            Some(result) => DataDateTime {
-                dt: result,
-                original_offset: self.original_offset,
-            },
-            None => {
-                // Overflow occurred, saturate at max/min DateTime
-                DataDateTime {
-                    dt: if duration.0.num_seconds() < 0 {
-                        DateTime::<Utc>::MAX_UTC
-                    } else {
-                        DateTime::<Utc>::MIN_UTC
-                    },
-                    original_offset: self.original_offset,
-                }
-            }
+        let dt = Self::saturate_datetime(
+            self.dt.checked_sub_signed(duration.0),
+            duration.0.num_seconds() < 0,
+        );
+        DataDateTime {
+            dt,
+            original_offset: self.original_offset,
         }
     }
 
@@ -161,6 +150,19 @@ impl DataDateTime {
 }
 
 impl DataDuration {
+    /// Saturate duration to max/min bounds on overflow
+    fn saturate_duration(seconds: f64) -> DataDuration {
+        if !seconds.is_finite() || seconds > i64::MAX as f64 / 1000.0 {
+            DataDuration(Duration::MAX)
+        } else if seconds < i64::MIN as f64 / 1000.0 {
+            DataDuration(Duration::MIN)
+        } else {
+            Duration::try_seconds(seconds as i64)
+                .map(DataDuration)
+                .unwrap_or(DataDuration(Duration::MAX))
+        }
+    }
+
     pub fn parse(s: &str) -> Option<Self> {
         // Parse duration format like "1d:2h:3m:4s" or "1d" or "2h30m"
         let mut days = 0i64;
@@ -256,85 +258,51 @@ impl DataDuration {
     }
 
     pub fn multiply(&self, factor: f64) -> DataDuration {
-        // Calculate result as float first
         let result = self.0.num_seconds() as f64 * factor;
-
-        // Check for overflow/underflow before casting
         if !result.is_finite() {
-            // Handle NaN or infinity - return original duration
             DataDuration(self.0)
-        } else if result > i64::MAX as f64 / 1000.0 {
-            // Saturate at maximum duration that chrono can handle
-            DataDuration(Duration::MAX)
-        } else if result < i64::MIN as f64 / 1000.0 {
-            // Saturate at minimum duration that chrono can handle
-            DataDuration(Duration::MIN)
         } else {
-            let seconds = result as i64;
-            // Use try_seconds to safely create duration
-            Duration::try_seconds(seconds)
-                .map(DataDuration)
-                .unwrap_or(DataDuration(self.0))
+            Self::saturate_duration(result)
         }
     }
 
     pub fn divide(&self, divisor: f64) -> DataDuration {
-        // Handle division by zero or near-zero
         if divisor == 0.0 || divisor.abs() < f64::EPSILON {
-            // Return maximum duration for division by zero
             return DataDuration(Duration::MAX);
         }
 
-        // Calculate result as float first
         let result = self.0.num_seconds() as f64 / divisor;
-
-        // Check for overflow/underflow before casting
         if !result.is_finite() {
-            // Handle NaN or infinity - return original duration
             DataDuration(self.0)
-        } else if result > i64::MAX as f64 / 1000.0 {
-            // Saturate at maximum duration that chrono can handle
-            DataDuration(Duration::MAX)
-        } else if result < i64::MIN as f64 / 1000.0 {
-            // Saturate at minimum duration that chrono can handle
-            DataDuration(Duration::MIN)
         } else {
-            let seconds = result as i64;
-            // Use try_seconds to safely create duration
-            Duration::try_seconds(seconds)
-                .map(DataDuration)
-                .unwrap_or(DataDuration(self.0))
+            Self::saturate_duration(result)
         }
     }
 
     pub fn add(&self, other: &DataDuration) -> DataDuration {
-        // Use checked_add to prevent overflow
-        match self.0.checked_add(&other.0) {
-            Some(result) => DataDuration(result),
-            None => {
-                // Overflow occurred, saturate at max/min
+        self.0
+            .checked_add(&other.0)
+            .map(DataDuration)
+            .unwrap_or_else(|| {
                 if self.0.num_seconds() > 0 || other.0.num_seconds() > 0 {
                     DataDuration(Duration::MAX)
                 } else {
                     DataDuration(Duration::MIN)
                 }
-            }
-        }
+            })
     }
 
     pub fn sub(&self, other: &DataDuration) -> DataDuration {
-        // Use checked_sub to prevent overflow
-        match self.0.checked_sub(&other.0) {
-            Some(result) => DataDuration(result),
-            None => {
-                // Overflow occurred, saturate at max/min
+        self.0
+            .checked_sub(&other.0)
+            .map(DataDuration)
+            .unwrap_or_else(|| {
                 if self.0.num_seconds() > other.0.num_seconds() {
                     DataDuration(Duration::MAX)
                 } else {
                     DataDuration(Duration::MIN)
                 }
-            }
-        }
+            })
     }
 }
 

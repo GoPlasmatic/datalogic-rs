@@ -9,26 +9,38 @@ pub enum Error {
     /// Invalid arguments for an operator
     InvalidArguments(String),
 
-    /// Variable not found
+    /// Variable not found in context
     VariableNotFound(String),
 
-    /// Invalid context level
+    /// Invalid context level access
     InvalidContextLevel(isize),
 
-    /// Type conversion error
+    /// Type conversion/coercion error
     TypeError(String),
 
-    /// Division by zero
+    /// Arithmetic error (division by zero, overflow, etc.)
+    ArithmeticError(String),
+
+    /// Division by zero (deprecated - use ArithmeticError)
     DivisionByZero,
 
-    /// Custom error
+    /// Custom error for extensions
     Custom(String),
 
-    /// JSON parsing error
+    /// JSON parsing/serialization error
     ParseError(String),
 
     /// Thrown error from throw operator
     Thrown(serde_json::Value),
+
+    /// Invalid format string or pattern
+    FormatError(String),
+
+    /// Index out of bounds for array operations
+    IndexOutOfBounds { index: isize, length: usize },
+
+    /// Invalid operator configuration
+    ConfigurationError(String),
 }
 
 impl fmt::Display for Error {
@@ -39,10 +51,20 @@ impl fmt::Display for Error {
             Error::VariableNotFound(var) => write!(f, "Variable not found: {}", var),
             Error::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level),
             Error::TypeError(msg) => write!(f, "Type error: {}", msg),
+            Error::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
             Error::DivisionByZero => write!(f, "Division by zero"),
             Error::Custom(msg) => write!(f, "{}", msg),
             Error::ParseError(msg) => write!(f, "Parse error: {}", msg),
             Error::Thrown(val) => write!(f, "Thrown: {}", val),
+            Error::FormatError(msg) => write!(f, "Format error: {}", msg),
+            Error::IndexOutOfBounds { index, length } => {
+                write!(
+                    f,
+                    "Index {} out of bounds for array of length {}",
+                    index, length
+                )
+            }
+            Error::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
         }
     }
 }
