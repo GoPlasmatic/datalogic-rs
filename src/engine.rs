@@ -118,7 +118,7 @@ impl DataLogic {
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result};
+    /// use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result, Error};
     /// use serde_json::{json, Value};
     ///
     /// struct DoubleOperator;
@@ -133,7 +133,7 @@ impl DataLogic {
     ///         if let Some(n) = args.first().and_then(|v| v.as_f64()) {
     ///             Ok(json!(n * 2.0))
     ///         } else {
-    ///             Err("Argument must be a number".into())
+    ///             Err(Error::InvalidArguments("Argument must be a number".to_string()))
     ///         }
     ///     }
     /// }

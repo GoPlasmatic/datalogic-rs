@@ -105,7 +105,7 @@ pub trait Evaluator {
 /// # Example
 ///
 /// ```rust
-/// use datalogic_rs::{Operator, ContextStack, Evaluator, Result};
+/// use datalogic_rs::{Operator, ContextStack, Evaluator, Result, Error};
 /// use serde_json::{json, Value};
 ///
 /// struct UpperCaseOperator;
@@ -120,7 +120,7 @@ pub trait Evaluator {
 ///         if let Some(s) = args.first().and_then(|v| v.as_str()) {
 ///             Ok(json!(s.to_uppercase()))
 ///         } else {
-///             Err("Argument must be a string".into())
+///             Err(Error::InvalidArguments("Argument must be a string".to_string()))
 ///         }
 ///     }
 /// }
