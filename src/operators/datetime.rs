@@ -4,14 +4,14 @@ use serde_json::{Value, json};
 use crate::datetime::{
     DataDateTime, DataDuration, extract_datetime, is_datetime_object, is_duration_object,
 };
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// DatetimeOperator function - creates or parses a datetime
 #[inline]
 pub fn evaluate_datetime(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(
@@ -19,7 +19,7 @@ pub fn evaluate_datetime(
         ));
     }
 
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
 
     // If it's already a datetime object, return it
     if is_datetime_object(&value) {
@@ -43,9 +43,9 @@ pub fn evaluate_datetime(
 /// TimestampOperator function - creates or parses a duration
 #[inline]
 pub fn evaluate_timestamp(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(
@@ -53,7 +53,7 @@ pub fn evaluate_timestamp(
         ));
     }
 
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
 
     // If it's already a duration object, return it
     if is_duration_object(&value) {
@@ -75,9 +75,9 @@ pub fn evaluate_timestamp(
 /// ParseDateOperator function - parses a date string with a format
 #[inline]
 pub fn evaluate_parse_date(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments(
@@ -85,8 +85,8 @@ pub fn evaluate_parse_date(
         ));
     }
 
-    let date_str = evaluator.evaluate(&args[0], context)?;
-    let format_str = evaluator.evaluate(&args[1], context)?;
+    let date_str = engine.evaluate_node(&args[0], context)?;
+    let format_str = engine.evaluate_node(&args[1], context)?;
 
     if let (Value::String(date), Value::String(format)) = (date_str, format_str) {
         // Convert JSONLogic format to chrono format
@@ -109,9 +109,9 @@ pub fn evaluate_parse_date(
 /// FormatDateOperator function - formats a datetime with a format string
 #[inline]
 pub fn evaluate_format_date(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments(
@@ -119,8 +119,8 @@ pub fn evaluate_format_date(
         ));
     }
 
-    let datetime_val = evaluator.evaluate(&args[0], context)?;
-    let format_str = evaluator.evaluate(&args[1], context)?;
+    let datetime_val = engine.evaluate_node(&args[0], context)?;
+    let format_str = engine.evaluate_node(&args[1], context)?;
 
     // Extract datetime from object or string
     let dt = if is_datetime_object(&datetime_val) {
@@ -155,9 +155,9 @@ pub fn evaluate_format_date(
 /// DateDiffOperator function - calculates difference between two dates
 #[inline]
 pub fn evaluate_date_diff(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 3 {
         return Err(Error::InvalidArguments(
@@ -165,9 +165,9 @@ pub fn evaluate_date_diff(
         ));
     }
 
-    let date1_val = evaluator.evaluate(&args[0], context)?;
-    let date2_val = evaluator.evaluate(&args[1], context)?;
-    let unit = evaluator.evaluate(&args[2], context)?;
+    let date1_val = engine.evaluate_node(&args[0], context)?;
+    let date2_val = engine.evaluate_node(&args[1], context)?;
+    let unit = engine.evaluate_node(&args[2], context)?;
 
     // Extract datetimes
     let dt1 = if is_datetime_object(&date1_val) {
@@ -199,9 +199,9 @@ pub fn evaluate_date_diff(
 /// NowOperator function - returns the current datetime
 #[inline]
 pub fn evaluate_now(
-    _args: &[Value],
+    _args: &[CompiledNode],
     _context: &mut ContextStack,
-    _evaluator: &dyn Evaluator,
+    _engine: &DataLogic,
 ) -> Result<Value> {
     // Get current UTC datetime
     let now = Utc::now();

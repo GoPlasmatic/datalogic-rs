@@ -1,18 +1,18 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Evaluator, Result, error::Error};
+use crate::{CompiledNode, ContextStack, DataLogic, Result, error::Error};
 
 /// String concatenation operator function (cat) - variadic
 #[inline]
 pub fn evaluate_cat(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     let mut result = String::new();
 
     for arg in args {
-        let value = evaluator.evaluate(arg, context)?;
+        let value = engine.evaluate_node(arg, context)?;
         // If the value is an array, concatenate its elements
         if let Value::Array(arr) = value {
             for item in arr {
@@ -41,15 +41,15 @@ pub fn evaluate_cat(
 /// Substring operator function (substr)
 #[inline]
 pub fn evaluate_substr(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(Value::String(String::new()));
     }
 
-    let string_val = evaluator.evaluate(&args[0], context)?;
+    let string_val = engine.evaluate_node(&args[0], context)?;
     let string = match &string_val {
         Value::String(s) => s.clone(),
         _ => string_val.to_string(),
@@ -59,14 +59,14 @@ pub fn evaluate_substr(
     let char_count = string.chars().count();
 
     let start = if args.len() > 1 {
-        let start_val = evaluator.evaluate(&args[1], context)?;
+        let start_val = engine.evaluate_node(&args[1], context)?;
         start_val.as_i64().unwrap_or(0)
     } else {
         0
     };
 
     let length = if args.len() > 2 {
-        let length_val = evaluator.evaluate(&args[2], context)?;
+        let length_val = engine.evaluate_node(&args[2], context)?;
         length_val.as_i64()
     } else {
         None
@@ -123,16 +123,16 @@ pub fn evaluate_substr(
 /// In operator function - checks if a value is in a string or array
 #[inline]
 pub fn evaluate_in(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Ok(Value::Bool(false));
     }
 
-    let needle = evaluator.evaluate(&args[0], context)?;
-    let haystack = evaluator.evaluate(&args[1], context)?;
+    let needle = engine.evaluate_node(&args[0], context)?;
+    let haystack = engine.evaluate_node(&args[1], context)?;
 
     let result = match &haystack {
         Value::String(s) => match &needle {
@@ -149,16 +149,16 @@ pub fn evaluate_in(
 /// Length operator function - returns the length of a string or array
 #[inline]
 pub fn evaluate_length(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() || args.len() > 1 {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
     // First evaluate the argument
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
 
     match value {
         Value::String(s) => {

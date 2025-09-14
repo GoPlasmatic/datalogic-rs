@@ -1,21 +1,27 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Preserve operator function - returns its argument unchanged
 #[inline]
 pub fn evaluate_preserve(
-    args: &[Value],
-    _context: &mut ContextStack,
-    _evaluator: &dyn Evaluator,
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    // Preserve returns its arguments unchanged
+    // Preserve evaluates and returns its arguments
     // - With no arguments: return empty array
-    // - With one argument: return that argument
-    // - With multiple arguments: return array of arguments
+    // - With one argument: return that argument evaluated
+    // - With multiple arguments: return array of evaluated arguments
     match args.len() {
         0 => Ok(Value::Array(vec![])),
-        1 => Ok(args[0].clone()),
-        _ => Ok(Value::Array(args.to_vec())),
+        1 => engine.evaluate_node(&args[0], context),
+        _ => {
+            let mut results = Vec::with_capacity(args.len());
+            for arg in args {
+                results.push(engine.evaluate_node(arg, context)?);
+            }
+            Ok(Value::Array(results))
+        }
     }
 }

@@ -1,18 +1,18 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Throw operator function - throws an error with a type
 #[inline]
 pub fn evaluate_throw(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     let error_value = if args.is_empty() {
         Value::Null
     } else {
-        evaluator.evaluate(&args[0], context)?
+        engine.evaluate_node(&args[0], context)?
     };
 
     // If the error value is an object with a "type" field, use that as the error

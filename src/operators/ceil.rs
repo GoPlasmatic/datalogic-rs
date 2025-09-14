@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 // Strict number extraction - only accepts actual numbers or numeric strings
 #[inline]
@@ -15,9 +15,9 @@ fn get_number_strict(value: &Value) -> Option<f64> {
 /// Ceiling operator function (ceil)
 #[inline]
 pub fn evaluate_ceil(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
@@ -27,7 +27,7 @@ pub fn evaluate_ceil(
     if args.len() > 1 {
         let mut results = Vec::new();
         for arg in args {
-            let value = evaluator.evaluate(arg, context)?;
+            let value = engine.evaluate_node(arg, context)?;
             if let Some(num) = get_number_strict(&value) {
                 let ceil_val = num.ceil();
                 results.push(Value::Number((ceil_val as i64).into()));
@@ -39,7 +39,7 @@ pub fn evaluate_ceil(
     }
 
     // Single argument - evaluate and return ceil
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
 
     if let Some(num) = get_number_strict(&value) {
         let ceil_val = num.ceil();

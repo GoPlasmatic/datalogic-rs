@@ -1,14 +1,14 @@
 use serde_json::Value;
 
 use crate::datetime::{is_datetime_object, is_duration_object};
-use crate::{ContextStack, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Type operator function - returns the type of a value as a string
 #[inline]
 pub fn evaluate_type(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Special handling for the type operator:
     // - {"type": null} -> args = [null] -> type of null
@@ -20,12 +20,12 @@ pub fn evaluate_type(
     // Otherwise, if we have 0 or multiple arguments, it was an array literal
     let value = if args.len() == 1 {
         // Single argument - check if it needs evaluation
-        evaluator.evaluate(&args[0], context)?
+        engine.evaluate_node(&args[0], context)?
     } else {
         // Multiple arguments or no arguments - reconstruct the array
         let mut arr = Vec::new();
         for arg in args {
-            arr.push(evaluator.evaluate(arg, context)?);
+            arr.push(engine.evaluate_node(arg, context)?);
         }
         Value::Array(arr)
     };

@@ -1,27 +1,28 @@
 use serde_json::Value;
 
 use crate::value_helpers::is_truthy;
-use crate::{ContextStack, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// If operator function - supports if/then/else and if/elseif/else chains
 #[inline]
 pub fn evaluate_if(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    // Check for invalid arguments marker
-    if args.len() == 1
-        && let Value::Object(obj) = &args[0]
-        && obj.contains_key("__invalid_args__")
-    {
-        return Err(crate::error::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
-    }
-
     if args.is_empty() {
         return Ok(Value::Null);
+    }
+
+    // Check if we have the invalid args marker
+    if args.len() == 1
+        && let CompiledNode::Value { value, .. } = &args[0]
+        && let Some(obj) = value.as_object()
+        && obj.contains_key("__invalid_args__")
+    {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
     }
 
     // Support variadic if/elseif/else chains
@@ -29,15 +30,15 @@ pub fn evaluate_if(
     while i < args.len() {
         if i == args.len() - 1 {
             // Final else clause
-            return evaluator.evaluate(&args[i], context);
+            return engine.evaluate_node(&args[i], context);
         }
 
         // Evaluate condition
-        let condition = evaluator.evaluate(&args[i], context)?;
+        let condition = engine.evaluate_node(&args[i], context)?;
         if is_truthy(&condition) {
             // Evaluate then branch
             if i + 1 < args.len() {
-                return evaluator.evaluate(&args[i + 1], context);
+                return engine.evaluate_node(&args[i + 1], context);
             } else {
                 return Ok(condition);
             }
@@ -53,29 +54,29 @@ pub fn evaluate_if(
 /// Ternary operator function (?:)
 #[inline]
 pub fn evaluate_ternary(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 3 {
         return Ok(Value::Null);
     }
 
-    let condition = evaluator.evaluate(&args[0], context)?;
+    let condition = engine.evaluate_node(&args[0], context)?;
 
     if is_truthy(&condition) {
-        evaluator.evaluate(&args[1], context)
+        engine.evaluate_node(&args[1], context)
     } else {
-        evaluator.evaluate(&args[2], context)
+        engine.evaluate_node(&args[2], context)
     }
 }
 
 /// Coalesce operator function (??) - returns first non-null value
 #[inline]
 pub fn evaluate_coalesce(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Empty args returns null
     if args.is_empty() {
@@ -84,7 +85,7 @@ pub fn evaluate_coalesce(
 
     // Return the first non-null value
     for arg in args {
-        let value = evaluator.evaluate(arg, context)?;
+        let value = engine.evaluate_node(arg, context)?;
         if value != Value::Null {
             return Ok(value);
         }

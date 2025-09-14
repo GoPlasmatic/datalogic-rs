@@ -391,15 +391,13 @@ impl CompiledLogic {
                     // Preserve should not be static - operators need to know it's from an operator
                     Preserve => false,
                     // These operators never depend on context
-                    Add | Subtract | Multiply | Divide | Modulo | Min | Max | Equals
-                    | StrictEquals | NotEquals | StrictNotEquals | GreaterThan
-                    | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And | Or
-                    | Ternary | If | Cat | Substr | In | Length | Sort | Slice => {
-                        args.iter().all(Self::node_is_static)
-                    }
-                    // Merge is not statically evaluated because max/min need to distinguish
+                    Add | Subtract | Multiply | Divide | Modulo | Equals | StrictEquals
+                    | NotEquals | StrictNotEquals | GreaterThan | GreaterThanEqual | LessThan
+                    | LessThanEqual | Not | DoubleNot | And | Or | Ternary | If | Cat | Substr
+                    | In | Length | Sort | Slice => args.iter().all(Self::node_is_static),
+                    // Merge, Min, Max are not statically evaluated because they need to distinguish
                     // between literal arrays and arrays from operators
-                    Merge => false,
+                    Merge | Min | Max => false,
                     // Coalesce can be static if its args are
                     Coalesce => args.iter().all(Self::node_is_static),
                     // Exists depends on context

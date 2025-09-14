@@ -1,13 +1,13 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Try operator function - catches errors and provides fallback values
 #[inline]
 pub fn evaluate_try(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(
@@ -26,7 +26,7 @@ pub fn evaluate_try(
                 if let Error::Thrown(error_obj) = err {
                     // Push error context for the last argument
                     context.push(error_obj.clone());
-                    match evaluator.evaluate(arg, context) {
+                    match engine.evaluate_node(arg, context) {
                         Ok(result) => {
                             context.pop();
                             return Ok(result);
@@ -38,21 +38,21 @@ pub fn evaluate_try(
                     }
                 } else {
                     // Not a thrown error, just try normally
-                    match evaluator.evaluate(arg, context) {
+                    match engine.evaluate_node(arg, context) {
                         Ok(result) => return Ok(result),
                         Err(err) => last_error = Some(err),
                     }
                 }
             } else {
                 // No previous error, just evaluate normally
-                match evaluator.evaluate(arg, context) {
+                match engine.evaluate_node(arg, context) {
                     Ok(result) => return Ok(result),
                     Err(err) => last_error = Some(err),
                 }
             }
         } else {
             // Not the last argument, just try normally
-            match evaluator.evaluate(arg, context) {
+            match engine.evaluate_node(arg, context) {
                 Ok(result) => return Ok(result),
                 Err(err) => last_error = Some(err),
             }

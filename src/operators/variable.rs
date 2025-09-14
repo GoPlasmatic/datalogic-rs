@@ -2,20 +2,20 @@ use serde_json::{Value, json};
 
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::access_path;
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Variable access operator function (var)
 #[inline]
 pub fn evaluate_var(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Evaluate the first argument to get the path
     let path_arg = if args.is_empty() {
         Value::String(String::new())
     } else {
-        evaluator.evaluate(&args[0], context)?
+        engine.evaluate_node(&args[0], context)?
     };
 
     // Get the path string
@@ -36,7 +36,7 @@ pub fn evaluate_var(
         None => {
             // If not found and there's a default value, use it
             if args.len() > 1 {
-                evaluator.evaluate(&args[1], context)
+                engine.evaluate_node(&args[1], context)
             } else {
                 Ok(Value::Null)
             }
@@ -46,9 +46,9 @@ pub fn evaluate_var(
 /// Value access operator function (val) with context level support
 #[inline]
 pub fn evaluate_val(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         // No args means current context
@@ -58,14 +58,16 @@ pub fn evaluate_val(
     // Check if we have level access: [[level], path...]
     // This handles both {"val": [[1], "index"]} and {"val": [[2], "", "", "/"]}
     if args.len() >= 2 {
-        // First check if it's level access
-        if let Value::Array(level_arr) = &args[0]
+        // First check if it's level access - evaluate first arg to check
+        let first_arg = engine.evaluate_node(&args[0], context)?;
+        if let Value::Array(level_arr) = &first_arg
             && let Some(Value::Number(level_num)) = level_arr.first()
             && let Some(level) = level_num.as_i64()
         {
             // For metadata keys, only check if we have exactly 2 args
             if args.len() == 2 {
-                let path = args[1].as_str().unwrap_or("");
+                let path_val = engine.evaluate_node(&args[1], context)?;
+                let path = path_val.as_str().unwrap_or("");
 
                 // Special handling for metadata keys like "index" and "key"
                 // These are always in the current frame's metadata, regardless of level
@@ -77,30 +79,42 @@ pub fn evaluate_val(
                 }
             }
 
-            // Get frame at relative level for normal data access
-            // Both [1] and [-1] go up 1 level to parent
-            // Both [2] and [-2] go up 2 levels to grandparent
-            let frame = context
-                .get_at_level(level as isize)
-                .ok_or(Error::InvalidContextLevel(level as isize))?;
-
             // For simple two-arg case [[level], path], just access the path
             if args.len() == 2 {
-                let path = args[1].as_str().unwrap_or("");
+                let path_val = engine.evaluate_node(&args[1], context)?;
+                let path = path_val.as_str().unwrap_or("");
+
+                // Get frame at relative level for normal data access
+                let frame = context
+                    .get_at_level(level as isize)
+                    .ok_or(Error::InvalidContextLevel(level as isize))?;
+
                 return Ok(access_path(frame.data(), path).unwrap_or(Value::Null));
             }
 
             // For multi-arg case, chain path access
-            let mut result = frame.data().clone();
+            // First evaluate all path arguments
+            let mut paths = Vec::new();
             for item in args.iter().skip(1) {
-                let path = item.as_str().unwrap_or("");
-                result = access_path(&result, path).unwrap_or(Value::Null);
+                let path_val = engine.evaluate_node(item, context)?;
+                let path = path_val.as_str().unwrap_or("").to_string();
+                paths.push(path);
+            }
+
+            // Now get the frame and apply paths
+            let frame = context
+                .get_at_level(level as isize)
+                .ok_or(Error::InvalidContextLevel(level as isize))?;
+
+            let mut result = frame.data().clone();
+            for path in paths {
+                result = access_path(&result, &path).unwrap_or(Value::Null);
             }
             return Ok(result);
         } else if args.len() == 2 {
             // Two arguments - check for datetime/duration property access first
-            let first = evaluator.evaluate(&args[0], context)?;
-            let second_val = evaluator.evaluate(&args[1], context)?;
+            let first = engine.evaluate_node(&args[0], context)?;
+            let second_val = engine.evaluate_node(&args[1], context)?;
             let second_str = second_val.as_str();
 
             if let Some(prop) = second_str {
@@ -151,12 +165,8 @@ pub fn evaluate_val(
             // Two arguments - chain access like ["user", "admin"] or [1, 1]
             let mut result = context.current().data().clone();
             for arg in args {
-                // Evaluate the argument if needed
-                let evaluated = if arg.is_string() || arg.is_number() {
-                    arg.clone()
-                } else {
-                    evaluator.evaluate(arg, context)?
-                };
+                // Evaluate the argument
+                let evaluated = engine.evaluate_node(arg, context)?;
 
                 match &evaluated {
                     Value::String(path_str) => {
@@ -196,12 +206,8 @@ pub fn evaluate_val(
     if args.len() > 2 {
         let mut result = context.current().data().clone();
         for arg in args {
-            // Evaluate the argument first
-            let evaluated = if arg.is_string() || arg.is_number() {
-                arg.clone()
-            } else {
-                evaluator.evaluate(arg, context)?
-            };
+            // Evaluate the argument
+            let evaluated = engine.evaluate_node(arg, context)?;
 
             match &evaluated {
                 Value::String(path_str) => {
@@ -237,7 +243,7 @@ pub fn evaluate_val(
     }
 
     // Single argument - evaluate it
-    let path_value = evaluator.evaluate(&args[0], context)?;
+    let path_value = engine.evaluate_node(&args[0], context)?;
 
     // Handle array notation for context levels: [[level], "path", ...]
     // Level indicates how many levels to go up from current
@@ -356,9 +362,9 @@ pub fn evaluate_val(
 /// Exists operator function - checks if a key exists in the data
 #[inline]
 pub fn evaluate_exists(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(Value::Bool(false));
@@ -366,7 +372,7 @@ pub fn evaluate_exists(
 
     // If we have a single argument, evaluate it
     if args.len() == 1 {
-        let path_arg = evaluator.evaluate(&args[0], context)?;
+        let path_arg = engine.evaluate_node(&args[0], context)?;
 
         // Handle different path formats
         match path_arg {
@@ -414,7 +420,7 @@ pub fn evaluate_exists(
         // First evaluate all args to get the path segments
         let mut paths = Vec::new();
         for arg in args {
-            let path_val = evaluator.evaluate(arg, context)?;
+            let path_val = engine.evaluate_node(arg, context)?;
             if let Value::String(path) = path_val {
                 paths.push(path);
             } else {

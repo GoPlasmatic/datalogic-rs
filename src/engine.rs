@@ -89,13 +89,8 @@ impl DataLogic {
             }
 
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                // Direct OpCode dispatch
-                let arg_values: Vec<Value> =
-                    args.iter().map(|arg| self.node_to_value(arg)).collect();
-                let evaluator = FastEvaluator::new(self, args);
-
-                // Direct call to OpCode's evaluate method
-                opcode.evaluate_direct(&arg_values, context, &evaluator)
+                // Direct OpCode dispatch with CompiledNode args
+                opcode.evaluate_direct(args, context, self)
             }
 
             CompiledNode::CustomOperator { name, args, .. } => {
@@ -123,7 +118,7 @@ impl DataLogic {
         }
     }
 
-    /// Convert a compiled node back to a JSON value (for passing to operators)
+    /// Convert a compiled node back to a JSON value (only for custom operators)
     fn node_to_value(&self, node: &CompiledNode) -> Value {
         node_to_value_impl(node)
     }

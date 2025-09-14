@@ -5,107 +5,106 @@ use std::collections::HashMap;
 
 use crate::context::{index_key, key_key};
 use crate::value_helpers::is_truthy;
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 // Inline function wrappers for array operators
 #[inline]
 pub fn evaluate_merge(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    MergeOperator.evaluate(args, context, evaluator)
+    MergeOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_map(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    MapOperator.evaluate(args, context, evaluator)
+    MapOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_filter(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    FilterOperator.evaluate(args, context, evaluator)
+    FilterOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_reduce(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    ReduceOperator.evaluate(args, context, evaluator)
+    ReduceOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_all(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    AllOperator.evaluate(args, context, evaluator)
+    AllOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_some(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    SomeOperator.evaluate(args, context, evaluator)
+    SomeOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_none(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    NoneOperator.evaluate(args, context, evaluator)
+    NoneOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_sort(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    SortOperator.evaluate(args, context, evaluator)
+    SortOperator.evaluate_compiled(args, context, engine)
 }
 
 #[inline]
 pub fn evaluate_slice(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    SliceOperator.evaluate(args, context, evaluator)
+    SliceOperator.evaluate_compiled(args, context, engine)
 }
 
-// Keep the original implementations with Operator trait
-use crate::Operator;
+// Operator struct implementations
 
 /// Merge operator - merges arrays
 pub struct MergeOperator;
 
-impl Operator for MergeOperator {
-    fn evaluate(
+impl MergeOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         let mut result = Vec::new();
 
         for arg in args {
-            let value = evaluator.evaluate(arg, context)?;
+            let value = engine.evaluate_node(arg, context)?;
             match value {
                 Value::Array(arr) => {
                     // Filter out null values when extending
@@ -125,18 +124,18 @@ impl Operator for MergeOperator {
 /// Map operator - transforms array/object elements
 pub struct MapOperator;
 
-impl Operator for MapOperator {
-    fn evaluate(
+impl MapOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let collection = evaluator.evaluate(&args[0], context)?;
+        let collection = engine.evaluate_node(&args[0], context)?;
         let logic = &args[1];
 
         match &collection {
@@ -148,7 +147,7 @@ impl Operator for MapOperator {
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
-                    let result = evaluator.evaluate(logic, context)?;
+                    let result = engine.evaluate_node(logic, context)?;
                     results.push(result);
                     context.pop();
                 }
@@ -164,7 +163,7 @@ impl Operator for MapOperator {
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(value.clone(), metadata);
-                    let result = evaluator.evaluate(logic, context)?;
+                    let result = engine.evaluate_node(logic, context)?;
                     results.push(result);
                     context.pop();
                 }
@@ -178,7 +177,7 @@ impl Operator for MapOperator {
                 metadata.insert(index_key().clone(), Value::Number(0.into()));
 
                 context.push_with_metadata(collection, metadata);
-                let result = evaluator.evaluate(logic, context)?;
+                let result = engine.evaluate_node(logic, context)?;
                 context.pop();
 
                 Ok(Value::Array(vec![result]))
@@ -190,29 +189,22 @@ impl Operator for MapOperator {
 /// Filter operator - filters array/object elements
 pub struct FilterOperator;
 
-impl Operator for FilterOperator {
-    fn evaluate(
+impl FilterOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let collection = evaluator.evaluate(&args[0], context)?;
+        let collection = engine.evaluate_node(&args[0], context)?;
         let predicate = &args[1];
 
         match &collection {
             Value::Array(arr) => {
-                // Fast path for constant predicates
-                match predicate {
-                    Value::Bool(false) => return Ok(Value::Array(vec![])),
-                    Value::Bool(true) => return Ok(Value::Array(arr.clone())),
-                    _ => {}
-                }
-
                 let mut results = Vec::new();
 
                 for (index, item) in arr.iter().enumerate() {
@@ -220,7 +212,7 @@ impl Operator for FilterOperator {
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
-                    let keep = evaluator.evaluate(predicate, context)?;
+                    let keep = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
                     if is_truthy(&keep) {
@@ -239,7 +231,7 @@ impl Operator for FilterOperator {
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(value.clone(), metadata);
-                    let keep = evaluator.evaluate(predicate, context)?;
+                    let keep = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
                     if is_truthy(&keep) {
@@ -258,20 +250,20 @@ impl Operator for FilterOperator {
 /// Reduce operator
 pub struct ReduceOperator;
 
-impl Operator for ReduceOperator {
-    fn evaluate(
+impl ReduceOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.len() != 3 {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let array = evaluator.evaluate(&args[0], context)?;
+        let array = engine.evaluate_node(&args[0], context)?;
         let logic = &args[1];
-        let initial = evaluator.evaluate(&args[2], context)?;
+        let initial = engine.evaluate_node(&args[2], context)?;
 
         match &array {
             Value::Array(arr) => {
@@ -287,7 +279,7 @@ impl Operator for ReduceOperator {
                     frame_data.insert("accumulator".to_string(), accumulator);
 
                     context.push(Value::Object(frame_data));
-                    accumulator = evaluator.evaluate(logic, context)?;
+                    accumulator = engine.evaluate_node(logic, context)?;
                     context.pop();
                 }
 
@@ -302,35 +294,28 @@ impl Operator for ReduceOperator {
 /// All operator - tests if all elements pass
 pub struct AllOperator;
 
-impl Operator for AllOperator {
-    fn evaluate(
+impl AllOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let collection = evaluator.evaluate(&args[0], context)?;
+        let collection = engine.evaluate_node(&args[0], context)?;
         let predicate = &args[1];
 
         match &collection {
             Value::Array(arr) if !arr.is_empty() => {
-                // Fast path for constant predicates
-                match predicate {
-                    Value::Bool(false) => return Ok(Value::Bool(false)),
-                    Value::Bool(true) => return Ok(Value::Bool(true)),
-                    _ => {}
-                }
-
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
-                    let result = evaluator.evaluate(predicate, context)?;
+                    let result = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
                     if !is_truthy(&result) {
@@ -349,35 +334,28 @@ impl Operator for AllOperator {
 /// Some operator - tests if any element passes
 pub struct SomeOperator;
 
-impl Operator for SomeOperator {
-    fn evaluate(
+impl SomeOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let collection = evaluator.evaluate(&args[0], context)?;
+        let collection = engine.evaluate_node(&args[0], context)?;
         let predicate = &args[1];
 
         match &collection {
             Value::Array(arr) => {
-                // Fast path for constant predicates
-                match predicate {
-                    Value::Bool(false) => return Ok(Value::Bool(false)),
-                    Value::Bool(true) => return Ok(Value::Bool(!arr.is_empty())),
-                    _ => {}
-                }
-
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
-                    let result = evaluator.evaluate(predicate, context)?;
+                    let result = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
                     if is_truthy(&result) {
@@ -395,35 +373,28 @@ impl Operator for SomeOperator {
 /// None operator - tests if no elements pass
 pub struct NoneOperator;
 
-impl Operator for NoneOperator {
-    fn evaluate(
+impl NoneOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.len() != 2 {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let collection = evaluator.evaluate(&args[0], context)?;
+        let collection = engine.evaluate_node(&args[0], context)?;
         let predicate = &args[1];
 
         match &collection {
             Value::Array(arr) => {
-                // Fast path for constant predicates
-                match predicate {
-                    Value::Bool(false) => return Ok(Value::Bool(true)),
-                    Value::Bool(true) => return Ok(Value::Bool(arr.is_empty())),
-                    _ => {}
-                }
-
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
                     metadata.insert(index_key().clone(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
-                    let result = evaluator.evaluate(predicate, context)?;
+                    let result = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
                     if is_truthy(&result) {
@@ -441,19 +412,26 @@ impl Operator for NoneOperator {
 /// Sort operator - sorts arrays with optional custom comparator
 pub struct SortOperator;
 
-impl Operator for SortOperator {
-    fn evaluate(
+impl SortOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
-        if args.is_empty() || (args.len() == 1 && args[0] == Value::Null) {
+        if args.is_empty() {
+            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        }
+
+        // Check if the first argument is a Value node containing null
+        if let CompiledNode::Value { value, .. } = &args[0]
+            && value.is_null()
+        {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         // Evaluate the array
-        let array_value = evaluator.evaluate(&args[0], context)?;
+        let array_value = engine.evaluate_node(&args[0], context)?;
 
         let mut array = match array_value {
             Value::Array(arr) => arr,
@@ -463,7 +441,7 @@ impl Operator for SortOperator {
 
         // Get sort direction (default ascending)
         let ascending = if args.len() > 1 {
-            let dir = evaluator.evaluate(&args[1], context)?;
+            let dir = engine.evaluate_node(&args[1], context)?;
             match dir {
                 Value::Bool(b) => b,
                 _ => true, // Default to ascending for invalid direction
@@ -484,7 +462,7 @@ impl Operator for SortOperator {
 
             for (index, item) in array.iter().enumerate() {
                 context.push(item.clone());
-                let extracted = evaluator.evaluate(extractor, context)?;
+                let extracted = engine.evaluate_node(extractor, context)?;
                 context.pop();
                 items_with_values.push((index, item.clone(), extracted));
             }
@@ -515,19 +493,19 @@ impl Operator for SortOperator {
 /// Slice operator - extracts a portion of an array or string
 pub struct SliceOperator;
 
-impl Operator for SliceOperator {
-    fn evaluate(
+impl SliceOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
         // Evaluate the collection
-        let collection = evaluator.evaluate(&args[0], context)?;
+        let collection = engine.evaluate_node(&args[0], context)?;
 
         // Handle null/missing values
         if collection == Value::Null {
@@ -536,7 +514,7 @@ impl Operator for SliceOperator {
 
         // Get start index (default to 0 or end for negative step)
         let start = if args.len() > 1 {
-            let start_val = evaluator.evaluate(&args[1], context)?;
+            let start_val = engine.evaluate_node(&args[1], context)?;
             match start_val {
                 Value::Number(n) => n.as_i64(),
                 Value::Null => None,
@@ -548,7 +526,7 @@ impl Operator for SliceOperator {
 
         // Get end index (default to length)
         let end = if args.len() > 2 {
-            let end_val = evaluator.evaluate(&args[2], context)?;
+            let end_val = engine.evaluate_node(&args[2], context)?;
             match end_val {
                 Value::Number(n) => n.as_i64(),
                 Value::Null => None,
@@ -560,7 +538,7 @@ impl Operator for SliceOperator {
 
         // Get step (default to 1)
         let step = if args.len() > 3 {
-            let step_val = evaluator.evaluate(&args[3], context)?;
+            let step_val = engine.evaluate_node(&args[3], context)?;
             match step_val {
                 Value::Number(n) => {
                     let s = n.as_i64().unwrap_or(1);

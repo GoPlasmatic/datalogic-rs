@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::{ContextStack, Error, Evaluator, Operator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 // Strict number extraction - only accepts actual numbers or numeric strings
 #[inline]
@@ -15,22 +15,22 @@ fn get_number_strict(value: &Value) -> Option<f64> {
 /// Floor operator function (floor)
 #[inline]
 pub fn evaluate_floor(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    FloorOperator.evaluate(args, context, evaluator)
+    FloorOperator.evaluate_compiled(args, context, engine)
 }
 
 /// Floor operator (floor)
 pub struct FloorOperator;
 
-impl Operator for FloorOperator {
-    fn evaluate(
+impl FloorOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
@@ -40,7 +40,7 @@ impl Operator for FloorOperator {
         if args.len() > 1 {
             let mut results = Vec::new();
             for arg in args {
-                let value = evaluator.evaluate(arg, context)?;
+                let value = engine.evaluate_node(arg, context)?;
                 if let Some(num) = get_number_strict(&value) {
                     let floor_val = num.floor();
                     results.push(Value::Number((floor_val as i64).into()));
@@ -52,7 +52,7 @@ impl Operator for FloorOperator {
         }
 
         // Single argument - evaluate and return floor
-        let value = evaluator.evaluate(&args[0], context)?;
+        let value = engine.evaluate_node(&args[0], context)?;
 
         if let Some(num) = get_number_strict(&value) {
             let floor_val = num.floor();

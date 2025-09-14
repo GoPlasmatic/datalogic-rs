@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
-use crate::{ContextStack, Error, Evaluator, Operator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Helper to convert float to integer if it's a whole number
 #[inline]
@@ -19,9 +19,9 @@ fn number_value(f: f64) -> Value {
 /// Addition operator function (+) - variadic
 #[inline]
 pub fn evaluate_add(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(Value::Number(0.into()));
@@ -29,13 +29,20 @@ pub fn evaluate_add(
 
     // Special case: single array argument - sum all elements
     if args.len() == 1 {
-        // Check if the argument is a literal array (not from an operator)
-        if let Value::Array(_) = &args[0] {
+        // Check if the argument is a literal array (which is invalid for addition)
+        if matches!(&args[0], CompiledNode::Array { .. }) {
             // Literal array as argument - this is invalid for addition
             return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
         }
 
-        let value = evaluator.evaluate(&args[0], context)?;
+        // Also check if it's a Value node containing an array (from compilation)
+        if let CompiledNode::Value { value, .. } = &args[0]
+            && matches!(value, Value::Array(_))
+        {
+            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+        }
+
+        let value = engine.evaluate_node(&args[0], context)?;
         if let Value::Array(arr) = value {
             // Array from operator evaluation - sum the elements
             if arr.is_empty() {
@@ -81,8 +88,8 @@ pub fn evaluate_add(
 
     // Special case for datetime/duration arithmetic
     if args.len() == 2 {
-        let first = evaluator.evaluate(&args[0], context)?;
-        let second = evaluator.evaluate(&args[1], context)?;
+        let first = engine.evaluate_node(&args[0], context)?;
+        let second = engine.evaluate_node(&args[1], context)?;
 
         // DateTime + Duration
         let first_dt = if is_datetime_object(&first) {
@@ -136,7 +143,17 @@ pub fn evaluate_add(
     let mut float_sum = 0.0;
 
     for arg in args {
-        let value = evaluator.evaluate(arg, context)?;
+        // Check if this argument is a literal array (invalid for addition)
+        if matches!(arg, CompiledNode::Array { .. }) {
+            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+        }
+
+        let value = engine.evaluate_node(arg, context)?;
+
+        // Arrays and objects are invalid for addition
+        if matches!(value, Value::Array(_) | Value::Object(_)) {
+            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+        }
 
         // Try integer coercion first
         if let Some(i) = try_coerce_to_integer(&value) {
@@ -172,15 +189,15 @@ pub fn evaluate_add(
 /// Subtraction operator function (-) - also handles negation
 #[inline]
 pub fn evaluate_subtract(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let first = evaluator.evaluate(&args[0], context)?;
+    let first = engine.evaluate_node(&args[0], context)?;
 
     if args.len() == 1 {
         // Check if it's an array - subtract all elements
@@ -188,8 +205,17 @@ pub fn evaluate_subtract(
             if arr.is_empty() {
                 return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
             }
-            // Recursively call ourselves with the array elements
-            return evaluate_subtract(&arr, context, evaluator);
+            // Subtract elements: first - second - third - ...
+            let mut result = coerce_to_number(&arr[0])
+                .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+
+            for elem in &arr[1..] {
+                let num = coerce_to_number(elem)
+                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                result -= num;
+            }
+
+            return Ok(number_value(result));
         }
 
         // Negation
@@ -205,7 +231,7 @@ pub fn evaluate_subtract(
         Ok(number_value(-first_num))
     } else if args.len() == 2 {
         // Special case for datetime/duration arithmetic
-        let second = evaluator.evaluate(&args[1], context)?;
+        let second = engine.evaluate_node(&args[1], context)?;
 
         // Try to parse as datetime/duration
         let first_dt = if is_datetime_object(&first) {
@@ -296,7 +322,7 @@ pub fn evaluate_subtract(
 
         // Subtract remaining arguments
         for item in args.iter().skip(1) {
-            let value = evaluator.evaluate(item, context)?;
+            let value = engine.evaluate_node(item, context)?;
 
             if all_integers {
                 if let Some(i) = try_coerce_to_integer(&value) {
@@ -333,62 +359,62 @@ pub fn evaluate_subtract(
 /// Multiplication operator function (*) - variadic
 #[inline]
 pub fn evaluate_multiply(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    MultiplyOperator.evaluate(args, context, evaluator)
+    MultiplyOperator.evaluate_compiled(args, context, engine)
 }
 
 /// Division operator function (/)
 #[inline]
 pub fn evaluate_divide(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    DivideOperator.evaluate(args, context, evaluator)
+    DivideOperator.evaluate_compiled(args, context, engine)
 }
 
 /// Modulo operator function (%)
 #[inline]
 pub fn evaluate_modulo(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    ModuloOperator.evaluate(args, context, evaluator)
+    ModuloOperator.evaluate_compiled(args, context, engine)
 }
 
 /// Max operator function
 #[inline]
 pub fn evaluate_max(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    MaxOperator.evaluate(args, context, evaluator)
+    MaxOperator.evaluate_compiled(args, context, engine)
 }
 
 /// Min operator function
 #[inline]
 pub fn evaluate_min(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
-    MinOperator.evaluate(args, context, evaluator)
+    MinOperator.evaluate_compiled(args, context, engine)
 }
 
 /// Multiplication operator (*) - variadic
 pub struct MultiplyOperator;
 
-impl Operator for MultiplyOperator {
-    fn evaluate(
+impl MultiplyOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Ok(Value::Number(1.into()));
@@ -396,13 +422,7 @@ impl Operator for MultiplyOperator {
 
         // Special case: single array argument - multiply all elements
         if args.len() == 1 {
-            // Check if the argument is a literal array (not from an operator)
-            if let Value::Array(_) = &args[0] {
-                // Literal array as argument - this is invalid for multiplication
-                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
-            }
-
-            let value = evaluator.evaluate(&args[0], context)?;
+            let value = engine.evaluate_node(&args[0], context)?;
             if let Value::Array(arr) = value {
                 // Array from operator evaluation - multiply the elements
                 if arr.is_empty() {
@@ -450,8 +470,8 @@ impl Operator for MultiplyOperator {
 
         // Special case for duration * number
         if args.len() == 2 {
-            let first = evaluator.evaluate(&args[0], context)?;
-            let second = evaluator.evaluate(&args[1], context)?;
+            let first = engine.evaluate_node(&args[0], context)?;
+            let second = engine.evaluate_node(&args[1], context)?;
 
             // Duration * Number
             let first_dur = if is_duration_object(&first) {
@@ -493,7 +513,7 @@ impl Operator for MultiplyOperator {
         let mut float_product = 1.0;
 
         for arg in args {
-            let value = evaluator.evaluate(arg, context)?;
+            let value = engine.evaluate_node(arg, context)?;
 
             // Try integer coercion first
             if let Some(i) = try_coerce_to_integer(&value) {
@@ -531,12 +551,12 @@ impl Operator for MultiplyOperator {
 /// Division operator (/)
 pub struct DivideOperator;
 
-impl Operator for DivideOperator {
-    fn evaluate(
+impl DivideOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
@@ -544,17 +564,27 @@ impl Operator for DivideOperator {
 
         // Special case: single argument
         if args.len() == 1 {
-            eprintln!("DEBUG max: Single argument case");
-            let value = evaluator.evaluate(&args[0], context)?;
-            eprintln!("DEBUG max: Evaluated to: {:?}", value);
+            let value = engine.evaluate_node(&args[0], context)?;
 
             // If it's an array, divide all elements sequentially
             if let Value::Array(arr) = value {
                 if arr.is_empty() {
                     return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                 }
-                // Recursively call ourselves with the array elements
-                return self.evaluate(&arr, context, evaluator);
+                // Divide elements: first / second / third / ...
+                let mut result = coerce_to_number(&arr[0])
+                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+
+                for elem in &arr[1..] {
+                    let num = coerce_to_number(elem)
+                        .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                    if num == 0.0 {
+                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    }
+                    result /= num;
+                }
+
+                return Ok(number_value(result));
             }
 
             // Single non-array argument: 1 / value
@@ -581,10 +611,10 @@ impl Operator for DivideOperator {
             return Ok(number_value(1.0 / num));
         }
 
-        let first = evaluator.evaluate(&args[0], context)?;
+        let first = engine.evaluate_node(&args[0], context)?;
 
         if args.len() == 2 {
-            let second = evaluator.evaluate(&args[1], context)?;
+            let second = engine.evaluate_node(&args[1], context)?;
 
             // Duration / Number
             let first_dur = if is_duration_object(&first) {
@@ -648,7 +678,7 @@ impl Operator for DivideOperator {
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             for item in args.iter().skip(1) {
-                let value = evaluator.evaluate(item, context)?;
+                let value = engine.evaluate_node(item, context)?;
 
                 if all_integers {
                     if let Some(divisor) = try_coerce_to_integer(&value) {
@@ -698,12 +728,12 @@ impl Operator for DivideOperator {
 /// Modulo operator (%)
 pub struct ModuloOperator;
 
-impl Operator for ModuloOperator {
-    fn evaluate(
+impl ModuloOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
@@ -711,13 +741,25 @@ impl Operator for ModuloOperator {
 
         // Special case: single array argument - modulo all elements sequentially
         if args.len() == 1 {
-            let value = evaluator.evaluate(&args[0], context)?;
+            let value = engine.evaluate_node(&args[0], context)?;
             if let Value::Array(arr) = value {
                 if arr.is_empty() || arr.len() < 2 {
                     return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                 }
-                // Recursively call ourselves with the array elements
-                return self.evaluate(&arr, context, evaluator);
+                // Modulo elements: first % second % third % ...
+                let mut result = coerce_to_number(&arr[0])
+                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+
+                for elem in &arr[1..] {
+                    let num = coerce_to_number(elem)
+                        .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                    if num == 0.0 {
+                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    }
+                    result %= num;
+                }
+
+                return Ok(number_value(result));
             }
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
@@ -726,10 +768,10 @@ impl Operator for ModuloOperator {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
         }
 
-        let first = evaluator.evaluate(&args[0], context)?;
+        let first = engine.evaluate_node(&args[0], context)?;
 
         if args.len() == 2 {
-            let second = evaluator.evaluate(&args[1], context)?;
+            let second = engine.evaluate_node(&args[1], context)?;
 
             // Check if both are integers
             if let (Value::Number(n1), Value::Number(n2)) = (&first, &second)
@@ -761,7 +803,7 @@ impl Operator for ModuloOperator {
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             for item in args.iter().skip(1) {
-                let value = evaluator.evaluate(item, context)?;
+                let value = engine.evaluate_node(item, context)?;
                 let num = coerce_to_number(&value)
                     .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
@@ -780,12 +822,12 @@ impl Operator for ModuloOperator {
 /// Max operator - variadic
 pub struct MaxOperator;
 
-impl Operator for MaxOperator {
-    fn evaluate(
+impl MaxOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
@@ -793,16 +835,21 @@ impl Operator for MaxOperator {
 
         // Special case: single argument
         if args.len() == 1 {
-            let value = evaluator.evaluate(&args[0], context)?;
+            // Check if it's a literal array (invalid for max)
+            if matches!(&args[0], CompiledNode::Array { .. }) {
+                return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+            }
+            // Also check if it's a Value node containing an array
+            if let CompiledNode::Value { value, .. } = &args[0]
+                && matches!(value, Value::Array(_))
+            {
+                return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+            }
+
+            let value = engine.evaluate_node(&args[0], context)?;
 
             // If evaluation produced an array, find max of its elements
-            // But if the original arg was a literal array, that's an error
             if let Value::Array(arr) = value {
-                // Check if original argument was a literal array
-                if matches!(&args[0], Value::Array(_)) {
-                    return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-                }
-
                 if arr.is_empty() {
                     return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                 }
@@ -839,7 +886,7 @@ impl Operator for MaxOperator {
         let mut max_num = f64::NEG_INFINITY;
 
         for arg in args {
-            let value = evaluator.evaluate(arg, context)?;
+            let value = engine.evaluate_node(arg, context)?;
 
             // Only accept numeric values
             if !matches!(value, Value::Number(_)) {
@@ -862,12 +909,12 @@ impl Operator for MaxOperator {
 /// Min operator - variadic
 pub struct MinOperator;
 
-impl Operator for MinOperator {
-    fn evaluate(
+impl MinOperator {
+    fn evaluate_compiled(
         &self,
-        args: &[Value],
+        args: &[CompiledNode],
         context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
+        engine: &DataLogic,
     ) -> Result<Value> {
         if args.is_empty() {
             return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
@@ -875,16 +922,21 @@ impl Operator for MinOperator {
 
         // Special case: single argument
         if args.len() == 1 {
-            let value = evaluator.evaluate(&args[0], context)?;
+            // Check if it's a literal array (invalid for min)
+            if matches!(&args[0], CompiledNode::Array { .. }) {
+                return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+            }
+            // Also check if it's a Value node containing an array
+            if let CompiledNode::Value { value, .. } = &args[0]
+                && matches!(value, Value::Array(_))
+            {
+                return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+            }
+
+            let value = engine.evaluate_node(&args[0], context)?;
 
             // If evaluation produced an array, find min of its elements
-            // But if the original arg was a literal array, that's an error
             if let Value::Array(arr) = value {
-                // Check if original argument was a literal array
-                if matches!(&args[0], Value::Array(_)) {
-                    return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-                }
-
                 if arr.is_empty() {
                     return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                 }
@@ -921,7 +973,7 @@ impl Operator for MinOperator {
         let mut min_num = f64::INFINITY;
 
         for arg in args {
-            let value = evaluator.evaluate(arg, context)?;
+            let value = engine.evaluate_node(arg, context)?;
 
             // Only accept numeric values
             if !matches!(value, Value::Number(_)) {

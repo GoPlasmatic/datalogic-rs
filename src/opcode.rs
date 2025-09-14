@@ -232,9 +232,9 @@ impl OpCode {
     #[inline]
     pub fn evaluate_direct(
         &self,
-        args: &[serde_json::Value],
+        args: &[crate::CompiledNode],
         context: &mut crate::ContextStack,
-        evaluator: &dyn crate::Evaluator,
+        engine: &crate::DataLogic,
     ) -> crate::Result<serde_json::Value> {
         use crate::operators::{
             abs, arithmetic, array, ceil, comparison, control, datetime, floor, logical, missing,
@@ -243,85 +243,85 @@ impl OpCode {
 
         match self {
             // Variable access operators - direct function calls
-            OpCode::Var => variable::evaluate_var(args, context, evaluator),
-            OpCode::Val => variable::evaluate_val(args, context, evaluator),
-            OpCode::Exists => variable::evaluate_exists(args, context, evaluator),
+            OpCode::Var => variable::evaluate_var(args, context, engine),
+            OpCode::Val => variable::evaluate_val(args, context, engine),
+            OpCode::Exists => variable::evaluate_exists(args, context, engine),
 
             // Comparison operators - direct function calls
-            OpCode::Equals => comparison::evaluate_equals(args, context, evaluator),
-            OpCode::StrictEquals => comparison::evaluate_strict_equals(args, context, evaluator),
-            OpCode::NotEquals => comparison::evaluate_not_equals(args, context, evaluator),
+            OpCode::Equals => comparison::evaluate_equals(args, context, engine),
+            OpCode::StrictEquals => comparison::evaluate_strict_equals(args, context, engine),
+            OpCode::NotEquals => comparison::evaluate_not_equals(args, context, engine),
             OpCode::StrictNotEquals => {
-                comparison::evaluate_strict_not_equals(args, context, evaluator)
+                comparison::evaluate_strict_not_equals(args, context, engine)
             }
-            OpCode::GreaterThan => comparison::evaluate_greater_than(args, context, evaluator),
+            OpCode::GreaterThan => comparison::evaluate_greater_than(args, context, engine),
             OpCode::GreaterThanEqual => {
-                comparison::evaluate_greater_than_equal(args, context, evaluator)
+                comparison::evaluate_greater_than_equal(args, context, engine)
             }
-            OpCode::LessThan => comparison::evaluate_less_than(args, context, evaluator),
-            OpCode::LessThanEqual => comparison::evaluate_less_than_equal(args, context, evaluator),
+            OpCode::LessThan => comparison::evaluate_less_than(args, context, engine),
+            OpCode::LessThanEqual => comparison::evaluate_less_than_equal(args, context, engine),
 
             // Logical operators - direct function calls
-            OpCode::Not => logical::evaluate_not(args, context, evaluator),
-            OpCode::DoubleNot => logical::evaluate_double_not(args, context, evaluator),
-            OpCode::And => logical::evaluate_and(args, context, evaluator),
-            OpCode::Or => logical::evaluate_or(args, context, evaluator),
+            OpCode::Not => logical::evaluate_not(args, context, engine),
+            OpCode::DoubleNot => logical::evaluate_double_not(args, context, engine),
+            OpCode::And => logical::evaluate_and(args, context, engine),
+            OpCode::Or => logical::evaluate_or(args, context, engine),
 
             // Control flow - direct function calls
-            OpCode::If => control::evaluate_if(args, context, evaluator),
-            OpCode::Ternary => control::evaluate_ternary(args, context, evaluator),
-            OpCode::Coalesce => control::evaluate_coalesce(args, context, evaluator),
+            OpCode::If => control::evaluate_if(args, context, engine),
+            OpCode::Ternary => control::evaluate_ternary(args, context, engine),
+            OpCode::Coalesce => control::evaluate_coalesce(args, context, engine),
 
             // Arithmetic operators - direct function calls
-            OpCode::Add => arithmetic::evaluate_add(args, context, evaluator),
-            OpCode::Subtract => arithmetic::evaluate_subtract(args, context, evaluator),
-            OpCode::Multiply => arithmetic::evaluate_multiply(args, context, evaluator),
-            OpCode::Divide => arithmetic::evaluate_divide(args, context, evaluator),
-            OpCode::Modulo => arithmetic::evaluate_modulo(args, context, evaluator),
-            OpCode::Max => arithmetic::evaluate_max(args, context, evaluator),
-            OpCode::Min => arithmetic::evaluate_min(args, context, evaluator),
-            OpCode::Abs => abs::evaluate_abs(args, context, evaluator),
-            OpCode::Ceil => ceil::evaluate_ceil(args, context, evaluator),
-            OpCode::Floor => floor::evaluate_floor(args, context, evaluator),
+            OpCode::Add => arithmetic::evaluate_add(args, context, engine),
+            OpCode::Subtract => arithmetic::evaluate_subtract(args, context, engine),
+            OpCode::Multiply => arithmetic::evaluate_multiply(args, context, engine),
+            OpCode::Divide => arithmetic::evaluate_divide(args, context, engine),
+            OpCode::Modulo => arithmetic::evaluate_modulo(args, context, engine),
+            OpCode::Max => arithmetic::evaluate_max(args, context, engine),
+            OpCode::Min => arithmetic::evaluate_min(args, context, engine),
+            OpCode::Abs => abs::evaluate_abs(args, context, engine),
+            OpCode::Ceil => ceil::evaluate_ceil(args, context, engine),
+            OpCode::Floor => floor::evaluate_floor(args, context, engine),
 
             // String operators - direct function calls
-            OpCode::Cat => string::evaluate_cat(args, context, evaluator),
-            OpCode::Substr => string::evaluate_substr(args, context, evaluator),
-            OpCode::In => string::evaluate_in(args, context, evaluator),
-            OpCode::Length => string::evaluate_length(args, context, evaluator),
-            OpCode::StartsWith => string_ops::evaluate_starts_with(args, context, evaluator),
-            OpCode::EndsWith => string_ops::evaluate_ends_with(args, context, evaluator),
-            OpCode::Upper => string_ops::evaluate_upper(args, context, evaluator),
-            OpCode::Lower => string_ops::evaluate_lower(args, context, evaluator),
-            OpCode::Trim => string_ops::evaluate_trim(args, context, evaluator),
-            OpCode::Split => string_ops::evaluate_split(args, context, evaluator),
+            OpCode::Cat => string::evaluate_cat(args, context, engine),
+            OpCode::Substr => string::evaluate_substr(args, context, engine),
+            OpCode::In => string::evaluate_in(args, context, engine),
+            OpCode::Length => string::evaluate_length(args, context, engine),
+            OpCode::StartsWith => string_ops::evaluate_starts_with(args, context, engine),
+            OpCode::EndsWith => string_ops::evaluate_ends_with(args, context, engine),
+            OpCode::Upper => string_ops::evaluate_upper(args, context, engine),
+            OpCode::Lower => string_ops::evaluate_lower(args, context, engine),
+            OpCode::Trim => string_ops::evaluate_trim(args, context, engine),
+            OpCode::Split => string_ops::evaluate_split(args, context, engine),
 
             // Array operators - direct function calls
-            OpCode::Merge => array::evaluate_merge(args, context, evaluator),
-            OpCode::Filter => array::evaluate_filter(args, context, evaluator),
-            OpCode::Map => array::evaluate_map(args, context, evaluator),
-            OpCode::Reduce => array::evaluate_reduce(args, context, evaluator),
-            OpCode::All => array::evaluate_all(args, context, evaluator),
-            OpCode::Some => array::evaluate_some(args, context, evaluator),
-            OpCode::None => array::evaluate_none(args, context, evaluator),
-            OpCode::Sort => array::evaluate_sort(args, context, evaluator),
-            OpCode::Slice => array::evaluate_slice(args, context, evaluator),
+            OpCode::Merge => array::evaluate_merge(args, context, engine),
+            OpCode::Filter => array::evaluate_filter(args, context, engine),
+            OpCode::Map => array::evaluate_map(args, context, engine),
+            OpCode::Reduce => array::evaluate_reduce(args, context, engine),
+            OpCode::All => array::evaluate_all(args, context, engine),
+            OpCode::Some => array::evaluate_some(args, context, engine),
+            OpCode::None => array::evaluate_none(args, context, engine),
+            OpCode::Sort => array::evaluate_sort(args, context, engine),
+            OpCode::Slice => array::evaluate_slice(args, context, engine),
 
             // Special operators - direct function calls
-            OpCode::Missing => missing::evaluate_missing(args, context, evaluator),
-            OpCode::MissingSome => missing::evaluate_missing_some(args, context, evaluator),
-            OpCode::Try => try_op::evaluate_try(args, context, evaluator),
-            OpCode::Throw => throw::evaluate_throw(args, context, evaluator),
-            OpCode::Type => type_op::evaluate_type(args, context, evaluator),
-            OpCode::Preserve => preserve::evaluate_preserve(args, context, evaluator),
+            OpCode::Missing => missing::evaluate_missing(args, context, engine),
+            OpCode::MissingSome => missing::evaluate_missing_some(args, context, engine),
+            OpCode::Try => try_op::evaluate_try(args, context, engine),
+            OpCode::Throw => throw::evaluate_throw(args, context, engine),
+            OpCode::Type => type_op::evaluate_type(args, context, engine),
+            OpCode::Preserve => preserve::evaluate_preserve(args, context, engine),
 
             // DateTime operators - direct function calls
-            OpCode::Datetime => datetime::evaluate_datetime(args, context, evaluator),
-            OpCode::Timestamp => datetime::evaluate_timestamp(args, context, evaluator),
-            OpCode::ParseDate => datetime::evaluate_parse_date(args, context, evaluator),
-            OpCode::FormatDate => datetime::evaluate_format_date(args, context, evaluator),
-            OpCode::DateDiff => datetime::evaluate_date_diff(args, context, evaluator),
-            OpCode::Now => datetime::evaluate_now(args, context, evaluator),
+            OpCode::Datetime => datetime::evaluate_datetime(args, context, engine),
+            OpCode::Timestamp => datetime::evaluate_timestamp(args, context, engine),
+            OpCode::ParseDate => datetime::evaluate_parse_date(args, context, engine),
+            OpCode::FormatDate => datetime::evaluate_format_date(args, context, engine),
+            OpCode::DateDiff => datetime::evaluate_date_diff(args, context, engine),
+            OpCode::Now => datetime::evaluate_now(args, context, engine),
         }
     }
 }

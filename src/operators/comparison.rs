@@ -2,14 +2,14 @@ use serde_json::Value;
 
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, loose_equals_with_error, strict_equals};
-use crate::{ContextStack, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Equals operator function (== for loose equality)
 #[inline]
 pub fn evaluate_equals(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(
@@ -18,10 +18,10 @@ pub fn evaluate_equals(
     }
 
     // For chained equality (3+ arguments), check if all are equal
-    let first = evaluator.evaluate(&args[0], context)?;
+    let first = engine.evaluate_node(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = evaluator.evaluate(item, context)?;
+        let current = engine.evaluate_node(item, context)?;
 
         // Compare first == current (loose equality)
         let result = compare_equals(&first, &current, false)?;
@@ -38,9 +38,9 @@ pub fn evaluate_equals(
 /// Strict equals operator function (=== for strict equality)
 #[inline]
 pub fn evaluate_strict_equals(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(
@@ -49,10 +49,10 @@ pub fn evaluate_strict_equals(
     }
 
     // For chained equality (3+ arguments), check if all are equal
-    let first = evaluator.evaluate(&args[0], context)?;
+    let first = engine.evaluate_node(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = evaluator.evaluate(item, context)?;
+        let current = engine.evaluate_node(item, context)?;
 
         // Compare first === current (strict equality)
         let result = compare_equals(&first, &current, true)?;
@@ -121,9 +121,9 @@ fn compare_equals(left: &Value, right: &Value, strict: bool) -> Result<bool> {
 /// Not equals operator function (!= for loose inequality)
 #[inline]
 pub fn evaluate_not_equals(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(
@@ -136,8 +136,8 @@ pub fn evaluate_not_equals(
     // But we need to handle lazy evaluation differently
 
     // Evaluate first two arguments
-    let first = evaluator.evaluate(&args[0], context)?;
-    let second = evaluator.evaluate(&args[1], context)?;
+    let first = engine.evaluate_node(&args[0], context)?;
+    let second = engine.evaluate_node(&args[1], context)?;
 
     // Compare them (loose equality)
     let equals = compare_equals(&first, &second, false)?;
@@ -161,9 +161,9 @@ pub fn evaluate_not_equals(
 /// Strict not equals operator function (!== for strict inequality)
 #[inline]
 pub fn evaluate_strict_not_equals(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(
@@ -176,8 +176,8 @@ pub fn evaluate_strict_not_equals(
     // But we need to handle lazy evaluation differently
 
     // Evaluate first two arguments
-    let first = evaluator.evaluate(&args[0], context)?;
-    let second = evaluator.evaluate(&args[1], context)?;
+    let first = engine.evaluate_node(&args[0], context)?;
+    let second = engine.evaluate_node(&args[1], context)?;
 
     // Compare them (strict equality)
     let equals = compare_equals(&first, &second, true)?;
@@ -201,9 +201,9 @@ pub fn evaluate_strict_not_equals(
 /// Greater than operator function (>)
 #[inline]
 pub fn evaluate_greater_than(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
@@ -214,10 +214,10 @@ pub fn evaluate_greater_than(
 
     // For chained comparisons (3+ arguments), check a > b > c > ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = evaluator.evaluate(&args[0], context)?;
+    let mut prev = engine.evaluate_node(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let curr = evaluator.evaluate(item, context)?;
+        let curr = engine.evaluate_node(item, context)?;
 
         // Compare prev > curr
         let result = compare_greater_than(&prev, &curr)?;
@@ -310,9 +310,9 @@ fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
 /// Greater than or equal operator function (>=)
 #[inline]
 pub fn evaluate_greater_than_equal(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
@@ -323,10 +323,10 @@ pub fn evaluate_greater_than_equal(
 
     // For chained comparisons (3+ arguments), check a >= b >= c >= ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = evaluator.evaluate(&args[0], context)?;
+    let mut prev = engine.evaluate_node(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let curr = evaluator.evaluate(item, context)?;
+        let curr = engine.evaluate_node(item, context)?;
 
         // Compare prev >= curr
         let result = compare_greater_than_equal(&prev, &curr)?;
@@ -419,9 +419,9 @@ fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
 /// Less than operator function (<) - supports variadic arguments
 #[inline]
 pub fn evaluate_less_than(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
@@ -432,10 +432,10 @@ pub fn evaluate_less_than(
 
     // For chained comparisons (3+ arguments), check a < b < c < ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = evaluator.evaluate(&args[0], context)?;
+    let mut prev = engine.evaluate_node(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = evaluator.evaluate(item, context)?;
+        let current = engine.evaluate_node(item, context)?;
 
         // Compare prev < current
         let result = compare_less_than(&prev, &current)?;
@@ -528,9 +528,9 @@ fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
 /// Less than or equal operator function (<=) - supports variadic arguments
 #[inline]
 pub fn evaluate_less_than_equal(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
@@ -541,10 +541,10 @@ pub fn evaluate_less_than_equal(
 
     // For chained comparisons (3+ arguments), check a <= b <= c <= ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = evaluator.evaluate(&args[0], context)?;
+    let mut prev = engine.evaluate_node(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = evaluator.evaluate(item, context)?;
+        let current = engine.evaluate_node(item, context)?;
 
         // Compare prev <= current
         let result = compare_less_than_equal(&prev, &current)?;

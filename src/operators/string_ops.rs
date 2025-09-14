@@ -1,21 +1,21 @@
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::{ContextStack, Error, Evaluator, Result};
+use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// StartsWithOperator function - checks if a string starts with a prefix
 #[inline]
 pub fn evaluate_starts_with(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let text = evaluator.evaluate(&args[0], context)?;
-    let prefix = evaluator.evaluate(&args[1], context)?;
+    let text = engine.evaluate_node(&args[0], context)?;
+    let prefix = engine.evaluate_node(&args[1], context)?;
 
     let text_str = text.as_str().unwrap_or("");
     let prefix_str = prefix.as_str().unwrap_or("");
@@ -26,16 +26,16 @@ pub fn evaluate_starts_with(
 /// EndsWithOperator function - checks if a string ends with a suffix
 #[inline]
 pub fn evaluate_ends_with(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let text = evaluator.evaluate(&args[0], context)?;
-    let suffix = evaluator.evaluate(&args[1], context)?;
+    let text = engine.evaluate_node(&args[0], context)?;
+    let suffix = engine.evaluate_node(&args[1], context)?;
 
     let text_str = text.as_str().unwrap_or("");
     let suffix_str = suffix.as_str().unwrap_or("");
@@ -46,15 +46,15 @@ pub fn evaluate_ends_with(
 /// UpperOperator function - converts a string to uppercase
 #[inline]
 pub fn evaluate_upper(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
     let text = value.as_str().unwrap_or("");
 
     Ok(Value::String(text.to_uppercase()))
@@ -63,15 +63,15 @@ pub fn evaluate_upper(
 /// LowerOperator function - converts a string to lowercase
 #[inline]
 pub fn evaluate_lower(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
     let text = value.as_str().unwrap_or("");
 
     Ok(Value::String(text.to_lowercase()))
@@ -80,15 +80,15 @@ pub fn evaluate_lower(
 /// TrimOperator function - removes leading and trailing whitespace from a string
 #[inline]
 pub fn evaluate_trim(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let value = evaluator.evaluate(&args[0], context)?;
+    let value = engine.evaluate_node(&args[0], context)?;
     let text = value.as_str().unwrap_or("");
 
     Ok(Value::String(text.trim().to_string()))
@@ -97,16 +97,16 @@ pub fn evaluate_trim(
 /// SplitOperator function - splits a string by delimiter or extracts regex groups
 #[inline]
 pub fn evaluate_split(
-    args: &[Value],
+    args: &[CompiledNode],
     context: &mut ContextStack,
-    evaluator: &dyn Evaluator,
+    engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
     }
 
-    let text = evaluator.evaluate(&args[0], context)?;
-    let delimiter = evaluator.evaluate(&args[1], context)?;
+    let text = engine.evaluate_node(&args[0], context)?;
+    let delimiter = engine.evaluate_node(&args[1], context)?;
 
     let text_str = text.as_str().unwrap_or("");
     let delimiter_str = delimiter.as_str().unwrap_or("");
