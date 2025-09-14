@@ -121,7 +121,44 @@ impl MergeOperator {
     }
 }
 
-/// Map operator - transforms array/object elements
+/// The `map` operator - transforms each element in an array or object.
+///
+/// # Syntax
+/// ```json
+/// {"map": [collection, transformation]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or object to iterate over
+/// 2. A transformation logic to apply to each element
+///
+/// # Context
+/// During iteration, the current item becomes the context, and metadata is available:
+/// - `{"var": ""}` or `{"var": "."}` - current item value
+/// - `{"var": "index"}` - current index (arrays) or key (objects)
+/// - `{"var": "key"}` - current key (objects only)
+///
+/// # Example with Array
+/// ```json
+/// {
+///   "map": [
+///     [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
+///     {"var": "name"}
+///   ]
+/// }
+/// ```
+/// Returns: `["Alice", "Bob"]`
+///
+/// # Example with Object
+/// ```json
+/// {
+///   "map": [
+///     {"a": 1, "b": 2, "c": 3},
+///     {"*": [{"var": ""}, 2]}
+///   ]
+/// }
+/// ```
+/// Returns: `[2, 4, 6]`
 pub struct MapOperator;
 
 impl MapOperator {
@@ -186,7 +223,41 @@ impl MapOperator {
     }
 }
 
-/// Filter operator - filters array/object elements
+/// The `filter` operator - selects elements that match a condition.
+///
+/// # Syntax
+/// ```json
+/// {"filter": [collection, condition]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or object to filter
+/// 2. A condition logic that returns truthy/falsy for each element
+///
+/// # Context
+/// Similar to `map`, each item becomes the context with index/key metadata.
+///
+/// # Example with Array
+/// ```json
+/// {
+///   "filter": [
+///     [{"age": 17}, {"age": 25}, {"age": 30}],
+///     {">=": [{"var": "age"}, 18]}
+///   ]
+/// }
+/// ```
+/// Returns: `[{"age": 25}, {"age": 30}]`
+///
+/// # Example with Object
+/// ```json
+/// {
+///   "filter": [
+///     {"a": 10, "b": 5, "c": 20},
+///     {">": [{"var": ""}, 8]}
+///   ]
+/// }
+/// ```
+/// Returns: `{"a": 10, "c": 20}`
 pub struct FilterOperator;
 
 impl FilterOperator {
@@ -247,7 +318,34 @@ impl FilterOperator {
     }
 }
 
-/// Reduce operator
+/// The `reduce` operator - reduces a collection to a single value.
+///
+/// # Syntax
+/// ```json
+/// {"reduce": [collection, logic, initial_value]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or object to reduce
+/// 2. Reduction logic with access to `current` and `accumulator`
+/// 3. Initial value for the accumulator
+///
+/// # Context Variables
+/// - `{"var": "current"}` - current element value
+/// - `{"var": "accumulator"}` - accumulated value
+/// - `{"var": "index"}` - current index or key
+///
+/// # Example - Sum Array
+/// ```json
+/// {
+///   "reduce": [
+///     [1, 2, 3, 4],
+///     {"+": [{"var": "accumulator"}, {"var": "current"}]},
+///     0
+///   ]
+/// }
+/// ```
+/// Returns: `10`
 pub struct ReduceOperator;
 
 impl ReduceOperator {
@@ -291,7 +389,32 @@ impl ReduceOperator {
     }
 }
 
-/// All operator - tests if all elements pass
+/// The `all` operator - checks if all elements satisfy a condition.
+///
+/// # Syntax
+/// ```json
+/// {"all": [collection, condition]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or object to test
+/// 2. A condition to evaluate for each element
+///
+/// # Returns
+/// - `true` if all elements satisfy the condition
+/// - `true` if the collection is empty
+/// - `false` if any element fails the condition
+///
+/// # Example
+/// ```json
+/// {
+///   "all": [
+///     [10, 20, 30],
+///     {">": [{"var": ""}, 5]}
+///   ]
+/// }
+/// ```
+/// Returns: `true` (all are greater than 5)
 pub struct AllOperator;
 
 impl AllOperator {
@@ -331,7 +454,31 @@ impl AllOperator {
     }
 }
 
-/// Some operator - tests if any element passes
+/// The `some` operator - checks if any element satisfies a condition.
+///
+/// # Syntax
+/// ```json
+/// {"some": [collection, condition]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or object to test
+/// 2. A condition to evaluate for each element
+///
+/// # Returns
+/// - `true` if any element satisfies the condition
+/// - `false` if no elements satisfy or collection is empty
+///
+/// # Example
+/// ```json
+/// {
+///   "some": [
+///     [{"status": "pending"}, {"status": "active"}],
+///     {"==": [{"var": "status"}, "active"]}
+///   ]
+/// }
+/// ```
+/// Returns: `true`
 pub struct SomeOperator;
 
 impl SomeOperator {
@@ -370,7 +517,32 @@ impl SomeOperator {
     }
 }
 
-/// None operator - tests if no elements pass
+/// The `none` operator - checks if no elements satisfy a condition.
+///
+/// # Syntax
+/// ```json
+/// {"none": [collection, condition]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or object to test
+/// 2. A condition to evaluate for each element
+///
+/// # Returns
+/// - `true` if no elements satisfy the condition
+/// - `true` if the collection is empty
+/// - `false` if any element satisfies the condition
+///
+/// # Example
+/// ```json
+/// {
+///   "none": [
+///     [1, 3, 5, 7],
+///     {"==": [{"%": [{"var": ""}, 2]}, 0]}
+///   ]
+/// }
+/// ```
+/// Returns: `true` (none are even)
 pub struct NoneOperator;
 
 impl NoneOperator {
@@ -409,7 +581,34 @@ impl NoneOperator {
     }
 }
 
-/// Sort operator - sorts arrays with optional custom comparator
+/// The `sort` operator - sorts array elements.
+///
+/// # Syntax
+/// ```json
+/// {"sort": [array, accessor]}
+/// ```
+///
+/// # Arguments
+/// 1. An array to sort
+/// 2. Optional: An accessor to extract sort key from each element
+///
+/// # Behavior
+/// - Without accessor: sorts primitives directly
+/// - With accessor: sorts by the extracted value
+/// - Sorts in ascending order
+/// - Maintains stable sort order
+/// - Handles mixed types (nulls first, then bools, numbers, strings, arrays, objects)
+///
+/// # Example
+/// ```json
+/// {
+///   "sort": [
+///     [{"name": "Charlie", "age": 30}, {"name": "Alice", "age": 25}],
+///     {"var": "name"}
+///   ]
+/// }
+/// ```
+/// Returns: Sorted by name alphabetically
 pub struct SortOperator;
 
 impl SortOperator {
@@ -490,7 +689,47 @@ impl SortOperator {
     }
 }
 
-/// Slice operator - extracts a portion of an array or string
+/// The `slice` operator - extracts a portion of an array or string.
+///
+/// # Syntax
+/// ```json
+/// {"slice": [sequence, start, end]}
+/// ```
+///
+/// # Arguments
+/// 1. An array or string to slice
+/// 2. Start index (inclusive)
+/// 3. Optional: End index (exclusive)
+///
+/// # Behavior
+/// - Negative indices count from the end (-1 is last element)
+/// - If end is omitted, slices to the end
+/// - Returns empty result if indices are out of bounds
+/// - Works with both arrays and strings
+///
+/// # Example with Array
+/// ```json
+/// {
+///   "slice": [
+///     ["a", "b", "c", "d", "e"],
+///     1,
+///     3
+///   ]
+/// }
+/// ```
+/// Returns: `["b", "c"]`
+///
+/// # Example with String
+/// ```json
+/// {
+///   "slice": [
+///     "hello world",
+///     0,
+///     5
+///   ]
+/// }
+/// ```
+/// Returns: `"hello"`
 pub struct SliceOperator;
 
 impl SliceOperator {

@@ -2,28 +2,52 @@ use crate::{ContextStack, DataLogic, Result, opcode::OpCode};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-/// Compiled node representing a single operation or value
+/// A compiled node representing a single operation or value in the logic tree.
+///
+/// Nodes are created during the compilation phase and evaluated during execution.
+/// Each node type is optimized for its specific purpose:
+///
+/// - **Value**: Static JSON values that don't require evaluation
+/// - **Array**: Collections of nodes evaluated sequentially
+/// - **BuiltinOperator**: Fast OpCode-based dispatch for built-in operators
+/// - **CustomOperator**: User-defined operators with dynamic dispatch
+/// - **StructuredObject**: Template objects for structure preservation
 #[derive(Debug, Clone)]
 pub enum CompiledNode {
-    /// Static value
+    /// A static JSON value that requires no evaluation.
+    ///
+    /// Used for literals like numbers, strings, booleans, and null.
     Value { value: Value },
 
-    /// Array of nodes
+    /// An array of compiled nodes.
+    ///
+    /// Each node is evaluated in sequence, and the results are collected into a JSON array.
+    /// Uses `Box<[CompiledNode]>` for memory efficiency.
     Array { nodes: Box<[CompiledNode]> },
 
-    /// Built-in operator with OpCode for fast lookup
+    /// A built-in operator optimized with OpCode dispatch.
+    ///
+    /// The OpCode enum enables direct dispatch without string lookups,
+    /// significantly improving performance for the 50+ built-in operators.
     BuiltinOperator {
         opcode: OpCode,
         args: Vec<CompiledNode>,
     },
 
-    /// Custom operator with string name
+    /// A custom operator registered via `DataLogic::add_operator`.
+    ///
+    /// Custom operators use dynamic dispatch and are looked up by name
+    /// from the engine's operator registry.
     CustomOperator {
         name: String,
         args: Vec<CompiledNode>,
     },
 
-    /// Structured object (for preserve_structure mode)
+    /// A structured object template for preserve_structure mode.
+    ///
+    /// When structure preservation is enabled, objects with non-operator keys
+    /// are preserved as templates. Each field is evaluated independently,
+    /// allowing for dynamic object generation.
     StructuredObject { fields: Vec<(String, CompiledNode)> },
 }
 
@@ -31,31 +55,107 @@ pub enum CompiledNode {
 
 // Hash functions removed - no longer needed
 
-/// Compiled logic that can be evaluated multiple times
+/// Compiled logic that can be evaluated multiple times across different data.
+///
+/// `CompiledLogic` represents a pre-processed JSONLogic expression that has been
+/// optimized for repeated evaluation. It's thread-safe and can be shared across
+/// threads using `Arc`.
+///
+/// # Performance Benefits
+///
+/// - **Parse once, evaluate many**: Avoid repeated JSON parsing
+/// - **Static evaluation**: Constant expressions are pre-computed
+/// - **OpCode dispatch**: Built-in operators use fast enum dispatch
+/// - **Thread-safe sharing**: Use `Arc` to share across threads
+///
+/// # Example
+///
+/// ```rust
+/// use datalogic_rs::DataLogic;
+/// use serde_json::json;
+/// use std::sync::Arc;
+///
+/// let engine = DataLogic::new();
+/// let logic = json!({">": [{"var": "score"}, 90]});
+/// let compiled = engine.compile(&logic).unwrap(); // Returns Arc<CompiledLogic>
+///
+/// // Can be shared across threads
+/// let compiled_clone = Arc::clone(&compiled);
+/// std::thread::spawn(move || {
+///     let data = json!({"score": 95});
+///     let result = engine.evaluate_owned(&compiled_clone, data);
+/// });
+/// ```
 #[derive(Debug, Clone)]
 pub struct CompiledLogic {
+    /// The root node of the compiled logic tree
     pub root: CompiledNode,
 }
 
 impl CompiledLogic {
-    /// Create a new compiled logic from a root node
+    /// Creates a new compiled logic from a root node.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - The root node of the compiled logic tree
     pub fn new(root: CompiledNode) -> Self {
         Self { root }
     }
 
-    /// Compile a JSON value into a compiled logic structure
+    /// Compiles a JSON value into a compiled logic structure.
+    ///
+    /// This method performs basic compilation without static evaluation.
+    /// For optimal performance, use `compile_with_static_eval` instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - The JSON logic expression to compile
+    ///
+    /// # Returns
+    ///
+    /// A compiled logic structure, or an error if compilation fails.
     pub fn compile(logic: &Value) -> Result<Self> {
         let root = Self::compile_node(logic, None, false)?;
         Ok(Self::new(root))
     }
 
-    /// Compile with static evaluation using the provided engine
+    /// Compiles with static evaluation using the provided engine.
+    ///
+    /// This method performs optimizations including:
+    /// - Static evaluation of constant expressions
+    /// - OpCode assignment for built-in operators
+    /// - Structure preservation based on engine settings
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - The JSON logic expression to compile
+    /// * `engine` - The DataLogic engine for static evaluation
+    ///
+    /// # Returns
+    ///
+    /// An optimized compiled logic structure, or an error if compilation fails.
     pub fn compile_with_static_eval(logic: &Value, engine: &DataLogic) -> Result<Self> {
         let root = Self::compile_node(logic, Some(engine), engine.preserve_structure())?;
         Ok(Self::new(root))
     }
 
-    /// Compile a single node
+    /// Compiles a single JSON value into a CompiledNode.
+    ///
+    /// This recursive method handles all node types:
+    /// - Objects with operators
+    /// - Arrays
+    /// - Primitive values
+    /// - Structured objects (in preserve mode)
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The JSON value to compile
+    /// * `engine` - Optional engine for static evaluation
+    /// * `preserve_structure` - Whether to preserve unknown object structure
+    ///
+    /// # Returns
+    ///
+    /// A compiled node, or an error if the value is invalid.
     fn compile_node(
         value: &Value,
         engine: Option<&DataLogic>,

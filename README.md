@@ -1,11 +1,10 @@
 <div align="center">
   <img src="https://avatars.githubusercontent.com/u/207296579?s=200&v=4" alt="Plasmatic Logo" width="120" height="120">
 
-  # datalogic-rs
+# datalogic-rs
+**A fast, production-ready Rust engine for JSONLogic.**
 
-  **A high-performance, production-ready Rust implementation of JSONLogic.**
-
-  *Evaluate complex rules and dynamic expressions with a powerful, memory-efficient, and developer-friendly engine.*
+Effortlessly evaluate complex rules and dynamic expressions with a powerful, memory-efficient, and developer-friendly toolkit.
 
   [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
   [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
@@ -22,24 +21,25 @@
 
 -----
 
-`datalogic-rs` is a Rust implementation of [JSONLogic](http://jsonlogic.com) designed for performance, safety, and ease of use. Whether you're building a feature flagging system, a dynamic pricing engine, or a complex validation pipeline, `datalogic-rs` provides the power and flexibility you need.
+`datalogic-rs` brings the power of [JSONLogic](http://jsonlogic.com) to Rust, focusing on speed, safety, and ease of use. Whether you’re building feature flags, dynamic pricing, or complex validation, this engine is designed to be flexible and robust.
 
-**Version 4 Update:** We've moved to a more ergonomic API in v4, prioritizing developer experience and maintainability over micro-optimizations. If you need ultra-high performance with arena allocation (30x faster for specific workloads), v3 is still maintained and available. Both v3 and v4 will continue to exist in parallel, letting you choose between maximum performance (v3) or better ergonomics (v4).
+**What’s New in v4?**
+We’ve redesigned the API to be more ergonomic and developer-friendly. If you need maximum speed with arena allocation, v3 is still available and maintained. Choose v4 for a smoother experience, or stick with v3 for raw performance—both are supported.
 
-## 🚀 What Makes `datalogic-rs` v4 Awesome?
+## Key Features
 
-- **Thread-Safe by Design:** Compile once, evaluate across multiple threads with zero synchronization overhead.
-- **Ergonomic API:** Simple, intuitive API using standard `serde_json::Value` types.
-- **100% JSONLogic Compliant:** Full compatibility with the official JSONLogic test suite.
-- **Extensible:** Easily add custom operators with our straightforward trait system.
-- **Powerful Templating:** Preserve object structures for dynamic, structured output.
-- **Production Ready:** Proven in real-world workloads with comprehensive test coverage.
-- **Batteries Included:** Over 50 built-in operators, including datetime and regex support.
-- **Async Compatible:** Works seamlessly with Tokio and other async runtimes.
+- **Thread-Safe:** Compile your logic once, then evaluate it anywhere—no locks, no fuss.
+- **Intuitive API:** Works seamlessly with `serde_json::Value`.
+- **Fully Compliant:** Passes the official JSONLogic test suite.
+- **Extensible:** Add your own operators with a simple trait.
+- **Templating Support:** Preserve object structures for dynamic output.
+- **Battle-Tested:** Used in production, with thorough test coverage.
+- **Feature-Rich:** Over 50 built-in operators, including datetime and regex.
+- **Async-Ready:** Integrates smoothly with Tokio and async runtimes.
 
-## 🏗️ How It Works: Compilation-Based Optimization
+## How It Works
 
-`datalogic-rs` v4 uses a compilation step to optimize rule evaluation. Parse and compile your rules once, then evaluate them many times across different threads with zero overhead.
+`datalogic-rs` v4 compiles your rules for fast, repeated evaluation. Parse and compile once, then reuse across threads with zero overhead.
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -61,9 +61,9 @@ let handle = std::thread::spawn(move || {
 });
 ```
 
-### Structured Object Preservation
+### Structured Output
 
-Generate powerful, structured outputs by preserving non-operator keys in your JSON.
+Preserve keys and generate structured results for templating:
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -87,11 +87,9 @@ let result = engine.evaluate_owned(&compiled, data).unwrap();
 // { "status": "pass", "grade": 95, "timestamp": "2024-01-15T10:30:00Z" }
 ```
 
-## 🎯 Getting Started: Core API
+## Getting Started
 
-### 1. `compile` + `evaluate` - For Maximum Performance
-
-Compile once, evaluate many times across threads with zero overhead.
+### 1. Compile & Evaluate (Best Performance)
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -111,9 +109,9 @@ assert_eq!(result1, json!(true));
 assert_eq!(result2, json!(false));
 ```
 
-### 2. `evaluate_json` - For Quick Evaluations
+### 2. Quick Evaluation
 
-Perfect for one-shot evaluations or when you don't need to reuse compiled logic.
+For one-off checks, use `evaluate_json`:
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -128,9 +126,9 @@ let result = engine.evaluate_json(
 assert_eq!(result, json!(42));
 ```
 
-### 3. Thread-Safe Evaluation
+### 3. Multi-Threaded Evaluation
 
-Share compiled logic across threads for parallel processing.
+Share compiled logic for parallel processing:
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -169,9 +167,9 @@ let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 assert_eq!(results, vec![json!("excellent"), json!("good"), json!("excellent")]);
 ```
 
-## 🔧 Installation
+## Installation
 
-Add `datalogic-rs` to your `Cargo.toml`:
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -181,11 +179,9 @@ datalogic-rs = "4.0"
 # datalogic-rs = "3.0"
 ```
 
-## 📖 Real-World Examples
+## Examples
 
-### Complex Business Rules
-
-Check for multi-condition eligibility with nested logic.
+### Business Rules
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -211,9 +207,7 @@ let result = engine.evaluate_owned(&compiled, data).unwrap();
 assert_eq!(result, json!(true));
 ```
 
-### Array Processing & Filtering
-
-Filter and map user data with ease.
+### Array Filtering
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -250,8 +244,6 @@ assert_eq!(result, json!(["Alice", "Charlie"]));
 
 ### DateTime Operations
 
-Perform date arithmetic with timezone support.
-
 ```rust
 use datalogic_rs::DataLogic;
 use serde_json::json;
@@ -274,9 +266,7 @@ let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
 assert_eq!(result, json!(true));
 ```
 
-### Regex Data Extraction
-
-Extract structured data from strings using named capture groups.
+### Regex Extraction
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -299,9 +289,9 @@ assert_eq!(result["bank"], "SBIN");
 assert_eq!(result["country"], "IN");
 ```
 
-## 🔌 Custom Operators
+## Custom Operators
 
-Extend `datalogic-rs` with your own domain-specific logic.
+Extend the engine with your own logic:
 
 ```rust
 use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result};
@@ -336,9 +326,72 @@ let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
 assert_eq!(result, json!(42.0));
 ```
 
-## 🚀 Async & Tokio Support
+## Advanced Features
 
-`datalogic-rs` v4 is fully compatible with async runtimes like Tokio:
+- **Context Stack:** Access parent context in nested operations.
+- **Type Checking:** Validate and branch on input types.
+- **Safe Error Handling:** Use `try` for graceful fallback.
+
+```rust
+use datalogic_rs::DataLogic;
+use serde_json::json;
+
+let engine = DataLogic::new();
+
+// Access parent context in nested operations
+let logic = json!({
+    "map": [
+        { "var": "items" },
+        {
+            "cat": [
+                { "var": "name" },      // Current item's name
+                " - ",
+                { "var": "category.1" }  // Parent context's category
+            ]
+        }
+    ]
+});
+
+let data = json!({
+    "category": "Electronics",
+    "items": [
+        { "name": "Laptop" },
+        { "name": "Phone" }
+    ]
+});
+
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, data).unwrap();
+// Returns: ["Laptop - Electronics", "Phone - Electronics"]
+```
+
+### Type Checking and Validation
+
+```rust
+let logic = json!({
+    "if": [
+        { "==": [{ "type": { "var": "input" } }, "number"] },
+        { "*": [{ "var": "input" }, 2] },
+        { "throw": "Input must be a number" }
+    ]
+});
+```
+
+### Safe Error Handling with Try
+
+```rust
+let logic = json!({
+    "try": [
+        { "/": [{ "var": "numerator" }, { "var": "denominator" }] },
+        "Division failed",  // Default value on error
+        { "var": "error" }   // Optional: capture error message
+    ]
+});
+```
+
+## Async Support
+
+`datalogic-rs` v4 works great with async runtimes like Tokio. Compile your logic once, then process data concurrently with ease.
 
 ```rust
 use datalogic_rs::DataLogic;
@@ -375,9 +428,9 @@ async fn main() {
 
 Perfect for web servers, microservices, and real-time data processing pipelines.
 
-## 🎯 Use Cases
+## Use Cases
 
-### Feature Flagging
+### Feature Flags
 
 ```json
 {
@@ -417,39 +470,58 @@ Perfect for web servers, microservices, and real-time data processing pipelines.
 }
 ```
 
-## 📋 Supported Operations
+## Supported Operators
+
+Over 50 built-in operators, including:
 
 | Category         | Operators                                                     |
 | ---------------- | ------------------------------------------------------------- |
 | **Comparison**   | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`                |
 | **Logic**        | `and`, `or`, `!`, `!!`                                        |
 | **Arithmetic**   | `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`  |
-| **Control Flow** | `if`, `?:`, `??`                                              |
+| **Control Flow** | `if`, `?:` (ternary), `??` (coalesce)                        |
 | **Arrays**       | `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `length`, `slice`, `sort` |
-| **Strings**      | `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `replace`, `split` |
+| **Strings**      | `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` |
 | **Data Access**  | `var`, `val`, `exists`, `missing`, `missing_some`             |
 | **DateTime**     | `datetime`, `timestamp`, `now`, `parse_date`, `format_date`, `date_diff` |
+| **Type**         | `type` (returns type name as string)                          |
 | **Error Handling**| `throw`, `try`                                                |
-| **Custom**       | User-defined operators                                        |
+| **Special**      | `preserve` (for structured object preservation)               |
+| **Custom**       | User-defined operators via `Operator` trait                   |
 
-## 🤝 Contributing
+## Architecture
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details on how to get started.
+- **Compilation:** Parses and optimizes logic for fast evaluation.
+- **Evaluation:** Uses OpCode dispatch and context stack for speed.
+- **Thread-Safe:** Share compiled logic with zero-copy via Arc.
 
-## 🏢 About Plasmatic
+1. **Compilation Phase:** JSON logic is parsed and compiled into a `CompiledLogic` structure with:
+   - Static evaluation of constant expressions
+   - OpCode assignment for built-in operators
+   - Thread-safe Arc wrapping for sharing across threads
 
-`datalogic-rs` is developed by [Plasmatic](https://github.com/GoPlasmatic), an organization dedicated to building open-source tools for financial infrastructure and data processing.
+2. **Evaluation Phase:** The compiled logic is evaluated against data with:
+   - Direct OpCode dispatch (avoiding string lookups)
+   - Context stack for nested evaluations
+   - Zero-copy operations where possible
+
+## Performance Optimizations
+
+- OpCode dispatch for built-in operators
+- Static evaluation of constant expressions
+- SmallVec for small arrays
+- Arc sharing for thread safety
+- Cow types for efficient value passing
+
+## About Plasmatic
+
+Created by [Plasmatic](https://github.com/GoPlasmatic), building open-source tools for financial infrastructure and data processing.
 
 Check out our other projects:
 
-- [DataFlow-rs](https://github.com/GoPlasmatic/dataflow-rs): An event-driven workflow orchestration engine written in Rust that empowers you to define and execute data pipelines as code.
+- [DataFlow-rs](https://github.com/GoPlasmatic/dataflow-rs): Event-driven workflow orchestration in Rust.
 
-## 📄 License
+## License
 
-`datalogic-rs` is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+Licensed under Apache 2.0. See [LICENSE](LICENSE) for details.
 
------
-
-<div align="center">
-<p>Built with ❤️ by the <a href="https://github.com/GoPlasmatic">Plasmatic</a> team</p>
-</div>

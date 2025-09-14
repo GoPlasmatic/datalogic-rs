@@ -65,7 +65,13 @@ impl ContextStack {
         }
     }
 
-    /// Push a new context frame for nested evaluation
+    /// Pushes a new context frame for nested evaluation.
+    ///
+    /// Used by operators that need to create a nested data context without metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The data value for the new context frame
     pub fn push(&mut self, data: Value) {
         self.frames.push(ContextFrame {
             data,
@@ -73,7 +79,24 @@ impl ContextStack {
         });
     }
 
-    /// Push a frame with metadata (e.g., for map with index)
+    /// Pushes a frame with metadata for iteration operations.
+    ///
+    /// Used by array operators like `map`, `filter`, and `reduce` to provide
+    /// iteration context including index and key information.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The current item being processed
+    /// * `metadata` - Iteration metadata (typically includes "index" and optionally "key")
+    ///
+    /// # Example
+    ///
+    /// During array iteration:
+    /// ```rust,ignore
+    /// let mut metadata = HashMap::new();
+    /// metadata.insert("index".to_string(), json!(0));
+    /// context.push_with_metadata(item_value, metadata);
+    /// ```
     pub fn push_with_metadata(&mut self, data: Value, metadata: HashMap<String, Value>) {
         self.frames.push(ContextFrame {
             data,
@@ -81,20 +104,37 @@ impl ContextStack {
         });
     }
 
-    /// Pop the current context frame
+    /// Pops the current context frame from the stack.
+    ///
+    /// Restores the previous context after nested evaluation completes.
+    /// Returns None if there are no frames to pop (root is never popped).
+    ///
+    /// # Returns
+    ///
+    /// The popped context frame, or None if the stack is empty.
     pub fn pop(&mut self) -> Option<ContextFrame> {
         // Only pop if there are frames (root is separate)
         self.frames.pop()
     }
 
-    /// Access data at a context level relative to current
+    /// Accesses data at a context level relative to current.
+    ///
+    /// This method enables access to parent contexts during nested operations,
+    /// which is essential for complex JSONLogic expressions.
     ///
     /// # Arguments
+    ///
     /// * `level` - The number of levels to traverse up the context stack
     ///   - 0: returns the current context
     ///   - N (positive or negative): goes up N levels from current
     ///
+    /// # Returns
+    ///
+    /// A reference to the context frame at the specified level,
+    /// or None if the level exceeds the stack depth.
+    ///
     /// # Note
+    ///
     /// The sign of the level is ignored; both positive and negative values
     /// traverse up the stack the same way. This maintains backward compatibility
     /// with existing usage patterns.

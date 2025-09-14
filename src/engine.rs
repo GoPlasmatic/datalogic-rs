@@ -5,7 +5,33 @@ use std::sync::Arc;
 
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
-/// Main DataLogic engine
+/// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
+///
+/// The engine provides a two-phase approach to logic evaluation:
+/// 1. **Compilation**: Parse JSON logic into optimized `CompiledLogic`
+/// 2. **Evaluation**: Execute compiled logic against data
+///
+/// # Features
+///
+/// - **Thread-safe**: Compiled logic can be shared across threads with `Arc`
+/// - **Extensible**: Add custom operators via `add_operator`
+/// - **Structure preservation**: Optionally preserve object structure for templating
+/// - **OpCode dispatch**: Built-in operators use fast enum-based dispatch
+///
+/// # Example
+///
+/// ```rust
+/// use datalogic_rs::DataLogic;
+/// use serde_json::json;
+///
+/// let engine = DataLogic::new();
+/// let logic = json!({">": [{"var": "age"}, 18]});
+/// let compiled = engine.compile(&logic).unwrap();
+///
+/// let data = json!({"age": 21});
+/// let result = engine.evaluate_owned(&compiled, data).unwrap();
+/// assert_eq!(result, json!(true));
+/// ```
 pub struct DataLogic {
     // No more builtin_operators array - OpCode handles dispatch directly!
     /// HashMap for custom operators only
@@ -21,7 +47,18 @@ impl Default for DataLogic {
 }
 
 impl DataLogic {
-    /// Create a new DataLogic engine with built-in operators
+    /// Creates a new DataLogic engine with all built-in operators.
+    ///
+    /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
+    /// Structure preservation is disabled by default.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let engine = DataLogic::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             custom_operators: HashMap::new(),
@@ -29,7 +66,24 @@ impl DataLogic {
         }
     }
 
-    /// Create a new DataLogic engine with preserve_structure enabled
+    /// Creates a new DataLogic engine with structure preservation enabled.
+    ///
+    /// When enabled, objects with unknown operators are preserved as structured
+    /// templates, allowing for dynamic object generation.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::DataLogic;
+    /// use serde_json::json;
+    ///
+    /// let engine = DataLogic::with_preserve_structure();
+    /// let logic = json!({
+    ///     "name": {"var": "user.name"},
+    ///     "score": {"+": [{"var": "base"}, {"var": "bonus"}]}
+    /// });
+    /// // Returns: {"name": "Alice", "score": 95}
+    /// ```
     pub fn with_preserve_structure() -> Self {
         Self {
             custom_operators: HashMap::new(),
@@ -37,35 +91,169 @@ impl DataLogic {
         }
     }
 
-    /// Set the preserve_structure flag
+    /// Sets whether to preserve object structure for unknown operators.
+    ///
+    /// # Arguments
+    ///
+    /// * `preserve` - If `true`, unknown operators in objects are preserved as templates
     pub fn set_preserve_structure(&mut self, preserve: bool) {
         self.preserve_structure = preserve;
     }
 
-    /// Get the preserve_structure flag
+    /// Returns whether structure preservation is enabled.
     pub fn preserve_structure(&self) -> bool {
         self.preserve_structure
     }
 
-    /// Register a custom operator
+    /// Registers a custom operator with the engine.
+    ///
+    /// Custom operators extend the engine's functionality with domain-specific logic.
+    /// They override built-in operators if the same name is used.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The operator name (e.g., "custom_calc")
+    /// * `operator` - The operator implementation
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result};
+    /// use serde_json::{json, Value};
+    ///
+    /// struct DoubleOperator;
+    ///
+    /// impl Operator for DoubleOperator {
+    ///     fn evaluate(
+    ///         &self,
+    ///         args: &[Value],
+    ///         _context: &mut ContextStack,
+    ///         _evaluator: &dyn Evaluator,
+    ///     ) -> Result<Value> {
+    ///         if let Some(n) = args.first().and_then(|v| v.as_f64()) {
+    ///             Ok(json!(n * 2.0))
+    ///         } else {
+    ///             Err("Argument must be a number".into())
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let mut engine = DataLogic::new();
+    /// engine.add_operator("double".to_string(), Box::new(DoubleOperator));
+    /// ```
     pub fn add_operator(&mut self, name: String, operator: Box<dyn Operator>) {
         self.custom_operators.insert(name, operator);
     }
 
-    /// Compile a logic expression with static evaluation
+    /// Compiles a JSON logic expression into an optimized form.
+    ///
+    /// Compilation performs:
+    /// - Static evaluation of constant expressions
+    /// - OpCode assignment for built-in operators
+    /// - Structure analysis for templating
+    ///
+    /// The returned `Arc<CompiledLogic>` can be safely shared across threads.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - The JSON logic expression to compile
+    ///
+    /// # Returns
+    ///
+    /// An `Arc`-wrapped compiled logic structure, or an error if compilation fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::DataLogic;
+    /// use serde_json::json;
+    /// use std::sync::Arc;
+    ///
+    /// let engine = DataLogic::new();
+    /// let logic = json!({"==": [1, 1]});
+    /// let compiled: Arc<_> = engine.compile(&logic).unwrap();
+    /// ```
     pub fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
         let compiled = CompiledLogic::compile_with_static_eval(logic, self)?;
         Ok(Arc::new(compiled))
     }
 
-    /// Evaluate compiled logic with Arc data
-    /// Use this when you already have data in an Arc to avoid re-wrapping
+    /// Evaluates compiled logic with Arc-wrapped data.
+    ///
+    /// Use this method when you already have data in an `Arc` to avoid re-wrapping.
+    /// For owned data, use `evaluate_owned` instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `compiled` - The compiled logic to evaluate
+    /// * `data` - The data context wrapped in an `Arc`
+    ///
+    /// # Returns
+    ///
+    /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
         let mut context = ContextStack::new(data);
         self.evaluate_node(&compiled.root, &mut context)
     }
 
-    /// Convenience method for JSON strings
+    /// Evaluates compiled logic with owned data.
+    ///
+    /// This is a convenience method that wraps the data in an `Arc` before evaluation.
+    /// If you already have Arc-wrapped data, use `evaluate` instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `compiled` - The compiled logic to evaluate
+    /// * `data` - The owned data context
+    ///
+    /// # Returns
+    ///
+    /// The evaluation result, or an error if evaluation fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::DataLogic;
+    /// use serde_json::json;
+    ///
+    /// let engine = DataLogic::new();
+    /// let logic = json!({"var": "name"});
+    /// let compiled = engine.compile(&logic).unwrap();
+    ///
+    /// let data = json!({"name": "Alice"});
+    /// let result = engine.evaluate_owned(&compiled, data).unwrap();
+    /// assert_eq!(result, json!("Alice"));
+    /// ```
+    pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
+        self.evaluate(compiled, Arc::new(data))
+    }
+
+    /// Convenience method for evaluating JSON strings directly.
+    ///
+    /// This method combines compilation and evaluation in a single call.
+    /// For repeated evaluations, compile once and reuse the compiled logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - JSON logic as a string
+    /// * `data` - Data context as a JSON string
+    ///
+    /// # Returns
+    ///
+    /// The evaluation result, or an error if parsing or evaluation fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let engine = DataLogic::new();
+    /// let result = engine.evaluate_json(
+    ///     r#"{"==": [{"var": "x"}, 5]}"#,
+    ///     r#"{"x": 5}"#
+    /// ).unwrap();
+    /// assert_eq!(result, serde_json::json!(true));
+    /// ```
     pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
@@ -75,7 +263,23 @@ impl DataLogic {
         self.evaluate(&compiled, data_arc)
     }
 
-    /// Evaluate a compiled node using OpCode dispatch
+    /// Evaluates a compiled node using OpCode dispatch.
+    ///
+    /// This is the core evaluation method that handles:
+    /// - Static values
+    /// - Arrays
+    /// - Built-in operators (via OpCode)
+    /// - Custom operators
+    /// - Structured objects (in preserve mode)
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The compiled node to evaluate
+    /// * `context` - The context stack containing data and metadata
+    ///
+    /// # Returns
+    ///
+    /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
         match node {
             CompiledNode::Value { value, .. } => Ok(value.clone()),
