@@ -3,13 +3,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::opcode::OpCode;
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
 /// Main DataLogic engine
 pub struct DataLogic {
-    /// Array for built-in operators (fast lookup)
-    builtin_operators: [Option<Box<dyn Operator>>; OpCode::COUNT],
+    // No more builtin_operators array - OpCode handles dispatch directly!
     /// HashMap for custom operators only
     custom_operators: HashMap<String, Box<dyn Operator>>,
     /// Flag to preserve structure of objects with unknown operators
@@ -25,24 +23,18 @@ impl Default for DataLogic {
 impl DataLogic {
     /// Create a new DataLogic engine with built-in operators
     pub fn new() -> Self {
-        let mut engine = Self {
-            builtin_operators: std::array::from_fn(|_| None),
+        Self {
             custom_operators: HashMap::new(),
             preserve_structure: false,
-        };
-        engine.register_builtin_operators();
-        engine
+        }
     }
 
     /// Create a new DataLogic engine with preserve_structure enabled
     pub fn with_preserve_structure() -> Self {
-        let mut engine = Self {
-            builtin_operators: std::array::from_fn(|_| None),
+        Self {
             custom_operators: HashMap::new(),
             preserve_structure: true,
-        };
-        engine.register_builtin_operators();
-        engine
+        }
     }
 
     /// Set the preserve_structure flag
@@ -53,104 +45,6 @@ impl DataLogic {
     /// Get the preserve_structure flag
     pub fn preserve_structure(&self) -> bool {
         self.preserve_structure
-    }
-
-    /// Register all built-in operators
-    fn register_builtin_operators(&mut self) {
-        use crate::operators::*;
-
-        // Variable access
-        self.builtin_operators[OpCode::Var as usize] = Some(Box::new(VarOperator));
-        self.builtin_operators[OpCode::Val as usize] = Some(Box::new(ValOperator));
-        self.builtin_operators[OpCode::Exists as usize] = Some(Box::new(ExistsOperator));
-
-        // Comparison operators
-        self.builtin_operators[OpCode::Equals as usize] =
-            Some(Box::new(EqualsOperator { strict: false }));
-        self.builtin_operators[OpCode::StrictEquals as usize] =
-            Some(Box::new(EqualsOperator { strict: true }));
-        self.builtin_operators[OpCode::NotEquals as usize] =
-            Some(Box::new(NotEqualsOperator { strict: false }));
-        self.builtin_operators[OpCode::StrictNotEquals as usize] =
-            Some(Box::new(NotEqualsOperator { strict: true }));
-        self.builtin_operators[OpCode::GreaterThan as usize] = Some(Box::new(GreaterThanOperator));
-        self.builtin_operators[OpCode::GreaterThanEqual as usize] =
-            Some(Box::new(GreaterThanEqualOperator));
-        self.builtin_operators[OpCode::LessThan as usize] = Some(Box::new(LessThanOperator));
-        self.builtin_operators[OpCode::LessThanEqual as usize] =
-            Some(Box::new(LessThanEqualOperator));
-
-        // Logical operators
-        self.builtin_operators[OpCode::Not as usize] = Some(Box::new(NotOperator));
-        self.builtin_operators[OpCode::DoubleNot as usize] = Some(Box::new(DoubleNotOperator));
-        self.builtin_operators[OpCode::And as usize] = Some(Box::new(AndOperator));
-        self.builtin_operators[OpCode::Or as usize] = Some(Box::new(OrOperator));
-
-        // Control flow
-        self.builtin_operators[OpCode::If as usize] = Some(Box::new(IfOperator));
-        self.builtin_operators[OpCode::Ternary as usize] = Some(Box::new(TernaryOperator));
-        self.builtin_operators[OpCode::Coalesce as usize] = Some(Box::new(CoalesceOperator));
-
-        // Arithmetic operators
-        self.builtin_operators[OpCode::Add as usize] = Some(Box::new(AddOperator));
-        self.builtin_operators[OpCode::Subtract as usize] = Some(Box::new(SubtractOperator));
-        self.builtin_operators[OpCode::Multiply as usize] = Some(Box::new(MultiplyOperator));
-        self.builtin_operators[OpCode::Divide as usize] = Some(Box::new(DivideOperator));
-        self.builtin_operators[OpCode::Modulo as usize] = Some(Box::new(ModuloOperator));
-        self.builtin_operators[OpCode::Max as usize] = Some(Box::new(MaxOperator));
-        self.builtin_operators[OpCode::Min as usize] = Some(Box::new(MinOperator));
-
-        // String operators
-        self.builtin_operators[OpCode::Cat as usize] = Some(Box::new(CatOperator));
-        self.builtin_operators[OpCode::Substr as usize] = Some(Box::new(SubstrOperator));
-        self.builtin_operators[OpCode::In as usize] = Some(Box::new(InOperator));
-        self.builtin_operators[OpCode::Length as usize] = Some(Box::new(LengthOperator));
-
-        // Array operators
-        self.builtin_operators[OpCode::Merge as usize] = Some(Box::new(MergeOperator));
-        self.builtin_operators[OpCode::Filter as usize] = Some(Box::new(FilterOperator));
-        self.builtin_operators[OpCode::Map as usize] = Some(Box::new(MapOperator));
-        self.builtin_operators[OpCode::Reduce as usize] = Some(Box::new(ReduceOperator));
-        self.builtin_operators[OpCode::All as usize] = Some(Box::new(AllOperator));
-        self.builtin_operators[OpCode::Some as usize] = Some(Box::new(SomeOperator));
-        self.builtin_operators[OpCode::None as usize] = Some(Box::new(NoneOperator));
-        self.builtin_operators[OpCode::Sort as usize] = Some(Box::new(SortOperator));
-        self.builtin_operators[OpCode::Slice as usize] = Some(Box::new(SliceOperator));
-
-        // Missing operators
-        self.builtin_operators[OpCode::Missing as usize] = Some(Box::new(MissingOperator));
-        self.builtin_operators[OpCode::MissingSome as usize] = Some(Box::new(MissingSomeOperator));
-
-        // Error handling operators
-        self.builtin_operators[OpCode::Try as usize] = Some(Box::new(TryOperator));
-        self.builtin_operators[OpCode::Throw as usize] = Some(Box::new(ThrowOperator));
-
-        // Type operator
-        self.builtin_operators[OpCode::Type as usize] = Some(Box::new(TypeOperator));
-
-        // String operators
-        self.builtin_operators[OpCode::StartsWith as usize] = Some(Box::new(StartsWithOperator));
-        self.builtin_operators[OpCode::EndsWith as usize] = Some(Box::new(EndsWithOperator));
-        self.builtin_operators[OpCode::Upper as usize] = Some(Box::new(UpperOperator));
-        self.builtin_operators[OpCode::Lower as usize] = Some(Box::new(LowerOperator));
-        self.builtin_operators[OpCode::Trim as usize] = Some(Box::new(TrimOperator));
-        self.builtin_operators[OpCode::Split as usize] = Some(Box::new(SplitOperator));
-
-        // Datetime operators
-        self.builtin_operators[OpCode::Datetime as usize] = Some(Box::new(DatetimeOperator));
-        self.builtin_operators[OpCode::Timestamp as usize] = Some(Box::new(TimestampOperator));
-        self.builtin_operators[OpCode::ParseDate as usize] = Some(Box::new(ParseDateOperator));
-        self.builtin_operators[OpCode::FormatDate as usize] = Some(Box::new(FormatDateOperator));
-        self.builtin_operators[OpCode::DateDiff as usize] = Some(Box::new(DateDiffOperator));
-        self.builtin_operators[OpCode::Now as usize] = Some(Box::new(NowOperator));
-
-        // Math operators
-        self.builtin_operators[OpCode::Abs as usize] = Some(Box::new(AbsOperator));
-        self.builtin_operators[OpCode::Ceil as usize] = Some(Box::new(CeilOperator));
-        self.builtin_operators[OpCode::Floor as usize] = Some(Box::new(FloorOperator));
-
-        // Utility operators
-        self.builtin_operators[OpCode::Preserve as usize] = Some(Box::new(PreserveOperator));
     }
 
     /// Register a custom operator
@@ -181,7 +75,7 @@ impl DataLogic {
         self.evaluate(&compiled, data_arc)
     }
 
-    /// Evaluate a compiled node
+    /// Evaluate a compiled node using OpCode dispatch
     pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
         match node {
             CompiledNode::Value { value, .. } => Ok(value.clone()),
@@ -195,42 +89,30 @@ impl DataLogic {
             }
 
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                // Direct array access - super fast!
-                let operator = self.builtin_operators[*opcode as usize]
-                    .as_ref()
-                    .expect("Built-in operator not found");
-
-                // Prepare arguments as Values - don't evaluate yet
+                // Direct OpCode dispatch
                 let arg_values: Vec<Value> =
                     args.iter().map(|arg| self.node_to_value(arg)).collect();
-
-                // Create an evaluator wrapper for this engine with cached compiled nodes
                 let evaluator = FastEvaluator::new(self, args);
 
-                // Execute the operator
-                operator.evaluate(&arg_values, context, &evaluator)
+                // Direct call to OpCode's evaluate method
+                opcode.evaluate_direct(&arg_values, context, &evaluator)
             }
 
             CompiledNode::CustomOperator { name, args, .. } => {
-                // HashMap lookup only for custom operators
+                // Custom operators still use dynamic dispatch
                 let operator = self
                     .custom_operators
                     .get(name)
                     .ok_or_else(|| Error::InvalidOperator(name.clone()))?;
 
-                // Prepare arguments as Values - don't evaluate yet
                 let arg_values: Vec<Value> =
                     args.iter().map(|arg| self.node_to_value(arg)).collect();
-
-                // Create an evaluator wrapper for this engine with cached compiled nodes
                 let evaluator = FastEvaluator::new(self, args);
 
-                // Execute the operator
                 operator.evaluate(&arg_values, context, &evaluator)
             }
 
             CompiledNode::StructuredObject { fields, .. } => {
-                // Evaluate each field independently and build the result object
                 let mut result = serde_json::Map::new();
                 for (key, node) in fields {
                     let value = self.evaluate_node(node, context)?;

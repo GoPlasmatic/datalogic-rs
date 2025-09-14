@@ -2,46 +2,72 @@ use serde_json::Value;
 
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, loose_equals_with_error, strict_equals};
-use crate::{ContextStack, Evaluator, Operator, Result};
+use crate::{ContextStack, Evaluator, Result};
 
-/// Equals operator (== for loose, === for strict)
-pub struct EqualsOperator {
-    pub strict: bool,
+/// Equals operator function (== for loose equality)
+#[inline]
+pub fn evaluate_equals(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
+    }
+
+    // For chained equality (3+ arguments), check if all are equal
+    let first = evaluator.evaluate(&args[0], context)?;
+
+    for item in args.iter().skip(1) {
+        let current = evaluator.evaluate(item, context)?;
+
+        // Compare first == current (loose equality)
+        let result = compare_equals(&first, &current, false)?;
+
+        if !result {
+            // Short-circuit on first inequality
+            return Ok(Value::Bool(false));
+        }
+    }
+
+    Ok(Value::Bool(true))
 }
 
-impl Operator for EqualsOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        if args.len() < 2 {
-            return Err(crate::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
-
-        // For chained equality (3+ arguments), check if all are equal
-        let first = evaluator.evaluate(&args[0], context)?;
-
-        for item in args.iter().skip(1) {
-            let current = evaluator.evaluate(item, context)?;
-
-            // Compare first == current
-            let result = compare_equals(&first, &current, self.strict)?;
-
-            if !result {
-                // Short-circuit on first inequality
-                return Ok(Value::Bool(false));
-            }
-        }
-
-        Ok(Value::Bool(true))
+/// Strict equals operator function (=== for strict equality)
+#[inline]
+pub fn evaluate_strict_equals(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
     }
+
+    // For chained equality (3+ arguments), check if all are equal
+    let first = evaluator.evaluate(&args[0], context)?;
+
+    for item in args.iter().skip(1) {
+        let current = evaluator.evaluate(item, context)?;
+
+        // Compare first === current (strict equality)
+        let result = compare_equals(&first, &current, true)?;
+
+        if !result {
+            // Short-circuit on first inequality
+            return Ok(Value::Bool(false));
+        }
+    }
+
+    Ok(Value::Bool(true))
 }
 
 // Helper function for == and === comparison
+#[inline]
 fn compare_equals(left: &Value, right: &Value, strict: bool) -> Result<bool> {
     // Handle datetime comparisons - both objects and strings
     let left_dt = if is_datetime_object(left) {
@@ -92,93 +118,122 @@ fn compare_equals(left: &Value, right: &Value, strict: bool) -> Result<bool> {
     }
 }
 
-/// Not equals operator (!= for loose, !== for strict)
-pub struct NotEqualsOperator {
-    pub strict: bool,
+/// Not equals operator function (!= for loose inequality)
+#[inline]
+pub fn evaluate_not_equals(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
+    }
+
+    // != returns true if arguments are not all equal
+    // It's the logical negation of ==
+    // But we need to handle lazy evaluation differently
+
+    // Evaluate first two arguments
+    let first = evaluator.evaluate(&args[0], context)?;
+    let second = evaluator.evaluate(&args[1], context)?;
+
+    // Compare them (loose equality)
+    let equals = compare_equals(&first, &second, false)?;
+
+    if !equals {
+        // Found inequality, return true immediately (lazy)
+        return Ok(Value::Bool(true));
+    }
+
+    // If we only have 2 args and they're equal, return false
+    if args.len() == 2 {
+        return Ok(Value::Bool(false));
+    }
+
+    // For 3+ args, since first two are equal, the result depends on whether
+    // all remaining args also equal the first. But JSONLogic != seems to only
+    // check the first two operands when they're equal (based on test case)
+    // This achieves lazy evaluation.
+    Ok(Value::Bool(false))
 }
+/// Strict not equals operator function (!== for strict inequality)
+#[inline]
+pub fn evaluate_strict_not_equals(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
+    }
 
-impl Operator for NotEqualsOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        if args.len() < 2 {
-            return Err(crate::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
+    // !== returns true if arguments are not all equal
+    // It's the logical negation of ===
+    // But we need to handle lazy evaluation differently
 
-        // != returns true if arguments are not all equal
-        // It's the logical negation of ==
-        // But we need to handle lazy evaluation differently
+    // Evaluate first two arguments
+    let first = evaluator.evaluate(&args[0], context)?;
+    let second = evaluator.evaluate(&args[1], context)?;
 
-        // Evaluate first two arguments
-        let first = evaluator.evaluate(&args[0], context)?;
-        let second = evaluator.evaluate(&args[1], context)?;
+    // Compare them (strict equality)
+    let equals = compare_equals(&first, &second, true)?;
 
-        // Compare them
-        let equals = compare_equals(&first, &second, self.strict)?;
+    if !equals {
+        // Found inequality, return true immediately (lazy)
+        return Ok(Value::Bool(true));
+    }
 
-        if !equals {
-            // Found inequality, return true immediately (lazy)
-            return Ok(Value::Bool(true));
-        }
+    // If we only have 2 args and they're equal, return false
+    if args.len() == 2 {
+        return Ok(Value::Bool(false));
+    }
 
-        // If we only have 2 args and they're equal, return false
-        if args.len() == 2 {
+    // For 3+ args, since first two are equal, the result depends on whether
+    // all remaining args also equal the first. But JSONLogic !== seems to only
+    // check the first two operands when they're equal (based on test case)
+    // This achieves lazy evaluation.
+    Ok(Value::Bool(false))
+}
+/// Greater than operator function (>)
+#[inline]
+pub fn evaluate_greater_than(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    // Require at least 2 arguments
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
+    }
+
+    // For chained comparisons (3+ arguments), check a > b > c > ...
+    // This should be evaluated lazily - stop at first false
+    let mut prev = evaluator.evaluate(&args[0], context)?;
+
+    for item in args.iter().skip(1) {
+        let curr = evaluator.evaluate(item, context)?;
+
+        // Compare prev > curr
+        let result = compare_greater_than(&prev, &curr)?;
+
+        if !result {
+            // Short-circuit on first false
             return Ok(Value::Bool(false));
         }
 
-        // For 3+ args, since first two are equal, the result depends on whether
-        // all remaining args also equal the first. But JSONLogic != seems to only
-        // check the first two operands when they're equal (based on test case)
-        // This achieves lazy evaluation.
-        Ok(Value::Bool(false))
+        prev = curr;
     }
+
+    Ok(Value::Bool(true))
 }
-
-/// Greater than operator (>)
-pub struct GreaterThanOperator;
-
-impl Operator for GreaterThanOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Require at least 2 arguments
-        if args.len() < 2 {
-            return Err(crate::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
-
-        // For chained comparisons (3+ arguments), check a > b > c > ...
-        // This should be evaluated lazily - stop at first false
-        let mut prev = evaluator.evaluate(&args[0], context)?;
-
-        for item in args.iter().skip(1) {
-            let curr = evaluator.evaluate(item, context)?;
-
-            // Compare prev > curr
-            let result = compare_greater_than(&prev, &curr)?;
-
-            if !result {
-                // Short-circuit on first false
-                return Ok(Value::Bool(false));
-            }
-
-            prev = curr;
-        }
-
-        Ok(Value::Bool(true))
-    }
-}
-
 // Helper function for > comparison
+#[inline]
 fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
@@ -252,46 +307,42 @@ fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
     Ok(false)
 }
 
-/// Greater than or equal operator (>=)
-pub struct GreaterThanEqualOperator;
-
-impl Operator for GreaterThanEqualOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Require at least 2 arguments
-        if args.len() < 2 {
-            return Err(crate::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
-
-        // For chained comparisons (3+ arguments), check a >= b >= c >= ...
-        // This should be evaluated lazily - stop at first false
-        let mut prev = evaluator.evaluate(&args[0], context)?;
-
-        for item in args.iter().skip(1) {
-            let curr = evaluator.evaluate(item, context)?;
-
-            // Compare prev >= curr
-            let result = compare_greater_than_equal(&prev, &curr)?;
-
-            if !result {
-                // Short-circuit on first false
-                return Ok(Value::Bool(false));
-            }
-
-            prev = curr;
-        }
-
-        Ok(Value::Bool(true))
+/// Greater than or equal operator function (>=)
+#[inline]
+pub fn evaluate_greater_than_equal(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    // Require at least 2 arguments
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
     }
-}
 
+    // For chained comparisons (3+ arguments), check a >= b >= c >= ...
+    // This should be evaluated lazily - stop at first false
+    let mut prev = evaluator.evaluate(&args[0], context)?;
+
+    for item in args.iter().skip(1) {
+        let curr = evaluator.evaluate(item, context)?;
+
+        // Compare prev >= curr
+        let result = compare_greater_than_equal(&prev, &curr)?;
+
+        if !result {
+            // Short-circuit on first false
+            return Ok(Value::Bool(false));
+        }
+
+        prev = curr;
+    }
+
+    Ok(Value::Bool(true))
+}
 // Helper function for >= comparison
+#[inline]
 fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
@@ -365,46 +416,42 @@ fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
     Ok(false)
 }
 
-/// Less than operator (<) - supports variadic arguments
-pub struct LessThanOperator;
-
-impl Operator for LessThanOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Require at least 2 arguments
-        if args.len() < 2 {
-            return Err(crate::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
-
-        // For chained comparisons (3+ arguments), check a < b < c < ...
-        // This should be evaluated lazily - stop at first false
-        let mut prev = evaluator.evaluate(&args[0], context)?;
-
-        for item in args.iter().skip(1) {
-            let current = evaluator.evaluate(item, context)?;
-
-            // Compare prev < current
-            let result = compare_less_than(&prev, &current)?;
-
-            if !result {
-                // Short-circuit on first false
-                return Ok(Value::Bool(false));
-            }
-
-            prev = current;
-        }
-
-        Ok(Value::Bool(true))
+/// Less than operator function (<) - supports variadic arguments
+#[inline]
+pub fn evaluate_less_than(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    // Require at least 2 arguments
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
     }
-}
 
+    // For chained comparisons (3+ arguments), check a < b < c < ...
+    // This should be evaluated lazily - stop at first false
+    let mut prev = evaluator.evaluate(&args[0], context)?;
+
+    for item in args.iter().skip(1) {
+        let current = evaluator.evaluate(item, context)?;
+
+        // Compare prev < current
+        let result = compare_less_than(&prev, &current)?;
+
+        if !result {
+            // Short-circuit on first false
+            return Ok(Value::Bool(false));
+        }
+
+        prev = current;
+    }
+
+    Ok(Value::Bool(true))
+}
 // Helper function for < comparison
+#[inline]
 fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
@@ -478,46 +525,43 @@ fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
     Ok(false)
 }
 
-/// Less than or equal operator (<=) - supports variadic arguments
-pub struct LessThanEqualOperator;
-
-impl Operator for LessThanEqualOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Require at least 2 arguments
-        if args.len() < 2 {
-            return Err(crate::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
-
-        // For chained comparisons (3+ arguments), check a <= b <= c <= ...
-        // This should be evaluated lazily - stop at first false
-        let mut prev = evaluator.evaluate(&args[0], context)?;
-
-        for item in args.iter().skip(1) {
-            let current = evaluator.evaluate(item, context)?;
-
-            // Compare prev <= current
-            let result = compare_less_than_equal(&prev, &current)?;
-
-            if !result {
-                // Short-circuit on first false
-                return Ok(Value::Bool(false));
-            }
-
-            prev = current;
-        }
-
-        Ok(Value::Bool(true))
+/// Less than or equal operator function (<=) - supports variadic arguments
+#[inline]
+pub fn evaluate_less_than_equal(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    // Require at least 2 arguments
+    if args.len() < 2 {
+        return Err(crate::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
     }
+
+    // For chained comparisons (3+ arguments), check a <= b <= c <= ...
+    // This should be evaluated lazily - stop at first false
+    let mut prev = evaluator.evaluate(&args[0], context)?;
+
+    for item in args.iter().skip(1) {
+        let current = evaluator.evaluate(item, context)?;
+
+        // Compare prev <= current
+        let result = compare_less_than_equal(&prev, &current)?;
+
+        if !result {
+            // Short-circuit on first false
+            return Ok(Value::Bool(false));
+        }
+
+        prev = current;
+    }
+
+    Ok(Value::Bool(true))
 }
 
 // Helper function for <= comparison
+#[inline]
 fn compare_less_than_equal(left: &Value, right: &Value) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {

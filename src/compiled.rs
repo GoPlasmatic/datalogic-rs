@@ -198,7 +198,7 @@ impl CompiledLogic {
                 let (op_name, args_value) = obj.iter().next().unwrap();
 
                 // Try to parse as built-in operator first
-                if let Some(opcode) = OpCode::from_str(op_name) {
+                if let Ok(opcode) = op_name.parse::<OpCode>() {
                     // Check if this operator requires array arguments
                     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
 

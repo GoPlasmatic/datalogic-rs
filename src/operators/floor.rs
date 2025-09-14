@@ -3,12 +3,23 @@ use serde_json::Value;
 use crate::{ContextStack, Error, Evaluator, Operator, Result};
 
 // Strict number extraction - only accepts actual numbers or numeric strings
+#[inline]
 fn get_number_strict(value: &Value) -> Option<f64> {
     match value {
         Value::Number(n) => n.as_f64(),
         Value::String(s) => s.parse().ok(),
         _ => None,
     }
+}
+
+/// Floor operator function (floor)
+#[inline]
+pub fn evaluate_floor(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    FloorOperator.evaluate(args, context, evaluator)
 }
 
 /// Floor operator (floor)

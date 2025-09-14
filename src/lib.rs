@@ -11,6 +11,7 @@ pub use compiled::{CompiledLogic, CompiledNode};
 pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
 pub use error::Error;
+pub use opcode::OpCode;
 
 use serde_json::Value;
 

@@ -1,107 +1,95 @@
 use serde_json::Value;
 
 use crate::value_helpers::is_truthy;
-use crate::{ContextStack, Evaluator, Operator, Result};
+use crate::{ContextStack, Evaluator, Result};
 
-/// If operator - supports if/then/else and if/elseif/else chains
-pub struct IfOperator;
-
-impl Operator for IfOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Check for invalid arguments marker
-        if args.len() == 1
-            && let Value::Object(obj) = &args[0]
-            && obj.contains_key("__invalid_args__")
-        {
-            return Err(crate::error::Error::InvalidArguments(
-                "Invalid Arguments".to_string(),
-            ));
-        }
-
-        if args.is_empty() {
-            return Ok(Value::Null);
-        }
-
-        // Support variadic if/elseif/else chains
-        let mut i = 0;
-        while i < args.len() {
-            if i == args.len() - 1 {
-                // Final else clause
-                return evaluator.evaluate(&args[i], context);
-            }
-
-            // Evaluate condition
-            let condition = evaluator.evaluate(&args[i], context)?;
-            if is_truthy(&condition) {
-                // Evaluate then branch
-                if i + 1 < args.len() {
-                    return evaluator.evaluate(&args[i + 1], context);
-                } else {
-                    return Ok(condition);
-                }
-            }
-
-            // Move to next if/elseif pair
-            i += 2;
-        }
-
-        Ok(Value::Null)
+/// If operator function - supports if/then/else and if/elseif/else chains
+#[inline]
+pub fn evaluate_if(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    // Check for invalid arguments marker
+    if args.len() == 1
+        && let Value::Object(obj) = &args[0]
+        && obj.contains_key("__invalid_args__")
+    {
+        return Err(crate::error::Error::InvalidArguments(
+            "Invalid Arguments".to_string(),
+        ));
     }
-}
 
-/// Ternary operator (?:)
-pub struct TernaryOperator;
+    if args.is_empty() {
+        return Ok(Value::Null);
+    }
 
-impl Operator for TernaryOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        if args.len() < 3 {
-            return Ok(Value::Null);
+    // Support variadic if/elseif/else chains
+    let mut i = 0;
+    while i < args.len() {
+        if i == args.len() - 1 {
+            // Final else clause
+            return evaluator.evaluate(&args[i], context);
         }
 
-        let condition = evaluator.evaluate(&args[0], context)?;
-
+        // Evaluate condition
+        let condition = evaluator.evaluate(&args[i], context)?;
         if is_truthy(&condition) {
-            evaluator.evaluate(&args[1], context)
-        } else {
-            evaluator.evaluate(&args[2], context)
-        }
-    }
-}
-
-/// Coalesce operator (??) - returns first non-null value
-pub struct CoalesceOperator;
-
-impl Operator for CoalesceOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Empty args returns null
-        if args.is_empty() {
-            return Ok(Value::Null);
-        }
-
-        // Return the first non-null value
-        for arg in args {
-            let value = evaluator.evaluate(arg, context)?;
-            if value != Value::Null {
-                return Ok(value);
+            // Evaluate then branch
+            if i + 1 < args.len() {
+                return evaluator.evaluate(&args[i + 1], context);
+            } else {
+                return Ok(condition);
             }
         }
 
-        // All values were null
-        Ok(Value::Null)
+        // Move to next if/elseif pair
+        i += 2;
     }
+
+    Ok(Value::Null)
+}
+
+/// Ternary operator function (?:)
+#[inline]
+pub fn evaluate_ternary(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    if args.len() < 3 {
+        return Ok(Value::Null);
+    }
+
+    let condition = evaluator.evaluate(&args[0], context)?;
+
+    if is_truthy(&condition) {
+        evaluator.evaluate(&args[1], context)
+    } else {
+        evaluator.evaluate(&args[2], context)
+    }
+}
+
+/// Coalesce operator function (??) - returns first non-null value
+#[inline]
+pub fn evaluate_coalesce(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    // Empty args returns null
+    if args.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    // Return the first non-null value
+    for arg in args {
+        let value = evaluator.evaluate(arg, context)?;
+        if value != Value::Null {
+            return Ok(value);
+        }
+    }
+
+    // All values were null
+    Ok(Value::Null)
 }

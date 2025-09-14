@@ -5,7 +5,92 @@ use std::collections::HashMap;
 
 use crate::context::{index_key, key_key};
 use crate::value_helpers::is_truthy;
-use crate::{ContextStack, Error, Evaluator, Operator, Result};
+use crate::{ContextStack, Error, Evaluator, Result};
+
+// Inline function wrappers for array operators
+#[inline]
+pub fn evaluate_merge(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    MergeOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_map(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    MapOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_filter(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    FilterOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_reduce(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    ReduceOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_all(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    AllOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_some(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    SomeOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_none(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    NoneOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_sort(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    SortOperator.evaluate(args, context, evaluator)
+}
+
+#[inline]
+pub fn evaluate_slice(
+    args: &[Value],
+    context: &mut ContextStack,
+    evaluator: &dyn Evaluator,
+) -> Result<Value> {
+    SliceOperator.evaluate(args, context, evaluator)
+}
+
+// Keep the original implementations with Operator trait
+use crate::Operator;
 
 /// Merge operator - merges arrays
 pub struct MergeOperator;
