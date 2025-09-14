@@ -1,3 +1,4 @@
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -183,17 +184,17 @@ impl DataLogic {
     /// Evaluate a compiled node
     pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
         match node {
-            CompiledNode::Value(val) => Ok(val.clone()),
+            CompiledNode::Value { value, .. } => Ok(value.clone()),
 
-            CompiledNode::Array(nodes) => {
+            CompiledNode::Array { nodes, .. } => {
                 let mut results = Vec::with_capacity(nodes.len());
-                for node in nodes {
+                for node in nodes.iter() {
                     results.push(self.evaluate_node(node, context)?);
                 }
                 Ok(Value::Array(results))
             }
 
-            CompiledNode::BuiltinOperator { opcode, args } => {
+            CompiledNode::BuiltinOperator { opcode, args, .. } => {
                 // Direct array access - super fast!
                 let operator = self.builtin_operators[*opcode as usize]
                     .as_ref()
@@ -204,16 +205,13 @@ impl DataLogic {
                     args.iter().map(|arg| self.node_to_value(arg)).collect();
 
                 // Create an evaluator wrapper for this engine with cached compiled nodes
-                let evaluator = FastEvaluator {
-                    engine: self,
-                    nodes: args,
-                };
+                let evaluator = FastEvaluator::new(self, args);
 
                 // Execute the operator
                 operator.evaluate(&arg_values, context, &evaluator)
             }
 
-            CompiledNode::CustomOperator { name, args } => {
+            CompiledNode::CustomOperator { name, args, .. } => {
                 // HashMap lookup only for custom operators
                 let operator = self
                     .custom_operators
@@ -225,16 +223,13 @@ impl DataLogic {
                     args.iter().map(|arg| self.node_to_value(arg)).collect();
 
                 // Create an evaluator wrapper for this engine with cached compiled nodes
-                let evaluator = FastEvaluator {
-                    engine: self,
-                    nodes: args,
-                };
+                let evaluator = FastEvaluator::new(self, args);
 
                 // Execute the operator
                 operator.evaluate(&arg_values, context, &evaluator)
             }
 
-            CompiledNode::StructuredObject(fields) => {
+            CompiledNode::StructuredObject { fields, .. } => {
                 // Evaluate each field independently and build the result object
                 let mut result = serde_json::Map::new();
                 for (key, node) in fields {
@@ -255,9 +250,11 @@ impl DataLogic {
 /// Convert a compiled node back to a JSON value (standalone helper)
 fn node_to_value_impl(node: &CompiledNode) -> Value {
     match node {
-        CompiledNode::Value(val) => val.clone(),
-        CompiledNode::Array(nodes) => Value::Array(nodes.iter().map(node_to_value_impl).collect()),
-        CompiledNode::BuiltinOperator { opcode, args } => {
+        CompiledNode::Value { value, .. } => value.clone(),
+        CompiledNode::Array { nodes, .. } => {
+            Value::Array(nodes.iter().map(node_to_value_impl).collect())
+        }
+        CompiledNode::BuiltinOperator { opcode, args, .. } => {
             let mut obj = serde_json::Map::new();
             let args_value = if args.len() == 1 {
                 node_to_value_impl(&args[0])
@@ -267,7 +264,7 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
             obj.insert(opcode.as_str().to_string(), args_value);
             Value::Object(obj)
         }
-        CompiledNode::CustomOperator { name, args } => {
+        CompiledNode::CustomOperator { name, args, .. } => {
             let mut obj = serde_json::Map::new();
             let args_value = if args.len() == 1 {
                 node_to_value_impl(&args[0])
@@ -277,7 +274,7 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
             obj.insert(name.clone(), args_value);
             Value::Object(obj)
         }
-        CompiledNode::StructuredObject(fields) => {
+        CompiledNode::StructuredObject { fields, .. } => {
             let mut obj = serde_json::Map::new();
             for (key, node) in fields {
                 obj.insert(key.clone(), node_to_value_impl(node));
@@ -291,6 +288,23 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
 struct FastEvaluator<'e> {
     engine: &'e DataLogic,
     nodes: &'e [CompiledNode],
+    // Hash map for O(1) node lookup
+    node_map: FxHashMap<u64, usize>,
+}
+
+impl<'e> FastEvaluator<'e> {
+    /// Create a new FastEvaluator with precomputed hash map
+    fn new(engine: &'e DataLogic, nodes: &'e [CompiledNode]) -> Self {
+        let mut node_map = FxHashMap::default();
+        for (idx, node) in nodes.iter().enumerate() {
+            node_map.insert(node.hash(), idx);
+        }
+        Self {
+            engine,
+            nodes,
+            node_map,
+        }
+    }
 }
 
 impl Evaluator for FastEvaluator<'_> {
@@ -303,42 +317,39 @@ impl Evaluator for FastEvaluator<'_> {
             _ => {}
         }
 
-        // Try to find the corresponding pre-compiled node
-        // This avoids recompilation of operator arguments
-        for node in self.nodes.iter() {
-            // Quick check if this could be the right node
-            match (node, logic) {
-                (CompiledNode::Value(v), val) if v == val => {
-                    return self.engine.evaluate_node(node, context);
-                }
+        // Use hash-based lookup for O(1) performance
+        let logic_hash = crate::compiled::hash_value(logic);
+
+        // Check if we have a pre-compiled node with this hash
+        if let Some(&node_idx) = self.node_map.get(&logic_hash) {
+            let node = &self.nodes[node_idx];
+
+            // Verify the node actually matches (in case of hash collision)
+            // This is a quick structural check, not a full reconstruction
+            let matches = match (node, logic) {
+                (CompiledNode::Value { value, .. }, val) => value == val,
                 (CompiledNode::BuiltinOperator { .. }, Value::Object(obj)) if obj.len() == 1 => {
-                    // Check if this operator matches
+                    // For rare hash collisions, do full check
                     let node_val = node_to_value_impl(node);
-                    if &node_val == logic {
-                        return self.engine.evaluate_node(node, context);
-                    }
+                    &node_val == logic
                 }
                 (CompiledNode::CustomOperator { .. }, Value::Object(obj)) if obj.len() == 1 => {
-                    // Check if this operator matches
                     let node_val = node_to_value_impl(node);
-                    if &node_val == logic {
-                        return self.engine.evaluate_node(node, context);
-                    }
+                    &node_val == logic
                 }
-                (CompiledNode::StructuredObject(_), Value::Object(_)) => {
-                    // Check if this structured object matches
+                (CompiledNode::StructuredObject { .. }, Value::Object(_)) => {
                     let node_val = node_to_value_impl(node);
-                    if &node_val == logic {
-                        return self.engine.evaluate_node(node, context);
-                    }
+                    &node_val == logic
                 }
-                (CompiledNode::Array(_), Value::Array(_)) => {
+                (CompiledNode::Array { .. }, Value::Array(_)) => {
                     let node_val = node_to_value_impl(node);
-                    if &node_val == logic {
-                        return self.engine.evaluate_node(node, context);
-                    }
+                    &node_val == logic
                 }
-                _ => {}
+                _ => false,
+            };
+
+            if matches {
+                return self.engine.evaluate_node(node, context);
             }
         }
 
