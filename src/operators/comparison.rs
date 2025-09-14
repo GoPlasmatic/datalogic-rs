@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::constants::INVALID_ARGS;
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, loose_equals_with_error, strict_equals};
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
@@ -12,9 +13,7 @@ pub fn evaluate_equals(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // For chained equality (3+ arguments), check if all are equal
@@ -43,9 +42,7 @@ pub fn evaluate_strict_equals(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // For chained equality (3+ arguments), check if all are equal
@@ -126,9 +123,7 @@ pub fn evaluate_not_equals(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // != returns true if arguments are not all equal
@@ -166,9 +161,7 @@ pub fn evaluate_strict_not_equals(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // !== returns true if arguments are not all equal
@@ -207,9 +200,7 @@ pub fn evaluate_greater_than(
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // For chained comparisons (3+ arguments), check a > b > c > ...
@@ -316,9 +307,7 @@ pub fn evaluate_greater_than_equal(
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // For chained comparisons (3+ arguments), check a >= b >= c >= ...
@@ -425,9 +414,7 @@ pub fn evaluate_less_than(
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // For chained comparisons (3+ arguments), check a < b < c < ...
@@ -534,9 +521,7 @@ pub fn evaluate_less_than_equal(
 ) -> Result<Value> {
     // Require at least 2 arguments
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // For chained comparisons (3+ arguments), check a <= b <= c <= ...

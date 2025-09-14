@@ -1,5 +1,5 @@
-use rustc_hash::FxHashMap;
 use serde_json::Value;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -81,11 +81,12 @@ impl DataLogic {
             CompiledNode::Value { value, .. } => Ok(value.clone()),
 
             CompiledNode::Array { nodes, .. } => {
-                let mut results = Vec::with_capacity(nodes.len());
+                // Use SmallVec for common small array sizes to avoid heap allocation
+                let mut results: SmallVec<[Value; 4]> = SmallVec::with_capacity(nodes.len());
                 for node in nodes.iter() {
                     results.push(self.evaluate_node(node, context)?);
                 }
-                Ok(Value::Array(results))
+                Ok(Value::Array(results.into_vec()))
             }
 
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
@@ -102,7 +103,7 @@ impl DataLogic {
 
                 let arg_values: Vec<Value> =
                     args.iter().map(|arg| self.node_to_value(arg)).collect();
-                let evaluator = FastEvaluator::new(self, args);
+                let evaluator = SimpleEvaluator::new(self);
 
                 operator.evaluate(&arg_values, context, &evaluator)
             }
@@ -138,7 +139,7 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
             } else {
                 Value::Array(args.iter().map(node_to_value_impl).collect())
             };
-            obj.insert(opcode.as_str().to_string(), args_value);
+            obj.insert(opcode.as_str().into(), args_value);
             Value::Object(obj)
         }
         CompiledNode::CustomOperator { name, args, .. } => {
@@ -161,30 +162,19 @@ fn node_to_value_impl(node: &CompiledNode) -> Value {
     }
 }
 
-/// Fast evaluator that avoids recompilation
-struct FastEvaluator<'e> {
+/// Simple evaluator that compiles and evaluates without caching
+struct SimpleEvaluator<'e> {
     engine: &'e DataLogic,
-    nodes: &'e [CompiledNode],
-    // Hash map for O(1) node lookup
-    node_map: FxHashMap<u64, usize>,
 }
 
-impl<'e> FastEvaluator<'e> {
-    /// Create a new FastEvaluator with precomputed hash map
-    fn new(engine: &'e DataLogic, nodes: &'e [CompiledNode]) -> Self {
-        let mut node_map = FxHashMap::default();
-        for (idx, node) in nodes.iter().enumerate() {
-            node_map.insert(node.hash(), idx);
-        }
-        Self {
-            engine,
-            nodes,
-            node_map,
-        }
+impl<'e> SimpleEvaluator<'e> {
+    /// Create a new SimpleEvaluator
+    fn new(engine: &'e DataLogic) -> Self {
+        Self { engine }
     }
 }
 
-impl Evaluator for FastEvaluator<'_> {
+impl Evaluator for SimpleEvaluator<'_> {
     fn evaluate(&self, logic: &Value, context: &mut ContextStack) -> Result<Value> {
         // Fast path: check if this is a simple value first
         match logic {
@@ -194,43 +184,7 @@ impl Evaluator for FastEvaluator<'_> {
             _ => {}
         }
 
-        // Use hash-based lookup for O(1) performance
-        let logic_hash = crate::compiled::hash_value(logic);
-
-        // Check if we have a pre-compiled node with this hash
-        if let Some(&node_idx) = self.node_map.get(&logic_hash) {
-            let node = &self.nodes[node_idx];
-
-            // Verify the node actually matches (in case of hash collision)
-            // This is a quick structural check, not a full reconstruction
-            let matches = match (node, logic) {
-                (CompiledNode::Value { value, .. }, val) => value == val,
-                (CompiledNode::BuiltinOperator { .. }, Value::Object(obj)) if obj.len() == 1 => {
-                    // For rare hash collisions, do full check
-                    let node_val = node_to_value_impl(node);
-                    &node_val == logic
-                }
-                (CompiledNode::CustomOperator { .. }, Value::Object(obj)) if obj.len() == 1 => {
-                    let node_val = node_to_value_impl(node);
-                    &node_val == logic
-                }
-                (CompiledNode::StructuredObject { .. }, Value::Object(_)) => {
-                    let node_val = node_to_value_impl(node);
-                    &node_val == logic
-                }
-                (CompiledNode::Array { .. }, Value::Array(_)) => {
-                    let node_val = node_to_value_impl(node);
-                    &node_val == logic
-                }
-                _ => false,
-            };
-
-            if matches {
-                return self.engine.evaluate_node(node, context);
-            }
-        }
-
-        // Fallback: compile and evaluate with proper preserve_structure setting
+        // Compile and evaluate
         match logic {
             Value::Object(obj) if obj.len() == 1 => {
                 // Use compile_with_static_eval to respect preserve_structure flag

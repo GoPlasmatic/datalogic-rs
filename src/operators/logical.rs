@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::constants::INVALID_ARGS;
 use crate::value_helpers::is_truthy;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -52,9 +53,7 @@ pub fn evaluate_and(
         && let Some(obj) = value.as_object()
         && obj.contains_key("__invalid_args__")
     {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let mut last_value = Value::Bool(true);
@@ -87,9 +86,7 @@ pub fn evaluate_or(
         && let Some(obj) = value.as_object()
         && obj.contains_key("__invalid_args__")
     {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let mut last_value = Value::Bool(false);

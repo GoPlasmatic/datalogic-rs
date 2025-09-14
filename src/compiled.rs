@@ -1,144 +1,35 @@
 use crate::{ContextStack, DataLogic, Result, opcode::OpCode};
-use rustc_hash::FxHasher;
 use serde_json::{Value, json};
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// Compiled node representing a single operation or value
 #[derive(Debug, Clone)]
 pub enum CompiledNode {
-    /// Static value with precomputed hash
-    Value { value: Value, hash: u64 },
+    /// Static value
+    Value { value: Value },
 
-    /// Array of nodes with precomputed hash
-    Array {
-        nodes: Box<[CompiledNode]>,
-        hash: u64,
-    },
+    /// Array of nodes
+    Array { nodes: Box<[CompiledNode]> },
 
     /// Built-in operator with OpCode for fast lookup
     BuiltinOperator {
         opcode: OpCode,
         args: Vec<CompiledNode>,
-        hash: u64,
     },
 
     /// Custom operator with string name
     CustomOperator {
         name: String,
         args: Vec<CompiledNode>,
-        hash: u64,
     },
 
     /// Structured object (for preserve_structure mode)
-    StructuredObject {
-        fields: Vec<(String, CompiledNode)>,
-        hash: u64,
-    },
+    StructuredObject { fields: Vec<(String, CompiledNode)> },
 }
 
-impl CompiledNode {
-    /// Get the precomputed hash of this node
-    pub fn hash(&self) -> u64 {
-        match self {
-            CompiledNode::Value { hash, .. } => *hash,
-            CompiledNode::Array { hash, .. } => *hash,
-            CompiledNode::BuiltinOperator { hash, .. } => *hash,
-            CompiledNode::CustomOperator { hash, .. } => *hash,
-            CompiledNode::StructuredObject { hash, .. } => *hash,
-        }
-    }
-}
+// Hash methods removed - no longer needed
 
-/// Hash a JSON value for fast comparison
-pub fn hash_value(value: &Value) -> u64 {
-    let mut hasher = FxHasher::default();
-
-    match value {
-        Value::Null => {
-            0u8.hash(&mut hasher);
-        }
-        Value::Bool(b) => {
-            1u8.hash(&mut hasher);
-            b.hash(&mut hasher);
-        }
-        Value::Number(n) => {
-            2u8.hash(&mut hasher);
-            // Hash the string representation to ensure consistency
-            n.to_string().hash(&mut hasher);
-        }
-        Value::String(s) => {
-            3u8.hash(&mut hasher);
-            s.hash(&mut hasher);
-        }
-        Value::Array(arr) => {
-            4u8.hash(&mut hasher);
-            arr.len().hash(&mut hasher);
-            for v in arr {
-                hash_value(v).hash(&mut hasher);
-            }
-        }
-        Value::Object(obj) => {
-            5u8.hash(&mut hasher);
-            obj.len().hash(&mut hasher);
-            // Sort keys to ensure consistent hashing
-            let mut keys: Vec<_> = obj.keys().collect();
-            keys.sort();
-            for key in keys {
-                key.hash(&mut hasher);
-                hash_value(&obj[key]).hash(&mut hasher);
-            }
-        }
-    }
-
-    hasher.finish()
-}
-
-/// Compute hash for a compiled node
-fn compute_node_hash(node: &CompiledNode) -> u64 {
-    let mut hasher = FxHasher::default();
-
-    match node {
-        CompiledNode::Value { value, .. } => {
-            // Hash type discriminant and value
-            0u8.hash(&mut hasher);
-            hash_value(value).hash(&mut hasher);
-        }
-        CompiledNode::Array { nodes, .. } => {
-            1u8.hash(&mut hasher);
-            nodes.len().hash(&mut hasher);
-            for n in nodes.iter() {
-                n.hash().hash(&mut hasher);
-            }
-        }
-        CompiledNode::BuiltinOperator { opcode, args, .. } => {
-            2u8.hash(&mut hasher);
-            (*opcode as u8).hash(&mut hasher);
-            args.len().hash(&mut hasher);
-            for arg in args {
-                arg.hash().hash(&mut hasher);
-            }
-        }
-        CompiledNode::CustomOperator { name, args, .. } => {
-            3u8.hash(&mut hasher);
-            name.hash(&mut hasher);
-            args.len().hash(&mut hasher);
-            for arg in args {
-                arg.hash().hash(&mut hasher);
-            }
-        }
-        CompiledNode::StructuredObject { fields, .. } => {
-            4u8.hash(&mut hasher);
-            fields.len().hash(&mut hasher);
-            for (key, node) in fields {
-                key.hash(&mut hasher);
-                node.hash().hash(&mut hasher);
-            }
-        }
-    }
-
-    hasher.finish()
-}
+// Hash functions removed - no longer needed
 
 /// Compiled logic that can be evaluated multiple times
 #[derive(Debug, Clone)]
@@ -180,12 +71,7 @@ impl CompiledLogic {
                         let compiled_val = Self::compile_node(val, engine, preserve_structure)?;
                         fields.push((key.clone(), compiled_val));
                     }
-                    let mut node = CompiledNode::StructuredObject { fields, hash: 0 };
-                    let hash = compute_node_hash(&node);
-                    if let CompiledNode::StructuredObject { hash: h, .. } = &mut node {
-                        *h = hash;
-                    }
-                    Ok(node)
+                    Ok(CompiledNode::StructuredObject { fields })
                 } else {
                     // Multi-key objects are not valid operators
                     Err(crate::error::Error::InvalidOperator(
@@ -209,22 +95,11 @@ impl CompiledLogic {
                             "__invalid_args__": true,
                             "value": args_value
                         });
-                        let value_hash = hash_value(&invalid_value);
                         let value_node = CompiledNode::Value {
                             value: invalid_value,
-                            hash: value_hash,
                         };
                         let args = vec![value_node];
-                        let mut node = CompiledNode::BuiltinOperator {
-                            opcode,
-                            args,
-                            hash: 0,
-                        };
-                        let hash = compute_node_hash(&node);
-                        if let CompiledNode::BuiltinOperator { hash: h, .. } = &mut node {
-                            *h = hash;
-                        }
-                        return Ok(node);
+                        return Ok(CompiledNode::BuiltinOperator { opcode, args });
                     }
 
                     // Special handling for preserve operator - don't compile its arguments
@@ -233,30 +108,18 @@ impl CompiledLogic {
                         match args_value {
                             Value::Array(arr) => arr
                                 .iter()
-                                .map(|v| {
-                                    let value = v.clone();
-                                    let hash = hash_value(&value);
-                                    CompiledNode::Value { value, hash }
-                                })
+                                .map(|v| CompiledNode::Value { value: v.clone() })
                                 .collect(),
                             _ => {
-                                let value = args_value.clone();
-                                let hash = hash_value(&value);
-                                vec![CompiledNode::Value { value, hash }]
+                                vec![CompiledNode::Value {
+                                    value: args_value.clone(),
+                                }]
                             }
                         }
                     } else {
                         Self::compile_args(args_value, engine, preserve_structure)?
                     };
-                    let mut node = CompiledNode::BuiltinOperator {
-                        opcode,
-                        args,
-                        hash: 0,
-                    };
-                    let hash = compute_node_hash(&node);
-                    if let CompiledNode::BuiltinOperator { hash: h, .. } = &mut node {
-                        *h = hash;
-                    }
+                    let node = CompiledNode::BuiltinOperator { opcode, args };
 
                     // If engine is provided and node is static, evaluate it
                     if let std::option::Option::Some(eng) = engine
@@ -266,8 +129,7 @@ impl CompiledLogic {
                         let mut context = ContextStack::new(Arc::new(Value::Null));
                         match eng.evaluate_node(&node, &mut context) {
                             Ok(value) => {
-                                let hash = hash_value(&value);
-                                return Ok(CompiledNode::Value { value, hash });
+                                return Ok(CompiledNode::Value { value });
                             }
                             // If evaluation fails, keep as operator node
                             Err(_) => return Ok(node),
@@ -279,25 +141,14 @@ impl CompiledLogic {
                     // In preserve_structure mode, treat unknown operators as object keys
                     let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
                     let fields = vec![(op_name.clone(), compiled_val)];
-                    let mut node = CompiledNode::StructuredObject { fields, hash: 0 };
-                    let hash = compute_node_hash(&node);
-                    if let CompiledNode::StructuredObject { hash: h, .. } = &mut node {
-                        *h = hash;
-                    }
-                    Ok(node)
+                    Ok(CompiledNode::StructuredObject { fields })
                 } else {
                     let args = Self::compile_args(args_value, engine, preserve_structure)?;
                     // Fall back to custom operator - don't pre-evaluate custom operators
-                    let mut node = CompiledNode::CustomOperator {
+                    Ok(CompiledNode::CustomOperator {
                         name: op_name.clone(),
                         args,
-                        hash: 0,
-                    };
-                    let hash = compute_node_hash(&node);
-                    if let CompiledNode::CustomOperator { hash: h, .. } = &mut node {
-                        *h = hash;
-                    }
-                    Ok(node)
+                    })
                 }
             }
             Value::Array(arr) => {
@@ -308,14 +159,7 @@ impl CompiledLogic {
                     .collect::<Result<Vec<_>>>()?;
 
                 let nodes_boxed = nodes.into_boxed_slice();
-                let mut node = CompiledNode::Array {
-                    nodes: nodes_boxed,
-                    hash: 0,
-                };
-                let hash = compute_node_hash(&node);
-                if let CompiledNode::Array { hash: h, .. } = &mut node {
-                    *h = hash;
-                }
+                let node = CompiledNode::Array { nodes: nodes_boxed };
 
                 // If engine is provided and array is static, evaluate it
                 if let std::option::Option::Some(eng) = engine
@@ -323,8 +167,7 @@ impl CompiledLogic {
                 {
                     let mut context = ContextStack::new(Arc::new(Value::Null));
                     if let Ok(value) = eng.evaluate_node(&node, &mut context) {
-                        let hash = hash_value(&value);
-                        return Ok(CompiledNode::Value { value, hash });
+                        return Ok(CompiledNode::Value { value });
                     }
                 }
 
@@ -332,9 +175,9 @@ impl CompiledLogic {
             }
             _ => {
                 // Static value
-                let value = value.clone();
-                let hash = hash_value(&value);
-                Ok(CompiledNode::Value { value, hash })
+                Ok(CompiledNode::Value {
+                    value: value.clone(),
+                })
             }
         }
     }

@@ -1,3 +1,4 @@
+use crate::constants::NAN_ERROR;
 use serde_json::Value;
 
 /// Access a path in a JSON value using dot notation
@@ -122,7 +123,7 @@ pub fn loose_equals_with_error(left: &Value, right: &Value) -> crate::Result<boo
                     Ok(n_f == s_f)
                 } else {
                     // Non-numeric string compared with number
-                    Err(crate::Error::InvalidArguments("NaN".to_string()))
+                    Err(crate::Error::InvalidArguments(NAN_ERROR.into()))
                 }
             } else {
                 Ok(false)
@@ -151,7 +152,7 @@ pub fn loose_equals_with_error(left: &Value, right: &Value) -> crate::Result<boo
         | (Value::String(_), Value::Array(_))
         | (Value::Array(_), Value::Bool(_))
         | (Value::Bool(_), Value::Array(_)) => {
-            Err(crate::Error::InvalidArguments("NaN".to_string()))
+            Err(crate::Error::InvalidArguments(NAN_ERROR.into()))
         }
         // Objects compared to primitives
         (Value::Object(_), Value::Number(_))
@@ -160,18 +161,18 @@ pub fn loose_equals_with_error(left: &Value, right: &Value) -> crate::Result<boo
         | (Value::String(_), Value::Object(_))
         | (Value::Object(_), Value::Bool(_))
         | (Value::Bool(_), Value::Object(_)) => {
-            Err(crate::Error::InvalidArguments("NaN".to_string()))
+            Err(crate::Error::InvalidArguments(NAN_ERROR.into()))
         }
         // Arrays/objects to arrays/objects (different instances)
         (Value::Array(a), Value::Array(b)) => {
             if a.len() != b.len() {
                 // Different arrays should throw NaN error
-                Err(crate::Error::InvalidArguments("NaN".to_string()))
+                Err(crate::Error::InvalidArguments(NAN_ERROR.into()))
             } else {
                 // Check if contents are equal
                 for (av, bv) in a.iter().zip(b.iter()) {
                     if av != bv {
-                        return Err(crate::Error::InvalidArguments("NaN".to_string()));
+                        return Err(crate::Error::InvalidArguments(NAN_ERROR.into()));
                     }
                 }
                 Ok(true)

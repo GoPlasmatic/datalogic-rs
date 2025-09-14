@@ -18,7 +18,7 @@ thiserror = "2.0"
 lazy_static = "1.5.0"
 chrono = "0.4.41"
 regex = "1.11.2"
-rustc-hash = "2.1"
+smallvec = "1.13"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
