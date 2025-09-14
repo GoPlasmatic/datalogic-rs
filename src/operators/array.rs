@@ -22,7 +22,13 @@ impl Operator for MergeOperator {
         for arg in args {
             let value = evaluator.evaluate(arg, context)?;
             match value {
-                Value::Array(arr) => result.extend(arr.iter().cloned()),
+                Value::Array(arr) => {
+                    // Filter out null values when extending
+                    result.extend(arr.iter().filter(|v| !v.is_null()).cloned())
+                }
+                Value::Null => {
+                    // Skip null values entirely
+                }
                 v => result.push(v.clone()),
             }
         }
