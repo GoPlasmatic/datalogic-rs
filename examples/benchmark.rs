@@ -1,6 +1,7 @@
-use datalogic_rs::*;
+use datalogic_rs::DataLogic;
 use serde_json::Value;
 use std::fs;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn main() {
@@ -11,10 +12,10 @@ fn main() {
     let json_data: Vec<Value> =
         serde_json::from_str(&response).expect("Failed to parse test cases");
 
-    // Instance for parsing
-    let parse_logic = DataLogic::new();
+    // Create engine instance
+    let engine = DataLogic::new();
 
-    // Extract rules and data (just store the JSON values)
+    // Extract and compile test cases
     let mut test_cases = Vec::new();
     for entry in json_data {
         // Skip string entries (comments)
@@ -25,46 +26,43 @@ fn main() {
         if let Value::Object(test_case) = entry {
             // Get rule and data
             if let Some(logic) = test_case.get("rule") {
-                let data = test_case.get("data").unwrap_or(&Value::Null);
-                let data_value = parse_logic.parse_data(data.to_string().as_str()).unwrap();
+                let data = test_case.get("data").cloned().unwrap_or(Value::Null);
+                let data_arc = Arc::new(data.clone());
 
-                // Use JsonLogicParser to parse the rule
-                let rule_json_str = logic.to_string();
-                if let Ok(rule) = parse_logic.parse_logic(&rule_json_str) {
-                    test_cases.push((rule.clone(), data_value.clone()));
+                // Compile the logic once
+                if let Ok(compiled) = engine.compile(logic) {
+                    test_cases.push((compiled, data_arc));
                 }
             }
         }
     }
 
-    let iterations = 1e5 as u32; // Reduced iterations to avoid OOM
+    let iterations = 100000; // Reasonable number of iterations for benchmarking
     println!(
         "Running {} iterations for {} test cases",
         iterations,
         test_cases.len()
     );
+
+    // Warm-up run
+    for (compiled_logic, data) in &test_cases {
+        let _ = engine.evaluate(compiled_logic, data.clone());
+    }
+
     let start = Instant::now();
 
-    // Separate instance for evaluation
-    let mut eval_logic = DataLogic::new();
-
     // Run benchmark
-    for (rule, data_value) in &test_cases {
+    for (compiled_logic, data) in &test_cases {
         for _ in 0..iterations {
-            let _ = eval_logic.evaluate(rule, data_value);
+            let _ = engine.evaluate(compiled_logic, data.clone());
         }
-        eval_logic.reset_eval_arena();
     }
 
     let duration = start.elapsed();
-    println!("Memory usage: {:?}", eval_logic.eval_arena().memory_usage());
+    let total_operations = iterations * test_cases.len() as u32;
+    let avg_iteration_time = duration / total_operations;
 
-    let avg_iteration_time = duration / (iterations * test_cases.len() as u32);
-
+    println!("\n=== Benchmark Results ===");
     println!("Total time: {duration:?}");
-    println!("Average iteration time: {avg_iteration_time:?}");
-    println!(
-        "Iterations per second: {:.2}",
-        (iterations * test_cases.len() as u32) as f64 / duration.as_secs_f64()
-    );
+    println!("Average operation time: {avg_iteration_time:?}");
 }

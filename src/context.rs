@@ -1,178 +1,185 @@
-use crate::arena::CustomOperatorRegistry;
-use crate::value::DataValue;
-use smallvec::SmallVec;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 
-/// Metadata associated with each context level during iteration
-#[derive(Clone)]
-pub enum ContextMetadata<'a> {
-    /// Array iteration index
-    Index(usize),
-    /// Object iteration key  
-    Key(&'a str),
+// Interned strings for common metadata keys
+static INDEX_KEY: OnceLock<String> = OnceLock::new();
+static KEY_KEY: OnceLock<String> = OnceLock::new();
+
+pub fn index_key() -> &'static String {
+    INDEX_KEY.get_or_init(|| "index".to_string())
 }
 
-#[derive(Clone)]
-pub struct EvalContext<'a> {
-    context_stack: SmallVec<[&'a DataValue<'a>; 8]>,
-    /// Stores iteration metadata (index for arrays, key for objects)
-    metadata_stack: SmallVec<[Option<ContextMetadata<'a>>; 8]>,
-    /// Registry of custom operators available during evaluation
-    custom_operators: &'a CustomOperatorRegistry,
+pub fn key_key() -> &'static String {
+    KEY_KEY.get_or_init(|| "key".to_string())
 }
 
-impl<'a> EvalContext<'a> {
-    #[inline]
-    pub fn new(root: &'a DataValue<'a>, custom_operators: &'a CustomOperatorRegistry) -> Self {
-        let mut stack = SmallVec::new();
-        stack.push(root);
-        let mut metadata_stack = SmallVec::new();
-        metadata_stack.push(None);
-        Self {
-            context_stack: stack,
-            metadata_stack,
-            custom_operators,
+/// A single frame in the context stack (for temporary/nested contexts)
+pub struct ContextFrame {
+    /// The data value at this context level
+    pub data: Value,
+    /// Optional metadata for this frame (e.g., "index", "key" in map operations)
+    pub metadata: Option<HashMap<String, Value>>,
+}
+
+/// Reference to a context frame (either actual frame or root)
+pub enum ContextFrameRef<'a> {
+    /// Reference to an actual frame
+    Frame(&'a ContextFrame),
+    /// Reference to the root data
+    Root(&'a Arc<Value>),
+}
+
+impl<'a> ContextFrameRef<'a> {
+    /// Get the data value
+    pub fn data(&self) -> &Value {
+        match self {
+            ContextFrameRef::Frame(frame) => &frame.data,
+            ContextFrameRef::Root(root) => root,
         }
     }
 
-    #[inline]
-    pub fn current(&self) -> &'a DataValue<'a> {
-        self.context_stack
-            .last()
-            .expect("Context stack should never be empty")
+    /// Get the metadata (only available for frames)
+    pub fn metadata(&self) -> Option<&HashMap<String, Value>> {
+        match self {
+            ContextFrameRef::Frame(frame) => frame.metadata.as_ref(),
+            ContextFrameRef::Root(_) => None,
+        }
     }
+}
 
-    #[inline]
-    pub fn root(&self) -> &'a DataValue<'a> {
-        self.context_stack
-            .first()
-            .expect("Context stack should never be empty")
-    }
+/// Context stack for nested evaluations
+pub struct ContextStack {
+    /// Immutable root data (never changes during evaluation)
+    root: Arc<Value>,
+    /// Stack of temporary frames (excludes root)
+    frames: Vec<ContextFrame>,
+}
 
-    #[inline]
-    pub fn push(&self, value: &'a DataValue<'a>) -> Self {
-        let mut new_stack = self.context_stack.clone();
-        new_stack.push(value);
-        let mut new_metadata_stack = self.metadata_stack.clone();
-        new_metadata_stack.push(None);
+impl ContextStack {
+    /// Create a new context stack with Arc root data
+    pub fn new(root: Arc<Value>) -> Self {
         Self {
-            context_stack: new_stack,
-            metadata_stack: new_metadata_stack,
-            custom_operators: self.custom_operators,
+            root,
+            frames: Vec::new(),
         }
     }
 
-    #[inline]
+    /// Pushes a new context frame for nested evaluation.
+    ///
+    /// Used by operators that need to create a nested data context without metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The data value for the new context frame
+    pub fn push(&mut self, data: Value) {
+        self.frames.push(ContextFrame {
+            data,
+            metadata: None,
+        });
+    }
+
+    /// Pushes a frame with metadata for iteration operations.
+    ///
+    /// Used by array operators like `map`, `filter`, and `reduce` to provide
+    /// iteration context including index and key information.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The current item being processed
+    /// * `metadata` - Iteration metadata (typically includes "index" and optionally "key")
+    ///
+    /// # Example
+    ///
+    /// During array iteration:
+    /// ```rust,ignore
+    /// let mut metadata = HashMap::new();
+    /// metadata.insert("index".to_string(), json!(0));
+    /// context.push_with_metadata(item_value, metadata);
+    /// ```
+    pub fn push_with_metadata(&mut self, data: Value, metadata: HashMap<String, Value>) {
+        self.frames.push(ContextFrame {
+            data,
+            metadata: Some(metadata),
+        });
+    }
+
+    /// Pops the current context frame from the stack.
+    ///
+    /// Restores the previous context after nested evaluation completes.
+    /// Returns None if there are no frames to pop (root is never popped).
+    ///
+    /// # Returns
+    ///
+    /// The popped context frame, or None if the stack is empty.
+    pub fn pop(&mut self) -> Option<ContextFrame> {
+        // Only pop if there are frames (root is separate)
+        self.frames.pop()
+    }
+
+    /// Accesses data at a context level relative to current.
+    ///
+    /// This method enables access to parent contexts during nested operations,
+    /// which is essential for complex JSONLogic expressions.
+    ///
+    /// # Arguments
+    ///
+    /// * `level` - The number of levels to traverse up the context stack
+    ///   - 0: returns the current context
+    ///   - N (positive or negative): goes up N levels from current
+    ///
+    /// # Returns
+    ///
+    /// A reference to the context frame at the specified level,
+    /// or None if the level exceeds the stack depth.
+    ///
+    /// # Note
+    ///
+    /// The sign of the level is ignored; both positive and negative values
+    /// traverse up the stack the same way. This maintains backward compatibility
+    /// with existing usage patterns.
+    ///
+    /// # Returns
+    /// The context frame at the specified level, or the root if level exceeds stack depth
+    pub fn get_at_level(&self, level: isize) -> Option<ContextFrameRef<'_>> {
+        // Get absolute value - sign doesn't matter (for backward compatibility)
+        let levels_up = level.unsigned_abs();
+
+        if levels_up == 0 {
+            // 0 means current context
+            return Some(self.current());
+        }
+
+        let frame_count = self.frames.len();
+
+        // If going up more levels than or equal to the total frame count,
+        // we reach the root (since root is not in frames)
+        if levels_up >= frame_count {
+            return Some(ContextFrameRef::Root(&self.root));
+        }
+
+        // Calculate target index by going up from current
+        let target_index = frame_count - levels_up;
+        self.frames.get(target_index).map(ContextFrameRef::Frame)
+    }
+
+    /// Get the current context frame (top of stack)
+    /// Returns a temporary frame for root if no frames are pushed
+    pub fn current(&self) -> ContextFrameRef<'_> {
+        if let Some(frame) = self.frames.last() {
+            ContextFrameRef::Frame(frame)
+        } else {
+            ContextFrameRef::Root(&self.root)
+        }
+    }
+
+    /// Get the root context frame
+    pub fn root(&self) -> ContextFrameRef<'_> {
+        ContextFrameRef::Root(&self.root)
+    }
+
+    /// Get the current depth (number of frames)
     pub fn depth(&self) -> usize {
-        self.context_stack.len()
-    }
-
-    #[inline]
-    pub fn at_depth(&self, depth: usize) -> Option<&'a DataValue<'a>> {
-        let len = self.context_stack.len();
-        if depth >= len {
-            return None;
-        }
-        Some(self.context_stack[len - 1 - depth])
-    }
-
-    #[inline]
-    pub fn push_with_index(&self, value: &'a DataValue<'a>, index: usize) -> Self {
-        let mut new_stack = self.context_stack.clone();
-        new_stack.push(value);
-        let mut new_metadata_stack = self.metadata_stack.clone();
-        new_metadata_stack.push(Some(ContextMetadata::Index(index)));
-        Self {
-            context_stack: new_stack,
-            metadata_stack: new_metadata_stack,
-            custom_operators: self.custom_operators,
-        }
-    }
-
-    #[inline]
-    pub fn current_index(&self) -> Option<usize> {
-        self.metadata_stack.last().and_then(|opt| {
-            opt.as_ref().and_then(|meta| match meta {
-                ContextMetadata::Index(idx) => Some(*idx),
-                _ => None,
-            })
-        })
-    }
-
-    #[inline]
-    pub fn index_at_depth(&self, depth: usize) -> Option<usize> {
-        let len = self.metadata_stack.len();
-        if depth >= len {
-            return None;
-        }
-        self.metadata_stack[len - 1 - depth]
-            .as_ref()
-            .and_then(|meta| match meta {
-                ContextMetadata::Index(idx) => Some(*idx),
-                _ => None,
-            })
-    }
-
-    #[inline]
-    pub fn push_with_key(&self, value: &'a DataValue<'a>, key: &'a str) -> Self {
-        let mut new_stack = self.context_stack.clone();
-        new_stack.push(value);
-        let mut new_metadata_stack = self.metadata_stack.clone();
-        new_metadata_stack.push(Some(ContextMetadata::Key(key)));
-        Self {
-            context_stack: new_stack,
-            metadata_stack: new_metadata_stack,
-            custom_operators: self.custom_operators,
-        }
-    }
-
-    #[inline]
-    pub fn push_with_index_and_key(
-        &self,
-        value: &'a DataValue<'a>,
-        _index: usize,
-        key: &'a str,
-    ) -> Self {
-        // For object iteration, we only track the key (index is not needed)
-        self.push_with_key(value, key)
-    }
-
-    #[inline]
-    pub fn current_key(&self) -> Option<&'a str> {
-        self.metadata_stack.last().and_then(|opt| {
-            opt.as_ref().and_then(|meta| match meta {
-                ContextMetadata::Key(k) => Some(*k),
-                _ => None,
-            })
-        })
-    }
-
-    #[inline]
-    pub fn key_at_depth(&self, depth: usize) -> Option<&'a str> {
-        let len = self.metadata_stack.len();
-        if depth >= len {
-            return None;
-        }
-        self.metadata_stack[len - 1 - depth]
-            .as_ref()
-            .and_then(|meta| match meta {
-                ContextMetadata::Key(k) => Some(*k),
-                _ => None,
-            })
-    }
-
-    #[inline]
-    pub fn with_item(&self, item: &'a DataValue<'a>) -> Self {
-        self.push(item)
-    }
-
-    #[inline]
-    pub fn context_at_scope(&self, scope_jump: usize) -> &'a DataValue<'a> {
-        self.at_depth(scope_jump).unwrap_or_else(|| self.root())
-    }
-
-    /// Get the custom operators registry
-    #[inline]
-    pub fn custom_operators(&self) -> &'a CustomOperatorRegistry {
-        self.custom_operators
+        self.frames.len()
     }
 }

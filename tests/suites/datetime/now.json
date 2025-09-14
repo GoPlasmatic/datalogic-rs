@@ -1,0 +1,80 @@
+[
+    "# Now operator tests",
+    {
+        "description": "Now returns a string type",
+        "rule": {"type": {"now": []}},
+        "data": null,
+        "result": "datetime"
+    },
+    {
+        "description": "Now result can be parsed as datetime",
+        "rule": {"type": {"datetime": {"now": []}}},
+        "data": null,
+        "result": "datetime"
+    },
+    {
+        "description": "Now can be formatted with format_date",
+        "rule": {"type": {"format_date": [{"now": []}, "yyyy"]}},
+        "data": null,
+        "result": "string"
+    },
+    {
+        "description": "Now result is greater than a past date",
+        "rule": {">": [
+            {"now": []},
+            {"datetime": "2020-01-01T00:00:00Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Now result is less than a future date",
+        "rule": {"<": [
+            {"now": []},
+            {"datetime": "2050-01-01T00:00:00Z"}
+        ]},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Now can be used in date_diff calculations",
+        "rule": {"type": {"date_diff": [
+            {"now": []},
+            {"datetime": "2020-01-01T00:00:00Z"},
+            "days"
+        ]}},
+        "data": null,
+        "result": "number"
+    },
+    {
+        "description": "Two now calls in sequence are not guaranteed equal (non-deterministic)",
+        "rule": {"!!": {"now": []}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Now works within conditional logic",
+        "rule": {"if": [
+            {">": [{"now": []}, {"datetime": "2020-01-01T00:00:00Z"}]},
+            "after 2020",
+            "before 2020"
+        ]},
+        "data": null,
+        "result": "after 2020"
+    },
+    {
+        "description": "Now can be used with var data",
+        "rule": {">": [
+            {"now": []},
+            {"var": "past_date"}
+        ]},
+        "data": {"past_date": "2020-01-01T00:00:00Z"},
+        "result": true
+    },
+    {
+        "description": "Now result length is greater than 0",
+        "rule": {">": [{"length": {"now": []}}, 0]},
+        "data": null,
+        "result": true
+    }
+]

@@ -1,0 +1,87 @@
+[
+  "Merge arrays",
+  { "description": "{\"merge\":[]}", "rule": {"merge": []}, "data": null, "result": [] },
+  {
+    "description": "{\"merge\":[[1]]}",
+    "rule": {"merge": [[1]]},
+    "data": null,
+    "result": [1]
+  },
+  {
+    "description": "{\"merge\":[[1],[]]}",
+    "rule": {"merge": [[1], []]},
+    "data": null,
+    "result": [1]
+  },
+  {
+    "description": "{\"merge\":[[1],[2]]}",
+    "rule": {"merge": [[1], [2]]},
+    "data": null,
+    "result": [1, 2]
+  },
+  {
+    "description": "{\"merge\":[[1],[2],[3]]}",
+    "rule": {"merge": [[1], [2], [3]]},
+    "data": null,
+    "result": [1, 2, 3]
+  },
+  {
+    "description": "{\"merge\":[[1,2],[3]]}",
+    "rule": {"merge": [[1, 2], [3]]},
+    "data": null,
+    "result": [1, 2, 3]
+  },
+  {
+    "description": "{\"merge\":[[1],[2,3]]}",
+    "rule": {"merge": [[1], [2, 3]]},
+    "data": null,
+    "result": [1, 2, 3]
+  },
+
+  "Given non-array arguments, merge converts them to arrays",
+  { "description": "{\"merge\":1}", "rule": {"merge": 1}, "data": null, "result": [1] },
+  {
+    "description": "{\"merge\":[1,2]}",
+    "rule": {"merge": [1, 2]},
+    "data": null,
+    "result": [1, 2]
+  },
+  {
+    "description": "{\"merge\":[1,[2]]}",
+    "rule": {"merge": [1, [2]]},
+    "data": null,
+    "result": [1, 2]
+  },
+
+  "Merge ignores null values",
+  {
+    "description": "Merge should ignore null values in arrays",
+    "rule": {"merge": [[1, null, 2], null, [3, null, 4]]},
+    "data": null,
+    "result": [1, 2, 3, 4]
+  },
+  {
+    "description": "Merge should skip null arguments",
+    "rule": {"merge": [null, [1, 2], null, [3, 4], null]},
+    "data": null,
+    "result": [1, 2, 3, 4]
+  },
+  {
+    "description": "Merge with all nulls should return empty array",
+    "rule": {"merge": [null, null, null]},
+    "data": null,
+    "result": []
+  },
+  {
+    "description": "Merge with null inside arrays",
+    "rule": {"merge": [[null], [null, null], [null]]},
+    "data": null,
+    "result": []
+  },
+  {
+    "description": "Merge with mixed values and nulls",
+    "rule": {"merge": [1, null, [2, null], 3, [null, 4, null]]},
+    "data": null,
+    "result": [1, 2, 3, 4]
+  }
+]

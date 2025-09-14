@@ -1,268 +1,250 @@
-use datalogic_rs::{DataLogic, LogicError};
-use serde_json::{Value as JsonValue, json};
+use datalogic_rs::DataLogic;
+use serde_json::{Value, json};
+
 use std::env;
 use std::fs;
 use std::path::Path;
 
-type TestResult<T> = Result<T, String>;
+#[test]
+fn test_jsonlogic() {
+    // Get test file from environment variable, or run all tests from index.json
+    let test_file = env::var("JSONLOGIC_TEST_FILE");
 
-#[derive(Debug)]
-struct TestCase {
-    description: String,
-    rule: JsonValue,
-    data: Option<JsonValue>,
-    result: Option<JsonValue>,
-    error: Option<JsonValue>,
-    preserve_structure: Option<bool>,
-}
+    let mut total_passed = 0;
+    let mut total_failed = 0;
 
-fn parse_test_cases(json_str: &str) -> Vec<TestCase> {
-    let json_array: Vec<JsonValue> = serde_json::from_str(json_str).expect("Failed to parse JSON");
-
-    let mut test_cases = Vec::new();
-    let mut current_description = String::new();
-
-    for item in json_array {
-        if item.is_string() {
-            // This is a comment or section header
-            current_description = item.as_str().unwrap_or("").to_string();
-            continue;
-        }
-
-        if let Some(obj) = item.as_object() {
-            let description = if let Some(desc) = obj.get("description") {
-                desc.as_str().unwrap_or("").to_string()
-            } else {
-                current_description.clone()
-            };
-
-            let rule = obj.get("rule").cloned().unwrap_or(JsonValue::Null);
-            let data = obj.get("data").cloned();
-            let result = obj.get("result").cloned();
-            let error = obj.get("error").cloned();
-            let preserve_structure = obj
-                .get("preserve_structure")
-                .map(|v| v.as_bool().unwrap_or(false));
-
-            test_cases.push(TestCase {
-                description,
-                rule,
-                data,
-                result,
-                error,
-                preserve_structure,
-            });
-        }
-    }
-
-    test_cases
-}
-
-fn run_test_case(test_case: &TestCase) -> TestResult<()> {
-    // Create a DataLogic instance which manages the arena and parsers
-    let dl = if test_case.preserve_structure == Some(true) {
-        DataLogic::with_preserve_structure()
-    } else {
-        DataLogic::new()
-    };
-
-    // Parse the rule using DataLogic's parse_logic method
-    let rule_str = test_case.rule.to_string();
-
-    let rule_logic = match dl.parse_logic(&rule_str) {
-        Ok(logic) => logic,
-        Err(e) => {
-            // If we expect an error, check if it's the right type
-            if let Some(expected_error) = &test_case.error
-                && let Some(error_obj) = expected_error.as_object()
-                && let Some(error_type) = error_obj.get("type")
-            {
-                if error_type.as_str() == Some("NaN") && e.to_string().contains("NaN") {
-                    return Ok(());
-                } else if error_type.as_str() == Some("Unknown Operator")
-                    && let LogicError::OperatorNotFoundError { operator: _ } = e
-                {
-                    return Ok(());
-                }
-            }
-            return Err(format!("Failed to parse rule: {e}"));
-        }
-    };
-
-    // Parse the data (or use empty object if not provided)
-    let empty_json = json!({});
-    let data_json = test_case.data.as_ref().unwrap_or(&empty_json);
-
-    // Use DataLogic to parse the data
-    let data = match dl.parse_data(&data_json.to_string()) {
-        Ok(data) => data,
-        Err(e) => return Err(format!("Failed to parse data: {e}")),
-    };
-
-    // Evaluate the rule using DataLogic's evaluate method
-    let result = match dl.evaluate(&rule_logic, data) {
-        Ok(value) => value,
-        Err(e) => {
-            // If we expect an error, check if it's the right type
-            if let Some(expected_error) = &test_case.error
-                && let Some(error_obj) = expected_error.as_object()
-                && let Some(error_type) = error_obj.get("type")
-            {
-                if error_type.as_str() == Some("NaN") {
-                    if let LogicError::NaNError = e {
-                        return Ok(());
-                    } else if let LogicError::ThrownError { r#type } = &e
-                        && r#type == "NaN"
-                    {
-                        return Ok(());
-                    }
-                } else if error_type.as_str() == Some("Invalid Arguments") {
-                    if let LogicError::InvalidArgumentsError = e {
-                        return Ok(());
-                    }
-                } else if error_type.as_str() == Some("Unknown Operator") {
-                    if let LogicError::OperatorNotFoundError { operator: _ } = e {
-                        return Ok(());
-                    }
-                } else if let LogicError::ThrownError { r#type } = &e
-                    && let Some(expected_type) = error_type.as_str()
-                    && expected_type == r#type
-                {
-                    return Ok(());
-                }
-            }
-            return Err(format!("Failed to evaluate rule: {e}"));
-        }
-    };
-
-    // If we expected an error but didn't get one, that's a failure
-    if test_case.error.is_some() {
-        return Err(format!("Expected an error but got result: {result}"));
-    }
-
-    // If a specific result is expected
-    if let Some(expected_result) = &test_case.result {
-        // Convert the expected result to DataValue for comparison
-        let expected = match dl.parse_data(&expected_result.to_string()) {
-            Ok(value) => value,
-            Err(e) => return Err(format!("Failed to parse expected result: {e}")),
-        };
-
-        // Compare the results
-        if result.equals(expected) {
-            Ok(())
-        } else {
-            Err(format!("Test failed: expected {expected}, got {result}"))
-        }
-    } else {
-        // No specific result expected
-        Ok(())
-    }
-}
-
-fn run_test_suite(test_file_path: &Path) -> (usize, usize) {
-    println!("Running tests from: {}", test_file_path.display());
-
-    // Read and parse the test file
-    let json_str = match fs::read_to_string(test_file_path) {
-        Ok(content) => content,
-        Err(e) => {
-            println!(
-                "ERROR: Failed to read test file {}: {}",
-                test_file_path.display(),
-                e
-            );
-            return (0, 0);
-        }
-    };
-
-    let test_cases = parse_test_cases(&json_str);
-    println!("  Running {} test cases", test_cases.len());
-
-    let mut passed = 0;
-    let mut failed = 0;
-    let empty_json = json!({});
-
-    for (i, test_case) in test_cases.iter().enumerate() {
-        match run_test_case(test_case) {
-            Ok(_) => {
-                passed += 1;
-                println!("  ✅ {}: {}", i + 1, test_case.description);
-            }
-            Err(e) => {
-                failed += 1;
-                println!("  ❌ {}: {}", i + 1, test_case.description);
-                println!("     Error: {e}");
-                println!("     Rule: {}", test_case.rule);
-                println!(
-                    "     Data: {}",
-                    test_case.data.as_ref().unwrap_or(&empty_json)
-                );
-            }
-        }
-    }
-
-    println!("  Results: {passed} passed, {failed} failed");
-
-    (passed, failed)
-}
-
-// Replace the main function with test functions
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    fn get_test_files() -> Vec<PathBuf> {
-        // Check if a specific test file is specified via environment variable
-        if let Ok(test_file) = env::var("JSONLOGIC_TEST_FILE") {
-            return vec![PathBuf::from(test_file)];
-        }
-
-        // Check if we should run a specific test suite from command line arguments
-        let args: Vec<String> = env::args().collect();
-        if args.len() > 1 {
-            // If test file path is provided as a command-line argument
-            let arg = &args[1];
-            if Path::new(arg).exists() {
-                return vec![PathBuf::from(arg)];
-            }
-        }
-
-        // Default: Run all test files from the index
-        let index_file = PathBuf::from("tests/suites/index.json");
-        if index_file.exists()
-            && let Ok(content) = fs::read_to_string(&index_file)
-        {
-            let json: JsonValue = serde_json::from_str(&content).unwrap_or_else(|_| json!([]));
-            if let Some(arr) = json.as_array() {
-                return arr
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| PathBuf::from(format!("tests/suites/{s}")))
-                    .collect();
-            }
-        }
-
-        // Fallback: Just run the compatible.json tests
-        vec![PathBuf::from("tests/suites/compatible.json")]
-    }
-
-    #[test]
-    fn test_jsonlogic() {
-        let test_files = get_test_files();
-
-        let mut total_passed = 0;
-        let mut total_failed = 0;
-
-        for test_file in test_files {
-            let (passed, failed) = run_test_suite(&test_file);
+    match test_file {
+        Ok(file) => {
+            // Run single test file
+            println!("Running tests from: {}", file);
+            let (passed, failed) = run_test_file(&file);
             total_passed += passed;
             total_failed += failed;
         }
+        Err(_) => {
+            // Run all tests from index.json
+            println!("No JSONLOGIC_TEST_FILE specified, running all tests from index.json\n");
 
-        println!("\nTotal Results: {total_passed} passed, {total_failed} failed");
+            let index_path = "tests/suites/index.json";
+            let index_contents = fs::read_to_string(index_path).expect("Failed to read index.json");
 
-        assert_eq!(total_failed, 0, "{total_failed} tests failed");
+            let index: Vec<String> =
+                serde_json::from_str(&index_contents).expect("Failed to parse index.json");
+
+            for test_file in index {
+                let test_path = format!("tests/suites/{}", test_file);
+
+                // Check if file exists
+                if !Path::new(&test_path).exists() {
+                    println!("WARNING: Skipping {} (file not found)\n", test_file);
+                    continue;
+                }
+
+                println!("\n=== Running tests from: {} ===", test_file);
+                let (passed, failed) = run_test_file(&test_path);
+                total_passed += passed;
+                total_failed += failed;
+
+                println!("  Results: {} passed, {} failed", passed, failed);
+            }
+        }
     }
+
+    println!("\n========================================");
+    println!(
+        "TOTAL RESULTS: {} passed, {} failed",
+        total_passed, total_failed
+    );
+    println!("========================================");
+
+    if total_failed > 0 {
+        panic!("Some tests failed!");
+    }
+}
+
+fn run_test_file(test_file: &str) -> (usize, usize) {
+    // Read and parse test file
+    let contents = fs::read_to_string(test_file)
+        .unwrap_or_else(|_| panic!("Failed to read test file: {}", test_file));
+
+    let test_cases: Value = serde_json::from_str(&contents)
+        .unwrap_or_else(|_| panic!("Failed to parse JSON from: {}", test_file));
+
+    let test_array = test_cases
+        .as_array()
+        .expect("Test file should contain an array of test cases");
+
+    let mut passed = 0;
+    let mut failed = 0;
+
+    for (index, test_case) in test_array.iter().enumerate() {
+        // Skip string entries (they're usually section headers)
+        if test_case.is_string() {
+            println!("\n{}", test_case.as_str().unwrap());
+            continue;
+        }
+
+        let test_obj = test_case
+            .as_object()
+            .unwrap_or_else(|| panic!("Test case {} should be an object", index));
+
+        let description = test_obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("No description");
+
+        let rule = test_obj
+            .get("rule")
+            .unwrap_or_else(|| panic!("Test case {} missing 'rule'", index));
+
+        let data = test_obj.get("data").cloned().unwrap_or(json!({}));
+        let data_arc = std::sync::Arc::new(data);
+
+        // Check for preserve_structure flag
+        let preserve_structure = test_obj
+            .get("preserve_structure")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Create engine with appropriate preserve_structure setting
+        let test_engine = if preserve_structure {
+            DataLogic::with_preserve_structure()
+        } else {
+            DataLogic::new()
+        };
+
+        // Check if this test expects an error or a result
+        let expects_error = test_obj.contains_key("error");
+        let expected_error = test_obj.get("error");
+        let expected_result = test_obj.get("result");
+
+        if !expects_error && expected_result.is_none() {
+            panic!("Test case {} missing 'result' or 'error'", index);
+        }
+
+        // Compile and evaluate
+        match test_engine.compile(rule) {
+            Ok(compiled) => match test_engine.evaluate(&compiled, data_arc) {
+                Ok(result) => {
+                    if expects_error {
+                        println!("✗ Test {}: {}", index, description);
+                        println!("  Expected error: {:?}", expected_error);
+                        println!("  Got result:     {:?}", result);
+                        failed += 1;
+                    } else if let Some(expected) = expected_result {
+                        if &result == expected {
+                            println!("✓ Test {}: {}", index, description);
+                            passed += 1;
+                        } else {
+                            println!("✗ Test {}: {}", index, description);
+                            println!("  Expected: {:?}", expected);
+                            println!("  Got:      {:?}", result);
+                            failed += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    if expects_error {
+                        // Check if the error matches expected error
+                        if let Some(expected_error_obj) = expected_error {
+                            // Extract the error type from the thrown error
+                            if let datalogic_rs::Error::Thrown(thrown_value) = &e {
+                                if thrown_value == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", thrown_value);
+                                    failed += 1;
+                                }
+                            } else if let datalogic_rs::Error::InvalidArguments(msg) = &e {
+                                // Check if it's an InvalidArguments error
+                                let error_obj = serde_json::json!({"type": msg});
+                                if &error_obj == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", error_obj);
+                                    failed += 1;
+                                }
+                            } else if let datalogic_rs::Error::InvalidOperator(_msg) = &e {
+                                // Check if it's an InvalidOperator error
+                                let error_obj = serde_json::json!({"type": "Unknown Operator"});
+                                if &error_obj == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", error_obj);
+                                    failed += 1;
+                                }
+                            } else {
+                                println!("✗ Test {}: {}", index, description);
+                                println!("  Expected error: {:?}", expected_error_obj);
+                                println!("  Got error:      {:?}", e);
+                                failed += 1;
+                            }
+                        } else {
+                            println!("✓ Test {}: {} (error as expected)", index, description);
+                            passed += 1;
+                        }
+                    } else {
+                        println!(
+                            "✗ Test {}: {} - Unexpected evaluation error: {}",
+                            index, description, e
+                        );
+                        failed += 1;
+                    }
+                }
+            },
+            Err(e) => {
+                if expects_error {
+                    // Check if the compilation error matches expected error
+                    if let Some(expected_error_obj) = expected_error {
+                        if let datalogic_rs::Error::InvalidOperator(_msg) = &e {
+                            let error_obj = serde_json::json!({"type": "Unknown Operator"});
+                            if &error_obj == expected_error_obj {
+                                println!("✓ Test {}: {} (error as expected)", index, description);
+                                passed += 1;
+                            } else {
+                                println!("✗ Test {}: {}", index, description);
+                                println!("  Expected error: {:?}", expected_error_obj);
+                                println!("  Got error:      {:?}", error_obj);
+                                failed += 1;
+                            }
+                        } else {
+                            println!("✗ Test {}: {}", index, description);
+                            println!("  Expected error: {:?}", expected_error_obj);
+                            println!("  Got compilation error: {:?}", e);
+                            failed += 1;
+                        }
+                    } else {
+                        println!("✓ Test {}: {} (error as expected)", index, description);
+                        passed += 1;
+                    }
+                } else {
+                    println!(
+                        "✗ Test {}: {} - Compilation error: {}",
+                        index, description, e
+                    );
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    (passed, failed)
 }
