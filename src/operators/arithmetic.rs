@@ -1,5 +1,8 @@
 use serde_json::Value;
 
+use super::helpers::{
+    create_number_value, safe_add, safe_divide, safe_modulo, safe_multiply, safe_subtract,
+};
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
@@ -10,9 +13,7 @@ fn number_value(f: f64) -> Value {
     if f.is_finite() && f.floor() == f && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
         Value::Number((f as i64).into())
     } else {
-        serde_json::Number::from_f64(f)
-            .map(Value::Number)
-            .unwrap_or(Value::Null)
+        create_number_value(f)
     }
 }
 
@@ -68,11 +69,11 @@ pub fn evaluate_add(
                             }
                         }
                     } else {
-                        float_sum += i as f64;
+                        float_sum = safe_add(float_sum, i as f64);
                     }
                 } else if let Some(f) = coerce_to_number(elem) {
                     all_integers = false;
-                    float_sum += f;
+                    float_sum = safe_add(float_sum, f);
                 } else {
                     return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                 }
@@ -168,11 +169,11 @@ pub fn evaluate_add(
                     }
                 }
             } else {
-                float_sum += i as f64;
+                float_sum = safe_add(float_sum, i as f64);
             }
         } else if let Some(f) = coerce_to_number(&value) {
             all_integers = false;
-            float_sum += f;
+            float_sum = safe_add(float_sum, f);
         } else {
             return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
         }
@@ -212,7 +213,7 @@ pub fn evaluate_subtract(
             for elem in &arr[1..] {
                 let num = coerce_to_number(elem)
                     .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
-                result -= num;
+                result = safe_subtract(result, num);
             }
 
             return Ok(number_value(result));
@@ -342,7 +343,7 @@ pub fn evaluate_subtract(
                     return Ok(Value::Null);
                 }
             } else if let Some(f) = coerce_to_number(&value) {
-                float_result -= f;
+                float_result = safe_subtract(float_result, f);
             } else {
                 return Ok(Value::Null);
             }
@@ -446,13 +447,13 @@ impl MultiplyOperator {
                                 }
                             }
                         } else {
-                            float_product *= i as f64;
+                            float_product = safe_multiply(float_product, i as f64);
                         }
                     } else if let Some(f) = coerce_to_number(elem) {
                         if all_integers {
                             float_product = int_product as f64 * f;
                         } else {
-                            float_product *= f;
+                            float_product = safe_multiply(float_product, f);
                         }
                         all_integers = false;
                     } else {
@@ -526,13 +527,13 @@ impl MultiplyOperator {
                         }
                     }
                 } else {
-                    float_product *= i as f64;
+                    float_product = safe_multiply(float_product, i as f64);
                 }
             } else if let Some(f) = coerce_to_number(&value) {
                 if all_integers {
                     float_product = int_product as f64 * f;
                 } else {
-                    float_product *= f;
+                    float_product = safe_multiply(float_product, f);
                 }
                 all_integers = false;
             } else {
@@ -581,7 +582,7 @@ impl DivideOperator {
                     if num == 0.0 {
                         return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                     }
-                    result /= num;
+                    result = safe_divide(result, num);
                 }
 
                 return Ok(number_value(result));
@@ -712,7 +713,7 @@ impl DivideOperator {
                     if divisor == 0.0 {
                         return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                     }
-                    float_result /= divisor;
+                    float_result = safe_divide(float_result, divisor);
                 }
             }
 
@@ -756,7 +757,7 @@ impl ModuloOperator {
                     if num == 0.0 {
                         return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                     }
-                    result %= num;
+                    result = safe_modulo(result, num);
                 }
 
                 return Ok(number_value(result));
@@ -811,7 +812,7 @@ impl ModuloOperator {
                     return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                 }
 
-                result %= num;
+                result = safe_modulo(result, num);
             }
 
             Ok(number_value(result))

@@ -1,3 +1,5 @@
+pub mod helpers;
+
 pub mod abs;
 pub mod arithmetic;
 pub mod array;

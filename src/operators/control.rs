@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::value_helpers::is_truthy;
+use super::helpers::is_truthy;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// If operator function - supports if/then/else and if/elseif/else chains

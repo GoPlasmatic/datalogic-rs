@@ -1,6 +1,7 @@
 use regex::Regex;
 use serde_json::{Value, json};
 
+use super::helpers::extract_string;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// StartsWithOperator function - checks if a string starts with a prefix
@@ -17,10 +18,10 @@ pub fn evaluate_starts_with(
     let text = engine.evaluate_node(&args[0], context)?;
     let prefix = engine.evaluate_node(&args[1], context)?;
 
-    let text_str = text.as_str().unwrap_or("");
-    let prefix_str = prefix.as_str().unwrap_or("");
+    let text_str = extract_string(&text);
+    let prefix_str = extract_string(&prefix);
 
-    Ok(Value::Bool(text_str.starts_with(prefix_str)))
+    Ok(Value::Bool(text_str.starts_with(prefix_str.as_ref())))
 }
 
 /// EndsWithOperator function - checks if a string ends with a suffix
@@ -37,10 +38,10 @@ pub fn evaluate_ends_with(
     let text = engine.evaluate_node(&args[0], context)?;
     let suffix = engine.evaluate_node(&args[1], context)?;
 
-    let text_str = text.as_str().unwrap_or("");
-    let suffix_str = suffix.as_str().unwrap_or("");
+    let text_str = extract_string(&text);
+    let suffix_str = extract_string(&suffix);
 
-    Ok(Value::Bool(text_str.ends_with(suffix_str)))
+    Ok(Value::Bool(text_str.ends_with(suffix_str.as_ref())))
 }
 
 /// UpperOperator function - converts a string to uppercase

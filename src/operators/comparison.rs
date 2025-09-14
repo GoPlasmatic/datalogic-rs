@@ -1,7 +1,8 @@
 use serde_json::Value;
 
+use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::constants::INVALID_ARGS;
-use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
+use crate::datetime::{extract_datetime, is_datetime_object};
 use crate::value_helpers::{coerce_to_number, loose_equals_with_error, strict_equals};
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -67,42 +68,16 @@ pub fn evaluate_strict_equals(
 #[inline]
 fn compare_equals(left: &Value, right: &Value, strict: bool) -> Result<bool> {
     // Handle datetime comparisons - both objects and strings
-    let left_dt = if is_datetime_object(left) {
-        extract_datetime(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    let right_dt = if is_datetime_object(right) {
-        extract_datetime(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
+    let left_dt = extract_datetime_value(left);
+    let right_dt = extract_datetime_value(right);
 
     if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
         return Ok(dt1 == dt2);
     }
 
     // Handle duration comparisons - both objects and strings
-    let left_dur = if is_duration_object(left) {
-        extract_duration(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
-
-    let right_dur = if is_duration_object(right) {
-        extract_duration(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
+    let left_dur = extract_duration_value(left);
+    let right_dur = extract_duration_value(right);
 
     if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
         return Ok(dur1 == dur2);
@@ -248,21 +223,8 @@ fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Handle duration comparisons - both objects and strings
-    let left_dur = if is_duration_object(left) {
-        extract_duration(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
-
-    let right_dur = if is_duration_object(right) {
-        extract_duration(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
+    let left_dur = extract_duration_value(left);
+    let right_dur = extract_duration_value(right);
 
     if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
         return Ok(dur1 > dur2);
@@ -355,21 +317,8 @@ fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Handle duration comparisons - both objects and strings
-    let left_dur = if is_duration_object(left) {
-        extract_duration(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
-
-    let right_dur = if is_duration_object(right) {
-        extract_duration(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
+    let left_dur = extract_duration_value(left);
+    let right_dur = extract_duration_value(right);
 
     if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
         return Ok(dur1 >= dur2);
@@ -462,21 +411,8 @@ fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Handle duration comparisons - both objects and strings
-    let left_dur = if is_duration_object(left) {
-        extract_duration(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
-
-    let right_dur = if is_duration_object(right) {
-        extract_duration(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
+    let left_dur = extract_duration_value(left);
+    let right_dur = extract_duration_value(right);
 
     if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
         return Ok(dur1 < dur2);
@@ -570,21 +506,8 @@ fn compare_less_than_equal(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Handle duration comparisons - both objects and strings
-    let left_dur = if is_duration_object(left) {
-        extract_duration(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
-
-    let right_dur = if is_duration_object(right) {
-        extract_duration(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
-    };
+    let left_dur = extract_duration_value(left);
+    let right_dur = extract_duration_value(right);
 
     if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
         return Ok(dur1 <= dur2);

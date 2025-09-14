@@ -42,24 +42,6 @@ pub fn access_path(value: &Value, path: &str) -> Option<Value> {
     value.pointer(&pointer).cloned()
 }
 
-/// Coerce a value to boolean (JavaScript-like truthiness)
-pub fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => {
-            if let Some(f) = n.as_f64() {
-                f != 0.0 && !f.is_nan()
-            } else {
-                n.as_i64().unwrap_or(0) != 0
-            }
-        }
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
-
 /// Coerce a value to a number
 pub fn coerce_to_number(value: &Value) -> Option<f64> {
     match value {
