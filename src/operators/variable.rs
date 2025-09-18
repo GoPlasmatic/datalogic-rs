@@ -82,14 +82,19 @@ pub fn evaluate_val(
             // For simple two-arg case [[level], path], just access the path
             if args.len() == 2 {
                 let path_val = engine.evaluate_node(&args[1], context)?;
-                let path = path_val.as_str().unwrap_or("");
+                let path = match &path_val {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) if n.is_i64() => n.as_i64().unwrap().to_string(),
+                    Value::Number(n) if n.is_u64() => n.as_u64().unwrap().to_string(),
+                    _ => path_val.as_str().unwrap_or("").to_string(),
+                };
 
                 // Get frame at relative level for normal data access
                 let frame = context
                     .get_at_level(level as isize)
                     .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-                return Ok(access_path(frame.data(), path).unwrap_or(Value::Null));
+                return Ok(access_path(frame.data(), &path).unwrap_or(Value::Null));
             }
 
             // For multi-arg case, chain path access
@@ -97,7 +102,12 @@ pub fn evaluate_val(
             let mut paths = Vec::new();
             for item in args.iter().skip(1) {
                 let path_val = engine.evaluate_node(item, context)?;
-                let path = path_val.as_str().unwrap_or("").to_string();
+                let path = match &path_val {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) if n.is_i64() => n.as_i64().unwrap().to_string(),
+                    Value::Number(n) if n.is_u64() => n.as_u64().unwrap().to_string(),
+                    _ => path_val.as_str().unwrap_or("").to_string(),
+                };
                 paths.push(path);
             }
 
