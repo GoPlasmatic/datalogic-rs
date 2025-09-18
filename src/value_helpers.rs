@@ -13,15 +13,15 @@ pub fn access_path(value: &Value, path: &str) -> Option<Value> {
 
     // For simple paths without dots, use direct access
     if !path.contains('.') {
-        if let Value::Object(obj) = value {
-            if let Some(val) = obj.get(path) {
-                return Some(val.clone());
-            }
+        if let Value::Object(obj) = value
+            && let Some(val) = obj.get(path)
+        {
+            return Some(val.clone());
         }
-        if let Ok(index) = path.parse::<usize>() {
-            if let Value::Array(arr) = value {
-                return arr.get(index).cloned();
-            }
+        if let Ok(index) = path.parse::<usize>()
+            && let Value::Array(arr) = value
+        {
+            return arr.get(index).cloned();
         }
         return None;
     }
