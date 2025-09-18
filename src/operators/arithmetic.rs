@@ -172,8 +172,13 @@ pub fn evaluate_add(
                 float_sum = safe_add(float_sum, i as f64);
             }
         } else if let Some(f) = coerce_to_number(&value) {
-            all_integers = false;
-            float_sum = safe_add(float_sum, f);
+            // Switch from integer to float mode
+            if all_integers {
+                all_integers = false;
+                float_sum = int_sum as f64 + f;
+            } else {
+                float_sum = safe_add(float_sum, f);
+            }
         } else {
             return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
         }

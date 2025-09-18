@@ -1,0 +1,261 @@
+[
+  "# Reduce operator tests",
+  {
+    "description": "Basic reduce - sum of numbers",
+    "rule": {
+      "reduce": [
+        [1, 2, 3, 4, 5],
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": null,
+    "result": 15
+  },
+  {
+    "description": "Reduce with array from variable",
+    "rule": {
+      "reduce": [
+        { "var": "numbers" },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "numbers": [10, 20, 30] },
+    "result": 60
+  },
+  {
+    "description": "Reduce array of objects - sum simple property",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "+": [{ "var": "accumulator" }, { "var": "current.value" }] },
+        0
+      ]
+    },
+    "data": {
+      "items": [
+        { "value": 100 },
+        { "value": 200 },
+        { "value": 300 }
+      ]
+    },
+    "result": 600
+  },
+  {
+    "description": "Reduce array of objects - sum nested property",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "+": [{ "var": "accumulator" }, { "var": "current.details.amount" }] },
+        0
+      ]
+    },
+    "data": {
+      "items": [
+        { "details": { "amount": 100 } },
+        { "details": { "amount": 200 } },
+        { "details": { "amount": 300 } }
+      ]
+    },
+    "result": 600
+  },
+  {
+    "description": "Reduce with property name starting with number (not nested)",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "+": [{ "var": "accumulator" }, { "var": "current.32B" }] },
+        0
+      ]
+    },
+    "data": {
+      "items": [
+        { "32B": 100 },
+        { "32B": 200 },
+        { "32B": 300 }
+      ]
+    },
+    "result": 600
+  },
+
+  "# Bug reproduction - nested property with parent starting with number",
+  {
+    "description": "Reduce with nested property where parent starts with number",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "+": [{ "var": "accumulator" }, { "var": "current.32B.amount" }] },
+        0
+      ]
+    },
+    "data": {
+      "items": [
+        { "32B": { "amount": 100 } },
+        { "32B": { "amount": 200 } },
+        { "32B": { "amount": 300 } }
+      ]
+    },
+    "result": 600
+  },
+  {
+    "description": "MT104 structure - reduce with fields.# and numeric property",
+    "rule": {
+      "reduce": [
+        { "var": "fields.#" },
+        { "+": [{ "var": "accumulator" }, { "var": "current.32B.amount" }] },
+        0
+      ]
+    },
+    "data": {
+      "fields": {
+        "#": [
+          { "32B": { "amount": 100, "currency": "USD" } },
+          { "32B": { "amount": 200, "currency": "USD" } },
+          { "32B": { "amount": 100, "currency": "USD" } }
+        ]
+      }
+    },
+    "result": 400
+  },
+
+  "# Combination with other operators",
+  {
+    "description": "Reduce after map operation",
+    "rule": {
+      "reduce": [
+        {
+          "map": [
+            { "var": "items" },
+            { "var": "32B.amount" }
+          ]
+        },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": {
+      "items": [
+        { "32B": { "amount": 100 } },
+        { "32B": { "amount": 200 } },
+        { "32B": { "amount": 300 } }
+      ]
+    },
+    "result": 600
+  },
+
+  "# Different accumulator operations",
+  {
+    "description": "Reduce with multiplication",
+    "rule": {
+      "reduce": [
+        [1, 2, 3, 4],
+        { "*": [{ "var": "accumulator" }, { "var": "current" }] },
+        1
+      ]
+    },
+    "data": null,
+    "result": 24
+  },
+  {
+    "description": "String concatenation with reduce",
+    "rule": {
+      "reduce": [
+        ["Hello", " ", "World"],
+        { "cat": [{ "var": "accumulator" }, { "var": "current" }] },
+        ""
+      ]
+    },
+    "data": null,
+    "result": "Hello World"
+  },
+
+  "# Edge cases",
+  {
+    "description": "Reduce empty array returns initial value",
+    "rule": {
+      "reduce": [
+        [],
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        42
+      ]
+    },
+    "data": null,
+    "result": 42
+  },
+  {
+    "description": "Reduce single element array",
+    "rule": {
+      "reduce": [
+        [5],
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        10
+      ]
+    },
+    "data": null,
+    "result": 15
+  },
+  {
+    "description": "Reduce with null values in array",
+    "rule": {
+      "reduce": [
+        [1, null, 2, null, 3],
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": null,
+    "result": 6
+  },
+
+  "# Complex MT104 validation scenario",
+  {
+    "description": "MT104 validation - sum of transaction amounts equals header amount",
+    "rule": {
+      "if": [
+        { "exists": ["fields", "19"] },
+        {
+          "==": [
+            { "var": "fields.19.amount" },
+            {
+              "reduce": [
+                { "var": "fields.#" },
+                { "+": [{ "var": "accumulator" }, { "var": "current.32B.amount" }] },
+                0
+              ]
+            }
+          ]
+        },
+        true
+      ]
+    },
+    "data": {
+      "fields": {
+        "#": [
+          {
+            "32B": {
+              "amount": 250.0,
+              "currency": "GIP"
+            }
+          },
+          {
+            "32B": {
+              "amount": 350.0,
+              "currency": "GIP"
+            }
+          },
+          {
+            "32B": {
+              "amount": 400.0,
+              "currency": "GIP"
+            }
+          }
+        ],
+        "19": {
+          "amount": 1000.0
+        }
+      }
+    },
+    "result": true
+  }
+]

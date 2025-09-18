@@ -374,7 +374,7 @@ impl ReduceOperator {
                 for current in arr {
                     let mut frame_data = serde_json::Map::with_capacity(2);
                     frame_data.insert("current".to_string(), current.clone());
-                    frame_data.insert("accumulator".to_string(), accumulator);
+                    frame_data.insert("accumulator".to_string(), accumulator.clone());
 
                     context.push(Value::Object(frame_data));
                     accumulator = engine.evaluate_node(logic, context)?;

@@ -13,26 +13,50 @@ pub fn access_path(value: &Value, path: &str) -> Option<Value> {
 
     // For simple paths without dots, use direct access
     if !path.contains('.') {
-        if let Value::Object(obj) = value
-            && let Some(val) = obj.get(path)
-        {
-            return Some(val.clone());
+        if let Value::Object(obj) = value {
+            if let Some(val) = obj.get(path) {
+                return Some(val.clone());
+            }
         }
-        if let Ok(index) = path.parse::<usize>()
-            && let Value::Array(arr) = value
-        {
-            return arr.get(index).cloned();
+        if let Ok(index) = path.parse::<usize>() {
+            if let Value::Array(arr) = value {
+                return arr.get(index).cloned();
+            }
+        }
+        return None;
+    }
+
+    // Handle paths with dots manually to avoid JSON pointer issues with numeric property names
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut current = value;
+
+    for part in parts.iter() {
+        match current {
+            Value::Object(obj) => {
+                // Try as object key first
+                if let Some(val) = obj.get(*part) {
+                    current = val;
+                } else {
+                    return None;
+                }
+            }
+            Value::Array(arr) => {
+                // Try as array index
+                if let Ok(index) = part.parse::<usize>() {
+                    if let Some(val) = arr.get(index) {
+                        current = val;
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
         }
     }
 
-    // Convert to JSON pointer format and use serde_json's pointer method
-    let pointer = if path.starts_with('/') {
-        path
-    } else {
-        &format!("/{}", path.replace('.', "/"))
-    };
-
-    value.pointer(pointer).cloned()
+    Some(current.clone())
 }
 
 /// Coerce a value to a number
