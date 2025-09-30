@@ -286,7 +286,7 @@ impl FilterOperator {
                     let keep = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
-                    if is_truthy(&keep) {
+                    if is_truthy(&keep, engine) {
                         results.push(item.clone());
                     }
                 }
@@ -305,7 +305,7 @@ impl FilterOperator {
                     let keep = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
-                    if is_truthy(&keep) {
+                    if is_truthy(&keep, engine) {
                         result_obj.insert(key.clone(), value.clone());
                     }
                 }
@@ -441,7 +441,7 @@ impl AllOperator {
                     let result = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
-                    if !is_truthy(&result) {
+                    if !is_truthy(&result, engine) {
                         return Ok(Value::Bool(false));
                     }
                 }
@@ -505,7 +505,7 @@ impl SomeOperator {
                     let result = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
-                    if is_truthy(&result) {
+                    if is_truthy(&result, engine) {
                         return Ok(Value::Bool(true));
                     }
                 }
@@ -569,7 +569,7 @@ impl NoneOperator {
                     let result = engine.evaluate_node(predicate, context)?;
                     context.pop();
 
-                    if is_truthy(&result) {
+                    if is_truthy(&result, engine) {
                         return Ok(Value::Bool(false));
                     }
                 }

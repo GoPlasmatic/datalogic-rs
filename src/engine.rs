@@ -3,6 +3,7 @@ use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::config::EvaluationConfig;
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
@@ -38,6 +39,8 @@ pub struct DataLogic {
     custom_operators: HashMap<String, Box<dyn Operator>>,
     /// Flag to preserve structure of objects with unknown operators
     preserve_structure: bool,
+    /// Configuration for evaluation behavior
+    config: EvaluationConfig,
 }
 
 impl Default for DataLogic {
@@ -63,6 +66,7 @@ impl DataLogic {
         Self {
             custom_operators: HashMap::new(),
             preserve_structure: false,
+            config: EvaluationConfig::default(),
         }
     }
 
@@ -88,16 +92,60 @@ impl DataLogic {
         Self {
             custom_operators: HashMap::new(),
             preserve_structure: true,
+            config: EvaluationConfig::default(),
         }
     }
 
-    /// Sets whether to preserve object structure for unknown operators.
+    /// Creates a new DataLogic engine with a custom configuration.
     ///
     /// # Arguments
     ///
-    /// * `preserve` - If `true`, unknown operators in objects are preserved as templates
-    pub fn set_preserve_structure(&mut self, preserve: bool) {
-        self.preserve_structure = preserve;
+    /// * `config` - The evaluation configuration
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
+    ///
+    /// let config = EvaluationConfig::default()
+    ///     .with_nan_handling(NanHandling::IgnoreValue);
+    /// let engine = DataLogic::with_config(config);
+    /// ```
+    pub fn with_config(config: EvaluationConfig) -> Self {
+        Self {
+            custom_operators: HashMap::new(),
+            preserve_structure: false,
+            config,
+        }
+    }
+
+    /// Creates a new DataLogic engine with both configuration and structure preservation.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The evaluation configuration
+    /// * `preserve_structure` - Whether to preserve object structure
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
+    ///
+    /// let config = EvaluationConfig::default()
+    ///     .with_nan_handling(NanHandling::IgnoreValue);
+    /// let engine = DataLogic::with_config_and_structure(config, true);
+    /// ```
+    pub fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
+        Self {
+            custom_operators: HashMap::new(),
+            preserve_structure,
+            config,
+        }
+    }
+
+    /// Gets a reference to the current evaluation configuration.
+    pub fn config(&self) -> &EvaluationConfig {
+        &self.config
     }
 
     /// Returns whether structure preservation is enabled.

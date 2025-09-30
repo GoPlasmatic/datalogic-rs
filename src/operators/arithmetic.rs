@@ -3,6 +3,7 @@ use serde_json::Value;
 use super::helpers::{
     create_number_value, safe_add, safe_divide, safe_modulo, safe_multiply, safe_subtract,
 };
+use crate::config::NanHandling;
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
@@ -57,7 +58,7 @@ pub fn evaluate_add(
 
             for elem in &arr {
                 // Array elements are already evaluated values
-                if let Some(i) = try_coerce_to_integer(elem) {
+                if let Some(i) = try_coerce_to_integer(elem, engine) {
                     if all_integers {
                         // Check for overflow before adding
                         match int_sum.checked_add(i) {
@@ -71,11 +72,26 @@ pub fn evaluate_add(
                     } else {
                         float_sum = safe_add(float_sum, i as f64);
                     }
-                } else if let Some(f) = coerce_to_number(elem) {
+                } else if let Some(f) = coerce_to_number(elem, engine) {
                     all_integers = false;
                     float_sum = safe_add(float_sum, f);
                 } else {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    // Handle based on NaN configuration
+                    match engine.config().arithmetic_nan_handling {
+                        NanHandling::ThrowError => {
+                            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                        }
+                        NanHandling::IgnoreValue => {
+                            continue; // Skip this value
+                        }
+                        NanHandling::CoerceToZero => {
+                            // Treat as 0, no need to add
+                            continue;
+                        }
+                        NanHandling::ReturnNull => {
+                            return Ok(Value::Null);
+                        }
+                    }
                 }
             }
 
@@ -146,18 +162,32 @@ pub fn evaluate_add(
     for arg in args {
         // Check if this argument is a literal array (invalid for addition)
         if matches!(arg, CompiledNode::Array { .. }) {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            match engine.config().arithmetic_nan_handling {
+                NanHandling::ThrowError => {
+                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                }
+                NanHandling::IgnoreValue => continue,
+                NanHandling::CoerceToZero => continue,
+                NanHandling::ReturnNull => return Ok(Value::Null),
+            }
         }
 
         let value = engine.evaluate_node(arg, context)?;
 
         // Arrays and objects are invalid for addition
         if matches!(value, Value::Array(_) | Value::Object(_)) {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            match engine.config().arithmetic_nan_handling {
+                NanHandling::ThrowError => {
+                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                }
+                NanHandling::IgnoreValue => continue,
+                NanHandling::CoerceToZero => continue,
+                NanHandling::ReturnNull => return Ok(Value::Null),
+            }
         }
 
         // Try integer coercion first
-        if let Some(i) = try_coerce_to_integer(&value) {
+        if let Some(i) = try_coerce_to_integer(&value, engine) {
             if all_integers {
                 // Check for overflow before adding
                 match int_sum.checked_add(i) {
@@ -171,7 +201,7 @@ pub fn evaluate_add(
             } else {
                 float_sum = safe_add(float_sum, i as f64);
             }
-        } else if let Some(f) = coerce_to_number(&value) {
+        } else if let Some(f) = coerce_to_number(&value, engine) {
             // Switch from integer to float mode
             if all_integers {
                 all_integers = false;
@@ -180,7 +210,14 @@ pub fn evaluate_add(
                 float_sum = safe_add(float_sum, f);
             }
         } else {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            match engine.config().arithmetic_nan_handling {
+                NanHandling::ThrowError => {
+                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                }
+                NanHandling::IgnoreValue => continue,
+                NanHandling::CoerceToZero => continue,
+                NanHandling::ReturnNull => return Ok(Value::Null),
+            }
         }
     }
 
@@ -212,11 +249,11 @@ pub fn evaluate_subtract(
                 return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
             }
             // Subtract elements: first - second - third - ...
-            let mut result = coerce_to_number(&arr[0])
+            let mut result = coerce_to_number(&arr[0], engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             for elem in &arr[1..] {
-                let num = coerce_to_number(elem)
+                let num = coerce_to_number(elem, engine)
                     .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
                 result = safe_subtract(result, num);
             }
@@ -232,7 +269,7 @@ pub fn evaluate_subtract(
                 return Ok(number_value(-f));
             }
         }
-        let first_num = coerce_to_number(&first)
+        let first_num = coerce_to_number(&first, engine)
             .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
         Ok(number_value(-first_num))
     } else if args.len() == 2 {
@@ -292,8 +329,8 @@ pub fn evaluate_subtract(
 
         // Try integer coercion first for both operands
         if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&first),
-            try_coerce_to_integer(&second),
+            try_coerce_to_integer(&first, engine),
+            try_coerce_to_integer(&second, engine),
         ) {
             // Check for overflow in subtraction
             match i1.checked_sub(i2) {
@@ -304,9 +341,9 @@ pub fn evaluate_subtract(
             }
         }
 
-        let first_num = coerce_to_number(&first)
+        let first_num = coerce_to_number(&first, engine)
             .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
-        let second_num = coerce_to_number(&second)
+        let second_num = coerce_to_number(&second, engine)
             .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
         Ok(number_value(first_num - second_num))
@@ -314,13 +351,13 @@ pub fn evaluate_subtract(
         // Variadic subtraction (3+ arguments)
         // Check if all values are integers
         let mut all_integers = true;
-        let mut int_result = if let Some(i) = try_coerce_to_integer(&first) {
+        let mut int_result = if let Some(i) = try_coerce_to_integer(&first, engine) {
             i
         } else {
             all_integers = false;
             0
         };
-        let mut float_result = if let Some(f) = coerce_to_number(&first) {
+        let mut float_result = if let Some(f) = coerce_to_number(&first, engine) {
             f
         } else {
             return Ok(Value::Null);
@@ -331,7 +368,7 @@ pub fn evaluate_subtract(
             let value = engine.evaluate_node(item, context)?;
 
             if all_integers {
-                if let Some(i) = try_coerce_to_integer(&value) {
+                if let Some(i) = try_coerce_to_integer(&value, engine) {
                     // Check for overflow in subtraction
                     match int_result.checked_sub(i) {
                         Some(result) => int_result = result,
@@ -341,16 +378,30 @@ pub fn evaluate_subtract(
                             float_result = int_result as f64 - i as f64;
                         }
                     }
-                } else if let Some(f) = coerce_to_number(&value) {
+                } else if let Some(f) = coerce_to_number(&value, engine) {
                     all_integers = false;
                     float_result = int_result as f64 - f;
                 } else {
-                    return Ok(Value::Null);
+                    match engine.config().arithmetic_nan_handling {
+                        NanHandling::ThrowError => {
+                            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                        }
+                        NanHandling::IgnoreValue => continue,
+                        NanHandling::CoerceToZero => continue,
+                        NanHandling::ReturnNull => return Ok(Value::Null),
+                    }
                 }
-            } else if let Some(f) = coerce_to_number(&value) {
+            } else if let Some(f) = coerce_to_number(&value, engine) {
                 float_result = safe_subtract(float_result, f);
             } else {
-                return Ok(Value::Null);
+                match engine.config().arithmetic_nan_handling {
+                    NanHandling::ThrowError => {
+                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    }
+                    NanHandling::IgnoreValue => continue,
+                    NanHandling::CoerceToZero => continue,
+                    NanHandling::ReturnNull => return Ok(Value::Null),
+                }
             }
         }
 
@@ -442,7 +493,7 @@ impl MultiplyOperator {
 
                 for elem in &arr {
                     // Array elements are already evaluated values
-                    if let Some(i) = try_coerce_to_integer(elem) {
+                    if let Some(i) = try_coerce_to_integer(elem, engine) {
                         if all_integers {
                             match int_product.checked_mul(i) {
                                 Some(p) => int_product = p,
@@ -454,7 +505,7 @@ impl MultiplyOperator {
                         } else {
                             float_product = safe_multiply(float_product, i as f64);
                         }
-                    } else if let Some(f) = coerce_to_number(elem) {
+                    } else if let Some(f) = coerce_to_number(elem, engine) {
                         if all_integers {
                             float_product = int_product as f64 * f;
                         } else {
@@ -462,7 +513,18 @@ impl MultiplyOperator {
                         }
                         all_integers = false;
                     } else {
-                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                        match engine.config().arithmetic_nan_handling {
+                            NanHandling::ThrowError => {
+                                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                            }
+                            NanHandling::IgnoreValue => continue,
+                            NanHandling::CoerceToZero => {
+                                // For multiplication, 0 would make the whole product 0
+                                // So we ignore instead (treat as identity element 1)
+                                continue;
+                            }
+                            NanHandling::ReturnNull => return Ok(Value::Null),
+                        }
                     }
                 }
 
@@ -489,7 +551,7 @@ impl MultiplyOperator {
             };
 
             if let Some(dur) = first_dur
-                && let Some(factor) = coerce_to_number(&second)
+                && let Some(factor) = coerce_to_number(&second, engine)
             {
                 let result = dur.multiply(factor);
                 return Ok(Value::String(result.to_string()));
@@ -505,7 +567,7 @@ impl MultiplyOperator {
             };
 
             if let Some(dur) = second_dur
-                && let Some(factor) = coerce_to_number(&first)
+                && let Some(factor) = coerce_to_number(&first, engine)
             {
                 let result = dur.multiply(factor);
                 return Ok(Value::String(result.to_string()));
@@ -522,7 +584,7 @@ impl MultiplyOperator {
             let value = engine.evaluate_node(arg, context)?;
 
             // Try integer coercion first
-            if let Some(i) = try_coerce_to_integer(&value) {
+            if let Some(i) = try_coerce_to_integer(&value, engine) {
                 if all_integers {
                     match int_product.checked_mul(i) {
                         Some(p) => int_product = p,
@@ -534,7 +596,7 @@ impl MultiplyOperator {
                 } else {
                     float_product = safe_multiply(float_product, i as f64);
                 }
-            } else if let Some(f) = coerce_to_number(&value) {
+            } else if let Some(f) = coerce_to_number(&value, engine) {
                 if all_integers {
                     float_product = int_product as f64 * f;
                 } else {
@@ -542,7 +604,16 @@ impl MultiplyOperator {
                 }
                 all_integers = false;
             } else {
-                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                match engine.config().arithmetic_nan_handling {
+                    NanHandling::ThrowError => {
+                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    }
+                    NanHandling::IgnoreValue => {}
+                    NanHandling::CoerceToZero => {
+                        // For multiplication, treat as identity (1) by not changing product
+                    }
+                    NanHandling::ReturnNull => return Ok(Value::Null),
+                }
             }
         }
 
@@ -578,11 +649,11 @@ impl DivideOperator {
                     return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                 }
                 // Divide elements: first / second / third / ...
-                let mut result = coerce_to_number(&arr[0])
+                let mut result = coerce_to_number(&arr[0], engine)
                     .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
                 for elem in &arr[1..] {
-                    let num = coerce_to_number(elem)
+                    let num = coerce_to_number(elem, engine)
                         .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
                     if num == 0.0 {
                         return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
@@ -594,7 +665,7 @@ impl DivideOperator {
             }
 
             // Single non-array argument: 1 / value
-            let num = coerce_to_number(&value)
+            let num = coerce_to_number(&value, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             if num == 0.0 {
@@ -602,7 +673,7 @@ impl DivideOperator {
             }
 
             // Try to preserve integer type with overflow check
-            if let Some(i) = try_coerce_to_integer(&value)
+            if let Some(i) = try_coerce_to_integer(&value, engine)
                 && i != 0
             {
                 // Special case: avoid overflow when dividing by -1
@@ -632,7 +703,7 @@ impl DivideOperator {
             };
 
             if let Some(dur) = first_dur
-                && let Some(divisor) = coerce_to_number(&second)
+                && let Some(divisor) = coerce_to_number(&second, engine)
             {
                 if divisor == 0.0 {
                     return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
@@ -643,8 +714,8 @@ impl DivideOperator {
 
             // Try integer division first if both can be coerced to integers
             if let (Some(i1), Some(i2)) = (
-                try_coerce_to_integer(&first),
-                try_coerce_to_integer(&second),
+                try_coerce_to_integer(&first, engine),
+                try_coerce_to_integer(&second, engine),
             ) {
                 if i2 == 0 {
                     return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
@@ -660,9 +731,9 @@ impl DivideOperator {
                 }
             }
 
-            let first_num = coerce_to_number(&first)
+            let first_num = coerce_to_number(&first, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
-            let second_num = coerce_to_number(&second)
+            let second_num = coerce_to_number(&second, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             if second_num == 0.0 {
@@ -674,20 +745,20 @@ impl DivideOperator {
             // Variadic division (3+ arguments)
             // Try to maintain integer type if possible
             let mut all_integers = true;
-            let mut int_result = if let Some(i) = try_coerce_to_integer(&first) {
+            let mut int_result = if let Some(i) = try_coerce_to_integer(&first, engine) {
                 i
             } else {
                 all_integers = false;
                 0
             };
-            let mut float_result = coerce_to_number(&first)
+            let mut float_result = coerce_to_number(&first, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             for item in args.iter().skip(1) {
                 let value = engine.evaluate_node(item, context)?;
 
                 if all_integers {
-                    if let Some(divisor) = try_coerce_to_integer(&value) {
+                    if let Some(divisor) = try_coerce_to_integer(&value, engine) {
                         if divisor == 0 {
                             return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                         }
@@ -703,7 +774,7 @@ impl DivideOperator {
                             all_integers = false;
                             float_result = int_result as f64 / divisor as f64;
                         }
-                    } else if let Some(divisor) = coerce_to_number(&value) {
+                    } else if let Some(divisor) = coerce_to_number(&value, engine) {
                         if divisor == 0.0 {
                             return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
                         }
@@ -713,7 +784,7 @@ impl DivideOperator {
                         return Ok(Value::Null);
                     }
                 } else {
-                    let divisor = coerce_to_number(&value)
+                    let divisor = coerce_to_number(&value, engine)
                         .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
                     if divisor == 0.0 {
                         return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
@@ -753,11 +824,11 @@ impl ModuloOperator {
                     return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                 }
                 // Modulo elements: first % second % third % ...
-                let mut result = coerce_to_number(&arr[0])
+                let mut result = coerce_to_number(&arr[0], engine)
                     .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
                 for elem in &arr[1..] {
-                    let num = coerce_to_number(elem)
+                    let num = coerce_to_number(elem, engine)
                         .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
                     if num == 0.0 {
                         return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
@@ -793,9 +864,9 @@ impl ModuloOperator {
                 return Ok(Value::Number((i1 % i2).into()));
             }
 
-            let first_num = coerce_to_number(&first)
+            let first_num = coerce_to_number(&first, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
-            let second_num = coerce_to_number(&second)
+            let second_num = coerce_to_number(&second, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             if second_num == 0.0 {
@@ -805,12 +876,12 @@ impl ModuloOperator {
             Ok(number_value(first_num % second_num))
         } else {
             // Variadic modulo (3+ arguments)
-            let mut result = coerce_to_number(&first)
+            let mut result = coerce_to_number(&first, engine)
                 .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
             for item in args.iter().skip(1) {
                 let value = engine.evaluate_node(item, context)?;
-                let num = coerce_to_number(&value)
+                let num = coerce_to_number(&value, engine)
                     .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
 
                 if num == 0.0 {
@@ -870,7 +941,7 @@ impl MaxOperator {
                         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                     }
 
-                    if let Some(n) = coerce_to_number(&elem)
+                    if let Some(n) = coerce_to_number(&elem, engine)
                         && n > max_num
                     {
                         max_num = n;
@@ -899,7 +970,7 @@ impl MaxOperator {
                 return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
             }
 
-            if let Some(n) = coerce_to_number(&value)
+            if let Some(n) = coerce_to_number(&value, engine)
                 && n > max_num
             {
                 max_num = n;
@@ -957,7 +1028,7 @@ impl MinOperator {
                         return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
                     }
 
-                    if let Some(n) = coerce_to_number(&elem)
+                    if let Some(n) = coerce_to_number(&elem, engine)
                         && n < min_num
                     {
                         min_num = n;
@@ -986,7 +1057,7 @@ impl MinOperator {
                 return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
             }
 
-            if let Some(n) = coerce_to_number(&value)
+            if let Some(n) = coerce_to_number(&value, engine)
                 && n < min_num
             {
                 min_num = n;

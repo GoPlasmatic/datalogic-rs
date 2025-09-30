@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::constants::INVALID_ARGS;
 use crate::datetime::{extract_datetime, is_datetime_object};
-use crate::value_helpers::{coerce_to_number, loose_equals_with_error, strict_equals};
+use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Equals operator function (== for loose equality)
@@ -24,7 +24,7 @@ pub fn evaluate_equals(
         let current = engine.evaluate_node(item, context)?;
 
         // Compare first == current (loose equality)
-        let result = compare_equals(&first, &current, false)?;
+        let result = compare_equals(&first, &current, false, engine)?;
 
         if !result {
             // Short-circuit on first inequality
@@ -53,7 +53,7 @@ pub fn evaluate_strict_equals(
         let current = engine.evaluate_node(item, context)?;
 
         // Compare first === current (strict equality)
-        let result = compare_equals(&first, &current, true)?;
+        let result = compare_equals(&first, &current, true, engine)?;
 
         if !result {
             // Short-circuit on first inequality
@@ -66,7 +66,7 @@ pub fn evaluate_strict_equals(
 
 // Helper function for == and === comparison
 #[inline]
-fn compare_equals(left: &Value, right: &Value, strict: bool) -> Result<bool> {
+fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic) -> Result<bool> {
     // Handle datetime comparisons - both objects and strings
     let left_dt = extract_datetime_value(left);
     let right_dt = extract_datetime_value(right);
@@ -86,7 +86,7 @@ fn compare_equals(left: &Value, right: &Value, strict: bool) -> Result<bool> {
     if strict {
         Ok(strict_equals(left, right))
     } else {
-        loose_equals_with_error(left, right)
+        loose_equals(left, right, engine)
     }
 }
 
@@ -110,7 +110,7 @@ pub fn evaluate_not_equals(
     let second = engine.evaluate_node(&args[1], context)?;
 
     // Compare them (loose equality)
-    let equals = compare_equals(&first, &second, false)?;
+    let equals = compare_equals(&first, &second, false, engine)?;
 
     if !equals {
         // Found inequality, return true immediately (lazy)
@@ -148,7 +148,7 @@ pub fn evaluate_strict_not_equals(
     let second = engine.evaluate_node(&args[1], context)?;
 
     // Compare them (strict equality)
-    let equals = compare_equals(&first, &second, true)?;
+    let equals = compare_equals(&first, &second, true, engine)?;
 
     if !equals {
         // Found inequality, return true immediately (lazy)
@@ -186,7 +186,7 @@ pub fn evaluate_greater_than(
         let curr = engine.evaluate_node(item, context)?;
 
         // Compare prev > curr
-        let result = compare_greater_than(&prev, &curr)?;
+        let result = compare_greater_than(&prev, &curr, engine)?;
 
         if !result {
             // Short-circuit on first false
@@ -200,7 +200,7 @@ pub fn evaluate_greater_than(
 }
 // Helper function for > comparison
 #[inline]
-fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
+fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -243,8 +243,8 @@ fn compare_greater_than(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left);
-    let right_num = coerce_to_number(right);
+    let left_num = coerce_to_number(left, engine);
+    let right_num = coerce_to_number(right, engine);
 
     if let (Some(l), Some(r)) = (left_num, right_num) {
         return Ok(l > r);
@@ -280,7 +280,7 @@ pub fn evaluate_greater_than_equal(
         let curr = engine.evaluate_node(item, context)?;
 
         // Compare prev >= curr
-        let result = compare_greater_than_equal(&prev, &curr)?;
+        let result = compare_greater_than_equal(&prev, &curr, engine)?;
 
         if !result {
             // Short-circuit on first false
@@ -294,7 +294,7 @@ pub fn evaluate_greater_than_equal(
 }
 // Helper function for >= comparison
 #[inline]
-fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
+fn compare_greater_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -337,8 +337,8 @@ fn compare_greater_than_equal(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left);
-    let right_num = coerce_to_number(right);
+    let left_num = coerce_to_number(left, engine);
+    let right_num = coerce_to_number(right, engine);
 
     if let (Some(l), Some(r)) = (left_num, right_num) {
         return Ok(l >= r);
@@ -374,7 +374,7 @@ pub fn evaluate_less_than(
         let current = engine.evaluate_node(item, context)?;
 
         // Compare prev < current
-        let result = compare_less_than(&prev, &current)?;
+        let result = compare_less_than(&prev, &current, engine)?;
 
         if !result {
             // Short-circuit on first false
@@ -388,7 +388,7 @@ pub fn evaluate_less_than(
 }
 // Helper function for < comparison
 #[inline]
-fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
+fn compare_less_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -431,8 +431,8 @@ fn compare_less_than(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left);
-    let right_num = coerce_to_number(right);
+    let left_num = coerce_to_number(left, engine);
+    let right_num = coerce_to_number(right, engine);
 
     if let (Some(l), Some(r)) = (left_num, right_num) {
         return Ok(l < r);
@@ -468,7 +468,7 @@ pub fn evaluate_less_than_equal(
         let current = engine.evaluate_node(item, context)?;
 
         // Compare prev <= current
-        let result = compare_less_than_equal(&prev, &current)?;
+        let result = compare_less_than_equal(&prev, &current, engine)?;
 
         if !result {
             // Short-circuit on first false
@@ -483,7 +483,7 @@ pub fn evaluate_less_than_equal(
 
 // Helper function for <= comparison
 #[inline]
-fn compare_less_than_equal(left: &Value, right: &Value) -> Result<bool> {
+fn compare_less_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -526,8 +526,8 @@ fn compare_less_than_equal(left: &Value, right: &Value) -> Result<bool> {
     }
 
     // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left);
-    let right_num = coerce_to_number(right);
+    let left_num = coerce_to_number(left, engine);
+    let right_num = coerce_to_number(right, engine);
 
     if let (Some(l), Some(r)) = (left_num, right_num) {
         return Ok(l <= r);

@@ -35,7 +35,7 @@ pub fn evaluate_if(
 
         // Evaluate condition
         let condition = engine.evaluate_node(&args[i], context)?;
-        if is_truthy(&condition) {
+        if is_truthy(&condition, engine) {
             // Evaluate then branch
             if i + 1 < args.len() {
                 return engine.evaluate_node(&args[i + 1], context);
@@ -64,7 +64,7 @@ pub fn evaluate_ternary(
 
     let condition = engine.evaluate_node(&args[0], context)?;
 
-    if is_truthy(&condition) {
+    if is_truthy(&condition, engine) {
         engine.evaluate_node(&args[1], context)
     } else {
         engine.evaluate_node(&args[2], context)

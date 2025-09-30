@@ -17,7 +17,7 @@ pub fn evaluate_not(
         engine.evaluate_node(&args[0], context)?
     };
 
-    Ok(Value::Bool(!is_truthy(&value)))
+    Ok(Value::Bool(!is_truthy(&value, engine)))
 }
 
 /// Double NOT operator function (!!) - converts to boolean
@@ -33,7 +33,7 @@ pub fn evaluate_double_not(
         engine.evaluate_node(&args[0], context)?
     };
 
-    Ok(Value::Bool(is_truthy(&value)))
+    Ok(Value::Bool(is_truthy(&value, engine)))
 }
 
 /// Logical AND operator function - returns first falsy or last value
@@ -60,7 +60,7 @@ pub fn evaluate_and(
 
     for arg in args {
         let value = engine.evaluate_node(arg, context)?;
-        if !is_truthy(&value) {
+        if !is_truthy(&value, engine) {
             return Ok(value);
         }
         last_value = value;
@@ -93,7 +93,7 @@ pub fn evaluate_or(
 
     for arg in args {
         let value = engine.evaluate_node(arg, context)?;
-        if is_truthy(&value) {
+        if is_truthy(&value, engine) {
             return Ok(value);
         }
         last_value = value;

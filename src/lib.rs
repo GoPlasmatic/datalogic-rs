@@ -46,6 +46,7 @@
 //! repeated parsing overhead.
 
 mod compiled;
+mod config;
 mod constants;
 mod context;
 mod datetime;
@@ -56,6 +57,9 @@ mod operators;
 mod value_helpers;
 
 pub use compiled::{CompiledLogic, CompiledNode};
+pub use config::{
+    DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
+};
 pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
 pub use error::Error;

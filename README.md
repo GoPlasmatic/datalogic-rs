@@ -198,6 +198,72 @@ let result = engine.evaluate_json(r#"{ "double": 21 }"#, r#"{}"#).unwrap();
 assert_eq!(result, json!(42.0));
 ```
 
+## Configuration
+
+Customize evaluation behavior to match your needs:
+
+### Basic Configuration
+
+```rust
+use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
+use serde_json::json;
+
+// Configure how non-numeric values are handled in arithmetic
+let config = EvaluationConfig::default()
+    .with_nan_handling(NanHandling::IgnoreValue);
+let engine = DataLogic::with_config(config);
+
+// Non-numeric values are ignored instead of throwing errors
+let logic = json!({"+": [1, "text", 2]});
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+assert_eq!(result, json!(3)); // "text" is ignored
+```
+
+### Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| **NaN Handling** | How to handle non-numeric values in arithmetic | `ThrowError` |
+| **Division by Zero** | How to handle division by zero | `ReturnBounds` |
+| **Truthy Evaluator** | How to evaluate truthiness (JavaScript, Python, StrictBoolean, Custom) | `JavaScript` |
+| **Loose Equality Errors** | Whether to throw errors for incompatible types in `==` | `true` |
+| **Numeric Coercion** | Rules for converting values to numbers | Permissive |
+
+### Custom Truthiness
+
+```rust
+use datalogic_rs::{DataLogic, EvaluationConfig, TruthyEvaluator};
+use std::sync::Arc;
+
+// Only positive numbers are truthy
+let custom_evaluator = Arc::new(|value: &serde_json::Value| -> bool {
+    value.as_f64().map_or(false, |n| n > 0.0)
+});
+
+let config = EvaluationConfig::default()
+    .with_truthy_evaluator(TruthyEvaluator::Custom(custom_evaluator));
+let engine = DataLogic::with_config(config);
+```
+
+### Configuration Presets
+
+```rust
+// Safe arithmetic - ignores invalid values
+let engine = DataLogic::with_config(EvaluationConfig::safe_arithmetic());
+
+// Strict mode - throws more errors
+let engine = DataLogic::with_config(EvaluationConfig::strict());
+```
+
+### Combining Configuration with Structure Preservation
+
+```rust
+let config = EvaluationConfig::default()
+    .with_nan_handling(NanHandling::CoerceToZero);
+let engine = DataLogic::with_config_and_structure(config, true);
+```
+
 ## Advanced Features
 
 ### Nested Data Access

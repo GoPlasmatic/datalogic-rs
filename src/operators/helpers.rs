@@ -1,8 +1,42 @@
+use crate::config::TruthyEvaluator;
 use serde_json::Value;
 use std::borrow::Cow;
 
-/// Checks if a value is truthy according to JSONLogic rules
-pub fn is_truthy(value: &Value) -> bool {
+/// Checks if a value is truthy using the engine's configuration
+pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
+    match &engine.config().truthy_evaluator {
+        TruthyEvaluator::JavaScript => is_truthy_js(value),
+        TruthyEvaluator::Python => {
+            // Python-style truthiness (same as JavaScript for these types)
+            match value {
+                Value::Null => false,
+                Value::Bool(b) => *b,
+                Value::Number(n) => {
+                    if let Some(f) = n.as_f64() {
+                        f != 0.0 && !f.is_nan()
+                    } else {
+                        n.as_i64() != Some(0) && n.as_u64() != Some(0)
+                    }
+                }
+                Value::String(s) => !s.is_empty(),
+                Value::Array(arr) => !arr.is_empty(),
+                Value::Object(obj) => !obj.is_empty(),
+            }
+        }
+        TruthyEvaluator::StrictBoolean => {
+            // Strict boolean truthiness
+            match value {
+                Value::Null => false,
+                Value::Bool(b) => *b,
+                _ => true,
+            }
+        }
+        TruthyEvaluator::Custom(f) => f(value),
+    }
+}
+
+/// Checks if a value is truthy according to JavaScript rules (for backward compatibility)
+pub fn is_truthy_js(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(b) => *b,
