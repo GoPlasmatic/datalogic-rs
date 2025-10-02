@@ -1,27 +1,28 @@
 use crate::constants::NAN_ERROR;
 use serde_json::Value;
 
-/// Access a path in a JSON value using dot notation
+/// Access a path in a JSON value using dot notation (reference variant)
 /// Supports:
 /// - Object field access: "field" or "field.nested"
 /// - Array index access: "0" or "field.0"
 /// - Mixed: "field.0.nested"
-pub fn access_path(value: &Value, path: &str) -> Option<Value> {
+/// Returns a reference to avoid unnecessary cloning
+pub fn access_path_ref<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     if path.is_empty() {
-        return Some(value.clone());
+        return Some(value);
     }
 
     // For simple paths without dots, use direct access
     if !path.contains('.') {
-        if let Value::Object(obj) = value
-            && let Some(val) = obj.get(path)
-        {
-            return Some(val.clone());
+        if let Value::Object(obj) = value {
+            if let Some(val) = obj.get(path) {
+                return Some(val);
+            }
         }
-        if let Ok(index) = path.parse::<usize>()
-            && let Value::Array(arr) = value
-        {
-            return arr.get(index).cloned();
+        if let Ok(index) = path.parse::<usize>() {
+            if let Value::Array(arr) = value {
+                return arr.get(index);
+            }
         }
         return None;
     }
@@ -56,7 +57,16 @@ pub fn access_path(value: &Value, path: &str) -> Option<Value> {
         }
     }
 
-    Some(current.clone())
+    Some(current)
+}
+
+/// Access a path in a JSON value using dot notation (cloning variant)
+/// Supports:
+/// - Object field access: "field" or "field.nested"
+/// - Array index access: "0" or "field.0"
+/// - Mixed: "field.0.nested"
+pub fn access_path(value: &Value, path: &str) -> Option<Value> {
+    access_path_ref(value, path).cloned()
 }
 
 /// Coerce a value to a number using the engine's configuration

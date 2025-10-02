@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
-use crate::value_helpers::access_path;
+use crate::value_helpers::{access_path, access_path_ref};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Variable access operator function (var)
@@ -31,8 +31,8 @@ pub fn evaluate_var(
     };
 
     // Access the variable in current context
-    match access_path(context.current().data(), path) {
-        Some(result) => Ok(result),
+    match access_path_ref(context.current().data(), path) {
+        Some(result) => Ok(result.clone()),
         None => {
             // If not found and there's a default value, use it
             if args.len() > 1 {
@@ -94,7 +94,9 @@ pub fn evaluate_val(
                     .get_at_level(level as isize)
                     .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-                return Ok(access_path(frame.data(), &path).unwrap_or(Value::Null));
+                return Ok(access_path_ref(frame.data(), &path)
+                    .cloned()
+                    .unwrap_or(Value::Null));
             }
 
             // For multi-arg case, chain path access
@@ -116,11 +118,26 @@ pub fn evaluate_val(
                 .get_at_level(level as isize)
                 .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-            let mut result = frame.data().clone();
-            for path in paths {
-                result = access_path(&result, &path).unwrap_or(Value::Null);
+            // Start with a reference and only clone at the end or when needed
+            let mut current_ref = frame.data();
+            let mut owned_value = None;
+
+            for path in &paths {
+                if let Some(owned) = owned_value.as_ref() {
+                    // If we already have an owned value, use access_path on it
+                    owned_value = Some(access_path(owned, path).unwrap_or(Value::Null));
+                } else {
+                    // Still working with references
+                    if let Some(next_ref) = access_path_ref(current_ref, path) {
+                        current_ref = next_ref;
+                    } else {
+                        // Path not found, return null
+                        return Ok(Value::Null);
+                    }
+                }
             }
-            return Ok(result);
+
+            return Ok(owned_value.unwrap_or_else(|| current_ref.clone()));
         } else if args.len() == 2 {
             // Two arguments - check for datetime/duration property access first
             let first = engine.evaluate_node(&args[0], context)?;
@@ -350,7 +367,9 @@ pub fn evaluate_val(
                 return Ok(val.clone());
             }
             // Fall back to access_path for complex paths
-            Ok(access_path(context.current().data(), s).unwrap_or(Value::Null))
+            Ok(access_path_ref(context.current().data(), s)
+                .cloned()
+                .unwrap_or(Value::Null))
         }
         Value::Number(n) => {
             // Handle numeric index for array access
@@ -360,7 +379,9 @@ pub fn evaluate_val(
                 } else {
                     // Try converting to string for object key access
                     let key = n.to_string();
-                    Ok(access_path(context.current().data(), &key).unwrap_or(Value::Null))
+                    Ok(access_path_ref(context.current().data(), &key)
+                        .cloned()
+                        .unwrap_or(Value::Null))
                 }
             } else {
                 Ok(Value::Null)

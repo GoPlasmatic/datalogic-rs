@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::value_helpers::access_path;
+use crate::value_helpers::access_path_ref;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Missing operator function - checks for missing variables
@@ -19,14 +19,14 @@ pub fn evaluate_missing(
             Value::Array(arr) => {
                 for v in arr {
                     if let Some(path) = v.as_str()
-                        && access_path(context.current().data(), path).is_none()
+                        && access_path_ref(context.current().data(), path).is_none()
                     {
                         missing.push(Value::String(path.to_string()));
                     }
                 }
             }
             Value::String(s) => {
-                if access_path(context.current().data(), s).is_none() {
+                if access_path_ref(context.current().data(), s).is_none() {
                     missing.push(Value::String(s.clone()));
                 }
             }
@@ -61,7 +61,7 @@ pub fn evaluate_missing_some(
     if let Value::Array(arr) = &paths_val {
         for v in arr {
             if let Some(path) = v.as_str() {
-                if access_path(context.current().data(), path).is_none() {
+                if access_path_ref(context.current().data(), path).is_none() {
                     missing.push(Value::String(path.to_string()));
                 } else {
                     present_count += 1;

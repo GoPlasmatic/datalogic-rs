@@ -1,18 +1,12 @@
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
-// Interned strings for common metadata keys
-static INDEX_KEY: OnceLock<String> = OnceLock::new();
-static KEY_KEY: OnceLock<String> = OnceLock::new();
-
-pub fn index_key() -> &'static String {
-    INDEX_KEY.get_or_init(|| "index".to_string())
-}
-
-pub fn key_key() -> &'static String {
-    KEY_KEY.get_or_init(|| "key".to_string())
-}
+// Static string constants for common metadata keys
+pub const INDEX_KEY: &str = "index";
+pub const KEY_KEY: &str = "key";
+pub const CURRENT_KEY: &str = "current";
+pub const ACCUMULATOR_KEY: &str = "accumulator";
 
 /// A single frame in the context stack (for temporary/nested contexts)
 pub struct ContextFrame {

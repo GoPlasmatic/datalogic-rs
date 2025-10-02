@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use super::helpers::is_truthy;
-use crate::context::{index_key, key_key};
+use crate::context::{ACCUMULATOR_KEY, CURRENT_KEY, INDEX_KEY, KEY_KEY};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 // Inline function wrappers for array operators
@@ -181,7 +181,7 @@ impl MapOperator {
 
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
                     let result = engine.evaluate_node(logic, context)?;
@@ -196,8 +196,8 @@ impl MapOperator {
 
                 for (index, (key, value)) in obj.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(2);
-                    metadata.insert(key_key().clone(), Value::String(key.clone()));
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(value.clone(), metadata);
                     let result = engine.evaluate_node(logic, context)?;
@@ -211,7 +211,7 @@ impl MapOperator {
             // For primitive values (number, string, bool), treat as single-element collection
             _ => {
                 let mut metadata = HashMap::with_capacity(1);
-                metadata.insert(index_key().clone(), Value::Number(0.into()));
+                metadata.insert(INDEX_KEY.to_string(), Value::Number(0.into()));
 
                 context.push_with_metadata(collection, metadata);
                 let result = engine.evaluate_node(logic, context)?;
@@ -280,7 +280,7 @@ impl FilterOperator {
 
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
                     let keep = engine.evaluate_node(predicate, context)?;
@@ -298,8 +298,8 @@ impl FilterOperator {
 
                 for (index, (key, value)) in obj.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(2);
-                    metadata.insert(key_key().clone(), Value::String(key.clone()));
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(value.clone(), metadata);
                     let keep = engine.evaluate_node(predicate, context)?;
@@ -373,8 +373,8 @@ impl ReduceOperator {
 
                 for current in arr {
                     let mut frame_data = serde_json::Map::with_capacity(2);
-                    frame_data.insert("current".to_string(), current.clone());
-                    frame_data.insert("accumulator".to_string(), accumulator.clone());
+                    frame_data.insert(CURRENT_KEY.to_string(), current.clone());
+                    frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator.clone());
 
                     context.push(Value::Object(frame_data));
                     accumulator = engine.evaluate_node(logic, context)?;
@@ -435,7 +435,7 @@ impl AllOperator {
             Value::Array(arr) if !arr.is_empty() => {
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
                     let result = engine.evaluate_node(predicate, context)?;
@@ -499,7 +499,7 @@ impl SomeOperator {
             Value::Array(arr) => {
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
                     let result = engine.evaluate_node(predicate, context)?;
@@ -563,7 +563,7 @@ impl NoneOperator {
             Value::Array(arr) => {
                 for (index, item) in arr.iter().enumerate() {
                     let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(index_key().clone(), Value::Number(index.into()));
+                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
 
                     context.push_with_metadata(item.clone(), metadata);
                     let result = engine.evaluate_node(predicate, context)?;
