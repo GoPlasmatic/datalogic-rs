@@ -6,7 +6,7 @@ use serde_json::Value;
 /// - Object field access: "field" or "field.nested"
 /// - Array index access: "0" or "field.0"
 /// - Mixed: "field.0.nested"
-/// Returns a reference to avoid unnecessary cloning
+///   Returns a reference to avoid unnecessary cloning
 pub fn access_path_ref<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     if path.is_empty() {
         return Some(value);
@@ -14,15 +14,15 @@ pub fn access_path_ref<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 
     // For simple paths without dots, use direct access
     if !path.contains('.') {
-        if let Value::Object(obj) = value {
-            if let Some(val) = obj.get(path) {
-                return Some(val);
-            }
+        if let Value::Object(obj) = value
+            && let Some(val) = obj.get(path)
+        {
+            return Some(val);
         }
-        if let Ok(index) = path.parse::<usize>() {
-            if let Value::Array(arr) = value {
-                return arr.get(index);
-            }
+        if let Ok(index) = path.parse::<usize>()
+            && let Value::Array(arr) = value
+        {
+            return arr.get(index);
         }
         return None;
     }
