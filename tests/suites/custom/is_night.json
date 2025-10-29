@@ -1,0 +1,183 @@
+[
+    "# IsNight operator - checks if time is after 7 PM or before 7 AM",
+    {
+        "description": "8:00 PM is nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T20:00:00Z"}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "11:59 PM is nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T23:59:59Z"}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "7:00 PM exactly is nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T19:00:00Z"}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "Midnight is nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T00:00:00Z"}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "3:00 AM is nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T03:00:00Z"}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "6:59 AM is nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T06:59:59Z"}},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "7:00 AM is not nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T07:00:00Z"}},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "8:00 AM is not nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T08:00:00Z"}},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Noon is not nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T12:00:00Z"}},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "3:00 PM is not nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T15:00:00Z"}},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "6:59 PM is not nighttime",
+        "rule": {"is_night": {"datetime": "2022-07-06T18:59:59Z"}},
+        "data": null,
+        "result": false
+    },
+
+    "# IsNight with datetime from string",
+    {
+        "description": "String datetime - 9 PM is nighttime",
+        "rule": {"is_night": "2022-07-06T21:00:00Z"},
+        "data": null,
+        "result": true
+    },
+    {
+        "description": "String datetime - 10 AM is not nighttime",
+        "rule": {"is_night": "2022-07-06T10:00:00Z"},
+        "data": null,
+        "result": false
+    },
+
+    "# IsNight with datetime from variable",
+    {
+        "description": "Variable datetime - 11 PM is nighttime",
+        "rule": {"is_night": {"var": "check_time"}},
+        "data": {"check_time": {"datetime": "2022-07-06T23:00:00Z"}},
+        "result": true
+    },
+    {
+        "description": "Variable datetime - 2 PM is not nighttime",
+        "rule": {"is_night": {"var": "check_time"}},
+        "data": {"check_time": {"datetime": "2022-07-06T14:00:00Z"}},
+        "result": false
+    },
+
+    "# IsNight with different timezones (all evaluated in UTC)",
+    {
+        "description": "Datetime with timezone offset - 10 PM UTC+5 (5 PM UTC)",
+        "rule": {"is_night": {"datetime": "2022-07-06T22:00:00+05:00"}},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Datetime with timezone offset - 9 AM UTC-5 (2 PM UTC)",
+        "rule": {"is_night": {"datetime": "2022-07-06T09:00:00-05:00"}},
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "Datetime with timezone offset - 3 AM UTC+5 (10 PM previous day UTC)",
+        "rule": {"is_night": {"datetime": "2022-07-07T03:00:00+05:00"}},
+        "data": null,
+        "result": true
+    },
+
+    "# IsNight with preserve_structure for conditional structured objects",
+    {
+        "description": "Conditional logic in structured object - is_night returns true",
+        "rule": {
+            "get_the_garlic": {
+                "if": [
+                    {"is_night": {"datetime": "2022-07-06T23:59:59Z"}},
+                    {"should_i": "yes"},
+                    {"should_i": "nah"}
+                ]
+            }
+        },
+        "data": {},
+        "result": {
+            "get_the_garlic": {
+                "should_i": "yes"
+            }
+        },
+        "preserve_structure": true
+    },
+    {
+        "description": "Conditional logic in structured object - is_night returns false",
+        "rule": {
+            "get_the_garlic": {
+                "if": [
+                    {"is_night": {"datetime": "2022-07-06T14:00:00Z"}},
+                    {"should_i": "yes"},
+                    {"should_i": "nah"}
+                ]
+            }
+        },
+        "data": {},
+        "result": {
+            "get_the_garlic": {
+                "should_i": "nah"
+            }
+        },
+        "preserve_structure": true
+    },
+
+    "# Error cases",
+    {
+        "description": "Invalid argument - number",
+        "rule": {"is_night": 42},
+        "data": null,
+        "error": {"type": "Invalid datetime argument"}
+    },
+    {
+        "description": "Invalid argument - invalid string",
+        "rule": {"is_night": "not a date"},
+        "data": null,
+        "error": {"type": "Invalid datetime argument"}
+    },
+    {
+        "description": "Missing argument",
+        "rule": {"is_night": []},
+        "data": null,
+        "error": {"type": "Expected exactly one argument"}
+    },
+    {
+        "description": "Too many arguments",
+        "rule": {"is_night": [{"datetime": "2022-07-06T20:00:00Z"}, {"datetime": "2022-07-07T20:00:00Z"}]},
+        "data": null,
+        "error": {"type": "Expected exactly one argument"}
+    }
+]

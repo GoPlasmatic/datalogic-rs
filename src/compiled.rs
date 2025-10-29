@@ -45,9 +45,12 @@ pub enum CompiledNode {
 
     /// A structured object template for preserve_structure mode.
     ///
-    /// When structure preservation is enabled, objects with non-operator keys
-    /// are preserved as templates. Each field is evaluated independently,
-    /// allowing for dynamic object generation.
+    /// When structure preservation is enabled, objects with keys that are not
+    /// built-in operators or registered custom operators are preserved as templates.
+    /// Each field is evaluated independently, allowing for dynamic object generation.
+    ///
+    /// Note: Custom operators are checked before treating keys as structured fields,
+    /// ensuring they work correctly within preserved structures.
     StructuredObject { fields: Vec<(String, CompiledNode)> },
 }
 
@@ -238,7 +241,25 @@ impl CompiledLogic {
 
                     Ok(node)
                 } else if preserve_structure {
-                    // In preserve_structure mode, treat unknown operators as object keys
+                    // In preserve_structure mode, we need to distinguish between:
+                    // 1. Custom operators (should be evaluated as operators)
+                    // 2. Unknown keys (should be preserved as structured object fields)
+                    //
+                    // Check if this is a custom operator first
+                    if let Some(eng) = engine {
+                        if eng.has_custom_operator(op_name) {
+                            // It's a registered custom operator - compile as CustomOperator
+                            // This ensures custom operators work correctly in preserve_structure mode,
+                            // e.g., {"result": {"custom_op": arg}} will evaluate custom_op properly
+                            let args = Self::compile_args(args_value, engine, preserve_structure)?;
+                            return Ok(CompiledNode::CustomOperator {
+                                name: op_name.clone(),
+                                args,
+                            });
+                        }
+                    }
+                    // Not a built-in operator or custom operator - treat as structured object field
+                    // This allows dynamic object generation like {"name": {"var": "user.name"}}
                     let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
                     let fields = vec![(op_name.clone(), compiled_val)];
                     Ok(CompiledNode::StructuredObject { fields })
