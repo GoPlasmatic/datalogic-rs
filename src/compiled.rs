@@ -246,17 +246,17 @@ impl CompiledLogic {
                     // 2. Unknown keys (should be preserved as structured object fields)
                     //
                     // Check if this is a custom operator first
-                    if let Some(eng) = engine {
-                        if eng.has_custom_operator(op_name) {
-                            // It's a registered custom operator - compile as CustomOperator
-                            // This ensures custom operators work correctly in preserve_structure mode,
-                            // e.g., {"result": {"custom_op": arg}} will evaluate custom_op properly
-                            let args = Self::compile_args(args_value, engine, preserve_structure)?;
-                            return Ok(CompiledNode::CustomOperator {
-                                name: op_name.clone(),
-                                args,
-                            });
-                        }
+                    if let Some(eng) = engine
+                        && eng.has_custom_operator(op_name)
+                    {
+                        // It's a registered custom operator - compile as CustomOperator
+                        // This ensures custom operators work correctly in preserve_structure mode,
+                        // e.g., {"result": {"custom_op": arg}} will evaluate custom_op properly
+                        let args = Self::compile_args(args_value, engine, preserve_structure)?;
+                        return Ok(CompiledNode::CustomOperator {
+                            name: op_name.clone(),
+                            args,
+                        });
                     }
                     // Not a built-in operator or custom operator - treat as structured object field
                     // This allows dynamic object generation like {"name": {"var": "user.name"}}

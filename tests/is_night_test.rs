@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Timelike};
 use datalogic_rs::{ContextStack, DataLogic, Error, Evaluator, Operator, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Custom operator that checks if a datetime is during nighttime hours
 struct IsNightOperator;
@@ -21,9 +21,8 @@ impl Operator for IsNightOperator {
         }
 
         let evaluated_arg = evaluator.evaluate(&args[0], context)?;
-        let datetime = parse_datetime(&evaluated_arg).ok_or_else(|| {
-            Error::InvalidArguments("Invalid datetime argument".to_string())
-        })?;
+        let datetime = parse_datetime(&evaluated_arg)
+            .ok_or_else(|| Error::InvalidArguments("Invalid datetime argument".to_string()))?;
 
         let hour = datetime.hour();
         let is_night = hour >= 19 || hour < 7;
