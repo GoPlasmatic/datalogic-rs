@@ -73,7 +73,9 @@ impl DataLogic {
     /// Creates a new DataLogic engine with structure preservation enabled.
     ///
     /// When enabled, objects with unknown operators are preserved as structured
-    /// templates, allowing for dynamic object generation.
+    /// templates, allowing for dynamic object generation. Custom operators
+    /// registered via `add_operator` are recognized and evaluated properly,
+    /// even within structured objects.
     ///
     /// # Example
     ///
@@ -87,6 +89,36 @@ impl DataLogic {
     ///     "score": {"+": [{"var": "base"}, {"var": "bonus"}]}
     /// });
     /// // Returns: {"name": "Alice", "score": 95}
+    /// ```
+    ///
+    /// # Custom Operators with Preserve Structure
+    ///
+    /// Custom operators work seamlessly in preserve_structure mode:
+    ///
+    /// ```rust
+    /// use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result, Error};
+    /// use serde_json::{json, Value};
+    /// use std::sync::Arc;
+    ///
+    /// struct UpperOperator;
+    /// impl Operator for UpperOperator {
+    ///     fn evaluate(&self, args: &[Value], context: &mut ContextStack,
+    ///                 evaluator: &dyn Evaluator) -> Result<Value> {
+    ///         let val = evaluator.evaluate(&args[0], context)?;
+    ///         Ok(json!(val.as_str().unwrap_or("").to_uppercase()))
+    ///     }
+    /// }
+    ///
+    /// let mut engine = DataLogic::with_preserve_structure();
+    /// engine.add_operator("upper".to_string(), Box::new(UpperOperator));
+    ///
+    /// let logic = json!({
+    ///     "message": {"upper": {"var": "text"}},
+    ///     "count": {"var": "num"}
+    /// });
+    /// let compiled = engine.compile(&logic).unwrap();
+    /// let result = engine.evaluate(&compiled, Arc::new(json!({"text": "hello", "num": 5}))).unwrap();
+    /// // Returns: {"message": "HELLO", "count": 5}
     /// ```
     pub fn with_preserve_structure() -> Self {
         Self {
@@ -191,6 +223,19 @@ impl DataLogic {
     /// ```
     pub fn add_operator(&mut self, name: String, operator: Box<dyn Operator>) {
         self.custom_operators.insert(name, operator);
+    }
+
+    /// Checks if a custom operator with the given name is registered.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The operator name to check
+    ///
+    /// # Returns
+    ///
+    /// `true` if the operator exists, `false` otherwise.
+    pub fn has_custom_operator(&self, name: &str) -> bool {
+        self.custom_operators.contains_key(name)
     }
 
     /// Compiles a JSON logic expression into an optimized form.
