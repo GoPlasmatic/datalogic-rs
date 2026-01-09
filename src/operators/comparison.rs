@@ -1,3 +1,47 @@
+//! Comparison operators for value comparisons.
+//!
+//! This module provides equality and ordering comparison operators with support for
+//! type coercion, datetime/duration handling, and chained comparisons.
+//!
+//! # Operators
+//!
+//! | Operator | Description | Example |
+//! |----------|-------------|---------|
+//! | `==` | Loose equality (with coercion) | `{"==": [1, "1"]}` → `true` |
+//! | `===` | Strict equality (no coercion) | `{"===": [1, "1"]}` → `false` |
+//! | `!=` | Loose inequality | `{"!=": [1, 2]}` → `true` |
+//! | `!==` | Strict inequality | `{"!==": [1, "1"]}` → `true` |
+//! | `>` | Greater than | `{">": [5, 3]}` → `true` |
+//! | `>=` | Greater than or equal | `{">=": [5, 5]}` → `true` |
+//! | `<` | Less than | `{"<": [3, 5]}` → `true` |
+//! | `<=` | Less than or equal | `{"<=": [5, 5]}` → `true` |
+//!
+//! # Comparison Precedence
+//!
+//! When comparing values, the following precedence is used:
+//!
+//! 1. **DateTime**: If both values are parseable as ISO 8601 datetimes, compare chronologically
+//! 2. **Duration**: If both values are parseable as durations, compare by total duration
+//! 3. **String**: If both are strings (and not datetime/duration), compare lexicographically
+//! 4. **Number**: Coerce to numbers and compare numerically
+//!
+//! # Chained Comparisons
+//!
+//! All comparison operators support chained comparisons with 3+ arguments:
+//!
+//! ```json
+//! {"<": [1, 2, 3]}  // Equivalent to: 1 < 2 && 2 < 3, returns true
+//! {"<": [1, 5, 3]}  // Equivalent to: 1 < 5 && 5 < 3, returns false
+//! ```
+//!
+//! Chained comparisons use short-circuit evaluation - they stop at the first `false` result.
+//!
+//! # Error Handling
+//!
+//! Comparison throws a NaN error when:
+//! - Comparing arrays or objects (except datetime/duration objects)
+//! - Comparing a number with a non-numeric string
+
 use serde_json::Value;
 
 use super::helpers::{extract_datetime_value, extract_duration_value};

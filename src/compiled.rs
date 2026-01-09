@@ -340,7 +340,21 @@ impl CompiledLogic {
         }
     }
 
-    /// Check if an operator can be statically evaluated
+    /// Check if an operator can be statically evaluated at compile time.
+    ///
+    /// Static operators can be pre-computed during compilation when their arguments
+    /// are also static, eliminating runtime evaluation overhead.
+    ///
+    /// # Classification Criteria
+    ///
+    /// An operator is **non-static** (dynamic) if it:
+    /// 1. Reads from the data context (`var`, `val`, `missing`, `exists`)
+    /// 2. Uses iterative callbacks with changing context (`map`, `filter`, `reduce`)
+    /// 3. Has side effects or error handling (`try`, `throw`)
+    /// 4. Depends on runtime state (`now` for current time)
+    /// 5. Needs runtime disambiguation (`preserve`, `merge`, `min`, `max`)
+    ///
+    /// All other operators are **static** when their arguments are static.
     fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         use OpCode::*;
 
@@ -348,23 +362,31 @@ impl CompiledLogic {
         let args_static = || args.iter().all(Self::node_is_static);
 
         match opcode {
-            // Context-dependent operators - always dynamic
+            // Context-dependent: These operators read from the data context, which is
+            // not available at compile time. They must remain dynamic.
             Var | Val | Missing | MissingSome | Exists => false,
 
-            // Array iteration operators - always dynamic
+            // Iteration operators: These push new contexts for each iteration and use
+            // callbacks that may reference the iteration variable. Even with static
+            // arrays, the callback logic depends on the per-element context.
             Map | Filter | Reduce | All | Some | None => false,
 
-            // Error handling - dynamic
+            // Error handling: These have control flow effects (early exit, error propagation)
+            // that should be preserved for runtime execution.
             Try | Throw => false,
 
-            // Time-dependent - Now is always dynamic
+            // Time-dependent: Returns current UTC time, inherently non-static.
             Now => false,
 
-            // Special operators that need runtime info
-            Preserve => false, // Operators need to know it's from an operator
-            Merge | Min | Max => false, // Need to distinguish literal vs operator arrays
+            // Runtime disambiguation needed:
+            // - Preserve: Must know it was explicitly used as an operator, not inferred
+            // - Merge/Min/Max: Need to distinguish [1,2,3] literal from operator arguments
+            //   at runtime to handle nested arrays correctly
+            Preserve => false,
+            Merge | Min | Max => false,
 
-            // Static if arguments are static
+            // Pure operators: Static when all arguments are static. These perform
+            // deterministic transformations without side effects or context access.
             Type | StartsWith | EndsWith | Upper | Lower | Trim | Split | Datetime | Timestamp
             | ParseDate | FormatDate | DateDiff | Abs | Ceil | Floor | Add | Subtract
             | Multiply | Divide | Modulo | Equals | StrictEquals | NotEquals | StrictNotEquals

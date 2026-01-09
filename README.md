@@ -169,7 +169,7 @@ assert_eq!(result, json!(20));
 
 ## Custom Operators
 
-Extend the engine with your own logic:
+Extend the engine with your own logic. **Important:** Custom operators receive unevaluated arguments—you must call `evaluator.evaluate()` to evaluate them:
 
 ```rust
 use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result, Error};
@@ -181,10 +181,12 @@ impl Operator for DoubleOperator {
     fn evaluate(
         &self,
         args: &[Value],
-        _context: &mut ContextStack,
-        _evaluator: &dyn Evaluator,
+        context: &mut ContextStack,
+        evaluator: &dyn Evaluator,
     ) -> Result<Value> {
-        match args.first().and_then(|v| v.as_f64()) {
+        // Arguments are unevaluated - must call evaluate() first!
+        let value = evaluator.evaluate(args.first().unwrap_or(&Value::Null), context)?;
+        match value.as_f64() {
             Some(n) => Ok(json!(n * 2.0)),
             None => Err(Error::InvalidArguments("Expected number".to_string()))
         }
@@ -194,9 +196,18 @@ impl Operator for DoubleOperator {
 let mut engine = DataLogic::new();
 engine.add_operator("double".to_string(), Box::new(DoubleOperator));
 
+// Works with literals
 let result = engine.evaluate_json(r#"{ "double": 21 }"#, r#"{}"#).unwrap();
 assert_eq!(result, json!(42.0));
+
+// Also works with variable references (because we evaluate the argument)
+let logic = json!({ "double": { "var": "x" } });
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, json!({ "x": 10 })).unwrap();
+assert_eq!(result, json!(20.0));
 ```
+
+For more examples including averaging, range checking, and string formatting operators, see [`examples/custom_operator.rs`](examples/custom_operator.rs).
 
 ## Configuration
 
@@ -290,14 +301,86 @@ assert_eq!(result, json!("New York"));
 
 ### Error Handling
 
+The `try` and `throw` operators provide exception-like error handling:
+
 ```rust
+use datalogic_rs::DataLogic;
+use serde_json::json;
+
+let engine = DataLogic::new();
+
+// Basic try/catch - returns fallback on error
 let logic = json!({
     "try": [
         { "/": [10, { "var": "divisor" }] },
-        0  // Default value on error
+        0  // Fallback value if division fails
     ]
 });
+let compiled = engine.compile(&logic).unwrap();
+
+let result = engine.evaluate_owned(&compiled, json!({ "divisor": 0 })).unwrap();
+assert_eq!(result, json!(0));  // Division by zero caught, returns fallback
+
+// Throw custom errors
+let logic = json!({
+    "if": [
+        { "<": [{ "var": "age" }, 0] },
+        { "throw": { "code": "INVALID_AGE", "message": "Age cannot be negative" } },
+        { "var": "age" }
+    ]
+});
+
+// Access error details in catch block
+let logic = json!({
+    "try": [
+        { "throw": { "code": 404, "message": "Not found" } },
+        { "cat": ["Error: ", { "var": "message" }] }  // Access thrown error properties
+    ]
+});
+let compiled = engine.compile(&logic).unwrap();
+let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+assert_eq!(result, json!("Error: Not found"));
 ```
+
+### Structured Objects (Templating)
+
+Enable `preserve_structure` mode to use JSONLogic as a templating engine. Unknown keys become output fields instead of being treated as operators:
+
+```rust
+use datalogic_rs::DataLogic;
+use serde_json::json;
+
+let engine = DataLogic::with_preserve_structure();
+
+// Template with mixed operators and literal fields
+let template = json!({
+    "user": {
+        "name": { "var": "firstName" },
+        "email": { "var": "userEmail" },
+        "verified": true
+    },
+    "generatedAt": { "now": [] }
+});
+
+let compiled = engine.compile(&template).unwrap();
+let data = json!({
+    "firstName": "Alice",
+    "userEmail": "alice@example.com"
+});
+
+let result = engine.evaluate_owned(&compiled, data).unwrap();
+// Result: {
+//   "user": { "name": "Alice", "email": "alice@example.com", "verified": true },
+//   "generatedAt": "2024-01-15T10:30:00Z"
+// }
+```
+
+This is useful for:
+- API response transformation
+- Dynamic document generation
+- Configuration templating
+
+For more examples, see [`examples/structured_objects.rs`](examples/structured_objects.rs).
 
 ## Async Support
 

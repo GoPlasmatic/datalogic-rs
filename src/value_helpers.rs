@@ -1,3 +1,43 @@
+//! Helper functions for JSON value manipulation and type coercion.
+//!
+//! This module provides utilities for accessing nested values, comparing values,
+//! and coercing between types according to JSONLogic semantics.
+//!
+//! # Path Access
+//!
+//! The `access_path` and `access_path_ref` functions support dot-notation paths
+//! for navigating nested JSON structures:
+//!
+//! - `"field"` - Access object field
+//! - `"0"` - Access array element by index
+//! - `"field.nested"` - Nested object access
+//! - `"field.0.nested"` - Mixed object/array access
+//!
+//! # Equality Comparison
+//!
+//! Two modes of equality are supported:
+//!
+//! - **Strict equality** (`===`): Values must have same type and value
+//! - **Loose equality** (`==`): Type coercion is applied before comparison
+//!
+//! # Loose Equality Coercion Rules
+//!
+//! | Left Type | Right Type | Behavior |
+//! |-----------|------------|----------|
+//! | Number | String | Parse string as number |
+//! | Number | Bool | `true` → `1`, `false` → `0` |
+//! | String | Bool | Compare to `"true"`/`"false"` |
+//! | Null | Number | `null` equals `0` |
+//! | Null | Bool | `null` equals `false` |
+//! | Null | String | `null` equals `""` |
+//!
+//! # Numeric Coercion
+//!
+//! Configurable through `EvaluationConfig`:
+//! - Empty string to zero (optional)
+//! - Boolean to number (`true` → `1`, `false` → `0`)
+//! - Null to zero (optional)
+
 use crate::constants::NAN_ERROR;
 use serde_json::Value;
 

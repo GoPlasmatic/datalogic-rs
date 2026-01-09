@@ -8,7 +8,32 @@ use crate::constants::INVALID_ARGS;
 use crate::context::{ACCUMULATOR_KEY, CURRENT_KEY, INDEX_KEY, KEY_KEY};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
-/// Merge operator - merges arrays
+/// The `merge` operator - combines multiple arrays into one.
+///
+/// # Syntax
+/// ```json
+/// {"merge": [array1, array2, ...]}
+/// ```
+///
+/// # Arguments
+/// Any number of arrays or values to merge together.
+///
+/// # Behavior
+/// - Arrays are flattened one level (elements are extracted)
+/// - Non-array values are added as-is
+/// - `null` values are filtered out from the result
+///
+/// # Example
+/// ```json
+/// {"merge": [[1, 2], [3, 4], 5]}
+/// ```
+/// Returns: `[1, 2, 3, 4, 5]`
+///
+/// # Example with nulls
+/// ```json
+/// {"merge": [[1, null, 2], [3]]}
+/// ```
+/// Returns: `[1, 2, 3]` (nulls filtered)
 #[inline]
 pub fn evaluate_merge(
     args: &[CompiledNode],

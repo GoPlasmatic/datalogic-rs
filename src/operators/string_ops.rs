@@ -1,3 +1,33 @@
+//! Extended string operations beyond the core JSONLogic specification.
+//!
+//! This module provides additional string manipulation operators that complement
+//! the basic `cat`, `substr`, and `in` operators in the `string` module.
+//!
+//! # Operators
+//!
+//! | Operator | Description | Example |
+//! |----------|-------------|---------|
+//! | `starts_with` | Check if string starts with prefix | `{"starts_with": ["hello", "he"]}` → `true` |
+//! | `ends_with` | Check if string ends with suffix | `{"ends_with": ["hello", "lo"]}` → `true` |
+//! | `upper` | Convert to uppercase | `{"upper": "hello"}` → `"HELLO"` |
+//! | `lower` | Convert to lowercase | `{"lower": "HELLO"}` → `"hello"` |
+//! | `trim` | Remove leading/trailing whitespace | `{"trim": "  hi  "}` → `"hi"` |
+//! | `split` | Split string by delimiter or regex | `{"split": ["a,b,c", ","]}` → `["a","b","c"]` |
+//!
+//! # Regex Support in Split
+//!
+//! The `split` operator supports regex patterns with named capture groups:
+//!
+//! ```json
+//! {"split": ["John:42", "(?P<name>\\w+):(?P<age>\\d+)"]}
+//! // Returns: {"name": "John", "age": "42"}
+//! ```
+//!
+//! # Type Coercion
+//!
+//! All operators coerce non-string values to strings before processing.
+//! Empty strings are handled gracefully (e.g., `trim` on empty returns empty).
+
 use regex::Regex;
 use serde_json::{Value, json};
 

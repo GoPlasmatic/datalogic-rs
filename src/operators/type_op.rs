@@ -1,3 +1,37 @@
+//! Type inspection operator for runtime type checking.
+//!
+//! The `type` operator returns a string indicating the type of a value,
+//! useful for conditional logic based on data types.
+//!
+//! # Return Values
+//!
+//! | Value | Returns |
+//! |-------|---------|
+//! | `null` | `"null"` |
+//! | `true`/`false` | `"boolean"` |
+//! | `123`, `1.5` | `"number"` |
+//! | `"hello"` | `"string"` |
+//! | `[1, 2, 3]` | `"array"` |
+//! | `{"key": "val"}` | `"object"` |
+//! | ISO datetime string | `"datetime"` |
+//! | Duration string | `"duration"` |
+//!
+//! # Special Type Detection
+//!
+//! The operator performs heuristic detection for datetime and duration strings:
+//! - Datetime: Contains `T`, `:`, and either `Z` or `+` (ISO 8601 format)
+//! - Duration: Contains time unit letters (`d`, `h`, `m`, `s`) with digits
+//!
+//! # Examples
+//!
+//! ```json
+//! {"type": 42}                          // Returns: "number"
+//! {"type": "hello"}                     // Returns: "string"
+//! {"type": [1, 2, 3]}                   // Returns: "array"
+//! {"type": "2024-01-15T10:30:00Z"}      // Returns: "datetime"
+//! {"type": "2h30m"}                     // Returns: "duration"
+//! ```
+
 use serde_json::Value;
 
 use crate::datetime::{is_datetime_object, is_duration_object};

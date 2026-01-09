@@ -1,3 +1,40 @@
+//! Error handling operator for graceful failure recovery.
+//!
+//! The `try` operator provides exception-like error handling in JSONLogic expressions.
+//! It evaluates arguments in sequence until one succeeds, similar to try-catch in
+//! traditional programming languages.
+//!
+//! # Syntax
+//!
+//! ```json
+//! {"try": [expression, fallback1, fallback2, ...]}
+//! ```
+//!
+//! # Behavior
+//!
+//! 1. Evaluates each argument in order until one succeeds
+//! 2. Returns the result of the first successful evaluation
+//! 3. If all arguments fail, returns the last error
+//! 4. The final argument can access error context via `{"var": ""}` when catching
+//!    a `throw` error
+//!
+//! # Error Context
+//!
+//! When catching a thrown error, the last fallback argument receives the error
+//! object as its context, allowing error inspection:
+//!
+//! ```json
+//! {"try": [
+//!   {"throw": {"code": 404, "message": "Not found"}},
+//!   {"cat": ["Error: ", {"var": "message"}]}
+//! ]}
+//! // Returns: "Error: Not found"
+//! ```
+//!
+//! # Related
+//!
+//! - [`throw`](super::throw) - Throw an error to be caught by `try`
+
 use serde_json::Value;
 
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};

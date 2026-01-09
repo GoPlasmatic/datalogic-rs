@@ -1,3 +1,43 @@
+//! DateTime and Duration operators for temporal data handling.
+//!
+//! This module provides operators for working with dates, times, and durations in JSONLogic.
+//! It supports ISO 8601 datetime strings and duration formats.
+//!
+//! # Supported Operators
+//!
+//! - `datetime` - Parse or validate a datetime value
+//! - `timestamp` - Parse or validate a duration value
+//! - `parse_date` - Parse a date string with a custom format
+//! - `format_date` - Format a datetime with a custom format string
+//! - `date_diff` - Calculate the difference between two dates
+//! - `now` - Get the current UTC datetime
+//!
+//! # Format String Conversion
+//!
+//! Format strings use a simplified syntax that is converted to chrono format internally:
+//!
+//! | Input | Chrono | Description |
+//! |-------|--------|-------------|
+//! | `yyyy` | `%Y` | 4-digit year |
+//! | `MM` | `%m` | 2-digit month |
+//! | `dd` | `%d` | 2-digit day |
+//! | `HH` | `%H` | 2-digit hour (24h) |
+//! | `mm` | `%M` | 2-digit minute |
+//! | `ss` | `%S` | 2-digit second |
+//!
+//! # Examples
+//!
+//! ```json
+//! // Parse and validate a datetime
+//! {"datetime": "2024-01-15T10:30:00Z"}
+//!
+//! // Format a datetime
+//! {"format_date": [{"var": "date"}, "yyyy-MM-dd"]}
+//!
+//! // Calculate days between two dates
+//! {"date_diff": [{"var": "start"}, {"var": "end"}, "days"]}
+//! ```
+
 use chrono::Utc;
 use serde_json::{Value, json};
 

@@ -1,3 +1,61 @@
+//! Arithmetic operators for numeric computations.
+//!
+//! This module provides all arithmetic operators with support for:
+//! - Integer and floating-point arithmetic
+//! - Overflow protection with automatic promotion to float
+//! - DateTime and Duration arithmetic
+//! - Configurable NaN handling
+//!
+//! # Operators
+//!
+//! | Operator | Description | Example |
+//! |----------|-------------|---------|
+//! | `+` | Addition | `{"+": [1, 2, 3]}` → `6` |
+//! | `-` | Subtraction | `{"-": [10, 3]}` → `7` |
+//! | `*` | Multiplication | `{"*": [2, 3, 4]}` → `24` |
+//! | `/` | Division | `{"/": [10, 2]}` → `5` |
+//! | `%` | Modulo | `{"%": [10, 3]}` → `1` |
+//! | `min` | Minimum value | `{"min": [3, 1, 4]}` → `1` |
+//! | `max` | Maximum value | `{"max": [3, 1, 4]}` → `4` |
+//!
+//! # Overflow Handling Pattern
+//!
+//! All arithmetic operators use the same pattern for overflow protection:
+//!
+//! 1. **Track integer precision**: Use `all_integers` flag to track if we can stay in i64
+//! 2. **Checked arithmetic**: Use `checked_add`, `checked_mul`, etc. for i64 operations
+//! 3. **Overflow promotion**: On overflow, switch to f64 and continue accumulating
+//! 4. **Result preservation**: Return i64 when possible, f64 otherwise
+//!
+//! This approach maximizes integer precision while gracefully handling overflow:
+//!
+//! ```text
+//! // Example overflow handling in addition:
+//! match int_sum.checked_add(i) {
+//!     Some(sum) => int_sum = sum,         // No overflow: continue with integers
+//!     None => {
+//!         all_integers = false;            // Overflow: switch to float
+//!         float_sum = int_sum as f64 + i as f64;
+//!     }
+//! }
+//! ```
+//!
+//! # DateTime Arithmetic
+//!
+//! Arithmetic operators also handle DateTime and Duration values:
+//! - `datetime + duration` → `datetime`
+//! - `datetime - datetime` → `duration`
+//! - `duration + duration` → `duration`
+//! - `duration * number` → `duration`
+//!
+//! # NaN Handling
+//!
+//! When a value cannot be coerced to a number, behavior depends on `NanHandling` config:
+//! - `ThrowError`: Return error (default)
+//! - `IgnoreValue`: Skip non-numeric values
+//! - `CoerceToZero`: Treat as 0
+//! - `ReturnNull`: Return null
+
 use serde_json::Value;
 
 use super::helpers::{

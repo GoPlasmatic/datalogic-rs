@@ -1,3 +1,32 @@
+//! Structure preservation operator for templating mode.
+//!
+//! The `preserve` operator is used when `preserve_structure` mode is enabled on the engine.
+//! It allows literal values to pass through without being interpreted as operators,
+//! enabling JSON templating where the output structure mirrors the input.
+//!
+//! # Use Case
+//!
+//! When processing JSON templates, you may want some object keys to be treated as
+//! literal output fields rather than operators. The `preserve` operator marks these
+//! values for pass-through.
+//!
+//! # Behavior
+//!
+//! - With no arguments: returns an empty array
+//! - With one argument: evaluates and returns that argument
+//! - With multiple arguments: returns an array of evaluated arguments
+//!
+//! # Example
+//!
+//! ```json
+//! // With preserve_structure enabled, unknown keys become output fields
+//! {
+//!   "name": {"var": "user.name"},
+//!   "status": "active"
+//! }
+//! // Output: {"name": "John", "status": "active"}
+//! ```
+
 use serde_json::Value;
 
 use crate::{CompiledNode, ContextStack, DataLogic, Result};

@@ -1,3 +1,43 @@
+//! OpCode-based dispatch system for built-in operators.
+//!
+//! This module implements a high-performance dispatch mechanism using enum variants
+//! instead of string matching or vtable lookups at runtime.
+//!
+//! # Performance Design
+//!
+//! The `OpCode` enum provides O(1) operator dispatch through:
+//!
+//! 1. **Compile-time resolution**: Operator strings are converted to `OpCode` variants
+//!    during the compilation phase, not during evaluation
+//! 2. **Direct dispatch**: The `evaluate_direct` method uses a match statement that
+//!    compiles to an efficient jump table
+//! 3. **No boxing or vtables**: Direct function calls without trait object overhead
+//! 4. **Cache-friendly**: The `#[repr(u8)]` attribute ensures compact memory layout
+//!
+//! # Operator Categories
+//!
+//! Operators are grouped by functionality for code organization:
+//!
+//! - Variable Access (0-1, 57): `var`, `val`, `exists`
+//! - Comparison (2-9): `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`
+//! - Logical (10-13): `!`, `!!`, `and`, `or`
+//! - Control Flow (14-15, 56): `if`, `?:`, `??`
+//! - Arithmetic (16-22, 49-51): `+`, `-`, `*`, `/`, `%`, `max`, `min`, `abs`, `ceil`, `floor`
+//! - String (23-25, 38-43, 53): `cat`, `substr`, `in`, `starts_with`, etc.
+//! - Array (26-32, 54-55): `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`, `sort`, `slice`
+//! - DateTime (44-48, 58): `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now`
+//! - Error Handling (35-36): `try`, `throw`
+//! - Type/Missing (33-34, 37): `missing`, `missing_some`, `type`
+//! - Special (52): `preserve`
+//!
+//! # Adding New Operators
+//!
+//! 1. Add a new variant to the `OpCode` enum
+//! 2. Add string mapping in `FromStr` implementation
+//! 3. Add reverse mapping in `as_str()` method
+//! 4. Add dispatch case in `evaluate_direct()`
+//! 5. Implement the operator function in the appropriate `operators/` module
+
 use std::str::FromStr;
 
 /// OpCode enum for fast built-in operator lookup
