@@ -1,16 +1,13 @@
+//! Absolute value operator implementation.
+//!
+//! Provides the `abs` operator for computing absolute values of numbers.
+//! Supports both single values and variadic calls returning arrays.
+
 use serde_json::Value;
 
+use super::helpers::get_number_strict;
+use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
-
-// Strict number extraction - only accepts actual numbers or numeric strings
-#[inline]
-fn get_number_strict(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.parse().ok(),
-        _ => None,
-    }
-}
 
 /// Absolute value operator function (abs)
 #[inline]
@@ -20,7 +17,7 @@ pub fn evaluate_abs(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     // Check if we have multiple arguments - if so, return array of abs values
@@ -42,7 +39,7 @@ pub fn evaluate_abs(
                     );
                 }
             } else {
-                return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
             }
         }
         return Ok(Value::Array(results));
@@ -62,6 +59,6 @@ pub fn evaluate_abs(
             .map(Value::Number)
             .unwrap_or(Value::Null))
     } else {
-        Err(Error::InvalidArguments("Invalid Arguments".to_string()))
+        Err(Error::InvalidArguments(INVALID_ARGS.to_string()))
     }
 }

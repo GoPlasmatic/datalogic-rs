@@ -21,9 +21,6 @@ pub enum Error {
     /// Arithmetic error (division by zero, overflow, etc.)
     ArithmeticError(String),
 
-    /// Division by zero (deprecated - use ArithmeticError)
-    DivisionByZero,
-
     /// Custom error for extensions
     Custom(String),
 
@@ -52,7 +49,6 @@ impl fmt::Display for Error {
             Error::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level),
             Error::TypeError(msg) => write!(f, "Type error: {}", msg),
             Error::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
-            Error::DivisionByZero => write!(f, "Division by zero"),
             Error::Custom(msg) => write!(f, "{}", msg),
             Error::ParseError(msg) => write!(f, "Parse error: {}", msg),
             Error::Thrown(val) => write!(f, "Thrown: {}", val),

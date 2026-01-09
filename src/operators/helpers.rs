@@ -150,6 +150,17 @@ pub fn extract_string(value: &Value) -> Cow<'_, str> {
     }
 }
 
+/// Strict number extraction - only accepts actual numbers or numeric strings.
+/// Used by abs, floor, ceil operators.
+#[inline]
+pub fn get_number_strict(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 /// Creates a JSON number value with proper overflow handling
 pub fn create_number_value(n: f64) -> Value {
     if n.is_finite() {

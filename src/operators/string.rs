@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use super::helpers::to_string;
+use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Result, error::Error};
 
 /// String concatenation operator function (cat) - variadic
@@ -143,7 +144,7 @@ pub fn evaluate_length(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() || args.len() > 1 {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     // First evaluate the argument
@@ -168,7 +169,7 @@ pub fn evaluate_length(
         }
         // For null, numbers, booleans, and objects, length is invalid
         Value::Null | Value::Number(_) | Value::Bool(_) | Value::Object(_) => {
-            Err(Error::InvalidArguments("Invalid Arguments".to_string()))
+            Err(Error::InvalidArguments(INVALID_ARGS.to_string()))
         }
     }
 }

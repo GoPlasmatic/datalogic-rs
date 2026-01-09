@@ -1,16 +1,13 @@
+//! Ceiling operator implementation.
+//!
+//! Provides the `ceil` operator for rounding numbers up to the nearest integer.
+//! Supports both single values and variadic calls returning arrays.
+
 use serde_json::Value;
 
+use super::helpers::get_number_strict;
+use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
-
-// Strict number extraction - only accepts actual numbers or numeric strings
-#[inline]
-fn get_number_strict(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.parse().ok(),
-        _ => None,
-    }
-}
 
 /// Ceiling operator function (ceil)
 #[inline]
@@ -20,7 +17,7 @@ pub fn evaluate_ceil(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     // Check if we have multiple arguments - if so, return array of ceil values
@@ -32,7 +29,7 @@ pub fn evaluate_ceil(
                 let ceil_val = num.ceil();
                 results.push(Value::Number((ceil_val as i64).into()));
             } else {
-                return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
             }
         }
         return Ok(Value::Array(results));
@@ -45,6 +42,6 @@ pub fn evaluate_ceil(
         let ceil_val = num.ceil();
         Ok(Value::Number((ceil_val as i64).into()))
     } else {
-        Err(Error::InvalidArguments("Invalid Arguments".to_string()))
+        Err(Error::InvalidArguments(INVALID_ARGS.to_string()))
     }
 }

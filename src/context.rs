@@ -12,7 +12,10 @@ pub const ACCUMULATOR_KEY: &str = "accumulator";
 pub struct ContextFrame {
     /// The data value at this context level
     pub data: Value,
-    /// Optional metadata for this frame (e.g., "index", "key" in map operations)
+    /// Optional index for array iteration (avoids HashMap allocation)
+    pub index: Option<usize>,
+    /// Optional metadata for this frame (e.g., "key" in map operations)
+    /// Only used when additional metadata beyond index is needed
     pub metadata: Option<HashMap<String, Value>>,
 }
 
@@ -30,6 +33,15 @@ impl<'a> ContextFrameRef<'a> {
         match self {
             ContextFrameRef::Frame(frame) => &frame.data,
             ContextFrameRef::Root(root) => root,
+        }
+    }
+
+    /// Get the index if available (fast path, no HashMap lookup)
+    #[inline]
+    pub fn get_index(&self) -> Option<usize> {
+        match self {
+            ContextFrameRef::Frame(frame) => frame.index,
+            ContextFrameRef::Root(_) => None,
         }
     }
 
@@ -69,6 +81,25 @@ impl ContextStack {
     pub fn push(&mut self, data: Value) {
         self.frames.push(ContextFrame {
             data,
+            index: None,
+            metadata: None,
+        });
+    }
+
+    /// Pushes a frame with just an index (optimized path - no HashMap allocation).
+    ///
+    /// Used by array operators like `map` and `filter` for simple iteration
+    /// where only index access is needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The current item being processed
+    /// * `index` - The array index of the current item
+    #[inline]
+    pub fn push_with_index(&mut self, data: Value, index: usize) {
+        self.frames.push(ContextFrame {
+            data,
+            index: Some(index),
             metadata: None,
         });
     }
@@ -92,8 +123,15 @@ impl ContextStack {
     /// context.push_with_metadata(item_value, metadata);
     /// ```
     pub fn push_with_metadata(&mut self, data: Value, metadata: HashMap<String, Value>) {
+        // Extract index from metadata if present
+        let index = metadata
+            .get(INDEX_KEY)
+            .and_then(|v| v.as_u64())
+            .map(|i| i as usize);
+
         self.frames.push(ContextFrame {
             data,
+            index,
             metadata: Some(metadata),
         });
     }

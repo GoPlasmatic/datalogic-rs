@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use super::helpers::is_truthy;
+use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// If operator function - supports if/then/else and if/elseif/else chains
@@ -20,9 +21,7 @@ pub fn evaluate_if(
         && let Some(obj) = value.as_object()
         && obj.contains_key("__invalid_args__")
     {
-        return Err(crate::Error::InvalidArguments(
-            "Invalid Arguments".to_string(),
-        ));
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     // Support variadic if/elseif/else chains

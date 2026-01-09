@@ -2,6 +2,7 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use super::helpers::extract_string;
+use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// StartsWithOperator function - checks if a string starts with a prefix
@@ -12,7 +13,7 @@ pub fn evaluate_starts_with(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     let text = engine.evaluate_node(&args[0], context)?;
@@ -32,7 +33,7 @@ pub fn evaluate_ends_with(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     let text = engine.evaluate_node(&args[0], context)?;
@@ -52,7 +53,7 @@ pub fn evaluate_upper(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     let value = engine.evaluate_node(&args[0], context)?;
@@ -69,7 +70,7 @@ pub fn evaluate_lower(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     let value = engine.evaluate_node(&args[0], context)?;
@@ -86,7 +87,7 @@ pub fn evaluate_trim(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     let value = engine.evaluate_node(&args[0], context)?;
@@ -103,7 +104,7 @@ pub fn evaluate_split(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() < 2 {
-        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
 
     let text = engine.evaluate_node(&args[0], context)?;

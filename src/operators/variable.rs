@@ -4,6 +4,35 @@ use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is
 use crate::value_helpers::{access_path, access_path_ref};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
+/// Helper to apply a single path element (string or number) to a value (reference variant).
+/// Returns None if the path element is an invalid type (not string/number) or path doesn't exist.
+#[inline]
+fn apply_path_element_ref<'a>(current: &'a Value, path_elem: &Value) -> Option<&'a Value> {
+    match path_elem {
+        Value::String(path_str) => {
+            if let Value::Object(obj) = current {
+                obj.get(path_str)
+            } else {
+                access_path_ref(current, path_str)
+            }
+        }
+        Value::Number(n) => {
+            let index = n.as_u64()?;
+            if let Value::Array(arr) = current {
+                arr.get(index as usize)
+            } else {
+                // Try as object key
+                if let Value::Object(obj) = current {
+                    obj.get(&n.to_string())
+                } else {
+                    None
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Variable access operator function (var)
 #[inline]
 pub fn evaluate_var(
@@ -71,7 +100,18 @@ pub fn evaluate_val(
 
                 // Special handling for metadata keys like "index" and "key"
                 // These are always in the current frame's metadata, regardless of level
-                if (path == "index" || path == "key")
+                if path == "index" {
+                    // Fast path: use get_index() to avoid HashMap lookup
+                    if let Some(idx) = context.current().get_index() {
+                        return Ok(json!(idx));
+                    }
+                    // Fallback to metadata HashMap
+                    if let Some(metadata) = context.current().metadata()
+                        && let Some(value) = metadata.get(path)
+                    {
+                        return Ok(value.clone());
+                    }
+                } else if path == "key"
                     && let Some(metadata) = context.current().metadata()
                     && let Some(value) = metadata.get(path)
                 {
@@ -190,83 +230,39 @@ pub fn evaluate_val(
             }
 
             // Two arguments - chain access like ["user", "admin"] or [1, 1]
-            let mut result = context.current().data().clone();
-            for arg in args {
-                // Evaluate the argument
-                let evaluated = engine.evaluate_node(arg, context)?;
-
-                match &evaluated {
-                    Value::String(path_str) => {
-                        // Try direct object key access first for simple keys
-                        if let Value::Object(obj) = &result {
-                            if let Some(val) = obj.get(path_str) {
-                                result = val.clone();
-                            } else {
-                                result = Value::Null;
-                            }
-                        } else {
-                            result = access_path(&result, path_str).unwrap_or(Value::Null);
-                        }
-                    }
-                    Value::Number(n) => {
-                        // Handle numeric index for array access
-                        if let Some(index) = n.as_u64() {
-                            if let Value::Array(arr) = result {
-                                result = arr.get(index as usize).cloned().unwrap_or(Value::Null);
-                            } else {
-                                // Try as string key for object
-                                let key = n.to_string();
-                                result = access_path(&result, &key).unwrap_or(Value::Null);
-                            }
-                        } else {
-                            return Ok(Value::Null);
-                        }
-                    }
-                    _ => return Ok(Value::Null),
+            // Pre-evaluate args, then use reference-based traversal, clone only at the end
+            let evaluated_args: Vec<Value> = args
+                .iter()
+                .map(|arg| engine.evaluate_node(arg, context))
+                .collect::<Result<Vec<_>>>()?;
+            let current_frame = context.current();
+            let mut current = current_frame.data();
+            for evaluated in &evaluated_args {
+                match apply_path_element_ref(current, evaluated) {
+                    Some(v) => current = v,
+                    None => return Ok(Value::Null),
                 }
             }
-            return Ok(result);
+            return Ok(current.clone());
         }
     }
 
     // Handle multiple arguments (>2) as path chain
+    // Pre-evaluate args, then use reference-based traversal, clone only at the end
     if args.len() > 2 {
-        let mut result = context.current().data().clone();
-        for arg in args {
-            // Evaluate the argument
-            let evaluated = engine.evaluate_node(arg, context)?;
-
-            match &evaluated {
-                Value::String(path_str) => {
-                    // Try direct object key access first for simple keys
-                    if let Value::Object(obj) = &result {
-                        if let Some(val) = obj.get(path_str) {
-                            result = val.clone();
-                        } else {
-                            result = Value::Null;
-                        }
-                    } else {
-                        result = access_path(&result, path_str).unwrap_or(Value::Null);
-                    }
-                }
-                Value::Number(n) => {
-                    // Handle numeric index for array access
-                    if let Some(index) = n.as_u64() {
-                        if let Value::Array(arr) = result {
-                            result = arr.get(index as usize).cloned().unwrap_or(Value::Null);
-                        } else {
-                            // Try as string key for object
-                            let key = n.to_string();
-                            result = access_path(&result, &key).unwrap_or(Value::Null);
-                        }
-                    } else {
-                        return Ok(Value::Null);
-                    }
-                }
-                _ => return Ok(Value::Null),
+        let evaluated_args: Vec<Value> = args
+            .iter()
+            .map(|arg| engine.evaluate_node(arg, context))
+            .collect::<Result<Vec<_>>>()?;
+        let current_frame = context.current();
+        let mut current = current_frame.data();
+        for evaluated in &evaluated_args {
+            match apply_path_element_ref(current, evaluated) {
+                Some(v) => current = v,
+                None => return Ok(Value::Null),
             }
         }
-        return Ok(result);
+        return Ok(current.clone());
     }
 
     // Single argument - evaluate it
@@ -289,7 +285,18 @@ pub fn evaluate_val(
 
                 // Special handling for metadata keys like "index" and "key"
                 // These are always in the current frame's metadata, regardless of level
-                if (path == "index" || path == "key")
+                if path == "index" {
+                    // Fast path: use get_index() to avoid HashMap lookup
+                    if let Some(idx) = context.current().get_index() {
+                        return Ok(json!(idx));
+                    }
+                    // Fallback to metadata HashMap
+                    if let Some(metadata) = context.current().metadata()
+                        && let Some(value) = metadata.get(path)
+                    {
+                        return Ok(value.clone());
+                    }
+                } else if path == "key"
                     && let Some(metadata) = context.current().metadata()
                     && let Some(value) = metadata.get(path)
                 {
@@ -304,55 +311,32 @@ pub fn evaluate_val(
                 .get_at_level(level as isize)
                 .ok_or(Error::InvalidContextLevel(level as isize))?;
 
-            // Chain path access through remaining elements
-            let mut result = frame.data().clone();
+            // Chain path access through remaining elements using references
+            let mut current = frame.data();
             for item in arr.iter().skip(1) {
                 if let Some(path) = item.as_str() {
-                    result = access_path(&result, path).unwrap_or(Value::Null);
+                    if let Some(next) = access_path_ref(current, path) {
+                        current = next;
+                    } else {
+                        return Ok(Value::Null);
+                    }
                 } else {
                     return Ok(Value::Null);
                 }
             }
-            return Ok(result);
+            return Ok(current.clone());
         } else {
             // Array of paths like ["user", "admin"] or [1, 1] - chain access
-            let mut result = context.current().data().clone();
+            // Use reference-based traversal, clone only at the end
+            let current_frame = context.current();
+            let mut current = current_frame.data();
             for path_elem in arr {
-                match path_elem {
-                    Value::String(path_str) => {
-                        // Try direct object key access first for simple keys
-                        if let Value::Object(obj) = &result {
-                            if let Some(val) = obj.get(path_str) {
-                                result = val.clone();
-                            } else {
-                                result = Value::Null;
-                            }
-                        } else {
-                            result = access_path(&result, path_str).unwrap_or(Value::Null);
-                        }
-                    }
-                    Value::Number(n) => {
-                        // Handle numeric index for array access
-                        if let Some(index) = n.as_u64() {
-                            if let Value::Array(arr_val) = result {
-                                result =
-                                    arr_val.get(index as usize).cloned().unwrap_or(Value::Null);
-                            } else {
-                                // Try as string key for object
-                                let key = n.to_string();
-                                result = access_path(&result, &key).unwrap_or(Value::Null);
-                            }
-                        } else {
-                            return Ok(Value::Null);
-                        }
-                    }
-                    _ => {
-                        // Non-string/number element, can't use as path
-                        return Ok(Value::Null);
-                    }
+                match apply_path_element_ref(current, path_elem) {
+                    Some(v) => current = v,
+                    None => return Ok(Value::Null),
                 }
             }
-            return Ok(result);
+            return Ok(current.clone());
         }
     }
 

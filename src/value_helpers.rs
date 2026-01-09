@@ -27,15 +27,14 @@ pub fn access_path_ref<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
         return None;
     }
 
-    // Handle paths with dots manually to avoid JSON pointer issues with numeric property names
-    let parts: Vec<&str> = path.split('.').collect();
+    // Handle paths with dots - use iterator directly to avoid Vec allocation
     let mut current = value;
 
-    for part in parts.iter() {
+    for part in path.split('.') {
         match current {
             Value::Object(obj) => {
                 // Try as object key first
-                if let Some(val) = obj.get(*part) {
+                if let Some(val) = obj.get(part) {
                     current = val;
                 } else {
                     return None;
@@ -93,69 +92,127 @@ pub fn strict_equals(left: &Value, right: &Value) -> bool {
     left == right
 }
 
-/// Compare two values with loose equality, returning error for incompatible types
-pub fn loose_equals_with_error(left: &Value, right: &Value) -> crate::Result<bool> {
-    use crate::Error;
+/// Result of loose equality comparison for incompatible types
+enum LooseEqualsResult {
+    Equal,
+    NotEqual,
+    Incompatible,
+}
 
-    // Helper to return NaN error
-    let nan_error = || Error::InvalidArguments(NAN_ERROR.into());
+/// Core implementation of loose equality comparison
+fn loose_equals_core(left: &Value, right: &Value) -> LooseEqualsResult {
+    use LooseEqualsResult::*;
 
     match (left, right) {
         // Same type comparisons
-        (Value::Null, Value::Null) => Ok(true),
-        (Value::Bool(a), Value::Bool(b)) => Ok(a == b),
-        (Value::String(a), Value::String(b)) => Ok(a == b),
+        (Value::Null, Value::Null) => Equal,
+        (Value::Bool(a), Value::Bool(b)) => {
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+        (Value::String(a), Value::String(b)) => {
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
         (Value::Number(a), Value::Number(b)) => {
             let a_f = a.as_f64().unwrap_or(f64::NAN);
             let b_f = b.as_f64().unwrap_or(f64::NAN);
-            Ok(!a_f.is_nan() && !b_f.is_nan() && a_f == b_f)
+            if !a_f.is_nan() && !b_f.is_nan() && a_f == b_f {
+                Equal
+            } else {
+                NotEqual
+            }
         }
 
         // Number-String coercion
-        (Value::Number(n), Value::String(s)) | (Value::String(s), Value::Number(n)) => n
-            .as_f64()
-            .and_then(|n_f| s.parse::<f64>().ok().map(|s_f| n_f == s_f))
-            .ok_or_else(nan_error),
+        (Value::Number(n), Value::String(s)) | (Value::String(s), Value::Number(n)) => {
+            match (n.as_f64(), s.parse::<f64>().ok()) {
+                (Some(n_f), Some(s_f)) if n_f == s_f => Equal,
+                (Some(_), Some(_)) => NotEqual,
+                _ => Incompatible,
+            }
+        }
 
         // Number-Bool coercion
         (Value::Number(n), Value::Bool(b)) | (Value::Bool(b), Value::Number(n)) => {
-            Ok(n.as_f64() == Some(if *b { 1.0 } else { 0.0 }))
+            if n.as_f64() == Some(if *b { 1.0 } else { 0.0 }) {
+                Equal
+            } else {
+                NotEqual
+            }
         }
 
         // String-Bool coercion
         (Value::String(s), Value::Bool(b)) | (Value::Bool(b), Value::String(s)) => {
-            Ok(s == if *b { "true" } else { "false" })
+            if s == if *b { "true" } else { "false" } {
+                Equal
+            } else {
+                NotEqual
+            }
         }
 
         // Null coercions
         (Value::Null, Value::Number(n)) | (Value::Number(n), Value::Null) => {
-            Ok(n.as_f64() == Some(0.0))
+            if n.as_f64() == Some(0.0) {
+                Equal
+            } else {
+                NotEqual
+            }
         }
-        (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => Ok(!*b),
-        (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => Ok(s.is_empty()),
+        (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => {
+            if !*b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+        (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => {
+            if s.is_empty() {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
 
-        // Complex types compared to primitives - all error
+        // Complex types compared to primitives - incompatible
         (Value::Array(_), _) | (_, Value::Array(_))
             if !matches!((left, right), (Value::Array(_), Value::Array(_))) =>
         {
-            Err(nan_error())
+            Incompatible
         }
         (Value::Object(_), _) | (_, Value::Object(_))
             if !matches!((left, right), (Value::Object(_), Value::Object(_))) =>
         {
-            Err(nan_error())
+            Incompatible
         }
 
         // Array to array comparison
         (Value::Array(a), Value::Array(b)) => {
-            if a.len() != b.len() || !a.iter().zip(b.iter()).all(|(av, bv)| av == bv) {
-                Err(nan_error())
+            if a.len() == b.len() && a.iter().zip(b.iter()).all(|(av, bv)| av == bv) {
+                Equal
             } else {
-                Ok(true)
+                Incompatible
             }
         }
 
-        _ => Ok(false),
+        _ => NotEqual,
+    }
+}
+
+/// Compare two values with loose equality, returning error for incompatible types
+pub fn loose_equals_with_error(left: &Value, right: &Value) -> crate::Result<bool> {
+    use crate::Error;
+
+    match loose_equals_core(left, right) {
+        LooseEqualsResult::Equal => Ok(true),
+        LooseEqualsResult::NotEqual => Ok(false),
+        LooseEqualsResult::Incompatible => Err(Error::InvalidArguments(NAN_ERROR.into())),
     }
 }
 
@@ -183,59 +240,10 @@ pub fn loose_equals(left: &Value, right: &Value, engine: &crate::DataLogic) -> c
     if engine.config().loose_equality_errors {
         loose_equals_with_error(left, right)
     } else {
-        // Same logic but return false instead of error for incompatible types
-        match (left, right) {
-            // Same type comparisons
-            (Value::Null, Value::Null) => Ok(true),
-            (Value::Bool(a), Value::Bool(b)) => Ok(a == b),
-            (Value::String(a), Value::String(b)) => Ok(a == b),
-            (Value::Number(a), Value::Number(b)) => {
-                let a_f = a.as_f64().unwrap_or(f64::NAN);
-                let b_f = b.as_f64().unwrap_or(f64::NAN);
-                Ok(!a_f.is_nan() && !b_f.is_nan() && a_f == b_f)
-            }
-
-            // Number-String coercion
-            (Value::Number(n), Value::String(s)) | (Value::String(s), Value::Number(n)) => Ok(n
-                .as_f64()
-                .and_then(|n_f| s.parse::<f64>().ok().map(|s_f| n_f == s_f))
-                .unwrap_or(false)),
-
-            // Number-Bool coercion
-            (Value::Number(n), Value::Bool(b)) | (Value::Bool(b), Value::Number(n)) => {
-                Ok(n.as_f64() == Some(if *b { 1.0 } else { 0.0 }))
-            }
-
-            // String-Bool coercion
-            (Value::String(s), Value::Bool(b)) | (Value::Bool(b), Value::String(s)) => {
-                Ok(s == if *b { "true" } else { "false" })
-            }
-
-            // Null coercions
-            (Value::Null, Value::Number(n)) | (Value::Number(n), Value::Null) => {
-                Ok(n.as_f64() == Some(0.0))
-            }
-            (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => Ok(!*b),
-            (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => Ok(s.is_empty()),
-
-            // Complex types compared to primitives - return false instead of error
-            (Value::Array(_), _) | (_, Value::Array(_))
-                if !matches!((left, right), (Value::Array(_), Value::Array(_))) =>
-            {
-                Ok(false)
-            }
-            (Value::Object(_), _) | (_, Value::Object(_))
-                if !matches!((left, right), (Value::Object(_), Value::Object(_))) =>
-            {
-                Ok(false)
-            }
-
-            // Array to array comparison
-            (Value::Array(a), Value::Array(b)) => {
-                Ok(a.len() == b.len() && a.iter().zip(b.iter()).all(|(av, bv)| av == bv))
-            }
-
-            _ => Ok(false),
+        // Return false instead of error for incompatible types
+        match loose_equals_core(left, right) {
+            LooseEqualsResult::Equal => Ok(true),
+            LooseEqualsResult::NotEqual | LooseEqualsResult::Incompatible => Ok(false),
         }
     }
 }

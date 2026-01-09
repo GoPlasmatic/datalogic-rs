@@ -4,121 +4,34 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use super::helpers::is_truthy;
+use crate::constants::INVALID_ARGS;
 use crate::context::{ACCUMULATOR_KEY, CURRENT_KEY, INDEX_KEY, KEY_KEY};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
-// Inline function wrappers for array operators
+/// Merge operator - merges arrays
 #[inline]
 pub fn evaluate_merge(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    MergeOperator.evaluate_compiled(args, context, engine)
-}
+    let mut result = Vec::new();
 
-#[inline]
-pub fn evaluate_map(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    MapOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_filter(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    FilterOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_reduce(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    ReduceOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_all(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    AllOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_some(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    SomeOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_none(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    NoneOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_sort(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    SortOperator.evaluate_compiled(args, context, engine)
-}
-
-#[inline]
-pub fn evaluate_slice(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    SliceOperator.evaluate_compiled(args, context, engine)
-}
-
-// Operator struct implementations
-
-/// Merge operator - merges arrays
-pub struct MergeOperator;
-
-impl MergeOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        let mut result = Vec::new();
-
-        for arg in args {
-            let value = engine.evaluate_node(arg, context)?;
-            match value {
-                Value::Array(arr) => {
-                    // Filter out null values when extending
-                    result.extend(arr.iter().filter(|v| !v.is_null()).cloned())
-                }
-                Value::Null => {
-                    // Skip null values entirely
-                }
-                v => result.push(v.clone()),
+    for arg in args {
+        let value = engine.evaluate_node(arg, context)?;
+        match value {
+            Value::Array(arr) => {
+                // Filter out null values when extending
+                result.extend(arr.iter().filter(|v| !v.is_null()).cloned())
             }
+            Value::Null => {
+                // Skip null values entirely
+            }
+            v => result.push(v.clone()),
         }
-
-        Ok(Value::Array(result))
     }
+
+    Ok(Value::Array(result))
 }
 
 /// The `map` operator - transforms each element in an array or object.
@@ -159,66 +72,58 @@ impl MergeOperator {
 /// }
 /// ```
 /// Returns: `[2, 4, 6]`
-pub struct MapOperator;
+#[inline]
+pub fn evaluate_map(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl MapOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
+    let collection = engine.evaluate_node(&args[0], context)?;
+    let logic = &args[1];
 
-        let collection = engine.evaluate_node(&args[0], context)?;
-        let logic = &args[1];
+    match &collection {
+        Value::Array(arr) => {
+            let mut results = Vec::with_capacity(arr.len());
 
-        match &collection {
-            Value::Array(arr) => {
-                let mut results = Vec::with_capacity(arr.len());
-
-                for (index, item) in arr.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(item.clone(), metadata);
-                    let result = engine.evaluate_node(logic, context)?;
-                    results.push(result);
-                    context.pop();
-                }
-
-                Ok(Value::Array(results))
-            }
-            Value::Object(obj) => {
-                let mut results = Vec::with_capacity(obj.len());
-
-                for (index, (key, value)) in obj.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(2);
-                    metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(value.clone(), metadata);
-                    let result = engine.evaluate_node(logic, context)?;
-                    results.push(result);
-                    context.pop();
-                }
-
-                Ok(Value::Array(results))
-            }
-            Value::Null => Ok(Value::Array(vec![])),
-            // For primitive values (number, string, bool), treat as single-element collection
-            _ => {
-                let mut metadata = HashMap::with_capacity(1);
-                metadata.insert(INDEX_KEY.to_string(), Value::Number(0.into()));
-
-                context.push_with_metadata(collection, metadata);
+            for (index, item) in arr.iter().enumerate() {
+                // Use push_with_index to avoid HashMap allocation
+                context.push_with_index(item.clone(), index);
                 let result = engine.evaluate_node(logic, context)?;
+                results.push(result);
                 context.pop();
-
-                Ok(Value::Array(vec![result]))
             }
+
+            Ok(Value::Array(results))
+        }
+        Value::Object(obj) => {
+            let mut results = Vec::with_capacity(obj.len());
+
+            for (index, (key, value)) in obj.iter().enumerate() {
+                let mut metadata = HashMap::with_capacity(2);
+                metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
+                metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
+
+                context.push_with_metadata(value.clone(), metadata);
+                let result = engine.evaluate_node(logic, context)?;
+                results.push(result);
+                context.pop();
+            }
+
+            Ok(Value::Array(results))
+        }
+        Value::Null => Ok(Value::Array(vec![])),
+        // For primitive values (number, string, bool), treat as single-element collection
+        _ => {
+            // Use push_with_index to avoid HashMap allocation
+            context.push_with_index(collection, 0);
+            let result = engine.evaluate_node(logic, context)?;
+            context.pop();
+
+            Ok(Value::Array(vec![result]))
         }
     }
 }
@@ -258,63 +163,57 @@ impl MapOperator {
 /// }
 /// ```
 /// Returns: `{"a": 10, "c": 20}`
-pub struct FilterOperator;
+#[inline]
+pub fn evaluate_filter(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl FilterOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
+    let collection = engine.evaluate_node(&args[0], context)?;
+    let predicate = &args[1];
 
-        let collection = engine.evaluate_node(&args[0], context)?;
-        let predicate = &args[1];
+    match &collection {
+        Value::Array(arr) => {
+            let mut results = Vec::new();
 
-        match &collection {
-            Value::Array(arr) => {
-                let mut results = Vec::new();
+            for (index, item) in arr.iter().enumerate() {
+                // Use push_with_index to avoid HashMap allocation
+                context.push_with_index(item.clone(), index);
+                let keep = engine.evaluate_node(predicate, context)?;
+                context.pop();
 
-                for (index, item) in arr.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(item.clone(), metadata);
-                    let keep = engine.evaluate_node(predicate, context)?;
-                    context.pop();
-
-                    if is_truthy(&keep, engine) {
-                        results.push(item.clone());
-                    }
+                if is_truthy(&keep, engine) {
+                    results.push(item.clone());
                 }
-
-                Ok(Value::Array(results))
             }
-            Value::Object(obj) => {
-                let mut result_obj = serde_json::Map::new();
 
-                for (index, (key, value)) in obj.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(2);
-                    metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(value.clone(), metadata);
-                    let keep = engine.evaluate_node(predicate, context)?;
-                    context.pop();
-
-                    if is_truthy(&keep, engine) {
-                        result_obj.insert(key.clone(), value.clone());
-                    }
-                }
-
-                Ok(Value::Object(result_obj))
-            }
-            Value::Null => Ok(Value::Array(vec![])),
-            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
+            Ok(Value::Array(results))
         }
+        Value::Object(obj) => {
+            let mut result_obj = serde_json::Map::new();
+
+            for (index, (key, value)) in obj.iter().enumerate() {
+                let mut metadata = HashMap::with_capacity(2);
+                metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
+                metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
+
+                context.push_with_metadata(value.clone(), metadata);
+                let keep = engine.evaluate_node(predicate, context)?;
+                context.pop();
+
+                if is_truthy(&keep, engine) {
+                    result_obj.insert(key.clone(), value.clone());
+                }
+            }
+
+            Ok(Value::Object(result_obj))
+        }
+        Value::Null => Ok(Value::Array(vec![])),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
     }
 }
 
@@ -346,46 +245,42 @@ impl FilterOperator {
 /// }
 /// ```
 /// Returns: `10`
-pub struct ReduceOperator;
+#[inline]
+pub fn evaluate_reduce(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.len() != 3 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl ReduceOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.len() != 3 {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
+    let array = engine.evaluate_node(&args[0], context)?;
+    let logic = &args[1];
+    let initial = engine.evaluate_node(&args[2], context)?;
 
-        let array = engine.evaluate_node(&args[0], context)?;
-        let logic = &args[1];
-        let initial = engine.evaluate_node(&args[2], context)?;
-
-        match &array {
-            Value::Array(arr) => {
-                if arr.is_empty() {
-                    return Ok(initial);
-                }
-
-                let mut accumulator = initial;
-
-                for current in arr {
-                    let mut frame_data = serde_json::Map::with_capacity(2);
-                    frame_data.insert(CURRENT_KEY.to_string(), current.clone());
-                    frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator.clone());
-
-                    context.push(Value::Object(frame_data));
-                    accumulator = engine.evaluate_node(logic, context)?;
-                    context.pop();
-                }
-
-                Ok(accumulator)
+    match &array {
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                return Ok(initial);
             }
-            Value::Null => Ok(initial),
-            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
+
+            let mut accumulator = initial;
+
+            for current in arr {
+                let mut frame_data = serde_json::Map::with_capacity(2);
+                frame_data.insert(CURRENT_KEY.to_string(), current.clone());
+                frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator.clone());
+
+                context.push(Value::Object(frame_data));
+                accumulator = engine.evaluate_node(logic, context)?;
+                context.pop();
+            }
+
+            Ok(accumulator)
         }
+        Value::Null => Ok(initial),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
     }
 }
 
@@ -415,42 +310,36 @@ impl ReduceOperator {
 /// }
 /// ```
 /// Returns: `true` (all are greater than 5)
-pub struct AllOperator;
+#[inline]
+pub fn evaluate_all(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl AllOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
+    let collection = engine.evaluate_node(&args[0], context)?;
+    let predicate = &args[1];
 
-        let collection = engine.evaluate_node(&args[0], context)?;
-        let predicate = &args[1];
+    match &collection {
+        Value::Array(arr) if !arr.is_empty() => {
+            for (index, item) in arr.iter().enumerate() {
+                // Use push_with_index to avoid HashMap allocation
+                context.push_with_index(item.clone(), index);
+                let result = engine.evaluate_node(predicate, context)?;
+                context.pop();
 
-        match &collection {
-            Value::Array(arr) if !arr.is_empty() => {
-                for (index, item) in arr.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(item.clone(), metadata);
-                    let result = engine.evaluate_node(predicate, context)?;
-                    context.pop();
-
-                    if !is_truthy(&result, engine) {
-                        return Ok(Value::Bool(false));
-                    }
+                if !is_truthy(&result, engine) {
+                    return Ok(Value::Bool(false));
                 }
-                Ok(Value::Bool(true))
             }
-            Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
-            Value::Null => Ok(Value::Bool(false)),
-            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
+            Ok(Value::Bool(true))
         }
+        Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
+        Value::Null => Ok(Value::Bool(false)),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
     }
 }
 
@@ -479,41 +368,35 @@ impl AllOperator {
 /// }
 /// ```
 /// Returns: `true`
-pub struct SomeOperator;
+#[inline]
+pub fn evaluate_some(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl SomeOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
+    let collection = engine.evaluate_node(&args[0], context)?;
+    let predicate = &args[1];
 
-        let collection = engine.evaluate_node(&args[0], context)?;
-        let predicate = &args[1];
+    match &collection {
+        Value::Array(arr) => {
+            for (index, item) in arr.iter().enumerate() {
+                // Use push_with_index to avoid HashMap allocation
+                context.push_with_index(item.clone(), index);
+                let result = engine.evaluate_node(predicate, context)?;
+                context.pop();
 
-        match &collection {
-            Value::Array(arr) => {
-                for (index, item) in arr.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(item.clone(), metadata);
-                    let result = engine.evaluate_node(predicate, context)?;
-                    context.pop();
-
-                    if is_truthy(&result, engine) {
-                        return Ok(Value::Bool(true));
-                    }
+                if is_truthy(&result, engine) {
+                    return Ok(Value::Bool(true));
                 }
-                Ok(Value::Bool(false))
             }
-            Value::Null => Ok(Value::Bool(false)),
-            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
+            Ok(Value::Bool(false))
         }
+        Value::Null => Ok(Value::Bool(false)),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
     }
 }
 
@@ -543,41 +426,35 @@ impl SomeOperator {
 /// }
 /// ```
 /// Returns: `true` (none are even)
-pub struct NoneOperator;
+#[inline]
+pub fn evaluate_none(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl NoneOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.len() != 2 {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
+    let collection = engine.evaluate_node(&args[0], context)?;
+    let predicate = &args[1];
 
-        let collection = engine.evaluate_node(&args[0], context)?;
-        let predicate = &args[1];
+    match &collection {
+        Value::Array(arr) => {
+            for (index, item) in arr.iter().enumerate() {
+                // Use push_with_index to avoid HashMap allocation
+                context.push_with_index(item.clone(), index);
+                let result = engine.evaluate_node(predicate, context)?;
+                context.pop();
 
-        match &collection {
-            Value::Array(arr) => {
-                for (index, item) in arr.iter().enumerate() {
-                    let mut metadata = HashMap::with_capacity(1);
-                    metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                    context.push_with_metadata(item.clone(), metadata);
-                    let result = engine.evaluate_node(predicate, context)?;
-                    context.pop();
-
-                    if is_truthy(&result, engine) {
-                        return Ok(Value::Bool(false));
-                    }
+                if is_truthy(&result, engine) {
+                    return Ok(Value::Bool(false));
                 }
-                Ok(Value::Bool(true))
             }
-            Value::Null => Ok(Value::Bool(true)),
-            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
+            Ok(Value::Bool(true))
         }
+        Value::Null => Ok(Value::Bool(true)),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
     }
 }
 
@@ -609,84 +486,80 @@ impl NoneOperator {
 /// }
 /// ```
 /// Returns: Sorted by name alphabetically
-pub struct SortOperator;
-
-impl SortOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.is_empty() {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
-
-        // Check if the first argument is a Value node containing null
-        if let CompiledNode::Value { value, .. } = &args[0]
-            && value.is_null()
-        {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-        }
-
-        // Evaluate the array
-        let array_value = engine.evaluate_node(&args[0], context)?;
-
-        let mut array = match array_value {
-            Value::Array(arr) => arr,
-            Value::Null => return Ok(Value::Null), // Missing variable returns null
-            _ => return Err(Error::InvalidArguments("Invalid Arguments".to_string())),
-        };
-
-        // Get sort direction (default ascending)
-        let ascending = if args.len() > 1 {
-            let dir = engine.evaluate_node(&args[1], context)?;
-            match dir {
-                Value::Bool(b) => b,
-                _ => true, // Default to ascending for invalid direction
-            }
-        } else {
-            true
-        };
-
-        // Check if we have a field extractor (for sorting objects)
-        let has_extractor = args.len() > 2;
-
-        if has_extractor {
-            // Sort objects by extracted field
-            let extractor = &args[2];
-
-            // Create a vector of (index, value, extracted_value) tuples
-            let mut items_with_values: Vec<(usize, Value, Value)> = Vec::new();
-
-            for (index, item) in array.iter().enumerate() {
-                context.push(item.clone());
-                let extracted = engine.evaluate_node(extractor, context)?;
-                context.pop();
-                items_with_values.push((index, item.clone(), extracted));
-            }
-
-            // Sort by extracted values
-            items_with_values.sort_by(|a, b| {
-                let cmp = compare_values(&a.2, &b.2);
-                if ascending { cmp } else { cmp.reverse() }
-            });
-
-            // Rebuild array from sorted items
-            array = items_with_values
-                .into_iter()
-                .map(|(_, item, _)| item)
-                .collect();
-        } else {
-            // Sort primitive values directly
-            array.sort_by(|a, b| {
-                let cmp = compare_values(a, b);
-                if ascending { cmp } else { cmp.reverse() }
-            });
-        }
-
-        Ok(Value::Array(array))
+#[inline]
+pub fn evaluate_sort(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
     }
+
+    // Check if the first argument is a Value node containing null
+    if let CompiledNode::Value { value, .. } = &args[0]
+        && value.is_null()
+    {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
+
+    // Evaluate the array
+    let array_value = engine.evaluate_node(&args[0], context)?;
+
+    let mut array = match array_value {
+        Value::Array(arr) => arr,
+        Value::Null => return Ok(Value::Null), // Missing variable returns null
+        _ => return Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+    };
+
+    // Get sort direction (default ascending)
+    let ascending = if args.len() > 1 {
+        let dir = engine.evaluate_node(&args[1], context)?;
+        match dir {
+            Value::Bool(b) => b,
+            _ => true, // Default to ascending for invalid direction
+        }
+    } else {
+        true
+    };
+
+    // Check if we have a field extractor (for sorting objects)
+    let has_extractor = args.len() > 2;
+
+    if has_extractor {
+        // Sort objects by extracted field
+        let extractor = &args[2];
+
+        // Create a vector of (index, value, extracted_value) tuples
+        let mut items_with_values: Vec<(usize, Value, Value)> = Vec::new();
+
+        for (index, item) in array.iter().enumerate() {
+            context.push(item.clone());
+            let extracted = engine.evaluate_node(extractor, context)?;
+            context.pop();
+            items_with_values.push((index, item.clone(), extracted));
+        }
+
+        // Sort by extracted values
+        items_with_values.sort_by(|a, b| {
+            let cmp = compare_values(&a.2, &b.2);
+            if ascending { cmp } else { cmp.reverse() }
+        });
+
+        // Rebuild array from sorted items
+        array = items_with_values
+            .into_iter()
+            .map(|(_, item, _)| item)
+            .collect();
+    } else {
+        // Sort primitive values directly
+        array.sort_by(|a, b| {
+            let cmp = compare_values(a, b);
+            if ascending { cmp } else { cmp.reverse() }
+        });
+    }
+
+    Ok(Value::Array(array))
 }
 
 /// The `slice` operator - extracts a portion of an array or string.
@@ -730,96 +603,92 @@ impl SortOperator {
 /// }
 /// ```
 /// Returns: `"hello"`
-pub struct SliceOperator;
+#[inline]
+pub fn evaluate_slice(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+    }
 
-impl SliceOperator {
-    fn evaluate_compiled(
-        &self,
-        args: &[CompiledNode],
-        context: &mut ContextStack,
-        engine: &DataLogic,
-    ) -> Result<Value> {
-        if args.is_empty() {
-            return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
+    // Evaluate the collection
+    let collection = engine.evaluate_node(&args[0], context)?;
+
+    // Handle null/missing values
+    if collection == Value::Null {
+        return Ok(Value::Null);
+    }
+
+    // Get start index (default to 0 or end for negative step)
+    let start = if args.len() > 1 {
+        let start_val = engine.evaluate_node(&args[1], context)?;
+        match start_val {
+            Value::Number(n) => n.as_i64(),
+            Value::Null => None,
+            _ => return Err(Error::InvalidArguments("NaN".to_string())),
         }
+    } else {
+        None
+    };
 
-        // Evaluate the collection
-        let collection = engine.evaluate_node(&args[0], context)?;
-
-        // Handle null/missing values
-        if collection == Value::Null {
-            return Ok(Value::Null);
+    // Get end index (default to length)
+    let end = if args.len() > 2 {
+        let end_val = engine.evaluate_node(&args[2], context)?;
+        match end_val {
+            Value::Number(n) => n.as_i64(),
+            Value::Null => None,
+            _ => return Err(Error::InvalidArguments("NaN".to_string())),
         }
+    } else {
+        None
+    };
 
-        // Get start index (default to 0 or end for negative step)
-        let start = if args.len() > 1 {
-            let start_val = engine.evaluate_node(&args[1], context)?;
-            match start_val {
-                Value::Number(n) => n.as_i64(),
-                Value::Null => None,
-                _ => return Err(Error::InvalidArguments("NaN".to_string())),
-            }
-        } else {
-            None
-        };
-
-        // Get end index (default to length)
-        let end = if args.len() > 2 {
-            let end_val = engine.evaluate_node(&args[2], context)?;
-            match end_val {
-                Value::Number(n) => n.as_i64(),
-                Value::Null => None,
-                _ => return Err(Error::InvalidArguments("NaN".to_string())),
-            }
-        } else {
-            None
-        };
-
-        // Get step (default to 1)
-        let step = if args.len() > 3 {
-            let step_val = engine.evaluate_node(&args[3], context)?;
-            match step_val {
-                Value::Number(n) => {
-                    let s = n.as_i64().unwrap_or(1);
-                    if s == 0 {
-                        return Err(Error::InvalidArguments("Invalid Arguments".to_string()));
-                    }
-                    s
+    // Get step (default to 1)
+    let step = if args.len() > 3 {
+        let step_val = engine.evaluate_node(&args[3], context)?;
+        match step_val {
+            Value::Number(n) => {
+                let s = n.as_i64().unwrap_or(1);
+                if s == 0 {
+                    return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
                 }
-                _ => 1,
+                s
             }
-        } else {
-            1
-        };
-
-        match collection {
-            Value::Array(arr) => {
-                let len = arr.len() as i64;
-                let result = slice_sequence(&arr, len, start, end, step);
-                Ok(Value::Array(result))
-            }
-            Value::String(s) => {
-                let chars: Vec<char> = s.chars().collect();
-                let len = chars.len() as i64;
-                let char_values: Vec<Value> = chars
-                    .into_iter()
-                    .map(|c| Value::String(c.to_string()))
-                    .collect();
-                let sliced = slice_sequence(&char_values, len, start, end, step);
-                let result_string: String = sliced
-                    .into_iter()
-                    .filter_map(|v| {
-                        if let Value::String(s) = v {
-                            Some(s)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                Ok(Value::String(result_string))
-            }
-            _ => Err(Error::InvalidArguments("Invalid Arguments".to_string())),
+            _ => 1,
         }
+    } else {
+        1
+    };
+
+    match collection {
+        Value::Array(arr) => {
+            let len = arr.len() as i64;
+            let result = slice_sequence(&arr, len, start, end, step);
+            Ok(Value::Array(result))
+        }
+        Value::String(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            let len = chars.len() as i64;
+            let char_values: Vec<Value> = chars
+                .into_iter()
+                .map(|c| Value::String(c.to_string()))
+                .collect();
+            let sliced = slice_sequence(&char_values, len, start, end, step);
+            let result_string: String = sliced
+                .into_iter()
+                .filter_map(|v| {
+                    if let Value::String(s) = v {
+                        Some(s)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            Ok(Value::String(result_string))
+        }
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
     }
 }
 
