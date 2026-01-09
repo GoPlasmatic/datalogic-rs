@@ -1,0 +1,21 @@
+[book]
+title = "datalogic-rs Documentation"
+authors = ["Plasmatic"]
+description = "High-performance Rust implementation of JSONLogic"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/GoPlasmatic/datalogic-rs"
+default-theme = "light"
+preferred-dark-theme = "navy"
+edit-url-template = "https://github.com/GoPlasmatic/datalogic-rs/edit/main/docs/{path}"
+additional-js = ["theme/datalogic-playground.js"]
+additional-css = ["theme/datalogic-playground.css"]
+
+[output.html.fold]
+enable = true
+level = 1
