@@ -1,7 +1,9 @@
 use serde_json::Value;
+use std::collections::HashMap;
 
 use super::helpers::is_truthy;
 use crate::constants::INVALID_ARGS;
+use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Logical NOT operator function (!)
@@ -94,6 +96,82 @@ pub fn evaluate_or(
     for arg in args {
         let value = engine.evaluate_node(arg, context)?;
         if is_truthy(&value, engine) {
+            return Ok(value);
+        }
+        last_value = value;
+    }
+
+    Ok(last_value)
+}
+
+// ============================================================================
+// Traced versions of short-circuit logical operators
+// ============================================================================
+
+/// Traced version of `and` operator - only evaluates until first falsy value.
+#[inline]
+pub fn evaluate_and_traced(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    collector: &mut TraceCollector,
+    node_id_map: &HashMap<usize, u32>,
+) -> Result<Value> {
+    if args.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    // Check if we have the invalid args marker
+    if args.len() == 1
+        && let CompiledNode::Value { value, .. } = &args[0]
+        && let Some(obj) = value.as_object()
+        && obj.contains_key("__invalid_args__")
+    {
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let mut last_value = Value::Bool(true);
+
+    for arg in args {
+        let value = engine.evaluate_node_traced(arg, context, collector, node_id_map)?;
+        if !is_truthy(&value, engine) {
+            // Short-circuit: stop here, don't evaluate remaining args
+            return Ok(value);
+        }
+        last_value = value;
+    }
+
+    Ok(last_value)
+}
+
+/// Traced version of `or` operator - only evaluates until first truthy value.
+#[inline]
+pub fn evaluate_or_traced(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    collector: &mut TraceCollector,
+    node_id_map: &HashMap<usize, u32>,
+) -> Result<Value> {
+    if args.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    // Check if we have the invalid args marker
+    if args.len() == 1
+        && let CompiledNode::Value { value, .. } = &args[0]
+        && let Some(obj) = value.as_object()
+        && obj.contains_key("__invalid_args__")
+    {
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let mut last_value = Value::Bool(false);
+
+    for arg in args {
+        let value = engine.evaluate_node_traced(arg, context, collector, node_id_map)?;
+        if is_truthy(&value, engine) {
+            // Short-circuit: stop here, don't evaluate remaining args
             return Ok(value);
         }
         last_value = value;

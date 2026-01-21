@@ -54,6 +54,7 @@ mod engine;
 mod error;
 mod opcode;
 mod operators;
+mod trace;
 mod value_helpers;
 
 pub use compiled::{CompiledLogic, CompiledNode};
@@ -64,6 +65,7 @@ pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
 pub use error::Error;
 pub use opcode::OpCode;
+pub use trace::{ExecutionStep, ExpressionNode, TraceCollector, TracedResult};
 
 use serde_json::Value;
 

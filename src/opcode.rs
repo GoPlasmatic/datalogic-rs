@@ -362,4 +362,82 @@ impl OpCode {
             OpCode::Now => datetime::evaluate_now(args, context, engine),
         }
     }
+
+    /// Traced evaluation method - records steps for debugging.
+    ///
+    /// This method dispatches to traced versions of operators that need special
+    /// handling (iteration and short-circuit operators), while regular operators
+    /// use the standard evaluation with child tracing.
+    #[inline]
+    pub fn evaluate_traced(
+        &self,
+        args: &[crate::CompiledNode],
+        context: &mut crate::ContextStack,
+        engine: &crate::DataLogic,
+        collector: &mut crate::trace::TraceCollector,
+        node_id_map: &std::collections::HashMap<usize, u32>,
+    ) -> crate::Result<serde_json::Value> {
+        use crate::operators::{array, control, logical};
+
+        match self {
+            // Iteration operators - need traced versions
+            OpCode::Map => {
+                array::evaluate_map_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Filter => {
+                array::evaluate_filter_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Reduce => {
+                array::evaluate_reduce_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::All => {
+                array::evaluate_all_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Some => {
+                array::evaluate_some_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::None => {
+                array::evaluate_none_traced(args, context, engine, collector, node_id_map)
+            }
+
+            // Short-circuit logical operators - need traced versions
+            OpCode::And => {
+                logical::evaluate_and_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Or => {
+                logical::evaluate_or_traced(args, context, engine, collector, node_id_map)
+            }
+
+            // Control flow operators - need traced versions
+            OpCode::If => {
+                control::evaluate_if_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Ternary => {
+                control::evaluate_ternary_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Coalesce => {
+                control::evaluate_coalesce_traced(args, context, engine, collector, node_id_map)
+            }
+
+            // All other operators - evaluate children with tracing, then apply operator
+            _ => {
+                // Evaluate all arguments with tracing
+                let mut evaluated_args: Vec<serde_json::Value> = Vec::with_capacity(args.len());
+                for arg in args {
+                    let value =
+                        engine.evaluate_node_traced(arg, context, collector, node_id_map)?;
+                    evaluated_args.push(value);
+                }
+
+                // Create temporary Value nodes for the direct evaluation
+                let value_nodes: Vec<crate::CompiledNode> = evaluated_args
+                    .into_iter()
+                    .map(|v| crate::CompiledNode::Value { value: v })
+                    .collect();
+
+                // Evaluate the operator with pre-evaluated arguments
+                self.evaluate_direct(&value_nodes, context, engine)
+            }
+        }
+    }
 }

@@ -25,6 +25,42 @@ pub fn evaluate(logic: &str, data: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Evaluate a JSONLogic expression with execution trace for debugging.
+///
+/// Returns a JSON string containing the result, expression tree, and execution steps.
+/// This enables step-by-step debugging and visualization of the evaluation process.
+///
+/// # Arguments
+/// * `logic` - JSON string containing the JSONLogic expression
+/// * `data` - JSON string containing the data to evaluate against
+///
+/// # Returns
+/// JSON string containing TracedResult (result, expression_tree, steps) or error message
+///
+/// # Example Output
+/// ```json
+/// {
+///   "result": true,
+///   "expression_tree": {
+///     "id": 0,
+///     "expression": "{\"and\": [...]}",
+///     "children": [...]
+///   },
+///   "steps": [
+///     {"id": 0, "node_id": 2, "context": {...}, "result": 25, "error": null},
+///     ...
+///   ]
+/// }
+/// ```
+#[wasm_bindgen]
+pub fn evaluate_with_trace(logic: &str, data: &str) -> Result<String, String> {
+    let engine = DataLogic::new();
+    engine
+        .evaluate_json_with_trace(logic, data)
+        .map(|traced_result| serde_json::to_string(&traced_result).unwrap_or_default())
+        .map_err(|e| e.to_string())
+}
+
 /// A compiled JSONLogic rule that can be evaluated multiple times.
 ///
 /// Use this when you need to evaluate the same logic against different data,

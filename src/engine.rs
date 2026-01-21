@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
+use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
@@ -411,6 +412,138 @@ impl DataLogic {
                     result.insert(key.clone(), value);
                 }
                 Ok(Value::Object(result))
+            }
+        }
+    }
+
+    /// Evaluate JSON logic with execution trace for debugging.
+    ///
+    /// This method compiles and evaluates JSONLogic while recording each
+    /// execution step for replay in debugging UIs.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - JSON logic as a string
+    /// * `data` - Data context as a JSON string
+    ///
+    /// # Returns
+    ///
+    /// A `TracedResult` containing the result, expression tree, and execution steps.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let engine = DataLogic::new();
+    /// let result = engine.evaluate_json_with_trace(
+    ///     r#"{">=": [{"var": "age"}, 18]}"#,
+    ///     r#"{"age": 25}"#
+    /// ).unwrap();
+    ///
+    /// println!("Result: {}", result.result);
+    /// println!("Steps: {}", result.steps.len());
+    /// ```
+    pub fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult> {
+        let logic_value: Value = serde_json::from_str(logic)?;
+        let data_value: Value = serde_json::from_str(data)?;
+        let data_arc = Arc::new(data_value);
+
+        let compiled = self.compile(&logic_value)?;
+
+        // Build expression tree and node ID mapping
+        let (expression_tree, node_id_map) = ExpressionNode::build_from_compiled(&compiled.root);
+
+        // Create context and trace collector
+        let mut context = ContextStack::new(data_arc);
+        let mut collector = TraceCollector::new();
+
+        // Evaluate with tracing
+        let result =
+            self.evaluate_node_traced(&compiled.root, &mut context, &mut collector, &node_id_map);
+
+        match result {
+            Ok(value) => Ok(TracedResult {
+                result: value,
+                expression_tree,
+                steps: collector.into_steps(),
+            }),
+            Err(_) => {
+                // Return error but include partial steps for debugging
+                Ok(TracedResult {
+                    result: Value::Null,
+                    expression_tree,
+                    steps: collector.into_steps(),
+                })
+            }
+        }
+    }
+
+    /// Evaluate a compiled node with tracing.
+    ///
+    /// This method records each step of the evaluation for debugging.
+    pub fn evaluate_node_traced(
+        &self,
+        node: &CompiledNode,
+        context: &mut ContextStack,
+        collector: &mut TraceCollector,
+        node_id_map: &HashMap<usize, u32>,
+    ) -> Result<Value> {
+        let node_ptr = node as *const CompiledNode as usize;
+        let node_id = node_id_map.get(&node_ptr).copied().unwrap_or(0);
+        let current_context = context.current().data().clone();
+
+        match node {
+            CompiledNode::Value { value, .. } => {
+                // Literal values don't generate steps per the proposal
+                Ok(value.clone())
+            }
+
+            CompiledNode::Array { nodes, .. } => {
+                let mut results: SmallVec<[Value; 4]> = SmallVec::with_capacity(nodes.len());
+                for node in nodes.iter() {
+                    results.push(self.evaluate_node_traced(
+                        node,
+                        context,
+                        collector,
+                        node_id_map,
+                    )?);
+                }
+                let result = Value::Array(results.into_vec());
+                collector.record_step(node_id, current_context, result.clone());
+                Ok(result)
+            }
+
+            CompiledNode::BuiltinOperator { opcode, args, .. } => {
+                // Use traced dispatch for operators that need special handling
+                let result = opcode.evaluate_traced(args, context, self, collector, node_id_map)?;
+                collector.record_step(node_id, current_context, result.clone());
+                Ok(result)
+            }
+
+            CompiledNode::CustomOperator { name, args, .. } => {
+                let operator = self
+                    .custom_operators
+                    .get(name)
+                    .ok_or_else(|| Error::InvalidOperator(name.clone()))?;
+
+                let arg_values: Vec<Value> = args.iter().map(node_to_value).collect();
+                let evaluator = SimpleEvaluator::new(self);
+
+                let result = operator.evaluate(&arg_values, context, &evaluator)?;
+                collector.record_step(node_id, current_context, result.clone());
+                Ok(result)
+            }
+
+            CompiledNode::StructuredObject { fields, .. } => {
+                let mut result = serde_json::Map::new();
+                for (key, node) in fields {
+                    let value = self.evaluate_node_traced(node, context, collector, node_id_map)?;
+                    result.insert(key.clone(), value);
+                }
+                let result = Value::Object(result);
+                collector.record_step(node_id, current_context, result.clone());
+                Ok(result)
             }
         }
     }
