@@ -13,6 +13,15 @@
 
 ---
 
+<div align="center">
+  <a href="https://goplasmatic.github.io/datalogic-ui/">
+    <img src="assets/demo.gif" alt="JSONLogic Online Debugger Demo" width="700">
+  </a>
+  <p><em>Try the <a href="https://goplasmatic.github.io/datalogic-ui/">JSONLogic Online Debugger</a> to interactively test your rules</em></p>
+</div>
+
+---
+
 **datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a fast, memory-efficient, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
 
 ## Why datalogic-rs?
