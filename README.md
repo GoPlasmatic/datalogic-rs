@@ -11,6 +11,7 @@ Effortlessly evaluate complex rules and dynamic expressions with a powerful, mem
   [![Crates.io](https://img.shields.io/crates/v/datalogic-rs.svg)](https://crates.io/crates/datalogic-rs)
   [![Documentation](https://docs.rs/datalogic-rs/badge.svg)](https://docs.rs/datalogic-rs)
   [![Downloads](https://img.shields.io/crates/d/datalogic-rs)](https://crates.io/crates/datalogic-rs)
+  [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic)](https://www.npmjs.com/package/@goplasmatic/datalogic)
 
   <p>
     <a href="https://github.com/GoPlasmatic">🏢 Organization</a> •
@@ -88,6 +89,8 @@ std::thread::spawn(move || {
 
 ## Installation
 
+### Rust
+
 Add this to your `Cargo.toml`:
 
 ```toml
@@ -96,6 +99,69 @@ datalogic-rs = "4.0"
 
 # Or use v3 if you need arena-based allocation for maximum performance
 # datalogic-rs = "3.0"
+```
+
+### JavaScript / TypeScript
+
+The library is available as a WebAssembly package on npm:
+
+```bash
+npm install @goplasmatic/datalogic
+```
+
+#### Browser (ES Modules)
+
+```html
+<script type="module">
+  import init, { evaluate } from 'https://unpkg.com/@goplasmatic/datalogic@latest/web/datalogic_wasm.js';
+
+  async function run() {
+    await init();
+
+    const logic = JSON.stringify({ ">": [{ "var": "age" }, 18] });
+    const data = JSON.stringify({ age: 21 });
+
+    const result = evaluate(logic, data);
+    console.log(JSON.parse(result)); // true
+  }
+
+  run();
+</script>
+```
+
+#### Node.js
+
+```javascript
+const { evaluate } = require('@goplasmatic/datalogic');
+
+const logic = JSON.stringify({ "+": [1, 2, 3] });
+const data = JSON.stringify({});
+
+const result = evaluate(logic, data);
+console.log(JSON.parse(result)); // 6
+```
+
+#### Bundlers (Webpack, Vite, etc.)
+
+```javascript
+import init, { evaluate } from '@goplasmatic/datalogic';
+
+// Initialize WASM (required once before using)
+await init();
+
+// Evaluate JSONLogic expressions
+const logic = JSON.stringify({
+  "if": [
+    { ">=": [{ "var": "score" }, 90] },
+    "A",
+    { ">=": [{ "var": "score" }, 80] },
+    "B",
+    "C"
+  ]
+});
+
+const result = evaluate(logic, JSON.stringify({ score: 85 }));
+console.log(JSON.parse(result)); // "B"
 ```
 
 ## Examples

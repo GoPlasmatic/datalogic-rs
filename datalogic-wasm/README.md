@@ -1,8 +1,194 @@
-# datalogic-wasm
+# @goplasmatic/datalogic
 
-WebAssembly bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs), a high-performance JSONLogic implementation in Rust.
+High-performance [JSONLogic](https://jsonlogic.com/) engine for JavaScript/TypeScript, powered by WebAssembly.
 
-## Building
+This package provides WebAssembly bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs), a Rust implementation of JSONLogic that supports all standard operators plus extended functionality.
+
+## Installation
+
+```bash
+npm install @goplasmatic/datalogic
+```
+
+## Quick Start
+
+```javascript
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+
+// Initialize the WASM module (required for web/ES modules)
+await init();
+
+// Simple evaluation
+const result = evaluate('{"==": [1, 1]}', '{}');
+console.log(result); // "true"
+
+// With data
+const result2 = evaluate('{"var": "user.age"}', '{"user": {"age": 25}}');
+console.log(result2); // "25"
+
+// Compiled rule for repeated evaluation (better performance)
+const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}');
+console.log(rule.evaluate('{"a": 1, "b": 2}')); // "3"
+console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
+```
+
+## Usage by Environment
+
+### Browser (ES Modules)
+
+```html
+<script type="module">
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+
+async function run() {
+    // Initialize WASM module
+    await init();
+
+    // Now you can use evaluate and CompiledRule
+    const result = evaluate('{"and": [true, {"var": "active"}]}', '{"active": true}');
+    console.log(result); // "true"
+}
+
+run();
+</script>
+```
+
+### Node.js
+
+```javascript
+// ESM
+import { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+
+// No init() needed for Node.js
+const result = evaluate('{"==": [1, 1]}', '{}');
+console.log(result); // "true"
+
+// Compiled rule
+const rule = new CompiledRule('{"if": [{"var": "premium"}, "VIP", "Standard"]}');
+console.log(rule.evaluate('{"premium": true}')); // "\"VIP\""
+console.log(rule.evaluate('{"premium": false}')); // "\"Standard\""
+```
+
+### Bundlers (Webpack, Vite, etc.)
+
+```javascript
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+
+// For bundlers, you may need to initialize
+await init();
+
+const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}');
+console.log(result); // "true"
+```
+
+### Explicit Target Imports
+
+If you need to import a specific target build:
+
+```javascript
+// Web target (ES modules with init)
+import init, { evaluate } from '@goplasmatic/datalogic/web';
+
+// Bundler target
+import init, { evaluate } from '@goplasmatic/datalogic/bundler';
+
+// Node.js target
+import { evaluate } from '@goplasmatic/datalogic/nodejs';
+```
+
+## API Reference
+
+### `evaluate(logic: string, data: string): string`
+
+Evaluate a JSONLogic expression against data.
+
+**Parameters:**
+- `logic` - JSON string containing the JSONLogic expression
+- `data` - JSON string containing the data to evaluate against
+
+**Returns:** JSON string result
+
+**Throws:** Error string on invalid JSON or evaluation error
+
+```javascript
+evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}'); // "true"
+evaluate('{"+": [1, 2, 3]}', '{}'); // "6"
+evaluate('{"map": [[1,2,3], {"+": [{"var": ""}, 1]}]}', '{}'); // "[2,3,4]"
+```
+
+### `evaluate_with_trace(logic: string, data: string): string`
+
+Evaluate with execution trace for debugging. Returns detailed step-by-step information about how the expression was evaluated.
+
+**Parameters:**
+- `logic` - JSON string containing the JSONLogic expression
+- `data` - JSON string containing the data to evaluate against
+
+**Returns:** JSON string containing `TracedResult` with:
+- `result` - The evaluation result
+- `expression_tree` - Tree structure of the expression with node IDs
+- `steps` - Array of execution steps with context and intermediate results
+
+```javascript
+const trace = evaluate_with_trace('{"and": [true, {"var": "x"}]}', '{"x": true}');
+console.log(JSON.parse(trace));
+// {
+//   "result": true,
+//   "expression_tree": { "id": 0, "expression": "{\"and\": [...]}", ... },
+//   "steps": [...]
+// }
+```
+
+### `CompiledRule`
+
+A compiled JSONLogic rule for repeated evaluation. Pre-compiling rules provides better performance when evaluating the same logic against different data.
+
+#### `new CompiledRule(logic: string)`
+
+Create a new compiled rule.
+
+```javascript
+const rule = new CompiledRule('{">=": [{"var": "age"}, 18]}');
+```
+
+#### `evaluate(data: string): string`
+
+Evaluate the compiled rule against data.
+
+```javascript
+rule.evaluate('{"age": 21}'); // "true"
+rule.evaluate('{"age": 16}'); // "false"
+```
+
+## Supported Operators
+
+This library supports all standard JSONLogic operators plus extended functionality:
+
+**Logical:** `and`, `or`, `!`, `!!`, `if`, `?:`
+
+**Comparison:** `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
+
+**Arithmetic:** `+`, `-`, `*`, `/`, `%`, `min`, `max`
+
+**Array:** `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`
+
+**String:** `cat`, `substr`, `startsWith`, `endsWith`
+
+**Data Access:** `var`, `missing`, `missing_some`
+
+**Date/Time:** Date comparison and manipulation operators
+
+For the complete list and documentation, see the [main repository](https://github.com/GoPlasmatic/datalogic-rs).
+
+## Performance
+
+This WASM-based implementation provides near-native performance:
+
+- **Compiled rules** are significantly faster for repeated evaluations
+- **Zero-copy** where possible between JS and WASM
+- **Small bundle size** (~50KB gzipped)
+
+## Building from Source
 
 ### Prerequisites
 
@@ -17,104 +203,16 @@ cargo install wasm-pack
 rustup target add wasm32-unknown-unknown
 ```
 
-### Build for Web
+### Build
 
 ```bash
 cd datalogic-wasm
-wasm-pack build --target web
+./build.sh
 ```
 
-This creates a `pkg/` directory with:
-- `datalogic_wasm.js` - JavaScript bindings
-- `datalogic_wasm_bg.wasm` - WebAssembly binary
-- `package.json` - npm package metadata
+This creates a `pkg/` directory with builds for all targets (web, bundler, nodejs).
 
-### Build for Node.js
-
-```bash
-wasm-pack build --target nodejs
-```
-
-### Build for Bundlers (webpack, etc.)
-
-```bash
-wasm-pack build --target bundler
-```
-
-## Usage
-
-### In Browser (ES Modules)
-
-```html
-<script type="module">
-import init, { evaluate, CompiledRule } from './pkg/datalogic_wasm.js';
-
-async function run() {
-    await init();
-
-    // Simple evaluation
-    const result = evaluate('{"==": [1, 1]}', '{}');
-    console.log(result); // "true"
-
-    // With data
-    const result2 = evaluate('{"var": "x"}', '{"x": 42}');
-    console.log(result2); // "42"
-
-    // Compiled rule for repeated evaluation
-    const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}');
-    console.log(rule.evaluate('{"a": 1, "b": 2}')); // "3"
-    console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
-}
-
-run();
-</script>
-```
-
-### In Node.js
-
-```javascript
-const { evaluate, CompiledRule } = require('./pkg/datalogic_wasm.js');
-
-// Simple evaluation
-const result = evaluate('{"==": [1, 1]}', '{}');
-console.log(result); // "true"
-
-// Compiled rule
-const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}');
-console.log(rule.evaluate('{"a": 1, "b": 2}')); // "3"
-```
-
-## API
-
-### `evaluate(logic: string, data: string): string`
-
-Evaluate a JSONLogic expression against data.
-
-- `logic` - JSON string containing the JSONLogic expression
-- `data` - JSON string containing the data to evaluate against
-- Returns: JSON string result
-- Throws: Error string on invalid JSON or evaluation error
-
-### `CompiledRule`
-
-A compiled JSONLogic rule for repeated evaluation.
-
-#### `new CompiledRule(logic: string)`
-
-Create a new compiled rule.
-
-- `logic` - JSON string containing the JSONLogic expression
-- Throws: Error string on invalid JSON or compilation error
-
-#### `evaluate(data: string): string`
-
-Evaluate the compiled rule against data.
-
-- `data` - JSON string containing the data
-- Returns: JSON string result
-- Throws: Error string on invalid JSON or evaluation error
-
-## Running Tests
+### Running Tests
 
 ```bash
 # Run tests in headless Chrome
@@ -127,3 +225,9 @@ wasm-pack test --headless --firefox
 ## License
 
 Apache-2.0
+
+## Links
+
+- [GitHub Repository](https://github.com/GoPlasmatic/datalogic-rs)
+- [JSONLogic Specification](https://jsonlogic.com/)
+- [Documentation](https://goplasmatic.github.io/datalogic-rs/)

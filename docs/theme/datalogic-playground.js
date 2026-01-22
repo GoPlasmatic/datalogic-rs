@@ -8,26 +8,8 @@ let wasmReady = false;
 let wasmModule = null;
 let initPromise = null;
 
-// Get the base path for loading WASM files
-function getBasePath() {
-    const scripts = document.getElementsByTagName('script');
-    for (let script of scripts) {
-        if (script.src && script.src.includes('datalogic-playground')) {
-            return script.src.replace(/theme\/datalogic-playground[^/]*\.js.*$/, '');
-        }
-    }
-    // Fallback: try to detect from current URL by looking for path_to_root
-    // mdBook sets this variable in each page
-    if (typeof path_to_root !== 'undefined') {
-        return window.location.href.replace(/[^/]*$/, '') + path_to_root;
-    }
-    // Final fallback: try to detect from current URL
-    const path = window.location.pathname;
-    const parts = path.split('/');
-    // Remove last part (current page) and rebuild
-    parts.pop();
-    return window.location.origin + parts.join('/') + '/';
-}
+// CDN URL for the published npm package
+const WASM_CDN_URL = 'https://unpkg.com/@goplasmatic/datalogic@4.0.6/web/datalogic_wasm.js';
 
 // Initialize WASM module
 async function initWasm() {
@@ -35,18 +17,15 @@ async function initWasm() {
 
     initPromise = (async () => {
         try {
-            const basePath = getBasePath();
-            const wasmJsUrl = basePath + 'wasm/datalogic_wasm.js';
-
-            // Dynamic import of WASM JS module
-            const module = await import(wasmJsUrl);
+            // Dynamic import of WASM JS module from CDN
+            const module = await import(WASM_CDN_URL);
 
             // Initialize WASM - the default export initializes the module
             await module.default();
 
             wasmModule = module;
             wasmReady = true;
-            console.log('DataLogic WASM initialized successfully');
+            console.log('DataLogic WASM initialized successfully from CDN');
             return true;
         } catch (error) {
             console.error('Failed to initialize DataLogic WASM:', error);

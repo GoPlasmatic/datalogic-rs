@@ -1,0 +1,28 @@
+# Source files
+src/
+tests/
+
+# Build artifacts
+target/
+pkg-web/
+pkg-bundler/
+pkg-nodejs/
+
+# Rust files
+Cargo.toml
+Cargo.lock
+*.rs
+
+# Build scripts
+build.sh
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
