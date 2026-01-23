@@ -38,7 +38,7 @@ npm install @goplasmatic/datalogic
 Or build from source:
 
 ```bash
-cd datalogic-wasm
+cd wasm
 wasm-pack build --target web
 ```
 

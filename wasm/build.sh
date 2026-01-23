@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Build script for datalogic-wasm npm package
+# Build script for wasm npm package
 # Builds for web, bundler, and nodejs targets and creates a unified package
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +46,26 @@ cp pkg-nodejs/datalogic_wasm_bg.wasm pkg/nodejs/
 cp pkg-nodejs/datalogic_wasm.js pkg/nodejs/
 cp pkg-nodejs/datalogic_wasm.d.ts pkg/nodejs/
 cp pkg-nodejs/datalogic_wasm_bg.wasm.d.ts pkg/nodejs/
+
+# Optimize WASM binaries with wasm-opt if available
+if command -v wasm-opt &> /dev/null; then
+    echo "Optimizing WASM binaries with wasm-opt..."
+    WASM_OPT_FLAGS="-Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext"
+
+    for target in web bundler nodejs; do
+        WASM_FILE="pkg/$target/datalogic_wasm_bg.wasm"
+        ORIGINAL_SIZE=$(stat -f%z "$WASM_FILE" 2>/dev/null || stat -c%s "$WASM_FILE")
+        wasm-opt $WASM_OPT_FLAGS "$WASM_FILE" -o "$WASM_FILE.opt"
+        mv "$WASM_FILE.opt" "$WASM_FILE"
+        NEW_SIZE=$(stat -f%z "$WASM_FILE" 2>/dev/null || stat -c%s "$WASM_FILE")
+        SAVED=$((ORIGINAL_SIZE - NEW_SIZE))
+        echo "  $target: $ORIGINAL_SIZE -> $NEW_SIZE bytes (saved $SAVED bytes)"
+    done
+else
+    echo "Warning: wasm-opt not found. Install binaryen for additional size optimization."
+    echo "  brew install binaryen  # macOS"
+    echo "  apt install binaryen   # Debian/Ubuntu"
+fi
 
 # Copy LICENSE and README
 cp ../LICENSE pkg/

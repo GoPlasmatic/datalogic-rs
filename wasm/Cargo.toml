@@ -6,6 +6,9 @@ description = "WebAssembly bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -19,5 +22,8 @@ console_error_panic_hook = "0.1"
 wasm-bindgen-test = "0.3"
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"
 lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

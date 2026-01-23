@@ -216,7 +216,7 @@ rustup target add wasm32-unknown-unknown
 ### Build
 
 ```bash
-cd datalogic-wasm
+cd wasm
 ./build.sh
 ```
 
