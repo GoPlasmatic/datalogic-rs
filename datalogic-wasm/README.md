@@ -19,15 +19,15 @@ import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
 await init();
 
 // Simple evaluation
-const result = evaluate('{"==": [1, 1]}', '{}');
+const result = evaluate('{"==": [1, 1]}', '{}', false);
 console.log(result); // "true"
 
 // With data
-const result2 = evaluate('{"var": "user.age"}', '{"user": {"age": 25}}');
+const result2 = evaluate('{"var": "user.age"}', '{"user": {"age": 25}}', false);
 console.log(result2); // "25"
 
 // Compiled rule for repeated evaluation (better performance)
-const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}');
+const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}', false);
 console.log(rule.evaluate('{"a": 1, "b": 2}')); // "3"
 console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
 ```
@@ -45,7 +45,7 @@ async function run() {
     await init();
 
     // Now you can use evaluate and CompiledRule
-    const result = evaluate('{"and": [true, {"var": "active"}]}', '{"active": true}');
+    const result = evaluate('{"and": [true, {"var": "active"}]}', '{"active": true}', false);
     console.log(result); // "true"
 }
 
@@ -60,11 +60,11 @@ run();
 import { evaluate, CompiledRule } from '@goplasmatic/datalogic';
 
 // No init() needed for Node.js
-const result = evaluate('{"==": [1, 1]}', '{}');
+const result = evaluate('{"==": [1, 1]}', '{}', false);
 console.log(result); // "true"
 
 // Compiled rule
-const rule = new CompiledRule('{"if": [{"var": "premium"}, "VIP", "Standard"]}');
+const rule = new CompiledRule('{"if": [{"var": "premium"}, "VIP", "Standard"]}', false);
 console.log(rule.evaluate('{"premium": true}')); // "\"VIP\""
 console.log(rule.evaluate('{"premium": false}')); // "\"Standard\""
 ```
@@ -77,7 +77,7 @@ import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
 // For bundlers, you may need to initialize
 await init();
 
-const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}');
+const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}', false);
 console.log(result); // "true"
 ```
 
@@ -98,31 +98,37 @@ import { evaluate } from '@goplasmatic/datalogic/nodejs';
 
 ## API Reference
 
-### `evaluate(logic: string, data: string): string`
+### `evaluate(logic: string, data: string, preserve_structure: boolean): string`
 
 Evaluate a JSONLogic expression against data.
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
 - `data` - JSON string containing the data to evaluate against
+- `preserve_structure` - If `true`, preserves object structure for JSON templates with embedded JSONLogic (templating mode)
 
 **Returns:** JSON string result
 
 **Throws:** Error string on invalid JSON or evaluation error
 
 ```javascript
-evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}'); // "true"
-evaluate('{"+": [1, 2, 3]}', '{}'); // "6"
-evaluate('{"map": [[1,2,3], {"+": [{"var": ""}, 1]}]}', '{}'); // "[2,3,4]"
+evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}', false); // "true"
+evaluate('{"+": [1, 2, 3]}', '{}', false); // "6"
+evaluate('{"map": [[1,2,3], {"+": [{"var": ""}, 1]}]}', '{}', false); // "[2,3,4]"
+
+// With preserve_structure for templating
+evaluate('{"name": {"var": "user"}, "active": true}', '{"user": "Alice"}', true);
+// '{"name":"Alice","active":true}'
 ```
 
-### `evaluate_with_trace(logic: string, data: string): string`
+### `evaluate_with_trace(logic: string, data: string, preserve_structure: boolean): string`
 
 Evaluate with execution trace for debugging. Returns detailed step-by-step information about how the expression was evaluated.
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
 - `data` - JSON string containing the data to evaluate against
+- `preserve_structure` - If `true`, preserves object structure for JSON templates with embedded JSONLogic (templating mode)
 
 **Returns:** JSON string containing `TracedResult` with:
 - `result` - The evaluation result
@@ -130,7 +136,7 @@ Evaluate with execution trace for debugging. Returns detailed step-by-step infor
 - `steps` - Array of execution steps with context and intermediate results
 
 ```javascript
-const trace = evaluate_with_trace('{"and": [true, {"var": "x"}]}', '{"x": true}');
+const trace = evaluate_with_trace('{"and": [true, {"var": "x"}]}', '{"x": true}', false);
 console.log(JSON.parse(trace));
 // {
 //   "result": true,
@@ -143,12 +149,16 @@ console.log(JSON.parse(trace));
 
 A compiled JSONLogic rule for repeated evaluation. Pre-compiling rules provides better performance when evaluating the same logic against different data.
 
-#### `new CompiledRule(logic: string)`
+#### `new CompiledRule(logic: string, preserve_structure: boolean)`
 
 Create a new compiled rule.
 
+**Parameters:**
+- `logic` - JSON string containing the JSONLogic expression
+- `preserve_structure` - If `true`, preserves object structure for JSON templates with embedded JSONLogic (templating mode)
+
 ```javascript
-const rule = new CompiledRule('{">=": [{"var": "age"}, 18]}');
+const rule = new CompiledRule('{">=": [{"var": "age"}, 18]}', false);
 ```
 
 #### `evaluate(data: string): string`

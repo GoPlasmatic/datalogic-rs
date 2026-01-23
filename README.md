@@ -131,7 +131,7 @@ npm install @goplasmatic/datalogic
     const logic = JSON.stringify({ ">": [{ "var": "age" }, 18] });
     const data = JSON.stringify({ age: 21 });
 
-    const result = evaluate(logic, data);
+    const result = evaluate(logic, data, false);
     console.log(JSON.parse(result)); // true
   }
 
@@ -147,7 +147,7 @@ const { evaluate } = require('@goplasmatic/datalogic');
 const logic = JSON.stringify({ "+": [1, 2, 3] });
 const data = JSON.stringify({});
 
-const result = evaluate(logic, data);
+const result = evaluate(logic, data, false);
 console.log(JSON.parse(result)); // 6
 ```
 
@@ -170,7 +170,7 @@ const logic = JSON.stringify({
   ]
 });
 
-const result = evaluate(logic, JSON.stringify({ score: 85 }));
+const result = evaluate(logic, JSON.stringify({ score: 85 }), false);
 console.log(JSON.parse(result)); // "B"
 ```
 
