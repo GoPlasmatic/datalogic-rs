@@ -9,7 +9,7 @@ let wasmModule = null;
 let initPromise = null;
 
 // CDN URL for the published npm package
-const WASM_CDN_URL = 'https://unpkg.com/@goplasmatic/datalogic@4.0.6/web/datalogic_wasm.js';
+const WASM_CDN_URL = 'https://unpkg.com/@goplasmatic/datalogic@4.0.7/web/datalogic_wasm.js';
 
 // Initialize WASM module
 async function initWasm() {
@@ -42,7 +42,7 @@ function evaluateLogic(logic, data) {
     if (!wasmReady || !wasmModule) {
         throw new Error('WASM module not initialized');
     }
-    return wasmModule.evaluate(logic, data);
+    return wasmModule.evaluate(logic, data, false);
 }
 
 // Format JSON for display

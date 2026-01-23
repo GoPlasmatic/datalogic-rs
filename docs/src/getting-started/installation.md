@@ -29,10 +29,10 @@ datalogic-rs has minimal dependencies by default. All features are included in t
 
 ## WebAssembly Support
 
-For WebAssembly targets, use the `datalogic-wasm` crate:
+For WebAssembly targets, use the npm package:
 
 ```bash
-npm install datalogic-wasm
+npm install @goplasmatic/datalogic
 ```
 
 Or build from source:
