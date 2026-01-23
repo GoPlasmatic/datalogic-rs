@@ -1,5 +1,8 @@
 # Playground
 
+> **Want the full experience?** Try the [Full-Page Visual Debugger](playground/) with examples,
+> resizable panels, and step-through debugging.
+
 Try JSONLogic expressions right in your browser! This playground uses the visual debugger component powered by WebAssembly.
 
 <div id="datalogic-playground" data-datalogic-playground></div>
