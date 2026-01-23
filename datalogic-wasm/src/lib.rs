@@ -13,12 +13,17 @@ pub fn init() {
 /// # Arguments
 /// * `logic` - JSON string containing the JSONLogic expression
 /// * `data` - JSON string containing the data to evaluate against
+/// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
 ///
 /// # Returns
 /// JSON string result or error message
 #[wasm_bindgen]
-pub fn evaluate(logic: &str, data: &str) -> Result<String, String> {
-    let engine = DataLogic::new();
+pub fn evaluate(logic: &str, data: &str, preserve_structure: bool) -> Result<String, String> {
+    let engine = if preserve_structure {
+        DataLogic::with_preserve_structure()
+    } else {
+        DataLogic::new()
+    };
     engine
         .evaluate_json(logic, data)
         .map(|v| v.to_string())
@@ -33,6 +38,7 @@ pub fn evaluate(logic: &str, data: &str) -> Result<String, String> {
 /// # Arguments
 /// * `logic` - JSON string containing the JSONLogic expression
 /// * `data` - JSON string containing the data to evaluate against
+/// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
 ///
 /// # Returns
 /// JSON string containing TracedResult (result, expression_tree, steps) or error message
@@ -53,8 +59,12 @@ pub fn evaluate(logic: &str, data: &str) -> Result<String, String> {
 /// }
 /// ```
 #[wasm_bindgen]
-pub fn evaluate_with_trace(logic: &str, data: &str) -> Result<String, String> {
-    let engine = DataLogic::new();
+pub fn evaluate_with_trace(logic: &str, data: &str, preserve_structure: bool) -> Result<String, String> {
+    let engine = if preserve_structure {
+        DataLogic::with_preserve_structure()
+    } else {
+        DataLogic::new()
+    };
     engine
         .evaluate_json_with_trace(logic, data)
         .map(|traced_result| serde_json::to_string(&traced_result).unwrap_or_default())
@@ -77,9 +87,14 @@ impl CompiledRule {
     ///
     /// # Arguments
     /// * `logic` - JSON string containing the JSONLogic expression
+    /// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
     #[wasm_bindgen(constructor)]
-    pub fn new(logic: &str) -> Result<CompiledRule, String> {
-        let engine = DataLogic::new();
+    pub fn new(logic: &str, preserve_structure: bool) -> Result<CompiledRule, String> {
+        let engine = if preserve_structure {
+            DataLogic::with_preserve_structure()
+        } else {
+            DataLogic::new()
+        };
         let parsed: serde_json::Value = serde_json::from_str(logic).map_err(|e| e.to_string())?;
         let compiled = engine.compile(&parsed).map_err(|e| e.to_string())?;
         Ok(CompiledRule { engine, compiled })
