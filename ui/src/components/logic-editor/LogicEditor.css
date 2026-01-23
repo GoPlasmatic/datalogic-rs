@@ -1,0 +1,86 @@
+.logic-editor {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.logic-editor .react-flow {
+  width: 100%;
+  height: 100%;
+}
+
+.logic-editor-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.logic-editor-empty p {
+  margin: 0;
+  font-size: 16px;
+}
+
+.logic-editor-empty-hint {
+  margin-top: 8px !important;
+  font-size: 13px !important;
+  color: var(--text-muted);
+}
+
+/* ReactFlow overrides */
+.logic-editor .react-flow__controls {
+  box-shadow: 0 2px 8px var(--node-shadow);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.logic-editor .react-flow__controls-button {
+  background: var(--bg-secondary);
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  fill: var(--text-secondary);
+}
+
+.logic-editor .react-flow__controls-button:hover {
+  background: var(--bg-hover);
+}
+
+.logic-editor .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.logic-editor .react-flow__controls-button svg {
+  fill: var(--text-secondary);
+}
+
+.logic-editor .react-flow__edge-path {
+  stroke: #b1b1b7;
+  stroke-width: 2;
+}
+
+.logic-editor .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent-blue);
+  stroke-width: 3;
+}
+
+/* Dark mode edge colors */
+[data-theme="dark"] .logic-editor .react-flow__edge-path {
+  stroke: #6b7280;
+}
+
+/* Background pattern for dark mode */
+[data-theme="dark"] .logic-editor .react-flow__background {
+  background: var(--bg-tertiary);
+}
+
+/* Attribution removal - only if you have a paid license */
+.logic-editor .react-flow__attribution {
+  display: none;
+}

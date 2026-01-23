@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+
+    /* Declaration generation */
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": [
+    "src/lib.ts",
+    "src/components/logic-editor/**/*"
+  ],
+  "exclude": [
+    "src/App.tsx",
+    "src/main.tsx",
+    "src/hooks/**/*",
+    "src/contexts/**/*",
+    "src/components/debug-panel/**/*"
+  ]
+}

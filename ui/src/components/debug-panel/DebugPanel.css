@@ -1,0 +1,308 @@
+.debug-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.debug-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.debug-section:last-child {
+  border-bottom: none;
+}
+
+/* Logic section takes 50% */
+.debug-section.logic-section {
+  flex: 2;
+}
+
+/* Data section takes 25% */
+.debug-section.data-section {
+  flex: 1;
+}
+
+/* Result section takes 25% */
+.debug-section.result-section {
+  flex: 1;
+}
+
+.debug-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.debug-section-header h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.format-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.format-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+}
+
+.format-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.debug-section-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.debug-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  resize: none;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  outline: none;
+}
+
+.debug-textarea::placeholder {
+  color: var(--text-placeholder);
+}
+
+.debug-textarea.error {
+  background: var(--error-bg-lighter);
+}
+
+.debug-error {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 10px;
+  background: var(--error-bg-light);
+  border-top: 1px solid var(--error-border);
+  color: var(--error-text);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.debug-error .error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: var(--error-text);
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.debug-result {
+  margin: 0;
+  padding: 10px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--code-bg);
+  overflow: auto;
+  flex: 1;
+}
+
+.debug-result.truthy {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.debug-result.falsy {
+  background: var(--error-bg-light);
+  color: var(--error-text);
+}
+
+.debug-result.error {
+  background: var(--error-bg-light);
+  color: var(--error-text);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.wasm-status {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.wasm-status.loading {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.wasm-status.ready {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+/* JSON Syntax Highlighting */
+.json-editor-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.json-editor-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.json-highlight-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px;
+  pointer-events: none;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: auto;
+}
+
+/* Hide scrollbar on highlight layer - only textarea should scroll visually */
+.json-highlight-layer::-webkit-scrollbar {
+  display: none;
+}
+
+.json-highlight-layer {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.json-editor-textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  border: none;
+  resize: none;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: transparent;
+  background: transparent;
+  caret-color: var(--text-primary);
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: auto;
+}
+
+.json-editor-textarea::placeholder {
+  color: var(--text-placeholder);
+}
+
+.json-editor-container.error .json-highlight-layer,
+.json-editor-container.error .json-editor-textarea {
+  background: var(--error-bg-lighter);
+}
+
+/* Syntax colors */
+.json-key {
+  color: var(--syntax-key);
+}
+
+.json-string {
+  color: var(--syntax-string);
+}
+
+.json-number {
+  color: var(--syntax-number);
+}
+
+.json-boolean {
+  color: var(--syntax-boolean);
+}
+
+.json-null {
+  color: var(--syntax-null);
+}
+
+.json-bracket {
+  color: var(--syntax-bracket);
+}
+
+.json-punctuation {
+  color: var(--syntax-punctuation);
+}
+
+/* Result JSON highlighting */
+.json-result-display {
+  margin: 0;
+  padding: 10px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  background: var(--code-bg);
+  overflow: auto;
+  flex: 1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.json-result-display.truthy {
+  background: var(--success-bg);
+}
+
+.json-result-display.truthy .json-boolean {
+  color: var(--success-text);
+}
+
+.json-result-display.falsy {
+  background: var(--error-bg-light);
+}
+
+.json-result-display.falsy .json-boolean {
+  color: var(--error-text);
+}

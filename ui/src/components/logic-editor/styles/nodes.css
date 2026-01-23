@@ -1,0 +1,1247 @@
+/* Base node styles - shared across all node types */
+.logic-node {
+  border-radius: 8px;
+  border: 2px solid;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  /* Width is set via inline style from layout calculations */
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px var(--node-shadow);
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+
+.logic-node:hover {
+  box-shadow: 0 4px 12px var(--node-shadow-hover);
+}
+
+.logic-node.selected {
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
+}
+
+/* Legacy class support - these now use .logic-node */
+.operator-node,
+.variable-node,
+.literal-node {
+  border-radius: 8px;
+  border: 2px solid;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  /* Width is set via inline style from layout calculations */
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px var(--node-shadow);
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+
+.operator-node:hover,
+.variable-node:hover,
+.literal-node:hover {
+  box-shadow: 0 4px 12px var(--node-shadow-hover);
+}
+
+.operator-node.selected,
+.variable-node.selected,
+.literal-node.selected {
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
+}
+
+/* Operator Node */
+.operator-node {
+  background: var(--node-bg) !important;
+}
+
+.operator-node-header {
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  color: white;
+  font-weight: 600;
+  text-align: center;
+}
+
+.operator-label {
+  font-size: 16px;
+  letter-spacing: 0.5px;
+}
+
+/* Header content with collapse toggle */
+.operator-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.operator-header-content .operator-label {
+  flex: 1;
+  text-align: center;
+}
+
+.collapse-toggle {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.collapse-toggle:hover {
+  opacity: 1;
+}
+
+/* Cell collapse toggle (for vertical cell nodes) */
+.cell-collapse-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.cell-collapse-toggle:hover {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+/* Collapsed summary in vertical cell row */
+.collapsed-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex: 1;
+}
+
+.collapsed-summary .arg-icon {
+  font-size: 11px;
+}
+
+.collapsed-summary .arg-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Expression text for collapsed nodes */
+.expression-text {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+/* Inline expression for unary operators with simple args */
+.expression-text.inline-expression {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.collapsed-body {
+  padding: 8px;
+}
+
+/* Argument summaries for collapsed view */
+.arg-summaries {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.arg-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.arg-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.arg-label {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collapsed operator node */
+.operator-node.collapsed {
+  min-height: auto;
+}
+
+.operator-node.collapsed .operator-node-body {
+  padding: 8px;
+}
+
+.operator-node-body {
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.operator-category {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.operator-children-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Variable Node */
+.variable-node {
+  background: var(--node-bg) !important;
+  padding: 8px 12px;
+  position: relative;
+}
+
+.variable-node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variable-operator {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.variable-path {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.variable-default {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-light);
+  font-size: 11px;
+  display: flex;
+  gap: 4px;
+}
+
+.variable-default-label {
+  color: var(--text-muted);
+}
+
+.variable-default-value {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--text-tertiary);
+}
+
+/* Literal Node */
+.literal-node {
+  background: var(--node-bg) !important;
+  padding: 8px 12px;
+  position: relative;
+}
+
+.literal-node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.literal-type-icon {
+  font-weight: 700;
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.literal-value {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* ReactFlow Handle styles */
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid white;
+}
+
+[data-theme="dark"] .react-flow__handle {
+  border-color: var(--bg-primary);
+}
+
+.react-flow__handle-top {
+  top: -6px;
+}
+
+.react-flow__handle-bottom {
+  bottom: -6px;
+}
+
+.react-flow__handle-right {
+  right: -6px;
+}
+
+.react-flow__handle-left {
+  left: -6px;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Ensure left handles are centered on simple nodes */
+.literal-node .react-flow__handle-left,
+.variable-node .react-flow__handle-left {
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Decision Node */
+.decision-node {
+  background: var(--node-bg) !important;
+  border-radius: 8px;
+  border: 2px solid;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  /* Width is set via inline style from layout calculations */
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px var(--node-shadow);
+  transition: box-shadow 0.2s, transform 0.1s;
+  position: relative;
+}
+
+.decision-node:hover {
+  box-shadow: 0 4px 12px var(--node-shadow-hover);
+}
+
+.decision-node.selected {
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
+}
+
+.decision-node-header {
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  color: white;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.decision-node-title {
+  font-size: 16px;
+  letter-spacing: 0.5px;
+}
+
+.decision-node-body {
+  padding: 0;
+}
+
+/* Decision rows - each row is 32px height */
+.decision-row {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 32px;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-light);
+  position: relative;
+}
+
+.decision-row:last-child {
+  border-bottom: none;
+}
+
+.decision-row-branch {
+  padding-left: 20px;
+}
+
+.decision-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: lowercase;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.decision-row-content {
+  flex: 1;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  word-break: break-word;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Decision node handles are positioned at node level via inline styles */
+
+/* Decision node input handle */
+.decision-node .react-flow__handle[data-handleid="left"] {
+  left: -6px;
+  top: 50%;
+}
+
+/* Edge styles */
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+
+/* Custom edge styles for decision branches */
+.react-flow__edge.yes-edge .react-flow__edge-path {
+  stroke: #22C55E;
+}
+
+.react-flow__edge.no-edge .react-flow__edge-path {
+  stroke: #EF4444;
+}
+
+/* Vertical Cell Node */
+.vertical-cell-node {
+  background: var(--node-bg) !important;
+  border-radius: 8px;
+  border: 2px solid;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  /* Width is set via inline style from layout calculations */
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px var(--node-shadow);
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+
+.vertical-cell-node:hover {
+  box-shadow: 0 4px 12px var(--node-shadow-hover);
+}
+
+.vertical-cell-node.selected {
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
+}
+
+.vertical-cell-header {
+  padding: 4px 10px;
+  border-radius: 6px 6px 0 0;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vertical-cell-header .vertical-cell-label {
+  flex: 1;
+}
+
+.vertical-cell-header .collapse-toggle {
+  margin-left: auto;
+}
+
+.vertical-cell-icon {
+  font-size: 16px;
+}
+
+.vertical-cell-label {
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+}
+
+.vertical-cell-body {
+  padding: 4px 0;
+}
+
+.vertical-cell-row {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+/* Handle positioned inside cell row */
+.vertical-cell-row .cell-handle {
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Condition handle - upper position for if/then cells */
+.vertical-cell-row .cell-handle.condition-handle {
+  top: 30%;
+}
+
+/* Then/Yes handle - lower position for if/then cells */
+.vertical-cell-row .cell-handle.then-handle {
+  top: 70%;
+}
+
+.vertical-cell-row:last-child {
+  border-bottom: none;
+}
+
+.vertical-cell-row-then {
+  padding-left: 24px;
+}
+
+.vertical-cell-row-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.vertical-cell-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.vertical-cell-inline {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+/* Branch expression text in vertical cells */
+.branch-expression {
+  flex: 1;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border-left: 2px solid #94a3b8;
+}
+
+[data-theme="dark"] .branch-expression {
+  background: var(--bg-hover);
+  border-left-color: #64748b;
+}
+
+/* Header right section for result badge and collapse toggle */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* Result Badge Styles */
+.result-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  position: relative;
+  cursor: default;
+}
+
+.result-badge.compact {
+  padding: 1px 6px;
+  font-size: 10px;
+  max-width: 80px;
+}
+
+.result-badge .result-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Result popover for complex values */
+.result-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--debug-popover-bg);
+  color: var(--debug-popover-text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px var(--debug-popover-shadow);
+  min-width: 150px;
+  max-width: 300px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.result-popover pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.result-popover.error {
+  background: var(--debug-popover-error-bg);
+  color: var(--debug-value-false);
+}
+
+.result-badge.truthy {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
+}
+
+.result-badge.falsy {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
+}
+
+.result-badge.boolean.truthy {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.result-badge.boolean.falsy {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+.result-badge.number {
+  background: var(--accent-blue-light);
+  color: var(--accent-blue);
+  border: 1px solid var(--accent-blue);
+}
+
+.result-badge.string {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid var(--warning-border);
+}
+
+.result-badge.null,
+.result-badge.undefined {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+}
+
+.result-badge.array,
+.result-badge.object {
+  background: #e0e7ff;
+  color: #4f46e5;
+  border: 1px solid #c7d2fe;
+}
+
+[data-theme="dark"] .result-badge.array,
+[data-theme="dark"] .result-badge.object {
+  background: #312e81;
+  color: #a5b4fc;
+  border-color: #4338ca;
+}
+
+.result-badge.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
+}
+
+.result-badge .result-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  background: var(--error-text);
+  color: white;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+/* Result badge container in nodes */
+.node-result-container {
+  padding: 4px 8px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Variable and Literal result positioning */
+.variable-result,
+.literal-result {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Expression Syntax Highlighting */
+.expr-operator {
+  color: #cf222e;
+  font-weight: 600;
+}
+
+.expr-keyword {
+  color: #8250df;
+  font-weight: 600;
+}
+
+.expr-comparison {
+  color: #0550ae;
+  font-weight: 500;
+}
+
+.expr-arithmetic {
+  color: #0550ae;
+}
+
+.expr-unary {
+  color: #cf222e;
+  font-weight: 500;
+}
+
+.expr-function {
+  color: #8250df;
+}
+
+.expr-string {
+  color: #0a3069;
+}
+
+.expr-number {
+  color: #0550ae;
+}
+
+.expr-boolean {
+  color: #cf222e;
+}
+
+.expr-null {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.expr-variable {
+  color: #953800;
+}
+
+.expr-bracket {
+  color: #24292f;
+}
+
+.expr-punctuation {
+  color: #24292f;
+}
+
+/* Dark mode expression syntax */
+[data-theme="dark"] .expr-operator {
+  color: #ff7b72;
+}
+
+[data-theme="dark"] .expr-keyword {
+  color: #d2a8ff;
+}
+
+[data-theme="dark"] .expr-comparison {
+  color: #79c0ff;
+}
+
+[data-theme="dark"] .expr-arithmetic {
+  color: #79c0ff;
+}
+
+[data-theme="dark"] .expr-unary {
+  color: #ff7b72;
+}
+
+[data-theme="dark"] .expr-function {
+  color: #d2a8ff;
+}
+
+[data-theme="dark"] .expr-string {
+  color: #a5d6ff;
+}
+
+[data-theme="dark"] .expr-number {
+  color: #79c0ff;
+}
+
+[data-theme="dark"] .expr-boolean {
+  color: #ff7b72;
+}
+
+[data-theme="dark"] .expr-null {
+  color: #8b949e;
+}
+
+[data-theme="dark"] .expr-variable {
+  color: #ffa657;
+}
+
+[data-theme="dark"] .expr-bracket {
+  color: #c9d1d9;
+}
+
+[data-theme="dark"] .expr-punctuation {
+  color: #c9d1d9;
+}
+
+/* ============================================
+   Debugger State Styles
+   ============================================ */
+
+/* CSS Variables for debug colors */
+:root {
+  --debug-current-color: #F59E0B;
+  --debug-current-glow: rgba(245, 158, 11, 0.4);
+  --debug-executed-color: #10B981;
+  --debug-executed-border: rgba(16, 185, 129, 0.6);
+  --debug-pending-opacity: 0.5;
+}
+
+[data-theme="dark"] {
+  --debug-current-glow: rgba(245, 158, 11, 0.5);
+  --debug-executed-border: rgba(16, 185, 129, 0.8);
+}
+
+/* Current step - pulsing highlight */
+.logic-node.debug-current,
+.operator-node.debug-current,
+.variable-node.debug-current,
+.literal-node.debug-current,
+.vertical-cell-node.debug-current,
+.decision-node.debug-current {
+  box-shadow: 0 0 0 3px var(--debug-current-color),
+              0 0 20px var(--debug-current-glow) !important;
+  animation: debug-pulse 1.5s ease-in-out infinite;
+}
+
+/* Ensure debug-current node wrapper is above all other nodes */
+.react-flow__node:has(.debug-current) {
+  z-index: 1000 !important;
+}
+
+@keyframes debug-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px var(--debug-current-color),
+                0 0 15px var(--debug-current-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--debug-current-color),
+                0 0 25px var(--debug-current-glow);
+  }
+}
+
+/* Executed nodes - path trail with green border */
+.logic-node.debug-executed,
+.operator-node.debug-executed,
+.variable-node.debug-executed,
+.literal-node.debug-executed,
+.vertical-cell-node.debug-executed,
+.decision-node.debug-executed {
+  border-color: var(--debug-executed-color) !important;
+  box-shadow: 0 0 0 1px var(--debug-executed-border);
+}
+
+/* Pending nodes - slightly faded */
+.logic-node.debug-pending,
+.operator-node.debug-pending,
+.variable-node.debug-pending,
+.literal-node.debug-pending,
+.vertical-cell-node.debug-pending,
+.decision-node.debug-pending {
+  opacity: var(--debug-pending-opacity);
+}
+
+/* On path - ancestors of current node (but not current itself) */
+.logic-node.debug-on-path,
+.operator-node.debug-on-path,
+.variable-node.debug-on-path,
+.literal-node.debug-on-path,
+.vertical-cell-node.debug-on-path,
+.decision-node.debug-on-path {
+  border-color: var(--debug-current-color) !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+/* ============================================
+   Debug Info Bubble Styles
+   ============================================ */
+
+.debug-info-bubble {
+  position: absolute;
+  background: var(--debug-popover-bg);
+  color: var(--debug-popover-text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11px;
+  z-index: 9999;
+  box-shadow: 0 4px 16px var(--debug-popover-shadow);
+  min-width: 180px;
+  max-width: 280px;
+  pointer-events: auto;
+}
+
+.debug-info-bubble.debug-info-top {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+}
+
+.debug-info-bubble.debug-info-right {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+}
+
+.debug-info-bubble.debug-info-bottom {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 8px;
+}
+
+/* Arrow indicator - pointer-events: none to not block interactions */
+.debug-info-bubble.debug-info-top::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--debug-popover-bg);
+  pointer-events: none;
+}
+
+.debug-info-bubble.debug-info-right::after {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: var(--debug-popover-bg);
+  pointer-events: none;
+}
+
+.debug-info-bubble.debug-info-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--debug-popover-bg);
+  pointer-events: none;
+}
+
+.debug-info-bubble.error {
+  background: var(--debug-popover-error-bg);
+}
+
+.debug-info-bubble.error::after {
+  border-top-color: var(--debug-popover-error-bg);
+}
+
+.debug-info-iteration {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--debug-iteration-color);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--debug-border-color);
+}
+
+.debug-info-section {
+  margin-bottom: 8px;
+}
+
+.debug-info-section:last-child {
+  margin-bottom: 0;
+}
+
+.debug-info-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--debug-label-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.debug-info-value {
+  margin: 0;
+  padding: 4px 6px;
+  background: var(--debug-popover-value-bg);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100px;
+  overflow: auto;
+}
+
+/* Custom scrollbar styling */
+.debug-info-value::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.debug-info-value::-webkit-scrollbar-track {
+  background: var(--debug-popover-value-bg);
+  border-radius: 3px;
+}
+
+.debug-info-value::-webkit-scrollbar-thumb {
+  background: var(--debug-label-color);
+  border-radius: 3px;
+  opacity: 0.5;
+}
+
+.debug-info-value::-webkit-scrollbar-thumb:hover {
+  opacity: 0.7;
+}
+
+.debug-info-error {
+  color: var(--debug-value-false);
+}
+
+.debug-info-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Color-coded value classes (no type badges) */
+.debug-value-boolean-true {
+  color: var(--debug-value-true);
+}
+
+.debug-value-boolean-false {
+  color: var(--debug-value-false);
+}
+
+.debug-value-number {
+  color: var(--debug-value-number);
+}
+
+.debug-value-string {
+  color: var(--debug-value-string);
+}
+
+.debug-value-array,
+.debug-value-object {
+  color: var(--debug-value-array);
+}
+
+.debug-value-null,
+.debug-value-undefined {
+  color: var(--debug-value-null);
+}
+
+.debug-info-simple-value {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* JSON Syntax Highlighting */
+.json-syntax-key {
+  color: var(--syntax-key);
+}
+
+.json-syntax-string {
+  color: var(--debug-value-string);
+}
+
+.json-syntax-number {
+  color: var(--debug-value-number);
+}
+
+.json-syntax-boolean-true {
+  color: var(--debug-value-true);
+}
+
+.json-syntax-boolean-false {
+  color: var(--debug-value-false);
+}
+
+.json-syntax-null {
+  color: var(--debug-value-null);
+}
+
+.json-syntax-punctuation {
+  color: var(--syntax-punctuation);
+}
+
+/* ============================================
+   Structure Node Styles
+   ============================================ */
+
+.structure-node {
+  background: var(--node-bg) !important;
+  border-radius: 8px;
+  border: 2px solid;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  width: fit-content;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px var(--node-shadow);
+  transition: box-shadow 0.2s, transform 0.1s;
+  min-width: 150px;
+  max-width: 350px;
+  position: relative;
+}
+
+.structure-node:hover {
+  box-shadow: 0 4px 12px var(--node-shadow-hover);
+}
+
+.structure-node.selected {
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
+}
+
+.structure-node-header {
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.structure-node-icon {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.structure-node-label {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.structure-node-body {
+  padding: 8px 12px;
+  padding-right: 24px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  white-space: pre;
+  line-height: 18px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.structure-node.collapsed .structure-node-body {
+  white-space: normal;
+}
+
+/* Expression marker - clickable link to expression node */
+.structure-expression-marker {
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent-blue-light);
+  color: var(--accent-blue);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  position: relative;
+}
+
+.structure-expression-marker:hover {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.structure-expression-label {
+  margin-right: 4px;
+}
+
+.structure-expression-handle {
+  width: 8px !important;
+  height: 8px !important;
+  border: 2px solid white !important;
+  min-width: 8px;
+  min-height: 8px;
+}
+
+[data-theme="dark"] .structure-expression-handle {
+  border-color: var(--bg-primary) !important;
+}
+
+/* Branch handles positioned at node level */
+.structure-branch-handle {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid white !important;
+  min-width: 10px;
+  min-height: 10px;
+  position: absolute !important;
+  transform: translateY(-50%) !important;
+}
+
+[data-theme="dark"] .structure-branch-handle {
+  border-color: var(--bg-primary) !important;
+}
+
+/* Debug states for structure node */
+.structure-node.debug-current {
+  box-shadow: 0 0 0 3px var(--debug-current-color),
+              0 0 20px var(--debug-current-glow) !important;
+  animation: debug-pulse 1.5s ease-in-out infinite;
+}
+
+.structure-node.debug-executed {
+  border-color: var(--debug-executed-color) !important;
+  box-shadow: 0 0 0 1px var(--debug-executed-border);
+}
+
+.structure-node.debug-pending {
+  opacity: var(--debug-pending-opacity);
+}
+
+.structure-node.debug-on-path {
+  border-color: var(--debug-current-color) !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}

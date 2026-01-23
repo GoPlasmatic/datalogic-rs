@@ -1,0 +1,16 @@
+{
+  "name": "datalogic-monorepo",
+  "private": true,
+  "scripts": {
+    "build:wasm": "cd wasm && ./build.sh",
+    "build:ui": "pnpm --filter @goplasmatic/datalogic-ui build",
+    "build:ui:lib": "pnpm --filter @goplasmatic/datalogic-ui build:lib",
+    "build:ui:embed": "pnpm --filter @goplasmatic/datalogic-ui build:embed",
+    "build:all": "pnpm build:wasm && pnpm build:ui:lib",
+    "build:docs": "pnpm build:ui:embed && mkdir -p docs/src/assets && cp ui/dist-embed/datalogic-embed.js docs/src/assets/ && cp ui/dist-embed/datalogic-embed.css docs/src/assets/ && mdbook build docs",
+    "dev:ui": "pnpm --filter @goplasmatic/datalogic-ui dev",
+    "lint:ui": "pnpm --filter @goplasmatic/datalogic-ui lint",
+    "preview:ui": "pnpm --filter @goplasmatic/datalogic-ui preview"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

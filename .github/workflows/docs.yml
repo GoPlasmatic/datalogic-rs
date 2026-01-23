@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'ui/**'
+      - 'wasm/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -25,6 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Build mdBook documentation
       - name: Setup mdBook
         uses: peaceiris/actions-mdbook@v2
         with:
@@ -32,6 +35,70 @@ jobs:
 
       - name: Build documentation
         run: mdbook build docs
+
+      # Build WASM for UI
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('wasm/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-
+
+      - name: Build WASM
+        run: cd wasm && ./build.sh
+
+      # Build UI demo and embed bundle
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build UI demo
+        run: pnpm build:ui
+        env:
+          GITHUB_ACTIONS: true
+
+      - name: Build UI embed bundle
+        run: pnpm --filter @goplasmatic/datalogic-ui build:embed
+
+      # Copy embed bundle to docs source assets (before mdbook build picks it up)
+      - name: Copy embed bundle to docs source
+        run: |
+          mkdir -p docs/src/assets
+          cp ui/dist-embed/datalogic-embed.js docs/src/assets/
+          cp ui/dist-embed/datalogic-embed.css docs/src/assets/
+
+      # Rebuild mdbook to include embed files
+      - name: Rebuild documentation with embed bundle
+        run: mdbook build docs
+
+      # Combine outputs
+      - name: Copy UI demo to docs
+        run: |
+          mkdir -p docs/book/playground
+          cp -r ui/dist/* docs/book/playground/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

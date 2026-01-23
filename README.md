@@ -16,7 +16,7 @@ Effortlessly evaluate complex rules and dynamic expressions with a powerful, mem
   <p>
     <a href="https://github.com/GoPlasmatic">🏢 Organization</a> •
     <a href="https://docs.rs/datalogic-rs">📖 Docs</a> •
-    <a href="https://goplasmatic.github.io/datalogic-ui/">🔧 Online Debugger</a> •
+    <a href="https://goplasmatic.github.io/datalogic-rs/playground/">🔧 Online Debugger</a> •
     <a href="https://github.com/GoPlasmatic/datalogic-rs/issues">🐛 Report a Bug</a>
   </p>
 </div>
@@ -91,10 +91,10 @@ std::thread::spawn(move || {
 ## Online Debugger
 
 <div align="center">
-  <a href="https://goplasmatic.github.io/datalogic-ui/">
+  <a href="https://goplasmatic.github.io/datalogic-rs/playground/">
     <img src="docs/src/assets/demo.gif" alt="JSONLogic Online Debugger Demo" width="800">
   </a>
-  <p><em>Try the <a href="https://goplasmatic.github.io/datalogic-ui/">JSONLogic Online Debugger</a> to interactively test your rules</em></p>
+  <p><em>Try the <a href="https://goplasmatic.github.io/datalogic-rs/playground/">JSONLogic Online Debugger</a> to interactively test your rules</em></p>
 </div>
 
 ## Installation

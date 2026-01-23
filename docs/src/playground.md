@@ -1,14 +1,14 @@
 # Playground
 
-Try JSONLogic expressions right in your browser! This playground uses the same WebAssembly-compiled engine that powers the Rust library.
+Try JSONLogic expressions right in your browser! This playground uses the visual debugger component powered by WebAssembly.
 
-<div id="full-playground"></div>
+<div id="datalogic-playground" data-datalogic-playground></div>
 
 ## How to Use
 
-1. **Logic**: Enter your JSONLogic expression in the Logic pane
-2. **Data**: Enter the JSON data to evaluate against in the Data pane
-3. **Run**: Press the Run button or use **Ctrl+Enter** (Cmd+Enter on Mac)
+1. **Logic**: Enter your JSONLogic expression in the Logic panel
+2. **Data**: Enter the JSON data to evaluate against in the Data panel
+3. **View/Debug**: Switch between visualization and step-through debug modes
 4. **Examples**: Use the dropdown to load pre-built examples
 
 ## Quick Reference

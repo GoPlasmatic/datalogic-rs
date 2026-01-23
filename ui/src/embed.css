@@ -1,0 +1,1034 @@
+/**
+ * DataLogic Embed Styles
+ * Styles for embedded widgets and playground in mdBook
+ */
+
+/* ============================================
+   Scoped CSS Variables (from index.css)
+   These are scoped to our containers to avoid affecting the host page
+   ============================================ */
+
+.datalogic-widget,
+.datalogic-playground {
+  /* Light theme (default) */
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #fafafa;
+  --bg-hover: #f0f0f0;
+  --bg-active: #e8e8e8;
+
+  --text-primary: #333333;
+  --text-secondary: #555555;
+  --text-tertiary: #666666;
+  --text-muted: #999999;
+  --text-placeholder: #aaaaaa;
+
+  --border-primary: #e0e0e0;
+  --border-secondary: #dddddd;
+  --border-light: #eeeeee;
+
+  --accent-blue: #3b82f6;
+  --accent-blue-light: #dbeafe;
+  --accent-blue-hover: #2563eb;
+  --accent-amber: #f59e0b;
+
+  /* Status colors */
+  --success-bg: #d1fae5;
+  --success-text: #059669;
+  --success-border: #a7f3d0;
+
+  --error-bg: #fee2e2;
+  --error-bg-light: #fef2f2;
+  --error-bg-lighter: #fff5f5;
+  --error-text: #dc2626;
+  --error-border: #fecaca;
+
+  --warning-bg: #fef3c7;
+  --warning-text: #d97706;
+  --warning-border: #fde68a;
+
+  /* Syntax highlighting */
+  --syntax-key: #0550ae;
+  --syntax-string: #0a3069;
+  --syntax-number: #0550ae;
+  --syntax-boolean: #cf222e;
+  --syntax-null: #6e7781;
+  --syntax-bracket: #24292f;
+  --syntax-punctuation: #24292f;
+
+  /* Node colors */
+  --node-bg: #ffffff;
+  --node-shadow: rgba(0, 0, 0, 0.1);
+  --node-shadow-hover: rgba(0, 0, 0, 0.15);
+
+  /* Code background */
+  --code-bg: #f8f9fa;
+
+  /* Debug popover colors */
+  --debug-popover-bg: #ffffff;
+  --debug-popover-text: #1f2937;
+  --debug-popover-error-bg: #fef2f2;
+  --debug-popover-shadow: rgba(0, 0, 0, 0.15);
+  --debug-popover-value-bg: rgba(0, 0, 0, 0.05);
+  --debug-iteration-color: #b45309;
+  --debug-label-color: #6b7280;
+  --debug-border-color: rgba(0, 0, 0, 0.1);
+
+  /* Debug value type colors */
+  --debug-value-true: #059669;
+  --debug-value-false: #dc2626;
+  --debug-value-number: #2563eb;
+  --debug-value-string: #059669;
+  --debug-value-array: #7c3aed;
+  --debug-value-null: #6b7280;
+
+  /* Base styles for containers */
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.5;
+}
+
+/* Ensure all children use border-box */
+.datalogic-widget *,
+.datalogic-playground * {
+  box-sizing: border-box;
+}
+
+/* ============================================
+   Widget Container
+   ============================================ */
+
+.datalogic-widget {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dl-border, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dl-bg, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.datalogic-widget[data-theme="dark"] {
+  --dl-bg: #1f2937;
+  --dl-border: #374151;
+  --dl-text: #f3f4f6;
+  --dl-text-muted: #9ca3af;
+  --dl-bg-secondary: #111827;
+  --dl-bg-input: #374151;
+}
+
+.datalogic-widget[data-theme="light"] {
+  --dl-bg: #ffffff;
+  --dl-border: #e5e7eb;
+  --dl-text: #1f2937;
+  --dl-text-muted: #6b7280;
+  --dl-bg-secondary: #f9fafb;
+  --dl-bg-input: #ffffff;
+}
+
+/* Widget Input Row - First row with Logic, Data, Result */
+.widget-input-row {
+  display: flex;
+  border-bottom: 1px solid var(--dl-border, #e5e7eb);
+  flex-shrink: 0;
+  height: 180px;
+}
+
+.widget-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--dl-bg, #ffffff);
+  min-width: 0;
+  border-right: 1px solid var(--dl-border, #e5e7eb);
+}
+
+.widget-column:last-child {
+  border-right: none;
+}
+
+.widget-column-header {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dl-text-muted, #6b7280);
+  background: var(--dl-bg-secondary, #f9fafb);
+  border-bottom: 1px solid var(--dl-border, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.widget-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--dl-text, #1f2937);
+  background: var(--dl-bg-input, #ffffff);
+  border: none;
+  resize: none;
+  outline: none;
+}
+
+.widget-textarea::placeholder {
+  color: var(--dl-text-muted, #9ca3af);
+}
+
+.widget-textarea.has-error {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.widget-textarea:focus {
+  background: var(--dl-bg-input, #ffffff);
+  box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.widget-error {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  flex-shrink: 0;
+}
+
+.widget-result {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--dl-text, #1f2937);
+  background: var(--dl-bg-secondary, #f9fafb);
+  overflow: auto;
+}
+
+.widget-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.widget-result.has-error {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.widget-result-error {
+  color: #ef4444;
+}
+
+/* Widget Diagram Row - Second row with the visual editor */
+.widget-diagram-row {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.datalogic-widget-editor {
+  width: 100%;
+  height: 100%;
+}
+
+/* Responsive adjustments for Widget */
+@media (max-width: 640px) {
+  .widget-input-row {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .widget-column {
+    height: 120px;
+  }
+}
+
+/* ============================================
+   Playground Container
+   ============================================ */
+
+/* Ensure the mount point container has proper dimensions */
+#datalogic-playground,
+[data-datalogic-playground] {
+  display: block;
+  min-height: 700px;
+  width: 100%;
+}
+
+/* Widget mount points */
+.playground-widget,
+[data-logic],
+[data-datalogic] {
+  display: block;
+  min-height: 400px;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.datalogic-playground {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dl-border, #e5e7eb);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--dl-bg, #ffffff);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  height: 700px;
+  min-height: 500px;
+}
+
+.datalogic-playground[data-theme="dark"] {
+  --dl-bg: #1f2937;
+  --dl-border: #374151;
+  --dl-text: #f3f4f6;
+  --dl-text-muted: #9ca3af;
+  --dl-bg-secondary: #111827;
+  --dl-bg-input: #374151;
+  --dl-primary: #818cf8;
+}
+
+.datalogic-playground[data-theme="light"] {
+  --dl-bg: #ffffff;
+  --dl-border: #e5e7eb;
+  --dl-text: #1f2937;
+  --dl-text-muted: #6b7280;
+  --dl-bg-secondary: #f9fafb;
+  --dl-bg-input: #ffffff;
+  --dl-primary: #6366f1;
+}
+
+/* Header */
+.datalogic-playground .playground-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border-bottom: none;
+  flex-shrink: 0;
+}
+
+.datalogic-playground .playground-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.datalogic-playground .playground-title::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: #22c55e;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+.datalogic-playground .playground-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.datalogic-playground .playground-examples {
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease;
+}
+
+.datalogic-playground .playground-examples:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.datalogic-playground .playground-examples option {
+  background: var(--dl-bg);
+  color: var(--dl-text);
+}
+
+/* Row 1: Input Row with Logic, Data, Result columns */
+.playground-input-row {
+  display: flex;
+  border-bottom: 1px solid var(--dl-border, #e5e7eb);
+  flex-shrink: 0;
+  height: 200px;
+}
+
+.playground-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--dl-bg, #ffffff);
+  min-width: 0;
+  border-right: 1px solid var(--dl-border, #e5e7eb);
+}
+
+.playground-column:last-child {
+  border-right: none;
+}
+
+.playground-column-header {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dl-text-muted, #6b7280);
+  background: var(--dl-bg-secondary, #f9fafb);
+  border-bottom: 1px solid var(--dl-border, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.playground-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--dl-text, #1f2937);
+  background: var(--dl-bg-input, #ffffff);
+  border: none;
+  resize: none;
+  outline: none;
+}
+
+.playground-textarea::placeholder {
+  color: var(--dl-text-muted, #9ca3af);
+}
+
+.playground-textarea.has-error {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.playground-textarea:focus {
+  background: var(--dl-bg-input, #ffffff);
+  box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.playground-error {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  flex-shrink: 0;
+}
+
+.playground-result {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--dl-text, #1f2937);
+  background: var(--dl-bg-secondary, #f9fafb);
+  overflow: auto;
+}
+
+.playground-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.playground-result.has-error {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.playground-result-error {
+  color: #ef4444;
+}
+
+/* Row 2: Diagram Row */
+.playground-diagram-row {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.playground-diagram-row .logic-editor {
+  height: 100%;
+}
+
+/* ============================================
+   Mode Selector Override for Header
+   ============================================ */
+
+.datalogic-playground .mode-selector {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+}
+
+.datalogic-playground .mode-selector button {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: transparent;
+}
+
+.datalogic-playground .mode-selector button.active {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.datalogic-playground .mode-selector button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* ============================================
+   Responsive Layout
+   ============================================ */
+
+@media (max-width: 768px) {
+  .datalogic-playground {
+    height: auto;
+    min-height: 700px;
+  }
+
+  .playground-input-row {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .playground-column {
+    height: 150px;
+  }
+
+  .playground-diagram-row {
+    min-height: 400px;
+  }
+}
+
+/* ============================================
+   Debug Panel Overrides
+   ============================================ */
+
+.datalogic-playground .debug-panel {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ============================================
+   Loading State
+   ============================================ */
+
+.datalogic-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  color: var(--dl-text-muted, #6b7280);
+  font-size: 0.95rem;
+}
+
+.datalogic-loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--dl-border, #e5e7eb);
+  border-top-color: var(--dl-primary, #6366f1);
+  border-radius: 50%;
+  animation: datalogic-spin 1s linear infinite;
+}
+
+@keyframes datalogic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   Error State
+   ============================================ */
+
+.datalogic-error {
+  padding: 1rem;
+  background: #fef2f2;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 0.9rem;
+}
+
+[data-theme="dark"] .datalogic-error {
+  background: #450a0a;
+  color: #fca5a5;
+}
+
+/* ============================================
+   JSON Editor (syntax-highlighted textarea)
+   ============================================ */
+
+.json-editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.json-editor-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  overflow: auto;
+  pointer-events: none;
+  background: transparent;
+}
+
+.json-editor-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0.5rem 0.75rem;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: transparent;
+  caret-color: var(--dl-text, #1f2937);
+  background: transparent;
+  border: none;
+  resize: none;
+  outline: none;
+  overflow: auto;
+}
+
+.json-editor-input::selection {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+.json-editor.has-error {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.json-editor:focus-within {
+  box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.json-placeholder {
+  color: var(--dl-text-muted, #9ca3af);
+}
+
+/* Playground JSON Editor */
+.playground-json-editor {
+  background: var(--dl-bg-input, #ffffff);
+}
+
+/* Widget JSON Editor */
+.widget-json-editor {
+  background: var(--dl-bg-input, #ffffff);
+}
+
+/* Dark theme JSON Editor */
+[data-theme="dark"] .json-editor-input {
+  caret-color: #f3f4f6;
+}
+
+[data-theme="dark"] .json-editor-input::selection {
+  background: rgba(129, 140, 248, 0.4);
+}
+
+/* ============================================
+   JSON Syntax Highlighting
+   ============================================ */
+
+.json-highlight {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.json-highlight .json-key {
+  color: #0550ae;
+}
+
+.json-highlight .json-string {
+  color: #0a3069;
+}
+
+.json-highlight .json-number {
+  color: #0550ae;
+}
+
+.json-highlight .json-boolean {
+  color: #cf222e;
+}
+
+.json-highlight .json-null {
+  color: #6e7781;
+}
+
+.json-highlight .json-punctuation {
+  color: #24292f;
+}
+
+/* Dark theme syntax highlighting */
+[data-theme="dark"] .json-highlight .json-key {
+  color: #79c0ff;
+}
+
+[data-theme="dark"] .json-highlight .json-string {
+  color: #a5d6ff;
+}
+
+[data-theme="dark"] .json-highlight .json-number {
+  color: #79c0ff;
+}
+
+[data-theme="dark"] .json-highlight .json-boolean {
+  color: #ff7b72;
+}
+
+[data-theme="dark"] .json-highlight .json-null {
+  color: #8b949e;
+}
+
+[data-theme="dark"] .json-highlight .json-punctuation {
+  color: #c9d1d9;
+}
+
+/* ============================================
+   Dark Theme Overrides for Embedded Context
+   ============================================ */
+
+/* Dark theme CSS variables - scoped to our containers */
+.datalogic-widget[data-theme="dark"],
+.datalogic-playground[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-tertiary: #2a2a2a;
+  --bg-hover: #333333;
+  --bg-active: #404040;
+
+  --text-primary: #e5e5e5;
+  --text-secondary: #cccccc;
+  --text-tertiary: #b3b3b3;
+  --text-muted: #888888;
+  --text-placeholder: #666666;
+
+  --border-primary: #404040;
+  --border-secondary: #4a4a4a;
+  --border-light: #333333;
+
+  --accent-blue: #60a5fa;
+  --accent-blue-light: #1e3a5f;
+  --accent-blue-hover: #3b82f6;
+  --accent-amber: #fbbf24;
+
+  /* Status colors - darker variants */
+  --success-bg: #064e3b;
+  --success-text: #6ee7b7;
+  --success-border: #065f46;
+
+  --error-bg: #450a0a;
+  --error-bg-light: #3f0a0a;
+  --error-bg-lighter: #350a0a;
+  --error-text: #fca5a5;
+  --error-border: #7f1d1d;
+
+  --warning-bg: #451a03;
+  --warning-text: #fcd34d;
+  --warning-border: #78350f;
+
+  /* Syntax highlighting - dark theme */
+  --syntax-key: #79c0ff;
+  --syntax-string: #a5d6ff;
+  --syntax-number: #79c0ff;
+  --syntax-boolean: #ff7b72;
+  --syntax-null: #8b949e;
+  --syntax-bracket: #c9d1d9;
+  --syntax-punctuation: #c9d1d9;
+
+  /* Node colors */
+  --node-bg: #2d2d2d;
+  --node-shadow: rgba(0, 0, 0, 0.3);
+  --node-shadow-hover: rgba(0, 0, 0, 0.4);
+
+  /* Code background */
+  --code-bg: #1f1f1f;
+
+  /* Debug popover colors */
+  --debug-popover-bg: #1f2937;
+  --debug-popover-text: #f3f4f6;
+  --debug-popover-error-bg: #7f1d1d;
+  --debug-popover-shadow: rgba(0, 0, 0, 0.4);
+  --debug-popover-value-bg: rgba(0, 0, 0, 0.2);
+  --debug-iteration-color: #fbbf24;
+  --debug-label-color: #9ca3af;
+  --debug-border-color: rgba(255, 255, 255, 0.1);
+
+  /* Debug value type colors */
+  --debug-value-true: #86efac;
+  --debug-value-false: #fca5a5;
+  --debug-value-number: #93c5fd;
+  --debug-value-string: #86efac;
+  --debug-value-array: #d8b4fe;
+  --debug-value-null: #9ca3af;
+}
+
+/* Debugger control icons - ensure visibility in dark mode */
+.datalogic-widget[data-theme="dark"] .debugger-btn,
+.datalogic-playground[data-theme="dark"] .debugger-btn {
+  color: #e5e5e5;
+  background: rgba(75, 85, 99, 0.8);
+}
+
+.datalogic-widget[data-theme="dark"] .debugger-btn:hover:not(:disabled),
+.datalogic-playground[data-theme="dark"] .debugger-btn:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(107, 114, 128, 0.9);
+}
+
+.datalogic-widget[data-theme="dark"] .debugger-btn svg,
+.datalogic-playground[data-theme="dark"] .debugger-btn svg {
+  color: inherit;
+}
+
+.datalogic-widget[data-theme="dark"] .debugger-icon,
+.datalogic-playground[data-theme="dark"] .debugger-icon {
+  color: #fbbf24;
+}
+
+.datalogic-widget[data-theme="dark"] .debugger-icon svg,
+.datalogic-playground[data-theme="dark"] .debugger-icon svg {
+  color: inherit;
+}
+
+/* React Flow zoom control icons */
+.datalogic-widget[data-theme="dark"] .react-flow__controls-button,
+.datalogic-playground[data-theme="dark"] .react-flow__controls-button {
+  background: #374151;
+  border-color: #4b5563;
+  color: #e5e5e5;
+  fill: #e5e5e5;
+}
+
+.datalogic-widget[data-theme="dark"] .react-flow__controls-button:hover,
+.datalogic-playground[data-theme="dark"] .react-flow__controls-button:hover {
+  background: #4b5563;
+}
+
+.datalogic-widget[data-theme="dark"] .react-flow__controls-button svg,
+.datalogic-playground[data-theme="dark"] .react-flow__controls-button svg {
+  fill: #e5e5e5;
+}
+
+/* Minimap in dark mode */
+.datalogic-widget[data-theme="dark"] .react-flow__minimap,
+.datalogic-playground[data-theme="dark"] .react-flow__minimap {
+  background: #1f2937;
+}
+
+/* Panel backgrounds in dark mode */
+.datalogic-widget[data-theme="dark"] .react-flow__panel,
+.datalogic-playground[data-theme="dark"] .react-flow__panel {
+  background: transparent;
+}
+
+/* Node collapse toggle icons */
+.datalogic-widget[data-theme="dark"] .collapse-toggle,
+.datalogic-playground[data-theme="dark"] .collapse-toggle {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.datalogic-widget[data-theme="dark"] .collapse-toggle:hover,
+.datalogic-playground[data-theme="dark"] .collapse-toggle:hover {
+  color: #ffffff;
+}
+
+.datalogic-widget[data-theme="dark"] .cell-collapse-toggle,
+.datalogic-playground[data-theme="dark"] .cell-collapse-toggle {
+  color: #b3b3b3;
+}
+
+.datalogic-widget[data-theme="dark"] .cell-collapse-toggle:hover,
+.datalogic-playground[data-theme="dark"] .cell-collapse-toggle:hover {
+  color: #e5e5e5;
+}
+
+/* Debugger controls container */
+.datalogic-widget[data-theme="dark"] .debugger-controls-inner,
+.datalogic-playground[data-theme="dark"] .debugger-controls-inner {
+  background: rgba(31, 41, 55, 0.95);
+  border-color: #4b5563;
+}
+
+/* Step counter text */
+.datalogic-widget[data-theme="dark"] .step-current,
+.datalogic-playground[data-theme="dark"] .step-current {
+  color: #e5e5e5;
+}
+
+.datalogic-widget[data-theme="dark"] .step-separator,
+.datalogic-playground[data-theme="dark"] .step-separator {
+  color: #6b7280;
+}
+
+.datalogic-widget[data-theme="dark"] .step-total,
+.datalogic-playground[data-theme="dark"] .step-total {
+  color: #9ca3af;
+}
+
+/* Speed control */
+.datalogic-widget[data-theme="dark"] .speed-label,
+.datalogic-playground[data-theme="dark"] .speed-label {
+  color: #9ca3af;
+}
+
+.datalogic-widget[data-theme="dark"] .speed-slider,
+.datalogic-playground[data-theme="dark"] .speed-slider {
+  background: rgba(75, 85, 99, 0.8);
+}
+
+/* Mode selector in header - icons and text */
+.datalogic-widget[data-theme="dark"] .mode-selector button svg,
+.datalogic-playground[data-theme="dark"] .mode-selector button svg {
+  color: inherit;
+}
+
+/* ============================================
+   Node Cell Row Icons - Dark Theme
+   ============================================ */
+
+/* Cell row icons (arg icons like check, x, etc.) */
+.datalogic-widget[data-theme="dark"] .vertical-cell-row-icon,
+.datalogic-playground[data-theme="dark"] .vertical-cell-row-icon {
+  color: #d1d5db;
+}
+
+.datalogic-widget[data-theme="dark"] .vertical-cell-row-icon svg,
+.datalogic-playground[data-theme="dark"] .vertical-cell-row-icon svg {
+  color: inherit;
+}
+
+/* Row labels (If, Then, Else, etc.) */
+.datalogic-widget[data-theme="dark"] .vertical-cell-row-label,
+.datalogic-playground[data-theme="dark"] .vertical-cell-row-label {
+  color: #9ca3af;
+}
+
+/* Inline text in cell rows */
+.datalogic-widget[data-theme="dark"] .vertical-cell-inline,
+.datalogic-playground[data-theme="dark"] .vertical-cell-inline {
+  color: #e5e5e5;
+}
+
+/* Decision row labels */
+.datalogic-widget[data-theme="dark"] .decision-row-label,
+.datalogic-playground[data-theme="dark"] .decision-row-label {
+  color: #9ca3af;
+}
+
+/* Decision row content */
+.datalogic-widget[data-theme="dark"] .decision-row-content,
+.datalogic-playground[data-theme="dark"] .decision-row-content {
+  color: #e5e5e5;
+  background: #374151;
+}
+
+/* Arg summary icons */
+.datalogic-widget[data-theme="dark"] .arg-icon,
+.datalogic-playground[data-theme="dark"] .arg-icon {
+  color: #d1d5db;
+}
+
+.datalogic-widget[data-theme="dark"] .arg-label,
+.datalogic-playground[data-theme="dark"] .arg-label {
+  color: #e5e5e5;
+}
+
+/* Collapsed summary */
+.datalogic-widget[data-theme="dark"] .collapsed-summary,
+.datalogic-playground[data-theme="dark"] .collapsed-summary {
+  background: #374151;
+}
+
+.datalogic-widget[data-theme="dark"] .collapsed-summary .arg-icon,
+.datalogic-playground[data-theme="dark"] .collapsed-summary .arg-icon {
+  color: #d1d5db;
+}
+
+.datalogic-widget[data-theme="dark"] .collapsed-summary .arg-label,
+.datalogic-playground[data-theme="dark"] .collapsed-summary .arg-label {
+  color: #9ca3af;
+}
+
+/* Arg summary row */
+.datalogic-widget[data-theme="dark"] .arg-summary-row,
+.datalogic-playground[data-theme="dark"] .arg-summary-row {
+  background: #374151;
+}
+
+/* Expression text */
+.datalogic-widget[data-theme="dark"] .expression-text,
+.datalogic-playground[data-theme="dark"] .expression-text {
+  color: #e5e5e5;
+  background: #374151;
+}
+
+/* Operator category and children count */
+.datalogic-widget[data-theme="dark"] .operator-category,
+.datalogic-playground[data-theme="dark"] .operator-category {
+  color: #9ca3af;
+}
+
+.datalogic-widget[data-theme="dark"] .operator-children-count,
+.datalogic-playground[data-theme="dark"] .operator-children-count {
+  color: #6b7280;
+}
+
+/* Variable path and default values */
+.datalogic-widget[data-theme="dark"] .variable-path,
+.datalogic-playground[data-theme="dark"] .variable-path {
+  color: #e5e5e5;
+}
+
+.datalogic-widget[data-theme="dark"] .variable-default-label,
+.datalogic-playground[data-theme="dark"] .variable-default-label {
+  color: #6b7280;
+}
+
+.datalogic-widget[data-theme="dark"] .variable-default-value,
+.datalogic-playground[data-theme="dark"] .variable-default-value {
+  color: #9ca3af;
+}
+
+/* Literal value */
+.datalogic-widget[data-theme="dark"] .literal-value,
+.datalogic-playground[data-theme="dark"] .literal-value {
+  color: #e5e5e5;
+}
+
+/* Literal type icon */
+.datalogic-widget[data-theme="dark"] .literal-type-icon,
+.datalogic-playground[data-theme="dark"] .literal-type-icon {
+  color: #d1d5db;
+}
+
+/* Variable operator */
+.datalogic-widget[data-theme="dark"] .variable-operator,
+.datalogic-playground[data-theme="dark"] .variable-operator {
+  color: #d1d5db;
+}

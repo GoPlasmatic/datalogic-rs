@@ -24,10 +24,13 @@ Cargo.lock
 
 /target
 .DS_Store
-node_modules
+node_modules/
 .claude/
 CLAUDE.md
 
 # mdBook generated output
 docs/book/
 docs/src/wasm/
+
+# UI build output
+ui/dist/

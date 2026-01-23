@@ -1,677 +1,121 @@
 /**
- * DataLogic Playground - Modern UI Styles
- * Clean, professional design with smooth animations
+ * DataLogic Playground - Minimal Styles
+ *
+ * The main component styles come from the embedded bundle (datalogic-embed.css).
+ * This file only contains loading states and container defaults.
  */
 
-/* ========================================
+/* ============================================
    CSS Variables for theming
-   ======================================== */
+   ============================================ */
 
 :root {
-    --playground-primary: #6366f1;
-    --playground-primary-hover: #4f46e5;
-    --playground-success: #10b981;
-    --playground-success-bg: #ecfdf5;
-    --playground-success-text: #065f46;
-    --playground-error: #ef4444;
-    --playground-error-bg: #fef2f2;
-    --playground-error-text: #991b1b;
-    --playground-border: #e5e7eb;
-    --playground-bg: #ffffff;
-    --playground-bg-secondary: #f9fafb;
-    --playground-bg-code: #f8fafc;
-    --playground-text: #1f2937;
-    --playground-text-muted: #6b7280;
-    --playground-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --playground-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --playground-radius: 12px;
-    --playground-radius-sm: 8px;
-    --playground-font-mono: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', Consolas, monospace;
-    --playground-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-
-    /* JSON Syntax highlighting colors */
-    --json-key: #7c3aed;
-    --json-string: #059669;
-    --json-number: #d97706;
-    --json-boolean: #dc2626;
-    --json-null: #6b7280;
-    --json-bracket: #374151;
-}
-
-/* Dark theme variables */
-.navy, .coal, .ayu {
-    --playground-primary: #818cf8;
-    --playground-primary-hover: #a5b4fc;
-    --playground-success: #34d399;
-    --playground-success-bg: #064e3b;
-    --playground-success-text: #6ee7b7;
-    --playground-error: #f87171;
-    --playground-error-bg: #450a0a;
-    --playground-error-text: #fca5a5;
-    --playground-border: #374151;
-    --playground-bg: #1f2937;
-    --playground-bg-secondary: #111827;
-    --playground-bg-code: #0f172a;
-    --playground-text: #f3f4f6;
-    --playground-text-muted: #9ca3af;
-    --playground-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-
-    /* JSON Syntax highlighting colors - dark */
-    --json-key: #a78bfa;
-    --json-string: #34d399;
-    --json-number: #fbbf24;
-    --json-boolean: #f87171;
-    --json-null: #9ca3af;
-    --json-bracket: #d1d5db;
-}
-
-/* ========================================
-   Loading and Error States
-   ======================================== */
-
-.playground-loading {
-    padding: 1.5rem;
-    text-align: center;
-    color: var(--playground-text-muted);
-    font-size: 0.95rem;
-    background: var(--playground-bg-secondary);
-    border-radius: var(--playground-radius);
-    border: 1px solid var(--playground-border);
-}
-
-.playground-loading::before {
-    content: '';
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--playground-border);
-    border-top-color: var(--playground-primary);
-    border-radius: 50%;
-    margin-right: 0.75rem;
-    vertical-align: middle;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.playground-error {
-    padding: 1.25rem;
-    border-radius: var(--playground-radius);
-    text-align: center;
-    background: var(--playground-error-bg);
-    color: var(--playground-error);
-    border: 1px solid var(--playground-error);
-    font-size: 0.95rem;
-}
-
-/* ========================================
-   Inline Widget Styles
-   ======================================== */
-
-.playground-widget {
-    margin: 1.25rem 0;
-    border-radius: var(--playground-radius);
-    overflow: hidden;
-    background: var(--playground-bg);
-    border: 1px solid var(--playground-border);
-    box-shadow: var(--playground-shadow);
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.playground-widget:hover {
-    box-shadow: var(--playground-shadow-lg);
-}
-
-.playground-widget-inner {
-    display: flex;
-    flex-direction: column;
-}
-
-.playground-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 1rem;
-    background: var(--playground-gradient);
-    border-bottom: none;
-}
-
-.playground-title {
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: #ffffff;
-    text-transform: uppercase;
-    letter-spacing: 0.75px;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.playground-title::before {
-    content: '';
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: #22c55e;
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-}
-
-.playground-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.playground-btn {
-    padding: 0.35rem 0.85rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.playground-reset {
-    background: rgba(255, 255, 255, 0.2);
-    color: #ffffff;
-    backdrop-filter: blur(4px);
-}
-
-.playground-reset:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
-
-.playground-run {
-    background: #ffffff;
-    color: var(--playground-primary);
-    font-weight: 600;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.playground-run:hover {
-    background: #f8fafc;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.playground-run::before {
-    content: '▶';
-    font-size: 0.6rem;
-}
-
-.playground-body {
-    padding: 0.875rem;
-    background: var(--playground-bg-secondary);
-}
-
-.playground-editors {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.875rem;
-    margin-bottom: 0.875rem;
-}
-
-@media (max-width: 600px) {
-    .playground-editors {
-        grid-template-columns: 1fr;
-    }
-}
-
-.playground-editor-group {
-    display: flex;
-    flex-direction: column;
-    min-width: 0; /* Prevent grid blowout */
-}
-
-.playground-editor-group label,
-.playground-output label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--playground-text-muted);
-    margin-bottom: 0.4rem;
-    text-transform: uppercase;
-    letter-spacing: 0.75px;
-}
-
-/* Editor container for syntax highlighting */
-.playground-editor-container {
-    position: relative;
-    min-height: 100px;
-    border: 2px solid var(--playground-border);
-    border-radius: var(--playground-radius-sm);
-    background: var(--playground-bg);
-    overflow: hidden;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.playground-editor-container:focus-within {
-    border-color: var(--playground-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-/* Highlighted background layer - shows the colored syntax */
-.playground-highlight {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 0.75rem;
-    font-family: var(--playground-font-mono);
-    font-size: 1rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow: auto;
-    pointer-events: none;
-    z-index: 0;
-}
-
-/* Textarea layer - transparent text, visible caret */
-.playground-logic,
-.playground-data {
-    width: 100%;
-    min-height: 100px;
-    padding: 0.75rem;
-    border: none;
-    border-radius: 0;
-    font-family: var(--playground-font-mono);
-    font-size: 1rem;
-    line-height: 1.5;
-    resize: vertical;
-    background: transparent;
-    color: transparent;
-    position: relative;
-    z-index: 1;
-    caret-color: var(--playground-text);
-}
-
-.playground-logic:focus,
-.playground-data:focus {
-    outline: none;
-}
-
-/* Fallback for non-JS highlighting */
-.playground-editor-group > .playground-logic,
-.playground-editor-group > .playground-data {
-    border: 2px solid var(--playground-border);
-    border-radius: var(--playground-radius-sm);
-    background: var(--playground-bg);
-    color: var(--playground-text);
-}
-
-.playground-editor-group > .playground-logic:focus,
-.playground-editor-group > .playground-data:focus {
-    border-color: var(--playground-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.playground-output {
-    display: flex;
-    flex-direction: column;
-}
-
-.playground-result {
-    min-height: 36px;
-    padding: 0.75rem;
-    border-radius: var(--playground-radius-sm);
-    font-family: var(--playground-font-mono);
-    font-size: 1rem;
-    line-height: 1.5;
-    background: var(--playground-bg);
-    color: var(--playground-text-muted);
-    white-space: pre-wrap;
-    word-break: break-word;
-    border: 2px solid var(--playground-border);
-    transition: all 0.2s ease;
-}
-
-.playground-result.success {
-    background: var(--playground-success-bg);
-    border-color: var(--playground-success);
-    color: var(--playground-success-text);
-}
-
-.playground-result.error {
-    background: var(--playground-error-bg);
-    border-color: var(--playground-error);
-    color: var(--playground-error-text);
-}
-
-/* ========================================
-   JSON Syntax Highlighting
-   ======================================== */
-
-.json-key { color: var(--json-key); font-weight: 500; }
-.json-string { color: var(--json-string); }
-.json-number { color: var(--json-number); }
-.json-boolean { color: var(--json-boolean); font-weight: 500; }
-.json-null { color: var(--json-null); font-style: italic; }
-.json-bracket { color: var(--json-bracket); }
-
-/* ========================================
-   Full Playground Page Styles
-   Uses the same widget design as inline widgets
-   ======================================== */
-
-.full-playground-container {
-    border-radius: var(--playground-radius);
-    overflow: hidden;
-    background: var(--playground-bg);
-    border: 1px solid var(--playground-border);
-    box-shadow: var(--playground-shadow-lg);
-}
-
-.full-playground-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background: var(--playground-gradient);
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.full-playground-title {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: #ffffff;
-    text-transform: uppercase;
-    letter-spacing: 0.75px;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.full-playground-title::before {
-    content: '';
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    background: #22c55e;
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-}
-
-.full-playground-controls {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.playground-examples {
-    padding: 0.4rem 0.75rem;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.2);
-    color: #ffffff;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    backdrop-filter: blur(4px);
-    transition: background 0.15s ease;
-}
-
-.playground-examples:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
-
-.playground-examples option {
-    background: var(--playground-bg);
-    color: var(--playground-text);
-}
-
-.full-playground-body {
-    padding: 1rem;
-    background: var(--playground-bg-secondary);
-}
-
-.full-playground-editors {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-@media (max-width: 768px) {
-    .full-playground-editors {
-        grid-template-columns: 1fr;
-    }
-}
-
-.full-playground-editor-group {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.full-playground-editor-group label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--playground-text-muted);
-    margin-bottom: 0.4rem;
-    text-transform: uppercase;
-    letter-spacing: 0.75px;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.full-playground-editor-group label::before {
-    content: '';
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-.full-playground-editor-group:nth-child(1) label::before {
-    background: linear-gradient(135deg, #f59e0b, #f97316);
-}
-
-.full-playground-editor-group:nth-child(2) label::before {
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
-}
-
-/* Full playground editor container */
-.full-playground-editor-container {
-    position: relative;
-    min-height: 200px;
-    border: 2px solid var(--playground-border);
-    border-radius: var(--playground-radius-sm);
-    background: var(--playground-bg);
-    overflow: hidden;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.full-playground-editor-container:focus-within {
-    border-color: var(--playground-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.full-playground-highlight {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 0.875rem;
-    font-family: var(--playground-font-mono);
-    font-size: 1rem;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow: auto;
-    pointer-events: none;
-    z-index: 0;
-}
-
-.full-playground-logic,
-.full-playground-data {
-    width: 100%;
-    min-height: 200px;
-    padding: 0.875rem;
-    border: none;
-    font-family: var(--playground-font-mono);
-    font-size: 1rem;
-    line-height: 1.6;
-    resize: vertical;
-    background: transparent;
-    color: transparent;
-    position: relative;
-    z-index: 1;
-    caret-color: var(--playground-text);
-}
-
-.full-playground-logic:focus,
-.full-playground-data:focus {
-    outline: none;
-}
-
-.full-playground-output {
-    display: flex;
-    flex-direction: column;
-}
-
-.full-playground-output label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--playground-text-muted);
-    margin-bottom: 0.4rem;
-    text-transform: uppercase;
-    letter-spacing: 0.75px;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.full-playground-output label::before {
-    content: '';
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #10b981, #14b8a6);
-}
-
-.full-playground-result {
-    min-height: 80px;
-    padding: 0.875rem;
-    border-radius: var(--playground-radius-sm);
-    font-family: var(--playground-font-mono);
-    font-size: 1rem;
-    line-height: 1.6;
-    background: var(--playground-bg);
-    color: var(--playground-text-muted);
-    white-space: pre-wrap;
-    word-break: break-word;
-    border: 2px solid var(--playground-border);
-    transition: all 0.2s ease;
-}
-
-.full-playground-result.success {
-    background: var(--playground-success-bg);
-    border-color: var(--playground-success);
-    color: var(--playground-success-text);
-}
-
-.full-playground-result.error {
-    background: var(--playground-error-bg);
-    border-color: var(--playground-error);
-    color: var(--playground-error-text);
-}
-
-/* ========================================
-   Animation for result
-   ======================================== */
-
-@keyframes resultPulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.005); }
-    100% { transform: scale(1); }
-}
-
-.playground-result.success,
-.playground-result.error,
-.full-playground-result.success,
-.full-playground-result.error {
-    animation: resultPulse 0.15s ease;
-}
-
-/* ========================================
-   Scrollbar styling
-   ======================================== */
-
-.playground-logic::-webkit-scrollbar,
-.playground-data::-webkit-scrollbar,
-.playground-result::-webkit-scrollbar,
-.playground-highlight::-webkit-scrollbar,
-.full-playground-logic::-webkit-scrollbar,
-.full-playground-data::-webkit-scrollbar,
-.full-playground-result::-webkit-scrollbar,
-.full-playground-highlight::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-.playground-logic::-webkit-scrollbar-track,
-.playground-data::-webkit-scrollbar-track,
-.playground-result::-webkit-scrollbar-track,
-.playground-highlight::-webkit-scrollbar-track,
-.full-playground-logic::-webkit-scrollbar-track,
-.full-playground-data::-webkit-scrollbar-track,
-.full-playground-result::-webkit-scrollbar-track,
-.full-playground-highlight::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.playground-logic::-webkit-scrollbar-thumb,
-.playground-data::-webkit-scrollbar-thumb,
-.playground-result::-webkit-scrollbar-thumb,
-.playground-highlight::-webkit-scrollbar-thumb,
-.full-playground-logic::-webkit-scrollbar-thumb,
-.full-playground-data::-webkit-scrollbar-thumb,
-.full-playground-result::-webkit-scrollbar-thumb,
-.full-playground-highlight::-webkit-scrollbar-thumb {
-    background: var(--playground-border);
-    border-radius: 4px;
-}
-
-.playground-logic::-webkit-scrollbar-thumb:hover,
-.playground-data::-webkit-scrollbar-thumb:hover,
-.playground-result::-webkit-scrollbar-thumb:hover,
-.playground-highlight::-webkit-scrollbar-thumb:hover,
-.full-playground-logic::-webkit-scrollbar-thumb:hover,
-.full-playground-data::-webkit-scrollbar-thumb:hover,
-.full-playground-result::-webkit-scrollbar-thumb:hover,
-.full-playground-highlight::-webkit-scrollbar-thumb:hover {
-    background: var(--playground-text-muted);
-}
-
-/* ========================================
-   Keyboard shortcut badge
-   ======================================== */
-
-.playground-shortcut {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.7);
-    margin-left: 0.5rem;
+  --datalogic-primary: #6366f1;
+  --datalogic-border: #e5e7eb;
+  --datalogic-bg: #ffffff;
+  --datalogic-bg-secondary: #f9fafb;
+  --datalogic-text: #1f2937;
+  --datalogic-text-muted: #6b7280;
+  --datalogic-error: #ef4444;
+  --datalogic-error-bg: #fef2f2;
+}
+
+/* Dark theme */
+.navy,
+.coal,
+.ayu {
+  --datalogic-primary: #818cf8;
+  --datalogic-border: #374151;
+  --datalogic-bg: #1f2937;
+  --datalogic-bg-secondary: #111827;
+  --datalogic-text: #f3f4f6;
+  --datalogic-text-muted: #9ca3af;
+  --datalogic-error: #f87171;
+  --datalogic-error-bg: #450a0a;
+}
+
+/* ============================================
+   Loading State
+   ============================================ */
+
+.datalogic-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--datalogic-text-muted);
+  font-size: 0.95rem;
+  background: var(--datalogic-bg-secondary);
+  border: 1px solid var(--datalogic-border);
+  border-radius: 8px;
+  min-height: 200px;
+}
+
+.datalogic-loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--datalogic-border);
+  border-top-color: var(--datalogic-primary);
+  border-radius: 50%;
+  margin-right: 0.75rem;
+  animation: datalogic-spin 1s linear infinite;
+}
+
+@keyframes datalogic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   Error State
+   ============================================ */
+
+.datalogic-error {
+  padding: 1.5rem;
+  border-radius: 8px;
+  background: var(--datalogic-error-bg);
+  border: 1px solid var(--datalogic-error);
+  color: var(--datalogic-error);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.datalogic-error strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.datalogic-error small {
+  display: block;
+  margin-top: 0.75rem;
+  opacity: 0.8;
+}
+
+/* ============================================
+   Container Defaults
+   ============================================ */
+
+/* Full playground container */
+#datalogic-playground,
+[data-datalogic-playground] {
+  margin: 1.5rem 0;
+  min-height: 500px;
+}
+
+/* Inline widget containers */
+[data-datalogic] {
+  margin: 1rem 0;
+  min-height: 250px;
 }
 
-.playground-shortcut kbd {
-    background: rgba(255, 255, 255, 0.2);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 0.65rem;
+/* Ensure proper sizing within mdBook content */
+.content main [data-datalogic],
+.content main #datalogic-playground,
+.content main [data-datalogic-playground] {
+  max-width: 100%;
 }

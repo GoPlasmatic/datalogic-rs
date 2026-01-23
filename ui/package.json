@@ -1,0 +1,98 @@
+{
+  "name": "@goplasmatic/datalogic-ui",
+  "private": false,
+  "version": "0.1.1",
+  "type": "module",
+  "description": "DataLogic Debugger - Visual JSONLogic Debugger & Editor for debugging and visualizing JSONLogic expressions",
+  "keywords": [
+    "JSONLogic Debugger",
+    "DataLogic Debugger",
+    "JSONLogic",
+    "DataLogic",
+    "visual debugger",
+    "logic editor",
+    "react",
+    "flow diagram"
+  ],
+  "homepage": "https://goplasmatic.github.io/datalogic-rs/playground/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GoPlasmatic/datalogic-rs",
+    "directory": "ui"
+  },
+  "author": "Plasmatic",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.cjs",
+    "dist/index.d.ts",
+    "dist/styles.css",
+    "dist/datalogic_wasm-*.js",
+    "dist/datalogic_wasm-*.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:lib": "vite build --config vite.lib.config.ts",
+    "build:embed": "vite build --config vite.embed.config.ts",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build:lib",
+    "release:patch": "npm version patch && npm publish --access public",
+    "release:minor": "npm version minor && npm publish --access public",
+    "release:major": "npm version major && npm publish --access public"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.8",
+    "@goplasmatic/datalogic": "workspace:*",
+    "lucide-react": "^0.562.0",
+    "uuid": "^13.0.0"
+  },
+  "peerDependencies": {
+    "@xyflow/react": "^12.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "@xyflow/react": "^12.10.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0"
+  }
+}
