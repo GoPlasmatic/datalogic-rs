@@ -2,7 +2,7 @@
 name = "datalogic-rs"
 version = "4.0.9"
 edition = "2024"
-exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm"]
+exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "test-wasm.cjs"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
