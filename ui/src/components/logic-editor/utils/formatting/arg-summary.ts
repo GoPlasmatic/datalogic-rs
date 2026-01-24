@@ -1,5 +1,5 @@
 import type { JsonLogicValue, ArgSummary } from '../../types';
-import { getOperatorMeta, getOperatorTitle, TRUNCATION_LIMITS } from '../../constants';
+import { getOperatorTitle, TRUNCATION_LIMITS } from '../../constants';
 import { isPlainObject, looksLikeDate } from '../type-helpers';
 import { TYPE_ICONS, VARIABLE_ICONS } from '../icons';
 
@@ -66,7 +66,6 @@ export function generateArgSummary(value: JsonLogicValue): ArgSummary {
       // Other operators - show as expression
       const operands = value[op];
       const argCount = Array.isArray(operands) ? operands.length : 1;
-      const meta = getOperatorMeta(op);
       return {
         icon: TYPE_ICONS.expression,
         label: `${getOperatorTitle(op)} (${argCount} arg${argCount !== 1 ? 's' : ''})`,
