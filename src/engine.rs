@@ -449,7 +449,12 @@ impl DataLogic {
         let data_value: Value = serde_json::from_str(data)?;
         let data_arc = Arc::new(data_value);
 
-        let compiled = self.compile(&logic_value)?;
+        // Use compile_for_trace to avoid static evaluation, which would collapse
+        // operators into values and eliminate trace steps
+        let compiled = Arc::new(CompiledLogic::compile_for_trace(
+            &logic_value,
+            self.preserve_structure(),
+        )?);
 
         // Build expression tree and node ID mapping
         let (expression_tree, node_id_map) = ExpressionNode::build_from_compiled(&compiled.root);

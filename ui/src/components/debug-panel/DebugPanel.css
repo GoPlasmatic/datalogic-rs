@@ -243,8 +243,7 @@
   color: var(--text-placeholder);
 }
 
-.json-editor-container.error .json-highlight-layer,
-.json-editor-container.error .json-editor-textarea {
+.json-editor-container.error .json-highlight-layer {
   background: var(--error-bg-lighter);
 }
 

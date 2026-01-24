@@ -86,7 +86,7 @@ export function buildEdgesFromNodes(nodes: LogicNode[]): LogicEdge[] {
               id: `${node.id}-expr-${element.branchId}`,
               source: node.id,
               target: element.branchId,
-              sourceHandle: `expr-${idx}`,
+              sourceHandle: `branch-${idx}`,
               targetHandle: 'left',
             });
           }

@@ -122,6 +122,26 @@ impl CompiledLogic {
         Ok(Self::new(root))
     }
 
+    /// Compiles for tracing without static evaluation.
+    ///
+    /// This method compiles the logic without performing static evaluation,
+    /// ensuring that all operators remain in the tree for step-by-step debugging.
+    /// Use this when you need to trace execution through operators that would
+    /// otherwise be pre-evaluated at compile time.
+    ///
+    /// # Arguments
+    ///
+    /// * `logic` - The JSON logic expression to compile
+    /// * `preserve_structure` - Whether to preserve unknown object structure
+    ///
+    /// # Returns
+    ///
+    /// A compiled logic structure without static optimizations.
+    pub fn compile_for_trace(logic: &Value, preserve_structure: bool) -> Result<Self> {
+        let root = Self::compile_node(logic, None, preserve_structure)?;
+        Ok(Self::new(root))
+    }
+
     /// Compiles with static evaluation using the provided engine.
     ///
     /// This method performs optimizations including:
