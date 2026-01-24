@@ -1,5 +1,86 @@
 import type { OperatorMeta, OperatorCategory } from '../types';
 
+// Human-readable titles for operators
+export const OPERATOR_TITLES: Record<string, string> = {
+  // Variable operators
+  var: 'Variable',
+  val: 'Value',
+  exists: 'Exists',
+
+  // Comparison operators
+  '==': 'Equals',
+  '===': 'Strict Equals',
+  '!=': 'Not Equals',
+  '!==': 'Strict Not Equals',
+  '>': 'Greater Than',
+  '>=': 'Greater Or Equal',
+  '<': 'Less Than',
+  '<=': 'Less Or Equal',
+
+  // Logical operators
+  and: 'All True',
+  or: 'Any True',
+  '!': 'Not',
+  '!!': 'To Boolean',
+
+  // Arithmetic operators
+  '+': 'Add',
+  '-': 'Subtract',
+  '*': 'Multiply',
+  '/': 'Divide',
+  '%': 'Modulo',
+  max: 'Maximum',
+  min: 'Minimum',
+  abs: 'Absolute',
+  ceil: 'Round Up',
+  floor: 'Round Down',
+
+  // String operators
+  cat: 'Concatenate',
+  substr: 'Substring',
+  in: 'Contains',
+  length: 'Length',
+  starts_with: 'Starts With',
+  ends_with: 'Ends With',
+  upper: 'Uppercase',
+  lower: 'Lowercase',
+  trim: 'Trim',
+  split: 'Split',
+
+  // Array operators
+  map: 'Transform Each',
+  filter: 'Filter',
+  reduce: 'Reduce',
+  all: 'All Match',
+  some: 'Some Match',
+  none: 'None Match',
+  merge: 'Merge Arrays',
+  sort: 'Sort',
+  slice: 'Slice',
+
+  // Control flow operators
+  if: 'If / Then',
+  '?:': 'Ternary',
+  '??': 'Default Value',
+
+  // DateTime operators
+  now: 'Now',
+  datetime: 'Date/Time',
+  timestamp: 'Timestamp',
+  parse_date: 'Parse Date',
+  format_date: 'Format Date',
+  date_diff: 'Date Difference',
+
+  // Error handling operators
+  try: 'Try / Catch',
+  throw: 'Throw Error',
+};
+
+// Get human-readable title for an operator
+export function getOperatorTitle(operator: string): string {
+  return OPERATOR_TITLES[operator] || operator;
+}
+
 // Complete registry of JSONLogic operators
 export const OPERATORS: Record<string, OperatorMeta> = {
   // Variable operators

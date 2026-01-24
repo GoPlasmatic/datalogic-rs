@@ -11,8 +11,12 @@ import {
 import { isOperatorNode, isVerticalCellNode, isVariableNode, isLiteralNode, isStructureNode } from './type-guards';
 
 // Estimate text width based on content
-function estimateTextWidth(text: string, isMonospace = false): number {
-  const charWidth = isMonospace ? TEXT_METRICS.charWidthMono : TEXT_METRICS.charWidthRegular;
+function estimateTextWidth(text: string, isMonospace = false, isHeader = false): number {
+  const charWidth = isMonospace
+    ? TEXT_METRICS.charWidthMono
+    : isHeader
+      ? TEXT_METRICS.charWidthHeader
+      : TEXT_METRICS.charWidthRegular;
   return text.length * charWidth;
 }
 
@@ -22,8 +26,8 @@ function calculateNodeWidth(node: LogicNode): number {
 
   if (isOperatorNode(node)) {
     const opData = node.data;
-    // Width based on label or expression text
-    const labelWidth = estimateTextWidth(opData.label);
+    // Width based on label or expression text (label uses header font)
+    const labelWidth = estimateTextWidth(opData.label, false, true);
     if (opData.collapsed && opData.expressionText) {
       contentWidth = Math.max(labelWidth, estimateTextWidth(opData.expressionText, true));
     } else if (opData.inlineDisplay) {
@@ -43,8 +47,8 @@ function calculateNodeWidth(node: LogicNode): number {
     contentWidth = NODE_PADDING.typeIconWidth + estimateTextWidth(valueStr, true);
   } else if (isVerticalCellNode(node)) {
     const vcData = node.data;
-    // Width based on header label and cell contents
-    let maxCellWidth = estimateTextWidth(vcData.label);
+    // Width based on header label (header font) and cell contents
+    let maxCellWidth = estimateTextWidth(vcData.label, false, true);
 
     if (!vcData.collapsed) {
       vcData.cells.forEach((cell) => {

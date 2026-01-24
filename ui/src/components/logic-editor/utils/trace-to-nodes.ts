@@ -18,7 +18,7 @@ import type { ParentInfo } from './converters/types';
 export interface TraceConversionResult extends ConversionResult {
   traceNodeMap: Map<string, string>;  // trace-{id} -> visual node ID
 }
-import { getOperatorMeta, TRUNCATION_LIMITS } from '../constants';
+import { getOperatorMeta, getOperatorTitle, TRUNCATION_LIMITS } from '../constants';
 import { CATEGORY_ICONS, ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from './icons';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from './formatting';
 import { isSimpleOperand, getValueType, isDataStructure, isJsonLogicExpression } from './type-helpers';
@@ -611,7 +611,7 @@ function createVerticalCellNodeFromTrace(
       type: 'verticalCell',
       operator,
       category: meta.category,
-      label: meta.label,
+      label: getOperatorTitle(operator),
       icon,
       cells,
       collapsed: false,
@@ -672,7 +672,7 @@ function createOperatorNodeFromTrace(
         type: 'operator',
         operator,
         category: meta.category,
-        label: meta.label,
+        label: getOperatorTitle(operator),
         childIds: [],
         collapsed: false,
         expressionText,
@@ -728,7 +728,7 @@ function createOperatorNodeFromTrace(
       type: 'operator',
       operator,
       category: meta.category,
-      label: meta.label,
+      label: getOperatorTitle(operator),
       childIds,
       collapsed: false,
       expressionText,

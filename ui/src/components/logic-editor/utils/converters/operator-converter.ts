@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { JsonLogicValue, CellData, LogicNode, VerticalCellNodeData, OperatorNodeData } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
 import { getParentInfo } from './types';
-import { getOperatorMeta, TRUNCATION_LIMITS } from '../../constants';
+import { getOperatorMeta, getOperatorTitle, TRUNCATION_LIMITS } from '../../constants';
 import { CATEGORY_ICONS, ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../icons';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from '../formatting';
 import { isSimpleOperand } from '../type-helpers';
@@ -81,7 +81,7 @@ export function convertToVerticalCell(
       type: 'verticalCell',
       operator,
       category: meta.category,
-      label: meta.label,
+      label: getOperatorTitle(operator),
       icon,
       cells,
       collapsed: false,
@@ -123,7 +123,7 @@ export function convertUnaryInline(
       type: 'operator',
       operator,
       category: meta.category,
-      label: meta.label,
+      label: getOperatorTitle(operator),
       childIds: [], // No children - inline display
       collapsed: false,
       expressionText,
@@ -180,7 +180,7 @@ export function convertOperatorWithChildren(
       type: 'operator',
       operator,
       category: meta.category,
-      label: meta.label,
+      label: getOperatorTitle(operator),
       childIds,
       collapsed: false,
       expressionText,

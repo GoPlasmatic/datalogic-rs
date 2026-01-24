@@ -62,6 +62,7 @@
 .operator-label {
   font-size: 16px;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 /* Header content with collapse toggle */
@@ -475,6 +476,7 @@
   font-weight: 600;
   font-size: 16px;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .vertical-cell-body {

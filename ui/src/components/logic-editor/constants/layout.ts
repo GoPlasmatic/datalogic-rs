@@ -20,6 +20,8 @@ export const TEXT_METRICS = {
   charWidthMono: 8,
   // Regular font width (~7.5px per character)
   charWidthRegular: 7.5,
+  // Header label font width (16px bold font with letter-spacing)
+  charWidthHeader: 10,
 } as const;
 
 // Padding and spacing for nodes
