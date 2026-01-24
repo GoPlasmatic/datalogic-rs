@@ -59,7 +59,11 @@ pub fn evaluate(logic: &str, data: &str, preserve_structure: bool) -> Result<Str
 /// }
 /// ```
 #[wasm_bindgen]
-pub fn evaluate_with_trace(logic: &str, data: &str, preserve_structure: bool) -> Result<String, String> {
+pub fn evaluate_with_trace(
+    logic: &str,
+    data: &str,
+    preserve_structure: bool,
+) -> Result<String, String> {
     let engine = if preserve_structure {
         DataLogic::with_preserve_structure()
     } else {
