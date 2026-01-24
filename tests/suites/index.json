@@ -43,6 +43,7 @@
     "try.extra.json",
     "datetime/datetime.json",
     "datetime/duration.json",
+    "datetime/now.json",
     "datetime/val.datetime.json",
     "length.json",
     "sort.json",
