@@ -14,10 +14,10 @@
 ---
 
 <div align="center">
-  <a href="https://goplasmatic.github.io/datalogic-ui/">
+  <a href="https://goplasmatic.github.io/datalogic-rs/playground/">
     <img src="assets/demo.gif" alt="JSONLogic Online Debugger Demo" width="700">
   </a>
-  <p><em>Try the <a href="https://goplasmatic.github.io/datalogic-ui/">JSONLogic Online Debugger</a> to interactively test your rules</em></p>
+  <p><em>Try the <a href="https://goplasmatic.github.io/datalogic-rs/playground/">JSONLogic Online Debugger</a> to interactively test your rules</em></p>
 </div>
 
 ---
