@@ -236,8 +236,13 @@ wasm-pack test --headless --firefox
 
 Apache-2.0
 
+## Documentation
+
+For complete documentation including advanced usage, framework integration, and API details, see the [full documentation](https://goplasmatic.github.io/datalogic-rs/javascript/installation.html).
+
 ## Links
 
 - [GitHub Repository](https://github.com/GoPlasmatic/datalogic-rs)
+- [Full Documentation](https://goplasmatic.github.io/datalogic-rs/)
+- [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic Specification](https://jsonlogic.com/)
-- [Documentation](https://goplasmatic.github.io/datalogic-rs/)

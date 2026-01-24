@@ -4,7 +4,7 @@ A React component library for visualizing and debugging JSONLogic expressions as
 
 ## Demo
 
-![DataLogic Debugger Demo](public/demo.gif)
+![DataLogic Debugger Demo](https://raw.githubusercontent.com/GoPlasmatic/datalogic-rs/main/ui/public/demo.gif)
 
 ## Features
 
@@ -192,6 +192,16 @@ The main component is `DataLogicEditor` which:
 ## Roadmap
 
 - **Full Visual Builder (Edit Mode)**: Interactive visual editing of JSONLogic expressions with drag-and-drop node creation, connection editing, and real-time evaluation feedback.
+
+## Documentation
+
+For complete documentation including all props, customization options, and advanced usage, see the [full documentation](https://goplasmatic.github.io/datalogic-rs/react-ui/installation.html).
+
+## Links
+
+- [GitHub Repository](https://github.com/GoPlasmatic/datalogic-rs)
+- [Full Documentation](https://goplasmatic.github.io/datalogic-rs/)
+- [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 
 ## License
 
