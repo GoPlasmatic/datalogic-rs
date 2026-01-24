@@ -1,10 +1,10 @@
 # DateTime Operators
 
-Operations for working with dates and times.
+Operations for working with dates, times, and durations.
 
 ## now
 
-Get the current timestamp.
+Get the current UTC datetime.
 
 **Syntax:**
 ```json
@@ -13,25 +13,24 @@ Get the current timestamp.
 
 **Arguments:** None
 
-**Returns:** Current Unix timestamp in milliseconds.
+**Returns:** Current UTC datetime as ISO 8601 string.
 
 **Examples:**
 
 ```json
 { "now": [] }
-// Result: 1704067200000 (example timestamp)
+// Result: "2024-01-15T14:30:00Z" (current time)
 
 // Check if date is in the future
 { ">": [{ "var": "expiresAt" }, { "now": [] }] }
-// Data: { "expiresAt": 1735689600000 }
+// Data: { "expiresAt": "2025-12-31T00:00:00Z" }
 // Result: true or false depending on current time
 
-// Calculate age in days
-{ "/": [
-    { "-": [{ "now": [] }, { "var": "createdAt" }] },
-    86400000
+// Check if event is happening now
+{ "and": [
+    { "<=": [{ "var": "startTime" }, { "now": [] }] },
+    { ">=": [{ "var": "endTime" }, { "now": [] }] }
 ]}
-// 86400000 = milliseconds in a day
 ```
 
 **Try it:**
@@ -40,82 +39,160 @@ Get the current timestamp.
 </div>
 
 **Notes:**
-- Returns milliseconds since Unix epoch (January 1, 1970)
-- Useful for time-based conditions and calculations
+- Returns ISO 8601 formatted string (e.g., "2024-01-15T14:30:00Z")
+- Always returns UTC time
+- Useful for time-based conditions and comparisons
 
 ---
 
 ## datetime
 
-Parse or create a datetime value.
+Parse or validate a datetime value.
 
 **Syntax:**
 ```json
 { "datetime": value }
-{ "datetime": [value, format] }
 ```
 
 **Arguments:**
-- `value` - Timestamp (number) or date string
-- `format` - Optional format string for parsing
+- `value` - ISO 8601 datetime string
 
-**Returns:** Datetime value (as timestamp or formatted string depending on usage).
+**Returns:** The validated datetime string (preserving timezone information).
 
 **Examples:**
 
 ```json
-// From timestamp
-{ "datetime": 1704067200000 }
-// Result: datetime object
-
-// From ISO string
+// Parse ISO string
 { "datetime": "2024-01-01T00:00:00Z" }
-// Result: datetime object
+// Result: "2024-01-01T00:00:00Z"
 
-// Parse with format
-{ "datetime": ["01/15/2024", "%m/%d/%Y"] }
-// Result: datetime object for January 15, 2024
+// With timezone offset
+{ "datetime": "2024-01-01T10:00:00+05:30" }
+// Result: "2024-01-01T10:00:00+05:30"
+
+// Compare datetimes
+{ ">": [
+    { "datetime": "2024-06-15T00:00:00Z" },
+    { "datetime": "2024-01-01T00:00:00Z" }
+]}
+// Result: true
+
+// Add duration to datetime
+{ "+": [
+    { "datetime": "2024-01-01T00:00:00Z" },
+    { "timestamp": "7d" }
+]}
+// Result: "2024-01-08T00:00:00Z"
 ```
+
+**Try it:**
+
+<div class="playground-widget" data-logic='{"datetime": "2024-01-01T00:00:00Z"}' data-data='{}'>
+</div>
 
 ---
 
 ## timestamp
 
-Convert a datetime to Unix timestamp.
+Create or parse a duration value. Durations represent time periods (not points in time).
 
 **Syntax:**
 ```json
-{ "timestamp": datetime }
+{ "timestamp": duration_string }
 ```
 
 **Arguments:**
-- `datetime` - Datetime value or ISO string
+- `duration_string` - Duration in format like "1d:2h:3m:4s" or partial like "1d", "2h", "30m", "45s"
 
-**Returns:** Unix timestamp in milliseconds.
+**Returns:** Normalized duration string in format "Xd:Xh:Xm:Xs".
+
+**Duration Format:**
+- `d` - Days
+- `h` - Hours
+- `m` - Minutes
+- `s` - Seconds
 
 **Examples:**
 
 ```json
-// From ISO string
-{ "timestamp": "2024-01-01T00:00:00Z" }
-// Result: 1704067200000
+// Full duration format
+{ "timestamp": "1d:2h:3m:4s" }
+// Result: "1d:2h:3m:4s"
 
-// With variable
-{ "timestamp": { "var": "date" } }
-// Data: { "date": "2024-06-15T12:00:00Z" }
-// Result: 1718452800000
+// Days only
+{ "timestamp": "2d" }
+// Result: "2d:0h:0m:0s"
+
+// Hours only
+{ "timestamp": "5h" }
+// Result: "0d:5h:0m:0s"
+
+// Minutes only
+{ "timestamp": "30m" }
+// Result: "0d:0h:30m:0s"
+
+// Compare durations
+{ ">": [{ "timestamp": "2d" }, { "timestamp": "36h" }] }
+// Result: true (2 days > 36 hours)
+
+// Duration equality
+{ "==": [{ "timestamp": "1d" }, { "timestamp": "24h" }] }
+// Result: true
 ```
 
 **Try it:**
 
-<div class="playground-widget" data-logic='{"timestamp": "2024-01-01T00:00:00Z"}' data-data='{}'>
+<div class="playground-widget" data-logic='{"timestamp": "1d:2h:3m:4s"}' data-data='{}'>
 </div>
+
+### Duration Arithmetic
+
+Durations can be used in arithmetic operations:
+
+```json
+// Multiply duration
+{ "*": [{ "timestamp": "1d" }, 2] }
+// Result: "2d:0h:0m:0s"
+
+// Divide duration
+{ "/": [{ "timestamp": "2d" }, 2] }
+// Result: "1d:0h:0m:0s"
+
+// Add durations
+{ "+": [{ "timestamp": "1d" }, { "timestamp": "12h" }] }
+// Result: "1d:12h:0m:0s"
+
+// Subtract durations
+{ "-": [{ "timestamp": "2d" }, { "timestamp": "12h" }] }
+// Result: "1d:12h:0m:0s"
+
+// Add duration to datetime
+{ "+": [
+    { "datetime": "2024-01-01T00:00:00Z" },
+    { "timestamp": "7d" }
+]}
+// Result: "2024-01-08T00:00:00Z"
+
+// Subtract duration from datetime
+{ "-": [
+    { "datetime": "2024-01-15T00:00:00Z" },
+    { "timestamp": "7d" }
+]}
+// Result: "2024-01-08T00:00:00Z"
+
+// Difference between two datetimes (returns duration)
+{ "-": [
+    { "datetime": "2024-01-08T00:00:00Z" },
+    { "datetime": "2024-01-01T00:00:00Z" }
+]}
+// Result: "7d:0h:0m:0s"
+```
 
 ---
 
 ## parse_date
 
-Parse a date string into a datetime.
+Parse a date string with a custom format into an ISO datetime.
 
 **Syntax:**
 ```json
@@ -124,47 +201,51 @@ Parse a date string into a datetime.
 
 **Arguments:**
 - `string` - Date string to parse
-- `format` - Format string (strftime-style)
+- `format` - Format string using simplified tokens
 
-**Returns:** Parsed datetime.
+**Returns:** Parsed datetime as ISO 8601 string.
 
-**Format Specifiers:**
-- `%Y` - 4-digit year (2024)
-- `%m` - Month (01-12)
-- `%d` - Day (01-31)
-- `%H` - Hour 24h (00-23)
-- `%M` - Minute (00-59)
-- `%S` - Second (00-59)
-- `%y` - 2-digit year (24)
-- `%b` - Abbreviated month (Jan)
-- `%B` - Full month (January)
+**Format Tokens:**
+| Token | Description | Example |
+|-------|-------------|---------|
+| `yyyy` | 4-digit year | 2024 |
+| `MM` | 2-digit month | 01-12 |
+| `dd` | 2-digit day | 01-31 |
+| `HH` | 2-digit hour (24h) | 00-23 |
+| `mm` | 2-digit minute | 00-59 |
+| `ss` | 2-digit second | 00-59 |
 
 **Examples:**
 
 ```json
 // Parse US date format
-{ "parse_date": ["12/25/2024", "%m/%d/%Y"] }
-// Result: datetime for December 25, 2024
+{ "parse_date": ["12/25/2024", "MM/dd/yyyy"] }
+// Result: "2024-12-25T00:00:00Z"
 
 // Parse European format
-{ "parse_date": ["25-12-2024", "%d-%m-%Y"] }
-// Result: datetime for December 25, 2024
+{ "parse_date": ["25-12-2024", "dd-MM-yyyy"] }
+// Result: "2024-12-25T00:00:00Z"
 
-// Parse with time
-{ "parse_date": ["2024-01-15 14:30:00", "%Y-%m-%d %H:%M:%S"] }
-// Result: datetime for January 15, 2024 at 2:30 PM
+// Parse date only
+{ "parse_date": ["2024-01-15", "yyyy-MM-dd"] }
+// Result: "2024-01-15T00:00:00Z"
 
 // With variable
-{ "parse_date": [{ "var": "dateStr" }, "%Y-%m-%d"] }
+{ "parse_date": [{ "var": "dateStr" }, "yyyy-MM-dd"] }
 // Data: { "dateStr": "2024-06-15" }
-// Result: datetime for June 15, 2024
+// Result: "2024-06-15T00:00:00Z"
 ```
+
+**Try it:**
+
+<div class="playground-widget" data-logic='{"parse_date": ["2024-01-15", "yyyy-MM-dd"]}' data-data='{}'>
+</div>
 
 ---
 
 ## format_date
 
-Format a datetime as a string.
+Format a datetime as a string with a custom format.
 
 **Syntax:**
 ```json
@@ -173,41 +254,48 @@ Format a datetime as a string.
 
 **Arguments:**
 - `datetime` - Datetime value to format
-- `format` - Format string (strftime-style)
+- `format` - Format string using simplified tokens (same as parse_date)
 
 **Returns:** Formatted date string.
+
+**Special Format:**
+- `z` - Returns timezone offset (e.g., "+0500")
 
 **Examples:**
 
 ```json
-// Format as ISO date
-{ "format_date": [{ "now": [] }, "%Y-%m-%d"] }
+// Format as date only
+{ "format_date": [{ "datetime": "2024-01-15T14:30:00Z" }, "yyyy-MM-dd"] }
 // Result: "2024-01-15"
 
 // Format as US date
-{ "format_date": [{ "var": "date" }, "%m/%d/%Y"] }
-// Data: { "date": "2024-12-25T00:00:00Z" }
+{ "format_date": [{ "datetime": "2024-12-25T00:00:00Z" }, "MM/dd/yyyy"] }
 // Result: "12/25/2024"
 
-// Format with time
-{ "format_date": [{ "now": [] }, "%Y-%m-%d %H:%M:%S"] }
-// Result: "2024-01-15 14:30:00"
+// Get timezone offset
+{ "format_date": [{ "datetime": "2024-01-01T10:00:00+05:00" }, "z"] }
+// Result: "+0500"
 
-// Human-readable format
-{ "format_date": [{ "var": "date" }, "%B %d, %Y"] }
-// Data: { "date": "2024-01-15T00:00:00Z" }
-// Result: "January 15, 2024"
+// Format current time
+{ "format_date": [{ "now": [] }, "yyyy-MM-dd"] }
+// Result: "2024-01-15" (current date)
 
-// Just time
-{ "format_date": [{ "now": [] }, "%H:%M"] }
-// Result: "14:30"
+// With variable
+{ "format_date": [{ "var": "date" }, "dd/MM/yyyy"] }
+// Data: { "date": "2024-12-25T00:00:00Z" }
+// Result: "25/12/2024"
 ```
+
+**Try it:**
+
+<div class="playground-widget" data-logic='{"format_date": [{"datetime": "2024-01-15T14:30:00Z"}, "yyyy-MM-dd"]}' data-data='{}'>
+</div>
 
 ---
 
 ## date_diff
 
-Calculate the difference between two dates.
+Calculate the difference between two dates in a specified unit.
 
 **Syntax:**
 ```json
@@ -217,32 +305,40 @@ Calculate the difference between two dates.
 **Arguments:**
 - `date1` - First datetime
 - `date2` - Second datetime
-- `unit` - Unit of measurement: "days", "hours", "minutes", "seconds", "milliseconds"
+- `unit` - Unit of measurement: "days", "hours", "minutes", "seconds"
 
-**Returns:** Difference as a number in the specified unit.
+**Returns:** Difference as an integer in the specified unit.
 
 **Examples:**
 
 ```json
 // Days between dates
 { "date_diff": [
-    "2024-12-31T00:00:00Z",
-    "2024-01-01T00:00:00Z",
+    { "datetime": "2024-12-31T00:00:00Z" },
+    { "datetime": "2024-01-01T00:00:00Z" },
     "days"
 ]}
 // Result: 365
 
 // Hours difference
 { "date_diff": [
+    { "datetime": "2024-01-01T12:00:00Z" },
+    { "datetime": "2024-01-01T00:00:00Z" },
+    "hours"
+]}
+// Result: 12
+
+// With variables
+{ "date_diff": [
     { "var": "end" },
     { "var": "start" },
-    "hours"
+    "days"
 ]}
 // Data: {
 //   "start": "2024-01-01T00:00:00Z",
-//   "end": "2024-01-01T12:00:00Z"
+//   "end": "2024-01-15T00:00:00Z"
 // }
-// Result: 12
+// Result: 14
 
 // Check if within 24 hours
 { "<": [
@@ -252,16 +348,18 @@ Calculate the difference between two dates.
 // Data: { "timestamp": "2024-01-15T10:00:00Z" }
 // Result: true or false
 
-// Calculate age in years (approximate)
-{ "floor": {
-    "/": [
-        { "date_diff": [{ "now": [] }, { "var": "birthdate" }, "days"] },
-        365.25
-    ]
-}}
-// Data: { "birthdate": "1990-01-15T00:00:00Z" }
-// Result: age in years
+// Days since creation
+{ "date_diff": [
+    { "now": [] },
+    { "var": "createdAt" },
+    "days"
+]}
 ```
+
+**Try it:**
+
+<div class="playground-widget" data-logic='{"date_diff": [{"datetime": "2024-01-15T00:00:00Z"}, {"datetime": "2024-01-01T00:00:00Z"}, "days"]}' data-data='{}'>
+</div>
 
 ---
 
@@ -288,12 +386,27 @@ Calculate the difference between two dates.
 ]}
 ```
 
-### Calculate expiration
+### Add days to a date
 
 ```json
 { "+": [
-    { "var": "createdAt" },
-    { "*": [{ "var": "ttlDays" }, 86400000] }
+    { "var": "date" },
+    { "timestamp": "7d" }
 ]}
-// Returns expiration timestamp
+```
+
+### Calculate days until expiration
+
+```json
+{ "date_diff": [
+    { "var": "expiresAt" },
+    { "now": [] },
+    "days"
+]}
+```
+
+### Check if expired
+
+```json
+{ "<": [{ "var": "expiresAt" }, { "now": [] }] }
 ```
