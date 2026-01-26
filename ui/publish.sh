@@ -17,8 +17,8 @@ pnpm build:lib
 echo ""
 echo "Publishing @goplasmatic/datalogic-ui@$VERSION to npm..."
 
-# Publish
-npm publish --access public
+# Publish (use pnpm to resolve workspace:* protocol to actual version)
+pnpm publish --access public --no-git-checks
 
 echo ""
 echo "Published @goplasmatic/datalogic-ui@$VERSION successfully!"

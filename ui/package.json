@@ -1,7 +1,7 @@
 {
   "name": "@goplasmatic/datalogic-ui",
   "private": false,
-  "version": "4.0.9",
+  "version": "4.0.10",
   "type": "module",
   "description": "DataLogic Debugger - Visual JSONLogic Debugger & Editor for debugging and visualizing JSONLogic expressions",
   "keywords": [
@@ -59,9 +59,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "prepublishOnly": "npm run build:lib",
-    "release:patch": "npm version patch && npm publish --access public",
-    "release:minor": "npm version minor && npm publish --access public",
-    "release:major": "npm version major && npm publish --access public"
+    "release:patch": "npm version patch && pnpm publish --access public --no-git-checks",
+    "release:minor": "npm version minor && pnpm publish --access public --no-git-checks",
+    "release:major": "npm version major && pnpm publish --access public --no-git-checks"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.8",
