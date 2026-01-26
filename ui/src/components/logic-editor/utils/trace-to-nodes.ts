@@ -357,12 +357,24 @@ function createIfElseNodeFromTrace(
         argIndex: idx,
       });
     } else {
-      // Fallback: create appropriate node based on value type
-      conditionBranchId = `${nodeId}-cond-${idx}`;
-      createFallbackNode(conditionBranchId, condition, context, {
-        parentId: nodeId,
-        argIndex: idx,
-      });
+      // Try positional matching if exact matching fails and value is complex
+      const condNodeType = determineNodeType(condition, context.preserveStructure);
+      const nextUnused = (condNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
+      if (nextUnused) {
+        // Use the trace child for proper debug step mapping
+        usedChildIndices.add(nextUnused.index);
+        conditionBranchId = processExpressionNode(nextUnused.child, context, {
+          parentId: nodeId,
+          argIndex: idx,
+        }, condition); // Pass original value to preserve key ordering
+      } else {
+        // True fallback: create node without trace mapping
+        conditionBranchId = `${nodeId}-cond-${idx}`;
+        createFallbackNode(conditionBranchId, condition, context, {
+          parentId: nodeId,
+          argIndex: idx,
+        });
+      }
     }
 
     // Create condition edge
@@ -392,13 +404,26 @@ function createIfElseNodeFromTrace(
         branchType: 'yes',
       });
     } else {
-      // Fallback: create appropriate node based on value type
-      thenBranchId = `${nodeId}-then-${idx}`;
-      createFallbackNode(thenBranchId, thenValue, context, {
-        parentId: nodeId,
-        argIndex: idx + 1,
-        branchType: 'yes',
-      });
+      // Try positional matching if exact matching fails and value is complex
+      const thenNodeType = determineNodeType(thenValue, context.preserveStructure);
+      const nextUnused = (thenNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
+      if (nextUnused) {
+        // Use the trace child for proper debug step mapping
+        usedChildIndices.add(nextUnused.index);
+        thenBranchId = processExpressionNode(nextUnused.child, context, {
+          parentId: nodeId,
+          argIndex: idx + 1,
+          branchType: 'yes',
+        }, thenValue); // Pass original value to preserve key ordering
+      } else {
+        // True fallback: create node without trace mapping
+        thenBranchId = `${nodeId}-then-${idx}`;
+        createFallbackNode(thenBranchId, thenValue, context, {
+          parentId: nodeId,
+          argIndex: idx + 1,
+          branchType: 'yes',
+        });
+      }
     }
 
     // Create then edge
@@ -436,13 +461,26 @@ function createIfElseNodeFromTrace(
         branchType: 'no',
       });
     } else {
-      // Fallback: create appropriate node based on value type
-      elseBranchId = `${nodeId}-else`;
-      createFallbackNode(elseBranchId, elseValue, context, {
-        parentId: nodeId,
-        argIndex: ifArgs.length - 1,
-        branchType: 'no',
-      });
+      // Try positional matching if exact matching fails and value is complex
+      const elseNodeType = determineNodeType(elseValue, context.preserveStructure);
+      const nextUnused = (elseNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
+      if (nextUnused) {
+        // Use the trace child for proper debug step mapping
+        usedChildIndices.add(nextUnused.index);
+        elseBranchId = processExpressionNode(nextUnused.child, context, {
+          parentId: nodeId,
+          argIndex: ifArgs.length - 1,
+          branchType: 'no',
+        }, elseValue); // Pass original value to preserve key ordering
+      } else {
+        // True fallback: create node without trace mapping
+        elseBranchId = `${nodeId}-else`;
+        createFallbackNode(elseBranchId, elseValue, context, {
+          parentId: nodeId,
+          argIndex: ifArgs.length - 1,
+          branchType: 'no',
+        });
+      }
     }
 
     // Create else edge
@@ -513,6 +551,19 @@ function findMatchingChild(
       if (children[i].expression === operandStr) {
         return { child: children[i], index: i };
       }
+    }
+  }
+  return null;
+}
+
+// Get the next unused child (for positional matching when exact matching fails)
+function getNextUnusedChild(
+  children: ExpressionNode[],
+  usedIndices: Set<number>
+): { child: ExpressionNode; index: number } | null {
+  for (let i = 0; i < children.length; i++) {
+    if (!usedIndices.has(i)) {
+      return { child: children[i], index: i };
     }
   }
   return null;
@@ -863,6 +914,15 @@ function createStructureNodeFromTrace(
   }
 }
 
+// Check if a value should be treated as an expression branch in trace conversion
+// This includes JSONLogic expressions and nested structures (when preserveStructure is enabled)
+function isExpressionBranch(item: unknown, preserveStructure: boolean): boolean {
+  if (isJsonLogicExpression(item)) return true;
+  // In preserveStructure mode, nested structures are also separate expression nodes in the trace
+  if (preserveStructure && isDataStructure(item)) return true;
+  return false;
+}
+
 // Walk through a structure and transform values (for trace conversion)
 function walkAndCollectFromTrace(
   value: unknown,
@@ -873,7 +933,7 @@ function walkAndCollectFromTrace(
   if (Array.isArray(value)) {
     return value.map((item, index) => {
       const itemPath = [...path, String(index)];
-      if (isJsonLogicExpression(item)) {
+      if (isExpressionBranch(item, context.preserveStructure)) {
         return onValue(itemPath, item);
       } else if (typeof item === 'object' && item !== null) {
         return walkAndCollectFromTrace(item, itemPath, onValue, context);
@@ -886,7 +946,7 @@ function walkAndCollectFromTrace(
     const result: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
       const itemPath = [...path, key];
-      if (isJsonLogicExpression(item)) {
+      if (isExpressionBranch(item, context.preserveStructure)) {
         result[key] = onValue(itemPath, item, key);
       } else if (typeof item === 'object' && item !== null) {
         result[key] = walkAndCollectFromTrace(item, itemPath, onValue, context);

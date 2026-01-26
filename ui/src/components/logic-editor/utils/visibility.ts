@@ -1,11 +1,18 @@
-import type { LogicNode, VerticalCellNodeData } from '../types';
-import { isOperatorNode, isVerticalCellNode } from './type-guards';
+import type { LogicNode, VerticalCellNodeData, StructureNodeData } from '../types';
+import { isOperatorNode, isVerticalCellNode, isStructureNode } from './type-guards';
 
 // Helper to collect all branch IDs from a cell
 function collectCellBranchIds(cell: VerticalCellNodeData['cells'][0], target: Set<string>): void {
   if (cell.branchId) target.add(cell.branchId);
   if (cell.conditionBranchId) target.add(cell.conditionBranchId);
   if (cell.thenBranchId) target.add(cell.thenBranchId);
+}
+
+// Helper to collect all branch IDs from structure elements
+function collectStructureBranchIds(elements: StructureNodeData['elements'], target: Set<string>): void {
+  elements.forEach((element) => {
+    if (element.branchId) target.add(element.branchId);
+  });
 }
 
 // Build a parent-child map for O(1) child lookups
@@ -33,7 +40,7 @@ export function getHiddenNodeIds(nodes: LogicNode[]): Set<string> {
   // Build parent-child map for efficient lookups
   const parentChildMap = buildParentChildMap(nodes);
 
-  // Find all collapsed operator nodes and collapsed cells in vertical cell nodes
+  // Find all collapsed operator nodes, collapsed cells in vertical cell nodes, and collapsed structure nodes
   nodes.forEach((node) => {
     if (isOperatorNode(node)) {
       if (node.data.collapsed) {
@@ -55,6 +62,11 @@ export function getHiddenNodeIds(nodes: LogicNode[]): Set<string> {
             collectCellBranchIds(cell, collapsedBranchIds);
           }
         });
+      }
+    } else if (isStructureNode(node)) {
+      // If structure node is collapsed, hide all its expression branch children
+      if (node.data.collapsed && node.data.elements) {
+        collectStructureBranchIds(node.data.elements, collapsedBranchIds);
       }
     }
   });
