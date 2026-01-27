@@ -1,6 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Sun, Moon, Github, BookOpen, ChevronDown } from "lucide-react";
-import { DataLogicEditor, type JsonLogicValue } from "./components/logic-editor";
+import {
+  DataLogicEditor,
+  type JsonLogicValue,
+} from "./components/logic-editor";
 import { DebugPanel } from "./components/debug-panel";
 import { ModeSelector } from "./components/mode-selector";
 import { useWasmEvaluator } from "./components/logic-editor/hooks";
@@ -64,7 +67,13 @@ const SAMPLE_EXPRESSIONS: Record<
       if: [
         { ">=": [{ var: "score" }, 60] },
         { cat: ["Passed with score: ", { var: "score" }] },
-        { cat: ["Failed. Need ", { "-": [60, { var: "score" }] }, " more points"] },
+        {
+          cat: [
+            "Failed. Need ",
+            { "-": [60, { var: "score" }] },
+            " more points",
+          ],
+        },
       ],
     },
     data: { score: 45 },
@@ -78,10 +87,14 @@ const SAMPLE_EXPRESSIONS: Record<
   "Grade Calculator": {
     logic: {
       if: [
-        { ">=": [{ var: "score" }, 90] }, "A - Excellent",
-        { ">=": [{ var: "score" }, 80] }, "B - Good",
-        { ">=": [{ var: "score" }, 70] }, "C - Average",
-        { ">=": [{ var: "score" }, 60] }, "D - Below Average",
+        { ">=": [{ var: "score" }, 90] },
+        "A - Excellent",
+        { ">=": [{ var: "score" }, 80] },
+        "B - Good",
+        { ">=": [{ var: "score" }, 70] },
+        "C - Average",
+        { ">=": [{ var: "score" }, 60] },
+        "D - Below Average",
         "F - Fail",
       ],
     },
@@ -101,7 +114,7 @@ const SAMPLE_EXPRESSIONS: Record<
     logic: {
       filter: [
         { var: "numbers" },
-        { ">": [{ var: "" }, { var: "threshold" }] },
+        { ">": [{ var: "" }, { val: [[-1], "threshold"] }] },
       ],
     },
     data: { numbers: [10, 25, 5, 30, 15, 8], threshold: 12 },
@@ -127,7 +140,8 @@ const SAMPLE_EXPRESSIONS: Record<
   "Shipping Calculator": {
     logic: {
       if: [
-        { ">=": [{ var: "order.total" }, 100] }, 0,
+        { ">=": [{ var: "order.total" }, 100] },
+        0,
         { "==": [{ var: "order.shipping" }, "express"] },
         { "+": [10, { "*": [{ var: "order.weight" }, 2] }] },
         { "==": [{ var: "order.shipping" }, "standard"] },
@@ -148,7 +162,9 @@ const SAMPLE_EXPRESSIONS: Record<
             {
               "+": [
                 { var: "accumulator" },
-                { "*": [{ var: "current.price" }, { var: "current.quantity" }] },
+                {
+                  "*": [{ var: "current.price" }, { var: "current.quantity" }],
+                },
               ],
             },
             0,
@@ -194,14 +210,25 @@ const SAMPLE_EXPRESSIONS: Record<
         },
         {
           "<": [
-            { "/": [{ var: "applicant.existingDebt" }, { var: "applicant.income" }] },
+            {
+              "/": [
+                { var: "applicant.existingDebt" },
+                { var: "applicant.income" },
+              ],
+            },
             0.4,
           ],
         },
       ],
     },
     data: {
-      applicant: { age: 35, income: 75000, creditScore: 720, existingDebt: 20000, hasCollateral: false },
+      applicant: {
+        age: 35,
+        income: 75000,
+        creditScore: 720,
+        existingDebt: 20000,
+        hasCollateral: false,
+      },
     },
   },
 
@@ -276,13 +303,15 @@ function App() {
   const [resultError, setResultError] = useState<string | null>(null);
 
   // Editor mode state
-  const [editorMode, setEditorMode] = useState<'visualize' | 'debug'>('debug');
+  const [editorMode, setEditorMode] = useState<"visualize" | "debug">("debug");
 
   // Preserve structure mode state
   const [preserveStructure, setPreserveStructure] = useState<boolean>(false);
 
   // Examples dropdown state
-  const [selectedExample, setSelectedExample] = useState<string>(Object.keys(SAMPLE_EXPRESSIONS)[0]);
+  const [selectedExample, setSelectedExample] = useState<string>(
+    Object.keys(SAMPLE_EXPRESSIONS)[0],
+  );
   const [examplesDropdownOpen, setExamplesDropdownOpen] = useState(false);
   const examplesDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -378,7 +407,10 @@ function App() {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (examplesDropdownRef.current && !examplesDropdownRef.current.contains(event.target as Node)) {
+      if (
+        examplesDropdownRef.current &&
+        !examplesDropdownRef.current.contains(event.target as Node)
+      ) {
         setExamplesDropdownOpen(false);
       }
     };
@@ -480,7 +512,7 @@ function App() {
               <span className="examples-dropdown-value">{selectedExample}</span>
               <ChevronDown
                 size={14}
-                className={`examples-dropdown-icon ${examplesDropdownOpen ? 'open' : ''}`}
+                className={`examples-dropdown-icon ${examplesDropdownOpen ? "open" : ""}`}
               />
             </button>
             {examplesDropdownOpen && (
@@ -488,7 +520,7 @@ function App() {
                 {Object.keys(SAMPLE_EXPRESSIONS).map((name) => (
                   <button
                     key={name}
-                    className={`examples-dropdown-item ${name === selectedExample ? 'selected' : ''}`}
+                    className={`examples-dropdown-item ${name === selectedExample ? "selected" : ""}`}
                     onClick={() => loadSample(name)}
                     role="option"
                     aria-selected={name === selectedExample}
