@@ -16,7 +16,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { DataLogicEditor, type JsonLogicValue } from './components/logic-editor';
+import { DataLogicEditor, type JsonLogicValue, type DataLogicEditorMode } from './components/logic-editor';
 import { ModeSelector } from './components/mode-selector';
 import { useWasmEvaluator } from './components/logic-editor/hooks';
 import { tokenizeJson, type JsonToken } from './utils/json-tokenizer';
@@ -359,7 +359,7 @@ function Playground({ componentMode = 'debugger' }: PlaygroundProps) {
   const [result, setResult] = useState<unknown>(undefined);
   const [resultError, setResultError] = useState<string | null>(null);
 
-  const [editorMode, setEditorMode] = useState<'visualize' | 'debug'>('debug');
+  const [editorMode, setEditorMode] = useState<DataLogicEditorMode>('debug');
   const [selectedExample, setSelectedExample] = useState<string>('');
 
   // Detect theme

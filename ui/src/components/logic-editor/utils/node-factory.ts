@@ -44,7 +44,9 @@ export function createVariableNode(
   path: string,
   defaultValue: JsonLogicValue | undefined,
   originalExpr: JsonLogicValue,
-  parentInfo: ParentInfo = {}
+  parentInfo: ParentInfo = {},
+  scopeJump?: number,
+  pathComponents?: string[]
 ): LogicNode {
   const nodeId = uuidv4();
   return {
@@ -56,6 +58,8 @@ export function createVariableNode(
       operator,
       path,
       defaultValue,
+      scopeJump,
+      pathComponents,
       expression: originalExpr,
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,

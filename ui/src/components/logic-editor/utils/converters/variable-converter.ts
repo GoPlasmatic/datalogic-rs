@@ -20,8 +20,26 @@ export function convertVariable(
 ): string {
   let path: string;
   let defaultValue: JsonLogicValue | undefined;
+  let scopeJump: number | undefined;
+  let pathComponents: string[] | undefined;
 
-  if (Array.isArray(operands)) {
+  if (operator === 'val' && Array.isArray(operands)) {
+    // val operator: {"val": [[-N], "path", "components", ...]}
+    // First element is scope array like [-1], rest are path components
+    const [scopeArray, ...pathParts] = operands;
+
+    // Parse scope jump from array like [-1] -> 1
+    if (Array.isArray(scopeArray) && scopeArray.length > 0) {
+      const scopeValue = scopeArray[0];
+      scopeJump = typeof scopeValue === 'number' ? Math.abs(scopeValue) : 0;
+    } else {
+      scopeJump = 0;
+    }
+
+    // Path components are the remaining elements
+    pathComponents = pathParts.map(p => String(p));
+    path = pathComponents.join('.');
+  } else if (Array.isArray(operands)) {
     path = String(operands[0] ?? '');
     defaultValue = operands[1];
   } else {
@@ -37,7 +55,9 @@ export function convertVariable(
     path,
     defaultValue,
     originalExpr,
-    parentInfo
+    parentInfo,
+    scopeJump,
+    pathComponents
   );
 
   context.nodes.push(node);

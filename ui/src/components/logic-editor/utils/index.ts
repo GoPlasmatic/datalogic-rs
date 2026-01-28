@@ -5,3 +5,6 @@ export * from './visibility';
 export * from './type-helpers';
 export * from './type-guards';
 export * from './node-factory';
+export * from './node-updaters';
+export * from './node-deletion';
+export * from './nodes-to-jsonlogic';

@@ -3,6 +3,7 @@ import { Sun, Moon, Github, BookOpen, ChevronDown } from "lucide-react";
 import {
   DataLogicEditor,
   type JsonLogicValue,
+  type DataLogicEditorMode,
 } from "./components/logic-editor";
 import { DebugPanel } from "./components/debug-panel";
 import { ModeSelector } from "./components/mode-selector";
@@ -303,7 +304,7 @@ function App() {
   const [resultError, setResultError] = useState<string | null>(null);
 
   // Editor mode state
-  const [editorMode, setEditorMode] = useState<"visualize" | "debug">("debug");
+  const [editorMode, setEditorMode] = useState<DataLogicEditorMode>("debug");
 
   // Preserve structure mode state
   const [preserveStructure, setPreserveStructure] = useState<boolean>(false);

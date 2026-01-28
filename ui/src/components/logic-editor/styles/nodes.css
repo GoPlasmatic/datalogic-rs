@@ -94,45 +94,6 @@
   opacity: 1;
 }
 
-/* Cell collapse toggle (for vertical cell nodes) */
-.cell-collapse-toggle {
-  background: transparent;
-  border: none;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  cursor: pointer;
-  padding: 2px 4px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.cell-collapse-toggle:hover {
-  opacity: 1;
-  color: var(--text-primary);
-}
-
-/* Collapsed summary in vertical cell row */
-.collapsed-summary {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-hover);
-  padding: 2px 6px;
-  border-radius: 3px;
-  flex: 1;
-}
-
-.collapsed-summary .arg-icon {
-  font-size: 11px;
-}
-
-.collapsed-summary .arg-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
 /* Expression text for collapsed nodes */
 .expression-text {
   font-family: 'SF Mono', 'Consolas', monospace;

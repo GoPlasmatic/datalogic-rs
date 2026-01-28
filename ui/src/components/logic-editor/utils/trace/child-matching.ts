@@ -20,11 +20,8 @@ export function findMatchingChild(
       if (childExprStr === operandStr) {
         return { child: children[i], index: i };
       }
-    } catch (e) {
+    } catch {
       // If parsing fails, try direct comparison
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[trace-to-nodes] Failed to parse child expression, using direct comparison:', e);
-      }
       if (children[i].expression === operandStr) {
         return { child: children[i], index: i };
       }

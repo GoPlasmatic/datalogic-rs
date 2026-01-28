@@ -7,6 +7,25 @@
   overflow: hidden;
 }
 
+/* Layout with properties panel */
+.logic-editor--with-panel {
+  display: flex;
+  flex-direction: row;
+}
+
+.logic-editor--with-panel .logic-editor-main {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  height: 100%;
+}
+
+/* When not in panel mode, main takes full size */
+.logic-editor:not(.logic-editor--with-panel) .logic-editor-main {
+  width: 100%;
+  height: 100%;
+}
+
 .logic-editor .react-flow {
   width: 100%;
   height: 100%;
@@ -83,4 +102,285 @@
 /* Attribution removal - only if you have a paid license */
 .logic-editor .react-flow__attribution {
   display: none;
+}
+
+/* ============================================================================
+   Undo/Redo Toolbar
+   ============================================================================ */
+
+.undo-redo-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 100;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-secondary, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .undo-redo-toolbar {
+  background: var(--bg-secondary, #1e1e1e);
+  border-color: var(--border-color, #3e3e3e);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.undo-redo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.undo-redo-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-primary, #1a1a1a);
+}
+
+.undo-redo-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .undo-redo-btn {
+  color: var(--text-secondary, #aaa);
+}
+
+[data-theme="dark"] .undo-redo-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #3e3e3e);
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* ============================================================================
+   Add Argument Button (shared by OperatorNode and VerticalCellNode)
+   ============================================================================ */
+
+.add-arg-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  margin: 4px 8px 8px;
+  border: 1.5px dashed var(--color-primary, #2563eb);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-primary, #2563eb);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: all 0.15s ease;
+}
+
+.add-arg-button:hover {
+  background: var(--color-primary, #2563eb);
+  color: white;
+  border-style: solid;
+  opacity: 1;
+}
+
+.add-arg-button-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Vertical cell variant - full width */
+.add-arg-button--vertical {
+  width: calc(100% - 16px);
+}
+
+/* Dark mode */
+[data-theme="dark"] .add-arg-button {
+  border-color: var(--color-primary, #60a5fa);
+  color: var(--color-primary, #60a5fa);
+}
+
+[data-theme="dark"] .add-arg-button:hover {
+  background: var(--color-primary, #60a5fa);
+  color: var(--bg-primary, #121212);
+}
+
+/* Legacy placeholder - kept for compatibility but using new .add-arg-button is preferred */
+.operator-arg-placeholder {
+  position: absolute;
+  right: -4px;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--color-primary, #2563eb);
+  border-radius: 50%;
+  background: var(--bg-primary, #fff);
+  color: var(--color-primary, #2563eb);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+  z-index: 10;
+}
+
+.operator-arg-placeholder:hover {
+  opacity: 1;
+  background: var(--color-primary, #2563eb);
+  color: white;
+  border-style: solid;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* Dark mode */
+[data-theme="dark"] .operator-arg-placeholder {
+  background: var(--bg-secondary, #1e1e1e);
+  border-color: var(--color-primary, #60a5fa);
+  color: var(--color-primary, #60a5fa);
+}
+
+[data-theme="dark"] .operator-arg-placeholder:hover {
+  background: var(--color-primary, #60a5fa);
+  color: var(--bg-primary, #121212);
+}
+
+/* ============================================================================
+   Context Menu
+   ============================================================================ */
+
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  max-width: 280px;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+  padding: 4px 0;
+  font-size: 13px;
+  outline: none;
+}
+
+[data-theme="dark"] .context-menu {
+  background: var(--bg-secondary, #1e1e1e);
+  border-color: var(--border-color, #3e3e3e);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary, #1a1a1a);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.context-menu-item:hover,
+.context-menu-item:focus {
+  background: var(--bg-hover, #f0f0f0);
+  outline: none;
+}
+
+.context-menu-item:disabled {
+  color: var(--text-muted, #999);
+  cursor: not-allowed;
+}
+
+.context-menu-item:disabled:hover {
+  background: none;
+}
+
+[data-theme="dark"] .context-menu-item {
+  color: var(--text-primary, #e0e0e0);
+}
+
+[data-theme="dark"] .context-menu-item:hover,
+[data-theme="dark"] .context-menu-item:focus {
+  background: var(--bg-hover, #3e3e3e);
+}
+
+.context-menu-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-secondary, #666);
+}
+
+[data-theme="dark"] .context-menu-item-icon {
+  color: var(--text-secondary, #aaa);
+}
+
+.context-menu-item-label {
+  flex: 1;
+}
+
+.context-menu-item-shortcut {
+  font-size: 11px;
+  color: var(--text-muted, #999);
+  margin-left: auto;
+  padding-left: 16px;
+}
+
+.context-menu-item-arrow {
+  color: var(--text-muted, #999);
+  margin-left: auto;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-light, #e8e8e8);
+  margin: 4px 8px;
+}
+
+[data-theme="dark"] .context-menu-divider {
+  background: var(--border-color, #3e3e3e);
+}
+
+.context-menu-submenu {
+  position: relative;
+}
+
+.context-menu-submenu-content {
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  margin-left: 2px;
+}
+
+/* Danger variant for destructive actions */
+.context-menu-item--danger {
+  color: var(--color-error, #dc2626);
+}
+
+.context-menu-item--danger .context-menu-item-icon {
+  color: var(--color-error, #dc2626);
+}
+
+.context-menu-item--danger:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+[data-theme="dark"] .context-menu-item--danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
 }

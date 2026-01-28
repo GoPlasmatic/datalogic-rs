@@ -41,6 +41,10 @@ export interface VariableNodeData extends BaseNodeData {
   operator: 'var' | 'val' | 'exists';
   path: string;
   defaultValue?: JsonLogicValue;
+  // For 'val' operator: scope jump level (e.g., 1 for [-1])
+  scopeJump?: number;
+  // For 'val' operator: path components array
+  pathComponents?: string[];
 }
 
 // Literal value node data
@@ -76,7 +80,6 @@ export interface VerticalCellNodeData extends BaseNodeData {
   cells: CellData[];
   collapsed?: boolean; // Whether the entire node is collapsed
   expressionText?: string; // Full expression as single-line text when collapsed
-  collapsedCellIndices?: number[]; // Indices of collapsed branch cells (when expanded)
 }
 
 // Decision node data (for if/then/else decision tree visualization)

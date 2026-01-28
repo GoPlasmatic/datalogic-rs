@@ -3,3 +3,5 @@ export { DebuggerProvider, useDebuggerContext, useNodeDebugState } from './debug
 export { ConnectedHandlesContext } from './ConnectedHandlesContextDef';
 export { ConnectedHandlesProvider } from './ConnectedHandlesContext';
 export { useIsHandleConnected, useConnectedHandles } from './useConnectedHandles';
+export { EditorProvider, useEditorContext, useSelection, useEditMode, usePanelValues } from './editor';
+export type { EditorState, EditorActions, EditorContextValue } from './editor';

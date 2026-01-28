@@ -1,0 +1,294 @@
+/**
+ * Edge Component Styles
+ *
+ * Styles for edge-related components.
+ */
+
+/* ============================================================================
+   Operator Picker Popup (may be used by other components)
+   ============================================================================ */
+
+.edge-operator-picker {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  max-height: 360px;
+  margin-top: 8px;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+[data-theme="dark"] .edge-operator-picker {
+  background: var(--bg-secondary, #1e1e1e);
+  border-color: var(--border-color, #3e3e3e);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Header */
+.edge-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+[data-theme="dark"] .edge-picker-header {
+  border-color: var(--border-color, #3e3e3e);
+}
+
+.edge-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+[data-theme="dark"] .edge-picker-title {
+  color: var(--text-primary, #e0e0e0);
+}
+
+.edge-picker-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-tertiary, #888);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.edge-picker-close:hover {
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-primary, #1a1a1a);
+}
+
+[data-theme="dark"] .edge-picker-close:hover {
+  background: var(--bg-hover, #3e3e3e);
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* Search */
+.edge-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+[data-theme="dark"] .edge-picker-search {
+  border-color: var(--border-color, #3e3e3e);
+}
+
+.edge-picker-search-icon {
+  color: var(--text-tertiary, #888);
+  flex-shrink: 0;
+}
+
+.edge-picker-search-input {
+  flex: 1;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.edge-picker-search-input::placeholder {
+  color: var(--text-tertiary, #888);
+}
+
+[data-theme="dark"] .edge-picker-search-input {
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* Quick Add */
+.edge-picker-quick {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+[data-theme="dark"] .edge-picker-quick {
+  border-color: var(--border-color, #3e3e3e);
+}
+
+.edge-picker-quick-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  background: var(--bg-tertiary, #f8f9fa);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.edge-picker-quick-btn:hover {
+  background: var(--bg-hover, #f0f0f0);
+  border-color: var(--color-primary, #2563eb);
+  color: var(--color-primary, #2563eb);
+}
+
+[data-theme="dark"] .edge-picker-quick-btn {
+  background: var(--bg-tertiary, #252525);
+  border-color: var(--border-color, #3e3e3e);
+  color: var(--text-secondary, #aaa);
+}
+
+[data-theme="dark"] .edge-picker-quick-btn:hover {
+  background: var(--bg-hover, #3e3e3e);
+  border-color: var(--color-primary, #60a5fa);
+  color: var(--color-primary, #60a5fa);
+}
+
+/* Content */
+.edge-picker-content {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Categories */
+.edge-picker-categories {
+  display: flex;
+  flex-direction: column;
+}
+
+.edge-picker-category {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.edge-picker-category:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+[data-theme="dark"] .edge-picker-category {
+  color: var(--text-primary, #e0e0e0);
+}
+
+[data-theme="dark"] .edge-picker-category:hover {
+  background: var(--bg-hover, #3e3e3e);
+}
+
+.edge-picker-category-name {
+  font-weight: 500;
+}
+
+.edge-picker-category-count {
+  font-size: 11px;
+  color: var(--text-tertiary, #888);
+  background: var(--bg-tertiary, #f0f0f0);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+[data-theme="dark"] .edge-picker-category-count {
+  background: var(--bg-tertiary, #2e2e2e);
+}
+
+/* Operators */
+.edge-picker-operators {
+  display: flex;
+  flex-direction: column;
+}
+
+.edge-picker-back {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-primary, #2563eb);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.edge-picker-back:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+[data-theme="dark"] .edge-picker-back {
+  color: var(--color-primary, #60a5fa);
+  border-color: var(--border-color, #3e3e3e);
+}
+
+[data-theme="dark"] .edge-picker-back:hover {
+  background: var(--bg-hover, #3e3e3e);
+}
+
+.edge-picker-operator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.edge-picker-operator:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+[data-theme="dark"] .edge-picker-operator {
+  color: var(--text-primary, #e0e0e0);
+}
+
+[data-theme="dark"] .edge-picker-operator:hover {
+  background: var(--bg-hover, #3e3e3e);
+}
+
+.edge-picker-operator-name {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-weight: 600;
+  min-width: 50px;
+}
+
+.edge-picker-operator-label {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+[data-theme="dark"] .edge-picker-operator-label {
+  color: var(--text-secondary, #aaa);
+}
+
+.edge-picker-empty {
+  padding: 20px 12px;
+  font-size: 13px;
+  color: var(--text-tertiary, #888);
+  text-align: center;
+}

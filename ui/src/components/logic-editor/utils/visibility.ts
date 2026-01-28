@@ -54,14 +54,6 @@ export function getHiddenNodeIds(nodes: LogicNode[]): Set<string> {
         vcData.cells.forEach((cell) => {
           collectCellBranchIds(cell, collapsedBranchIds);
         });
-      } else {
-        // Otherwise, only hide individually collapsed cells
-        const collapsedIndices = vcData.collapsedCellIndices || [];
-        vcData.cells.forEach((cell) => {
-          if (collapsedIndices.includes(cell.index)) {
-            collectCellBranchIds(cell, collapsedBranchIds);
-          }
-        });
       }
     } else if (isStructureNode(node)) {
       // If structure node is collapsed, hide all its expression branch children

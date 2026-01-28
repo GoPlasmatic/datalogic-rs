@@ -1,0 +1,525 @@
+/* ==========================================================================
+   Panel Input Styles
+   ========================================================================== */
+
+/* Field Container */
+.panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.panel-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dl-text-secondary, #666);
+}
+
+.panel-field-required {
+  color: var(--dl-error, #ef4444);
+  margin-left: 2px;
+}
+
+.panel-field-help {
+  font-size: 11px;
+  color: var(--dl-text-tertiary, #999);
+  line-height: 1.4;
+}
+
+/* ==========================================================================
+   Base Input Styles
+   ========================================================================== */
+
+.panel-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--dl-text-primary, #1a1a1a);
+  background: var(--dl-bg-input, #fff);
+  border: 1px solid var(--dl-border, #e0e0e0);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.panel-input:focus {
+  border-color: var(--dl-primary, #3b82f6);
+  box-shadow: 0 0 0 3px var(--dl-primary-alpha, rgba(59, 130, 246, 0.15));
+}
+
+.panel-input:disabled {
+  background: var(--dl-bg-disabled, #f5f5f5);
+  color: var(--dl-text-disabled, #aaa);
+  cursor: not-allowed;
+}
+
+.panel-input::placeholder {
+  color: var(--dl-text-placeholder, #bbb);
+}
+
+.panel-input-error {
+  border-color: var(--dl-error, #ef4444);
+}
+
+.panel-input-error:focus {
+  box-shadow: 0 0 0 3px var(--dl-error-alpha, rgba(239, 68, 68, 0.15));
+}
+
+.panel-input-error-message {
+  font-size: 11px;
+  color: var(--dl-error, #ef4444);
+  margin-top: 4px;
+}
+
+.panel-input-unsupported {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--dl-warning, #f59e0b);
+  background: var(--dl-warning-bg, #fffbeb);
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   Text Area
+   ========================================================================== */
+
+.panel-input-textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+}
+
+/* ==========================================================================
+   Number Input
+   ========================================================================== */
+
+.panel-input-number {
+  -moz-appearance: textfield;
+}
+
+.panel-input-number::-webkit-outer-spin-button,
+.panel-input-number::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ==========================================================================
+   Boolean Input (Toggle)
+   ========================================================================== */
+
+.panel-input-boolean {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.panel-input-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.panel-input-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: var(--dl-bg-toggle-off, #d1d5db);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+
+.panel-input-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.panel-input-checkbox:checked + .panel-input-toggle {
+  background: var(--dl-primary, #3b82f6);
+}
+
+.panel-input-checkbox:checked + .panel-input-toggle::after {
+  transform: translateX(16px);
+}
+
+.panel-input-checkbox:focus + .panel-input-toggle {
+  box-shadow: 0 0 0 3px var(--dl-primary-alpha, rgba(59, 130, 246, 0.15));
+}
+
+.panel-input-checkbox:disabled + .panel-input-toggle {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Select Input
+   ========================================================================== */
+
+.panel-input-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.panel-input-select {
+  appearance: none;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+.panel-input-select:disabled {
+  cursor: not-allowed;
+}
+
+.panel-input-select-arrow {
+  position: absolute;
+  right: 10px;
+  font-size: 10px;
+  color: var(--dl-text-tertiary, #999);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Path Input
+   ========================================================================== */
+
+.panel-input-path-wrapper {
+  display: flex;
+  align-items: center;
+  background: var(--dl-bg-input, #fff);
+  border: 1px solid var(--dl-border, #e0e0e0);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.panel-input-path-wrapper:focus-within {
+  border-color: var(--dl-primary, #3b82f6);
+  box-shadow: 0 0 0 3px var(--dl-primary-alpha, rgba(59, 130, 246, 0.15));
+}
+
+.panel-input-path-prefix {
+  padding: 8px 0 8px 10px;
+  font-size: 13px;
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  color: var(--dl-text-tertiary, #999);
+  user-select: none;
+}
+
+.panel-input-path {
+  border: none;
+  padding-left: 4px;
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+}
+
+.panel-input-path:focus {
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   Path Array Input
+   ========================================================================== */
+
+.panel-input-path-array {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel-input-path-segment {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panel-input-segment {
+  flex: 1;
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+}
+
+.panel-input-segment-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--dl-text-tertiary, #999);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.panel-input-segment-remove:hover {
+  background: var(--dl-error-bg, #fef2f2);
+  color: var(--dl-error, #ef4444);
+}
+
+.panel-input-segment-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel-input-add-segment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--dl-primary, #3b82f6);
+  background: transparent;
+  border: 1px dashed var(--dl-border, #e0e0e0);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.panel-input-add-segment:hover {
+  background: var(--dl-primary-bg, #eff6ff);
+  border-color: var(--dl-primary, #3b82f6);
+}
+
+.panel-input-add-segment:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel-input-path-preview {
+  font-size: 11px;
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  color: var(--dl-text-tertiary, #999);
+  padding: 4px 0;
+}
+
+/* ==========================================================================
+   Expression Input
+   ========================================================================== */
+
+.panel-input-expression {
+  padding: 10px 12px;
+  background: var(--dl-bg-subtle, #f8f9fa);
+  border: 1px dashed var(--dl-border, #e0e0e0);
+  border-radius: 6px;
+}
+
+.panel-input-expression.disabled {
+  opacity: 0.6;
+}
+
+.panel-input-expression-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.panel-input-expression-icon {
+  color: var(--dl-primary, #3b82f6);
+  flex-shrink: 0;
+}
+
+.panel-input-expression-summary {
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  color: var(--dl-text-primary, #1a1a1a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-input-expression-empty {
+  color: var(--dl-text-placeholder, #bbb);
+  font-style: italic;
+}
+
+.panel-input-expression-hint {
+  font-size: 10px;
+  color: var(--dl-text-tertiary, #999);
+  margin-top: 6px;
+}
+
+/* ==========================================================================
+   JSON Input
+   ========================================================================== */
+
+.panel-input-json-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-input-json {
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* ==========================================================================
+   Panel Renderer
+   ========================================================================== */
+
+.panel-renderer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ==========================================================================
+   Section Styles
+   ========================================================================== */
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dl-text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--dl-border-light, #f0f0f0);
+  margin-bottom: 12px;
+}
+
+.panel-section-header.collapsible {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.panel-section-header.collapsible:hover {
+  color: var(--dl-text-primary, #1a1a1a);
+}
+
+.panel-section-header.collapsible:focus {
+  outline: none;
+  color: var(--dl-primary, #3b82f6);
+}
+
+.panel-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dl-text-tertiary, #999);
+}
+
+.panel-section-title {
+  flex: 1;
+}
+
+.panel-section-content {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   Panel Hints
+   ========================================================================== */
+
+.panel-hint {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  background: var(--dl-bg-subtle, #f8f9fa);
+  border-radius: 8px;
+  border: 1px solid var(--dl-border-light, #f0f0f0);
+}
+
+.panel-hint-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.panel-hint-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-hint-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dl-text-secondary, #666);
+  margin-bottom: 4px;
+}
+
+.panel-hint-description {
+  font-size: 12px;
+  color: var(--dl-text-tertiary, #999);
+  line-height: 1.4;
+}
+
+.panel-hint-description code {
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-size: 11px;
+  background: var(--dl-bg-code, #e8e8e8);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Chainable hint */
+.panel-hint-chainable {
+  background: var(--dl-info-bg, #eff6ff);
+  border-color: var(--dl-info-border, #bfdbfe);
+}
+
+/* Context variables hint */
+.panel-hint-context {
+  background: var(--dl-success-bg, #f0fdf4);
+  border-color: var(--dl-success-border, #bbf7d0);
+}
+
+.panel-context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panel-context-example {
+  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-size: 11px;
+  background: var(--dl-bg-code, rgba(0, 0, 0, 0.06));
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--dl-text-primary, #1a1a1a);
+  display: inline-block;
+  width: fit-content;
+}
+
+.panel-context-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dl-text-secondary, #666);
+}
+
+.panel-context-description {
+  font-size: 11px;
+  color: var(--dl-text-tertiary, #999);
+}

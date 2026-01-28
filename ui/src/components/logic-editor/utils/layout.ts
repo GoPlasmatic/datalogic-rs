@@ -224,12 +224,8 @@ function buildEdgesFromNodes(nodes: LogicNode[]): LogicEdge[] {
     if (isVerticalCellNode(node)) {
       const vcData = node.data;
       if (!vcData.collapsed) {
-        const collapsedIndices = vcData.collapsedCellIndices || [];
-
         vcData.cells.forEach((cell) => {
-          if (collapsedIndices.includes(cell.index)) return;
-
-          // Use cell.index for stable handle IDs that don't shift when other cells collapse
+          // Use cell.index for stable handle IDs
           // Handle IDs match CellHandles.tsx: branch-{cellIndex}, branch-{cellIndex}-cond, branch-{cellIndex}-then
 
           // 1. Condition branch (if exists)

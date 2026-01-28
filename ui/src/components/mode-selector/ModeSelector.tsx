@@ -1,15 +1,13 @@
-import { Eye, Bug } from 'lucide-react';
+import { Eye, Bug, Pencil } from 'lucide-react';
 import type { DataLogicEditorMode } from '../logic-editor/types';
 import './ModeSelector.css';
 
-type SupportedMode = Exclude<DataLogicEditorMode, 'edit'>;
-
 interface ModeSelectorProps {
-  mode: SupportedMode;
-  onChange: (mode: SupportedMode) => void;
+  mode: DataLogicEditorMode;
+  onChange: (mode: DataLogicEditorMode) => void;
 }
 
-const MODE_CONFIG: Record<SupportedMode, { label: string; icon: typeof Eye; title: string }> = {
+const MODE_CONFIG: Record<DataLogicEditorMode, { label: string; icon: typeof Eye; title: string }> = {
   visualize: {
     label: 'View',
     icon: Eye,
@@ -20,9 +18,14 @@ const MODE_CONFIG: Record<SupportedMode, { label: string; icon: typeof Eye; titl
     icon: Bug,
     title: 'Debug with step-through execution',
   },
+  edit: {
+    label: 'Edit',
+    icon: Pencil,
+    title: 'Edit node properties',
+  },
 };
 
-const MODES: SupportedMode[] = ['visualize', 'debug'];
+const MODES: DataLogicEditorMode[] = ['visualize', 'debug', 'edit'];
 
 export function ModeSelector({ mode, onChange }: ModeSelectorProps) {
   return (
@@ -49,5 +52,7 @@ export function ModeSelector({ mode, onChange }: ModeSelectorProps) {
     </div>
   );
 }
+
+export type { ModeSelectorProps };
 
 export default ModeSelector;
