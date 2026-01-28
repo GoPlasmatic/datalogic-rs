@@ -7,7 +7,7 @@ import type {
   ExecutionStep,
 } from '../types';
 import { jsonLogicToNodes } from '../utils/jsonlogic-to-nodes';
-import { traceToNodes, buildEvaluationResultsFromTrace } from '../utils/trace-to-nodes';
+import { traceToNodes, buildEvaluationResultsFromTrace } from '../utils/trace';
 import { applyTreeLayout } from '../utils/layout';
 
 export interface EvaluationResult {

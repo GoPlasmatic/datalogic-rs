@@ -19,6 +19,7 @@ import ReactDOM from 'react-dom/client';
 import { DataLogicEditor, type JsonLogicValue } from './components/logic-editor';
 import { ModeSelector } from './components/mode-selector';
 import { useWasmEvaluator } from './components/logic-editor/hooks';
+import { tokenizeJson, type JsonToken } from './utils/json-tokenizer';
 
 // Import styles - include all component CSS (but NOT index.css which has global styles)
 import '@xyflow/react/dist/style.css';
@@ -38,101 +39,43 @@ const mountedRoots = new Map<Element, ReactDOM.Root>();
 // ============================================
 
 /**
+ * Render tokenized JSON as React nodes with syntax highlighting
+ */
+function renderJsonTokens(tokens: JsonToken[]): React.ReactNode[] {
+  return tokens.map((token, index) => {
+    if (token.type === 'whitespace') {
+      return token.value;
+    }
+    // Map token types to CSS class names
+    const classMap: Record<string, string> = {
+      key: 'json-key',
+      string: 'json-string',
+      number: 'json-number',
+      boolean: 'json-boolean',
+      null: 'json-null',
+      bracket: 'json-punctuation',
+      punctuation: 'json-punctuation',
+      unknown: '',
+    };
+    const className = classMap[token.type] || '';
+    if (!className) {
+      return token.value;
+    }
+    return (
+      <span key={index} className={className}>
+        {token.value}
+      </span>
+    );
+  });
+}
+
+/**
  * Highlight JSON text with syntax coloring
  */
 function highlightJsonText(text: string): React.ReactNode[] {
   if (!text) return [];
-
-  const result: React.ReactNode[] = [];
-  let i = 0;
-  let keyIndex = 0;
-
-  while (i < text.length) {
-    const char = text[i];
-
-    // Whitespace
-    if (/\s/.test(char)) {
-      let ws = '';
-      while (i < text.length && /\s/.test(text[i])) {
-        ws += text[i];
-        i++;
-      }
-      result.push(ws);
-      continue;
-    }
-
-    // String (key or value)
-    if (char === '"') {
-      let str = '"';
-      i++;
-      while (i < text.length && text[i] !== '"') {
-        if (text[i] === '\\' && i + 1 < text.length) {
-          str += text[i] + text[i + 1];
-          i += 2;
-        } else {
-          str += text[i];
-          i++;
-        }
-      }
-      if (i < text.length) {
-        str += '"';
-        i++;
-      }
-
-      // Check if this is a key (followed by :)
-      let j = i;
-      while (j < text.length && /\s/.test(text[j])) j++;
-      const isKey = text[j] === ':';
-
-      result.push(
-        <span key={`str-${keyIndex++}`} className={isKey ? 'json-key' : 'json-string'}>
-          {str}
-        </span>
-      );
-      continue;
-    }
-
-    // Number
-    if (/[-\d]/.test(char)) {
-      let num = '';
-      while (i < text.length && /[-\d.eE+]/.test(text[i])) {
-        num += text[i];
-        i++;
-      }
-      result.push(<span key={`num-${keyIndex++}`} className="json-number">{num}</span>);
-      continue;
-    }
-
-    // Boolean or null
-    if (text.slice(i, i + 4) === 'true') {
-      result.push(<span key={`bool-${keyIndex++}`} className="json-boolean">true</span>);
-      i += 4;
-      continue;
-    }
-    if (text.slice(i, i + 5) === 'false') {
-      result.push(<span key={`bool-${keyIndex++}`} className="json-boolean">false</span>);
-      i += 5;
-      continue;
-    }
-    if (text.slice(i, i + 4) === 'null') {
-      result.push(<span key={`null-${keyIndex++}`} className="json-null">null</span>);
-      i += 4;
-      continue;
-    }
-
-    // Punctuation
-    if (/[{}\[\]:,]/.test(char)) {
-      result.push(<span key={`punc-${keyIndex++}`} className="json-punctuation">{char}</span>);
-      i++;
-      continue;
-    }
-
-    // Other characters (invalid JSON, but still render)
-    result.push(char);
-    i++;
-  }
-
-  return result;
+  const tokens = tokenizeJson(text);
+  return renderJsonTokens(tokens);
 }
 
 interface JsonHighlightProps {

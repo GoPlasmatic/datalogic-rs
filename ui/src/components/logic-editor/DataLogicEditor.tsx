@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -17,32 +17,12 @@ import { getHiddenNodeIds } from './utils/visibility';
 import { buildEdgesFromNodes } from './utils/edge-builder';
 import { EvaluationContext, DebuggerProvider, ConnectedHandlesProvider } from './context';
 import { DebuggerControls } from './debugger-controls';
+import { REACT_FLOW_OPTIONS } from './constants/layout';
+import { useSystemTheme } from '../../hooks';
 import './styles/nodes.css';
 import './LogicEditor.css';
 
 const emptyResults: EvaluationResultsMap = new Map();
-
-// Hook to detect system theme
-function useSystemTheme(): 'light' | 'dark' {
-  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window === 'undefined') return 'light';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => {
-      setSystemTheme(e.matches ? 'dark' : 'light');
-    };
-
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
-
-  return systemTheme;
-}
 
 // Helper component to auto-fit view (must be inside ReactFlow)
 function AutoFitView({ nodeCount }: { nodeCount: number }) {
@@ -50,7 +30,10 @@ function AutoFitView({ nodeCount }: { nodeCount: number }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fitView({ padding: 0.2, maxZoom: 0.75 });
+      fitView({
+        padding: REACT_FLOW_OPTIONS.fitViewPadding,
+        maxZoom: REACT_FLOW_OPTIONS.maxZoom,
+      });
     }, 50);
     return () => clearTimeout(timer);
   }, [nodeCount, fitView]);
@@ -127,7 +110,10 @@ function DataLogicEditorInner({
             onEdgesChange={readOnly ? undefined : onEdgesChange}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.2, maxZoom: 0.75 }}
+            fitViewOptions={{
+              padding: REACT_FLOW_OPTIONS.fitViewPadding,
+              maxZoom: REACT_FLOW_OPTIONS.maxZoom,
+            }}
             minZoom={0.1}
             maxZoom={2}
             defaultEdgeOptions={{

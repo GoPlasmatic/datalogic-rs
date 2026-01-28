@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import type { ExecutionStep } from '../types/trace';
-import { formatResultValue, isComplexValue, getValueColorClass, tokenizeJson } from '../utils/formatting';
-import type { JsonToken, JsonTokenType } from '../utils/formatting';
+import { formatResultValue, isComplexValue } from '../utils/formatting';
+import { getValueColorClass } from '../utils/type-helpers';
+import { tokenizeValue, type JsonToken, type JsonTokenType } from '../../../utils/json-tokenizer';
 
 interface DebugInfoBubbleProps {
   step: ExecutionStep;
@@ -9,20 +10,22 @@ interface DebugInfoBubbleProps {
 }
 
 // Map token type to CSS class
-function getTokenClass(type: JsonTokenType | null): string {
-  if (!type) return '';
+function getTokenClass(type: JsonTokenType): string {
+  if (type === 'whitespace' || type === 'unknown') return '';
+  // Map boolean to handle true/false distinction
+  if (type === 'boolean') return 'json-syntax-boolean-true';
   return `json-syntax-${type}`;
 }
 
 // Render syntax-highlighted JSON
 function renderHighlightedJson(value: unknown): React.ReactNode {
-  const tokens = tokenizeJson(value);
+  const tokens = tokenizeValue(value);
   return tokens.map((token: JsonToken, index: number) => {
     const className = getTokenClass(token.type);
     if (className) {
-      return <span key={index} className={className}>{token.content}</span>;
+      return <span key={index} className={className}>{token.value}</span>;
     }
-    return <span key={index}>{token.content}</span>;
+    return <span key={index}>{token.value}</span>;
   });
 }
 

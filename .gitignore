@@ -34,3 +34,4 @@ docs/src/wasm/
 
 # UI build output
 ui/dist/
+ui/dist-embed/

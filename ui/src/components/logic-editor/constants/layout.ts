@@ -61,3 +61,9 @@ export const DECISION_NODE_DIMENSIONS = {
   // Header (28px) + 3 rows (32px each) + padding (8px) = 132px
   height: 132,
 } as const;
+
+// React Flow view options
+export const REACT_FLOW_OPTIONS = {
+  fitViewPadding: 0.2,
+  maxZoom: 0.75,
+} as const;

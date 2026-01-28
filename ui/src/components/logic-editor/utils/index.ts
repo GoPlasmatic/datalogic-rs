@@ -1,5 +1,5 @@
 export * from './jsonlogic-to-nodes';
-export * from './trace-to-nodes';
+export * from './trace';
 export * from './layout';
 export * from './visibility';
 export * from './type-helpers';

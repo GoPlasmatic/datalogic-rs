@@ -69,3 +69,17 @@ export function isSimpleOperand(operand: JsonLogicValue): boolean {
   // They need their own visual nodes for proper debug highlighting
   return false;
 }
+
+// Get CSS class for color-coding values by type in debug displays
+export function getValueColorClass(value: unknown): string {
+  if (value === null) return 'debug-value-null';
+  if (value === undefined) return 'debug-value-undefined';
+  if (typeof value === 'boolean') {
+    return value ? 'debug-value-boolean-true' : 'debug-value-boolean-false';
+  }
+  if (typeof value === 'number') return 'debug-value-number';
+  if (typeof value === 'string') return 'debug-value-string';
+  if (Array.isArray(value)) return 'debug-value-array';
+  if (typeof value === 'object') return 'debug-value-object';
+  return '';
+}
