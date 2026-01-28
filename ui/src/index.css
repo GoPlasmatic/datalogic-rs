@@ -23,6 +23,9 @@
   --accent-blue: #3b82f6;
   --accent-blue-light: #dbeafe;
 
+  --accent-amber: #f59e0b;
+  --accent-amber-light: #fef3c7;
+
   /* Status colors */
   --success-bg: #d1fae5;
   --success-text: #059669;
@@ -104,6 +107,9 @@
 
   --accent-blue: #60a5fa;
   --accent-blue-light: #1e3a5f;
+
+  --accent-amber: #fbbf24;
+  --accent-amber-light: #451a03;
 
   /* Status colors - darker variants */
   --success-bg: #064e3b;

@@ -171,6 +171,13 @@ export interface LogicEditorProps {
 export type DataLogicEditorMode = 'visualize' | 'debug' | 'edit';
 
 /**
+ * Component configuration mode:
+ * - 'debugger': Shows mode selector, allows switching between view/debug
+ * - 'visualizer': Hides mode selector, fixed to view mode only
+ */
+export type DataLogicComponentMode = 'debugger' | 'visualizer';
+
+/**
  * Props for the DataLogicEditor component (public API)
  */
 export interface DataLogicEditorProps {
@@ -203,4 +210,11 @@ export interface DataLogicEditorProps {
    * with embedded JSONLogic expressions, rather than invalid JSONLogic.
    */
   preserveStructure?: boolean;
+
+  /**
+   * Component mode configuration:
+   * - 'debugger' (default): Shows mode selector for view/debug switching
+   * - 'visualizer': Pure visualization mode, no mode selector shown
+   */
+  componentMode?: DataLogicComponentMode;
 }

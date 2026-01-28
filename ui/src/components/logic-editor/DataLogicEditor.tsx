@@ -163,12 +163,14 @@ export function DataLogicEditor({
   theme: themeProp,
   className = '',
   preserveStructure = false,
+  componentMode: _componentMode = 'debugger',
 }: DataLogicEditorProps) {
   // Warn about edit mode not being implemented
   if (mode === 'edit') {
     console.warn('[DataLogicEditor] Edit mode is not yet implemented. Component will render in read-only mode with debug evaluation if data is provided.');
   }
   void _onChange; // Editor mode not yet implemented
+  void _componentMode; // Component mode is handled by parent components (App.tsx, embed.tsx)
 
   // Theme handling - use prop override or system preference
   const systemTheme = useSystemTheme();

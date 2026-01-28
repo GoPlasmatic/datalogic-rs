@@ -1,3 +1,6 @@
+// Theme CSS variables (required for component styling)
+import './index.css';
+
 // Main component
 export { DataLogicEditor } from './components/logic-editor/DataLogicEditor';
 
@@ -6,6 +9,7 @@ export type {
   // Public props
   DataLogicEditorProps,
   DataLogicEditorMode,
+  DataLogicComponentMode,
   // JSONLogic types
   JsonLogicValue,
   // Node types (for advanced use)

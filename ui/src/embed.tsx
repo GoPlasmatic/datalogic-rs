@@ -201,6 +201,8 @@ interface WidgetProps {
   mode?: 'visualize' | 'debug';
   height?: string;
   theme?: 'light' | 'dark' | 'auto';
+  /** Component mode: 'debugger' shows mode selector, 'visualizer' hides it */
+  componentMode?: 'debugger' | 'visualizer';
 }
 
 function Widget({ logic: initialLogic, data: initialData = {}, mode = 'visualize', height = '500px', theme = 'auto' }: WidgetProps) {
@@ -396,8 +398,13 @@ const SAMPLE_EXPRESSIONS: Record<string, { logic: JsonLogicValue; data: object }
   },
 };
 
-function Playground() {
-  
+interface PlaygroundProps {
+  /** Component mode: 'debugger' shows mode selector, 'visualizer' hides it */
+  componentMode?: 'debugger' | 'visualizer';
+}
+
+function Playground({ componentMode = 'debugger' }: PlaygroundProps) {
+
   const [logicText, setLogicText] = useState<string>('');
   const [expression, setExpression] = useState<JsonLogicValue | null>(null);
   const [logicError, setLogicError] = useState<string | null>(null);
@@ -522,7 +529,9 @@ function Playground() {
               </option>
             ))}
           </select>
-          <ModeSelector mode={editorMode} onChange={setEditorMode} />
+          {componentMode === 'debugger' && (
+            <ModeSelector mode={editorMode} onChange={setEditorMode} />
+          )}
         </div>
       </div>
 
@@ -615,6 +624,7 @@ function parseDataAttributes(element: Element): WidgetProps {
   const modeAttr = (element.getAttribute('data-mode') || element.getAttribute('data-datalogic-mode')) as 'visualize' | 'debug' | null;
   const heightAttr = element.getAttribute('data-height') || element.getAttribute('data-datalogic-height');
   const themeAttr = (element.getAttribute('data-theme') || element.getAttribute('data-datalogic-theme')) as 'light' | 'dark' | 'auto' | null;
+  const componentModeAttr = (element.getAttribute('data-component-mode') || element.getAttribute('data-datalogic-component-mode')) as 'debugger' | 'visualizer' | null;
 
   let logic: JsonLogicValue = {};
   if (logicAttr) {
@@ -640,6 +650,7 @@ function parseDataAttributes(element: Element): WidgetProps {
     mode: modeAttr || 'visualize',
     height: heightAttr || '400px',
     theme: themeAttr || 'auto',
+    componentMode: componentModeAttr || 'debugger',
   };
 }
 
@@ -683,16 +694,22 @@ const DataLogicEmbed = {
   /**
    * Render the full playground into an element
    */
-  renderPlayground(element: Element) {
+  renderPlayground(element: Element, props: Partial<PlaygroundProps> = {}) {
     // Unmount existing root if present
     unmountElement(element);
+
+    // Parse componentMode from data attributes if not provided
+    const componentModeAttr = (element.getAttribute('data-component-mode') || element.getAttribute('data-datalogic-component-mode')) as 'debugger' | 'visualizer' | null;
+    const finalProps: PlaygroundProps = {
+      componentMode: props.componentMode || componentModeAttr || 'debugger',
+    };
 
     // Create root and render
     const root = ReactDOM.createRoot(element);
     mountedRoots.set(element, root);
     root.render(
       <React.StrictMode>
-        <Playground />
+        <Playground {...finalProps} />
       </React.StrictMode>
     );
   },
