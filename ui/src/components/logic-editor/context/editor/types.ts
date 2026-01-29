@@ -23,6 +23,9 @@ export interface EditorState {
 /** Node creation types */
 export type CreateNodeType = 'variable' | 'operator' | 'literal' | 'condition';
 
+/** Node types that can be added as an argument */
+export type AddArgumentNodeType = 'literal' | 'variable' | 'operator';
+
 /**
  * Clipboard data for copy/paste
  */
@@ -64,7 +67,7 @@ export interface EditorActions {
   /** Apply current panel values to the selected node */
   applyPanelChanges: () => void;
   /** Add a new argument to an N-ary operator node */
-  addArgumentToNode: (nodeId: string, defaultValue?: unknown) => void;
+  addArgumentToNode: (nodeId: string, nodeType?: AddArgumentNodeType, operatorName?: string) => void;
   /** Remove an argument from an operator node by index */
   removeArgumentFromNode: (nodeId: string, argIndex: number) => void;
   /** Get child nodes for a given parent node */

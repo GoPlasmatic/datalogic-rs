@@ -108,60 +108,83 @@ function getChildIds(data: LogicNode['data']): string[] {
 }
 
 /**
- * Update a parent node after one of its children is deleted
+ * Update a parent node after one of its children is deleted.
+ * Creates fully immutable updates - no mutation of original objects.
  */
 function updateParentAfterChildDeletion(
   parentNode: LogicNode,
   deletedChildId: string
 ): LogicNode {
-  const newData = { ...parentNode.data };
+  const data = parentNode.data;
 
-  switch (newData.type) {
+  switch (data.type) {
     case 'operator': {
-      const opData = newData as OperatorNodeData;
-      opData.childIds = opData.childIds.filter((id) => id !== deletedChildId);
-      break;
+      const opData = data as OperatorNodeData;
+      return {
+        ...parentNode,
+        data: {
+          ...opData,
+          childIds: opData.childIds.filter((id) => id !== deletedChildId),
+          // Note: expression is updated separately by caller (e.g., removeArgumentFromNode)
+        },
+      };
     }
     case 'verticalCell': {
-      const vcData = newData as VerticalCellNodeData;
-      vcData.cells = vcData.cells.filter((cell) => {
-        // Remove cell if its main branchId matches
-        if (cell.branchId === deletedChildId) return false;
-        // For if/then cells, clear the reference but keep the cell structure
-        if (cell.conditionBranchId === deletedChildId) {
-          cell.conditionBranchId = undefined;
-        }
-        if (cell.thenBranchId === deletedChildId) {
-          cell.thenBranchId = undefined;
-        }
-        return true;
-      });
-      break;
+      const vcData = data as VerticalCellNodeData;
+      return {
+        ...parentNode,
+        data: {
+          ...vcData,
+          cells: vcData.cells
+            .filter((cell) => cell.branchId !== deletedChildId)
+            .map((cell) => ({
+              ...cell, // Create new cell object to avoid mutation
+              conditionBranchId:
+                cell.conditionBranchId === deletedChildId
+                  ? undefined
+                  : cell.conditionBranchId,
+              thenBranchId:
+                cell.thenBranchId === deletedChildId
+                  ? undefined
+                  : cell.thenBranchId,
+            })),
+        },
+      };
     }
     case 'decision': {
-      const decData = newData as DecisionNodeData;
+      const decData = data as DecisionNodeData;
       // For decision nodes, we can't really remove branches - they're required
-      // Instead, we might need to replace with a default value
-      if (decData.conditionBranchId === deletedChildId) {
-        decData.conditionBranchId = undefined;
-        decData.isConditionComplex = false;
-      }
-      // yesBranchId and noBranchId can't be deleted - would make the if invalid
-      break;
+      // Instead, we clear the reference if it matches
+      return {
+        ...parentNode,
+        data: {
+          ...decData,
+          conditionBranchId:
+            decData.conditionBranchId === deletedChildId
+              ? undefined
+              : decData.conditionBranchId,
+          isConditionComplex:
+            decData.conditionBranchId === deletedChildId
+              ? false
+              : decData.isConditionComplex,
+        },
+      };
     }
     case 'structure': {
-      const structData = newData as StructureNodeData;
-      structData.elements = structData.elements.filter(
-        (el) => el.branchId !== deletedChildId
-      );
-      break;
+      const structData = data as StructureNodeData;
+      return {
+        ...parentNode,
+        data: {
+          ...structData,
+          elements: structData.elements.filter(
+            (el) => el.branchId !== deletedChildId
+          ),
+        },
+      };
     }
+    default:
+      return parentNode;
   }
-
-  return {
-    ...parentNode,
-    data: newData,
-  };
 }
 
 /**

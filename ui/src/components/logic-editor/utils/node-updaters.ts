@@ -110,7 +110,7 @@ function varPanelToData(
 
   // Build the expression
   let expression: JsonLogicValue;
-  if (hasDefault) {
+  if (hasDefault && defaultValue !== undefined) {
     expression = { var: [path, defaultValue] };
   } else {
     expression = { var: path };

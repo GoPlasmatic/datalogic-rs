@@ -149,7 +149,20 @@ export const ArgumentsSection = memo(function ArgumentsSection({
     return getChildNodes(node.id);
   }, [getChildNodes, node.id]);
 
-  // Build a map of childId -> node for quick lookup
+  // Build a map of argIndex -> childNode for correct matching (for operator nodes)
+  // Child nodes have an argIndex that corresponds to their position in the expression
+  const childNodeByArgIndex = useMemo(() => {
+    const map = new Map<number, LogicNode>();
+    childNodes.forEach((child) => {
+      const argIndex = child.data.argIndex;
+      if (argIndex !== undefined) {
+        map.set(argIndex, child);
+      }
+    });
+    return map;
+  }, [childNodes]);
+
+  // Build a map of childId -> node for verticalCell nodes (they use branchId references)
   const childNodeMap = useMemo(() => {
     const map = new Map<string, LogicNode>();
     childNodes.forEach((child) => {
@@ -176,9 +189,8 @@ export const ArgumentsSection = memo(function ArgumentsSection({
           : [operands as JsonLogicValue];
 
         return operandArray.map((operand, index) => {
-          // Check if this operand has a corresponding child node
-          const childId = opData.childIds[index];
-          const childNode = childId ? childNodeMap.get(childId) : undefined;
+          // Check if this operand has a corresponding child node by argIndex
+          const childNode = childNodeByArgIndex.get(index);
 
           if (childNode) {
             // Complex expression with child node
@@ -186,7 +198,7 @@ export const ArgumentsSection = memo(function ArgumentsSection({
               index,
               isInline: false,
               childNode,
-              childId,
+              childId: childNode.id,
             };
           } else if (isSimpleLiteral(operand)) {
             // Inlined literal
@@ -210,7 +222,7 @@ export const ArgumentsSection = memo(function ArgumentsSection({
 
       // Fallback: use childIds if no expression
       return opData.childIds.map((childId, index) => {
-        const childNode = childNodeMap.get(childId);
+        const childNode = childNodeByArgIndex.get(index);
         return {
           index,
           isInline: false,
@@ -273,7 +285,7 @@ export const ArgumentsSection = memo(function ArgumentsSection({
     }
 
     return [];
-  }, [node.data, childNodeMap]);
+  }, [node.data, childNodeByArgIndex, childNodeMap]);
 
   // Check if we can add/remove arguments
   const canAddArg = useMemo(() => {
@@ -296,25 +308,9 @@ export const ArgumentsSection = memo(function ArgumentsSection({
   // Check if this is a variable-arity operator (can add/remove args)
   const isVariableArity = supportsVariableArgs(opConfig);
 
-  // Get default value based on operator category
-  const getDefaultValue = () => {
-    if (!opConfig) return 0;
-    switch (opConfig.category) {
-      case 'arithmetic':
-        return 0;
-      case 'logical':
-        return true;
-      case 'string':
-        return '';
-      case 'comparison':
-        return 0;
-      default:
-        return 0;
-    }
-  };
-
   const handleAddArgument = () => {
-    addArgumentToNode(node.id, getDefaultValue());
+    // Default to adding a literal node
+    addArgumentToNode(node.id, 'literal');
   };
 
   const handleRemoveArgument = (argIndex: number) => {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Plus } from 'lucide-react';
 import type { OperatorNodeData } from '../types';
@@ -8,6 +8,7 @@ import { useEditorContext } from '../context/editor';
 import { getOperator } from '../config/operators';
 import { NodeInputHandles, CollapseToggleButton, NodeDebugBubble } from './shared';
 import { ExpressionSyntax } from '../utils/ExpressionSyntax';
+import { AddArgumentMenu, type AddArgumentNodeType } from '../context-menu';
 
 interface OperatorNodeProps {
   id: string;
@@ -24,6 +25,10 @@ export const OperatorNode = memo(function OperatorNode({
   const debugClassName = useDebugClassName(id);
   const toggleCollapse = useNodeCollapse(id);
   const { isEditMode, addArgumentToNode } = useEditorContext();
+
+  // State for the add argument menu
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
 
   // Get operator config for arity information
   const opConfig = getOperator(data.operator);
@@ -57,29 +62,32 @@ export const OperatorNode = memo(function OperatorNode({
     return maxArgs - data.childIds.length;
   }, [canAddArg, maxArgs, data.childIds.length]);
 
-  // Get default value for new argument based on operator category
-  const getDefaultValue = useCallback(() => {
-    if (!opConfig) return 0;
-    switch (opConfig.category) {
-      case 'arithmetic':
-        return 0;
-      case 'logical':
-        return true;
-      case 'string':
-        return '';
-      case 'comparison':
-        return 0;
-      default:
-        return 0;
-    }
-  }, [opConfig]);
-
-  const handleAddArgument = useCallback(
+  // Handle opening the add argument menu
+  const handleAddArgumentClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      addArgumentToNode(id, getDefaultValue());
+      // Get button's actual screen position
+      if (addButtonRef.current) {
+        const rect = addButtonRef.current.getBoundingClientRect();
+        // Position menu below and to the right of the button
+        setMenuPosition({ x: rect.right, y: rect.bottom });
+      }
     },
-    [id, addArgumentToNode, getDefaultValue]
+    []
+  );
+
+  // Handle menu close
+  const handleMenuClose = useCallback(() => {
+    setMenuPosition(null);
+  }, []);
+
+  // Handle menu selection
+  const handleMenuSelect = useCallback(
+    (type: AddArgumentNodeType, operatorName?: string) => {
+      addArgumentToNode(id, type, operatorName);
+      setMenuPosition(null);
+    },
+    [id, addArgumentToNode]
   );
 
   // Check if this is an inline-only node (unary operator with simple arg)
@@ -158,9 +166,10 @@ export const OperatorNode = memo(function OperatorNode({
           {/* Add argument button - positioned at bottom of node body */}
           {canAddArg && (
             <button
+              ref={addButtonRef}
               type="button"
               className="add-arg-button"
-              onClick={handleAddArgument}
+              onClick={handleAddArgumentClick}
               title={remainingSlots ? `Add argument (${remainingSlots} more available)` : 'Add argument'}
             >
               <Plus size={12} />
@@ -170,6 +179,17 @@ export const OperatorNode = memo(function OperatorNode({
             </button>
           )}
         </>
+      )}
+
+      {/* Add argument menu */}
+      {menuPosition && (
+        <AddArgumentMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={handleMenuClose}
+          onSelect={handleMenuSelect}
+          operatorCategory={data.category}
+        />
       )}
     </div>
   );

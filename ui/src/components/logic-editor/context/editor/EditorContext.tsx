@@ -7,12 +7,117 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { LogicNode, LogicNodeData, OperatorNodeData, LiteralNodeData, VerticalCellNodeData, VariableNodeData } from '../../types';
+import type { LogicNode, LogicNodeData, OperatorNodeData, LiteralNodeData, VerticalCellNodeData, VariableNodeData, JsonLogicValue } from '../../types';
 import type { EditorContextValue, CreateNodeType, ClipboardData } from './types';
 import { EditorContext } from './context';
 import { panelValuesToNodeData } from '../../utils/node-updaters';
 import { deleteNodeAndDescendants } from '../../utils/node-deletion';
+import { rebuildOperatorExpression } from '../../utils/expression-builder';
 import { getOperator } from '../../config/operators';
+
+// Pure helper function to get default value based on parent operator category
+function getDefaultValueForCategory(category: string): { value: unknown; valueType: 'number' | 'string' | 'boolean' | 'null' } {
+  switch (category) {
+    case 'arithmetic':
+      return { value: 0, valueType: 'number' };
+    case 'logical':
+      return { value: true, valueType: 'boolean' };
+    case 'string':
+      return { value: 'text', valueType: 'string' };
+    case 'comparison':
+      return { value: 0, valueType: 'number' };
+    case 'array':
+      return { value: 0, valueType: 'number' };
+    default:
+      return { value: 0, valueType: 'number' };
+  }
+}
+
+// Pure helper function to create a new argument node based on type
+function createArgumentNode(
+  nodeType: 'literal' | 'variable' | 'operator',
+  parentId: string,
+  argIndex: number,
+  category: string,
+  operatorName?: string
+): LogicNode[] {
+  const newNodeId = uuidv4();
+
+  if (nodeType === 'variable') {
+    // Create a variable node
+    return [{
+      id: newNodeId,
+      type: 'variable',
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'variable',
+        operator: 'var',
+        path: '',
+        expression: { var: '' },
+        parentId,
+        argIndex,
+      } as VariableNodeData,
+    }];
+  }
+
+  if (nodeType === 'operator' && operatorName) {
+    // Create an operator node with a default child
+    const opConfig = getOperator(operatorName);
+    const opCategory = opConfig?.category || 'arithmetic';
+    const { value, valueType } = getDefaultValueForCategory(opCategory);
+
+    // Create the operator node
+    const childId = uuidv4();
+    const operatorNode: LogicNode = {
+      id: newNodeId,
+      type: 'operator',
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'operator',
+        operator: operatorName,
+        category: opCategory,
+        label: opConfig?.label || operatorName,
+        childIds: [childId],
+        expression: { [operatorName]: [value] },
+        parentId,
+        argIndex,
+      } as OperatorNodeData,
+    };
+
+    // Create a default child literal
+    const childNode: LogicNode = {
+      id: childId,
+      type: 'literal',
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'literal',
+        value,
+        valueType,
+        expression: value,
+        parentId: newNodeId,
+        argIndex: 0,
+      } as LiteralNodeData,
+    };
+
+    return [operatorNode, childNode];
+  }
+
+  // Default: create a literal node with a valid default value based on category
+  const { value, valueType } = getDefaultValueForCategory(category);
+  return [{
+    id: newNodeId,
+    type: 'literal',
+    position: { x: 0, y: 0 },
+    data: {
+      type: 'literal',
+      value,
+      valueType,
+      expression: value,
+      parentId,
+      argIndex,
+    } as LiteralNodeData,
+  }];
+}
 
 interface EditorProviderProps {
   children: ReactNode;
@@ -35,6 +140,9 @@ export function EditorProvider({
 
   // Internal nodes state - starts from props but can be modified
   const [internalNodes, setInternalNodes] = useState<LogicNode[]>(propNodes);
+
+  // Ref to track current nodes for undo/redo (avoids stale closures)
+  const nodesRef = useRef<LogicNode[]>(propNodes);
 
   // Track if we should use internal nodes (after first edit) or prop nodes
   const hasEditedRef = useRef(false);
@@ -91,6 +199,11 @@ export function EditorProvider({
     }
   }, [initialEditMode, propNodes]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Keep nodesRef in sync with internalNodes for undo/redo
+  useEffect(() => {
+    nodesRef.current = internalNodes;
+  }, [internalNodes]);
 
   // Use internal nodes when in edit mode, otherwise prop nodes
   const nodes = isEditMode ? internalNodes : propNodes;
@@ -291,7 +404,7 @@ export function EditorProvider({
 
   // Add a new argument to an N-ary operator node
   const addArgumentToNode = useCallback(
-    (nodeId: string, defaultValue: unknown = 0) => {
+    (nodeId: string, nodeType: 'literal' | 'variable' | 'operator' = 'literal', operatorName?: string) => {
       setInternalNodes((prev) => {
         const parentNode = prev.find((n) => n.id === nodeId);
         if (!parentNode) return prev;
@@ -318,42 +431,55 @@ export function EditorProvider({
               return prev;
             }
 
-            // Find the next argument index
-            const existingChildren = prev.filter((n) => n.data.parentId === nodeId);
-            const maxIndex = Math.max(-1, ...existingChildren.map((n) => n.data.argIndex ?? 0));
-            const newArgIndex = maxIndex + 1;
+            // Get current expression operands to determine correct argIndex
+            const expr = operatorData.expression;
+            let currentOperands: unknown[] = [];
+            if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
+              const opKey = Object.keys(expr)[0];
+              const operands = (expr as Record<string, unknown>)[opKey];
+              currentOperands = Array.isArray(operands) ? operands : [operands];
+            }
 
-            // Create new literal node
-            const newNodeId = uuidv4();
-            const newNode: LogicNode = {
-              id: newNodeId,
-              type: 'literal',
-              position: { x: 0, y: 0 },
-              data: {
-                type: 'literal',
-                value: defaultValue,
-                valueType: typeof defaultValue === 'number' ? 'number' : typeof defaultValue === 'string' ? 'string' : typeof defaultValue === 'boolean' ? 'boolean' : 'null',
-                expression: defaultValue,
-                parentId: nodeId,
-                argIndex: newArgIndex,
-              } as LiteralNodeData,
-            };
+            // The new argument index should be based on expression operands, not just child nodes
+            const newArgIndex = currentOperands.length;
 
-            // Update parent's childIds
+            // Create new node(s) based on type
+            const newNodes = createArgumentNode(nodeType, nodeId, newArgIndex, opConfig.category, operatorName);
+            const newNodeId = newNodes[0].id;
+
+            // Get the new node's value for the expression
+            const newNodeData = newNodes[0].data;
+            let newValue: unknown = 0;
+            if (newNodeData.type === 'literal') {
+              newValue = (newNodeData as LiteralNodeData).value;
+            } else if (newNodeData.type === 'variable') {
+              newValue = (newNodeData as VariableNodeData).expression;
+            } else if (newNodeData.type === 'operator') {
+              newValue = (newNodeData as OperatorNodeData).expression;
+            }
+
+            // Update parent's childIds AND expression
+            const opKey = expr && typeof expr === 'object' && !Array.isArray(expr)
+              ? Object.keys(expr)[0]
+              : operatorData.operator;
+            const newOperands = [...currentOperands, newValue] as JsonLogicValue[];
+
             const updatedParent: LogicNode = {
               ...parentNode,
               data: {
                 ...operatorData,
                 childIds: [...operatorData.childIds, newNodeId],
+                expression: { [opKey]: newOperands } as JsonLogicValue,
+                expressionText: undefined, // Will be regenerated
               },
             };
 
-            const newNodes = prev.map((n) => (n.id === nodeId ? updatedParent : n));
-            newNodes.push(newNode);
+            const result = prev.map((n) => (n.id === nodeId ? updatedParent : n));
+            result.push(...newNodes);
 
             hasEditedRef.current = true;
-            onNodesChange?.(newNodes);
-            return newNodes;
+            onNodesChange?.(result);
+            return result;
           }
         } else if (parentData.type === 'verticalCell') {
           // Handle vertical cell nodes (comparison chains, logical operators)
@@ -371,27 +497,38 @@ export function EditorProvider({
               return prev;
             }
 
-            // Find the next index
-            const maxIndex = Math.max(-1, ...verticalData.cells.map((c) => c.index));
-            const newIndex = maxIndex + 1;
+            // Get current expression operands
+            const expr = verticalData.expression;
+            let currentOperands: JsonLogicValue[] = [];
+            if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
+              const opKey = Object.keys(expr)[0];
+              const operands = (expr as Record<string, unknown>)[opKey];
+              currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
+            }
 
-            // Create new literal node
-            const newNodeId = uuidv4();
-            const newNode: LogicNode = {
-              id: newNodeId,
-              type: 'literal',
-              position: { x: 0, y: 0 },
-              data: {
-                type: 'literal',
-                value: defaultValue,
-                valueType: typeof defaultValue === 'number' ? 'number' : typeof defaultValue === 'string' ? 'string' : typeof defaultValue === 'boolean' ? 'boolean' : 'null',
-                expression: defaultValue,
-                parentId: nodeId,
-                argIndex: newIndex,
-              } as LiteralNodeData,
-            };
+            // Find the next index (use expression length to ensure correct index)
+            const newIndex = currentOperands.length;
 
-            // Update vertical cell's cells array
+            // Create new node(s) based on type
+            const newNodes = createArgumentNode(nodeType, nodeId, newIndex, opConfig.category, operatorName);
+            const newNodeId = newNodes[0].id;
+
+            // Get the new node's value for the expression
+            const newNodeData = newNodes[0].data;
+            let newValue: JsonLogicValue = 0;
+            if (newNodeData.type === 'literal') {
+              newValue = (newNodeData as LiteralNodeData).value as JsonLogicValue;
+            } else if (newNodeData.type === 'variable') {
+              newValue = (newNodeData as VariableNodeData).expression as JsonLogicValue;
+            } else if (newNodeData.type === 'operator') {
+              newValue = (newNodeData as OperatorNodeData).expression as JsonLogicValue;
+            }
+
+            // Build new expression with the added operand
+            const newOperands = [...currentOperands, newValue];
+            const newExpression = { [verticalData.operator]: newOperands } as JsonLogicValue;
+
+            // Update vertical cell's cells array AND expression
             const updatedParent: LogicNode = {
               ...parentNode,
               data: {
@@ -404,15 +541,17 @@ export function EditorProvider({
                     index: newIndex,
                   },
                 ],
+                expression: newExpression,
+                expressionText: undefined, // Force regeneration
               },
             };
 
-            const newNodes = prev.map((n) => (n.id === nodeId ? updatedParent : n));
-            newNodes.push(newNode);
+            const result = prev.map((n) => (n.id === nodeId ? updatedParent : n));
+            result.push(...newNodes);
 
             hasEditedRef.current = true;
-            onNodesChange?.(newNodes);
-            return newNodes;
+            onNodesChange?.(result);
+            return result;
           }
         }
 
@@ -453,24 +592,34 @@ export function EditorProvider({
           // Remove the child and its descendants
           let newNodes = deleteNodeAndDescendants(childToRemove.id, prev);
 
-          // Update parent's childIds
+          // Build new childIds array
+          const newChildIds = operatorData.childIds.filter((id) => id !== childToRemove.id);
+
+          // Reindex remaining children first
+          newNodes = newNodes.map((n) => {
+            if (n.data.parentId === nodeId && (n.data.argIndex ?? 0) > argIndex) {
+              return {
+                ...n,
+                data: { ...n.data, argIndex: (n.data.argIndex ?? 0) - 1 },
+              };
+            }
+            return n;
+          });
+
+          // Get remaining child nodes and rebuild expression
+          const remainingChildren = newNodes.filter((n) => newChildIds.includes(n.id));
+          const newExpression = rebuildOperatorExpression(operatorData.operator, remainingChildren);
+
+          // Update parent with BOTH childIds AND expression
           newNodes = newNodes.map((n) => {
             if (n.id === nodeId) {
               return {
                 ...n,
                 data: {
                   ...operatorData,
-                  childIds: operatorData.childIds.filter((id) => id !== childToRemove.id),
-                },
-              };
-            }
-            // Reindex remaining children
-            if (n.data.parentId === nodeId && (n.data.argIndex ?? 0) > argIndex) {
-              return {
-                ...n,
-                data: {
-                  ...n.data,
-                  argIndex: (n.data.argIndex ?? 0) - 1,
+                  childIds: newChildIds,
+                  expression: newExpression,
+                  expressionText: undefined, // Force regeneration
                 },
               };
             }
@@ -490,14 +639,29 @@ export function EditorProvider({
             return prev;
           }
 
-          // Find the cell and its branch node
+          // Find the cell to remove
           const cellToRemove = verticalData.cells.find((c) => c.index === argIndex);
-          if (!cellToRemove || !cellToRemove.branchId) return prev;
+          if (!cellToRemove) return prev;
 
-          // Remove the branch node and its descendants
-          let newNodes = deleteNodeAndDescendants(cellToRemove.branchId, prev);
+          // Get current expression operands
+          const expr = verticalData.expression;
+          let currentOperands: JsonLogicValue[] = [];
+          if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
+            const opKey = Object.keys(expr)[0];
+            const operands = (expr as Record<string, unknown>)[opKey];
+            currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
+          }
 
-          // Update parent's cells array
+          // Remove the branch node and its descendants (if it's a branch cell)
+          let newNodes = cellToRemove.branchId
+            ? deleteNodeAndDescendants(cellToRemove.branchId, prev)
+            : prev;
+
+          // Build new operands array by removing the argument at argIndex
+          const newOperands = currentOperands.filter((_, i) => i !== argIndex);
+          const newExpression = { [verticalData.operator]: newOperands } as JsonLogicValue;
+
+          // Update parent's cells array AND expression
           newNodes = newNodes.map((n) => {
             if (n.id === nodeId) {
               const updatedCells = verticalData.cells
@@ -511,6 +675,8 @@ export function EditorProvider({
                 data: {
                   ...verticalData,
                   cells: updatedCells,
+                  expression: newExpression,
+                  expressionText: undefined, // Force regeneration
                 },
               };
             }
@@ -914,7 +1080,8 @@ export function EditorProvider({
     if (undoStackRef.current.length === 0) return;
 
     const previousState = undoStackRef.current.pop()!;
-    redoStackRef.current.push(JSON.parse(JSON.stringify(internalNodes)));
+    // Use nodesRef instead of stale internalNodes to avoid closure issues
+    redoStackRef.current.push(JSON.parse(JSON.stringify(nodesRef.current)));
     setHistoryVersion((v) => v + 1);
 
     setInternalNodes(previousState);
@@ -924,14 +1091,15 @@ export function EditorProvider({
     setSelectedNodeId(null);
     setSelectedNodeIds(new Set());
     setPanelValues({});
-  }, [internalNodes, onNodesChange]);
+  }, [onNodesChange]);
 
   // Redo the last undone action
   const redo = useCallback(() => {
     if (redoStackRef.current.length === 0) return;
 
     const nextState = redoStackRef.current.pop()!;
-    undoStackRef.current.push(JSON.parse(JSON.stringify(internalNodes)));
+    // Use nodesRef instead of stale internalNodes to avoid closure issues
+    undoStackRef.current.push(JSON.parse(JSON.stringify(nodesRef.current)));
     setHistoryVersion((v) => v + 1);
 
     setInternalNodes(nextState);
@@ -941,7 +1109,7 @@ export function EditorProvider({
     setSelectedNodeId(null);
     setSelectedNodeIds(new Set());
     setPanelValues({});
-  }, [internalNodes, onNodesChange]);
+  }, [onNodesChange]);
 
   // Check if undo/redo are available (computed in useMemo with historyVersion dependency)
   const canUndo = useMemo(

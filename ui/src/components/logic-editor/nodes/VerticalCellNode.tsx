@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import type { VerticalCellNodeData } from '../types';
 import { CATEGORY_COLORS } from '../types';
@@ -9,6 +9,7 @@ import { NodeInputHandles, CollapseToggleButton, NodeDebugBubble } from './share
 import { CellRow } from './CellRow';
 import { Icon } from '../utils/icons';
 import { ExpressionSyntax } from '../utils/ExpressionSyntax';
+import { AddArgumentMenu, type AddArgumentNodeType } from '../context-menu';
 
 interface VerticalCellNodeProps {
   id: string;
@@ -25,6 +26,10 @@ export const VerticalCellNode = memo(function VerticalCellNode({
   const debugClassName = useDebugClassName(id);
   const toggleNodeCollapse = useNodeCollapse(id);
   const { isEditMode, addArgumentToNode } = useEditorContext();
+
+  // State for the add argument menu
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
 
   // Get operator config for arity information
   const opConfig = getOperator(data.operator);
@@ -59,29 +64,32 @@ export const VerticalCellNode = memo(function VerticalCellNode({
     return maxArgs - data.cells.length;
   }, [canAddArg, maxArgs, data.cells.length]);
 
-  // Get default value for new argument based on operator category
-  const getDefaultValue = useCallback(() => {
-    if (!opConfig) return 0;
-    switch (opConfig.category) {
-      case 'arithmetic':
-        return 0;
-      case 'logical':
-        return true;
-      case 'string':
-        return '';
-      case 'comparison':
-        return 0;
-      default:
-        return 0;
-    }
-  }, [opConfig]);
-
-  const handleAddArgument = useCallback(
+  // Handle opening the add argument menu
+  const handleAddArgumentClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      addArgumentToNode(id, getDefaultValue());
+      // Get button's actual screen position
+      if (addButtonRef.current) {
+        const rect = addButtonRef.current.getBoundingClientRect();
+        // Position menu below and to the right of the button
+        setMenuPosition({ x: rect.right, y: rect.bottom });
+      }
     },
-    [id, addArgumentToNode, getDefaultValue]
+    []
+  );
+
+  // Handle menu close
+  const handleMenuClose = useCallback(() => {
+    setMenuPosition(null);
+  }, []);
+
+  // Handle menu selection
+  const handleMenuSelect = useCallback(
+    (type: AddArgumentNodeType, operatorName?: string) => {
+      addArgumentToNode(id, type, operatorName);
+      setMenuPosition(null);
+    },
+    [id, addArgumentToNode]
   );
 
   // Node is collapsible if it has more than 1 arg (any type)
@@ -129,9 +137,10 @@ export const VerticalCellNode = memo(function VerticalCellNode({
           {/* Add Row button for variable arity operators */}
           {canAddArg && (
             <button
+              ref={addButtonRef}
               type="button"
               className="add-arg-button add-arg-button--vertical"
-              onClick={handleAddArgument}
+              onClick={handleAddArgumentClick}
               title={remainingSlots ? `Add row (${remainingSlots} more available)` : 'Add row'}
             >
               <Plus size={12} />
@@ -141,6 +150,17 @@ export const VerticalCellNode = memo(function VerticalCellNode({
             </button>
           )}
         </div>
+      )}
+
+      {/* Add argument menu */}
+      {menuPosition && (
+        <AddArgumentMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={handleMenuClose}
+          onSelect={handleMenuSelect}
+          operatorCategory={data.category}
+        />
       )}
     </div>
   );

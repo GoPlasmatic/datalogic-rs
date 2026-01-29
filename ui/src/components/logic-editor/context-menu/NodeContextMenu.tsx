@@ -12,6 +12,7 @@
  */
 
 import { memo, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Edit3,
   Plus,
@@ -22,12 +23,20 @@ import {
   ChevronRight,
   Layers,
   MousePointer2,
+  Hash,
+  Variable,
+  Calculator,
 } from 'lucide-react';
 import { ContextMenu, type MenuItemConfig } from './ContextMenu';
 import { useEditorContext } from '../context/editor';
 import type { LogicNode, OperatorNodeData, VerticalCellNodeData } from '../types';
-import { getOperator } from '../config/operators';
+import { getOperator, getOperatorsGroupedByCategory } from '../config/operators';
+import type { OperatorCategory } from '../config/operators.types';
 import { isRootNode } from '../utils/node-deletion';
+
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 export interface NodeContextMenuProps {
   /** X position (screen coordinates) */
@@ -146,15 +155,65 @@ export const NodeContextMenu = memo(function NodeContextMenu({
 
     items.push({ id: 'divider' } as MenuItemConfig);
 
-    // Add Argument (for n-ary operators)
+    // Add Argument submenu (for n-ary operators)
     if (canModifyArgs.canAdd) {
+      // Build operator submenu grouped by category
+      const grouped = getOperatorsGroupedByCategory();
+      const categoryOrder = [
+        'arithmetic',
+        'comparison',
+        'logical',
+        'string',
+        'array',
+        'control',
+        'datetime',
+        'validation',
+        'variable',
+        'utility',
+        'error',
+      ];
+
+      const operatorSubmenu: MenuItemConfig[] = [];
+      for (const category of categoryOrder) {
+        const operators = grouped.get(category as OperatorCategory);
+        if (!operators || operators.length === 0) continue;
+
+        operatorSubmenu.push({
+          id: `category-${category}`,
+          label: capitalizeFirst(category),
+          submenu: operators.slice(0, 10).map((op) => ({
+            id: `op-${op.name}`,
+            label: op.label || op.name,
+            onClick: () => addArgumentToNode(node.id, 'operator', op.name),
+          })),
+        });
+      }
+
       items.push({
         id: 'add-argument',
         label: 'Add Argument',
         icon: <Plus size={14} />,
-        onClick: () => {
-          addArgumentToNode(node.id);
-        },
+        submenu: [
+          {
+            id: 'add-literal',
+            label: 'Literal Value',
+            icon: <Hash size={14} />,
+            onClick: () => addArgumentToNode(node.id, 'literal'),
+          },
+          {
+            id: 'add-variable',
+            label: 'Variable',
+            icon: <Variable size={14} />,
+            onClick: () => addArgumentToNode(node.id, 'variable'),
+          },
+          { id: 'divider' } as MenuItemConfig,
+          {
+            id: 'add-operator',
+            label: 'Operator',
+            icon: <Calculator size={14} />,
+            submenu: operatorSubmenu,
+          },
+        ],
       });
     }
 
@@ -306,7 +365,11 @@ export const NodeContextMenu = memo(function NodeContextMenu({
     deleteNode,
   ]);
 
-  return <ContextMenu x={x} y={y} items={menuItems} onClose={onClose} />;
+  // Use a portal to render outside of ReactFlow's transformed container
+  return createPortal(
+    <ContextMenu x={x} y={y} items={menuItems} onClose={onClose} />,
+    document.body
+  );
 });
 
 // Helper to get a human-readable label for a child node
