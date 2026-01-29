@@ -36,3 +36,14 @@
 .mode-button svg {
   flex-shrink: 0;
 }
+
+.beta-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent-purple, #8b5cf6);
+  color: white;
+  line-height: 1;
+  margin-left: 2px;
+}

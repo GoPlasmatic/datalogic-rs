@@ -170,6 +170,41 @@
   font-weight: 500;
 }
 
+/* Share Button */
+.share-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.share-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.share-button:active:not(:disabled) {
+  background: var(--bg-active);
+}
+
+.share-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.share-button .text-green {
+  color: var(--success-text);
+}
+
 /* Theme Toggle */
 .theme-toggle {
   display: flex;

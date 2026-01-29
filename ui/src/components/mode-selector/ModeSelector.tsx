@@ -7,7 +7,7 @@ interface ModeSelectorProps {
   onChange: (mode: DataLogicEditorMode) => void;
 }
 
-const MODE_CONFIG: Record<DataLogicEditorMode, { label: string; icon: typeof Eye; title: string }> = {
+const MODE_CONFIG: Record<DataLogicEditorMode, { label: string; icon: typeof Eye; title: string; beta?: boolean }> = {
   visualize: {
     label: 'View',
     icon: Eye,
@@ -21,7 +21,8 @@ const MODE_CONFIG: Record<DataLogicEditorMode, { label: string; icon: typeof Eye
   edit: {
     label: 'Edit',
     icon: Pencil,
-    title: 'Edit node properties',
+    title: 'Visual Editor (Beta)',
+    beta: true,
   },
 };
 
@@ -46,6 +47,7 @@ export function ModeSelector({ mode, onChange }: ModeSelectorProps) {
           >
             <Icon size={14} />
             <span>{config.label}</span>
+            {config.beta && <span className="beta-badge">β</span>}
           </button>
         );
       })}

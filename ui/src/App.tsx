@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Sun, Moon, Github, BookOpen, ChevronDown } from "lucide-react";
+import { Sun, Moon, Github, BookOpen, ChevronDown, Link2, Check } from "lucide-react";
+import { generateShareableUrl, parseShareableUrl } from "./utils/url-share";
 import {
   DataLogicEditor,
   type JsonLogicValue,
@@ -316,6 +317,10 @@ function App() {
   const [examplesDropdownOpen, setExamplesDropdownOpen] = useState(false);
   const examplesDropdownRef = useRef<HTMLDivElement>(null);
 
+  // URL sharing state
+  const [copied, setCopied] = useState(false);
+  const initializedRef = useRef(false);
+
   // Resizable panel state
   const [panelWidth, setPanelWidth] = useState<number>(350);
   const [isDragging, setIsDragging] = useState(false);
@@ -398,11 +403,39 @@ function App() {
     }
   }, []);
 
-  // Load first sample on mount
+  // Share current state via URL
+  const handleShare = useCallback(async () => {
+    if (!expression) return;
+    try {
+      const url = generateShareableUrl(expression, data, preserveStructure);
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy shareable URL:', err);
+    }
+  }, [expression, data, preserveStructure]);
+
+  // Load from URL or first sample on mount
   useEffect(() => {
-    const firstSample = Object.keys(SAMPLE_EXPRESSIONS)[0];
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialization on mount is intentional
-    loadSample(firstSample);
+    // Prevent double initialization in StrictMode
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const shared = parseShareableUrl();
+    if (shared) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialization on mount is intentional
+      setExpression(shared.logic as JsonLogicValue);
+      setLogicText(JSON.stringify(shared.logic, null, 2));
+      setData(shared.data as object);
+      setDataText(JSON.stringify(shared.data, null, 2));
+      if (shared.preserveStructure) setPreserveStructure(true);
+      // Clear the URL parameter after loading
+      window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      const firstSample = Object.keys(SAMPLE_EXPRESSIONS)[0];
+      loadSample(firstSample);
+    }
   }, [loadSample]);
 
   // Close dropdown when clicking outside
@@ -475,8 +508,8 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-title">
-          <h1>DataLogic Debugger</h1>
-          <span className="header-subtitle">Visual JSONLogic Debugger</span>
+          <h1>DataLogic Studio</h1>
+          <span className="header-subtitle">Visual JSONLogic Editor & Debugger</span>
         </div>
         <div className="header-controls">
           <div className="header-links">
@@ -532,6 +565,14 @@ function App() {
               </div>
             )}
           </div>
+          <button
+            className="share-button"
+            onClick={handleShare}
+            disabled={!expression || !!logicError}
+            title="Copy shareable link"
+          >
+            {copied ? <Check size={18} className="text-green" /> : <Link2 size={18} />}
+          </button>
           <button
             className="theme-toggle"
             onClick={toggleTheme}
