@@ -30,13 +30,9 @@ import {
 import { ContextMenu, type MenuItemConfig } from './ContextMenu';
 import { useEditorContext } from '../context/editor';
 import type { LogicNode, OperatorNodeData, VerticalCellNodeData } from '../types';
-import { getOperator, getOperatorsGroupedByCategory } from '../config/operators';
-import type { OperatorCategory } from '../config/operators.types';
+import { getOperator } from '../config/operators';
 import { isRootNode } from '../utils/node-deletion';
-
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
+import { buildOperatorSubmenu } from '../utils/menu-builder';
 
 export interface NodeContextMenuProps {
   /** X position (screen coordinates) */
@@ -157,37 +153,10 @@ export const NodeContextMenu = memo(function NodeContextMenu({
 
     // Add Argument submenu (for n-ary operators)
     if (canModifyArgs.canAdd) {
-      // Build operator submenu grouped by category
-      const grouped = getOperatorsGroupedByCategory();
-      const categoryOrder = [
-        'arithmetic',
-        'comparison',
-        'logical',
-        'string',
-        'array',
-        'control',
-        'datetime',
-        'validation',
-        'variable',
-        'utility',
-        'error',
-      ];
-
-      const operatorSubmenu: MenuItemConfig[] = [];
-      for (const category of categoryOrder) {
-        const operators = grouped.get(category as OperatorCategory);
-        if (!operators || operators.length === 0) continue;
-
-        operatorSubmenu.push({
-          id: `category-${category}`,
-          label: capitalizeFirst(category),
-          submenu: operators.slice(0, 10).map((op) => ({
-            id: `op-${op.name}`,
-            label: op.label || op.name,
-            onClick: () => addArgumentToNode(node.id, 'operator', op.name),
-          })),
-        });
-      }
+      // Build operator submenu using the shared utility
+      const operatorSubmenu = buildOperatorSubmenu(
+        (opName) => addArgumentToNode(node.id, 'operator', opName)
+      );
 
       items.push({
         id: 'add-argument',

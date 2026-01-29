@@ -6,7 +6,7 @@ import type {
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
 import type { TraceContext } from '../types';
-import { getOperatorMeta, getOperatorTitle } from '../../../constants';
+import { getOperatorMeta, getOperatorTitle } from '../../../config/operators';
 import { generateExpressionText } from '../../formatting';
 import { isSimpleOperand } from '../../type-helpers';
 import { createArgEdge } from '../../node-factory';

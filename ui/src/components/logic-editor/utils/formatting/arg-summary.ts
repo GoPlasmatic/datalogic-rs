@@ -1,5 +1,6 @@
 import type { JsonLogicValue, ArgSummary } from '../../types';
-import { getOperatorTitle, TRUNCATION_LIMITS } from '../../constants';
+import { TRUNCATION_LIMITS } from '../../constants';
+import { getOperatorTitle } from '../../config/operators';
 import { isPlainObject, looksLikeDate } from '../type-helpers';
 import { TYPE_ICONS, VARIABLE_ICONS } from '../icons';
 

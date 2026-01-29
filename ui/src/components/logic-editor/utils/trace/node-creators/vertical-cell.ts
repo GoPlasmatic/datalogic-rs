@@ -7,7 +7,8 @@ import type {
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
 import type { TraceContext } from '../types';
-import { getOperatorMeta, getOperatorTitle, TRUNCATION_LIMITS } from '../../../constants';
+import { TRUNCATION_LIMITS } from '../../../constants';
+import { getOperatorMeta, getOperatorTitle } from '../../../config/operators';
 import { CATEGORY_ICONS, ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../../icons';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from '../../formatting';
 import { isSimpleOperand } from '../../type-helpers';

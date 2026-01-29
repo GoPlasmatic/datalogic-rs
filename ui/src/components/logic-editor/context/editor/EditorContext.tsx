@@ -3,121 +3,33 @@
  *
  * Provides state management for the visual editor including
  * node selection, edit mode, and panel field values.
+ *
+ * This context composes functionality from extracted services:
+ * - HistoryService: undo/redo
+ * - SelectionService: node selection (currently inlined for state access)
+ * - ClipboardService: copy/paste
+ * - NodeMutationService: pure functions for node mutations
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { LogicNode, LogicNodeData, OperatorNodeData, LiteralNodeData, VerticalCellNodeData, VariableNodeData, JsonLogicValue } from '../../types';
-import type { EditorContextValue, CreateNodeType, ClipboardData } from './types';
+import type { LogicNode, LogicNodeData, OperatorNodeData, LiteralNodeData, VerticalCellNodeData, VariableNodeData } from '../../types';
+import type { EditorContextValue, CreateNodeType } from './types';
 import { EditorContext } from './context';
 import { panelValuesToNodeData } from '../../utils/node-updaters';
 import { deleteNodeAndDescendants } from '../../utils/node-deletion';
-import { rebuildOperatorExpression } from '../../utils/expression-builder';
 import { getOperator } from '../../config/operators';
-
-// Pure helper function to get default value based on parent operator category
-function getDefaultValueForCategory(category: string): { value: unknown; valueType: 'number' | 'string' | 'boolean' | 'null' } {
-  switch (category) {
-    case 'arithmetic':
-      return { value: 0, valueType: 'number' };
-    case 'logical':
-      return { value: true, valueType: 'boolean' };
-    case 'string':
-      return { value: 'text', valueType: 'string' };
-    case 'comparison':
-      return { value: 0, valueType: 'number' };
-    case 'array':
-      return { value: 0, valueType: 'number' };
-    default:
-      return { value: 0, valueType: 'number' };
-  }
-}
-
-// Pure helper function to create a new argument node based on type
-function createArgumentNode(
-  nodeType: 'literal' | 'variable' | 'operator',
-  parentId: string,
-  argIndex: number,
-  category: string,
-  operatorName?: string
-): LogicNode[] {
-  const newNodeId = uuidv4();
-
-  if (nodeType === 'variable') {
-    // Create a variable node
-    return [{
-      id: newNodeId,
-      type: 'variable',
-      position: { x: 0, y: 0 },
-      data: {
-        type: 'variable',
-        operator: 'var',
-        path: '',
-        expression: { var: '' },
-        parentId,
-        argIndex,
-      } as VariableNodeData,
-    }];
-  }
-
-  if (nodeType === 'operator' && operatorName) {
-    // Create an operator node with a default child
-    const opConfig = getOperator(operatorName);
-    const opCategory = opConfig?.category || 'arithmetic';
-    const { value, valueType } = getDefaultValueForCategory(opCategory);
-
-    // Create the operator node
-    const childId = uuidv4();
-    const operatorNode: LogicNode = {
-      id: newNodeId,
-      type: 'operator',
-      position: { x: 0, y: 0 },
-      data: {
-        type: 'operator',
-        operator: operatorName,
-        category: opCategory,
-        label: opConfig?.label || operatorName,
-        childIds: [childId],
-        expression: { [operatorName]: [value] },
-        parentId,
-        argIndex,
-      } as OperatorNodeData,
-    };
-
-    // Create a default child literal
-    const childNode: LogicNode = {
-      id: childId,
-      type: 'literal',
-      position: { x: 0, y: 0 },
-      data: {
-        type: 'literal',
-        value,
-        valueType,
-        expression: value,
-        parentId: newNodeId,
-        argIndex: 0,
-      } as LiteralNodeData,
-    };
-
-    return [operatorNode, childNode];
-  }
-
-  // Default: create a literal node with a valid default value based on category
-  const { value, valueType } = getDefaultValueForCategory(category);
-  return [{
-    id: newNodeId,
-    type: 'literal',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'literal',
-      value,
-      valueType,
-      expression: value,
-      parentId,
-      argIndex,
-    } as LiteralNodeData,
-  }];
-}
+import {
+  cloneNodesWithIdMapping,
+  getDescendants,
+  updateParentChildReference,
+} from '../../utils/node-cloning';
+import {
+  addArgument,
+  removeArgument,
+  wrapInOperator,
+  duplicateNodeTree,
+} from '../../services/node-mutation-service';
 
 interface EditorProviderProps {
   children: ReactNode;
@@ -179,13 +91,11 @@ export function EditorProvider({
       propNodes.length !== internalNodes.length ||
       propNodes[0]?.id !== internalNodes[0]?.id
     ) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setInternalNodes(propNodes);
       hasEditedRef.current = false;
     }
   }, [propNodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Synchronizing state with props is intentional */
   // Sync edit mode when prop changes (e.g., when user switches modes)
   useEffect(() => {
     setIsEditMode(initialEditMode);
@@ -198,7 +108,6 @@ export function EditorProvider({
       hasEditedRef.current = false;
     }
   }, [initialEditMode, propNodes]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Keep nodesRef in sync with internalNodes for undo/redo
   useEffect(() => {
@@ -406,156 +315,16 @@ export function EditorProvider({
   const addArgumentToNode = useCallback(
     (nodeId: string, nodeType: 'literal' | 'variable' | 'operator' = 'literal', operatorName?: string) => {
       setInternalNodes((prev) => {
-        const parentNode = prev.find((n) => n.id === nodeId);
-        if (!parentNode) return prev;
-
         // Save current state to undo stack
         pushToUndoStack(prev);
 
-        const parentData = parentNode.data;
+        // Use the pure function from node-mutation-service
+        const result = addArgument(prev, nodeId, nodeType, operatorName);
+        if (!result) return prev;
 
-        // Handle different node types
-        if (parentData.type === 'operator') {
-          const operatorData = parentData as OperatorNodeData;
-          const opConfig = getOperator(operatorData.operator);
-
-          // Only allow adding for N-ary or variadic operators
-          if (
-            opConfig &&
-            (opConfig.arity.type === 'nary' ||
-              opConfig.arity.type === 'variadic' ||
-              opConfig.arity.type === 'chainable')
-          ) {
-            // Check max arity
-            if (opConfig.arity.max && operatorData.childIds.length >= opConfig.arity.max) {
-              return prev;
-            }
-
-            // Get current expression operands to determine correct argIndex
-            const expr = operatorData.expression;
-            let currentOperands: unknown[] = [];
-            if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-              const opKey = Object.keys(expr)[0];
-              const operands = (expr as Record<string, unknown>)[opKey];
-              currentOperands = Array.isArray(operands) ? operands : [operands];
-            }
-
-            // The new argument index should be based on expression operands, not just child nodes
-            const newArgIndex = currentOperands.length;
-
-            // Create new node(s) based on type
-            const newNodes = createArgumentNode(nodeType, nodeId, newArgIndex, opConfig.category, operatorName);
-            const newNodeId = newNodes[0].id;
-
-            // Get the new node's value for the expression
-            const newNodeData = newNodes[0].data;
-            let newValue: unknown = 0;
-            if (newNodeData.type === 'literal') {
-              newValue = (newNodeData as LiteralNodeData).value;
-            } else if (newNodeData.type === 'variable') {
-              newValue = (newNodeData as VariableNodeData).expression;
-            } else if (newNodeData.type === 'operator') {
-              newValue = (newNodeData as OperatorNodeData).expression;
-            }
-
-            // Update parent's childIds AND expression
-            const opKey = expr && typeof expr === 'object' && !Array.isArray(expr)
-              ? Object.keys(expr)[0]
-              : operatorData.operator;
-            const newOperands = [...currentOperands, newValue] as JsonLogicValue[];
-
-            const updatedParent: LogicNode = {
-              ...parentNode,
-              data: {
-                ...operatorData,
-                childIds: [...operatorData.childIds, newNodeId],
-                expression: { [opKey]: newOperands } as JsonLogicValue,
-                expressionText: undefined, // Will be regenerated
-              },
-            };
-
-            const result = prev.map((n) => (n.id === nodeId ? updatedParent : n));
-            result.push(...newNodes);
-
-            hasEditedRef.current = true;
-            onNodesChange?.(result);
-            return result;
-          }
-        } else if (parentData.type === 'verticalCell') {
-          // Handle vertical cell nodes (comparison chains, logical operators)
-          const verticalData = parentData as VerticalCellNodeData;
-          const opConfig = getOperator(verticalData.operator);
-
-          if (
-            opConfig &&
-            (opConfig.arity.type === 'nary' ||
-              opConfig.arity.type === 'variadic' ||
-              opConfig.arity.type === 'chainable')
-          ) {
-            // Check max arity
-            if (opConfig.arity.max && verticalData.cells.length >= opConfig.arity.max) {
-              return prev;
-            }
-
-            // Get current expression operands
-            const expr = verticalData.expression;
-            let currentOperands: JsonLogicValue[] = [];
-            if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-              const opKey = Object.keys(expr)[0];
-              const operands = (expr as Record<string, unknown>)[opKey];
-              currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
-            }
-
-            // Find the next index (use expression length to ensure correct index)
-            const newIndex = currentOperands.length;
-
-            // Create new node(s) based on type
-            const newNodes = createArgumentNode(nodeType, nodeId, newIndex, opConfig.category, operatorName);
-            const newNodeId = newNodes[0].id;
-
-            // Get the new node's value for the expression
-            const newNodeData = newNodes[0].data;
-            let newValue: JsonLogicValue = 0;
-            if (newNodeData.type === 'literal') {
-              newValue = (newNodeData as LiteralNodeData).value as JsonLogicValue;
-            } else if (newNodeData.type === 'variable') {
-              newValue = (newNodeData as VariableNodeData).expression as JsonLogicValue;
-            } else if (newNodeData.type === 'operator') {
-              newValue = (newNodeData as OperatorNodeData).expression as JsonLogicValue;
-            }
-
-            // Build new expression with the added operand
-            const newOperands = [...currentOperands, newValue];
-            const newExpression = { [verticalData.operator]: newOperands } as JsonLogicValue;
-
-            // Update vertical cell's cells array AND expression
-            const updatedParent: LogicNode = {
-              ...parentNode,
-              data: {
-                ...verticalData,
-                cells: [
-                  ...verticalData.cells,
-                  {
-                    type: 'branch' as const,
-                    branchId: newNodeId,
-                    index: newIndex,
-                  },
-                ],
-                expression: newExpression,
-                expressionText: undefined, // Force regeneration
-              },
-            };
-
-            const result = prev.map((n) => (n.id === nodeId ? updatedParent : n));
-            result.push(...newNodes);
-
-            hasEditedRef.current = true;
-            onNodesChange?.(result);
-            return result;
-          }
-        }
-
-        return prev;
+        hasEditedRef.current = true;
+        onNodesChange?.(result.nodes);
+        return result.nodes;
       });
     },
     [onNodesChange, pushToUndoStack]
@@ -565,140 +334,16 @@ export function EditorProvider({
   const removeArgumentFromNode = useCallback(
     (nodeId: string, argIndex: number) => {
       setInternalNodes((prev) => {
-        const parentNode = prev.find((n) => n.id === nodeId);
-        if (!parentNode) return prev;
-
         // Save current state to undo stack
         pushToUndoStack(prev);
 
-        const parentData = parentNode.data;
+        // Use the pure function from node-mutation-service
+        const result = removeArgument(prev, nodeId, argIndex);
+        if (!result) return prev;
 
-        if (parentData.type === 'operator') {
-          const operatorData = parentData as OperatorNodeData;
-          const opConfig = getOperator(operatorData.operator);
-
-          // Check minimum arity
-          const minArgs = opConfig?.arity.min ?? 0;
-          if (operatorData.childIds.length <= minArgs) {
-            return prev;
-          }
-
-          // Find the child to remove
-          const childToRemove = prev.find(
-            (n) => n.data.parentId === nodeId && n.data.argIndex === argIndex
-          );
-          if (!childToRemove) return prev;
-
-          // Remove the child and its descendants
-          let newNodes = deleteNodeAndDescendants(childToRemove.id, prev);
-
-          // Build new childIds array
-          const newChildIds = operatorData.childIds.filter((id) => id !== childToRemove.id);
-
-          // Reindex remaining children first
-          newNodes = newNodes.map((n) => {
-            if (n.data.parentId === nodeId && (n.data.argIndex ?? 0) > argIndex) {
-              return {
-                ...n,
-                data: { ...n.data, argIndex: (n.data.argIndex ?? 0) - 1 },
-              };
-            }
-            return n;
-          });
-
-          // Get remaining child nodes and rebuild expression
-          const remainingChildren = newNodes.filter((n) => newChildIds.includes(n.id));
-          const newExpression = rebuildOperatorExpression(operatorData.operator, remainingChildren);
-
-          // Update parent with BOTH childIds AND expression
-          newNodes = newNodes.map((n) => {
-            if (n.id === nodeId) {
-              return {
-                ...n,
-                data: {
-                  ...operatorData,
-                  childIds: newChildIds,
-                  expression: newExpression,
-                  expressionText: undefined, // Force regeneration
-                },
-              };
-            }
-            return n;
-          });
-
-          hasEditedRef.current = true;
-          onNodesChange?.(newNodes);
-          return newNodes;
-        } else if (parentData.type === 'verticalCell') {
-          const verticalData = parentData as VerticalCellNodeData;
-          const opConfig = getOperator(verticalData.operator);
-
-          // Check minimum arity
-          const minArgs = opConfig?.arity.min ?? 0;
-          if (verticalData.cells.length <= minArgs) {
-            return prev;
-          }
-
-          // Find the cell to remove
-          const cellToRemove = verticalData.cells.find((c) => c.index === argIndex);
-          if (!cellToRemove) return prev;
-
-          // Get current expression operands
-          const expr = verticalData.expression;
-          let currentOperands: JsonLogicValue[] = [];
-          if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-            const opKey = Object.keys(expr)[0];
-            const operands = (expr as Record<string, unknown>)[opKey];
-            currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
-          }
-
-          // Remove the branch node and its descendants (if it's a branch cell)
-          let newNodes = cellToRemove.branchId
-            ? deleteNodeAndDescendants(cellToRemove.branchId, prev)
-            : prev;
-
-          // Build new operands array by removing the argument at argIndex
-          const newOperands = currentOperands.filter((_, i) => i !== argIndex);
-          const newExpression = { [verticalData.operator]: newOperands } as JsonLogicValue;
-
-          // Update parent's cells array AND expression
-          newNodes = newNodes.map((n) => {
-            if (n.id === nodeId) {
-              const updatedCells = verticalData.cells
-                .filter((c) => c.index !== argIndex)
-                .map((c) => ({
-                  ...c,
-                  index: c.index > argIndex ? c.index - 1 : c.index,
-                }));
-              return {
-                ...n,
-                data: {
-                  ...verticalData,
-                  cells: updatedCells,
-                  expression: newExpression,
-                  expressionText: undefined, // Force regeneration
-                },
-              };
-            }
-            // Reindex remaining children
-            if (n.data.parentId === nodeId && (n.data.argIndex ?? 0) > argIndex) {
-              return {
-                ...n,
-                data: {
-                  ...n.data,
-                  argIndex: (n.data.argIndex ?? 0) - 1,
-                },
-              };
-            }
-            return n;
-          });
-
-          hasEditedRef.current = true;
-          onNodesChange?.(newNodes);
-          return newNodes;
-        }
-
-        return prev;
+        hasEditedRef.current = true;
+        onNodesChange?.(result);
+        return result;
       });
     },
     [onNodesChange, pushToUndoStack]
@@ -1123,52 +768,12 @@ export function EditorProvider({
     [historyVersion]
   );
 
-  // Helper to get all descendants of a node
-  const getDescendants = useCallback(
-    (nodeId: string, allNodes: LogicNode[]): LogicNode[] => {
-      const descendants: LogicNode[] = [];
-      const queue = [nodeId];
-
-      while (queue.length > 0) {
-        const currentId = queue.shift()!;
-        const currentNode = allNodes.find((n) => n.id === currentId);
-
-        // Get children based on node type
-        let childIds: string[] = [];
-
-        if (currentNode?.data.type === 'verticalCell') {
-          // For verticalCell nodes, get children from cells array
-          const vcData = currentNode.data as VerticalCellNodeData;
-          for (const cell of vcData.cells) {
-            if (cell.branchId) childIds.push(cell.branchId);
-            if (cell.conditionBranchId) childIds.push(cell.conditionBranchId);
-            if (cell.thenBranchId) childIds.push(cell.thenBranchId);
-          }
-        } else {
-          // For other nodes, find children by parentId
-          childIds = allNodes
-            .filter((n) => n.data.parentId === currentId)
-            .map((n) => n.id);
-        }
-
-        const children = childIds
-          .map((id) => allNodes.find((n) => n.id === id))
-          .filter((n): n is LogicNode => n !== undefined);
-
-        descendants.push(...children);
-        queue.push(...children.map((c) => c.id));
-      }
-
-      return descendants;
-    },
-    []
-  );
 
   // Copy the selected node and its descendants to clipboard
   const copyNode = useCallback(() => {
     if (!selectedNode) return;
 
-    // Get all descendants
+    // Get all descendants using the utility function
     const descendants = getDescendants(selectedNode.id, internalNodes);
 
     // Clone the nodes for clipboard (deep copy)
@@ -1181,7 +786,7 @@ export function EditorProvider({
       rootId: selectedNode.id,
     };
     setClipboardVersion((v) => v + 1);
-  }, [selectedNode, internalNodes, getDescendants]);
+  }, [selectedNode, internalNodes]);
 
   // Paste clipboard contents
   const pasteNode = useCallback(() => {
@@ -1192,60 +797,12 @@ export function EditorProvider({
       // Save current state to undo stack
       pushToUndoStack(prev);
 
-      // Create ID mapping for all copied nodes
-      const idMap = new Map<string, string>();
-      clipboard.nodes.forEach((n) => {
-        idMap.set(n.id, uuidv4());
-      });
+      // Clone nodes with ID remapping using the shared utility
+      const { nodes: clonedNodes, newRootId } = cloneNodesWithIdMapping(
+        clipboard.nodes,
+        clipboard.rootId
+      );
 
-      // Clone and remap IDs
-      const clonedNodes: LogicNode[] = clipboard.nodes.map((n) => {
-        const newId = idMap.get(n.id)!;
-        const newNode: LogicNode = {
-          ...n,
-          id: newId,
-          data: {
-            ...n.data,
-            // Remap parentId if it's in the copied set
-            parentId: n.data.parentId && idMap.has(n.data.parentId)
-              ? idMap.get(n.data.parentId)
-              : n.data.parentId,
-          },
-        };
-
-        // Remap childIds for operator nodes
-        if (newNode.data.type === 'operator') {
-          const opData = newNode.data as OperatorNodeData;
-          newNode.data = {
-            ...opData,
-            childIds: opData.childIds.map((id) => idMap.get(id) ?? id),
-          };
-        }
-
-        // Remap cells for verticalCell nodes
-        if (newNode.data.type === 'verticalCell') {
-          const vcData = newNode.data as VerticalCellNodeData;
-          newNode.data = {
-            ...vcData,
-            cells: vcData.cells.map((cell) => ({
-              ...cell,
-              branchId: cell.branchId && idMap.has(cell.branchId)
-                ? idMap.get(cell.branchId)
-                : cell.branchId,
-              conditionBranchId: cell.conditionBranchId && idMap.has(cell.conditionBranchId)
-                ? idMap.get(cell.conditionBranchId)
-                : cell.conditionBranchId,
-              thenBranchId: cell.thenBranchId && idMap.has(cell.thenBranchId)
-                ? idMap.get(cell.thenBranchId)
-                : cell.thenBranchId,
-            })),
-          };
-        }
-
-        return newNode;
-      });
-
-      const newRootId = idMap.get(clipboard.rootId)!;
       const clonedRoot = clonedNodes.find((n) => n.id === newRootId)!;
 
       // If there's a selected node that isn't the root, replace it
@@ -1264,39 +821,14 @@ export function EditorProvider({
           const targetDescendants = getDescendants(targetNode.id, prev);
           const targetIds = new Set([targetNode.id, ...targetDescendants.map((d) => d.id)]);
 
-          // Update parent's childIds if it's an operator
-          let newNodes = prev
-            .filter((n) => !targetIds.has(n.id))
-            .map((n) => {
-              if (n.id === targetNode.data.parentId && n.data.type === 'operator') {
-                const opData = n.data as OperatorNodeData;
-                return {
-                  ...n,
-                  data: {
-                    ...opData,
-                    childIds: opData.childIds.map((id) =>
-                      id === targetNode.id ? newRootId : id
-                    ),
-                  },
-                };
-              }
-              if (n.id === targetNode.data.parentId && n.data.type === 'verticalCell') {
-                const vcData = n.data as VerticalCellNodeData;
-                return {
-                  ...n,
-                  data: {
-                    ...vcData,
-                    cells: vcData.cells.map((cell) => ({
-                      ...cell,
-                      branchId: cell.branchId === targetNode.id ? newRootId : cell.branchId,
-                      conditionBranchId: cell.conditionBranchId === targetNode.id ? newRootId : cell.conditionBranchId,
-                      thenBranchId: cell.thenBranchId === targetNode.id ? newRootId : cell.thenBranchId,
-                    })),
-                  },
-                };
-              }
-              return n;
-            });
+          // Filter out removed nodes and update parent references
+          let newNodes = prev.filter((n) => !targetIds.has(n.id));
+          newNodes = updateParentChildReference(
+            newNodes,
+            targetNode.data.parentId,
+            targetNode.id,
+            newRootId
+          );
 
           newNodes = [...newNodes, ...clonedNodes];
 
@@ -1322,7 +854,7 @@ export function EditorProvider({
       setPanelValues({});
       return newNodes;
     });
-  }, [selectedNode, getDescendants, pushToUndoStack, onNodesChange]);
+  }, [selectedNode, pushToUndoStack, onNodesChange]);
 
   // Check if paste is available
   const canPaste = useMemo(
@@ -1332,216 +864,49 @@ export function EditorProvider({
   );
 
   // Wrap a node in an operator (makes the node a child of the new operator)
-  const wrapNodeInOperator = useCallback(
+  const wrapNodeInOperatorFn = useCallback(
     (nodeId: string, operator: string) => {
       setInternalNodes((prev) => {
-        const targetNode = prev.find((n) => n.id === nodeId);
-        if (!targetNode) return prev;
-
         // Save current state to undo stack
         pushToUndoStack(prev);
 
-        const newOperatorId = uuidv4();
-        const opConfig = getOperator(operator);
+        // Use the pure function from node-mutation-service
+        const result = wrapInOperator(prev, nodeId, operator);
+        if (!result) return prev;
 
-        // Create the wrapper operator node
-        const wrapperNode: LogicNode = {
-          id: newOperatorId,
-          type: 'operator',
-          position: { x: 0, y: 0 },
-          data: {
-            type: 'operator',
-            operator,
-            category: opConfig?.category || 'logical',
-            label: opConfig?.label || operator,
-            childIds: [nodeId],
-            expression: { [operator]: [] },
-            parentId: targetNode.data.parentId,
-            argIndex: targetNode.data.argIndex,
-          } as OperatorNodeData,
-        };
-
-        // Update the target node to be a child of the wrapper
-        const updatedTarget: LogicNode = {
-          ...targetNode,
-          data: {
-            ...targetNode.data,
-            parentId: newOperatorId,
-            argIndex: 0,
-          },
-        };
-
-        // Update the parent's childIds if the target had a parent
-        const updatedNodes = prev.map((n) => {
-          if (n.id === nodeId) {
-            return updatedTarget;
-          }
-          // Update parent's childIds
-          if (n.id === targetNode.data.parentId && n.data.type === 'operator') {
-            const opData = n.data as OperatorNodeData;
-            return {
-              ...n,
-              data: {
-                ...opData,
-                childIds: opData.childIds.map((id) => (id === nodeId ? newOperatorId : id)),
-              },
-            };
-          }
-          // Update parent's cells if it's a verticalCell
-          if (n.id === targetNode.data.parentId && n.data.type === 'verticalCell') {
-            const vcData = n.data as VerticalCellNodeData;
-            return {
-              ...n,
-              data: {
-                ...vcData,
-                cells: vcData.cells.map((cell) => ({
-                  ...cell,
-                  branchId: cell.branchId === nodeId ? newOperatorId : cell.branchId,
-                  conditionBranchId: cell.conditionBranchId === nodeId ? newOperatorId : cell.conditionBranchId,
-                  thenBranchId: cell.thenBranchId === nodeId ? newOperatorId : cell.thenBranchId,
-                })),
-              },
-            };
-          }
-          return n;
-        });
-
-        // Add the wrapper node
-        const newNodes = [...updatedNodes, wrapperNode];
+        // Find the new wrapper node (last node in the result)
+        const wrapperNode = result[result.length - 1];
+        const newOperatorId = wrapperNode.id;
 
         hasEditedRef.current = true;
-        onNodesChange?.(newNodes);
+        onNodesChange?.(result);
         setSelectedNodeId(newOperatorId);
         setPanelValues({});
-        return newNodes;
+        return result;
       });
     },
     [onNodesChange, pushToUndoStack]
   );
 
   // Duplicate a node and its descendants
-  const duplicateNode = useCallback(
+  const duplicateNodeFn = useCallback(
     (nodeId: string) => {
-      const targetNode = internalNodes.find((n) => n.id === nodeId);
-      if (!targetNode) return;
-
-      // Get all descendants
-      const descendants = getDescendants(nodeId, internalNodes);
-
-      // Clone the nodes (deep copy)
-      const nodesToClone = [targetNode, ...descendants];
-
-      // Create ID mapping
-      const idMap = new Map<string, string>();
-      nodesToClone.forEach((n) => {
-        idMap.set(n.id, uuidv4());
-      });
-
       setInternalNodes((prev) => {
         // Save current state to undo stack
         pushToUndoStack(prev);
 
-        // Clone and remap IDs
-        const clonedNodes: LogicNode[] = nodesToClone.map((n) => {
-          const newId = idMap.get(n.id)!;
-          const newNode: LogicNode = {
-            ...JSON.parse(JSON.stringify(n)),
-            id: newId,
-            data: {
-              ...JSON.parse(JSON.stringify(n.data)),
-              parentId: n.data.parentId && idMap.has(n.data.parentId)
-                ? idMap.get(n.data.parentId)
-                : n.data.parentId,
-            },
-          };
+        // Use the pure function from node-mutation-service
+        const result = duplicateNodeTree(prev, nodeId);
+        if (!result) return prev;
 
-          // Remap childIds for operator nodes
-          if (newNode.data.type === 'operator') {
-            const opData = newNode.data as OperatorNodeData;
-            newNode.data = {
-              ...opData,
-              childIds: opData.childIds.map((id) => idMap.get(id) ?? id),
-            };
-          }
-
-          // Remap cells for verticalCell nodes
-          if (newNode.data.type === 'verticalCell') {
-            const vcData = newNode.data as VerticalCellNodeData;
-            newNode.data = {
-              ...vcData,
-              cells: vcData.cells.map((cell) => ({
-                ...cell,
-                branchId: cell.branchId && idMap.has(cell.branchId)
-                  ? idMap.get(cell.branchId)
-                  : cell.branchId,
-                conditionBranchId: cell.conditionBranchId && idMap.has(cell.conditionBranchId)
-                  ? idMap.get(cell.conditionBranchId)
-                  : cell.conditionBranchId,
-                thenBranchId: cell.thenBranchId && idMap.has(cell.thenBranchId)
-                  ? idMap.get(cell.thenBranchId)
-                  : cell.thenBranchId,
-              })),
-            };
-          }
-
-          return newNode;
-        });
-
-        const newRootId = idMap.get(nodeId)!;
-        const clonedRoot = clonedNodes.find((n) => n.id === newRootId)!;
-
-        // If the original had a parent, add as sibling
-        if (targetNode.data.parentId) {
-          const parent = prev.find((n) => n.id === targetNode.data.parentId);
-          if (parent && parent.data.type === 'operator') {
-            const opData = parent.data as OperatorNodeData;
-            const newArgIndex = opData.childIds.length;
-
-            // Update cloned root with new argIndex
-            clonedRoot.data = {
-              ...clonedRoot.data,
-              argIndex: newArgIndex,
-            };
-
-            // Update parent's childIds
-            const newNodes = prev.map((n) => {
-              if (n.id === targetNode.data.parentId) {
-                return {
-                  ...n,
-                  data: {
-                    ...opData,
-                    childIds: [...opData.childIds, newRootId],
-                  },
-                };
-              }
-              return n;
-            });
-
-            const result = [...newNodes, ...clonedNodes];
-            hasEditedRef.current = true;
-            onNodesChange?.(result);
-            setSelectedNodeId(newRootId);
-            setPanelValues({});
-            return result;
-          }
-        }
-
-        // If no parent or parent isn't operator, just add as new tree (replaces)
-        clonedRoot.data = {
-          ...clonedRoot.data,
-          parentId: undefined,
-          argIndex: undefined,
-        };
-
-        const result = clonedNodes;
         hasEditedRef.current = true;
-        onNodesChange?.(result);
-        setSelectedNodeId(newRootId);
+        onNodesChange?.(result.nodes);
+        setSelectedNodeId(result.newRootId);
         setPanelValues({});
-        return result;
+        return result.nodes;
       });
     },
-    [internalNodes, getDescendants, pushToUndoStack, onNodesChange]
+    [pushToUndoStack, onNodesChange]
   );
 
   // Select all descendants of a node
@@ -1555,7 +920,7 @@ export function EditorProvider({
       setSelectedNodeId(nodeId);
       setPanelValues({});
     },
-    [internalNodes, getDescendants]
+    [internalNodes]
   );
 
   // Focus the properties panel on a specific node and optionally a field
@@ -1623,8 +988,8 @@ export function EditorProvider({
       copyNode,
       pasteNode,
       canPaste,
-      wrapNodeInOperator,
-      duplicateNode,
+      wrapNodeInOperator: wrapNodeInOperatorFn,
+      duplicateNode: duplicateNodeFn,
       selectChildren,
       focusPropertyPanel,
       propertyPanelFocusRef,
@@ -1663,8 +1028,8 @@ export function EditorProvider({
       copyNode,
       pasteNode,
       canPaste,
-      wrapNodeInOperator,
-      duplicateNode,
+      wrapNodeInOperatorFn,
+      duplicateNodeFn,
       selectChildren,
       focusPropertyPanel,
     ]

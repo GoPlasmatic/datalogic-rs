@@ -1,5 +1,5 @@
 import type { JsonLogicValue, LiteralNodeData } from '../types';
-import { isOperator } from '../constants/operators';
+import { isOperator } from '../config/operators';
 
 // Check if value is a plain object (not array, not null)
 export function isPlainObject(value: unknown): value is Record<string, unknown> {

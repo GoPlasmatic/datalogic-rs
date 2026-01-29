@@ -9,6 +9,7 @@ import type {
 import { jsonLogicToNodes } from '../utils/jsonlogic-to-nodes';
 import { traceToNodes, buildEvaluationResultsFromTrace } from '../utils/trace';
 import { applyTreeLayout } from '../utils/layout';
+import { checkDepth } from './useRecursionCheck';
 
 export interface EvaluationResult {
   value: unknown;
@@ -38,20 +39,6 @@ interface UseLogicEditorReturn {
 
 // Maximum recursion depth to prevent stack overflow
 const MAX_RECURSION_DEPTH = 100;
-
-// Simple depth check for JSONLogic expressions
-function checkDepth(value: unknown, depth = 0): boolean {
-  if (depth > MAX_RECURSION_DEPTH) {
-    return false;
-  }
-  if (value === null || typeof value !== 'object') {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every((item) => checkDepth(item, depth + 1));
-  }
-  return Object.values(value).every((v) => checkDepth(v, depth + 1));
-}
 
 const emptyResults: EvaluationResultsMap = new Map();
 const emptySteps: ExecutionStep[] = [];
@@ -94,7 +81,7 @@ export function useLogicEditor({
 
     try {
       // Validate recursion depth
-      if (!checkDepth(value)) {
+      if (!checkDepth(value, MAX_RECURSION_DEPTH)) {
         setError(`Expression exceeds maximum nesting depth of ${MAX_RECURSION_DEPTH}`);
         setNodes([]);
         setEdges([]);

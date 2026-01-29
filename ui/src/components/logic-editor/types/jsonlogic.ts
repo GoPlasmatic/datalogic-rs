@@ -25,23 +25,22 @@ export type JsonLogicValue =
   | JsonLogicExpression
   | JsonLogicValue[];
 
-// Operator categories for styling
-export type OperatorCategory =
-  | 'variable'
-  | 'comparison'
-  | 'logical'
-  | 'arithmetic'
-  | 'string'
-  | 'array'
-  | 'control'
-  | 'datetime'
-  | 'error'
+// Re-export OperatorCategory from the canonical source
+// Note: Includes 'literal' for node styling but actual operator categories
+// are defined in config/operators.types.ts
+export type { OperatorCategory } from '../config/operators.types';
+
+// Extended OperatorCategory that includes 'literal' for node styling
+// (literal nodes aren't operators but need category-based styling)
+export type NodeCategory =
+  | import('../config/operators.types').OperatorCategory
   | 'literal';
 
 // Operator metadata for the registry
+// @deprecated Use Operator from config/operators.types instead
 export interface OperatorMeta {
   name: string;
-  category: OperatorCategory;
+  category: NodeCategory;
   label: string;
   description: string;
   minArgs?: number;

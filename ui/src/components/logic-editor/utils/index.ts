@@ -8,3 +8,5 @@ export * from './node-factory';
 export * from './node-updaters';
 export * from './node-deletion';
 export * from './nodes-to-jsonlogic';
+export * from './node-cloning';
+export * from './menu-builder';

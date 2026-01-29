@@ -12,8 +12,7 @@ import { memo, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Hash, Variable, Calculator } from 'lucide-react';
 import { ContextMenu, type MenuItemConfig } from './ContextMenu';
-import { getOperatorsGroupedByCategory } from '../config/operators';
-import type { OperatorCategory } from '../config/operators.types';
+import { buildOperatorSubmenu } from '../utils/menu-builder';
 
 export type AddArgumentNodeType = 'literal' | 'variable' | 'operator';
 
@@ -30,53 +29,17 @@ export interface AddArgumentMenuProps {
   operatorCategory?: string;
 }
 
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
 export const AddArgumentMenu = memo(function AddArgumentMenu({
   x,
   y,
   onClose,
   onSelect,
 }: AddArgumentMenuProps) {
-  // Build operator submenu grouped by category
-  const operatorSubmenu = useMemo<MenuItemConfig[]>(() => {
-    const grouped = getOperatorsGroupedByCategory();
-    const items: MenuItemConfig[] = [];
-
-    // Priority order for categories
-    const categoryOrder = [
-      'arithmetic',
-      'comparison',
-      'logical',
-      'string',
-      'array',
-      'control',
-      'datetime',
-      'validation',
-      'variable',
-      'utility',
-      'error',
-    ];
-
-    for (const category of categoryOrder) {
-      const operators = grouped.get(category as OperatorCategory);
-      if (!operators || operators.length === 0) continue;
-
-      items.push({
-        id: `category-${category}`,
-        label: capitalizeFirst(category),
-        submenu: operators.slice(0, 10).map((op) => ({
-          id: `op-${op.name}`,
-          label: op.label || op.name,
-          onClick: () => onSelect('operator', op.name),
-        })),
-      });
-    }
-
-    return items;
-  }, [onSelect]);
+  // Build operator submenu using the shared utility
+  const operatorSubmenu = useMemo<MenuItemConfig[]>(
+    () => buildOperatorSubmenu((opName) => onSelect('operator', opName)),
+    [onSelect]
+  );
 
   // Build menu items
   const menuItems = useMemo<MenuItemConfig[]>(() => {

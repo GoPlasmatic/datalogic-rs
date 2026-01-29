@@ -29,7 +29,8 @@ export type {
 } from './components/logic-editor/types';
 
 // Constants (for customization)
-export { OPERATORS, CATEGORY_COLORS } from './components/logic-editor/constants';
+export { CATEGORY_COLORS } from './components/logic-editor/constants';
+export { OPERATORS } from './components/logic-editor/config/operators';
 
 // Utilities (for advanced use)
 export { jsonLogicToNodes, applyTreeLayout } from './components/logic-editor/utils';

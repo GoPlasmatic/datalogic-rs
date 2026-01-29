@@ -172,3 +172,80 @@ export function getDatetimeOperators(): Operator[] {
     (op) => op.category === 'datetime' || op.ui?.datetimeProps
   );
 }
+
+// ============================================================================
+// Legacy Compatibility Layer
+// ============================================================================
+// These functions provide backward compatibility with the legacy operator
+// system in constants/operators.ts. New code should use the modern API above.
+
+/**
+ * Legacy OperatorMeta interface for backward compatibility
+ * @deprecated Use Operator from config/operators.types instead
+ */
+export interface LegacyOperatorMeta {
+  name: string;
+  category: OperatorCategory;
+  label: string;
+  description: string;
+  minArgs?: number;
+  maxArgs?: number;
+  argLabels?: string[];
+}
+
+/**
+ * Convert modern Operator to legacy OperatorMeta format
+ */
+function operatorToLegacyMeta(op: Operator): LegacyOperatorMeta {
+  return {
+    name: op.name,
+    category: op.category,
+    label: op.label,
+    description: op.description,
+    minArgs: op.arity.min,
+    maxArgs: op.arity.max,
+    argLabels: op.arity.args?.map((arg) => arg.label),
+  };
+}
+
+/**
+ * Get human-readable title for an operator
+ * @deprecated Use getOperator(name)?.label instead
+ */
+export function getOperatorTitle(operator: string): string {
+  const op = operators[operator];
+  return op?.label ?? operator;
+}
+
+/**
+ * Get operator metadata with fallback for unknown operators
+ * @deprecated Use getOperator(name) instead
+ */
+export function getOperatorMeta(operator: string): LegacyOperatorMeta {
+  const op = operators[operator];
+  if (op) {
+    return operatorToLegacyMeta(op);
+  }
+  return {
+    name: operator,
+    category: 'utility' as OperatorCategory,
+    label: operator,
+    description: `Unknown operator: ${operator}`,
+  };
+}
+
+/**
+ * Complete registry of operators in legacy format
+ * @deprecated Use operators from config/operators instead
+ */
+export const OPERATORS: Record<string, LegacyOperatorMeta> = Object.fromEntries(
+  Object.entries(operators).map(([name, op]) => [name, operatorToLegacyMeta(op)])
+);
+
+/**
+ * Human-readable titles for operators
+ * @deprecated Use getOperatorTitle() instead
+ */
+export const OPERATOR_TITLES: Record<string, string> = Object.fromEntries(
+  Object.entries(operators).map(([name, op]) => [name, op.label])
+);
