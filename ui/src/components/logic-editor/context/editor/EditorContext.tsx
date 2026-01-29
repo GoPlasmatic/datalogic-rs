@@ -31,6 +31,12 @@ import {
   duplicateNodeTree,
 } from '../../services/node-mutation-service';
 
+/** Clipboard data for copy/paste operations */
+interface ClipboardData {
+  nodes: LogicNode[];
+  rootId: string;
+}
+
 interface EditorProviderProps {
   children: ReactNode;
   nodes: LogicNode[];

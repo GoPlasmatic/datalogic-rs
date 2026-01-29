@@ -10,6 +10,7 @@ import type {
   VerticalCellNodeData,
   DecisionNodeData,
   StructureNodeData,
+  JsonLogicValue,
 } from '../types';
 import { rebuildOperatorExpression } from './expression-builder';
 
@@ -226,7 +227,7 @@ function updateParentAfterChildDeletion(
       );
 
       // Rebuild expression from remaining elements
-      let newExpression: unknown;
+      let newExpression: JsonLogicValue;
       if (structData.isArray) {
         newExpression = newElements.map((el) => {
           if (el.type === 'inline') {
@@ -238,11 +239,11 @@ function updateParentAfterChildDeletion(
           return null;
         });
       } else {
-        const obj: Record<string, unknown> = {};
+        const obj: Record<string, JsonLogicValue> = {};
         for (const el of newElements) {
           if (el.key) {
             if (el.type === 'inline') {
-              obj[el.key] = el.value ?? null;
+              obj[el.key] = (el.value ?? null) as JsonLogicValue;
             } else if (el.branchId) {
               const branchNode = allNodes.find((n) => n.id === el.branchId);
               obj[el.key] = branchNode?.data.expression ?? null;
