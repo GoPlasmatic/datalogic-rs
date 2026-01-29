@@ -98,6 +98,29 @@ function DataLogicEditorInner({
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
 
+  // Track previous node IDs to detect structural changes
+  const prevNodeIdsRef = useRef<Set<string>>(new Set(initialNodes.map((n) => n.id)));
+
+  // Sync ReactFlow state with EditorContext nodes only on structural changes (add/delete)
+  // This prevents focus loss when editing node data (like literal values)
+  useEffect(() => {
+    if (!isEditMode) return;
+
+    const currentIds = new Set(editorNodes.map((n) => n.id));
+    const prevIds = prevNodeIdsRef.current;
+
+    // Check if node structure changed (different IDs or count)
+    const structureChanged =
+      currentIds.size !== prevIds.size ||
+      [...currentIds].some((id) => !prevIds.has(id)) ||
+      [...prevIds].some((id) => !currentIds.has(id));
+
+    if (structureChanged) {
+      setNodes(editorNodes);
+      prevNodeIdsRef.current = currentIds;
+    }
+  }, [editorNodes, isEditMode, setNodes]);
+
   // Compute hidden node IDs based on collapsed state
   const hiddenNodeIds = useMemo(() => getHiddenNodeIds(nodes), [nodes]);
 

@@ -10,7 +10,7 @@
  * arguments from the expression and displays them appropriately.
  */
 
-import { memo, useMemo, useCallback } from 'react';
+import { memo, useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { Plus, Link2Off, ExternalLink } from 'lucide-react';
 import { useEditorContext } from '../context/editor';
 import type { LogicNode, OperatorNodeData, VerticalCellNodeData, LiteralNodeData, JsonLogicValue } from '../types';
@@ -25,6 +25,18 @@ import {
   extractVerticalCellArguments,
   type ArgumentInfo,
 } from './utils/argument-parser';
+
+/**
+ * Format a value as an inline label for verticalCell cells
+ */
+function formatInlineLabel(value: JsonLogicValue): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return `"${value}"`;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (Array.isArray(value)) return `[${value.length} items]`;
+  if (typeof value === 'object') return '{...}';
+  return String(value);
+}
 
 interface ArgumentsSectionProps {
   node: LogicNode;
@@ -157,8 +169,41 @@ export const ArgumentsSection = memo(function ArgumentsSection({
         }
       }
 
-      // For verticalCell nodes, inline edits are more complex
-      // (would need to update cells array) - for now, these stay read-only
+      if (nodeData.type === 'verticalCell') {
+        const vcData = nodeData as VerticalCellNodeData;
+        const expr = vcData.expression;
+
+        if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
+          const operator = Object.keys(expr)[0];
+          const operands = (expr as Record<string, unknown>)[operator];
+          const operandArray: JsonLogicValue[] = Array.isArray(operands)
+            ? [...operands]
+            : [operands as JsonLogicValue];
+
+          // Update the operand at the given index
+          operandArray[argIndex] = newValue;
+
+          // Update the cell's label to reflect the new value
+          const newCells = vcData.cells.map((cell) => {
+            if (cell.index === argIndex && cell.type === 'inline') {
+              return {
+                ...cell,
+                label: formatInlineLabel(newValue),
+              };
+            }
+            return cell;
+          });
+
+          // Rebuild the expression
+          const newExpression = { [operator]: operandArray };
+
+          updateNode(node.id, {
+            cells: newCells,
+            expression: newExpression,
+            expressionText: undefined, // Will be regenerated
+          });
+        }
+      }
     },
     [node.id, node.data, updateNode]
   );
@@ -258,52 +303,107 @@ const ArgumentItem = memo(function ArgumentItem({
   const isChildLiteral = childNode?.data.type === 'literal';
   const childLiteralData = isChildLiteral ? (childNode.data as LiteralNodeData) : null;
 
-  // Handlers for inline literal edits
+  // Local state for editing - prevents focus loss by not updating parent on every keystroke
+  const [localValue, setLocalValue] = useState<string>(() => {
+    if (isInline) {
+      return value !== null && value !== undefined ? String(value) : '';
+    }
+    if (childLiteralData) {
+      return childLiteralData.value !== null && childLiteralData.value !== undefined
+        ? String(childLiteralData.value)
+        : '';
+    }
+    return '';
+  });
+
+  // Track if we're currently editing (to prevent external value updates from overwriting)
+  const isEditingRef = useRef(false);
+
+  // Sync local value with external value when not editing
+  useEffect(() => {
+    if (!isEditingRef.current) {
+      if (isInline) {
+        setLocalValue(value !== null && value !== undefined ? String(value) : '');
+      } else if (childLiteralData) {
+        setLocalValue(
+          childLiteralData.value !== null && childLiteralData.value !== undefined
+            ? String(childLiteralData.value)
+            : ''
+        );
+      }
+    }
+  }, [isInline, value, childLiteralData]);
+
+  // Handlers for inline literal edits - update local state immediately, commit on blur
   const handleInlineNumberChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value;
-      const num = parseFloat(val);
-      onInlineLiteralChange(index, isNaN(num) ? 0 : num);
+      isEditingRef.current = true;
+      setLocalValue(e.target.value);
     },
-    [index, onInlineLiteralChange]
+    []
   );
+
+  const handleInlineNumberBlur = useCallback(() => {
+    isEditingRef.current = false;
+    const num = parseFloat(localValue);
+    onInlineLiteralChange(index, isNaN(num) ? 0 : num);
+  }, [index, localValue, onInlineLiteralChange]);
 
   const handleInlineStringChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onInlineLiteralChange(index, e.target.value);
+      isEditingRef.current = true;
+      setLocalValue(e.target.value);
     },
-    [index, onInlineLiteralChange]
+    []
   );
+
+  const handleInlineStringBlur = useCallback(() => {
+    isEditingRef.current = false;
+    onInlineLiteralChange(index, localValue);
+  }, [index, localValue, onInlineLiteralChange]);
 
   const handleInlineBooleanChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
+      // Booleans commit immediately since they're select elements
       onInlineLiteralChange(index, e.target.value === 'true');
     },
     [index, onInlineLiteralChange]
   );
 
-  // Handlers for child node literal edits
+  // Handlers for child node literal edits - update local state immediately, commit on blur
   const handleChildNumberChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!childId) return;
-      const val = e.target.value;
-      const num = parseFloat(val);
-      onLiteralChange(childId, isNaN(num) ? 0 : num, 'number');
+      isEditingRef.current = true;
+      setLocalValue(e.target.value);
     },
-    [childId, onLiteralChange]
+    []
   );
+
+  const handleChildNumberBlur = useCallback(() => {
+    if (!childId) return;
+    isEditingRef.current = false;
+    const num = parseFloat(localValue);
+    onLiteralChange(childId, isNaN(num) ? 0 : num, 'number');
+  }, [childId, localValue, onLiteralChange]);
 
   const handleChildStringChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!childId) return;
-      onLiteralChange(childId, e.target.value, 'string');
+      isEditingRef.current = true;
+      setLocalValue(e.target.value);
     },
-    [childId, onLiteralChange]
+    []
   );
+
+  const handleChildStringBlur = useCallback(() => {
+    if (!childId) return;
+    isEditingRef.current = false;
+    onLiteralChange(childId, localValue, 'string');
+  }, [childId, localValue, onLiteralChange]);
 
   const handleChildBooleanChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       if (!childId) return;
+      // Booleans commit immediately since they're select elements
       onLiteralChange(childId, e.target.value === 'true', 'boolean');
     },
     [childId, onLiteralChange]
@@ -319,8 +419,9 @@ const ArgumentItem = memo(function ArgumentItem({
             <input
               type="number"
               className="argument-input argument-input--number"
-              value={value as number}
+              value={localValue}
               onChange={handleInlineNumberChange}
+              onBlur={handleInlineNumberBlur}
               step="any"
             />
           )}
@@ -328,8 +429,9 @@ const ArgumentItem = memo(function ArgumentItem({
             <input
               type="text"
               className="argument-input argument-input--string"
-              value={value as string}
+              value={localValue}
               onChange={handleInlineStringChange}
+              onBlur={handleInlineStringBlur}
               placeholder="(empty string)"
             />
           )}
@@ -376,8 +478,9 @@ const ArgumentItem = memo(function ArgumentItem({
             <input
               type="number"
               className="argument-input argument-input--number"
-              value={childLiteralData.value as number}
+              value={localValue}
               onChange={handleChildNumberChange}
+              onBlur={handleChildNumberBlur}
               step="any"
             />
           )}
@@ -385,8 +488,9 @@ const ArgumentItem = memo(function ArgumentItem({
             <input
               type="text"
               className="argument-input argument-input--string"
-              value={childLiteralData.value as string}
+              value={localValue}
               onChange={handleChildStringChange}
+              onBlur={handleChildStringBlur}
               placeholder="(empty string)"
             />
           )}

@@ -264,7 +264,7 @@ export const ContextMenu = memo(function ContextMenu({
   );
 });
 
-// Submenu component (simplified, no keyboard nav)
+// Submenu component with support for nested submenus
 interface ContextMenuSubmenuProps {
   items: MenuItemConfig[];
   onClose: () => void;
@@ -274,16 +274,28 @@ const ContextMenuSubmenu = memo(function ContextMenuSubmenu({
   items,
   onClose,
 }: ContextMenuSubmenuProps) {
+  const [openSubmenuId, setOpenSubmenuId] = useState<string | null>(null);
+
   const handleItemClick = useCallback(
     (item: MenuItemConfig) => {
       if (item.disabled) return;
-      if (item.onClick) {
+      if (item.submenu) {
+        setOpenSubmenuId(openSubmenuId === item.id ? null : item.id);
+      } else if (item.onClick) {
         item.onClick();
         onClose();
       }
     },
-    [onClose]
+    [onClose, openSubmenuId]
   );
+
+  const handleItemMouseEnter = useCallback((item: MenuItemConfig) => {
+    if (item.submenu) {
+      setOpenSubmenuId(item.id);
+    } else {
+      setOpenSubmenuId(null);
+    }
+  }, []);
 
   return (
     <div className="context-menu" role="menu">
@@ -293,24 +305,38 @@ const ContextMenuSubmenu = memo(function ContextMenuSubmenu({
         }
 
         return (
-          <button
-            key={item.id}
-            type="button"
-            className={[
-              'context-menu-item',
-              item.danger && 'context-menu-item--danger',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            disabled={item.disabled}
-            onClick={() => handleItemClick(item)}
-            role="menuitem"
-            tabIndex={-1}
-          >
-            {item.icon && <span className="context-menu-item-icon">{item.icon}</span>}
-            <span className="context-menu-item-label">{item.label}</span>
-            {item.shortcut && <span className="context-menu-item-shortcut">{item.shortcut}</span>}
-          </button>
+          <div key={item.id} className={item.submenu ? 'context-menu-submenu' : undefined}>
+            <button
+              type="button"
+              className={[
+                'context-menu-item',
+                item.danger && 'context-menu-item--danger',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              disabled={item.disabled}
+              onClick={() => handleItemClick(item)}
+              onMouseEnter={() => handleItemMouseEnter(item)}
+              role="menuitem"
+              tabIndex={-1}
+            >
+              {item.icon && <span className="context-menu-item-icon">{item.icon}</span>}
+              <span className="context-menu-item-label">{item.label}</span>
+              {item.shortcut && <span className="context-menu-item-shortcut">{item.shortcut}</span>}
+              {item.submenu && (
+                <span className="context-menu-item-arrow">
+                  <ChevronRight size={14} />
+                </span>
+              )}
+            </button>
+
+            {/* Render nested submenu */}
+            {item.submenu && openSubmenuId === item.id && (
+              <div className="context-menu-submenu-content">
+                <ContextMenuSubmenu items={item.submenu} onClose={onClose} />
+              </div>
+            )}
+          </div>
         );
       })}
     </div>

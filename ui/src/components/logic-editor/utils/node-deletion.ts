@@ -11,6 +11,7 @@ import type {
   DecisionNodeData,
   StructureNodeData,
 } from '../types';
+import { rebuildOperatorExpression } from './expression-builder';
 
 /**
  * Delete a node and all its descendants from the node array.
@@ -30,17 +31,19 @@ export function deleteNodeAndDescendants(
 
   // Find the node being deleted to get its parent info
   const deletedNode = nodes.find((n) => n.id === nodeId);
+  const parentId = deletedNode?.data.parentId;
 
-  // Filter out deleted nodes and update parent references
-  return nodes
-    .filter((node) => !idsToDelete.has(node.id))
-    .map((node) => {
-      // Update parent nodes that reference the deleted node
-      if (deletedNode?.data.parentId === node.id) {
-        return updateParentAfterChildDeletion(node, nodeId);
-      }
-      return node;
-    });
+  // Filter out deleted nodes
+  const filteredNodes = nodes.filter((node) => !idsToDelete.has(node.id));
+
+  // Update parent references and rebuild expression
+  return filteredNodes.map((node) => {
+    // Update parent nodes that reference the deleted node
+    if (parentId && node.id === parentId) {
+      return updateParentAfterChildDeletion(node, nodeId, filteredNodes);
+    }
+    return node;
+  });
 }
 
 /**
@@ -110,44 +113,90 @@ function getChildIds(data: LogicNode['data']): string[] {
 /**
  * Update a parent node after one of its children is deleted.
  * Creates fully immutable updates - no mutation of original objects.
+ * Also rebuilds the expression from remaining children.
  */
 function updateParentAfterChildDeletion(
   parentNode: LogicNode,
-  deletedChildId: string
+  deletedChildId: string,
+  allNodes: LogicNode[]
 ): LogicNode {
   const data = parentNode.data;
 
   switch (data.type) {
     case 'operator': {
       const opData = data as OperatorNodeData;
+      const newChildIds = opData.childIds.filter((id) => id !== deletedChildId);
+
+      // Get remaining child nodes and reindex them
+      const remainingChildren = allNodes
+        .filter((n) => newChildIds.includes(n.id))
+        .sort((a, b) => (a.data.argIndex ?? 0) - (b.data.argIndex ?? 0))
+        .map((n, idx) => ({
+          ...n,
+          data: { ...n.data, argIndex: idx },
+        }));
+
+      // Rebuild expression from remaining children
+      const newExpression = rebuildOperatorExpression(opData.operator, remainingChildren);
+
       return {
         ...parentNode,
         data: {
           ...opData,
-          childIds: opData.childIds.filter((id) => id !== deletedChildId),
-          // Note: expression is updated separately by caller (e.g., removeArgumentFromNode)
+          childIds: newChildIds,
+          expression: newExpression,
+          expressionText: undefined, // Clear cached text
         },
       };
     }
     case 'verticalCell': {
       const vcData = data as VerticalCellNodeData;
+
+      // Filter and reindex cells
+      const newCells = vcData.cells
+        .filter((cell) => cell.branchId !== deletedChildId)
+        .map((cell, idx) => ({
+          ...cell,
+          index: idx,
+          conditionBranchId:
+            cell.conditionBranchId === deletedChildId
+              ? undefined
+              : cell.conditionBranchId,
+          thenBranchId:
+            cell.thenBranchId === deletedChildId
+              ? undefined
+              : cell.thenBranchId,
+        }));
+
+      // Rebuild expression from remaining cells
+      const newOperands = newCells.map((cell) => {
+        if (cell.branchId) {
+          const branchNode = allNodes.find((n) => n.id === cell.branchId);
+          if (branchNode) {
+            return branchNode.data.expression;
+          }
+        }
+        // Fallback to stored expression value at this index if available
+        const storedExpr = vcData.expression;
+        if (storedExpr && typeof storedExpr === 'object' && !Array.isArray(storedExpr)) {
+          const opKey = Object.keys(storedExpr)[0];
+          const operands = (storedExpr as Record<string, unknown>)[opKey];
+          if (Array.isArray(operands) && cell.index < operands.length) {
+            return operands[cell.index];
+          }
+        }
+        return null;
+      });
+
+      const newExpression = { [vcData.operator]: newOperands };
+
       return {
         ...parentNode,
         data: {
           ...vcData,
-          cells: vcData.cells
-            .filter((cell) => cell.branchId !== deletedChildId)
-            .map((cell) => ({
-              ...cell, // Create new cell object to avoid mutation
-              conditionBranchId:
-                cell.conditionBranchId === deletedChildId
-                  ? undefined
-                  : cell.conditionBranchId,
-              thenBranchId:
-                cell.thenBranchId === deletedChildId
-                  ? undefined
-                  : cell.thenBranchId,
-            })),
+          cells: newCells,
+          expression: newExpression,
+          expressionText: undefined,
         },
       };
     }
@@ -172,13 +221,44 @@ function updateParentAfterChildDeletion(
     }
     case 'structure': {
       const structData = data as StructureNodeData;
+      const newElements = structData.elements.filter(
+        (el) => el.branchId !== deletedChildId
+      );
+
+      // Rebuild expression from remaining elements
+      let newExpression: unknown;
+      if (structData.isArray) {
+        newExpression = newElements.map((el) => {
+          if (el.type === 'inline') {
+            return el.value ?? null;
+          } else if (el.branchId) {
+            const branchNode = allNodes.find((n) => n.id === el.branchId);
+            return branchNode?.data.expression ?? null;
+          }
+          return null;
+        });
+      } else {
+        const obj: Record<string, unknown> = {};
+        for (const el of newElements) {
+          if (el.key) {
+            if (el.type === 'inline') {
+              obj[el.key] = el.value ?? null;
+            } else if (el.branchId) {
+              const branchNode = allNodes.find((n) => n.id === el.branchId);
+              obj[el.key] = branchNode?.data.expression ?? null;
+            }
+          }
+        }
+        newExpression = obj;
+      }
+
       return {
         ...parentNode,
         data: {
           ...structData,
-          elements: structData.elements.filter(
-            (el) => el.branchId !== deletedChildId
-          ),
+          elements: newElements,
+          expression: newExpression,
+          expressionText: undefined,
         },
       };
     }
