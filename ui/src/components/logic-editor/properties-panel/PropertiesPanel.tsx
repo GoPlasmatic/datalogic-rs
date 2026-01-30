@@ -12,6 +12,7 @@ import { PanelRenderer, type PanelRendererRef } from '../panel-inputs';
 import { HelpSection } from './HelpSection';
 import { ArgumentsSection } from './ArgumentsSection';
 import { isRootNode } from '../utils/node-deletion';
+import { useIsMobile } from '../../../hooks';
 import {
   getPanelConfigForNode,
   getOperatorConfigForNode,
@@ -28,6 +29,7 @@ interface PropertiesPanelProps {
 export const PropertiesPanel = memo(function PropertiesPanel({
   width = 280,
 }: PropertiesPanelProps) {
+  const isMobile = useIsMobile();
   const {
     selectedNode,
     isEditMode,
@@ -131,7 +133,7 @@ export const PropertiesPanel = memo(function PropertiesPanel({
   };
 
   return (
-    <div className="properties-panel" style={{ width }}>
+    <div className="properties-panel" style={isMobile ? undefined : { width }}>
       <SelectedNodePanel
         ref={panelRendererRef}
         node={selectedNode}

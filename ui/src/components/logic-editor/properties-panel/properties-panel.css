@@ -1025,14 +1025,15 @@
     top: auto;
     left: 0;
     right: 0;
-    bottom: 52px; /* above mobile nav */
+    bottom: 52px; /* above mobile nav tab bar */
     width: 100%;
-    height: 60vh;
+    height: 45%;
+    max-height: 340px;
     border-radius: 12px 12px 0 0;
     border: none;
     border-top: 1px solid var(--border-color, #e0e0e0);
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.1);
-    z-index: 100;
+    z-index: 200;
   }
 
   [data-theme="dark"] .properties-panel {
@@ -1072,5 +1073,28 @@
   .argument-remove {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* Landscape mobile: panel on the right side instead of bottom sheet */
+@media (max-width: 1024px) and (orientation: landscape) {
+  .properties-panel {
+    position: fixed;
+    top: 44px; /* below the header */
+    left: auto;
+    right: 0;
+    bottom: 40px; /* above landscape mobile nav tab bar (40px in landscape) */
+    width: 280px;
+    height: auto;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid var(--border-color, #e0e0e0);
+    border-top: none;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.1);
+  }
+
+  [data-theme="dark"] .properties-panel {
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.35);
   }
 }

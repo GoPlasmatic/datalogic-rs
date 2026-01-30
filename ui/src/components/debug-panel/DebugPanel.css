@@ -13,6 +13,19 @@
   border-bottom: 1px solid var(--border-primary);
 }
 
+/* Desktop: all sections visible with proportional flex */
+.debug-section.logic-section:not(.expanded):not(.collapsed) {
+  flex: 2;
+}
+
+.debug-section.data-section:not(.expanded):not(.collapsed) {
+  flex: 1;
+}
+
+.debug-section.result-section:not(.expanded):not(.collapsed) {
+  flex: 1;
+}
+
 .debug-section:last-child {
   border-bottom: none;
 }
@@ -37,13 +50,20 @@
   border: none;
   border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
-  cursor: pointer;
+  cursor: default;
   font-family: inherit;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.15s;
 }
 
-.debug-section-header:hover {
+/* Only show pointer/hover when in accordion mode (sections have expanded/collapsed class) */
+.debug-section.expanded .debug-section-header,
+.debug-section.collapsed .debug-section-header {
+  cursor: pointer;
+}
+
+.debug-section.expanded .debug-section-header:hover,
+.debug-section.collapsed .debug-section-header:hover {
   background: var(--bg-hover);
 }
 

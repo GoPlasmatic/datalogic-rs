@@ -433,7 +433,7 @@
   letter-spacing: 0.5px;
 }
 
-/* Mobile layout */
+/* Mobile tabbed layout (landscape) */
 .app-main--mobile {
   flex: 1;
   overflow: hidden;
@@ -446,6 +446,7 @@
   height: 100% !important;
   border-right: none !important;
 }
+
 
 /* Responsive — portrait & general mobile */
 @media (max-width: 1024px) {

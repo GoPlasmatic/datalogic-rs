@@ -271,6 +271,7 @@ function App() {
       resultError={resultError}
       wasmReady={wasmReady}
       wasmLoading={wasmLoading}
+      accordion={isMobile}
     />
   );
 

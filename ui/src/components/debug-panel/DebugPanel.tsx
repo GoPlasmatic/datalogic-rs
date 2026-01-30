@@ -17,6 +17,7 @@ interface DebugPanelProps {
   resultError: string | null;
   wasmReady: boolean;
   wasmLoading: boolean;
+  accordion?: boolean;
 }
 
 export function DebugPanel({
@@ -31,12 +32,19 @@ export function DebugPanel({
   resultError,
   wasmReady,
   wasmLoading,
+  accordion = false,
 }: DebugPanelProps) {
   const [expandedSection, setExpandedSection] = useState<string>('logic');
 
   const toggleSection = useCallback((section: string) => {
     setExpandedSection(prev => prev === section ? '' : section);
   }, []);
+
+  const isExpanded = (section: string) => !accordion || expandedSection === section;
+  const sectionClass = (section: string) => {
+    if (!accordion) return '';
+    return expandedSection === section ? 'expanded' : 'collapsed';
+  };
 
   const handleFormatLogic = useCallback(() => {
     if (logic !== null) {
@@ -56,17 +64,19 @@ export function DebugPanel({
   return (
     <div className="debug-panel">
       {/* Logic Input Section */}
-      <div className={`debug-section logic-section ${expandedSection !== 'logic' ? 'collapsed' : 'expanded'}`}>
+      <div className={`debug-section logic-section ${sectionClass('logic')}`}>
         <button
           className="debug-section-header"
-          onClick={() => toggleSection('logic')}
+          onClick={accordion ? () => toggleSection('logic') : undefined}
           type="button"
         >
           <div className="debug-section-header-left">
-            <ChevronDown
-              size={14}
-              className={`debug-section-chevron ${expandedSection !== 'logic' ? 'collapsed' : ''}`}
-            />
+            {accordion && (
+              <ChevronDown
+                size={14}
+                className={`debug-section-chevron ${!isExpanded('logic') ? 'collapsed' : ''}`}
+              />
+            )}
             <h3>Logic</h3>
           </div>
           <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
@@ -79,7 +89,7 @@ export function DebugPanel({
             </button>
           </div>
         </button>
-        {expandedSection === 'logic' && (
+        {isExpanded('logic') && (
           <div className="debug-section-content">
             <JsonEditor
               value={logicText}
@@ -98,17 +108,19 @@ export function DebugPanel({
       </div>
 
       {/* Data Input Section */}
-      <div className={`debug-section data-section ${expandedSection !== 'data' ? 'collapsed' : 'expanded'}`}>
+      <div className={`debug-section data-section ${sectionClass('data')}`}>
         <button
           className="debug-section-header"
-          onClick={() => toggleSection('data')}
+          onClick={accordion ? () => toggleSection('data') : undefined}
           type="button"
         >
           <div className="debug-section-header-left">
-            <ChevronDown
-              size={14}
-              className={`debug-section-chevron ${expandedSection !== 'data' ? 'collapsed' : ''}`}
-            />
+            {accordion && (
+              <ChevronDown
+                size={14}
+                className={`debug-section-chevron ${!isExpanded('data') ? 'collapsed' : ''}`}
+              />
+            )}
             <h3>Data</h3>
           </div>
           <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
@@ -121,7 +133,7 @@ export function DebugPanel({
             </button>
           </div>
         </button>
-        {expandedSection === 'data' && (
+        {isExpanded('data') && (
           <div className="debug-section-content">
             <JsonEditor
               value={dataText}
@@ -140,17 +152,19 @@ export function DebugPanel({
       </div>
 
       {/* Result Section */}
-      <div className={`debug-section result-section ${expandedSection !== 'result' ? 'collapsed' : 'expanded'}`}>
+      <div className={`debug-section result-section ${sectionClass('result')}`}>
         <button
           className="debug-section-header"
-          onClick={() => toggleSection('result')}
+          onClick={accordion ? () => toggleSection('result') : undefined}
           type="button"
         >
           <div className="debug-section-header-left">
-            <ChevronDown
-              size={14}
-              className={`debug-section-chevron ${expandedSection !== 'result' ? 'collapsed' : ''}`}
-            />
+            {accordion && (
+              <ChevronDown
+                size={14}
+                className={`debug-section-chevron ${!isExpanded('result') ? 'collapsed' : ''}`}
+              />
+            )}
             <h3>Result</h3>
           </div>
           <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
@@ -158,7 +172,7 @@ export function DebugPanel({
             {wasmReady && <span className="wasm-status ready">WASM Ready</span>}
           </div>
         </button>
-        {expandedSection === 'result' && (
+        {isExpanded('result') && (
           <div className="debug-section-content">
             {resultError ? (
               <div className="debug-result error">
