@@ -15,6 +15,8 @@
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
+  position: relative;
+  z-index: 1000;
 }
 
 .header-title {
@@ -28,12 +30,6 @@
   font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.header-subtitle {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  font-weight: 400;
 }
 
 .header-controls {
@@ -256,6 +252,8 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 /* Panels */
@@ -377,12 +375,14 @@
   top: calc(100% + 4px);
   right: 0;
   min-width: 160px;
+  max-height: 80vh;
+  overflow-y: auto;
   padding: 4px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
+  z-index: 10000;
 }
 
 .overflow-menu-item {
@@ -437,6 +437,8 @@
 .app-main--mobile {
   flex: 1;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 .mobile-panel {
@@ -446,20 +448,15 @@
 }
 
 /* Responsive — portrait & general mobile */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   /* Compact header */
   .app-header {
     padding: 8px 12px;
-    overflow: hidden;
   }
 
   .header-title {
     min-width: 0;
     flex-shrink: 1;
-  }
-
-  .header-subtitle {
-    display: none;
   }
 
   .app-header h1 {
@@ -510,10 +507,6 @@
   /* Minimal header in landscape */
   .app-header {
     padding: 4px 8px;
-  }
-
-  .header-subtitle {
-    display: none;
   }
 
   .app-header h1 {

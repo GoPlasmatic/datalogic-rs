@@ -34,6 +34,13 @@
   background: var(--bg-secondary, #ffffff);
   flex-shrink: 0;
   gap: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.logic-editor-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 [data-theme="dark"] .logic-editor-toolbar {
@@ -54,6 +61,7 @@
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .logic-editor-toolbar .preserve-structure-toggle input[type="checkbox"] {
@@ -75,6 +83,7 @@
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
 }
 
 .toolbar-btn:hover:not(:disabled) {
@@ -176,20 +185,12 @@
 }
 
 /* Mobile toolbar adjustments */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .logic-editor-toolbar {
     padding: 0 8px;
     gap: 6px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;          /* Firefox */
   }
 
-  .logic-editor-toolbar::-webkit-scrollbar {
-    display: none;                   /* Chrome/Safari */
-  }
-
-  /* Prevent spacers from collapsing too much on mobile */
   .logic-editor-toolbar-spacer {
     flex: 0 0 4px;
   }
@@ -197,12 +198,6 @@
   .toolbar-btn {
     width: 40px;
     height: 40px;
-    flex-shrink: 0;
-  }
-
-  .preserve-structure-toggle {
-    white-space: nowrap;
-    flex-shrink: 0;
   }
 
   .preserve-structure-toggle span {

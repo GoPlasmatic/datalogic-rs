@@ -1019,7 +1019,7 @@
    Mobile Bottom Sheet
    ========================================================================== */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .properties-panel {
     position: fixed;
     top: auto;

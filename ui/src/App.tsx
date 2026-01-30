@@ -291,7 +291,6 @@ function App() {
       <header className="app-header">
         <div className="header-title">
           <h1>DataLogic Studio</h1>
-          <span className="header-subtitle">Visual JSONLogic Editor & Debugger</span>
         </div>
         <div className="header-controls">
           <button

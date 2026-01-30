@@ -338,7 +338,7 @@
 }
 
 /* Mobile adjustments */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .debug-section-header {
     padding: 6px 10px;
     min-height: 40px;
