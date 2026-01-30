@@ -1,1 +1,1 @@
-export { DebuggerControls } from './DebuggerControls';
+export { DebuggerControls, DebuggerControlsInline } from './DebuggerControls';

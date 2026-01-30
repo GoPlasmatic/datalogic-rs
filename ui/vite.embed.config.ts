@@ -16,6 +16,12 @@ export default defineConfig({
     wasm(),
     topLevelAwait(),
   ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+      '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
+    },
+  },
   define: {
     // Ensure process.env is defined for production
     'process.env.NODE_ENV': JSON.stringify('production'),

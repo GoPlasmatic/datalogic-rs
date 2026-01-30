@@ -8,6 +8,7 @@
 import type {
   LogicNodeData,
   LiteralNodeData,
+  OperatorNodeData,
   VariableNodeData,
 } from '../types';
 import type { JsonLogicValue } from '../types/jsonlogic';
@@ -23,13 +24,17 @@ export function panelValuesToNodeData(
   switch (currentData.type) {
     case 'literal':
       return literalPanelToData(currentData, panelValues);
-    case 'variable':
-      return variablePanelToData(currentData, panelValues);
-    case 'operator':
-    case 'verticalCell':
-    case 'decision':
+    case 'operator': {
+      // Check if this is a variable operator (var, val, exists) which has editable fields
+      const opData = currentData as OperatorNodeData;
+      if (['var', 'val', 'exists'].includes(opData.operator)) {
+        return variablePanelToData(currentData as VariableNodeData, panelValues);
+      }
+      // Other operator types don't have editable panel fields (their children are edited separately)
+      return currentData;
+    }
     case 'structure':
-      // These node types don't have editable panel fields (their children are edited separately)
+      // Structure nodes don't have editable panel fields
       return currentData;
     default:
       return currentData;

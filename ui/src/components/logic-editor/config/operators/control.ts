@@ -90,6 +90,7 @@ export const controlOperators: Record<string, Operator> = {
       shortLabel: 'if',
       nodeType: 'decision',
       collapsible: true,
+      addArgumentLabel: 'Add Else If',
     },
     panel: {
       sections: [

@@ -15,12 +15,10 @@ export const comparisonOperators: Record<string, Operator> = {
     category: 'comparison',
     description: 'Loose equality comparison (with type coercion)',
     arity: {
-      type: 'binary',
+      type: 'chainable',
       min: 2,
-      max: 2,
       args: [
-        { name: 'left', label: 'Left', type: 'any', required: true },
-        { name: 'right', label: 'Right', type: 'any', required: true },
+        { name: 'value', label: 'Value', type: 'any', required: true, repeatable: true },
       ],
     },
     help: {
@@ -63,6 +61,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'equal',
       shortLabel: '==',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
   },
 
@@ -72,12 +71,10 @@ export const comparisonOperators: Record<string, Operator> = {
     category: 'comparison',
     description: 'Strict equality comparison (no type coercion)',
     arity: {
-      type: 'binary',
+      type: 'chainable',
       min: 2,
-      max: 2,
       args: [
-        { name: 'left', label: 'Left', type: 'any', required: true },
-        { name: 'right', label: 'Right', type: 'any', required: true },
+        { name: 'value', label: 'Value', type: 'any', required: true, repeatable: true },
       ],
     },
     help: {
@@ -114,6 +111,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'equal',
       shortLabel: '===',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
   },
 
@@ -123,12 +121,10 @@ export const comparisonOperators: Record<string, Operator> = {
     category: 'comparison',
     description: 'Loose inequality comparison (with type coercion)',
     arity: {
-      type: 'binary',
+      type: 'chainable',
       min: 2,
-      max: 2,
       args: [
-        { name: 'left', label: 'Left', type: 'any', required: true },
-        { name: 'right', label: 'Right', type: 'any', required: true },
+        { name: 'value', label: 'Value', type: 'any', required: true, repeatable: true },
       ],
     },
     help: {
@@ -161,6 +157,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'equal-not',
       shortLabel: '!=',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
   },
 
@@ -170,12 +167,10 @@ export const comparisonOperators: Record<string, Operator> = {
     category: 'comparison',
     description: 'Strict inequality comparison (no type coercion)',
     arity: {
-      type: 'binary',
+      type: 'chainable',
       min: 2,
-      max: 2,
       args: [
-        { name: 'left', label: 'Left', type: 'any', required: true },
-        { name: 'right', label: 'Right', type: 'any', required: true },
+        { name: 'value', label: 'Value', type: 'any', required: true, repeatable: true },
       ],
     },
     help: {
@@ -203,6 +198,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'equal-not',
       shortLabel: '!==',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
   },
 
@@ -261,6 +257,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'chevron-right',
       shortLabel: '>',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
     panel: {
       chainable: true,
@@ -324,6 +321,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'chevron-right',
       shortLabel: '>=',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
     panel: {
       chainable: true,
@@ -400,6 +398,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'chevron-left',
       shortLabel: '<',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
     panel: {
       chainable: true,
@@ -463,6 +462,7 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'chevron-left',
       shortLabel: '<=',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Comparison',
     },
     panel: {
       chainable: true,

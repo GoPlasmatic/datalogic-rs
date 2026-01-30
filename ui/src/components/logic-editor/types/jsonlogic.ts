@@ -36,16 +36,4 @@ export type NodeCategory =
   | import('../config/operators.types').OperatorCategory
   | 'literal';
 
-// Operator metadata for the registry
-// @deprecated Use Operator from config/operators.types instead
-export interface OperatorMeta {
-  name: string;
-  category: NodeCategory;
-  label: string;
-  description: string;
-  minArgs?: number;
-  maxArgs?: number;
-  argLabels?: string[];
-}
-
 // CATEGORY_COLORS moved to constants/colors.ts

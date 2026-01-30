@@ -1,12 +1,11 @@
 import { useCallback } from 'react';
 import { useReactFlow } from '@xyflow/react';
-import type { LogicNode, OperatorNodeData, VerticalCellNodeData } from '../types';
+import type { LogicNode, OperatorNodeData } from '../types';
 
-type CollapsibleNodeData = OperatorNodeData | VerticalCellNodeData;
+type CollapsibleNodeData = OperatorNodeData;
 
 /**
  * Hook that provides a toggle callback for collapsing/expanding nodes.
- * Works with both OperatorNode and VerticalCellNode.
  */
 export function useNodeCollapse(nodeId: string): (e: React.MouseEvent) => void {
   const { setNodes } = useReactFlow();

@@ -1,7 +1,7 @@
 import type {
   LogicNode,
   JsonLogicValue,
-  VariableNodeData,
+  OperatorNodeData,
 } from '../../../types';
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
@@ -38,20 +38,32 @@ export function createVariableNodeFromTrace(
     path = String(operands ?? '');
   }
 
+  // Build cells for the variable operator
+  const cells: { type: 'editable'; fieldId: string; fieldType: 'text'; value: unknown; placeholder: string; label: string; index: number }[] = [
+    { type: 'editable', fieldId: 'path', fieldType: 'text', value: path, placeholder: 'path', label: path || '', index: 0 },
+  ];
+  if (defaultValue !== undefined) {
+    cells.push({ type: 'editable', fieldId: 'default', fieldType: 'text', value: defaultValue, placeholder: 'default', label: String(defaultValue), index: 1 });
+  }
+
   const node: LogicNode = {
     id: nodeId,
-    type: 'variable',
+    type: 'operator',
     position: { x: 0, y: 0 },
     data: {
-      type: 'variable',
+      type: 'operator',
       operator,
+      category: 'variable',
+      label: operator,
+      icon: 'database',
+      cells,
+      expression,
       path,
       defaultValue,
-      expression,
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
-    } as VariableNodeData,
+    } as OperatorNodeData,
   };
   context.nodes.push(node);
 

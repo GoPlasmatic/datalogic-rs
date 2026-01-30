@@ -5,7 +5,7 @@
  * Extracted from ArgumentsSection for reusability and testability.
  */
 
-import type { LogicNode, LiteralNodeData, JsonLogicValue, OperatorNodeData, VerticalCellNodeData } from '../../types';
+import type { LogicNode, LiteralNodeData, JsonLogicValue, OperatorNodeData } from '../../types';
 import type { Operator } from '../../config/operators.types';
 
 /**
@@ -20,6 +20,14 @@ export interface ArgumentInfo {
   /** For linked nodes */
   childNode?: LogicNode;
   childId?: string;
+  /** Row label from cell (e.g., 'If', 'Then', 'Else If', 'Else', 'Path') */
+  rowLabel?: string;
+  /** Field identifier from editable cell (e.g., 'path', 'scopeLevel') */
+  fieldId?: string;
+  /** Field input type from editable cell (e.g., 'text', 'number') */
+  fieldType?: string;
+  /** Placeholder text from editable cell */
+  placeholder?: string;
 }
 
 /**
@@ -30,7 +38,9 @@ export function supportsVariableArgs(opConfig: Operator | undefined): boolean {
   return (
     opConfig.arity.type === 'nary' ||
     opConfig.arity.type === 'variadic' ||
-    opConfig.arity.type === 'chainable'
+    opConfig.arity.type === 'chainable' ||
+    opConfig.arity.type === 'special' ||
+    opConfig.arity.type === 'range'
   );
 }
 
@@ -47,7 +57,6 @@ export function hasArguments(opConfig: Operator | undefined): boolean {
  */
 export function getOperatorName(data: LogicNode['data']): string | null {
   if (data.type === 'operator') return (data as OperatorNodeData).operator;
-  if (data.type === 'verticalCell') return (data as VerticalCellNodeData).operator;
   return null;
 }
 
@@ -90,14 +99,8 @@ export function formatNodeValue(node: LogicNode): string {
       if (typeof value === 'object') return `{...}`;
       return String(value);
     }
-    case 'variable':
-      return data.path ? `${data.operator}("${data.path}")` : data.operator;
     case 'operator':
       return data.label || data.operator;
-    case 'verticalCell':
-      return data.label || data.operator;
-    case 'decision':
-      return 'if(...)';
     case 'structure':
       return data.isArray ? '[...]' : '{...}';
     default:
@@ -106,86 +109,13 @@ export function formatNodeValue(node: LogicNode): string {
 }
 
 /**
- * Format a raw value for display (for inline literals)
+ * Extract arguments from operator node data (cells-based)
  */
-export function formatRawValue(value: JsonLogicValue): string {
-  if (value === null) return 'null';
-  if (typeof value === 'string') return `"${value}"`;
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (Array.isArray(value)) return `[${value.length} items]`;
-  if (typeof value === 'object') return `{...}`;
-  return String(value);
-}
-
-/**
- * Extract arguments from operator node data
- */
-export function extractOperatorArguments(
+export function extractArguments(
   opData: OperatorNodeData,
-  childNodeByArgIndex: Map<number, LogicNode>
-): ArgumentInfo[] {
-  const expr = opData.expression;
-
-  // Extract operands from expression
-  if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-    const operator = Object.keys(expr)[0];
-    const operands = (expr as Record<string, unknown>)[operator];
-    const operandArray: JsonLogicValue[] = Array.isArray(operands)
-      ? operands
-      : [operands as JsonLogicValue];
-
-    return operandArray.map((operand, index) => {
-      // Check if this operand has a corresponding child node by argIndex
-      const childNode = childNodeByArgIndex.get(index);
-
-      if (childNode) {
-        // Complex expression with child node
-        return {
-          index,
-          isInline: false,
-          childNode,
-          childId: childNode.id,
-        };
-      } else if (isSimpleLiteral(operand)) {
-        // Inlined literal
-        return {
-          index,
-          isInline: true,
-          value: operand,
-          valueType: getLiteralType(operand),
-        };
-      } else {
-        // Complex expression but no child node found (shouldn't happen normally)
-        return {
-          index,
-          isInline: true,
-          value: operand,
-          valueType: 'array',
-        };
-      }
-    });
-  }
-
-  // Fallback: use childIds if no expression
-  return opData.childIds.map((childId, index) => {
-    const childNode = childNodeByArgIndex.get(index);
-    return {
-      index,
-      isInline: false,
-      childNode,
-      childId,
-    };
-  });
-}
-
-/**
- * Extract arguments from verticalCell node data
- */
-export function extractVerticalCellArguments(
-  vcData: VerticalCellNodeData,
   childNodeMap: Map<string, LogicNode>
 ): ArgumentInfo[] {
-  return vcData.cells.map((cell) => {
+  return opData.cells.map((cell) => {
     if (cell.type === 'inline') {
       // Parse the label to get the value
       let value: JsonLogicValue;
@@ -217,6 +147,34 @@ export function extractVerticalCellArguments(
         isInline: true,
         value,
         valueType,
+        rowLabel: cell.rowLabel,
+      };
+    } else if (cell.type === 'editable') {
+      // Editable cell (var path, val scope, etc.) — show as inline editable
+      const cellValue = cell.value;
+      let value: JsonLogicValue;
+      let valueType: LiteralNodeData['valueType'];
+
+      if (cellValue === null || cellValue === undefined) {
+        value = '';
+        valueType = 'string';
+      } else if (typeof cellValue === 'number') {
+        value = cellValue;
+        valueType = 'number';
+      } else {
+        value = String(cellValue);
+        valueType = 'string';
+      }
+
+      return {
+        index: cell.index,
+        isInline: true,
+        value,
+        valueType,
+        rowLabel: cell.rowLabel,
+        fieldId: cell.fieldId,
+        fieldType: cell.fieldType,
+        placeholder: cell.placeholder,
       };
     } else {
       // Branch cell with child node
@@ -228,6 +186,7 @@ export function extractVerticalCellArguments(
         isInline: false,
         childNode,
         childId,
+        rowLabel: cell.rowLabel,
       };
     }
   });

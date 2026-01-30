@@ -1,9 +1,6 @@
-export { OperatorNode } from './OperatorNode';
-export { VariableNode } from './VariableNode';
+export { UnifiedOperatorNode } from './UnifiedOperatorNode';
 export { LiteralNode } from './LiteralNode';
-export { VerticalCellNode } from './VerticalCellNode';
-export { DecisionNode } from './DecisionNode';
 export { StructureNode } from './StructureNode';
-export { ResultBadge } from './ResultBadge';
+
 export { DebugInfoBubble } from './DebugInfoBubble';
 export { nodeTypes } from './nodeTypes';

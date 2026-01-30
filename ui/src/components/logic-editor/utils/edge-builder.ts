@@ -1,4 +1,4 @@
-import type { LogicNode, LogicEdge, VerticalCellNodeData, OperatorNodeData, StructureNodeData } from '../types';
+import type { LogicNode, LogicEdge, OperatorNodeData, StructureNodeData } from '../types';
 
 /**
  * Build edges from node relationships, respecting collapse state.
@@ -9,27 +9,11 @@ export function buildEdgesFromNodes(nodes: LogicNode[]): LogicEdge[] {
   const edges: LogicEdge[] = [];
 
   nodes.forEach((node) => {
-    // Handle operator nodes with childIds
+    // Handle operator nodes with cells
     if (node.type === 'operator') {
       const opData = node.data as OperatorNodeData;
       if (!opData.collapsed) {
-        opData.childIds.forEach((childId, idx) => {
-          edges.push({
-            id: `${node.id}-${childId}`,
-            source: node.id,
-            target: childId,
-            sourceHandle: `arg-${idx}`,
-            targetHandle: 'left',
-          });
-        });
-      }
-    }
-
-    // Handle verticalCell nodes with branch children
-    if (node.type === 'verticalCell') {
-      const vcData = node.data as VerticalCellNodeData;
-      if (!vcData.collapsed) {
-        vcData.cells.forEach((cell) => {
+        opData.cells.forEach((cell) => {
           // Use cell.index for stable handle IDs
           // Handle IDs match CellHandles.tsx: branch-{cellIndex}, branch-{cellIndex}-cond, branch-{cellIndex}-then
 

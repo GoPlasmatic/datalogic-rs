@@ -5,26 +5,97 @@
   background: var(--bg-tertiary);
   border-radius: 8px;
   overflow: hidden;
-}
-
-/* Layout with properties panel */
-.logic-editor--with-panel {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
 }
 
-.logic-editor--with-panel .logic-editor-main {
+/* Body: contains main canvas (full size) + floating properties panel */
+.logic-editor-body {
   flex: 1;
+  min-height: 0;
   position: relative;
-  min-width: 0;
-  height: 100%;
 }
 
-/* When not in panel mode, main takes full size */
-.logic-editor:not(.logic-editor--with-panel) .logic-editor-main {
+.logic-editor-main {
   width: 100%;
   height: 100%;
 }
+
+/* ============================================================================
+   Toolbar
+   ============================================================================ */
+
+.logic-editor-toolbar {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-light, #e8e8e8);
+  background: var(--bg-secondary, #ffffff);
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+[data-theme="dark"] .logic-editor-toolbar {
+  background: var(--bg-secondary, #1e1e1e);
+  border-bottom-color: var(--border-color, #3e3e3e);
+}
+
+.logic-editor-toolbar-spacer {
+  flex: 1;
+}
+
+.logic-editor-toolbar .preserve-structure-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.logic-editor-toolbar .preserve-structure-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Shared toolbar button style (undo/redo, etc.) */
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-primary, #1a1a1a);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .toolbar-btn {
+  color: var(--text-secondary, #aaa);
+}
+
+[data-theme="dark"] .toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #3e3e3e);
+  color: var(--text-primary, #e0e0e0);
+}
+
 
 .logic-editor .react-flow {
   width: 100%;
@@ -104,63 +175,7 @@
   display: none;
 }
 
-/* ============================================================================
-   Undo/Redo Toolbar
-   ============================================================================ */
-
-.undo-redo-toolbar {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 100;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--bg-secondary, #ffffff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-[data-theme="dark"] .undo-redo-toolbar {
-  background: var(--bg-secondary, #1e1e1e);
-  border-color: var(--border-color, #3e3e3e);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.undo-redo-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-secondary, #666);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.undo-redo-btn:hover:not(:disabled) {
-  background: var(--bg-hover, #f0f0f0);
-  color: var(--text-primary, #1a1a1a);
-}
-
-.undo-redo-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-[data-theme="dark"] .undo-redo-btn {
-  color: var(--text-secondary, #aaa);
-}
-
-[data-theme="dark"] .undo-redo-btn:hover:not(:disabled) {
-  background: var(--bg-hover, #3e3e3e);
-  color: var(--text-primary, #e0e0e0);
-}
+/* (Undo/Redo now uses .toolbar-btn inline in toolbar) */
 
 /* ============================================================================
    Add Argument Button (shared by OperatorNode and VerticalCellNode)

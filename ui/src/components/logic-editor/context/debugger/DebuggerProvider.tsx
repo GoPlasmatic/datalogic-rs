@@ -38,7 +38,7 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
     return () => clearInterval(timer);
   }, [state.playbackState, state.playbackSpeed]);
 
-  // Current step
+  // Current step (null when at -1 = initial/plain visualizer state)
   const currentStep = useMemo(() => {
     if (state.steps.length === 0 || state.currentStepIndex < 0) return null;
     return state.steps[state.currentStepIndex] ?? null;

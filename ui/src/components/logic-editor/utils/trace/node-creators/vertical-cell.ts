@@ -2,14 +2,15 @@ import type {
   LogicNode,
   JsonLogicValue,
   CellData,
-  VerticalCellNodeData,
+  OperatorNodeData,
 } from '../../../types';
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
 import type { TraceContext } from '../types';
 import { TRUNCATION_LIMITS } from '../../../constants';
-import { getOperatorMeta, getOperatorTitle } from '../../../config/operators';
-import { CATEGORY_ICONS, ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../../icons';
+import { getOperator } from '../../../config/operators';
+import { ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../../icons';
+import { getCategoryIcon } from '../../../config/categories';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from '../../formatting';
 import { isSimpleOperand } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
@@ -49,13 +50,14 @@ export function createVerticalCellNodeFromTrace(
   const operands = obj[operator];
   const operandArray: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
 
-  const meta = getOperatorMeta(operator);
+  const op = getOperator(operator);
+  const opCategory = op?.category ?? 'utility';
   const cells: CellData[] = [];
   let branchIndex = 0;
   const usedChildIndices = new Set<number>();
 
   // Determine icon
-  let icon: IconName = CATEGORY_ICONS[meta.category] || 'list';
+  let icon: IconName = getCategoryIcon(opCategory) as IconName;
   if (operator === 'or') icon = CONTROL_ICONS.orOperator;
 
   const iteratorIcons = ITERATOR_ARG_ICONS[operator];
@@ -123,13 +125,13 @@ export function createVerticalCellNodeFromTrace(
 
   const node: LogicNode = {
     id: nodeId,
-    type: 'verticalCell',
+    type: 'operator',
     position: { x: 0, y: 0 },
     data: {
-      type: 'verticalCell',
+      type: 'operator',
       operator,
-      category: meta.category,
-      label: getOperatorTitle(operator),
+      category: opCategory,
+      label: op?.label ?? operator,
       icon,
       cells,
       collapsed: false,
@@ -138,7 +140,7 @@ export function createVerticalCellNodeFromTrace(
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
-    } as VerticalCellNodeData,
+    } as OperatorNodeData,
   };
   context.nodes.push(node);
 

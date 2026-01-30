@@ -7,12 +7,9 @@
 import type {
   LogicNode,
   OperatorNodeData,
-  VerticalCellNodeData,
-  DecisionNodeData,
   StructureNodeData,
   JsonLogicValue,
 } from '../types';
-import { rebuildOperatorExpression } from './expression-builder';
 
 /**
  * Delete a node and all its descendants from the node array.
@@ -78,24 +75,12 @@ function getChildIds(data: LogicNode['data']): string[] {
   switch (data.type) {
     case 'operator': {
       const opData = data as OperatorNodeData;
-      return opData.childIds || [];
-    }
-    case 'verticalCell': {
-      const vcData = data as VerticalCellNodeData;
       const ids: string[] = [];
-      for (const cell of vcData.cells) {
+      for (const cell of opData.cells) {
         if (cell.branchId) ids.push(cell.branchId);
         if (cell.conditionBranchId) ids.push(cell.conditionBranchId);
         if (cell.thenBranchId) ids.push(cell.thenBranchId);
       }
-      return ids;
-    }
-    case 'decision': {
-      const decData = data as DecisionNodeData;
-      const ids: string[] = [];
-      if (decData.conditionBranchId) ids.push(decData.conditionBranchId);
-      ids.push(decData.yesBranchId);
-      ids.push(decData.noBranchId);
       return ids;
     }
     case 'structure': {
@@ -105,7 +90,6 @@ function getChildIds(data: LogicNode['data']): string[] {
         .map((el) => el.branchId!);
     }
     case 'literal':
-    case 'variable':
     default:
       return [];
   }
@@ -126,35 +110,9 @@ function updateParentAfterChildDeletion(
   switch (data.type) {
     case 'operator': {
       const opData = data as OperatorNodeData;
-      const newChildIds = opData.childIds.filter((id) => id !== deletedChildId);
-
-      // Get remaining child nodes and reindex them
-      const remainingChildren = allNodes
-        .filter((n) => newChildIds.includes(n.id))
-        .sort((a, b) => (a.data.argIndex ?? 0) - (b.data.argIndex ?? 0))
-        .map((n, idx) => ({
-          ...n,
-          data: { ...n.data, argIndex: idx },
-        }));
-
-      // Rebuild expression from remaining children
-      const newExpression = rebuildOperatorExpression(opData.operator, remainingChildren);
-
-      return {
-        ...parentNode,
-        data: {
-          ...opData,
-          childIds: newChildIds,
-          expression: newExpression,
-          expressionText: undefined, // Clear cached text
-        },
-      };
-    }
-    case 'verticalCell': {
-      const vcData = data as VerticalCellNodeData;
 
       // Filter and reindex cells
-      const newCells = vcData.cells
+      const newCells = opData.cells
         .filter((cell) => cell.branchId !== deletedChildId)
         .map((cell, idx) => ({
           ...cell,
@@ -178,7 +136,7 @@ function updateParentAfterChildDeletion(
           }
         }
         // Fallback to stored expression value at this index if available
-        const storedExpr = vcData.expression;
+        const storedExpr = opData.expression;
         if (storedExpr && typeof storedExpr === 'object' && !Array.isArray(storedExpr)) {
           const opKey = Object.keys(storedExpr)[0];
           const operands = (storedExpr as Record<string, unknown>)[opKey];
@@ -189,34 +147,15 @@ function updateParentAfterChildDeletion(
         return null;
       });
 
-      const newExpression = { [vcData.operator]: newOperands };
+      const newExpression = { [opData.operator]: newOperands };
 
       return {
         ...parentNode,
         data: {
-          ...vcData,
+          ...opData,
           cells: newCells,
           expression: newExpression,
           expressionText: undefined,
-        },
-      };
-    }
-    case 'decision': {
-      const decData = data as DecisionNodeData;
-      // For decision nodes, we can't really remove branches - they're required
-      // Instead, we clear the reference if it matches
-      return {
-        ...parentNode,
-        data: {
-          ...decData,
-          conditionBranchId:
-            decData.conditionBranchId === deletedChildId
-              ? undefined
-              : decData.conditionBranchId,
-          isConditionComplex:
-            decData.conditionBranchId === deletedChildId
-              ? false
-              : decData.isConditionComplex,
         },
       };
     }

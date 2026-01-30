@@ -232,6 +232,7 @@ export const logicalOperators: Record<string, Operator> = {
       icon: 'circle-dot',
       shortLabel: 'AND',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Condition',
     },
   },
 
@@ -308,6 +309,7 @@ export const logicalOperators: Record<string, Operator> = {
       icon: 'circle',
       shortLabel: 'OR',
       nodeType: 'vertical',
+      addArgumentLabel: 'Add Condition',
     },
   },
 };

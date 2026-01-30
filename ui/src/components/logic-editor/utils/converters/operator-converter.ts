@@ -1,10 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { JsonLogicValue, CellData, LogicNode, VerticalCellNodeData, OperatorNodeData } from '../../types';
+import type { JsonLogicValue, CellData, LogicNode, OperatorNodeData } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
 import { getParentInfo } from './types';
 import { TRUNCATION_LIMITS } from '../../constants';
-import { getOperatorMeta, getOperatorTitle } from '../../config/operators';
-import { CATEGORY_ICONS, ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../icons';
+import { getOperator } from '../../config/operators';
+import { ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../icons';
+import { getCategoryIcon } from '../../config/categories';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from '../formatting';
 import { isSimpleOperand } from '../type-helpers';
 import { createBranchEdge, createArgEdge } from '../node-factory';
@@ -12,20 +13,21 @@ import { createBranchEdge, createArgEdge } from '../node-factory';
 // Unary operators for special handling
 const UNARY_OPERATORS = ['!', '!!'];
 
-// Convert to vertical cell node for comparison, logical, and iterator operators
-export function convertToVerticalCell(
+// Convert any operator to a unified operator node with cells
+export function convertOperator(
   operator: string,
   operandArray: JsonLogicValue[],
   context: ConversionContext,
   convertValue: ConverterFn
 ): string {
   const nodeId = uuidv4();
-  const meta = getOperatorMeta(operator);
+  const op = getOperator(operator);
+  const category = op?.category ?? 'utility';
   const cells: CellData[] = [];
   let branchIndex = 0;
 
   // Determine icon based on operator type
-  let icon: IconName = CATEGORY_ICONS[meta.category] || 'list';
+  let icon: IconName = getCategoryIcon(category) as IconName;
   if (operator === 'or') icon = CONTROL_ICONS.orOperator;
 
   // Get iterator argument icons if applicable
@@ -74,15 +76,15 @@ export function convertToVerticalCell(
   const expressionText = generateExpressionText(originalExpr);
   const parentInfo = getParentInfo(context);
 
-  const verticalCellNode: LogicNode = {
+  const operatorNode: LogicNode = {
     id: nodeId,
-    type: 'verticalCell',
+    type: 'operator',
     position: { x: 0, y: 0 },
     data: {
-      type: 'verticalCell',
+      type: 'operator',
       operator,
-      category: meta.category,
-      label: getOperatorTitle(operator),
+      category,
+      label: op?.label ?? operator,
       icon,
       cells,
       collapsed: false,
@@ -91,108 +93,11 @@ export function convertToVerticalCell(
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
-    } as VerticalCellNodeData,
+    } as OperatorNodeData,
   };
-  context.nodes.push(verticalCellNode);
+  context.nodes.push(operatorNode);
 
   // Add edge from parent if exists
-  if (parentInfo.parentId && !parentInfo.branchType) {
-    context.edges.push(
-      createArgEdge(parentInfo.parentId, nodeId, parentInfo.argIndex ?? 0)
-    );
-  }
-
-  return nodeId;
-}
-
-// Convert unary operator with simple argument (inline display)
-export function convertUnaryInline(
-  operator: string,
-  expressionText: string,
-  value: JsonLogicValue,
-  context: ConversionContext
-): string {
-  const nodeId = uuidv4();
-  const meta = getOperatorMeta(operator);
-  const parentInfo = getParentInfo(context);
-
-  const operatorNode: LogicNode = {
-    id: nodeId,
-    type: 'operator',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'operator',
-      operator,
-      category: meta.category,
-      label: getOperatorTitle(operator),
-      childIds: [], // No children - inline display
-      collapsed: false,
-      expressionText,
-      expression: value,
-      inlineDisplay: expressionText, // Show inline
-      parentId: parentInfo.parentId,
-      argIndex: parentInfo.argIndex,
-      branchType: parentInfo.branchType,
-    } as OperatorNodeData,
-  };
-  context.nodes.push(operatorNode);
-
-  if (parentInfo.parentId && !parentInfo.branchType) {
-    context.edges.push(
-      createArgEdge(parentInfo.parentId, nodeId, parentInfo.argIndex ?? 0)
-    );
-  }
-
-  return nodeId;
-}
-
-// Convert standard operator with child nodes
-export function convertOperatorWithChildren(
-  operator: string,
-  operandArray: JsonLogicValue[],
-  value: JsonLogicValue,
-  context: ConversionContext,
-  convertValue: ConverterFn
-): string {
-  const nodeId = uuidv4();
-  const meta = getOperatorMeta(operator);
-  const expressionText = generateExpressionText(value);
-  const childIds: string[] = [];
-
-  // Process each operand recursively
-  operandArray.forEach((operand, idx) => {
-    const childId = convertValue(operand, {
-      nodes: context.nodes,
-      edges: context.edges,
-      parentId: nodeId,
-      argIndex: idx,
-      preserveStructure: context.preserveStructure,
-    });
-    childIds.push(childId);
-  });
-
-  const parentInfo = getParentInfo(context);
-
-  const operatorNode: LogicNode = {
-    id: nodeId,
-    type: 'operator',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'operator',
-      operator,
-      category: meta.category,
-      label: getOperatorTitle(operator),
-      childIds,
-      collapsed: false,
-      expressionText,
-      expression: value,
-      parentId: parentInfo.parentId,
-      argIndex: parentInfo.argIndex,
-      branchType: parentInfo.branchType,
-    } as OperatorNodeData,
-  };
-  context.nodes.push(operatorNode);
-
   if (parentInfo.parentId && !parentInfo.branchType) {
     context.edges.push(
       createArgEdge(parentInfo.parentId, nodeId, parentInfo.argIndex ?? 0)

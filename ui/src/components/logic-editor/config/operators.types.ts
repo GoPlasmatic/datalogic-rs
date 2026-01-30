@@ -126,6 +126,7 @@ export interface OperatorUIHints {
   metadata?: boolean;
   datetimeProps?: boolean;
   iteratorContext?: boolean;
+  addArgumentLabel?: string; // Custom label for add argument button (e.g., "Add Else If", "Add Default")
 }
 
 // ============================================================================

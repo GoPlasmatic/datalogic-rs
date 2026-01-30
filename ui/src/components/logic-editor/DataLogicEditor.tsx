@@ -1,20 +1,19 @@
-import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ReactFlow,
   Background,
   Controls,
   useNodesState,
   useEdgesState,
-  useReactFlow,
   ReactFlowProvider,
-  type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import type { DataLogicEditorProps, LogicNode, LogicEdge } from './types';
 import { nodeTypes } from './nodes';
 import { edgeTypes } from './edges';
-import { useLogicEditor, useWasmEvaluator, useDebugEvaluation, type EvaluationResultsMap } from './hooks';
+import { useLogicEditor, useWasmEvaluator, type EvaluationResultsMap } from './hooks';
+import { useContextMenu } from './hooks/useContextMenu';
 import { getHiddenNodeIds } from './utils/visibility';
 import { buildEdgesFromNodes } from './utils/edge-builder';
 import { nodesToJsonLogic } from './utils/nodes-to-jsonlogic';
@@ -24,8 +23,9 @@ import { DebuggerControls } from './debugger-controls';
 import { PropertiesPanel } from './properties-panel';
 import { NodeSelectionHandler } from './NodeSelectionHandler';
 import { KeyboardHandler } from './KeyboardHandler';
-import { UndoRedoToolbar } from './UndoRedoToolbar';
 import { NodeContextMenu, CanvasContextMenu } from './context-menu';
+import { AutoFitView } from './AutoFitView';
+import { EditorToolbar } from './EditorToolbar';
 import { REACT_FLOW_OPTIONS } from './constants/layout';
 import { useSystemTheme } from '../../hooks';
 import './styles/nodes.css';
@@ -35,31 +35,6 @@ import './panel-inputs/panel-inputs.css';
 import './edges/edges.css';
 
 const emptyResults: EvaluationResultsMap = new Map();
-
-// Helper component to auto-fit view (must be inside ReactFlow)
-function AutoFitView({ nodeCount }: { nodeCount: number }) {
-  const { fitView } = useReactFlow();
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fitView({
-        padding: REACT_FLOW_OPTIONS.fitViewPadding,
-        maxZoom: REACT_FLOW_OPTIONS.maxZoom,
-      });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [nodeCount, fitView]);
-
-  return null;
-}
-
-// Context menu state type
-interface ContextMenuState {
-  type: 'node' | 'canvas';
-  x: number;
-  y: number;
-  nodeId?: string;
-}
 
 // Inner component that handles ReactFlow state
 function DataLogicEditorInner({
@@ -82,11 +57,19 @@ function DataLogicEditorInner({
   // Background dot colors based on theme
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
 
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // Context menu hook
+  const {
+    contextMenu,
+    handleNodeContextMenu,
+    handlePaneContextMenu,
+    handleNodeDoubleClick,
+    handleCloseContextMenu,
+    handleEditProperties,
+    contextMenuNode,
+  } = useContextMenu(isEditMode);
 
-  // Get editor context for double-click handling
-  const { focusPropertyPanel, nodes: editorNodes } = useEditorContext();
+  // Get editor context for syncing
+  const { nodes: editorNodes } = useEditorContext();
 
   // Initialize state directly from props - component remounts via key when expression changes
   const [nodes, setNodes, onNodesChange] = useNodesState<LogicNode>(initialNodes);
@@ -154,93 +137,6 @@ function DataLogicEditorInner({
         ),
     [currentEdges, nodeIds, hiddenNodeIds, isEditMode]
   );
-
-  // Handle node context menu (right-click)
-  const handleNodeContextMenu: NodeMouseHandler<LogicNode> = useCallback(
-    (event, node) => {
-      if (!isEditMode) return;
-      event.preventDefault();
-      setContextMenu({
-        type: 'node',
-        x: event.clientX,
-        y: event.clientY,
-        nodeId: node.id,
-      });
-    },
-    [isEditMode]
-  );
-
-  // Handle pane (canvas) context menu
-  const handlePaneContextMenu = useCallback(
-    (event: React.MouseEvent | MouseEvent) => {
-      if (!isEditMode) return;
-      event.preventDefault();
-      setContextMenu({
-        type: 'canvas',
-        x: event.clientX,
-        y: event.clientY,
-      });
-    },
-    [isEditMode]
-  );
-
-  // Handle node double-click
-  const handleNodeDoubleClick: NodeMouseHandler<LogicNode> = useCallback(
-    (_event, node) => {
-      if (!isEditMode) return;
-
-      // Determine which field to focus based on node type
-      let fieldId: string | undefined;
-      switch (node.data.type) {
-        case 'literal':
-          fieldId = 'value';
-          break;
-        case 'variable':
-          fieldId = 'path';
-          break;
-        default:
-          fieldId = undefined;
-      }
-
-      focusPropertyPanel(node.id, fieldId);
-    },
-    [isEditMode, focusPropertyPanel]
-  );
-
-  // Close context menu
-  const handleCloseContextMenu = useCallback(() => {
-    setContextMenu(null);
-  }, []);
-
-  // Handle "Edit Properties" from context menu
-  const handleEditProperties = useCallback(() => {
-    if (contextMenu?.nodeId) {
-      const node = editorNodes.find((n) => n.id === contextMenu.nodeId);
-      if (node) {
-        let fieldId: string | undefined;
-        switch (node.data.type) {
-          case 'literal':
-            fieldId = 'value';
-            break;
-          case 'variable':
-            fieldId = 'path';
-            break;
-          default:
-            fieldId = undefined;
-        }
-        focusPropertyPanel(contextMenu.nodeId, fieldId);
-      }
-    }
-    handleCloseContextMenu();
-  }, [contextMenu, editorNodes, focusPropertyPanel, handleCloseContextMenu]);
-
-  // Get the node for context menu
-  const contextMenuNode = useMemo(() => {
-    if (contextMenu?.type === 'node' && contextMenu.nodeId) {
-      return editorNodes.find((n) => n.id === contextMenu.nodeId);
-    }
-    return undefined;
-  }, [contextMenu, editorNodes]);
 
   return (
     <EvaluationContext.Provider value={evaluationResults}>
@@ -311,19 +207,17 @@ export function DataLogicEditor({
   value,
   onChange,
   data,
-  mode = 'visualize',
   theme: themeProp,
   className = '',
   preserveStructure = false,
-  componentMode: _componentMode = 'debugger',
+  onPreserveStructureChange,
+  editable = false,
 }: DataLogicEditorProps) {
-  void _componentMode; // Component mode is handled by parent components (App.tsx, embed.tsx)
-
   // Debounce timer ref for onChange
   const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Determine if we're in edit mode
-  const isEditMode = mode === 'edit';
+  const isEditMode = editable;
 
   // Theme handling - use prop override or system preference
   const systemTheme = useSystemTheme();
@@ -332,18 +226,17 @@ export function DataLogicEditor({
   // Internal WASM evaluator
   const {
     ready: wasmReady,
-    evaluate,
     evaluateWithTrace,
   } = useWasmEvaluator({ preserveStructure });
 
-  // Determine if debugging is enabled
-  const debugEnabled = mode === 'debug' && data !== undefined;
+  // Evaluation is enabled whenever data is provided (unified mode - no mode switching needed)
+  const evalEnabled = data !== undefined;
 
-  // Use trace-based evaluation when in debug mode
+  // Use trace-based evaluation when data is available
   const editor = useLogicEditor({
     value,
-    evaluateWithTrace: debugEnabled && wasmReady ? evaluateWithTrace : undefined,
-    data: debugEnabled ? data : undefined,
+    evaluateWithTrace: evalEnabled && wasmReady ? evaluateWithTrace : undefined,
+    data: evalEnabled ? data : undefined,
     preserveStructure,
   });
 
@@ -351,23 +244,8 @@ export function DataLogicEditor({
   // This ensures the component remounts when the expression structure changes
   const expressionKey = `${editor.nodes.length}-${editor.edges.length}-${editor.nodes[0]?.id ?? 'empty'}`;
 
-  // Fallback: Compute evaluation results using multiple evaluate calls (only when not in trace mode)
-  const fallbackResults = useDebugEvaluation({
-    nodes: editor.nodes,
-    data,
-    evaluate: wasmReady ? evaluate : null,
-    enabled: debugEnabled && !editor.usingTraceMode && wasmReady,
-  });
-
-  // Use trace-based results when available, otherwise fall back to multi-evaluation
-  const results = editor.usingTraceMode
-    ? editor.evaluationResults
-    : fallbackResults.size > 0
-      ? fallbackResults
-      : emptyResults;
-
   // Check if debugger should be active (trace mode with steps)
-  const showDebugger = debugEnabled && editor.usingTraceMode && editor.steps.length > 0;
+  const hasDebugger = evalEnabled && editor.usingTraceMode && editor.steps.length > 0;
 
   // Allow node interactions (collapse/expand) in all modes
   // Full editing (adding/removing nodes) is still a future feature
@@ -414,25 +292,22 @@ export function DataLogicEditor({
     );
   }
 
+  // No result badges on nodes — debug bubble on current step node only (via DebuggerProvider)
   const editorInner = (
     <DataLogicEditorInner
       key={expressionKey}
       initialNodes={editor.nodes}
       initialEdges={editor.edges}
       readOnly={readOnly}
-      evaluationResults={results}
+      evaluationResults={emptyResults}
       theme={resolvedTheme}
-      showDebugger={showDebugger}
+      showDebugger={false}
       isEditMode={isEditMode}
     />
   );
 
-  // Build the class name with edit mode modifier
-  const editorClassName = [
-    'logic-editor',
-    isEditMode ? 'logic-editor--with-panel' : '',
-    className,
-  ].filter(Boolean).join(' ');
+  // Build the class name
+  const editorClassName = ['logic-editor', className].filter(Boolean).join(' ');
 
   return (
     <EditorProvider
@@ -442,21 +317,41 @@ export function DataLogicEditor({
     >
       {isEditMode && <KeyboardHandler />}
       <div className={editorClassName} data-theme={resolvedTheme}>
-        {isEditMode && <UndoRedoToolbar />}
-        <div className="logic-editor-main">
-          {showDebugger ? (
-            <DebuggerProvider
-              steps={editor.steps}
-              traceNodeMap={editor.traceNodeMap}
-              nodes={editor.nodes}
-            >
-              {editorInner}
-            </DebuggerProvider>
-          ) : (
-            editorInner
-          )}
-        </div>
-        {isEditMode && <PropertiesPanel />}
+        {hasDebugger ? (
+          <DebuggerProvider
+            steps={editor.steps}
+            traceNodeMap={editor.traceNodeMap}
+            nodes={editor.nodes}
+          >
+            <EditorToolbar
+              isEditMode={isEditMode}
+              hasDebugger={hasDebugger}
+              preserveStructure={preserveStructure}
+              onPreserveStructureChange={onPreserveStructureChange}
+            />
+            <div className="logic-editor-body">
+              <div className="logic-editor-main">
+                {editorInner}
+              </div>
+              {isEditMode && <PropertiesPanel />}
+            </div>
+          </DebuggerProvider>
+        ) : (
+          <>
+            <EditorToolbar
+              isEditMode={isEditMode}
+              hasDebugger={hasDebugger}
+              preserveStructure={preserveStructure}
+              onPreserveStructureChange={onPreserveStructureChange}
+            />
+            <div className="logic-editor-body">
+              <div className="logic-editor-main">
+                {editorInner}
+              </div>
+              {isEditMode && <PropertiesPanel />}
+            </div>
+          </>
+        )}
       </div>
     </EditorProvider>
   );

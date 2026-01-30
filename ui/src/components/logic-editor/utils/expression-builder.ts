@@ -9,7 +9,6 @@ import type {
   LogicNode,
   JsonLogicValue,
   LiteralNodeData,
-  VariableNodeData,
   OperatorNodeData,
 } from '../types';
 
@@ -25,18 +24,12 @@ export function getNodeExpressionValue(node: LogicNode): JsonLogicValue {
       const litData = data as LiteralNodeData;
       return litData.value as JsonLogicValue;
     }
-    case 'variable': {
-      const varData = data as VariableNodeData;
-      return varData.expression ?? { var: varData.path };
-    }
     case 'operator': {
       const opData = data as OperatorNodeData;
       return opData.expression ?? { [opData.operator]: [] };
     }
-    case 'verticalCell':
-    case 'decision':
     case 'structure':
-      // These complex node types should always have an expression set
+      // Structure nodes should always have an expression set
       return data.expression ?? null;
     default:
       return null;

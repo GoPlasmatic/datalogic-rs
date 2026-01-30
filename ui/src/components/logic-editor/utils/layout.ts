@@ -1,5 +1,5 @@
 import Dagre from '@dagrejs/dagre';
-import type { LogicNode, LogicEdge } from '../types';
+import type { LogicNode, LogicEdge, OperatorNodeData } from '../types';
 import {
   NODE_DIMENSIONS,
   VERTICAL_CELL_DIMENSIONS,
@@ -8,7 +8,8 @@ import {
   DAGRE_OPTIONS,
   FIXED_WIDTHS,
 } from '../constants';
-import { isOperatorNode, isVerticalCellNode, isVariableNode, isLiteralNode, isStructureNode } from './type-guards';
+import { isOperatorNode, isLiteralNode, isStructureNode } from './type-guards';
+import { getOperator } from '../config/operators';
 
 // Estimate text width based on content
 function estimateTextWidth(text: string, isMonospace = false, isHeader = false): number {
@@ -25,41 +26,25 @@ function calculateNodeWidth(node: LogicNode): number {
   let contentWidth = 0;
 
   if (isOperatorNode(node)) {
-    const opData = node.data;
-    // Width based on label or expression text (label uses header font)
-    const labelWidth = estimateTextWidth(opData.label, false, true);
-    if (opData.collapsed && opData.expressionText) {
-      contentWidth = Math.max(labelWidth, estimateTextWidth(opData.expressionText, true));
-    } else if (opData.inlineDisplay) {
-      contentWidth = Math.max(labelWidth, estimateTextWidth(opData.inlineDisplay, true));
-    } else {
-      contentWidth = labelWidth;
+    const opData = node.data as OperatorNodeData;
+    // Width based on header label (header font) and cell contents
+    let maxCellWidth = estimateTextWidth(opData.label, false, true);
+
+    if (!opData.collapsed) {
+      opData.cells.forEach((cell) => {
+        const cellText = cell.label || cell.summary?.label || '';
+        const cellWidth = NODE_PADDING.iconWidth + estimateTextWidth(cellText, true);
+        maxCellWidth = Math.max(maxCellWidth, cellWidth);
+      });
+    } else if (opData.expressionText) {
+      maxCellWidth = Math.max(maxCellWidth, estimateTextWidth(opData.expressionText, true));
     }
-  } else if (isVariableNode(node)) {
-    const varData = node.data;
-    // Width based on operator + path
-    const pathWidth = estimateTextWidth(varData.path || '(empty)', true);
-    contentWidth = NODE_PADDING.iconWidth + pathWidth;
+    contentWidth = maxCellWidth;
   } else if (isLiteralNode(node)) {
     const litData = node.data;
     // Width based on value display
     const valueStr = JSON.stringify(litData.value);
     contentWidth = NODE_PADDING.typeIconWidth + estimateTextWidth(valueStr, true);
-  } else if (isVerticalCellNode(node)) {
-    const vcData = node.data;
-    // Width based on header label (header font) and cell contents
-    let maxCellWidth = estimateTextWidth(vcData.label, false, true);
-
-    if (!vcData.collapsed) {
-      vcData.cells.forEach((cell) => {
-        const cellText = cell.label || cell.summary?.label || '';
-        const cellWidth = NODE_PADDING.iconWidth + estimateTextWidth(cellText, true);
-        maxCellWidth = Math.max(maxCellWidth, cellWidth);
-      });
-    } else if (vcData.expressionText) {
-      maxCellWidth = Math.max(maxCellWidth, estimateTextWidth(vcData.expressionText, true));
-    }
-    contentWidth = maxCellWidth;
   } else if (isStructureNode(node)) {
     const structData = node.data;
     if (structData.collapsed && structData.expressionText) {
@@ -96,19 +81,31 @@ const STRUCTURE_DIMENSIONS = {
 function getNodeDimensions(node: LogicNode): { width: number; height: number } {
   const width = calculateNodeWidth(node);
 
-  if (isVerticalCellNode(node)) {
-    const vcData = node.data;
-    if (vcData.collapsed) {
+  if (isOperatorNode(node)) {
+    const opData = node.data as OperatorNodeData;
+    if (opData.cells.length > 0) {
+      if (opData.collapsed) {
+        return {
+          width,
+          height: VERTICAL_CELL_DIMENSIONS.headerHeight + VERTICAL_CELL_DIMENSIONS.collapsedBodyHeight,
+        };
+      }
+      const cellCount = opData.cells.length;
+      // Body padding: 4px top + 4px bottom = 8px
+      const bodyPadding = 8;
+      // Add button height: padding(4+4) + font(~14) + margin(4+8) = ~34px
+      // Show for variable-arity operators (nary, variadic, chainable, special, range)
+      const opConfig = getOperator(opData.operator);
+      const arityType = opConfig?.arity?.type;
+      const hasAddButton = arityType === 'nary' || arityType === 'variadic' ||
+        arityType === 'chainable' || arityType === 'special' || arityType === 'range';
+      const addButtonHeight = hasAddButton ? 34 : 0;
       return {
         width,
-        height: VERTICAL_CELL_DIMENSIONS.headerHeight + VERTICAL_CELL_DIMENSIONS.collapsedBodyHeight,
+        height: VERTICAL_CELL_DIMENSIONS.headerHeight + bodyPadding + cellCount * VERTICAL_CELL_DIMENSIONS.rowHeight + addButtonHeight,
       };
     }
-    const cellCount = vcData.cells.length;
-    return {
-      width,
-      height: VERTICAL_CELL_DIMENSIONS.headerHeight + cellCount * VERTICAL_CELL_DIMENSIONS.rowHeight,
-    };
+    return { width, height: NODE_DIMENSIONS.defaultHeight };
   }
 
   if (isStructureNode(node)) {
@@ -204,30 +201,11 @@ function buildEdgesFromNodes(nodes: LogicNode[]): LogicEdge[] {
   const edges: LogicEdge[] = [];
 
   nodes.forEach((node) => {
-    // Handle operator nodes with childIds
+    // Handle operator nodes with cells
     if (isOperatorNode(node)) {
-      const opData = node.data;
+      const opData = node.data as OperatorNodeData;
       if (!opData.collapsed) {
-        opData.childIds.forEach((childId, idx) => {
-          edges.push({
-            id: `${node.id}-${childId}`,
-            source: node.id,
-            target: childId,
-            sourceHandle: `arg-${idx}`,
-            targetHandle: 'left',
-          });
-        });
-      }
-    }
-
-    // Handle verticalCell nodes with branch children
-    if (isVerticalCellNode(node)) {
-      const vcData = node.data;
-      if (!vcData.collapsed) {
-        vcData.cells.forEach((cell) => {
-          // Use cell.index for stable handle IDs
-          // Handle IDs match CellHandles.tsx: branch-{cellIndex}, branch-{cellIndex}-cond, branch-{cellIndex}-then
-
+        opData.cells.forEach((cell) => {
           // 1. Condition branch (if exists)
           if (cell.conditionBranchId) {
             edges.push({

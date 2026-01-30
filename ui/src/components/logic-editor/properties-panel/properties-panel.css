@@ -2,23 +2,28 @@
    Properties Panel Styles
    ========================================================================== */
 
+/* Floating properties panel - overlays on top of the diagram */
 .properties-panel {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
   width: 280px;
-  min-width: 280px;
-  height: 100%;
-  min-height: 200px;
+  z-index: 50;
   background: var(--bg-secondary, #ffffff);
-  border-left: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
   overflow: hidden;
 }
 
 /* Dark mode */
 [data-theme="dark"] .properties-panel {
   background: var(--bg-secondary, #1e1e1e);
-  border-left-color: var(--border-color, #3e3e3e);
+  border-color: var(--border-color, #3e3e3e);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .properties-panel-content {
@@ -408,36 +413,6 @@
   color: #aaa;
 }
 
-.help-see-also {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-}
-
-.help-see-also-label {
-  color: var(--dl-text-tertiary, #999);
-}
-
-.help-see-also-link {
-  padding: 0;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
-  font-size: 11px;
-  color: var(--dl-primary, #3b82f6);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.help-see-also-link:hover {
-  text-decoration: underline;
-}
-
-[data-theme="dark"] .help-see-also-link {
-  color: #60a5fa;
-}
 
 /* ==========================================================================
    Footer

@@ -1,48 +1,14 @@
 /**
- * Selection Service
+ * Selection State Hook
  *
- * Manages node selection state for the editor.
- * Extracted from EditorContext for better modularity and testability.
+ * Manages node selection state: single select, multi-select, toggle, clear, select all.
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { LogicNode } from '../types';
-import { getDescendants } from '../utils/node-cloning';
+import type { LogicNode } from '../../types';
+import { getDescendants } from '../../utils/node-cloning';
 
-export interface SelectionService {
-  /** Currently selected node ID (primary selection) */
-  selectedNodeId: string | null;
-  /** Set of all selected node IDs (for multi-select) */
-  selectedNodeIds: Set<string>;
-  /** The currently selected node object */
-  selectedNode: LogicNode | null;
-  /** All selected node objects */
-  selectedNodes: LogicNode[];
-  /** Select a single node (clears multi-selection) */
-  selectNode: (nodeId: string | null) => void;
-  /** Set selection from array of node IDs */
-  setSelection: (nodeIds: string[]) => void;
-  /** Toggle a node in multi-selection (for Cmd/Ctrl+Click) */
-  toggleNodeSelection: (nodeId: string) => void;
-  /** Add a node to selection (for Shift+Click) */
-  addToSelection: (nodeId: string) => void;
-  /** Clear all selections */
-  clearSelection: () => void;
-  /** Select all nodes */
-  selectAllNodes: () => void;
-  /** Check if a node is selected */
-  isNodeSelected: (nodeId: string) => boolean;
-  /** Select a node and all its descendants */
-  selectChildren: (nodeId: string) => void;
-}
-
-/**
- * Hook to create a selection service for managing node selections
- *
- * @param nodes - Current nodes array
- * @returns SelectionService object
- */
-export function useSelectionService(nodes: LogicNode[]): SelectionService {
+export function useSelectionState(nodes: LogicNode[], internalNodes: LogicNode[]) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
 
@@ -52,7 +18,7 @@ export function useSelectionService(nodes: LogicNode[]): SelectionService {
     return nodes.find((n) => n.id === selectedNodeId) ?? null;
   }, [nodes, selectedNodeId]);
 
-  // Compute all selected nodes
+  // Compute all selected nodes (filter out any that no longer exist)
   const selectedNodes = useMemo(() => {
     return nodes.filter((n) => selectedNodeIds.has(n.id));
   }, [nodes, selectedNodeIds]);
@@ -112,12 +78,12 @@ export function useSelectionService(nodes: LogicNode[]): SelectionService {
   }, []);
 
   const selectAllNodes = useCallback(() => {
-    const allIds = new Set(nodes.map((n) => n.id));
+    const allIds = new Set(internalNodes.map((n) => n.id));
     setSelectedNodeIds(allIds);
-    if (nodes.length > 0) {
-      setSelectedNodeId(nodes[0].id);
+    if (internalNodes.length > 0) {
+      setSelectedNodeId(internalNodes[0].id);
     }
-  }, [nodes]);
+  }, [internalNodes]);
 
   const isNodeSelected = useCallback(
     (nodeId: string) => selectedNodeIds.has(nodeId),
@@ -126,20 +92,22 @@ export function useSelectionService(nodes: LogicNode[]): SelectionService {
 
   const selectChildren = useCallback(
     (nodeId: string) => {
-      const descendants = getDescendants(nodeId, nodes);
+      const descendants = getDescendants(nodeId, internalNodes);
       const descendantIds = new Set(descendants.map((n) => n.id));
       descendantIds.add(nodeId);
       setSelectedNodeIds(descendantIds);
       setSelectedNodeId(nodeId);
     },
-    [nodes]
+    [internalNodes]
   );
 
   return {
-    selectedNodeId: effectiveSelectedNodeId,
-    selectedNodeIds: effectiveSelectedNodeIds,
+    selectedNodeId,
+    selectedNodeIds,
     selectedNode,
     selectedNodes,
+    effectiveSelectedNodeId,
+    effectiveSelectedNodeIds,
     selectNode,
     setSelection,
     toggleNodeSelection,
@@ -148,5 +116,7 @@ export function useSelectionService(nodes: LogicNode[]): SelectionService {
     selectAllNodes,
     isNodeSelected,
     selectChildren,
+    setSelectedNodeId,
+    setSelectedNodeIds,
   };
 }

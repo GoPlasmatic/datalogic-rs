@@ -1,8 +1,8 @@
-import type { LogicNode, VerticalCellNodeData, StructureNodeData } from '../types';
-import { isOperatorNode, isVerticalCellNode, isStructureNode } from './type-guards';
+import type { LogicNode, OperatorNodeData, StructureNodeData } from '../types';
+import { isOperatorNode, isStructureNode } from './type-guards';
 
 // Helper to collect all branch IDs from a cell
-function collectCellBranchIds(cell: VerticalCellNodeData['cells'][0], target: Set<string>): void {
+function collectCellBranchIds(cell: OperatorNodeData['cells'][0], target: Set<string>): void {
   if (cell.branchId) target.add(cell.branchId);
   if (cell.conditionBranchId) target.add(cell.conditionBranchId);
   if (cell.thenBranchId) target.add(cell.thenBranchId);
@@ -34,29 +34,20 @@ function buildParentChildMap(nodes: LogicNode[]): Map<string, string[]> {
 // Get all hidden node IDs (descendants of collapsed nodes or collapsed cells)
 export function getHiddenNodeIds(nodes: LogicNode[]): Set<string> {
   const hiddenIds = new Set<string>();
-  const collapsedNodeIds = new Set<string>();
   const collapsedBranchIds = new Set<string>();
 
   // Build parent-child map for efficient lookups
   const parentChildMap = buildParentChildMap(nodes);
 
-  // Find all collapsed operator nodes, collapsed cells in vertical cell nodes, and collapsed structure nodes
+  // Find all collapsed operator nodes and collapsed structure nodes
   nodes.forEach((node) => {
     if (isOperatorNode(node)) {
       if (node.data.collapsed) {
-        collapsedNodeIds.add(node.id);
-      }
-    } else if (isVerticalCellNode(node)) {
-      const vcData = node.data;
-
-      // If the entire node is collapsed, hide all its branch children
-      if (vcData.collapsed) {
-        vcData.cells.forEach((cell) => {
+        node.data.cells.forEach((cell) => {
           collectCellBranchIds(cell, collapsedBranchIds);
         });
       }
     } else if (isStructureNode(node)) {
-      // If structure node is collapsed, hide all its expression branch children
       if (node.data.collapsed && node.data.elements) {
         collectStructureBranchIds(node.data.elements, collapsedBranchIds);
       }
@@ -76,11 +67,6 @@ export function getHiddenNodeIds(nodes: LogicNode[]): Set<string> {
       }
     }
   }
-
-  // Mark descendants of all collapsed nodes
-  collapsedNodeIds.forEach((collapsedId) => {
-    markDescendantsHidden(collapsedId);
-  });
 
   // Mark collapsed branch nodes and their descendants as hidden
   collapsedBranchIds.forEach((branchId) => {

@@ -8,10 +8,7 @@ import type {
   LogicNode,
   LogicNodeData,
   LiteralNodeData,
-  VariableNodeData,
   OperatorNodeData,
-  VerticalCellNodeData,
-  DecisionNodeData,
   StructureNodeData,
 } from '../types';
 import type { JsonLogicValue } from '../types/jsonlogic';
@@ -55,14 +52,8 @@ function convertNode(
   switch (data.type) {
     case 'literal':
       return convertLiteral(data);
-    case 'variable':
-      return convertVariable(data);
     case 'operator':
       return convertOperator(data, nodeMap);
-    case 'verticalCell':
-      return convertVerticalCell(data, nodeMap);
-    case 'decision':
-      return convertDecision(data, nodeMap);
     case 'structure':
       return convertStructure(data, nodeMap);
     default:
@@ -79,81 +70,15 @@ function convertLiteral(data: LiteralNodeData): JsonLogicValue {
 }
 
 /**
- * Convert variable node to JSONLogic
- */
-function convertVariable(data: VariableNodeData): JsonLogicValue {
-  // Return the stored expression - it's already in JSONLogic format
-  // The expression is updated when panel values change
-  return data.expression ?? { [data.operator]: data.path };
-}
-
-/**
  * Convert operator node to JSONLogic
  *
- * This function handles the case where operands can be:
- * 1. Child nodes (stored in childIds with argIndex)
- * 2. Inline literals (stored directly in the expression, no child node)
- *
- * We merge both sources: use child node expressions where available,
- * fall back to inline literals from the stored expression.
+ * This unified function handles all operator types including:
+ * - Variable operators (var, val, exists): reconstruct from cells' editable values
+ * - Standard operators: reconstruct from cells (both inline and branch)
+ * - Decision operators (if): reconstruct from cells with condition/then branches
  */
 function convertOperator(
   data: OperatorNodeData,
-  nodeMap: Map<string, LogicNode>
-): JsonLogicValue {
-  // Build a map of argIndex -> child node for quick lookup
-  const childByArgIndex = new Map<number, LogicNode>();
-  for (const id of data.childIds) {
-    const node = nodeMap.get(id);
-    if (node && node.data.argIndex !== undefined) {
-      childByArgIndex.set(node.data.argIndex, node);
-    }
-  }
-
-  // Get the operands from the stored expression to preserve inline literals
-  let storedOperands: JsonLogicValue[] = [];
-  if (data.expression && typeof data.expression === 'object' && !Array.isArray(data.expression)) {
-    const opKey = Object.keys(data.expression)[0];
-    const operands = (data.expression as Record<string, unknown>)[opKey];
-    storedOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
-  }
-
-  // Build the result array by merging child nodes with stored operands
-  const resultOperands: JsonLogicValue[] = [];
-  const maxIndex = Math.max(storedOperands.length - 1, ...Array.from(childByArgIndex.keys()));
-
-  for (let i = 0; i <= maxIndex; i++) {
-    const childNode = childByArgIndex.get(i);
-    if (childNode) {
-      // Use the child node's expression (authoritative for complex expressions)
-      resultOperands.push(convertNode(childNode.data, nodeMap));
-    } else if (i < storedOperands.length) {
-      // Use the inline literal from the stored expression
-      resultOperands.push(storedOperands[i]);
-    }
-  }
-
-  // Handle edge case: no operands
-  if (resultOperands.length === 0) {
-    return { [data.operator]: [] };
-  }
-
-  return { [data.operator]: resultOperands };
-}
-
-/**
- * Convert vertical cell node to JSONLogic
- * Handles multi-argument operators like if/then/else, comparison chains, etc.
- *
- * This function handles the case where operands can be:
- * 1. Branch cells (with branchId pointing to a child node)
- * 2. Inline cells (simple literals stored in the expression, no child node)
- *
- * We use the stored expression as the source of truth for inline cells,
- * and child node expressions for branch cells.
- */
-function convertVerticalCell(
-  data: VerticalCellNodeData,
   nodeMap: Map<string, LogicNode>
 ): JsonLogicValue {
   // Get the operands from the stored expression to preserve inline literals
@@ -171,7 +96,6 @@ function convertVerticalCell(
   }
 
   // Build the result array by processing cells in index order
-  // Use stored expression for inline cells, child nodes for branch cells
   const resultArgs: JsonLogicValue[] = [];
   const maxIndex = Math.max(
     storedOperands.length - 1,
@@ -182,13 +106,17 @@ function convertVerticalCell(
     const cell = cellByIndex.get(i);
 
     if (cell) {
-      if (cell.type === 'branch' && cell.branchId) {
+      if (cell.type === 'editable') {
+        // Editable cell - use value from stored expression
+        if (i < storedOperands.length) {
+          resultArgs.push(storedOperands[i]);
+        }
+      } else if (cell.type === 'branch' && cell.branchId) {
         // Branch cell - use child node's expression
         const branchNode = nodeMap.get(cell.branchId);
         if (branchNode) {
           resultArgs.push(convertNode(branchNode.data, nodeMap));
         } else if (i < storedOperands.length) {
-          // Fallback to stored expression if node not found
           resultArgs.push(storedOperands[i]);
         }
       } else if (cell.conditionBranchId || cell.thenBranchId) {
@@ -217,42 +145,98 @@ function convertVerticalCell(
     }
   }
 
+  // Special handling for val: reconstruct from editable cell values
+  // Val format: {"val": [[-N], "comp1", "comp2"]} or {"val": "metadata"}
+  if (data.operator === 'val') {
+    return convertValFromCells(data);
+  }
+
+  // For var and exists with a single argument, unwrap from array
+  // e.g., {"var": "path"} instead of {"var": ["path"]}
+  // and {"exists": "item"} instead of {"exists": ["item"]}
+  if ((data.operator === 'var' || data.operator === 'exists') && resultArgs.length === 1) {
+    return { [data.operator]: resultArgs[0] };
+  }
+
+  // Special handling for var: reconstruct from editable cell values
+  if (data.operator === 'var') {
+    return convertVarFromCells(data, resultArgs, nodeMap);
+  }
+
   return { [data.operator]: resultArgs };
 }
 
 /**
- * Convert decision node to JSONLogic (if/then/else tree)
+ * Convert val operator from editable cell values
+ * Reconstructs {"val": [[-N], "comp1", "comp2"]} or {"val": "metadata"}
  */
-function convertDecision(
-  data: DecisionNodeData,
+function convertValFromCells(data: OperatorNodeData): JsonLogicValue {
+  const scopeCell = data.cells.find((c) => c.fieldId === 'scopeLevel');
+  const pathCells = data.cells.filter((c) => c.fieldId === 'path');
+
+  const scopeJump = typeof scopeCell?.value === 'number' ? scopeCell.value : 0;
+  const pathComponents: string[] = [];
+
+  for (const pc of pathCells) {
+    const pathStr = String(pc.value ?? '');
+    if (pathStr) {
+      // Split dot-separated path into components
+      pathStr.split('.').forEach((comp) => {
+        if (comp) pathComponents.push(comp);
+      });
+    }
+  }
+
+  // Simple metadata access: {"val": "index"} or {"val": "key"}
+  if (scopeJump === 0 && pathComponents.length === 1 &&
+      (pathComponents[0] === 'index' || pathComponents[0] === 'key')) {
+    return { val: pathComponents[0] };
+  }
+
+  // Build array: [[-N], "comp1", "comp2", ...]
+  const args: JsonLogicValue[] = [];
+  if (scopeJump > 0) {
+    args.push([-scopeJump]);
+  }
+  args.push(...pathComponents);
+
+  // If no scope and no path, return empty array
+  if (args.length === 0) {
+    return { val: [] };
+  }
+
+  return { val: args };
+}
+
+/**
+ * Convert var operator from editable cell values
+ * Reconstructs {"var": "path"} or {"var": ["path", default]}
+ */
+function convertVarFromCells(
+  data: OperatorNodeData,
+  resultArgs: JsonLogicValue[],
   nodeMap: Map<string, LogicNode>
 ): JsonLogicValue {
-  const args: JsonLogicValue[] = [];
+  const pathCell = data.cells.find((c) => c.fieldId === 'path');
+  const pathValue = pathCell ? String(pathCell.value ?? '') : '';
 
-  // Condition
-  if (data.isConditionComplex && data.conditionBranchId) {
-    const condNode = nodeMap.get(data.conditionBranchId);
-    if (condNode) {
-      args.push(convertNode(condNode.data, nodeMap));
+  // Check if there's a default value cell (index 1, not a path field)
+  const defaultCell = data.cells.find((c) => c.index === 1 && c.fieldId !== 'path');
+  if (defaultCell) {
+    let defaultValue: JsonLogicValue;
+    if (defaultCell.type === 'branch' && defaultCell.branchId) {
+      const branchNode = nodeMap.get(defaultCell.branchId);
+      defaultValue = branchNode ? convertNode(branchNode.data, nodeMap) : null;
+    } else if (defaultCell.type === 'inline') {
+      // Use stored operands for inline default
+      defaultValue = resultArgs.length > 1 ? resultArgs[1] : null;
+    } else {
+      defaultValue = resultArgs.length > 1 ? resultArgs[1] : null;
     }
-  } else {
-    // Simple condition is stored in conditionExpression
-    args.push(data.conditionExpression);
+    return { var: [pathValue, defaultValue] };
   }
 
-  // Yes branch (then)
-  const yesNode = nodeMap.get(data.yesBranchId);
-  if (yesNode) {
-    args.push(convertNode(yesNode.data, nodeMap));
-  }
-
-  // No branch (else) - could be another decision node for else-if chains
-  const noNode = nodeMap.get(data.noBranchId);
-  if (noNode) {
-    args.push(convertNode(noNode.data, nodeMap));
-  }
-
-  return { if: args };
+  return { var: pathValue };
 }
 
 /**

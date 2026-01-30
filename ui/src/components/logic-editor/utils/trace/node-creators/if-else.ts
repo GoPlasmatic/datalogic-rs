@@ -2,7 +2,7 @@ import type {
   LogicNode,
   JsonLogicValue,
   CellData,
-  VerticalCellNodeData,
+  OperatorNodeData,
 } from '../../../types';
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
@@ -210,13 +210,13 @@ export function createIfElseNodeFromTrace(
   // Generate expression text for the entire if/else
   const expressionText = generateExpressionText(expression);
 
-  // Create the VerticalCellNode
+  // Create the operator node for if/else
   const ifElseNode: LogicNode = {
     id: nodeId,
-    type: 'verticalCell',
+    type: 'operator',
     position: { x: 0, y: 0 },
     data: {
-      type: 'verticalCell',
+      type: 'operator',
       operator: 'if',
       category: 'control',
       label: 'If / Then / Else',
@@ -224,12 +224,11 @@ export function createIfElseNodeFromTrace(
       cells,
       collapsed: false,
       expressionText,
-      collapsedCellIndices: [],
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
       expression,
-    } as VerticalCellNodeData,
+    } as OperatorNodeData,
   };
   context.nodes.push(ifElseNode);
 

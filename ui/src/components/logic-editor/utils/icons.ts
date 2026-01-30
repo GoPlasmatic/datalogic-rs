@@ -33,21 +33,8 @@ export type IconName =
   | 'binary'
   | 'layers'
   | 'clock'
-  | 'alert-circle';
-
-// Category icons
-export const CATEGORY_ICONS: Record<string, IconName> = {
-  variable: 'database',
-  comparison: 'scale',
-  logical: 'binary',
-  arithmetic: 'calculator',
-  control: 'git-branch',
-  string: 'type',
-  array: 'layers',
-  datetime: 'clock',
-  validation: 'alert-circle',
-  error: 'circle-x',
-};
+  | 'alert-circle'
+  | 'arrow-up';
 
 // Iterator argument icons
 export const ITERATOR_ARG_ICONS: Record<string, IconName[]> = {

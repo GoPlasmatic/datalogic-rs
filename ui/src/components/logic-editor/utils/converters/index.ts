@@ -1,16 +1,10 @@
 import type { JsonLogicValue } from '../../types';
 import type { ConversionContext } from './types';
-import { isPlainObject, isSimpleOperand, isDataStructure } from '../type-helpers';
-import { generateExpressionText } from '../formatting';
+import { isPlainObject, isDataStructure } from '../type-helpers';
 import { convertPrimitive, convertInvalidObject } from './primitive-converter';
 import { isVariableOperator, convertVariable } from './variable-converter';
 import { convertIfElse } from './if-else-converter';
-import {
-  convertToVerticalCell,
-  convertUnaryInline,
-  convertOperatorWithChildren,
-  isUnaryOperator,
-} from './operator-converter';
+import { convertOperator } from './operator-converter';
 import { convertStructure } from './structure-converter';
 
 export type { ConversionContext, ParentInfo, ConverterFn } from './types';
@@ -40,36 +34,20 @@ export function convertValue(
   const operator = keys[0];
   const operands = value[operator];
 
-  // Handle if/else - convert to vertical cell node
+  // Handle if/else
   if (operator === 'if' || operator === '?:') {
     const ifArgs: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
     return convertIfElse(ifArgs, context, convertValue);
   }
 
-  // Handle variable operators specially
+  // Handle variable operators
   if (isVariableOperator(operator)) {
-    return convertVariable(operator, operands, context);
+    return convertVariable(operator, operands, context, convertValue);
   }
 
   // Normalize operands to array
   const operandArray: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
 
-  // Use VerticalCellNode for ALL operators with more than 1 argument
-  if (operandArray.length > 1) {
-    return convertToVerticalCell(operator, operandArray, context, convertValue);
-  }
-
-  // For unary operators (single arg), use standard operator node
-  const expressionText = generateExpressionText(value);
-
-  // Check if this is a unary operator with a simple operand - show inline without expansion
-  const singleOperand = operandArray[0];
-  const isUnaryWithSimpleArg = isUnaryOperator(operator) && isSimpleOperand(singleOperand);
-
-  if (isUnaryWithSimpleArg) {
-    return convertUnaryInline(operator, expressionText, value, context);
-  }
-
-  // For other single-arg operators, create with child node
-  return convertOperatorWithChildren(operator, operandArray, value, context, convertValue);
+  // All operators use the unified convertOperator - produces cells-based nodes
+  return convertOperator(operator, operandArray, context, convertValue);
 }

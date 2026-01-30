@@ -22,7 +22,8 @@ export function useNodeDebugState(nodeId: string): NodeDebugState | null {
   const context = useContext(DebuggerContext);
 
   return useMemo(() => {
-    if (!context || !context.state.isActive) return null;
+    // No debug state when debugger is inactive or at initial step (-1 = plain visualizer)
+    if (!context || !context.state.isActive || context.state.currentStepIndex < 0) return null;
 
     const isCurrent = context.currentNodeId === nodeId;
     const isExecuted = context.executedNodeIds.has(nodeId);

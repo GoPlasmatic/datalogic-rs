@@ -32,6 +32,7 @@ import {
   Layers,
   Clock,
   CircleAlert,
+  ArrowUp,
 } from 'lucide-react';
 import type { IconName } from './icons';
 
@@ -68,6 +69,7 @@ const ICON_COMPONENTS: Record<IconName, LucideIcon> = {
   'layers': Layers,
   'clock': Clock,
   'alert-circle': CircleAlert,
+  'arrow-up': ArrowUp,
 };
 
 // Render an icon by name

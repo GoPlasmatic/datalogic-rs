@@ -102,6 +102,13 @@ export function getAllCategories(): CategoryMeta[] {
 }
 
 /**
+ * Get category icon
+ */
+export function getCategoryIcon(name: string): string {
+  return categories[name as OperatorCategory]?.icon ?? 'list';
+}
+
+/**
  * Get category color
  */
 export function getCategoryColor(name: OperatorCategory): string {

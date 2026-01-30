@@ -4,7 +4,7 @@ import type { IconName } from '../utils/icons';
 import type { TracedResult } from './trace';
 
 // Visual node types
-export type VisualNodeType = 'operator' | 'variable' | 'literal' | 'verticalCell' | 'decision' | 'structure';
+export type VisualNodeType = 'operator' | 'literal' | 'structure';
 
 // Base data for all visual nodes
 // Note: Index signature is required for React Flow Node type compatibility
@@ -23,28 +23,16 @@ export interface ArgSummary {
   valueType: 'string' | 'number' | 'boolean' | 'null' | 'array' | 'date' | 'expression';
 }
 
-// Operator node data
+// Unified operator node data - handles ALL operators including var, val, exists, if, etc.
 export interface OperatorNodeData extends BaseNodeData {
   type: 'operator';
   operator: string;
   category: OperatorCategory;
   label: string;
-  childIds: string[];
-  collapsed?: boolean; // Whether the node is collapsed
+  icon: IconName; // Category icon
+  cells: CellData[]; // ALL arguments as rows
+  collapsed?: boolean;
   expressionText?: string; // Full expression as single-line text when collapsed
-  inlineDisplay?: string; // For unary operators with simple args - shows inline without expansion
-}
-
-// Variable node data (var, val, exists)
-export interface VariableNodeData extends BaseNodeData {
-  type: 'variable';
-  operator: 'var' | 'val' | 'exists';
-  path: string;
-  defaultValue?: JsonLogicValue;
-  // For 'val' operator: scope jump level (e.g., 1 for [-1])
-  scopeJump?: number;
-  // For 'val' operator: path components array
-  pathComponents?: string[];
 }
 
 // Literal value node data
@@ -54,10 +42,10 @@ export interface LiteralNodeData extends BaseNodeData {
   valueType: 'string' | 'number' | 'boolean' | 'null' | 'array';
 }
 
-// Cell data for vertical cell nodes
+// Cell data for operator node rows
 export interface CellData {
-  type: 'inline' | 'branch';
-  rowLabel?: string; // Row keyword label ("If", "Then", "Else If", "Else")
+  type: 'inline' | 'branch' | 'editable'; // 'editable' for var path, val scope, etc.
+  rowLabel?: string; // Row keyword label ("If", "Then", "Else If", "Else", "Path", "Default")
   label?: string; // Display text for inline cells (expression text)
   icon?: IconName; // Optional Lucide icon name
   branchId?: string; // For branch cells, the ID of the sub-expression node
@@ -68,31 +56,20 @@ export interface CellData {
   thenBranchId?: string; // Branch for then value (Yes)
   conditionText?: string; // Condition expression text
   thenText?: string; // Then value text
+  // For editable cells (var path, val scope, etc.)
+  fieldId?: string; // e.g., 'path', 'default', 'scopeLevel'
+  fieldType?: 'text' | 'number' | 'select'; // Input type for editable cells
+  value?: unknown; // Current value for editable fields
+  placeholder?: string; // Placeholder text for editable fields
 }
 
-// Vertical cell node data (for comparison chains, logical operators, iterators)
-export interface VerticalCellNodeData extends BaseNodeData {
-  type: 'verticalCell';
-  operator: string;
-  category: OperatorCategory;
-  label: string;
-  icon: IconName; // Category Lucide icon name
-  cells: CellData[];
-  collapsed?: boolean; // Whether the entire node is collapsed
-  expressionText?: string; // Full expression as single-line text when collapsed
-}
-
-// Decision node data (for if/then/else decision tree visualization)
-export interface DecisionNodeData extends BaseNodeData {
-  type: 'decision';
-  conditionText: string; // Display text for condition
-  conditionExpression: JsonLogicValue; // Original condition for complex branching
-  isConditionComplex: boolean; // If true, condition branches to sub-graph
-  conditionBranchId?: string; // ID of condition sub-graph node
-  yesBranchId: string; // ID of "Yes" result node
-  noBranchId: string; // ID of "No" result node (else or next decision)
-  collapsed?: boolean;
-  expressionText?: string; // Full if/then/else text for collapsed view
+// Variable node data extends operator node data with variable-specific fields
+export interface VariableNodeData extends OperatorNodeData {
+  // Variable-specific fields are now in cells
+  path?: string;
+  defaultValue?: JsonLogicValue;
+  scopeJump?: number;
+  pathComponents?: string[];
 }
 
 // Structure element - either inline value or linked expression
@@ -117,7 +94,7 @@ export interface StructureNodeData extends BaseNodeData {
 }
 
 // Union type for all node data
-export type LogicNodeData = OperatorNodeData | VariableNodeData | LiteralNodeData | VerticalCellNodeData | DecisionNodeData | StructureNodeData;
+export type LogicNodeData = OperatorNodeData | LiteralNodeData | StructureNodeData;
 
 // ReactFlow node with our custom data
 export type LogicNode = Node<LogicNodeData>;
@@ -166,40 +143,17 @@ export interface LogicEditorProps {
 }
 
 /**
- * Editor operating mode:
- * - 'visualize' (ReadOnly): Static diagram visualization, no evaluation
- * - 'debug' (Debugger): Diagram with evaluation results and step-through debugging
- * - 'edit' (Editor+Debugger): Coming Soon - Full visual builder with live evaluation
- */
-export type DataLogicEditorMode = 'visualize' | 'debug' | 'edit';
-
-/**
- * Component configuration mode:
- * - 'debugger': Shows mode selector, allows switching between view/debug
- * - 'visualizer': Hides mode selector, fixed to view mode only
- */
-export type DataLogicComponentMode = 'debugger' | 'visualizer';
-
-/**
  * Props for the DataLogicEditor component (public API)
  */
 export interface DataLogicEditorProps {
   /** JSONLogic expression to render */
   value: JsonLogicValue | null;
 
-  /** Callback when expression changes (only in 'edit' mode - Coming Soon) */
+  /** Callback when expression changes (only when editable is true) */
   onChange?: (expr: JsonLogicValue | null) => void;
 
-  /** Data context for evaluation (used in 'debug' and 'edit' modes) */
+  /** Data context for evaluation. When provided, debugger controls become available. */
   data?: unknown;
-
-  /**
-   * Editor operating mode:
-   * - 'visualize' (default): Static diagram visualization, no evaluation
-   * - 'debug': Diagram with evaluation results and step-through debugging
-   * - 'edit': Coming Soon - Full visual builder with live evaluation
-   */
-  mode?: DataLogicEditorMode;
 
   /** Theme override - 'light' or 'dark'. If not provided, uses system preference */
   theme?: 'light' | 'dark';
@@ -214,10 +168,13 @@ export interface DataLogicEditorProps {
    */
   preserveStructure?: boolean;
 
+  /** Callback when preserve structure changes (from toolbar checkbox) */
+  onPreserveStructureChange?: (value: boolean) => void;
+
   /**
-   * Component mode configuration:
-   * - 'debugger' (default): Shows mode selector for view/debug switching
-   * - 'visualizer': Pure visualization mode, no mode selector shown
+   * Enable editing: node selection, properties panel, context menus, undo/redo.
+   * Default: false
    */
-  componentMode?: DataLogicComponentMode;
+  editable?: boolean;
+
 }

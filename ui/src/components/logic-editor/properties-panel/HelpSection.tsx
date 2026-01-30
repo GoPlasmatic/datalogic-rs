@@ -12,8 +12,6 @@ import type { OperatorHelp, AritySpec, OperatorExample } from '../config/operato
 interface HelpSectionProps {
   help: OperatorHelp;
   arity: AritySpec;
-  seeAlso?: string[];
-  onNavigate?: (operatorName: string) => void;
 }
 
 /**
@@ -52,8 +50,6 @@ function formatArity(arity: AritySpec): string {
 export const HelpSection = memo(function HelpSection({
   help,
   arity,
-  seeAlso,
-  onNavigate,
 }: HelpSectionProps) {
   const [showExamples, setShowExamples] = useState(false);
 
@@ -107,23 +103,6 @@ export const HelpSection = memo(function HelpSection({
         </div>
       )}
 
-      {/* See Also */}
-      {seeAlso && seeAlso.length > 0 && (
-        <div className="help-see-also">
-          <span className="help-see-also-label">See also:</span>
-          {seeAlso.map((op, index) => (
-            <button
-              key={op}
-              className="help-see-also-link"
-              onClick={() => onNavigate?.(op)}
-              type="button"
-            >
-              {op}
-              {index < seeAlso.length - 1 && ','}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 });

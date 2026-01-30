@@ -17,6 +17,12 @@ export default defineConfig({
       outDir: 'dist',
     }),
   ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+      '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
+    },
+  },
   build: {
     lib: {
       entry: resolve(__dirname, 'src/lib.ts'),

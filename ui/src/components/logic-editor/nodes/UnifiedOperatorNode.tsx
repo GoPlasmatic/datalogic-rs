@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useState, useRef } from 'react';
 import { Plus } from 'lucide-react';
-import type { VerticalCellNodeData } from '../types';
+import type { OperatorNodeData } from '../types';
 import { CATEGORY_COLORS } from '../types';
 import { useDebugClassName, useNodeCollapse } from '../hooks';
 import { useEditorContext } from '../context/editor';
@@ -11,17 +11,17 @@ import { Icon } from '../utils/icons';
 import { ExpressionSyntax } from '../utils/ExpressionSyntax';
 import { AddArgumentMenu, type AddArgumentNodeType } from '../context-menu';
 
-interface VerticalCellNodeProps {
+interface UnifiedOperatorNodeProps {
   id: string;
-  data: VerticalCellNodeData;
+  data: OperatorNodeData;
   selected?: boolean;
 }
 
-export const VerticalCellNode = memo(function VerticalCellNode({
+export const UnifiedOperatorNode = memo(function UnifiedOperatorNode({
   id,
   data,
   selected,
-}: VerticalCellNodeProps) {
+}: UnifiedOperatorNodeProps) {
   const color = CATEGORY_COLORS[data.category];
   const debugClassName = useDebugClassName(id);
   const toggleNodeCollapse = useNodeCollapse(id);
@@ -33,6 +33,9 @@ export const VerticalCellNode = memo(function VerticalCellNode({
 
   // Get operator config for arity information
   const opConfig = getOperator(data.operator);
+
+  // Get the addArgumentLabel from operator config
+  const addArgumentLabel = opConfig?.ui?.addArgumentLabel || 'Add Argument';
 
   // Calculate max args based on arity type
   const maxArgs = useMemo(() => {
@@ -56,26 +59,56 @@ export const VerticalCellNode = memo(function VerticalCellNode({
     return arity.max ?? Infinity;
   }, [opConfig]);
 
-  const canAddArg = isEditMode && data.cells.length < maxArgs;
+  // For variable operators (var, val, exists) and special operators (if), allow adding
+  const canAddArg = useMemo(() => {
+    if (!isEditMode) return false;
+    if (!opConfig) return false;
+
+    const { arity } = opConfig;
+
+    // Variable arity operators can always add (within limits)
+    if (arity.type === 'nary' || arity.type === 'variadic' || arity.type === 'chainable') {
+      return data.cells.length < maxArgs;
+    }
+
+    // Special operators (if, var) - allow adding within range
+    if (arity.type === 'special' || arity.type === 'range') {
+      if (arity.max !== undefined) {
+        return data.cells.length < arity.max;
+      }
+      return true; // No max defined, allow adding
+    }
+
+    return false;
+  }, [isEditMode, opConfig, data.cells.length, maxArgs]);
 
   // Calculate remaining slots for the add button label
+  // Only show count for generic "Add Argument" labels, not custom ones like "Add Default"
   const remainingSlots = useMemo(() => {
     if (!canAddArg || maxArgs === Infinity) return null;
+    if (opConfig?.ui?.addArgumentLabel) return null;
     return maxArgs - data.cells.length;
-  }, [canAddArg, maxArgs, data.cells.length]);
+  }, [canAddArg, maxArgs, data.cells.length, opConfig?.ui?.addArgumentLabel]);
 
-  // Handle opening the add argument menu
+  // Whether to skip the menu and directly add (for operators with specific add actions)
+  const hasCustomAdd = !!opConfig?.ui?.addArgumentLabel;
+
+  // Handle opening the add argument menu (or directly adding for custom-label operators)
   const handleAddArgumentClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      // Get button's actual screen position
+      if (hasCustomAdd) {
+        // Operators like val ("Add Path"), var ("Add Default"), if ("Add Else If")
+        // directly add without showing a type-selection menu
+        addArgumentToNode(id, 'literal');
+        return;
+      }
       if (addButtonRef.current) {
         const rect = addButtonRef.current.getBoundingClientRect();
-        // Position menu below and to the right of the button
         setMenuPosition({ x: rect.right, y: rect.bottom });
       }
     },
-    []
+    [hasCustomAdd, id, addArgumentToNode]
   );
 
   // Handle menu close
@@ -92,7 +125,7 @@ export const VerticalCellNode = memo(function VerticalCellNode({
     [id, addArgumentToNode]
   );
 
-  // Node is collapsible if it has more than 1 arg (any type)
+  // Node is collapsible if it has more than 1 arg
   const canCollapse = data.cells.length > 1;
   const isCollapsed = canCollapse ? (data.collapsed ?? false) : false;
 
@@ -141,11 +174,11 @@ export const VerticalCellNode = memo(function VerticalCellNode({
               type="button"
               className="add-arg-button add-arg-button--vertical"
               onClick={handleAddArgumentClick}
-              title={remainingSlots ? `Add row (${remainingSlots} more available)` : 'Add row'}
+              title={remainingSlots ? `${addArgumentLabel} (${remainingSlots} more available)` : addArgumentLabel}
             >
               <Plus size={12} />
               <span className="add-arg-button-label">
-                {remainingSlots ? `Add row (${remainingSlots} more)` : 'Add row'}
+                {remainingSlots ? `${addArgumentLabel} (${remainingSlots} more)` : addArgumentLabel}
               </span>
             </button>
           )}

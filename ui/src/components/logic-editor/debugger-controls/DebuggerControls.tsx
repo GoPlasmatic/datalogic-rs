@@ -11,7 +11,15 @@ import {
 import { useDebuggerContext } from '../context';
 import './DebuggerControls.css';
 
+export function DebuggerControlsInline() {
+  return <DebuggerControlsBase variant="inline" />;
+}
+
 export function DebuggerControls() {
+  return <DebuggerControlsBase variant="floating" />;
+}
+
+function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | 'floating' }) {
   const {
     state,
     play,
@@ -26,7 +34,9 @@ export function DebuggerControls() {
   const { steps, currentStepIndex, playbackState, playbackSpeed } = state;
   const isPlaying = playbackState === 'playing';
   const totalSteps = steps.length;
-  const isAtStart = currentStepIndex === 0;
+  // At -1 = initial state (plain visualizer, no step active)
+  const isAtInitial = currentStepIndex < 0;
+  const isAtStart = isAtInitial;
   const isAtEnd = currentStepIndex >= totalSteps - 1;
 
   // Keyboard shortcuts
@@ -85,11 +95,11 @@ export function DebuggerControls() {
   }
 
   return (
-    <div className="debugger-controls">
+    <div className={`debugger-controls--${variant}`}>
       <div className="debugger-controls-inner">
         {/* Bug icon indicator */}
         <div className="debugger-icon">
-          <Bug size={18} />
+          <Bug size={variant === 'inline' ? 15 : 18} />
         </div>
 
         {/* Navigation buttons */}
@@ -139,9 +149,9 @@ export function DebuggerControls() {
           </button>
         </div>
 
-        {/* Step counter */}
+        {/* Step counter: 0/N at initial, then 1/N .. N/N when stepping */}
         <div className="debugger-step-counter">
-          <span className="step-current">{currentStepIndex + 1}</span>
+          <span className="step-current">{isAtInitial ? 0 : currentStepIndex + 1}</span>
           <span className="step-separator">/</span>
           <span className="step-total">{totalSteps}</span>
         </div>

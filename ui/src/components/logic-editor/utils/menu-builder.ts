@@ -21,7 +21,7 @@ export function capitalizeFirst(str: string): string {
  * Standard category order for operator menus.
  * This ensures consistent ordering across all menus.
  */
-export const OPERATOR_CATEGORY_ORDER: OperatorCategory[] = [
+const OPERATOR_CATEGORY_ORDER: OperatorCategory[] = [
   'arithmetic',
   'comparison',
   'logical',

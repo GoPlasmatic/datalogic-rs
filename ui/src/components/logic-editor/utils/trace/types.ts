@@ -26,7 +26,7 @@ export interface TraceContext {
 export type ValueType = 'boolean' | 'number' | 'string' | 'null' | 'array' | 'object' | 'undefined';
 
 // Node type determination result
-export type NodeType = 'literal' | 'variable' | 'if' | 'verticalCell' | 'operator' | 'structure';
+export type NodeType = 'operator' | 'literal' | 'structure';
 
 // Match result for child finding
 export interface ChildMatch {

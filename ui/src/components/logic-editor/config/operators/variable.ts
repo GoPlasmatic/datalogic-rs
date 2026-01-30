@@ -83,10 +83,11 @@ export const variableOperators: Record<string, Operator> = {
       seeAlso: ['val', 'exists'],
     },
     ui: {
-      icon: 'variable',
+      icon: 'box',
       shortLabel: 'var',
       nodeType: 'variable',
       inlineEditable: true,
+      addArgumentLabel: 'Add Default',
     },
     panel: {
       sections: [
@@ -210,6 +211,7 @@ export const variableOperators: Record<string, Operator> = {
       scopeJump: true,
       metadata: true,
       datetimeProps: true,
+      addArgumentLabel: 'Add Path',
     },
     panel: {
       sections: [

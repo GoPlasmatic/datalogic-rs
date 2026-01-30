@@ -67,27 +67,42 @@ function processExpressionNode(
     case 'literal':
       createLiteralNodeFromTrace(nodeId, expression, exprNode.children, context, parentInfo);
       break;
-    case 'variable':
-      createVariableNodeFromTrace(nodeId, expression, exprNode.children, context, parentInfo);
+    case 'operator': {
+      // Determine which creator to use based on the operator
+      const obj = expression as Record<string, unknown>;
+      const keys = Object.keys(obj);
+      if (keys.length === 1) {
+        const op = keys[0];
+        if (['var', 'val', 'exists'].includes(op)) {
+          createVariableNodeFromTrace(nodeId, expression, exprNode.children, context, parentInfo);
+        } else if (op === 'if' || op === '?:') {
+          createIfElseNodeFromTrace(
+            nodeId, expression, exprNode.children, context, parentInfo,
+            processExpressionNode, createFallbackNode
+          );
+        } else {
+          const operands = obj[op];
+          const args = Array.isArray(operands) ? operands : [operands];
+          if (args.length > 1) {
+            createVerticalCellNodeFromTrace(
+              nodeId, expression, exprNode.children, context, parentInfo,
+              processExpressionNode, createFallbackNode
+            );
+          } else {
+            createOperatorNodeFromTrace(
+              nodeId, expression, exprNode.children, context, parentInfo,
+              processExpressionNode
+            );
+          }
+        }
+      } else {
+        createOperatorNodeFromTrace(
+          nodeId, expression, exprNode.children, context, parentInfo,
+          processExpressionNode
+        );
+      }
       break;
-    case 'if':
-      createIfElseNodeFromTrace(
-        nodeId, expression, exprNode.children, context, parentInfo,
-        processExpressionNode, createFallbackNode
-      );
-      break;
-    case 'verticalCell':
-      createVerticalCellNodeFromTrace(
-        nodeId, expression, exprNode.children, context, parentInfo,
-        processExpressionNode, createFallbackNode
-      );
-      break;
-    case 'operator':
-      createOperatorNodeFromTrace(
-        nodeId, expression, exprNode.children, context, parentInfo,
-        processExpressionNode
-      );
-      break;
+    }
     case 'structure':
       createStructureNodeFromTrace(
         nodeId, expression, exprNode.children, context, parentInfo,
@@ -117,27 +132,42 @@ function createFallbackNode(
     case 'literal':
       createLiteralNodeFromTrace(nodeId, value, [], context, parentInfo);
       break;
-    case 'variable':
-      createVariableNodeFromTrace(nodeId, value, [], context, parentInfo);
+    case 'operator': {
+      // Determine which creator to use based on the operator
+      const obj = value as Record<string, unknown>;
+      const keys = Object.keys(obj);
+      if (keys.length === 1) {
+        const op = keys[0];
+        if (['var', 'val', 'exists'].includes(op)) {
+          createVariableNodeFromTrace(nodeId, value, [], context, parentInfo);
+        } else if (op === 'if' || op === '?:') {
+          createIfElseNodeFromTrace(
+            nodeId, value, [], context, parentInfo,
+            processExpressionNode, createFallbackNode
+          );
+        } else {
+          const operands = obj[op];
+          const args = Array.isArray(operands) ? operands : [operands];
+          if (args.length > 1) {
+            createVerticalCellNodeFromTrace(
+              nodeId, value, [], context, parentInfo,
+              processExpressionNode, createFallbackNode
+            );
+          } else {
+            createOperatorNodeFromTrace(
+              nodeId, value, [], context, parentInfo,
+              processExpressionNode
+            );
+          }
+        }
+      } else {
+        createOperatorNodeFromTrace(
+          nodeId, value, [], context, parentInfo,
+          processExpressionNode
+        );
+      }
       break;
-    case 'if':
-      createIfElseNodeFromTrace(
-        nodeId, value, [], context, parentInfo,
-        processExpressionNode, createFallbackNode
-      );
-      break;
-    case 'verticalCell':
-      createVerticalCellNodeFromTrace(
-        nodeId, value, [], context, parentInfo,
-        processExpressionNode, createFallbackNode
-      );
-      break;
-    case 'operator':
-      createOperatorNodeFromTrace(
-        nodeId, value, [], context, parentInfo,
-        processExpressionNode
-      );
-      break;
+    }
     case 'structure':
       createStructureNodeFromTrace(
         nodeId, value, [], context, parentInfo,

@@ -6,7 +6,7 @@ import type {
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
 import type { TraceContext } from '../types';
-import { getOperatorMeta, getOperatorTitle } from '../../../config/operators';
+import { getOperator } from '../../../config/operators';
 import { generateExpressionText } from '../../formatting';
 import { isSimpleOperand } from '../../type-helpers';
 import { createArgEdge } from '../../node-factory';
@@ -38,7 +38,8 @@ export function createOperatorNodeFromTrace(
   const operands = obj[operator];
   const operandArray: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
 
-  const meta = getOperatorMeta(operator);
+  const op = getOperator(operator);
+  const category = op?.category ?? 'utility';
   const expressionText = generateExpressionText(expression);
   const childIds: string[] = [];
 
@@ -66,13 +67,13 @@ export function createOperatorNodeFromTrace(
       data: {
         type: 'operator',
         operator,
-        category: meta.category,
-        label: getOperatorTitle(operator),
-        childIds: [],
+        category,
+        label: op?.label ?? operator,
+        icon: 'list',
+        cells: [],
         collapsed: false,
         expressionText,
         expression,
-        inlineDisplay: expressionText,
         parentId: parentInfo.parentId,
         argIndex: parentInfo.argIndex,
         branchType: parentInfo.branchType,
@@ -122,9 +123,14 @@ export function createOperatorNodeFromTrace(
     data: {
       type: 'operator',
       operator,
-      category: meta.category,
-      label: getOperatorTitle(operator),
-      childIds,
+      category,
+      label: op?.label ?? operator,
+      icon: 'list',
+      cells: childIds.map((cid, idx) => ({
+        type: 'branch' as const,
+        branchId: cid,
+        index: idx,
+      })),
       collapsed: false,
       expressionText,
       expression,

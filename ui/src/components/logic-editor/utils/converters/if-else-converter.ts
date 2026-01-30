@@ -1,4 +1,4 @@
-import type { JsonLogicValue, LogicNode, VerticalCellNodeData, CellData } from '../../types';
+import type { JsonLogicValue, LogicNode, OperatorNodeData, CellData } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
 import { getParentInfo } from './types';
 import { generateExpressionText } from '../formatting';
@@ -144,13 +144,13 @@ export function convertIfElse(
   const originalExpr = { if: ifArgs };
   const expressionText = generateExpressionText(originalExpr);
 
-  // Create the VerticalCellNode
+  // Create the unified operator node
   const ifElseNode: LogicNode = {
     id: nodeId,
-    type: 'verticalCell',
+    type: 'operator',
     position: { x: 0, y: 0 },
     data: {
-      type: 'verticalCell',
+      type: 'operator',
       operator: 'if',
       category: 'control',
       label: 'If / Then / Else',
@@ -158,12 +158,11 @@ export function convertIfElse(
       cells,
       collapsed: false,
       expressionText,
-      collapsedCellIndices: [],
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
       expression: originalExpr,
-    } as VerticalCellNodeData,
+    } as OperatorNodeData,
   };
 
   context.nodes.push(ifElseNode);

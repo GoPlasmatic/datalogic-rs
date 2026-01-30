@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type {
   LogicNode,
   LogicEdge,
@@ -57,10 +57,10 @@ export function useLogicEditor({
   const [usingTraceMode, setUsingTraceMode] = useState(false);
   const [steps, setSteps] = useState<ExecutionStep[]>(emptySteps);
   const [traceNodeMap, setTraceNodeMap] = useState<Map<string, string>>(emptyTraceNodeMap);
-  const [lastExternalValue, setLastExternalValue] = useState<string>('');
-  const [lastData, setLastData] = useState<string>('');
-  const [lastHadTrace, setLastHadTrace] = useState<boolean>(false);
-  const [lastPreserveStructure, setLastPreserveStructure] = useState<boolean>(false);
+  const lastExternalValueRef = useRef<string>('');
+  const lastDataRef = useRef<string>('');
+  const lastHadTraceRef = useRef<boolean>(false);
+  const lastPreserveStructureRef = useRef<boolean>(false);
 
   // Convert JSONLogic to nodes when value changes from outside
   /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from value/data props */
@@ -71,10 +71,10 @@ export function useLogicEditor({
 
     // Re-process if value, data, trace availability, or preserveStructure changed
     if (
-      valueStr === lastExternalValue &&
-      dataStr === lastData &&
-      hasTrace === lastHadTrace &&
-      preserveStructure === lastPreserveStructure
+      valueStr === lastExternalValueRef.current &&
+      dataStr === lastDataRef.current &&
+      hasTrace === lastHadTraceRef.current &&
+      preserveStructure === lastPreserveStructureRef.current
     ) {
       return;
     }
@@ -89,10 +89,10 @@ export function useLogicEditor({
         setSteps(emptySteps);
         setTraceNodeMap(emptyTraceNodeMap);
         setUsingTraceMode(false);
-        setLastExternalValue(valueStr);
-        setLastData(dataStr);
-        setLastHadTrace(hasTrace);
-        setLastPreserveStructure(preserveStructure);
+        lastExternalValueRef.current = valueStr;
+        lastDataRef.current = dataStr;
+        lastHadTraceRef.current = hasTrace;
+        lastPreserveStructureRef.current = preserveStructure;
         return;
       }
 
@@ -110,10 +110,10 @@ export function useLogicEditor({
           setTraceNodeMap(newTraceNodeMap);
           setUsingTraceMode(true);
           setError(null);
-          setLastExternalValue(valueStr);
-          setLastData(dataStr);
-          setLastHadTrace(hasTrace);
-          setLastPreserveStructure(preserveStructure);
+          lastExternalValueRef.current = valueStr;
+          lastDataRef.current = dataStr;
+          lastHadTraceRef.current = hasTrace;
+          lastPreserveStructureRef.current = preserveStructure;
           return;
         } catch (traceErr) {
           // Trace conversion failed, fall back to JS parsing
@@ -141,11 +141,11 @@ export function useLogicEditor({
       setTraceNodeMap(emptyTraceNodeMap);
       setUsingTraceMode(false);
     }
-    setLastExternalValue(valueStr);
-    setLastData(dataStr);
-    setLastHadTrace(hasTrace);
-    setLastPreserveStructure(preserveStructure);
-  }, [value, data, evaluateWithTrace, preserveStructure, lastExternalValue, lastData, lastHadTrace, lastPreserveStructure]);
+    lastExternalValueRef.current = valueStr;
+    lastDataRef.current = dataStr;
+    lastHadTraceRef.current = hasTrace;
+    lastPreserveStructureRef.current = preserveStructure;
+  }, [value, data, evaluateWithTrace, preserveStructure]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Memoize return value to maintain stable identity

@@ -21,6 +21,27 @@ export const CellRow = memo(function CellRow({
   // Check if this is a "Then" row (should be indented)
   const isThenRow = cell.icon === 'check';
 
+  // Editable cell rendering
+  if (cell.type === 'editable') {
+    return (
+      <div className="vertical-cell-row">
+        {cell.icon && (
+          <span className="vertical-cell-row-icon">
+            <Icon name={cell.icon} size={12} />
+          </span>
+        )}
+        {cell.rowLabel && (
+          <span className="vertical-cell-row-label">
+            {cell.rowLabel}
+          </span>
+        )}
+        <span className="vertical-cell-inline editable-cell">
+          {cell.label || String(cell.value ?? cell.placeholder ?? '...')}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className={`vertical-cell-row ${isThenRow ? 'vertical-cell-row-then' : ''}`}>
       {cell.icon && (

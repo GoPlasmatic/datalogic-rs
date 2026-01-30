@@ -5,16 +5,14 @@ import type {
   LogicEdge,
   LiteralNodeData,
   OperatorNodeData,
-  VariableNodeData,
-  VerticalCellNodeData,
-  DecisionNodeData,
   OperatorCategory,
   CellData,
 } from '../types';
 import type { IconName } from './icons';
 import type { ParentInfo } from './converters/types';
 import { getValueType } from './type-helpers';
-import { BRANCH_COLORS } from '../constants';
+import { formatOperandLabel } from './formatting';
+
 
 // Factory function to create a literal node
 export function createLiteralNode(
@@ -38,7 +36,79 @@ export function createLiteralNode(
   };
 }
 
-// Factory function to create a variable node
+// Options for building variable operator cells
+export interface BuildVariableCellsOptions {
+  operator: 'var' | 'val' | 'exists';
+  path: string;
+  defaultValue?: JsonLogicValue;
+  scopeJump?: number;
+  pathComponents?: string[];
+}
+
+// Build cells for variable operators (var, val, exists)
+export function buildVariableCells(options: BuildVariableCellsOptions): CellData[] {
+  const { operator, path, defaultValue, scopeJump, pathComponents } = options;
+  const cells: CellData[] = [];
+
+  if (operator === 'var') {
+    cells.push({
+      type: 'editable',
+      rowLabel: 'Path',
+      icon: 'type',
+      fieldId: 'path',
+      fieldType: 'text',
+      value: path,
+      placeholder: 'user.profile.name',
+      index: 0,
+    });
+    if (defaultValue !== undefined) {
+      cells.push({
+        type: 'inline',
+        rowLabel: 'Default',
+        icon: 'hash',
+        label: formatOperandLabel(defaultValue),
+        index: 1,
+      });
+    }
+  } else if (operator === 'val') {
+    const scope = scopeJump ?? 0;
+    cells.push({
+      type: 'editable',
+      rowLabel: 'Scope',
+      icon: 'arrow-up',
+      fieldId: 'scopeLevel',
+      fieldType: 'number',
+      value: scope,
+      label: `${scope} level${scope !== 1 ? 's' : ''} up`,
+      index: 0,
+    });
+    cells.push({
+      type: 'editable',
+      rowLabel: 'Path',
+      icon: 'type',
+      fieldId: 'path',
+      fieldType: 'text',
+      value: pathComponents?.join('.') ?? path,
+      placeholder: 'field1.field2',
+      index: 1,
+    });
+  } else if (operator === 'exists') {
+    cells.push({
+      type: 'editable',
+      rowLabel: 'Path',
+      icon: 'type',
+      fieldId: 'path',
+      fieldType: 'text',
+      value: path,
+      placeholder: 'user.profile.name',
+      index: 0,
+    });
+  }
+
+  return cells;
+}
+
+// Factory function to create a variable node (now creates unified operator node)
 export function createVariableNode(
   operator: 'var' | 'val' | 'exists',
   path: string,
@@ -49,22 +119,25 @@ export function createVariableNode(
   pathComponents?: string[]
 ): LogicNode {
   const nodeId = uuidv4();
+  const cells = buildVariableCells({ operator, path, defaultValue, scopeJump, pathComponents });
+
   return {
     id: nodeId,
-    type: 'variable',
+    type: 'operator',
     position: { x: 0, y: 0 },
     data: {
-      type: 'variable',
+      type: 'operator',
       operator,
-      path,
-      defaultValue,
-      scopeJump,
-      pathComponents,
+      category: 'variable' as OperatorCategory,
+      label: operator === 'var' ? 'Variable' : operator === 'val' ? 'Value' : 'Exists',
+      icon: 'box' as IconName,
+      cells,
+      collapsed: false,
       expression: originalExpr,
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
-    } as VariableNodeData,
+    } as OperatorNodeData,
   };
 }
 
@@ -73,11 +146,11 @@ interface OperatorNodeOptions {
   operator: string;
   category: OperatorCategory;
   label: string;
-  childIds: string[];
+  icon: IconName;
+  cells: CellData[];
   collapsed?: boolean;
   expressionText?: string;
   expression: JsonLogicValue;
-  inlineDisplay?: string;
 }
 
 // Factory function to create an operator node
@@ -95,45 +168,6 @@ export function createOperatorNode(
       operator: options.operator,
       category: options.category,
       label: options.label,
-      childIds: options.childIds,
-      collapsed: options.collapsed ?? false,
-      expressionText: options.expressionText,
-      expression: options.expression,
-      inlineDisplay: options.inlineDisplay,
-      parentId: parentInfo.parentId,
-      argIndex: parentInfo.argIndex,
-      branchType: parentInfo.branchType,
-    } as OperatorNodeData,
-  };
-}
-
-// Options for creating vertical cell nodes
-interface VerticalCellNodeOptions {
-  operator: string;
-  category: OperatorCategory;
-  label: string;
-  icon: IconName;
-  cells: CellData[];
-  collapsed?: boolean;
-  expressionText?: string;
-  expression: JsonLogicValue;
-}
-
-// Factory function to create a vertical cell node
-export function createVerticalCellNode(
-  options: VerticalCellNodeOptions,
-  parentInfo: ParentInfo = {}
-): LogicNode {
-  const nodeId = uuidv4();
-  return {
-    id: nodeId,
-    type: 'verticalCell',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'verticalCell',
-      operator: options.operator,
-      category: options.category,
-      label: options.label,
       icon: options.icon,
       cells: options.cells,
       collapsed: options.collapsed ?? false,
@@ -142,7 +176,7 @@ export function createVerticalCellNode(
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
-    } as VerticalCellNodeData,
+    } as OperatorNodeData,
   };
 }
 
@@ -208,89 +242,4 @@ export function createBranchEdge(
     targetHandle: 'left',
     ...options,
   });
-}
-
-// Options for creating decision nodes
-interface DecisionNodeOptions {
-  conditionText: string;
-  conditionExpression: JsonLogicValue;
-  isConditionComplex: boolean;
-  conditionBranchId?: string;
-  yesBranchId: string;
-  noBranchId: string;
-  collapsed?: boolean;
-  expressionText?: string;
-  expression: JsonLogicValue;
-}
-
-// Factory function to create a decision node
-export function createDecisionNode(
-  options: DecisionNodeOptions,
-  parentInfo: ParentInfo = {}
-): LogicNode {
-  const nodeId = uuidv4();
-  return {
-    id: nodeId,
-    type: 'decision',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'decision',
-      conditionText: options.conditionText,
-      conditionExpression: options.conditionExpression,
-      isConditionComplex: options.isConditionComplex,
-      conditionBranchId: options.conditionBranchId,
-      yesBranchId: options.yesBranchId,
-      noBranchId: options.noBranchId,
-      collapsed: options.collapsed ?? false,
-      expressionText: options.expressionText,
-      expression: options.expression,
-      parentId: parentInfo.parentId,
-      argIndex: parentInfo.argIndex,
-      branchType: parentInfo.branchType,
-    } as DecisionNodeData,
-  };
-}
-
-// Create "Yes" branch edge from decision node
-// branchIndex: 0 if no condition branch, 1 if condition branch exists
-export function createYesEdge(parentId: string, childId: string, hasConditionBranch: boolean): LogicEdge {
-  const branchIndex = hasConditionBranch ? 1 : 0;
-  return {
-    id: `${parentId}-yes-${childId}`,
-    source: parentId,
-    target: childId,
-    sourceHandle: `branch-${branchIndex}`,
-    targetHandle: 'left',
-    label: 'Yes',
-    className: 'yes-edge',
-    style: { stroke: BRANCH_COLORS.yes },
-  };
-}
-
-// Create "No" branch edge from decision node
-// branchIndex: 1 if no condition branch, 2 if condition branch exists
-export function createNoEdge(parentId: string, childId: string, hasConditionBranch: boolean): LogicEdge {
-  const branchIndex = hasConditionBranch ? 2 : 1;
-  return {
-    id: `${parentId}-no-${childId}`,
-    source: parentId,
-    target: childId,
-    sourceHandle: `branch-${branchIndex}`,
-    targetHandle: 'left',
-    label: 'No',
-    className: 'no-edge',
-    style: { stroke: BRANCH_COLORS.no },
-  };
-}
-
-// Create condition branch edge from decision node (for complex conditions)
-// Always branch-0 when it exists
-export function createConditionEdge(parentId: string, childId: string): LogicEdge {
-  return {
-    id: `${parentId}-cond-${childId}`,
-    source: parentId,
-    target: childId,
-    sourceHandle: 'branch-0',
-    targetHandle: 'left',
-  };
 }
