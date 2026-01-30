@@ -10,6 +10,7 @@ export type IconName =
   | 'type'
   | 'box'
   | 'git-merge'
+  | 'git-branch'
   | 'text'
   | 'hash'
   | 'toggle-left'
@@ -28,17 +29,24 @@ export type IconName =
   | 'search'
   | 'divide'
   | 'quote'
-  | 'braces';
+  | 'braces'
+  | 'binary'
+  | 'layers'
+  | 'clock'
+  | 'alert-circle';
 
 // Category icons
 export const CATEGORY_ICONS: Record<string, IconName> = {
+  variable: 'database',
   comparison: 'scale',
-  logical: 'diamond',
+  logical: 'binary',
   arithmetic: 'calculator',
-  array: 'repeat',
+  control: 'git-branch',
   string: 'type',
-  variable: 'box',
-  control: 'git-merge',
+  array: 'layers',
+  datetime: 'clock',
+  validation: 'alert-circle',
+  error: 'circle-x',
 };
 
 // Iterator argument icons

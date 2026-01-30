@@ -8,6 +8,7 @@ import {
   Type,
   Box,
   GitMerge,
+  GitBranch,
   Text,
   Hash,
   ToggleLeft,
@@ -27,6 +28,10 @@ import {
   Divide,
   Quote,
   Braces,
+  Binary,
+  Layers,
+  Clock,
+  CircleAlert,
 } from 'lucide-react';
 import type { IconName } from './icons';
 
@@ -39,6 +44,7 @@ const ICON_COMPONENTS: Record<IconName, LucideIcon> = {
   'type': Type,
   'box': Box,
   'git-merge': GitMerge,
+  'git-branch': GitBranch,
   'text': Text,
   'hash': Hash,
   'toggle-left': ToggleLeft,
@@ -58,6 +64,10 @@ const ICON_COMPONENTS: Record<IconName, LucideIcon> = {
   'divide': Divide,
   'quote': Quote,
   'braces': Braces,
+  'binary': Binary,
+  'layers': Layers,
+  'clock': Clock,
+  'alert-circle': CircleAlert,
 };
 
 // Render an icon by name

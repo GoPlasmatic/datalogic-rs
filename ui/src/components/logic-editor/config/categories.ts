@@ -12,71 +12,71 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'variable',
     label: 'Variables',
     description: 'Access data from the context',
-    color: '#8b5cf6', // violet-500
-    icon: 'variable',
+    color: '#5C7CFA', // blue
+    icon: 'database',
   },
   comparison: {
     name: 'comparison',
     label: 'Comparison',
     description: 'Compare values',
-    color: '#f59e0b', // amber-500
+    color: '#20C997', // teal
     icon: 'scale',
   },
   logical: {
     name: 'logical',
     label: 'Logical',
     description: 'Boolean logic operations',
-    color: '#ec4899', // pink-500
-    icon: 'git-branch',
+    color: '#845EF7', // violet
+    icon: 'binary',
   },
   arithmetic: {
     name: 'arithmetic',
     label: 'Arithmetic',
     description: 'Mathematical operations',
-    color: '#3b82f6', // blue-500
+    color: '#40C057', // green
     icon: 'calculator',
   },
   control: {
     name: 'control',
     label: 'Control Flow',
     description: 'Conditional branching',
-    color: '#10b981', // emerald-500
-    icon: 'git-fork',
+    color: '#F59F00', // amber
+    icon: 'git-branch',
   },
   string: {
     name: 'string',
     label: 'String',
     description: 'Text manipulation',
-    color: '#06b6d4', // cyan-500
-    icon: 'text',
+    color: '#15AABF', // cyan
+    icon: 'type',
   },
   array: {
     name: 'array',
     label: 'Array',
     description: 'Array operations and iteration',
-    color: '#6366f1', // indigo-500
-    icon: 'list',
+    color: '#5F3DC4', // indigo
+    icon: 'layers',
   },
   datetime: {
     name: 'datetime',
     label: 'Date & Time',
     description: 'Date and time operations',
-    color: '#f97316', // orange-500
-    icon: 'calendar',
+    color: '#748FFC', // slate blue
+    icon: 'clock',
   },
   validation: {
     name: 'validation',
     label: 'Validation',
     description: 'Check for missing values',
-    color: '#eab308', // yellow-500
-    icon: 'shield-check',
+    color: '#ADB5BD', // grey-blue
+    icon: 'alert-circle',
   },
   error: {
     name: 'error',
     label: 'Error Handling',
     description: 'Handle errors gracefully',
-    color: '#ef4444', // red-500
-    icon: 'alert-triangle',
+    color: '#FA5252', // red
+    icon: 'circle-x',
   },
   utility: {
     name: 'utility',
