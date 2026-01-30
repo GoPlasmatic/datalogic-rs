@@ -5,8 +5,8 @@
  * for the currently selected node.
  */
 
-import { memo, useEffect, useState, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
-import { X, Variable, Calculator, Hash, GitBranch, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { memo, useEffect, useState, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
+import { X, ChevronDown, ChevronRight, Trash2, Search } from 'lucide-react';
 import { useEditorContext } from '../context/editor';
 import { PanelRenderer, type PanelRendererRef } from '../panel-inputs';
 import { HelpSection } from './HelpSection';
@@ -19,6 +19,9 @@ import {
   getNodeDisplayLabel,
   getNodeCategory,
 } from './utils';
+import { getOperatorsGroupedByCategory } from '../config/operators';
+import { categories } from '../config/categories';
+import type { OperatorCategory } from '../config/operators.types';
 
 interface PropertiesPanelProps {
   /** Width of the panel in pixels */
@@ -38,8 +41,11 @@ export const PropertiesPanel = memo(function PropertiesPanel({
     applyPanelChanges,
     deleteNode,
     createNode,
+    hasNodes,
     propertyPanelFocusRef,
   } = useEditorContext();
+
+  const isCanvasEmpty = !hasNodes();
 
   // Timer ref for debounced auto-apply
   const applyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -144,7 +150,7 @@ export const PropertiesPanel = memo(function PropertiesPanel({
           canDelete={!isRoot}
         />
       ) : (
-        <EmptyStatePanel onAddNode={createNode} />
+        <EmptyStatePanel onAddNode={createNode} isCanvasEmpty={isCanvasEmpty} />
       )}
     </div>
   );
@@ -262,61 +268,161 @@ const SelectedNodePanel = memo(forwardRef<PanelRendererRef, SelectedNodePanelPro
 }));
 
 interface EmptyStatePanelProps {
-  onAddNode: (type: 'variable' | 'operator' | 'literal' | 'condition') => void;
+  onAddNode: (type: 'variable' | 'operator' | 'literal' | 'condition', operatorName?: string) => void;
+  isCanvasEmpty: boolean;
 }
+
+// Category display order
+const CATEGORY_ORDER: OperatorCategory[] = [
+  'variable',
+  'comparison',
+  'logical',
+  'arithmetic',
+  'control',
+  'string',
+  'array',
+  'datetime',
+  'validation',
+  'error',
+  'utility',
+];
 
 const EmptyStatePanel = memo(function EmptyStatePanel({
   onAddNode,
+  isCanvasEmpty,
 }: EmptyStatePanelProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Set<OperatorCategory>>(
+    new Set(['variable', 'comparison', 'arithmetic', 'control'])
+  );
+
+  // Get operators grouped by category
+  const operatorsByCategory = useMemo(() => getOperatorsGroupedByCategory(), []);
+
+  // Filter operators based on search query
+  const filteredOperatorsByCategory = useMemo(() => {
+    if (!searchQuery.trim()) return operatorsByCategory;
+
+    const lowerQuery = searchQuery.toLowerCase();
+    const filtered = new Map<OperatorCategory, typeof operatorsByCategory extends Map<OperatorCategory, infer V> ? V : never>();
+
+    for (const [category, ops] of operatorsByCategory) {
+      const matchingOps = ops.filter(
+        (op) =>
+          op.name.toLowerCase().includes(lowerQuery) ||
+          op.label.toLowerCase().includes(lowerQuery) ||
+          op.description.toLowerCase().includes(lowerQuery)
+      );
+      if (matchingOps.length > 0) {
+        filtered.set(category, matchingOps);
+      }
+    }
+
+    return filtered;
+  }, [operatorsByCategory, searchQuery]);
+
+  const toggleCategory = useCallback((category: OperatorCategory) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleOperatorClick = useCallback(
+    (operatorName: string, category: OperatorCategory) => {
+      if (category === 'variable') {
+        onAddNode('variable');
+      } else {
+        onAddNode('operator', operatorName);
+      }
+    },
+    [onAddNode]
+  );
+
+  // When canvas has nodes but nothing selected - just show hint
+  if (!isCanvasEmpty) {
+    return (
+      <div className="properties-panel-content">
+        <div className="properties-panel-empty">
+          <p className="properties-panel-empty-title">No node selected</p>
+          <p className="properties-panel-empty-hint">
+            Click a node to view and edit its properties.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // When canvas is empty - show full operator list
   return (
     <div className="properties-panel-content">
-      <div className="properties-panel-empty">
-        <p className="properties-panel-empty-title">No node selected</p>
-        <p className="properties-panel-empty-hint">
-          Click a node to view and edit its properties, or add a new node below.
-        </p>
+      <div className="properties-panel-header">
+        <h3 className="properties-panel-title">Start with an Operator</h3>
+      </div>
 
-        <div className="properties-panel-empty-divider" />
+      {/* Search Input */}
+      <div className="properties-panel-search">
+        <Search size={14} className="properties-panel-search-icon" />
+        <input
+          type="text"
+          className="properties-panel-search-input"
+          placeholder="Search operators..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
 
-        <p className="properties-panel-quick-add-title">Quick Add:</p>
-        <div className="properties-panel-quick-add">
-          <button
-            className="properties-panel-quick-add-btn"
-            onClick={() => onAddNode('variable')}
-            type="button"
-            title="Add a variable reference (var, val, exists)"
-          >
-            <Variable size={16} />
-            <span>Variable</span>
-          </button>
-          <button
-            className="properties-panel-quick-add-btn"
-            onClick={() => onAddNode('operator')}
-            type="button"
-            title="Add an operator (+, -, *, etc.)"
-          >
-            <Calculator size={16} />
-            <span>Operator</span>
-          </button>
-          <button
-            className="properties-panel-quick-add-btn"
-            onClick={() => onAddNode('literal')}
-            type="button"
-            title="Add a literal value (number, string, etc.)"
-          >
-            <Hash size={16} />
-            <span>Literal</span>
-          </button>
-          <button
-            className="properties-panel-quick-add-btn"
-            onClick={() => onAddNode('condition')}
-            type="button"
-            title="Add a conditional (if/then/else)"
-          >
-            <GitBranch size={16} />
-            <span>Condition</span>
-          </button>
-        </div>
+      {/* Operator Categories */}
+      <div className="properties-panel-operators-list">
+        {CATEGORY_ORDER.map((category) => {
+          const ops = filteredOperatorsByCategory.get(category);
+          if (!ops || ops.length === 0) return null;
+
+          const categoryMeta = categories[category];
+          const isExpanded = expandedCategories.has(category) || searchQuery.trim() !== '';
+
+          return (
+            <div key={category} className="properties-panel-category">
+              <button
+                className="properties-panel-category-header"
+                onClick={() => toggleCategory(category)}
+                type="button"
+              >
+                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <span
+                  className="properties-panel-category-dot"
+                  style={{ backgroundColor: categoryMeta.color }}
+                />
+                <span className="properties-panel-category-label">
+                  {categoryMeta.label}
+                </span>
+                <span className="properties-panel-category-count">{ops.length}</span>
+              </button>
+
+              {isExpanded && (
+                <div className="properties-panel-category-items">
+                  {ops.map((op) => (
+                    <button
+                      key={op.name}
+                      className="properties-panel-operator-item"
+                      onClick={() => handleOperatorClick(op.name, category)}
+                      type="button"
+                      title={op.description}
+                    >
+                      <span className="properties-panel-operator-name">{op.label}</span>
+                      <span className="properties-panel-operator-symbol">{op.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

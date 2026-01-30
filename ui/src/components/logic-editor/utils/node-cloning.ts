@@ -38,6 +38,18 @@ export function cloneNodesWithIdMapping(
   nodes: LogicNode[],
   rootId: string
 ): CloneResult {
+  // Validate that rootId exists in the nodes array
+  const rootExists = nodes.some((n) => n.id === rootId);
+  if (!rootExists) {
+    console.warn('cloneNodesWithIdMapping: rootId not found in nodes array');
+    // Return empty result to allow caller to handle gracefully
+    return {
+      nodes: [],
+      idMap: new Map(),
+      newRootId: '',
+    };
+  }
+
   // Create ID mapping for all nodes
   const idMap = new Map<string, string>();
   nodes.forEach((n) => {

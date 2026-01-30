@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Sun, Moon, Github, BookOpen, ChevronDown, Link2, Check } from "lucide-react";
+import { Sun, Moon, Github, BookOpen, ChevronDown, Link2, Check, Plus } from "lucide-react";
 import { generateShareableUrl, parseShareableUrl } from "./utils/url-share";
 import {
   DataLogicEditor,
@@ -403,6 +403,19 @@ function App() {
     }
   }, []);
 
+  // Create a new empty project
+  const handleNew = useCallback(() => {
+    setLogicText('');
+    setExpression(null);
+    setLogicError(null);
+    setDataText('{}');
+    setData({});
+    setDataError(null);
+    setSelectedExample('');
+    // Clear URL params
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   // Share current state via URL
   const handleShare = useCallback(async () => {
     if (!expression) return;
@@ -535,6 +548,14 @@ function App() {
             </a>
           </div>
           <div className="header-divider" />
+          <button
+            className="new-button"
+            onClick={handleNew}
+            title="Start a new project"
+          >
+            <Plus size={16} />
+            <span>New</span>
+          </button>
           <div className="examples-dropdown" ref={examplesDropdownRef}>
             <button
               className="examples-dropdown-trigger"
@@ -571,7 +592,8 @@ function App() {
             disabled={!expression || !!logicError}
             title="Copy shareable link"
           >
-            {copied ? <Check size={18} className="text-green" /> : <Link2 size={18} />}
+            {copied ? <Check size={16} /> : <Link2 size={16} />}
+            <span>{copied ? 'Copied!' : 'Share'}</span>
           </button>
           <button
             className="theme-toggle"

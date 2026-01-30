@@ -800,16 +800,22 @@ export function EditorProvider({
     if (!clipboard || clipboard.nodes.length === 0) return;
 
     setInternalNodes((prev) => {
-      // Save current state to undo stack
-      pushToUndoStack(prev);
-
       // Clone nodes with ID remapping using the shared utility
       const { nodes: clonedNodes, newRootId } = cloneNodesWithIdMapping(
         clipboard.nodes,
         clipboard.rootId
       );
 
-      const clonedRoot = clonedNodes.find((n) => n.id === newRootId)!;
+      const clonedRoot = clonedNodes.find((n) => n.id === newRootId);
+
+      // Defensive check: if cloning failed, return unchanged
+      if (!clonedRoot || !newRootId) {
+        console.warn('Paste failed: could not find cloned root node');
+        return prev;
+      }
+
+      // Save current state to undo stack (only after validation)
+      pushToUndoStack(prev);
 
       // If there's a selected node that isn't the root, replace it
       if (selectedNode) {

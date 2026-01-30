@@ -273,6 +273,24 @@ function DataLogicEditorInner({
             {showDebugger && <DebuggerControls />}
             <NodeSelectionHandler />
             <AutoFitView nodeCount={initialNodes.length} />
+
+            {/* Context Menus - must be inside ReactFlowProvider for useReactFlow hook */}
+            {contextMenu?.type === 'node' && contextMenuNode && (
+              <NodeContextMenu
+                x={contextMenu.x}
+                y={contextMenu.y}
+                node={contextMenuNode}
+                onClose={handleCloseContextMenu}
+                onEditProperties={handleEditProperties}
+              />
+            )}
+            {contextMenu?.type === 'canvas' && (
+              <CanvasContextMenu
+                x={contextMenu.x}
+                y={contextMenu.y}
+                onClose={handleCloseContextMenu}
+              />
+            )}
           </ReactFlow>
         </ReactFlowProvider>
 
@@ -283,24 +301,6 @@ function DataLogicEditorInner({
               Enter valid JSONLogic in the input panel to visualize it
             </p>
           </div>
-        )}
-
-        {/* Context Menus */}
-        {contextMenu?.type === 'node' && contextMenuNode && (
-          <NodeContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            node={contextMenuNode}
-            onClose={handleCloseContextMenu}
-            onEditProperties={handleEditProperties}
-          />
-        )}
-        {contextMenu?.type === 'canvas' && (
-          <CanvasContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={handleCloseContextMenu}
-          />
         )}
       </ConnectedHandlesProvider>
     </EvaluationContext.Provider>

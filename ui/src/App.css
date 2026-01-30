@@ -78,6 +78,32 @@
   background: var(--border-primary);
 }
 
+/* New Button */
+.new-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.new-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.new-button:active {
+  background: var(--bg-active);
+}
+
 /* Examples Dropdown */
 .examples-dropdown {
   position: relative;
@@ -174,35 +200,29 @@
 .share-button {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--border-secondary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-blue);
+  color: white;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .share-button:hover:not(:disabled) {
-  background: var(--bg-hover);
-  border-color: var(--border-primary);
-  color: var(--text-primary);
+  filter: brightness(1.1);
 }
 
 .share-button:active:not(:disabled) {
-  background: var(--bg-active);
+  filter: brightness(0.95);
 }
 
 .share-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.share-button .text-green {
-  color: var(--success-text);
 }
 
 /* Theme Toggle */
