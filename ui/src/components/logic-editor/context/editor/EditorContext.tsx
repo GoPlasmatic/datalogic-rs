@@ -90,6 +90,7 @@ export function EditorProvider({
   // --- Effects ---
 
   // Sync nodes from props when they change (e.g., expression change from parent)
+  /* eslint-disable react-hooks/set-state-in-effect -- Syncing internal state from props is intentional */
   useEffect(() => {
     if (
       !hasEditedRef.current ||
@@ -112,6 +113,7 @@ export function EditorProvider({
       hasEditedRef.current = false;
     }
   }, [initialEditMode, propNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Keep nodesRef in sync with internalNodes for undo/redo
   useEffect(() => {

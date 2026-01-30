@@ -17,29 +17,60 @@
   border-bottom: none;
 }
 
-/* Logic section takes 50% */
-.debug-section.logic-section {
-  flex: 2;
-}
-
-/* Data section takes 25% */
-.debug-section.data-section {
+/* Expanded section takes all remaining space */
+.debug-section.expanded {
   flex: 1;
 }
 
-/* Result section takes 25% */
-.debug-section.result-section {
-  flex: 1;
+/* Collapsed section is header-only */
+.debug-section.collapsed {
+  flex: 0 0 auto;
 }
 
 .debug-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   padding: 8px 12px;
   background: var(--bg-tertiary);
+  border: none;
   border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+
+.debug-section-header:hover {
+  background: var(--bg-hover);
+}
+
+.debug-section.collapsed .debug-section-header {
+  border-bottom: none;
+}
+
+.debug-section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.debug-section-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-section-chevron {
+  color: var(--text-tertiary);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.debug-section-chevron.collapsed {
+  transform: rotate(-90deg);
 }
 
 .debug-section-header h3 {
@@ -304,4 +335,31 @@
 
 .json-result-display.falsy .json-boolean {
   color: var(--error-text);
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .debug-section-header {
+    padding: 6px 10px;
+    min-height: 40px;
+  }
+
+  .format-btn {
+    padding: 6px 10px;
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .debug-textarea,
+  .json-editor-textarea,
+  .json-highlight-layer {
+    font-size: 11px;
+    padding: 8px;
+  }
+
+  .debug-result,
+  .json-result-display {
+    font-size: 12px;
+    padding: 8px;
+  }
 }

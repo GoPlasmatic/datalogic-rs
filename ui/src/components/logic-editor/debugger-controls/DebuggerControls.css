@@ -183,3 +183,43 @@
 [data-theme="dark"] .speed-slider {
   background: rgba(75, 85, 99, 0.8);
 }
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .debugger-controls--inline,
+  .debugger-controls--inline .debugger-controls-inner {
+    flex-shrink: 0;
+  }
+
+  .debugger-controls--inline .debugger-controls-inner {
+    gap: 8px;
+  }
+
+  .debugger-buttons {
+    flex-shrink: 0;
+  }
+
+  .debugger-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .debugger-btn-primary {
+    width: 40px;
+    height: 40px;
+  }
+
+  .debugger-step-counter {
+    flex-shrink: 0;
+    min-width: 50px;
+    font-size: 12px;
+  }
+
+  .debugger-speed {
+    flex-shrink: 0;
+  }
+
+  .speed-slider {
+    width: 60px;
+  }
+}

@@ -1,13 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Sun, Moon, Github, BookOpen, ChevronDown, Link2, Check, Plus } from "lucide-react";
+import { Sun, Moon, Github, BookOpen, ChevronDown, Link2, Check, Plus, Menu, X } from "lucide-react";
 import { generateShareableUrl, parseShareableUrl } from "./utils/url-share";
 import {
   DataLogicEditor,
   type JsonLogicValue,
 } from "./components/logic-editor";
 import { DebugPanel } from "./components/debug-panel";
+import { MobileNav, type MobileTab } from "./components/mobile-nav/MobileNav";
 import { useWasmEvaluator } from "./components/logic-editor/hooks";
-import { useTheme } from "./hooks";
+import { useTheme, useIsMobile } from "./hooks";
 import { SAMPLE_EXPRESSIONS } from "./constants/sample-expressions";
 import "./App.css";
 
@@ -43,6 +44,12 @@ function App() {
   const [panelWidth, setPanelWidth] = useState<number>(350);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLElement>(null);
+
+  // Mobile state
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState<MobileTab>('visual');
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
 
   const {
     ready: wasmReady,
@@ -184,6 +191,21 @@ function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Close overflow menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        overflowMenuRef.current &&
+        !overflowMenuRef.current.contains(event.target as Node)
+      ) {
+        setOverflowMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Evaluate the expression when inputs change
   /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from expression/data changes */
   useEffect(() => {
@@ -235,6 +257,35 @@ function App() {
     };
   }, [isDragging]);
 
+  const debugPanelElement = (
+    <DebugPanel
+      logic={expression}
+      logicText={logicText}
+      onLogicChange={handleLogicChange}
+      logicError={logicError}
+      data={data}
+      dataText={dataText}
+      onDataChange={handleDataChange}
+      dataError={dataError}
+      result={result}
+      resultError={resultError}
+      wasmReady={wasmReady}
+      wasmLoading={wasmLoading}
+    />
+  );
+
+  const visualEditorElement = (
+    <DataLogicEditor
+      value={expression}
+      onChange={handleExpressionChange}
+      data={data}
+      theme={theme}
+      preserveStructure={preserveStructure}
+      onPreserveStructureChange={setPreserveStructure}
+      editable
+    />
+  );
+
   return (
     <div className="app">
       <header className="app-header">
@@ -244,14 +295,14 @@ function App() {
         </div>
         <div className="header-controls">
           <button
-            className="new-button"
+            className="new-button header-desktop-only"
             onClick={handleNew}
             title="Start a new project"
           >
             <Plus size={16} />
             <span>New</span>
           </button>
-          <div className="examples-dropdown" ref={examplesDropdownRef}>
+          <div className="examples-dropdown header-desktop-only" ref={examplesDropdownRef}>
             <button
               className="examples-dropdown-trigger"
               onClick={() => setExamplesDropdownOpen(!examplesDropdownOpen)}
@@ -306,7 +357,7 @@ function App() {
           </div>
           <div className="header-divider" />
           <button
-            className="share-button"
+            className="share-button header-desktop-only"
             onClick={handleShare}
             disabled={!expression || !!logicError}
             title="Copy shareable link"
@@ -321,47 +372,100 @@ function App() {
           >
             {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
           </button>
+          {/* Mobile overflow menu — holds actions that don't fit in compact header */}
+          <div className="overflow-menu" ref={overflowMenuRef}>
+            <button
+              className="overflow-menu-trigger"
+              onClick={() => setOverflowMenuOpen(!overflowMenuOpen)}
+              aria-label="More options"
+            >
+              {overflowMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            {overflowMenuOpen && (
+              <div className="overflow-menu-dropdown">
+                <button
+                  className="overflow-menu-item"
+                  onClick={() => { handleNew(); setOverflowMenuOpen(false); }}
+                >
+                  <Plus size={16} />
+                  <span>New Project</span>
+                </button>
+                <button
+                  className="overflow-menu-item"
+                  onClick={() => { handleShare(); setOverflowMenuOpen(false); }}
+                  disabled={!expression || !!logicError}
+                >
+                  {copied ? <Check size={16} /> : <Link2 size={16} />}
+                  <span>{copied ? 'Copied!' : 'Share Link'}</span>
+                </button>
+                <div className="overflow-menu-divider" />
+                <div className="overflow-menu-label">Examples</div>
+                {Object.keys(SAMPLE_EXPRESSIONS).map((name) => (
+                  <button
+                    key={name}
+                    className={`overflow-menu-item ${name === selectedExample ? 'overflow-menu-item--active' : ''}`}
+                    onClick={() => { loadSample(name); setOverflowMenuOpen(false); }}
+                  >
+                    <span>{name}</span>
+                  </button>
+                ))}
+                <div className="overflow-menu-divider" />
+                <a
+                  href="https://github.com/GoPlasmatic/datalogic-rs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="overflow-menu-item"
+                  onClick={() => setOverflowMenuOpen(false)}
+                >
+                  <Github size={16} />
+                  <span>GitHub</span>
+                </a>
+                <a
+                  href="https://goplasmatic.github.io/datalogic-rs/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="overflow-menu-item"
+                  onClick={() => setOverflowMenuOpen(false)}
+                >
+                  <BookOpen size={16} />
+                  <span>Docs</span>
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="app-main" ref={containerRef}>
-        {/* Left Panel - Debug Panel with Logic/Data inputs */}
-        <div className="panel debug-input-panel" style={{ width: panelWidth }}>
-          <DebugPanel
-            logic={expression}
-            logicText={logicText}
-            onLogicChange={handleLogicChange}
-            logicError={logicError}
-            data={data}
-            dataText={dataText}
-            onDataChange={handleDataChange}
-            dataError={dataError}
-            result={result}
-            resultError={resultError}
-            wasmReady={wasmReady}
-            wasmLoading={wasmLoading}
+      {isMobile ? (
+        <>
+          <main className="app-main app-main--mobile">
+            {mobileTab === 'visual' && (
+              <div className="panel visual-panel mobile-panel">
+                {visualEditorElement}
+              </div>
+            )}
+            {mobileTab === 'code' && (
+              <div className="panel debug-input-panel mobile-panel">
+                {debugPanelElement}
+              </div>
+            )}
+          </main>
+          <MobileNav activeTab={mobileTab} onTabChange={setMobileTab} />
+        </>
+      ) : (
+        <main className="app-main" ref={containerRef}>
+          <div className="panel debug-input-panel" style={{ width: panelWidth }}>
+            {debugPanelElement}
+          </div>
+          <div
+            className={`divider ${isDragging ? "dragging" : ""}`}
+            onMouseDown={handleMouseDown}
           />
-        </div>
-
-        {/* Divider */}
-        <div
-          className={`divider ${isDragging ? "dragging" : ""}`}
-          onMouseDown={handleMouseDown}
-        />
-
-        {/* Right Panel - Visual Flow */}
-        <div className="panel visual-panel">
-          <DataLogicEditor
-            value={expression}
-            onChange={handleExpressionChange}
-            data={data}
-            theme={theme}
-            preserveStructure={preserveStructure}
-            onPreserveStructureChange={setPreserveStructure}
-            editable
-          />
-        </div>
-      </main>
+          <div className="panel visual-panel">
+            {visualEditorElement}
+          </div>
+        </main>
+      )}
     </div>
   );
 }

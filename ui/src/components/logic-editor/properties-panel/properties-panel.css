@@ -1014,3 +1014,63 @@
 [data-theme="dark"] .properties-panel-operator-symbol {
   background: var(--bg-tertiary, #2e2e2e);
 }
+
+/* ==========================================================================
+   Mobile Bottom Sheet
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .properties-panel {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 52px; /* above mobile nav */
+    width: 100%;
+    height: 60vh;
+    border-radius: 12px 12px 0 0;
+    border: none;
+    border-top: 1px solid var(--border-color, #e0e0e0);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+  }
+
+  [data-theme="dark"] .properties-panel {
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
+  }
+
+  .properties-panel-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .properties-panel-section-toggle {
+    min-height: 44px;
+  }
+
+  .properties-panel-operator-item {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  .properties-panel-category-header {
+    min-height: 44px;
+  }
+
+  .properties-panel-quick-add-btn {
+    min-height: 44px;
+  }
+
+  .properties-panel-delete {
+    min-height: 44px;
+  }
+
+  .arguments-add-btn {
+    min-height: 44px;
+  }
+
+  .argument-remove {
+    width: 44px;
+    height: 44px;
+  }
+}

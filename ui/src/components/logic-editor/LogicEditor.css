@@ -175,6 +175,46 @@
   display: none;
 }
 
+/* Mobile toolbar adjustments */
+@media (max-width: 768px) {
+  .logic-editor-toolbar {
+    padding: 0 8px;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;          /* Firefox */
+  }
+
+  .logic-editor-toolbar::-webkit-scrollbar {
+    display: none;                   /* Chrome/Safari */
+  }
+
+  /* Prevent spacers from collapsing too much on mobile */
+  .logic-editor-toolbar-spacer {
+    flex: 0 0 4px;
+  }
+
+  .toolbar-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+
+  .preserve-structure-toggle {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .preserve-structure-toggle span {
+    font-size: 11px;
+  }
+
+  .context-menu-item {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+}
+
 /* (Undo/Redo now uses .toolbar-btn inline in toolbar) */
 
 /* ============================================================================

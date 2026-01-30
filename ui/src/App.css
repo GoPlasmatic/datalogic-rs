@@ -347,30 +347,209 @@
   font-weight: 500;
 }
 
-/* Responsive */
+/* Overflow Menu (mobile only, hidden on desktop) */
+.overflow-menu {
+  display: none;
+  position: relative;
+}
+
+.overflow-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.overflow-menu-trigger:active {
+  background: var(--bg-hover);
+}
+
+.overflow-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+.overflow-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  text-decoration: none;
+  text-align: left;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.overflow-menu-item:active {
+  background: var(--bg-hover);
+}
+
+.overflow-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.overflow-menu-item--active {
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+
+.overflow-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-primary);
+}
+
+.overflow-menu-label {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Mobile layout */
+.app-main--mobile {
+  flex: 1;
+  overflow: hidden;
+}
+
+.mobile-panel {
+  width: 100% !important;
+  height: 100% !important;
+  border-right: none !important;
+}
+
+/* Responsive — portrait & general mobile */
 @media (max-width: 768px) {
-  .app-main {
-    flex-direction: column;
+  /* Compact header */
+  .app-header {
+    padding: 8px 12px;
+    overflow: hidden;
   }
 
-  .debug-input-panel {
-    width: 100%;
-    height: 400px;
-    border-right: none;
-    border-bottom: 1px solid var(--border-primary);
+  .header-title {
+    min-width: 0;
+    flex-shrink: 1;
   }
 
-  .divider {
-    width: 100%;
-    height: 4px;
-    cursor: row-resize;
-  }
-
-  .examples-dropdown-label {
+  .header-subtitle {
     display: none;
   }
 
-  .examples-dropdown-value {
-    max-width: 120px;
+  .app-header h1 {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-controls {
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Hide desktop-only header elements */
+  .header-desktop-only,
+  .header-links,
+  .header-divider {
+    display: none;
+  }
+
+  /* Show overflow menu on mobile */
+  .overflow-menu {
+    display: block;
+  }
+
+  /* Match overflow-menu-trigger style to theme-toggle */
+  .overflow-menu-trigger {
+    border: 1px solid var(--border-secondary);
+    background: var(--bg-secondary);
+  }
+
+  /* Hide divider on mobile */
+  .divider {
+    display: none;
+  }
+
+  /* Touch-friendly button sizes */
+  .theme-toggle {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+}
+
+/* Responsive — landscape mobile (short viewport) */
+@media (max-height: 500px) {
+  /* Minimal header in landscape */
+  .app-header {
+    padding: 4px 8px;
+  }
+
+  .header-subtitle {
+    display: none;
+  }
+
+  .app-header h1 {
+    font-size: 14px;
+  }
+
+  .theme-toggle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .overflow-menu-trigger {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Bottom tab bar thinner in landscape */
+  .mobile-nav {
+    height: 40px;
+  }
+
+  .mobile-nav-tab span {
+    display: none;
+  }
+}
+
+/* Debug panel in landscape mobile — accordion still applies */
+@media (max-height: 500px) {
+  .debug-section.expanded {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .debug-section.collapsed {
+    flex: 0 0 auto;
+    min-height: 0;
   }
 }
