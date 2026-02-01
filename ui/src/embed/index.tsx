@@ -10,7 +10,7 @@
  * 3. Call DataLogicEmbed.init() to auto-render all widgets
  *
  * Or manually:
- * - DataLogicEmbed.renderWidget(element, { logic, data, mode })
+ * - DataLogicEmbed.renderWidget(element, { logic, data })
  * - DataLogicEmbed.renderPlayground(element)
  */
 
@@ -33,24 +33,13 @@ import { parseDataAttributes } from './utils';
 // Track mounted roots for cleanup
 const mountedRoots = new Map<Element, ReactDOM.Root>();
 
-/**
- * Unmount a React root from an element
- */
-function unmountElement(element: Element) {
-  const root = mountedRoots.get(element);
-  if (root) {
-    root.unmount();
-    mountedRoots.delete(element);
-  }
-}
-
 const DataLogicEmbed = {
   /**
    * Render a widget into an element
    */
   renderWidget(element: Element, props: Partial<WidgetProps> = {}) {
-    // Unmount existing root if present
-    unmountElement(element);
+    // Skip if already mounted
+    if (mountedRoots.has(element)) return;
 
     // Parse attributes and merge with props
     const parsedProps = parseDataAttributes(element);
@@ -59,6 +48,7 @@ const DataLogicEmbed = {
     // Create root and render
     const root = ReactDOM.createRoot(element);
     mountedRoots.set(element, root);
+    element.classList.add('datalogic-initialized');
     root.render(
       <React.StrictMode>
         <Widget {...finalProps} />
@@ -70,18 +60,17 @@ const DataLogicEmbed = {
    * Render the full playground into an element
    */
   renderPlayground(element: Element, props: Partial<PlaygroundProps> = {}) {
-    // Unmount existing root if present
-    unmountElement(element);
+    // Skip if already mounted
+    if (mountedRoots.has(element)) return;
 
-    // Parse componentMode from data attributes if not provided
-    const componentModeAttr = (element.getAttribute('data-component-mode') || element.getAttribute('data-datalogic-component-mode')) as 'debugger' | 'visualizer' | null;
     const finalProps: PlaygroundProps = {
-      componentMode: props.componentMode || componentModeAttr || 'debugger',
+      ...props,
     };
 
     // Create root and render
     const root = ReactDOM.createRoot(element);
     mountedRoots.set(element, root);
+    element.classList.add('datalogic-initialized');
     root.render(
       <React.StrictMode>
         <Playground {...finalProps} />
@@ -95,6 +84,14 @@ const DataLogicEmbed = {
    * Playground: element with #datalogic-playground or [data-datalogic-playground]
    */
   renderWidgets() {
+    // Clean up roots for elements no longer in the DOM (e.g., after page navigation)
+    mountedRoots.forEach((root, element) => {
+      if (!document.body.contains(element)) {
+        root.unmount();
+        mountedRoots.delete(element);
+      }
+    });
+
     // Render playground if present
     const playground = document.querySelector('#datalogic-playground, [data-datalogic-playground]');
     if (playground) {
@@ -104,9 +101,7 @@ const DataLogicEmbed = {
     // Render widgets - support multiple selector patterns
     const widgets = document.querySelectorAll('[data-datalogic]:not([data-datalogic-playground]), .playground-widget, [data-logic]:not([data-datalogic-playground])');
     widgets.forEach((widget) => {
-      if (!widget.classList.contains('datalogic-initialized')) {
-        this.renderWidget(widget);
-      }
+      this.renderWidget(widget);
     });
   },
 
@@ -118,24 +113,10 @@ const DataLogicEmbed = {
     // Render existing widgets
     this.renderWidgets();
 
-    // Watch for page changes (mdBook navigation)
-    const content = document.getElementById('content');
-    if (content) {
-      const observer = new MutationObserver(() => {
-        // Clean up unmounted widgets
-        mountedRoots.forEach((root, element) => {
-          if (!document.body.contains(element)) {
-            root.unmount();
-            mountedRoots.delete(element);
-          }
-        });
-
-        // Render new widgets
-        this.renderWidgets();
-      });
-
-      observer.observe(content, { childList: true, subtree: true });
-    }
+    // Note: The MutationObserver for page navigation is handled by the
+    // loader script (datalogic-playground.js) which calls renderWidgets()
+    // on page changes. We don't set up a second observer here to avoid
+    // duplicate mutation callbacks that can cause infinite render loops.
   },
 
   /**

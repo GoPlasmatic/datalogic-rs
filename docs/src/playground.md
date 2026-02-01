@@ -1,7 +1,7 @@
 # Playground
 
-> **Want the full experience?** Try the [Full-Page Visual Debugger](playground/) with examples,
-> resizable panels, and step-through debugging.
+> **Want the full experience?** Try the [Full-Page Visual Editor](playground/) with examples
+> and resizable panels.
 
 Try JSONLogic expressions right in your browser! This playground uses the visual debugger component powered by WebAssembly.
 
@@ -11,7 +11,7 @@ Try JSONLogic expressions right in your browser! This playground uses the visual
 
 1. **Logic**: Enter your JSONLogic expression in the Logic panel
 2. **Data**: Enter the JSON data to evaluate against in the Data panel
-3. **View/Debug**: Switch between visualization and step-through debug modes
+3. **Diagram**: View the visual diagram of your logic expression
 4. **Examples**: Use the dropdown to load pre-built examples
 
 ## Quick Reference

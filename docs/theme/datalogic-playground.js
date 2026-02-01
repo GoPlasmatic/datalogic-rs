@@ -2,7 +2,7 @@
  * DataLogic Playground Loader
  *
  * This script loads the DataLogic embed bundle which includes React and all dependencies.
- * It then initializes the visual debugger widgets and playground.
+ * It then initializes the visual editor widgets and playground.
  *
  * Widgets are rendered using the @goplasmatic/datalogic-ui component.
  */
@@ -96,7 +96,7 @@
     containers.forEach((container) => {
       if (!container.classList.contains('datalogic-initialized')) {
         container.innerHTML =
-          '<div class="datalogic-loading">Loading visual debugger...</div>';
+          '<div class="datalogic-loading">Loading DataLogic playground...</div>';
       }
     });
   }
@@ -143,7 +143,7 @@
       if (window.DataLogicEmbed) {
         window.DataLogicEmbed.init();
         initialized = true;
-        console.log('DataLogic visual debugger initialized');
+        console.log('DataLogic playground initialized');
       } else {
         throw new Error('DataLogicEmbed not found after loading bundle');
       }
@@ -161,19 +161,27 @@
     const content = document.getElementById('content');
     if (!content) return;
 
-    const observer = new MutationObserver((mutations) => {
-      // Check if there are new containers to render
-      const hasNewContainers = document.querySelector(
-        CONTAINER_SELECTOR.split(', ').map(s => s + ':not(.datalogic-initialized)').join(', ')
-      );
+    // Debounce to avoid firing multiple times for a single page navigation
+    let debounceTimer = null;
 
-      if (hasNewContainers) {
-        if (loadError) {
-          showError(loadError);
-        } else if (window.DataLogicEmbed) {
-          window.DataLogicEmbed.renderWidgets();
+    const observer = new MutationObserver(() => {
+      if (debounceTimer) return;
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+
+        // Check if there are new containers to render
+        const hasNewContainers = document.querySelector(
+          CONTAINER_SELECTOR.split(', ').map(s => s + ':not(.datalogic-initialized)').join(', ')
+        );
+
+        if (hasNewContainers) {
+          if (loadError) {
+            showError(loadError);
+          } else if (window.DataLogicEmbed) {
+            window.DataLogicEmbed.renderWidgets();
+          }
         }
-      }
+      }, 100);
     });
 
     observer.observe(content, { childList: true, subtree: true });

@@ -7,17 +7,11 @@ export interface WidgetProps {
   theme?: 'light' | 'dark' | 'auto';
   /** Enable editing: node selection, properties panel, context menus */
   editable?: boolean;
-  /** @deprecated Ignored. Kept for backward compat. */
-  mode?: 'visualize' | 'debug';
-  /** @deprecated Ignored. */
-  componentMode?: 'debugger' | 'visualizer';
 }
 
 export interface PlaygroundProps {
   /** Enable editing: node selection, properties panel, context menus */
   editable?: boolean;
-  /** @deprecated Ignored. */
-  componentMode?: 'debugger' | 'visualizer';
 }
 
 /**
@@ -49,7 +43,6 @@ export function parseDataAttributes(element: Element): WidgetProps {
   // Support both naming conventions
   const logicAttr = element.getAttribute('data-logic') || element.getAttribute('data-datalogic-logic');
   const dataAttr = element.getAttribute('data-data') || element.getAttribute('data-datalogic-data');
-  const modeAttr = element.getAttribute('data-mode') || element.getAttribute('data-datalogic-mode');
   const heightAttr = element.getAttribute('data-height') || element.getAttribute('data-datalogic-height');
   const themeAttr = (element.getAttribute('data-theme') || element.getAttribute('data-datalogic-theme')) as 'light' | 'dark' | 'auto' | null;
   const editableAttr = element.getAttribute('data-editable');
@@ -72,8 +65,7 @@ export function parseDataAttributes(element: Element): WidgetProps {
     }
   }
 
-  // Backward compat: data-mode="edit" -> editable=true
-  const editable = editableAttr === 'true' || modeAttr === 'edit';
+  const editable = editableAttr === 'true';
 
   return {
     logic,
