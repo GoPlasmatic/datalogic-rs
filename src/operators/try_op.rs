@@ -38,6 +38,7 @@
 use serde_json::Value;
 
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
+use std::collections::HashMap;
 
 /// Try operator function - catches errors and provides fallback values
 #[inline]
@@ -98,6 +99,66 @@ pub fn evaluate_try(
 
     // If we get here, all arguments failed
     // Return the last error
+    match last_error {
+        Some(err) => Err(err),
+        None => Err(Error::InvalidArguments(
+            "try: no arguments provided".to_string(),
+        )),
+    }
+}
+
+/// Traced version of try - evaluates arguments with tracing for step-by-step debugging
+#[inline]
+pub fn evaluate_try_traced(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    collector: &mut crate::trace::TraceCollector,
+    node_id_map: &HashMap<usize, u32>,
+) -> Result<Value> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(
+            "try requires at least one argument".to_string(),
+        ));
+    }
+
+    let mut last_error: Option<Error> = None;
+
+    for (i, arg) in args.iter().enumerate() {
+        if i == args.len() - 1 && i > 0 {
+            if let Some(ref err) = last_error {
+                if let Error::Thrown(error_obj) = err {
+                    context.push(error_obj.clone());
+                    match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
+                        Ok(result) => {
+                            context.pop();
+                            return Ok(result);
+                        }
+                        Err(new_err) => {
+                            context.pop();
+                            last_error = Some(new_err);
+                        }
+                    }
+                } else {
+                    match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
+                        Ok(result) => return Ok(result),
+                        Err(err) => last_error = Some(err),
+                    }
+                }
+            } else {
+                match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
+                    Ok(result) => return Ok(result),
+                    Err(err) => last_error = Some(err),
+                }
+            }
+        } else {
+            match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
+                Ok(result) => return Ok(result),
+                Err(err) => last_error = Some(err),
+            }
+        }
+    }
+
     match last_error {
         Some(err) => Err(err),
         None => Err(Error::InvalidArguments(

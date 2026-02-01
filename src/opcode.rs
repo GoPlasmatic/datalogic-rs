@@ -377,7 +377,7 @@ impl OpCode {
         collector: &mut crate::trace::TraceCollector,
         node_id_map: &std::collections::HashMap<usize, u32>,
     ) -> crate::Result<serde_json::Value> {
-        use crate::operators::{array, control, logical};
+        use crate::operators::{array, control, logical, throw, try_op};
 
         match self {
             // Iteration operators - need traced versions
@@ -417,6 +417,14 @@ impl OpCode {
             }
             OpCode::Coalesce => {
                 control::evaluate_coalesce_traced(args, context, engine, collector, node_id_map)
+            }
+
+            // Error handling operators - need traced versions
+            OpCode::Try => {
+                try_op::evaluate_try_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Throw => {
+                throw::evaluate_throw_traced(args, context, engine, collector, node_id_map)
             }
 
             // All other operators - evaluate children with tracing, then apply operator

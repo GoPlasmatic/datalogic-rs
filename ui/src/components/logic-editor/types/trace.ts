@@ -20,4 +20,5 @@ export interface TracedResult {
   result: unknown;
   expression_tree: ExpressionNode;
   steps: ExecutionStep[];
+  error?: string;
 }

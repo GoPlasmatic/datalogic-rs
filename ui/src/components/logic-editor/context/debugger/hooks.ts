@@ -28,6 +28,7 @@ export function useNodeDebugState(nodeId: string): NodeDebugState | null {
     const isCurrent = context.currentNodeId === nodeId;
     const isExecuted = context.executedNodeIds.has(nodeId);
     const isOnPath = context.pathNodeIds.has(nodeId);
+    const isError = context.errorNodeIds.has(nodeId);
     const isPending = !isCurrent && !isExecuted && !isOnPath;
 
     return {
@@ -35,6 +36,7 @@ export function useNodeDebugState(nodeId: string): NodeDebugState | null {
       isExecuted,
       isPending,
       isOnPath,
+      isError,
       step: isCurrent ? context.currentStep : null,
     };
   }, [context, nodeId]);

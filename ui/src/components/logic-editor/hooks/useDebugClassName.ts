@@ -14,5 +14,6 @@ export function useDebugClassName(nodeId: string): string {
     debugState.isExecuted && 'debug-executed',
     debugState.isPending && 'debug-pending',
     debugState.isOnPath && !debugState.isCurrent && 'debug-on-path',
+    debugState.isError && 'debug-error',
   ].filter(Boolean).join(' ');
 }

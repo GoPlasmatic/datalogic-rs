@@ -66,6 +66,19 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
     return ids;
   }, [state.steps, state.currentStepIndex, traceNodeMap]);
 
+  // Set of error node IDs (steps with errors up to current)
+  const errorNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (let i = 0; i <= state.currentStepIndex; i++) {
+      const step = state.steps[i];
+      if (step?.error) {
+        const traceId = `trace-${step.node_id}`;
+        ids.add(traceNodeMap.get(traceId) ?? traceId);
+      }
+    }
+    return ids;
+  }, [state.steps, state.currentStepIndex, traceNodeMap]);
+
   // Build parent map from nodes for path highlighting
   const parentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -106,6 +119,7 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
       currentStep,
       currentNodeId,
       executedNodeIds,
+      errorNodeIds,
       pathNodeIds,
       play,
       pause,
@@ -121,6 +135,7 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
       currentStep,
       currentNodeId,
       executedNodeIds,
+      errorNodeIds,
       pathNodeIds,
       play,
       pause,

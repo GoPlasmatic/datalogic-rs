@@ -19,6 +19,9 @@ pub struct TracedResult {
     pub expression_tree: ExpressionNode,
     /// Ordered execution steps for replay
     pub steps: Vec<ExecutionStep>,
+    /// Top-level error message if evaluation failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// Represents a node in the expression tree for flow diagram rendering.

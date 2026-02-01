@@ -221,7 +221,7 @@ function App() {
       setResultError(null);
     } catch (err) {
       setResult(undefined);
-      setResultError(err instanceof Error ? err.message : "Evaluation failed");
+      setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluate]);
   /* eslint-enable react-hooks/set-state-in-effect */

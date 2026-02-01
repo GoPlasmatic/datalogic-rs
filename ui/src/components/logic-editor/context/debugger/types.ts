@@ -31,6 +31,7 @@ export interface DebuggerContextValue {
   currentStep: ExecutionStep | null;
   currentNodeId: string | null;
   executedNodeIds: Set<string>;
+  errorNodeIds: Set<string>; // Node IDs that encountered errors
   pathNodeIds: Set<string>; // Node IDs on the path from current node to root
   // Controls
   play: () => void;
@@ -49,5 +50,6 @@ export interface NodeDebugState {
   isExecuted: boolean;
   isPending: boolean;
   isOnPath: boolean; // Node is on the path from current node to root
+  isError: boolean; // Node encountered an error during evaluation
   step: ExecutionStep | null;
 }

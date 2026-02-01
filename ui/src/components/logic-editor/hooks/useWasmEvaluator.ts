@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { TracedResult } from '../types';
 
+/** Extract error message from unknown error types (Error objects, strings from WASM, etc.) */
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  return fallback;
+}
+
 interface WasmModule {
   evaluate: (logic: string, data: string, preserve_structure: boolean) => string;
   evaluate_with_trace: (logic: string, data: string, preserve_structure: boolean) => string;
@@ -79,7 +86,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       const resultStr = moduleRef.current.evaluate(logicStr, dataStr, preserveStructure);
       return JSON.parse(resultStr);
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Evaluation failed');
+      throw new Error(extractErrorMessage(err, 'Evaluation failed'));
     }
   }, [preserveStructure]);
 
@@ -98,7 +105,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       const resultStr = moduleRef.current.evaluate_with_trace(logicStr, dataStr, preserveStructure);
       return JSON.parse(resultStr) as TracedResult;
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : 'Trace evaluation failed');
+      throw new Error(extractErrorMessage(err, 'Trace evaluation failed'));
     }
   }, [preserveStructure]);
 

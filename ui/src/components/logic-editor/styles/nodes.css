@@ -402,6 +402,7 @@
   box-sizing: border-box;
   box-shadow: 0 2px 6px var(--node-shadow);
   transition: box-shadow 0.2s, transform 0.1s;
+  position: relative;
 }
 
 .vertical-cell-node:hover {
@@ -496,11 +497,17 @@
   font-size: 12px;
   color: var(--text-primary);
   word-break: break-word;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Branch expression text in vertical cells */
 .branch-expression {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 3px;
@@ -792,11 +799,36 @@
   --debug-executed-color: #10B981;
   --debug-executed-border: rgba(16, 185, 129, 0.6);
   --debug-pending-opacity: 0.5;
+  --debug-error-color: #EF4444;
+  --debug-error-glow: rgba(239, 68, 68, 0.4);
+  --debug-error-border: rgba(239, 68, 68, 0.6);
 }
 
 [data-theme="dark"] {
   --debug-current-glow: rgba(245, 158, 11, 0.5);
   --debug-executed-border: rgba(16, 185, 129, 0.8);
+  --debug-error-glow: rgba(239, 68, 68, 0.5);
+  --debug-error-border: rgba(239, 68, 68, 0.8);
+}
+
+/* Disable transitions on debug-active nodes to prevent animation-to-static handoff glitches */
+.logic-node[class*="debug-"],
+.operator-node[class*="debug-"],
+.variable-node[class*="debug-"],
+.literal-node[class*="debug-"],
+.vertical-cell-node[class*="debug-"],
+.decision-node[class*="debug-"],
+.structure-node[class*="debug-"] {
+  transition: none !important;
+}
+
+/* Constrain non-current debug nodes to prevent content overflow beyond wrapper */
+.vertical-cell-node[class*="debug-"]:not(.debug-current),
+.literal-node[class*="debug-"]:not(.debug-current),
+.operator-node[class*="debug-"]:not(.debug-current),
+.decision-node[class*="debug-"]:not(.debug-current),
+.structure-node[class*="debug-"]:not(.debug-current) {
+  overflow: hidden;
 }
 
 /* Current step - pulsing highlight */
@@ -1207,4 +1239,34 @@
 .structure-node.debug-on-path {
   border-color: var(--debug-current-color) !important;
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+/* Error nodes - red border (matches debug-executed pattern) */
+.logic-node.debug-error,
+.operator-node.debug-error,
+.variable-node.debug-error,
+.literal-node.debug-error,
+.vertical-cell-node.debug-error,
+.decision-node.debug-error,
+.structure-node.debug-error {
+  border-color: var(--debug-error-color) !important;
+  box-shadow: 0 0 0 1px var(--debug-error-border);
+}
+
+/* Error + current: red pulsing glow (only when actively on this step) */
+.logic-node.debug-error.debug-current,
+.operator-node.debug-error.debug-current,
+.variable-node.debug-error.debug-current,
+.literal-node.debug-error.debug-current,
+.vertical-cell-node.debug-error.debug-current,
+.decision-node.debug-error.debug-current,
+.structure-node.debug-error.debug-current {
+  box-shadow: 0 0 0 3px var(--debug-error-color),
+              0 0 15px var(--debug-error-glow) !important;
+  animation: debug-error-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes debug-error-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--debug-error-color), 0 0 15px var(--debug-error-glow); }
+  50% { box-shadow: 0 0 0 5px var(--debug-error-color), 0 0 25px var(--debug-error-glow); }
 }

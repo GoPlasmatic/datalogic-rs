@@ -472,13 +472,15 @@ impl DataLogic {
                 result: value,
                 expression_tree,
                 steps: collector.into_steps(),
+                error: None,
             }),
-            Err(_) => {
+            Err(e) => {
                 // Return error but include partial steps for debugging
                 Ok(TracedResult {
                     result: Value::Null,
                     expression_tree,
                     steps: collector.into_steps(),
+                    error: Some(e.to_string()),
                 })
             }
         }
@@ -507,12 +509,13 @@ impl DataLogic {
             CompiledNode::Array { nodes, .. } => {
                 let mut results: SmallVec<[Value; 4]> = SmallVec::with_capacity(nodes.len());
                 for node in nodes.iter() {
-                    results.push(self.evaluate_node_traced(
-                        node,
-                        context,
-                        collector,
-                        node_id_map,
-                    )?);
+                    match self.evaluate_node_traced(node, context, collector, node_id_map) {
+                        Ok(val) => results.push(val),
+                        Err(err) => {
+                            collector.record_error(node_id, current_context, err.to_string());
+                            return Err(err);
+                        }
+                    }
                 }
                 let result = Value::Array(results.into_vec());
                 collector.record_step(node_id, current_context, result.clone());
@@ -521,9 +524,16 @@ impl DataLogic {
 
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
                 // Use traced dispatch for operators that need special handling
-                let result = opcode.evaluate_traced(args, context, self, collector, node_id_map)?;
-                collector.record_step(node_id, current_context, result.clone());
-                Ok(result)
+                match opcode.evaluate_traced(args, context, self, collector, node_id_map) {
+                    Ok(result) => {
+                        collector.record_step(node_id, current_context, result.clone());
+                        Ok(result)
+                    }
+                    Err(err) => {
+                        collector.record_error(node_id, current_context, err.to_string());
+                        Err(err)
+                    }
+                }
             }
 
             CompiledNode::CustomOperator { name, args, .. } => {
@@ -535,16 +545,30 @@ impl DataLogic {
                 let arg_values: Vec<Value> = args.iter().map(node_to_value).collect();
                 let evaluator = SimpleEvaluator::new(self);
 
-                let result = operator.evaluate(&arg_values, context, &evaluator)?;
-                collector.record_step(node_id, current_context, result.clone());
-                Ok(result)
+                match operator.evaluate(&arg_values, context, &evaluator) {
+                    Ok(result) => {
+                        collector.record_step(node_id, current_context, result.clone());
+                        Ok(result)
+                    }
+                    Err(err) => {
+                        collector.record_error(node_id, current_context, err.to_string());
+                        Err(err)
+                    }
+                }
             }
 
             CompiledNode::StructuredObject { fields, .. } => {
                 let mut result = serde_json::Map::new();
                 for (key, node) in fields {
-                    let value = self.evaluate_node_traced(node, context, collector, node_id_map)?;
-                    result.insert(key.clone(), value);
+                    match self.evaluate_node_traced(node, context, collector, node_id_map) {
+                        Ok(value) => {
+                            result.insert(key.clone(), value);
+                        }
+                        Err(err) => {
+                            collector.record_error(node_id, current_context, err.to_string());
+                            return Err(err);
+                        }
+                    }
                 }
                 let result = Value::Object(result);
                 collector.record_step(node_id, current_context, result.clone());
