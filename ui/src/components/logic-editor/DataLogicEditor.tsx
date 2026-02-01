@@ -36,23 +36,108 @@ import './edges/edges.css';
 
 const emptyResults: EvaluationResultsMap = new Map();
 
-// Inner component that handles ReactFlow state
-function DataLogicEditorInner({
+/**
+ * Read-only inner component - minimal, no EditorContext dependency.
+ * Used when editable=false to avoid EditorProvider's state sync effects.
+ */
+function ReadOnlyEditorInner({
   initialNodes,
   initialEdges,
-  readOnly,
-  evaluationResults,
   theme,
   showDebugger,
-  isEditMode,
 }: {
   initialNodes: LogicNode[];
   initialEdges: LogicEdge[];
-  readOnly: boolean;
+  theme: 'light' | 'dark';
+  showDebugger: boolean;
+}) {
+  const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
+
+  const [nodes, , onNodesChange] = useNodesState<LogicNode>(initialNodes);
+  const [, , onEdgesChange] = useEdgesState<LogicEdge>(initialEdges);
+
+  // Compute hidden node IDs based on collapsed state
+  const hiddenNodeIds = useMemo(() => getHiddenNodeIds(nodes), [nodes]);
+  const nodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
+
+  const visibleNodes = useMemo(
+    () => nodes.filter((node) => !hiddenNodeIds.has(node.id)),
+    [nodes, hiddenNodeIds]
+  );
+
+  const currentEdges = useMemo(() => buildEdgesFromNodes(nodes), [nodes]);
+
+  const visibleEdges = useMemo(
+    () =>
+      currentEdges.filter(
+        (edge) =>
+          nodeIds.has(edge.source) &&
+          nodeIds.has(edge.target) &&
+          !hiddenNodeIds.has(edge.source) &&
+          !hiddenNodeIds.has(edge.target)
+      ),
+    [currentEdges, nodeIds, hiddenNodeIds]
+  );
+
+  return (
+    <EvaluationContext.Provider value={emptyResults}>
+      <ConnectedHandlesProvider edges={visibleEdges}>
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={visibleNodes}
+            edges={visibleEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            fitViewOptions={{
+              padding: REACT_FLOW_OPTIONS.fitViewPadding,
+              maxZoom: REACT_FLOW_OPTIONS.maxZoom,
+            }}
+            minZoom={0.1}
+            maxZoom={2}
+            defaultEdgeOptions={{
+              type: 'default',
+              animated: false,
+            }}
+          >
+            <Background color={bgColor} gap={20} size={1} />
+            <Controls showInteractive={false} />
+            {showDebugger && <DebuggerControls />}
+            <AutoFitView nodeCount={initialNodes.length} />
+          </ReactFlow>
+        </ReactFlowProvider>
+
+        {visibleNodes.length === 0 && (
+          <div className="logic-editor-empty">
+            <p>No expression</p>
+            <p className="logic-editor-empty-hint">
+              Enter valid JSONLogic in the input panel to visualize it
+            </p>
+          </div>
+        )}
+      </ConnectedHandlesProvider>
+    </EvaluationContext.Provider>
+  );
+}
+
+/**
+ * Editable inner component - full EditorContext support with syncing.
+ * Used when editable=true.
+ */
+function EditableEditorInner({
+  initialNodes,
+  initialEdges,
+  evaluationResults,
+  theme,
+  showDebugger,
+}: {
+  initialNodes: LogicNode[];
+  initialEdges: LogicEdge[];
   evaluationResults: EvaluationResultsMap;
   theme: 'light' | 'dark';
   showDebugger: boolean;
-  isEditMode: boolean;
 }) {
   // Background dot colors based on theme
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
@@ -66,7 +151,7 @@ function DataLogicEditorInner({
     handleCloseContextMenu,
     handleEditProperties,
     contextMenuNode,
-  } = useContextMenu(isEditMode);
+  } = useContextMenu(true);
 
   // Get editor context for syncing
   const { nodes: editorNodes } = useEditorContext();
@@ -85,14 +170,10 @@ function DataLogicEditorInner({
   const prevNodeIdsRef = useRef<Set<string>>(new Set(initialNodes.map((n) => n.id)));
 
   // Sync ReactFlow state with EditorContext nodes only on structural changes (add/delete)
-  // This prevents focus loss when editing node data (like literal values)
   useEffect(() => {
-    if (!isEditMode) return;
-
     const currentIds = new Set(editorNodes.map((n) => n.id));
     const prevIds = prevNodeIdsRef.current;
 
-    // Check if node structure changed (different IDs or count)
     const structureChanged =
       currentIds.size !== prevIds.size ||
       [...currentIds].some((id) => !prevIds.has(id)) ||
@@ -102,26 +183,19 @@ function DataLogicEditorInner({
       setNodes(editorNodes);
       prevNodeIdsRef.current = currentIds;
     }
-  }, [editorNodes, isEditMode, setNodes]);
+  }, [editorNodes, setNodes]);
 
   // Compute hidden node IDs based on collapsed state
   const hiddenNodeIds = useMemo(() => getHiddenNodeIds(nodes), [nodes]);
-
-  // Build set of all node IDs for edge validation
   const nodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
 
-  // Filter visible nodes (exclude hidden descendants of collapsed nodes)
   const visibleNodes = useMemo(
     () => nodes.filter((node) => !hiddenNodeIds.has(node.id)),
     [nodes, hiddenNodeIds]
   );
 
-  // Rebuild edges from current node state - this respects collapse state
-  // Edges are rebuilt whenever nodes change (including collapse state changes)
   const currentEdges = useMemo(() => buildEdgesFromNodes(nodes), [nodes]);
 
-  // Filter visible edges (exclude edges connected to hidden or non-existent nodes)
-  // In edit mode, use the editable edge type for interactive [+] buttons
   const visibleEdges = useMemo(
     () =>
       currentEdges
@@ -132,10 +206,8 @@ function DataLogicEditorInner({
             !hiddenNodeIds.has(edge.source) &&
             !hiddenNodeIds.has(edge.target)
         )
-        .map((edge) =>
-          isEditMode ? { ...edge, type: 'editable' } : edge
-        ),
-    [currentEdges, nodeIds, hiddenNodeIds, isEditMode]
+        .map((edge) => ({ ...edge, type: 'editable' })),
+    [currentEdges, nodeIds, hiddenNodeIds]
   );
 
   return (
@@ -145,8 +217,8 @@ function DataLogicEditorInner({
           <ReactFlow
             nodes={visibleNodes}
             edges={visibleEdges}
-            onNodesChange={readOnly ? undefined : onNodesChange}
-            onEdgesChange={readOnly ? undefined : onEdgesChange}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
@@ -165,12 +237,11 @@ function DataLogicEditorInner({
             onNodeDoubleClick={handleNodeDoubleClick}
           >
             <Background color={bgColor} gap={20} size={1} />
-            <Controls showInteractive={!readOnly} />
+            <Controls showInteractive />
             {showDebugger && <DebuggerControls />}
             <NodeSelectionHandler />
             <AutoFitView nodeCount={initialNodes.length} />
 
-            {/* Context Menus - must be inside ReactFlowProvider for useReactFlow hook */}
             {contextMenu?.type === 'node' && contextMenuNode && (
               <NodeContextMenu
                 x={contextMenu.x}
@@ -247,10 +318,6 @@ export function DataLogicEditor({
   // Check if debugger should be active (trace mode with steps)
   const hasDebugger = evalEnabled && editor.usingTraceMode && editor.steps.length > 0;
 
-  // Allow node interactions (collapse/expand) in all modes
-  // Full editing (adding/removing nodes) is still a future feature
-  const readOnly = false;
-
   // Handle nodes change from editor context - convert to JSONLogic and call onChange
   const handleNodesChange = useCallback(
     (nodes: LogicNode[]) => {
@@ -292,22 +359,71 @@ export function DataLogicEditor({
     );
   }
 
-  // No result badges on nodes — debug bubble on current step node only (via DebuggerProvider)
-  const editorInner = (
-    <DataLogicEditorInner
+  // Build the class name
+  const editorClassName = ['logic-editor', className].filter(Boolean).join(' ');
+
+  // --- Read-only mode: skip EditorProvider entirely ---
+  if (!isEditMode) {
+    const readOnlyInner = (
+      <ReadOnlyEditorInner
+        key={expressionKey}
+        initialNodes={editor.nodes}
+        initialEdges={editor.edges}
+        theme={resolvedTheme}
+        showDebugger={false}
+      />
+    );
+
+    return (
+      <div className={editorClassName} data-theme={resolvedTheme}>
+        {hasDebugger ? (
+          <DebuggerProvider
+            steps={editor.steps}
+            traceNodeMap={editor.traceNodeMap}
+            nodes={editor.nodes}
+          >
+            <EditorToolbar
+              isEditMode={false}
+              hasDebugger={hasDebugger}
+              preserveStructure={preserveStructure}
+              onPreserveStructureChange={onPreserveStructureChange}
+            />
+            <div className="logic-editor-body">
+              <div className="logic-editor-main">
+                {readOnlyInner}
+              </div>
+            </div>
+          </DebuggerProvider>
+        ) : (
+          <>
+            <EditorToolbar
+              isEditMode={false}
+              hasDebugger={hasDebugger}
+              preserveStructure={preserveStructure}
+              onPreserveStructureChange={onPreserveStructureChange}
+            />
+            <div className="logic-editor-body">
+              <div className="logic-editor-main">
+                {readOnlyInner}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // --- Edit mode: full EditorProvider with all features ---
+  const editableInner = (
+    <EditableEditorInner
       key={expressionKey}
       initialNodes={editor.nodes}
       initialEdges={editor.edges}
-      readOnly={readOnly}
       evaluationResults={emptyResults}
       theme={resolvedTheme}
       showDebugger={false}
-      isEditMode={isEditMode}
     />
   );
-
-  // Build the class name
-  const editorClassName = ['logic-editor', className].filter(Boolean).join(' ');
 
   return (
     <EditorProvider
@@ -315,7 +431,7 @@ export function DataLogicEditor({
       initialEditMode={isEditMode}
       onNodesChange={handleNodesChange}
     >
-      {isEditMode && <KeyboardHandler />}
+      <KeyboardHandler />
       <div className={editorClassName} data-theme={resolvedTheme}>
         {hasDebugger ? (
           <DebuggerProvider
@@ -331,9 +447,9 @@ export function DataLogicEditor({
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
-                {editorInner}
+                {editableInner}
               </div>
-              {isEditMode && <PropertiesPanel />}
+              <PropertiesPanel />
             </div>
           </DebuggerProvider>
         ) : (
@@ -346,9 +462,9 @@ export function DataLogicEditor({
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
-                {editorInner}
+                {editableInner}
               </div>
-              {isEditMode && <PropertiesPanel />}
+              <PropertiesPanel />
             </div>
           </>
         )}

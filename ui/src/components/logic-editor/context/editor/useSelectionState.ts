@@ -73,8 +73,8 @@ export function useSelectionState(nodes: LogicNode[], internalNodes: LogicNode[]
   }, [selectedNodeId]);
 
   const clearSelection = useCallback(() => {
-    setSelectedNodeId(null);
-    setSelectedNodeIds(new Set());
+    setSelectedNodeId((prev) => prev === null ? prev : null);
+    setSelectedNodeIds((prev) => prev.size === 0 ? prev : new Set());
   }, []);
 
   const selectAllNodes = useCallback(() => {

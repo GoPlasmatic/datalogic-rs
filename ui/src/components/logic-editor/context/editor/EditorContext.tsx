@@ -57,11 +57,24 @@ export function EditorProvider({
 
   const selection = useSelectionState(nodes, internalNodes);
 
+  // Destructure stable callbacks from selection for use in deps arrays
+  const {
+    setSelectedNodeId,
+    setSelectedNodeIds,
+    selectNode: selectionSelectNode,
+    setSelection: selectionSetSelection,
+    toggleNodeSelection: selectionToggleNodeSelection,
+    addToSelection: selectionAddToSelection,
+    clearSelection: selectionClearSelection,
+    selectAllNodes: selectionSelectAllNodes,
+    selectChildren: selectionSelectChildren,
+  } = selection;
+
   const history = useHistoryState(
     nodesRef,
     setInternalNodes,
     onNodesChange,
-    selection.clearSelection
+    selectionClearSelection
   );
 
   const clipboard = useClipboardState({
@@ -70,7 +83,7 @@ export function EditorProvider({
     pushToUndoStack: history.pushToUndoStack,
     setInternalNodes,
     onNodesChange,
-    setSelectedNodeId: selection.setSelectedNodeId,
+    setSelectedNodeId,
     setPanelValues,
     hasEditedRef,
   });
@@ -80,7 +93,7 @@ export function EditorProvider({
     setInternalNodes,
     onNodesChange,
     selectedNodeId: selection.selectedNodeId,
-    setSelectedNodeId: selection.setSelectedNodeId,
+    setSelectedNodeId,
     setPanelValues,
     hasEditedRef,
     nodes,
@@ -102,17 +115,16 @@ export function EditorProvider({
     }
   }, [propNodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync edit mode when prop changes
+  // Sync edit mode when prop changes (only responds to initialEditMode, not propNodes)
   useEffect(() => {
     setIsEditMode(initialEditMode);
     if (!initialEditMode) {
-      selection.setSelectedNodeId(null);
-      selection.setSelectedNodeIds(new Set());
-      setPanelValues({});
-      setInternalNodes(propNodes);
+      setSelectedNodeId(null);
+      setSelectedNodeIds(new Set());
+      setPanelValues((prev) => Object.keys(prev).length === 0 ? prev : {});
       hasEditedRef.current = false;
     }
-  }, [initialEditMode, propNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialEditMode, setSelectedNodeId, setSelectedNodeIds]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Keep nodesRef in sync with internalNodes for undo/redo
@@ -125,11 +137,11 @@ export function EditorProvider({
   const setEditMode = useCallback((enabled: boolean) => {
     setIsEditMode(enabled);
     if (!enabled) {
-      selection.setSelectedNodeId(null);
-      selection.setSelectedNodeIds(new Set());
+      setSelectedNodeId(null);
+      setSelectedNodeIds(new Set());
       setPanelValues({});
     }
-  }, [selection]);
+  }, [setSelectedNodeId, setSelectedNodeIds]);
 
   const updatePanelValue = useCallback((fieldId: string, value: unknown) => {
     setPanelValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -141,52 +153,52 @@ export function EditorProvider({
 
   // Wrap selection functions to also reset panel values
   const selectNode = useCallback((nodeId: string | null) => {
-    selection.selectNode(nodeId);
+    selectionSelectNode(nodeId);
     setPanelValues({});
-  }, [selection]);
+  }, [selectionSelectNode]);
 
   const setSelectionWrapped = useCallback((nodeIds: string[]) => {
-    selection.setSelection(nodeIds);
+    selectionSetSelection(nodeIds);
     setPanelValues({});
-  }, [selection]);
+  }, [selectionSetSelection]);
 
   const toggleNodeSelection = useCallback((nodeId: string) => {
-    selection.toggleNodeSelection(nodeId);
+    selectionToggleNodeSelection(nodeId);
     setPanelValues({});
-  }, [selection]);
+  }, [selectionToggleNodeSelection]);
 
   const addToSelection = useCallback((nodeId: string) => {
-    selection.addToSelection(nodeId);
+    selectionAddToSelection(nodeId);
     setPanelValues({});
-  }, [selection]);
+  }, [selectionAddToSelection]);
 
   const clearSelection = useCallback(() => {
-    selection.clearSelection();
-    setPanelValues({});
-  }, [selection]);
+    selectionClearSelection();
+    setPanelValues((prev) => Object.keys(prev).length === 0 ? prev : {});
+  }, [selectionClearSelection]);
 
   const selectAllNodes = useCallback(() => {
-    selection.selectAllNodes();
+    selectionSelectAllNodes();
     setPanelValues({});
-  }, [selection]);
+  }, [selectionSelectAllNodes]);
 
   const selectChildren = useCallback((nodeId: string) => {
-    selection.selectChildren(nodeId);
+    selectionSelectChildren(nodeId);
     setPanelValues({});
-  }, [selection]);
+  }, [selectionSelectChildren]);
 
   // Focus the properties panel on a specific node and optionally a field
   const focusPropertyPanel = useCallback(
     (nodeId: string, fieldId?: string) => {
-      selection.setSelectedNodeId(nodeId);
-      selection.setSelectedNodeIds(new Set([nodeId]));
+      setSelectedNodeId(nodeId);
+      setSelectedNodeIds(new Set([nodeId]));
       setPanelValues({});
 
       setTimeout(() => {
         propertyPanelFocusRef.current?.focusField(fieldId);
       }, 100);
     },
-    [selection]
+    [setSelectedNodeId, setSelectedNodeIds]
   );
 
   // Apply current panel values to the selected node
