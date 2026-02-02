@@ -1,5 +1,6 @@
-// Theme CSS variables (required for component styling)
-import './index.css';
+// Scoped theme CSS variables (required for component styling)
+// Uses .logic-editor scope to avoid leaking into consumer apps
+import './components/logic-editor/styles/theme.css';
 
 // Main component
 export { DataLogicEditor } from './components/logic-editor/DataLogicEditor';

@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "4.0.12"
+version = "4.0.13"
 edition = "2024"
 exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "test-wasm.cjs"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]

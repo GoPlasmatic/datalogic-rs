@@ -1,11 +1,11 @@
 /* Inline variant (used in toolbar) */
-.debugger-controls--inline {
+.dl-debugger-controls--inline {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-.debugger-controls--inline .debugger-controls-inner {
+.dl-debugger-controls--inline .dl-debugger-controls-inner {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -19,7 +19,7 @@
 }
 
 /* Floating overlay variant (legacy, used inside ReactFlow) */
-.debugger-controls--floating {
+.dl-debugger-controls--floating {
   position: absolute;
   top: 12px;
   left: 50%;
@@ -28,7 +28,7 @@
   pointer-events: auto;
 }
 
-.debugger-controls--floating .debugger-controls-inner {
+.dl-debugger-controls--floating .dl-debugger-controls-inner {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -41,7 +41,7 @@
 }
 
 /* Bug icon indicator */
-.debugger-icon {
+.dl-debugger-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,14 +49,14 @@
 }
 
 /* Navigation buttons */
-.debugger-buttons {
+.dl-debugger-buttons {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.debugger-btn {
+.dl-debugger-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -71,34 +71,34 @@
   transition: background-color 0.15s, color 0.15s, transform 0.1s;
 }
 
-.debugger-btn:hover:not(:disabled) {
+.dl-debugger-btn:hover:not(:disabled) {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.debugger-btn:active:not(:disabled) {
+.dl-debugger-btn:active:not(:disabled) {
   transform: scale(0.95);
 }
 
-.debugger-btn:disabled {
+.dl-debugger-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.debugger-btn-primary {
+.dl-debugger-btn-primary {
   width: 36px;
   height: 36px;
   background: var(--accent-blue);
   color: white;
 }
 
-.debugger-btn-primary:hover:not(:disabled) {
+.dl-debugger-btn-primary:hover:not(:disabled) {
   background: var(--accent-blue-hover);
   color: white;
 }
 
 /* Step counter */
-.debugger-step-counter {
+.dl-debugger-step-counter {
   display: flex;
   align-items: baseline;
   gap: 2px;
@@ -109,35 +109,35 @@
   flex-shrink: 0;
 }
 
-.step-current {
+.dl-step-current {
   color: var(--text-primary);
   font-weight: 600;
 }
 
-.step-separator {
+.dl-step-separator {
   color: var(--text-muted);
   margin: 0 2px;
 }
 
-.step-total {
+.dl-step-total {
   color: var(--text-secondary);
 }
 
 /* Speed control */
-.debugger-speed {
+.dl-debugger-speed {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
 }
 
-.speed-label {
+.dl-speed-label {
   font-size: 12px;
   color: var(--text-tertiary);
   white-space: nowrap;
 }
 
-.speed-slider {
+.dl-speed-slider {
   width: 80px;
   height: 4px;
   -webkit-appearance: none;
@@ -147,7 +147,7 @@
   cursor: pointer;
 }
 
-.speed-slider::-webkit-slider-thumb {
+.dl-speed-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 14px;
@@ -158,11 +158,11 @@
   transition: transform 0.1s;
 }
 
-.speed-slider::-webkit-slider-thumb:hover {
+.dl-speed-slider::-webkit-slider-thumb:hover {
   transform: scale(1.15);
 }
 
-.speed-slider::-moz-range-thumb {
+.dl-speed-slider::-moz-range-thumb {
   width: 14px;
   height: 14px;
   background: var(--accent-blue);
@@ -172,45 +172,45 @@
 }
 
 /* Dark mode adjustments */
-[data-theme="dark"] .debugger-controls--floating .debugger-controls-inner {
+.logic-editor[data-theme="dark"] .dl-debugger-controls--floating .dl-debugger-controls-inner {
   background: rgba(31, 41, 55, 0.95);
   border-color: var(--border-light);
 }
 
-[data-theme="dark"] .debugger-btn {
+.logic-editor[data-theme="dark"] .dl-debugger-btn {
   background: rgba(55, 65, 81, 0.8);
 }
 
-[data-theme="dark"] .debugger-btn:hover:not(:disabled) {
+.logic-editor[data-theme="dark"] .dl-debugger-btn:hover:not(:disabled) {
   background: rgba(75, 85, 99, 0.9);
 }
 
-[data-theme="dark"] .speed-slider {
+.logic-editor[data-theme="dark"] .dl-speed-slider {
   background: rgba(75, 85, 99, 0.8);
 }
 
 /* Mobile adjustments */
 @media (max-width: 1024px) {
-  .debugger-controls--inline .debugger-controls-inner {
+  .dl-debugger-controls--inline .dl-debugger-controls-inner {
     gap: 8px;
   }
 
-  .debugger-btn {
+  .dl-debugger-btn {
     width: 36px;
     height: 36px;
   }
 
-  .debugger-btn-primary {
+  .dl-debugger-btn-primary {
     width: 40px;
     height: 40px;
   }
 
-  .debugger-step-counter {
+  .dl-debugger-step-counter {
     min-width: 50px;
     font-size: 12px;
   }
 
-  .speed-slider {
+  .dl-speed-slider {
     width: 60px;
   }
 }

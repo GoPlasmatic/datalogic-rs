@@ -22,7 +22,7 @@ export const EditorToolbar = memo(function EditorToolbar({
       {hasDebugger && <DebuggerControlsInline />}
       <div className="logic-editor-toolbar-spacer" />
       {onPreserveStructureChange && (
-        <label className="preserve-structure-toggle">
+        <label className="dl-preserve-structure-toggle">
           <input
             type="checkbox"
             checked={preserveStructure}

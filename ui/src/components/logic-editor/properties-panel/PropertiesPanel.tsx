@@ -12,7 +12,7 @@ import { PanelRenderer, type PanelRendererRef } from '../panel-inputs';
 import { HelpSection } from './HelpSection';
 import { ArgumentsSection } from './ArgumentsSection';
 import { isRootNode } from '../utils/node-deletion';
-import { useIsMobile } from '../../../hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   getPanelConfigForNode,
   getOperatorConfigForNode,

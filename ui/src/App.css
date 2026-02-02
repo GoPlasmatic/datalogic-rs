@@ -274,7 +274,7 @@
   min-width: 0;
 }
 
-.preserve-structure-toggle {
+.dl-preserve-structure-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -283,11 +283,11 @@
   cursor: pointer;
 }
 
-.preserve-structure-toggle input {
+.dl-preserve-structure-toggle input {
   cursor: pointer;
 }
 
-.preserve-structure-toggle span {
+.dl-preserve-structure-toggle span {
   user-select: none;
 }
 

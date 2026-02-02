@@ -172,12 +172,12 @@ export const UnifiedOperatorNode = memo(function UnifiedOperatorNode({
             <button
               ref={addButtonRef}
               type="button"
-              className="add-arg-button add-arg-button--vertical"
+              className="dl-add-arg-button dl-add-arg-button--vertical"
               onClick={handleAddArgumentClick}
               title={remainingSlots ? `${addArgumentLabel} (${remainingSlots} more available)` : addArgumentLabel}
             >
               <Plus size={12} />
-              <span className="add-arg-button-label">
+              <span className="dl-add-arg-button-label">
                 {remainingSlots ? `${addArgumentLabel} (${remainingSlots} more)` : addArgumentLabel}
               </span>
             </button>

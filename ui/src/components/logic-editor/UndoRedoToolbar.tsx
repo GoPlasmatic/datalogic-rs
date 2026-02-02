@@ -19,7 +19,7 @@ export const UndoRedoToolbar = memo(function UndoRedoToolbar() {
     <>
       <button
         type="button"
-        className="toolbar-btn"
+        className="dl-toolbar-btn"
         onClick={undo}
         disabled={!canUndo}
         title="Undo (Cmd/Ctrl+Z)"
@@ -28,7 +28,7 @@ export const UndoRedoToolbar = memo(function UndoRedoToolbar() {
       </button>
       <button
         type="button"
-        className="toolbar-btn"
+        className="dl-toolbar-btn"
         onClick={redo}
         disabled={!canRedo}
         title="Redo (Cmd/Ctrl+Shift+Z)"

@@ -33,6 +33,7 @@
     "src/main.tsx",
     "src/hooks/**/*",
     "src/contexts/**/*",
-    "src/components/debug-panel/**/*"
+    "src/components/debug-panel/**/*",
+    "src/components/logic-editor/LogicEditor.tsx"
   ]
 }

@@ -7,7 +7,7 @@ import {
   useEdgesState,
   ReactFlowProvider,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import './styles/reactflow-base.css';
 
 import type { DataLogicEditorProps, LogicNode, LogicEdge } from './types';
 import { nodeTypes } from './nodes';
@@ -27,12 +27,9 @@ import { NodeContextMenu, CanvasContextMenu } from './context-menu';
 import { AutoFitView } from './AutoFitView';
 import { EditorToolbar } from './EditorToolbar';
 import { REACT_FLOW_OPTIONS } from './constants/layout';
-import { useSystemTheme } from '../../hooks';
+import { useSystemTheme } from './hooks/useSystemTheme';
 import './styles/nodes.css';
 import './LogicEditor.css';
-import './properties-panel/properties-panel.css';
-import './panel-inputs/panel-inputs.css';
-import './edges/edges.css';
 
 const emptyResults: EvaluationResultsMap = new Map();
 

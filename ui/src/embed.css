@@ -711,30 +711,30 @@
 }
 
 /* Debugger control icons - ensure visibility in dark mode */
-.datalogic-widget[data-theme="dark"] .debugger-btn,
-.datalogic-playground[data-theme="dark"] .debugger-btn {
+.datalogic-widget[data-theme="dark"] .dl-debugger-btn,
+.datalogic-playground[data-theme="dark"] .dl-debugger-btn {
   color: #e5e5e5;
   background: rgba(75, 85, 99, 0.8);
 }
 
-.datalogic-widget[data-theme="dark"] .debugger-btn:hover:not(:disabled),
-.datalogic-playground[data-theme="dark"] .debugger-btn:hover:not(:disabled) {
+.datalogic-widget[data-theme="dark"] .dl-debugger-btn:hover:not(:disabled),
+.datalogic-playground[data-theme="dark"] .dl-debugger-btn:hover:not(:disabled) {
   color: #ffffff;
   background: rgba(107, 114, 128, 0.9);
 }
 
-.datalogic-widget[data-theme="dark"] .debugger-btn svg,
-.datalogic-playground[data-theme="dark"] .debugger-btn svg {
+.datalogic-widget[data-theme="dark"] .dl-debugger-btn svg,
+.datalogic-playground[data-theme="dark"] .dl-debugger-btn svg {
   color: inherit;
 }
 
-.datalogic-widget[data-theme="dark"] .debugger-icon,
-.datalogic-playground[data-theme="dark"] .debugger-icon {
+.datalogic-widget[data-theme="dark"] .dl-debugger-icon,
+.datalogic-playground[data-theme="dark"] .dl-debugger-icon {
   color: #fbbf24;
 }
 
-.datalogic-widget[data-theme="dark"] .debugger-icon svg,
-.datalogic-playground[data-theme="dark"] .debugger-icon svg {
+.datalogic-widget[data-theme="dark"] .dl-debugger-icon svg,
+.datalogic-playground[data-theme="dark"] .dl-debugger-icon svg {
   color: inherit;
 }
 
@@ -791,36 +791,36 @@
 }
 
 /* Debugger controls container */
-.datalogic-widget[data-theme="dark"] .debugger-controls-inner,
-.datalogic-playground[data-theme="dark"] .debugger-controls-inner {
+.datalogic-widget[data-theme="dark"] .dl-debugger-controls-inner,
+.datalogic-playground[data-theme="dark"] .dl-debugger-controls-inner {
   background: rgba(31, 41, 55, 0.95);
   border-color: #4b5563;
 }
 
 /* Step counter text */
-.datalogic-widget[data-theme="dark"] .step-current,
-.datalogic-playground[data-theme="dark"] .step-current {
+.datalogic-widget[data-theme="dark"] .dl-step-current,
+.datalogic-playground[data-theme="dark"] .dl-step-current {
   color: #e5e5e5;
 }
 
-.datalogic-widget[data-theme="dark"] .step-separator,
-.datalogic-playground[data-theme="dark"] .step-separator {
+.datalogic-widget[data-theme="dark"] .dl-step-separator,
+.datalogic-playground[data-theme="dark"] .dl-step-separator {
   color: #6b7280;
 }
 
-.datalogic-widget[data-theme="dark"] .step-total,
-.datalogic-playground[data-theme="dark"] .step-total {
+.datalogic-widget[data-theme="dark"] .dl-step-total,
+.datalogic-playground[data-theme="dark"] .dl-step-total {
   color: #9ca3af;
 }
 
 /* Speed control */
-.datalogic-widget[data-theme="dark"] .speed-label,
-.datalogic-playground[data-theme="dark"] .speed-label {
+.datalogic-widget[data-theme="dark"] .dl-speed-label,
+.datalogic-playground[data-theme="dark"] .dl-speed-label {
   color: #9ca3af;
 }
 
-.datalogic-widget[data-theme="dark"] .speed-slider,
-.datalogic-playground[data-theme="dark"] .speed-slider {
+.datalogic-widget[data-theme="dark"] .dl-speed-slider,
+.datalogic-playground[data-theme="dark"] .dl-speed-slider {
   background: rgba(75, 85, 99, 0.8);
 }
 

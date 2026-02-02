@@ -95,17 +95,17 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
   }
 
   return (
-    <div className={`debugger-controls--${variant}`}>
-      <div className="debugger-controls-inner">
+    <div className={`dl-debugger-controls--${variant}`}>
+      <div className="dl-debugger-controls-inner">
         {/* Bug icon indicator */}
-        <div className="debugger-icon">
+        <div className="dl-debugger-icon">
           <Bug size={variant === 'inline' ? 15 : 18} />
         </div>
 
         {/* Navigation buttons */}
-        <div className="debugger-buttons">
+        <div className="dl-debugger-buttons">
           <button
-            className="debugger-btn"
+            className="dl-debugger-btn"
             onClick={reset}
             disabled={isAtStart}
             title="Reset to start (Home)"
@@ -114,7 +114,7 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           </button>
 
           <button
-            className="debugger-btn"
+            className="dl-debugger-btn"
             onClick={stepBackward}
             disabled={isAtStart}
             title="Step backward (Left Arrow)"
@@ -123,7 +123,7 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           </button>
 
           <button
-            className="debugger-btn debugger-btn-primary"
+            className="dl-debugger-btn dl-debugger-btn-primary"
             onClick={isPlaying ? pause : play}
             title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
           >
@@ -131,7 +131,7 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           </button>
 
           <button
-            className="debugger-btn"
+            className="dl-debugger-btn"
             onClick={stepForward}
             disabled={isAtEnd}
             title="Step forward (Right Arrow)"
@@ -140,7 +140,7 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           </button>
 
           <button
-            className="debugger-btn"
+            className="dl-debugger-btn"
             onClick={() => goToStep(totalSteps - 1)}
             disabled={isAtEnd}
             title="Jump to end (End)"
@@ -150,18 +150,18 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
         </div>
 
         {/* Step counter: 0/N at initial, then 1/N .. N/N when stepping */}
-        <div className="debugger-step-counter">
-          <span className="step-current">{isAtInitial ? 0 : currentStepIndex + 1}</span>
-          <span className="step-separator">/</span>
-          <span className="step-total">{totalSteps}</span>
+        <div className="dl-debugger-step-counter">
+          <span className="dl-step-current">{isAtInitial ? 0 : currentStepIndex + 1}</span>
+          <span className="dl-step-separator">/</span>
+          <span className="dl-step-total">{totalSteps}</span>
         </div>
 
         {/* Speed control */}
-        <div className="debugger-speed">
-          <label className="speed-label">Speed</label>
+        <div className="dl-debugger-speed">
+          <label className="dl-speed-label">Speed</label>
           <input
             type="range"
-            className="speed-slider"
+            className="dl-speed-slider"
             min={100}
             max={2000}
             step={100}

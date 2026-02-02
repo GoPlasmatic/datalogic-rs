@@ -2,7 +2,7 @@
    CSS Variables - Debug Colors
    ============================================ */
 
-:root {
+.logic-editor {
   --debug-current-color: #F59E0B;
   --debug-current-glow: rgba(245, 158, 11, 0.4);
   --debug-executed-color: #10B981;
@@ -13,7 +13,7 @@
   --debug-error-border: rgba(239, 68, 68, 0.6);
 }
 
-[data-theme="dark"] {
+.logic-editor[data-theme="dark"] {
   --debug-current-glow: rgba(245, 158, 11, 0.5);
   --debug-executed-border: rgba(16, 185, 129, 0.8);
   --debug-error-glow: rgba(239, 68, 68, 0.5);
@@ -224,7 +224,7 @@
   border-left: 2px solid #94a3b8;
 }
 
-[data-theme="dark"] .branch-expression {
+.logic-editor[data-theme="dark"] .branch-expression {
   background: var(--bg-hover);
   border-left-color: #64748b;
 }
@@ -414,7 +414,7 @@
   min-height: 8px;
 }
 
-[data-theme="dark"] .structure-expression-handle {
+.logic-editor[data-theme="dark"] .structure-expression-handle {
   border-color: var(--bg-primary) !important;
 }
 
@@ -429,7 +429,7 @@
   transform: translateY(-50%) !important;
 }
 
-[data-theme="dark"] .structure-branch-handle {
+.logic-editor[data-theme="dark"] .structure-branch-handle {
   border-color: var(--bg-primary) !important;
 }
 
@@ -443,7 +443,7 @@
   border: 2px solid white;
 }
 
-[data-theme="dark"] .react-flow__handle {
+.logic-editor[data-theme="dark"] .react-flow__handle {
   border-color: var(--bg-primary);
 }
 
@@ -595,8 +595,8 @@
   border: 1px solid #c7d2fe;
 }
 
-[data-theme="dark"] .result-badge.array,
-[data-theme="dark"] .result-badge.object {
+.logic-editor[data-theme="dark"] .result-badge.array,
+.logic-editor[data-theme="dark"] .result-badge.object {
   background: #312e81;
   color: #a5b4fc;
   border-color: #4338ca;
@@ -700,55 +700,55 @@
 }
 
 /* Dark mode expression syntax */
-[data-theme="dark"] .expr-operator {
+.logic-editor[data-theme="dark"] .expr-operator {
   color: #ff7b72;
 }
 
-[data-theme="dark"] .expr-keyword {
+.logic-editor[data-theme="dark"] .expr-keyword {
   color: #d2a8ff;
 }
 
-[data-theme="dark"] .expr-comparison {
+.logic-editor[data-theme="dark"] .expr-comparison {
   color: #79c0ff;
 }
 
-[data-theme="dark"] .expr-arithmetic {
+.logic-editor[data-theme="dark"] .expr-arithmetic {
   color: #79c0ff;
 }
 
-[data-theme="dark"] .expr-unary {
+.logic-editor[data-theme="dark"] .expr-unary {
   color: #ff7b72;
 }
 
-[data-theme="dark"] .expr-function {
+.logic-editor[data-theme="dark"] .expr-function {
   color: #d2a8ff;
 }
 
-[data-theme="dark"] .expr-string {
+.logic-editor[data-theme="dark"] .expr-string {
   color: #a5d6ff;
 }
 
-[data-theme="dark"] .expr-number {
+.logic-editor[data-theme="dark"] .expr-number {
   color: #79c0ff;
 }
 
-[data-theme="dark"] .expr-boolean {
+.logic-editor[data-theme="dark"] .expr-boolean {
   color: #ff7b72;
 }
 
-[data-theme="dark"] .expr-null {
+.logic-editor[data-theme="dark"] .expr-null {
   color: #8b949e;
 }
 
-[data-theme="dark"] .expr-variable {
+.logic-editor[data-theme="dark"] .expr-variable {
   color: #ffa657;
 }
 
-[data-theme="dark"] .expr-bracket {
+.logic-editor[data-theme="dark"] .expr-bracket {
   color: #c9d1d9;
 }
 
-[data-theme="dark"] .expr-punctuation {
+.logic-editor[data-theme="dark"] .expr-punctuation {
   color: #c9d1d9;
 }
 

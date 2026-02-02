@@ -103,15 +103,15 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
   return (
     <div
       ref={pickerRef}
-      className="edge-operator-picker"
+      className="dl-edge-operator-picker"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="edge-picker-header">
-        <span className="edge-picker-title">Insert Node</span>
+      <div className="dl-edge-picker-header">
+        <span className="dl-edge-picker-title">Insert Node</span>
         <button
           type="button"
-          className="edge-picker-close"
+          className="dl-edge-picker-close"
           onClick={onClose}
           title="Close"
         >
@@ -120,12 +120,12 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
       </div>
 
       {/* Search */}
-      <div className="edge-picker-search">
-        <Search size={14} className="edge-picker-search-icon" />
+      <div className="dl-edge-picker-search">
+        <Search size={14} className="dl-edge-picker-search-icon" />
         <input
           ref={inputRef}
           type="text"
-          className="edge-picker-search-input"
+          className="dl-edge-picker-search-input"
           placeholder="Search operators..."
           value={searchQuery}
           onChange={(e) => {
@@ -136,10 +136,10 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
       </div>
 
       {/* Quick Add */}
-      <div className="edge-picker-quick">
+      <div className="dl-edge-picker-quick">
         <button
           type="button"
-          className="edge-picker-quick-btn"
+          className="dl-edge-picker-quick-btn"
           onClick={() => handleQuickAdd('variable')}
           title="Insert variable"
         >
@@ -148,7 +148,7 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
         </button>
         <button
           type="button"
-          className="edge-picker-quick-btn"
+          className="dl-edge-picker-quick-btn"
           onClick={() => handleQuickAdd('literal')}
           title="Insert literal"
         >
@@ -158,24 +158,24 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
       </div>
 
       {/* Categories or Search Results */}
-      <div className="edge-picker-content">
+      <div className="dl-edge-picker-content">
         {!searchQuery && !selectedCategory ? (
           // Show categories
-          <div className="edge-picker-categories">
+          <div className="dl-edge-picker-categories">
             {categoriesWithOperators.map((cat) => {
               const catMeta = categories[cat];
               return (
                 <button
                   key={cat}
                   type="button"
-                  className="edge-picker-category"
+                  className="dl-edge-picker-category"
                   onClick={() => setSelectedCategory(cat)}
                   style={{ borderLeftColor: catMeta?.color || '#888' }}
                 >
-                  <span className="edge-picker-category-name">
+                  <span className="dl-edge-picker-category-name">
                     {catMeta?.label || cat}
                   </span>
-                  <span className="edge-picker-category-count">
+                  <span className="dl-edge-picker-category-count">
                     {getOperatorsGroupedByCategory().get(cat)?.length || 0}
                   </span>
                 </button>
@@ -184,11 +184,11 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
           </div>
         ) : (
           // Show operators
-          <div className="edge-picker-operators">
+          <div className="dl-edge-picker-operators">
             {selectedCategory && !searchQuery && (
               <button
                 type="button"
-                className="edge-picker-back"
+                className="dl-edge-picker-back"
                 onClick={() => setSelectedCategory(null)}
               >
                 ← Back to categories
@@ -199,16 +199,16 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
                 <button
                   key={op.name}
                   type="button"
-                  className="edge-picker-operator"
+                  className="dl-edge-picker-operator"
                   onClick={() => handleOperatorSelect(op)}
                   title={op.help.summary}
                 >
-                  <span className="edge-picker-operator-name">{op.name}</span>
-                  <span className="edge-picker-operator-label">{op.label}</span>
+                  <span className="dl-edge-picker-operator-name">{op.name}</span>
+                  <span className="dl-edge-picker-operator-label">{op.label}</span>
                 </button>
               ))
             ) : (
-              <div className="edge-picker-empty">
+              <div className="dl-edge-picker-empty">
                 {searchQuery ? 'No operators found' : 'No operators in this category'}
               </div>
             )}

@@ -6,3 +6,5 @@ export { useDebugEvaluation } from './useDebugEvaluation';
 export { useWasmEvaluator } from './useWasmEvaluator';
 export { checkDepth } from './useRecursionCheck';
 export { useContextMenu } from './useContextMenu';
+export { useSystemTheme } from './useSystemTheme';
+export { useIsMobile } from './useIsMobile';

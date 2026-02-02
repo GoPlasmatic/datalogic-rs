@@ -205,7 +205,7 @@ export const ContextMenu = memo(function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="context-menu"
+      className="dl-context-menu"
       style={{
         left: position.x,
         top: position.y,
@@ -215,7 +215,7 @@ export const ContextMenu = memo(function ContextMenu({
     >
       {filteredItems.map((item, itemIndex) => {
         if (item.id === 'divider') {
-          return <div key={`divider-${itemIndex}`} className="context-menu-divider" role="separator" />;
+          return <div key={`divider-${itemIndex}`} className="dl-context-menu-divider" role="separator" />;
         }
 
         if (!item.disabled) {
@@ -225,13 +225,13 @@ export const ContextMenu = memo(function ContextMenu({
         const isFocused = !item.disabled && focusedIndex === currentEnabledIndex;
 
         return (
-          <div key={item.id} className={item.submenu ? 'context-menu-submenu' : undefined}>
+          <div key={item.id} className={item.submenu ? 'dl-context-menu-submenu' : undefined}>
             <button
               type="button"
               className={[
-                'context-menu-item',
-                item.danger && 'context-menu-item--danger',
-                isFocused && 'context-menu-item--focused',
+                'dl-context-menu-item',
+                item.danger && 'dl-context-menu-item--danger',
+                isFocused && 'dl-context-menu-item--focused',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -241,11 +241,11 @@ export const ContextMenu = memo(function ContextMenu({
               role="menuitem"
               tabIndex={-1}
             >
-              {item.icon && <span className="context-menu-item-icon">{item.icon}</span>}
-              <span className="context-menu-item-label">{item.label}</span>
-              {item.shortcut && <span className="context-menu-item-shortcut">{item.shortcut}</span>}
+              {item.icon && <span className="dl-context-menu-item-icon">{item.icon}</span>}
+              <span className="dl-context-menu-item-label">{item.label}</span>
+              {item.shortcut && <span className="dl-context-menu-item-shortcut">{item.shortcut}</span>}
               {item.submenu && (
-                <span className="context-menu-item-arrow">
+                <span className="dl-context-menu-item-arrow">
                   <ChevronRight size={14} />
                 </span>
               )}
@@ -253,7 +253,7 @@ export const ContextMenu = memo(function ContextMenu({
 
             {/* Render submenu */}
             {item.submenu && openSubmenuId === item.id && (
-              <div className="context-menu-submenu-content">
+              <div className="dl-context-menu-submenu-content">
                 <ContextMenuSubmenu items={item.submenu} onClose={onClose} />
               </div>
             )}
@@ -298,19 +298,19 @@ const ContextMenuSubmenu = memo(function ContextMenuSubmenu({
   }, []);
 
   return (
-    <div className="context-menu" role="menu">
+    <div className="dl-context-menu" role="menu">
       {items.map((item, itemIndex) => {
         if (item.id === 'divider') {
-          return <div key={`divider-${itemIndex}`} className="context-menu-divider" role="separator" />;
+          return <div key={`divider-${itemIndex}`} className="dl-context-menu-divider" role="separator" />;
         }
 
         return (
-          <div key={item.id} className={item.submenu ? 'context-menu-submenu' : undefined}>
+          <div key={item.id} className={item.submenu ? 'dl-context-menu-submenu' : undefined}>
             <button
               type="button"
               className={[
-                'context-menu-item',
-                item.danger && 'context-menu-item--danger',
+                'dl-context-menu-item',
+                item.danger && 'dl-context-menu-item--danger',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -320,11 +320,11 @@ const ContextMenuSubmenu = memo(function ContextMenuSubmenu({
               role="menuitem"
               tabIndex={-1}
             >
-              {item.icon && <span className="context-menu-item-icon">{item.icon}</span>}
-              <span className="context-menu-item-label">{item.label}</span>
-              {item.shortcut && <span className="context-menu-item-shortcut">{item.shortcut}</span>}
+              {item.icon && <span className="dl-context-menu-item-icon">{item.icon}</span>}
+              <span className="dl-context-menu-item-label">{item.label}</span>
+              {item.shortcut && <span className="dl-context-menu-item-shortcut">{item.shortcut}</span>}
               {item.submenu && (
-                <span className="context-menu-item-arrow">
+                <span className="dl-context-menu-item-arrow">
                   <ChevronRight size={14} />
                 </span>
               )}
@@ -332,7 +332,7 @@ const ContextMenuSubmenu = memo(function ContextMenuSubmenu({
 
             {/* Render nested submenu */}
             {item.submenu && openSubmenuId === item.id && (
-              <div className="context-menu-submenu-content">
+              <div className="dl-context-menu-submenu-content">
                 <ContextMenuSubmenu items={item.submenu} onClose={onClose} />
               </div>
             )}
