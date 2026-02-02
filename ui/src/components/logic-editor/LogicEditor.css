@@ -262,47 +262,6 @@
   color: var(--bg-primary, #121212);
 }
 
-/* Legacy placeholder - kept for compatibility but using new .add-arg-button is preferred */
-.operator-arg-placeholder {
-  position: absolute;
-  right: -4px;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px dashed var(--color-primary, #2563eb);
-  border-radius: 50%;
-  background: var(--bg-primary, #fff);
-  color: var(--color-primary, #2563eb);
-  cursor: pointer;
-  opacity: 0.7;
-  transition: all 0.15s ease;
-  z-index: 10;
-}
-
-.operator-arg-placeholder:hover {
-  opacity: 1;
-  background: var(--color-primary, #2563eb);
-  color: white;
-  border-style: solid;
-  transform: translateY(-50%) scale(1.1);
-}
-
-/* Dark mode */
-[data-theme="dark"] .operator-arg-placeholder {
-  background: var(--bg-secondary, #1e1e1e);
-  border-color: var(--color-primary, #60a5fa);
-  color: var(--color-primary, #60a5fa);
-}
-
-[data-theme="dark"] .operator-arg-placeholder:hover {
-  background: var(--color-primary, #60a5fa);
-  color: var(--bg-primary, #121212);
-}
-
 /* ============================================================================
    Context Menu
    ============================================================================ */

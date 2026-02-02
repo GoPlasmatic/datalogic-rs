@@ -1,417 +1,127 @@
-/* Base node styles - shared across all node types */
-.logic-node {
+/* ============================================
+   CSS Variables - Debug Colors
+   ============================================ */
+
+:root {
+  --debug-current-color: #F59E0B;
+  --debug-current-glow: rgba(245, 158, 11, 0.4);
+  --debug-executed-color: #10B981;
+  --debug-executed-border: rgba(16, 185, 129, 0.6);
+  --debug-pending-opacity: 0.5;
+  --debug-error-color: #EF4444;
+  --debug-error-glow: rgba(239, 68, 68, 0.4);
+  --debug-error-border: rgba(239, 68, 68, 0.6);
+}
+
+[data-theme="dark"] {
+  --debug-current-glow: rgba(245, 158, 11, 0.5);
+  --debug-executed-border: rgba(16, 185, 129, 0.8);
+  --debug-error-glow: rgba(239, 68, 68, 0.5);
+  --debug-error-border: rgba(239, 68, 68, 0.8);
+}
+
+/* ============================================
+   .dl-node — Shared Visual Base
+   ============================================ */
+
+.dl-node {
   border-radius: 8px;
   border: 2px solid;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
-  /* Width is set via inline style from layout calculations */
   width: 100%;
   box-sizing: border-box;
   box-shadow: 0 2px 6px var(--node-shadow);
   transition: box-shadow 0.2s, transform 0.1s;
-}
-
-.logic-node:hover {
-  box-shadow: 0 4px 12px var(--node-shadow-hover);
-}
-
-.logic-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
-}
-
-/* Legacy class support - these now use .logic-node */
-.operator-node,
-.variable-node,
-.literal-node {
-  border-radius: 8px;
-  border: 2px solid;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  /* Width is set via inline style from layout calculations */
-  width: 100%;
-  box-sizing: border-box;
-  box-shadow: 0 2px 6px var(--node-shadow);
-  transition: box-shadow 0.2s, transform 0.1s;
-}
-
-.operator-node:hover,
-.variable-node:hover,
-.literal-node:hover {
-  box-shadow: 0 4px 12px var(--node-shadow-hover);
-}
-
-.operator-node.selected,
-.variable-node.selected,
-.literal-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
-}
-
-/* Operator Node */
-.operator-node {
   background: var(--node-bg) !important;
+  position: relative;
 }
 
-.operator-node-header {
-  padding: 6px 12px;
-  border-radius: 6px 6px 0 0;
-  color: white;
-  font-weight: 600;
-  text-align: center;
+.dl-node:hover {
+  box-shadow: 0 4px 12px var(--node-shadow-hover);
 }
 
-.operator-label {
-  font-size: 16px;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
+.dl-node.selected {
+  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
 }
 
-/* Header content with collapse toggle */
-.operator-header-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
+/* ============================================
+   .dl-node Debug States
+   States ONLY change: border-color, box-shadow, opacity, animation
+   ============================================ */
+
+/* Disable transitions on debug-active nodes to prevent animation-to-static handoff glitches */
+.dl-node[class*="debug-"] {
+  transition: none !important;
 }
 
-.operator-header-content .operator-label {
-  flex: 1;
-  text-align: center;
-}
-
-.collapse-toggle {
-  background: transparent;
-  border: none;
-  color: white;
-  font-size: 10px;
-  cursor: pointer;
-  padding: 2px 6px;
-  opacity: 0.8;
-  transition: opacity 0.2s;
-  flex-shrink: 0;
-}
-
-.collapse-toggle:hover {
-  opacity: 1;
-}
-
-/* Expression text for collapsed nodes */
-.expression-text {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 12px;
-  color: var(--text-primary);
-  padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  word-break: break-word;
-  line-height: 1.4;
-}
-
-/* Inline expression for unary operators with simple args */
-.expression-text.inline-expression {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.collapsed-body {
-  padding: 8px;
-}
-
-/* Argument summaries for collapsed view */
-.arg-summaries {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-}
-
-.arg-summary-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 4px;
-  font-size: 12px;
-  background: var(--bg-tertiary);
-  border-radius: 3px;
-}
-
-.arg-icon {
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-.arg-label {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  color: var(--text-primary);
-  white-space: nowrap;
+/* Contain overflow on all debug-state nodes except current (which needs the bubble visible) */
+.dl-node[class*="debug-"]:not(.debug-current) {
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-/* Collapsed operator node */
-.operator-node.collapsed {
-  min-height: auto;
+/* Current step - pulsing highlight */
+.dl-node.debug-current {
+  box-shadow: 0 0 0 3px var(--debug-current-color),
+              0 0 20px var(--debug-current-glow) !important;
+  animation: debug-pulse 1.5s ease-in-out infinite;
 }
 
-.operator-node.collapsed .operator-node-body {
-  padding: 8px;
+/* Ensure debug-current node wrapper is above all other nodes */
+.react-flow__node:has(.debug-current) {
+  z-index: 1000 !important;
 }
 
-.operator-node-body {
-  padding: 8px 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+@keyframes debug-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px var(--debug-current-color),
+                0 0 15px var(--debug-current-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--debug-current-color),
+                0 0 25px var(--debug-current-glow);
+  }
 }
 
-.operator-category {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* Executed nodes - path trail with green border */
+.dl-node.debug-executed {
+  border-color: var(--debug-executed-color) !important;
+  box-shadow: 0 0 0 1px var(--debug-executed-border);
 }
 
-.operator-children-count {
-  font-size: 11px;
-  color: var(--text-muted);
+/* Pending nodes - slightly faded */
+.dl-node.debug-pending {
+  opacity: var(--debug-pending-opacity);
 }
 
-/* Variable Node */
-.variable-node {
-  background: var(--node-bg) !important;
-  padding: 8px 12px;
-  position: relative;
+/* On path - ancestors of current node (but not current itself) */
+.dl-node.debug-on-path {
+  border-color: var(--debug-current-color) !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
 }
 
-.variable-node-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Error nodes - red border */
+.dl-node.debug-error {
+  border-color: var(--debug-error-color) !important;
+  box-shadow: 0 0 0 1px var(--debug-error-border),
+              0 2px 6px var(--node-shadow);
 }
 
-.variable-operator {
-  font-weight: 700;
-  font-size: 12px;
+/* Error + current: red pulsing glow */
+.dl-node.debug-error.debug-current {
+  box-shadow: 0 0 0 3px var(--debug-error-color),
+              0 0 15px var(--debug-error-glow) !important;
+  animation: debug-error-pulse 1.5s ease-in-out infinite;
 }
 
-.variable-path {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 13px;
-  color: var(--text-primary);
+@keyframes debug-error-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--debug-error-color), 0 0 15px var(--debug-error-glow); }
+  50% { box-shadow: 0 0 0 5px var(--debug-error-color), 0 0 25px var(--debug-error-glow); }
 }
 
-.variable-default {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border-light);
-  font-size: 11px;
-  display: flex;
-  gap: 4px;
-}
-
-.variable-default-label {
-  color: var(--text-muted);
-}
-
-.variable-default-value {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  color: var(--text-tertiary);
-}
-
-/* Literal Node */
-.literal-node {
-  background: var(--node-bg) !important;
-  padding: 8px 12px;
-  position: relative;
-}
-
-.literal-node-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.literal-type-icon {
-  font-weight: 700;
-  font-size: 14px;
-  width: 18px;
-  text-align: center;
-}
-
-.literal-value {
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 13px;
-  color: var(--text-primary);
-  word-break: break-all;
-}
-
-/* ReactFlow Handle styles */
-.react-flow__handle {
-  width: 10px;
-  height: 10px;
-  border: 2px solid white;
-}
-
-[data-theme="dark"] .react-flow__handle {
-  border-color: var(--bg-primary);
-}
-
-.react-flow__handle-top {
-  top: -6px;
-}
-
-.react-flow__handle-bottom {
-  bottom: -6px;
-}
-
-.react-flow__handle-right {
-  right: -6px;
-}
-
-.react-flow__handle-left {
-  left: -6px;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-}
-
-/* Ensure left handles are centered on simple nodes */
-.literal-node .react-flow__handle-left,
-.variable-node .react-flow__handle-left {
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-}
-
-/* Decision Node */
-.decision-node {
-  background: var(--node-bg) !important;
-  border-radius: 8px;
-  border: 2px solid;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  /* Width is set via inline style from layout calculations */
-  width: 100%;
-  box-sizing: border-box;
-  box-shadow: 0 2px 6px var(--node-shadow);
-  transition: box-shadow 0.2s, transform 0.1s;
-  position: relative;
-}
-
-.decision-node:hover {
-  box-shadow: 0 4px 12px var(--node-shadow-hover);
-}
-
-.decision-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
-}
-
-.decision-node-header {
-  padding: 6px 12px;
-  border-radius: 6px 6px 0 0;
-  color: white;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.decision-node-title {
-  font-size: 16px;
-  letter-spacing: 0.5px;
-}
-
-.decision-node-body {
-  padding: 0;
-}
-
-/* Decision rows - each row is 32px height */
-.decision-row {
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  height: 32px;
-  gap: 6px;
-  border-bottom: 1px solid var(--border-light);
-  position: relative;
-}
-
-.decision-row:last-child {
-  border-bottom: none;
-}
-
-.decision-row-branch {
-  padding-left: 20px;
-}
-
-.decision-row-label {
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: lowercase;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.decision-row-content {
-  flex: 1;
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 12px;
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-  padding: 4px 8px;
-  border-radius: 4px;
-  word-break: break-word;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Decision node handles are positioned at node level via inline styles */
-
-/* Decision node input handle */
-.decision-node .react-flow__handle[data-handleid="left"] {
-  left: -6px;
-  top: 50%;
-}
-
-/* Edge styles */
-.react-flow__edge-path {
-  stroke-width: 2;
-}
-
-/* Custom edge styles for decision branches */
-.react-flow__edge.yes-edge .react-flow__edge-path {
-  stroke: #22C55E;
-}
-
-.react-flow__edge.no-edge .react-flow__edge-path {
-  stroke: #EF4444;
-}
-
-/* Vertical Cell Node */
-.vertical-cell-node {
-  background: var(--node-bg) !important;
-  border-radius: 8px;
-  border: 2px solid;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  /* Width is set via inline style from layout calculations */
-  width: 100%;
-  box-sizing: border-box;
-  box-shadow: 0 2px 6px var(--node-shadow);
-  transition: box-shadow 0.2s, transform 0.1s;
-  position: relative;
-}
-
-.vertical-cell-node:hover {
-  box-shadow: 0 4px 12px var(--node-shadow-hover);
-}
-
-.vertical-cell-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
-}
+/* ============================================
+   Vertical Cell Node — Layout
+   ============================================ */
 
 .vertical-cell-header {
   padding: 4px 10px;
@@ -527,7 +237,258 @@
   margin-left: auto;
 }
 
-/* Result Badge Styles */
+/* Collapse toggle */
+.collapse-toggle {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.collapse-toggle:hover {
+  opacity: 1;
+}
+
+/* Expression text for collapsed nodes */
+.expression-text {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+/* Inline expression for unary operators with simple args */
+.expression-text.inline-expression {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.collapsed-body {
+  padding: 8px;
+}
+
+/* Argument summaries for collapsed view */
+.arg-summaries {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.arg-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.arg-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.arg-label {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   Literal Node — Layout
+   ============================================ */
+
+.literal-node {
+  padding: 8px 12px;
+}
+
+.literal-node-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.literal-type-icon {
+  font-weight: 700;
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.literal-value {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* ============================================
+   Structure Node — Layout
+   ============================================ */
+
+.structure-node {
+  width: fit-content;
+  min-width: 150px;
+  max-width: 350px;
+}
+
+.structure-node-header {
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.structure-node-icon {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.structure-node-label {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.structure-node-body {
+  padding: 8px 12px;
+  padding-right: 24px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  white-space: pre;
+  line-height: 18px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.structure-node.collapsed .structure-node-body {
+  white-space: normal;
+}
+
+/* Expression marker - clickable link to expression node */
+.structure-expression-marker {
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent-blue-light);
+  color: var(--accent-blue);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  position: relative;
+}
+
+.structure-expression-marker:hover {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.structure-expression-label {
+  margin-right: 4px;
+}
+
+.structure-expression-handle {
+  width: 8px !important;
+  height: 8px !important;
+  border: 2px solid white !important;
+  min-width: 8px;
+  min-height: 8px;
+}
+
+[data-theme="dark"] .structure-expression-handle {
+  border-color: var(--bg-primary) !important;
+}
+
+/* Branch handles positioned at node level */
+.structure-branch-handle {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid white !important;
+  min-width: 10px;
+  min-height: 10px;
+  position: absolute !important;
+  transform: translateY(-50%) !important;
+}
+
+[data-theme="dark"] .structure-branch-handle {
+  border-color: var(--bg-primary) !important;
+}
+
+/* ============================================
+   ReactFlow Handle Styles
+   ============================================ */
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid white;
+}
+
+[data-theme="dark"] .react-flow__handle {
+  border-color: var(--bg-primary);
+}
+
+.react-flow__handle-top {
+  top: -6px;
+}
+
+.react-flow__handle-bottom {
+  bottom: -6px;
+}
+
+.react-flow__handle-right {
+  right: -6px;
+}
+
+.react-flow__handle-left {
+  left: -6px;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Ensure left handles are centered on simple nodes */
+.literal-node .react-flow__handle-left {
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Edge styles */
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+
+/* Custom edge styles for decision branches */
+.react-flow__edge.yes-edge .react-flow__edge-path {
+  stroke: #22C55E;
+}
+
+.react-flow__edge.no-edge .react-flow__edge-path {
+  stroke: #EF4444;
+}
+
+/* ============================================
+   Result Badge Styles
+   ============================================ */
+
 .result-badge {
   display: inline-flex;
   align-items: center;
@@ -677,7 +638,10 @@
   flex-shrink: 0;
 }
 
-/* Expression Syntax Highlighting */
+/* ============================================
+   Expression Syntax Highlighting
+   ============================================ */
+
 .expr-operator {
   color: #cf222e;
   font-weight: 600;
@@ -789,109 +753,6 @@
 }
 
 /* ============================================
-   Debugger State Styles
-   ============================================ */
-
-/* CSS Variables for debug colors */
-:root {
-  --debug-current-color: #F59E0B;
-  --debug-current-glow: rgba(245, 158, 11, 0.4);
-  --debug-executed-color: #10B981;
-  --debug-executed-border: rgba(16, 185, 129, 0.6);
-  --debug-pending-opacity: 0.5;
-  --debug-error-color: #EF4444;
-  --debug-error-glow: rgba(239, 68, 68, 0.4);
-  --debug-error-border: rgba(239, 68, 68, 0.6);
-}
-
-[data-theme="dark"] {
-  --debug-current-glow: rgba(245, 158, 11, 0.5);
-  --debug-executed-border: rgba(16, 185, 129, 0.8);
-  --debug-error-glow: rgba(239, 68, 68, 0.5);
-  --debug-error-border: rgba(239, 68, 68, 0.8);
-}
-
-/* Disable transitions on debug-active nodes to prevent animation-to-static handoff glitches */
-.logic-node[class*="debug-"],
-.operator-node[class*="debug-"],
-.variable-node[class*="debug-"],
-.literal-node[class*="debug-"],
-.vertical-cell-node[class*="debug-"],
-.decision-node[class*="debug-"],
-.structure-node[class*="debug-"] {
-  transition: none !important;
-}
-
-/* Constrain non-current debug nodes to prevent content overflow beyond wrapper */
-.vertical-cell-node[class*="debug-"]:not(.debug-current),
-.literal-node[class*="debug-"]:not(.debug-current),
-.operator-node[class*="debug-"]:not(.debug-current),
-.decision-node[class*="debug-"]:not(.debug-current),
-.structure-node[class*="debug-"]:not(.debug-current) {
-  overflow: hidden;
-}
-
-/* Current step - pulsing highlight */
-.logic-node.debug-current,
-.operator-node.debug-current,
-.variable-node.debug-current,
-.literal-node.debug-current,
-.vertical-cell-node.debug-current,
-.decision-node.debug-current {
-  box-shadow: 0 0 0 3px var(--debug-current-color),
-              0 0 20px var(--debug-current-glow) !important;
-  animation: debug-pulse 1.5s ease-in-out infinite;
-}
-
-/* Ensure debug-current node wrapper is above all other nodes */
-.react-flow__node:has(.debug-current) {
-  z-index: 1000 !important;
-}
-
-@keyframes debug-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 3px var(--debug-current-color),
-                0 0 15px var(--debug-current-glow);
-  }
-  50% {
-    box-shadow: 0 0 0 5px var(--debug-current-color),
-                0 0 25px var(--debug-current-glow);
-  }
-}
-
-/* Executed nodes - path trail with green border */
-.logic-node.debug-executed,
-.operator-node.debug-executed,
-.variable-node.debug-executed,
-.literal-node.debug-executed,
-.vertical-cell-node.debug-executed,
-.decision-node.debug-executed {
-  border-color: var(--debug-executed-color) !important;
-  box-shadow: 0 0 0 1px var(--debug-executed-border);
-}
-
-/* Pending nodes - slightly faded */
-.logic-node.debug-pending,
-.operator-node.debug-pending,
-.variable-node.debug-pending,
-.literal-node.debug-pending,
-.vertical-cell-node.debug-pending,
-.decision-node.debug-pending {
-  opacity: var(--debug-pending-opacity);
-}
-
-/* On path - ancestors of current node (but not current itself) */
-.logic-node.debug-on-path,
-.operator-node.debug-on-path,
-.variable-node.debug-on-path,
-.literal-node.debug-on-path,
-.vertical-cell-node.debug-on-path,
-.decision-node.debug-on-path {
-  border-color: var(--debug-current-color) !important;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
-}
-
-/* ============================================
    Debug Info Bubble Styles
    ============================================ */
 
@@ -930,7 +791,7 @@
   margin-top: 8px;
 }
 
-/* Arrow indicator - pointer-events: none to not block interactions */
+/* Arrow indicator */
 .debug-info-bubble.debug-info-top::after {
   content: '';
   position: absolute;
@@ -966,10 +827,28 @@
 
 .debug-info-bubble.error {
   background: var(--debug-popover-error-bg);
+  border: 1px solid var(--debug-error-color);
 }
 
-.debug-info-bubble.error::after {
+.debug-info-bubble.error.debug-info-top::after {
   border-top-color: var(--debug-popover-error-bg);
+}
+
+.debug-info-bubble.error.debug-info-right::after {
+  border-right-color: var(--debug-popover-error-bg);
+}
+
+.debug-info-bubble.error.debug-info-bottom::after {
+  border-bottom-color: var(--debug-popover-error-bg);
+}
+
+.debug-info-bubble.error .debug-info-label {
+  color: var(--debug-error-color);
+}
+
+.debug-info-bubble.error .debug-info-value.debug-info-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .debug-info-iteration {
@@ -1043,7 +922,7 @@
   gap: 4px;
 }
 
-/* Color-coded value classes (no type badges) */
+/* Color-coded value classes */
 .debug-value-boolean-true {
   color: var(--debug-value-true);
 }
@@ -1103,170 +982,4 @@
 
 .json-syntax-punctuation {
   color: var(--syntax-punctuation);
-}
-
-/* ============================================
-   Structure Node Styles
-   ============================================ */
-
-.structure-node {
-  background: var(--node-bg) !important;
-  border-radius: 8px;
-  border: 2px solid;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  width: fit-content;
-  box-sizing: border-box;
-  box-shadow: 0 2px 6px var(--node-shadow);
-  transition: box-shadow 0.2s, transform 0.1s;
-  min-width: 150px;
-  max-width: 350px;
-  position: relative;
-}
-
-.structure-node:hover {
-  box-shadow: 0 4px 12px var(--node-shadow-hover);
-}
-
-.structure-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
-}
-
-.structure-node-header {
-  padding: 6px 12px;
-  border-radius: 6px 6px 0 0;
-  color: white;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  box-sizing: border-box;
-}
-
-.structure-node-icon {
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-}
-
-.structure-node-label {
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.5px;
-  flex: 1;
-}
-
-.structure-node-body {
-  padding: 8px 12px;
-  padding-right: 24px;
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 12px;
-  white-space: pre;
-  line-height: 18px;
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-.structure-node.collapsed .structure-node-body {
-  white-space: normal;
-}
-
-/* Expression marker - clickable link to expression node */
-.structure-expression-marker {
-  display: inline-flex;
-  align-items: center;
-  background: var(--accent-blue-light);
-  color: var(--accent-blue);
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 500;
-  position: relative;
-}
-
-.structure-expression-marker:hover {
-  background: var(--accent-blue);
-  color: white;
-}
-
-.structure-expression-label {
-  margin-right: 4px;
-}
-
-.structure-expression-handle {
-  width: 8px !important;
-  height: 8px !important;
-  border: 2px solid white !important;
-  min-width: 8px;
-  min-height: 8px;
-}
-
-[data-theme="dark"] .structure-expression-handle {
-  border-color: var(--bg-primary) !important;
-}
-
-/* Branch handles positioned at node level */
-.structure-branch-handle {
-  width: 10px !important;
-  height: 10px !important;
-  border: 2px solid white !important;
-  min-width: 10px;
-  min-height: 10px;
-  position: absolute !important;
-  transform: translateY(-50%) !important;
-}
-
-[data-theme="dark"] .structure-branch-handle {
-  border-color: var(--bg-primary) !important;
-}
-
-/* Debug states for structure node */
-.structure-node.debug-current {
-  box-shadow: 0 0 0 3px var(--debug-current-color),
-              0 0 20px var(--debug-current-glow) !important;
-  animation: debug-pulse 1.5s ease-in-out infinite;
-}
-
-.structure-node.debug-executed {
-  border-color: var(--debug-executed-color) !important;
-  box-shadow: 0 0 0 1px var(--debug-executed-border);
-}
-
-.structure-node.debug-pending {
-  opacity: var(--debug-pending-opacity);
-}
-
-.structure-node.debug-on-path {
-  border-color: var(--debug-current-color) !important;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
-}
-
-/* Error nodes - red border (matches debug-executed pattern) */
-.logic-node.debug-error,
-.operator-node.debug-error,
-.variable-node.debug-error,
-.literal-node.debug-error,
-.vertical-cell-node.debug-error,
-.decision-node.debug-error,
-.structure-node.debug-error {
-  border-color: var(--debug-error-color) !important;
-  box-shadow: 0 0 0 1px var(--debug-error-border);
-}
-
-/* Error + current: red pulsing glow (only when actively on this step) */
-.logic-node.debug-error.debug-current,
-.operator-node.debug-error.debug-current,
-.variable-node.debug-error.debug-current,
-.literal-node.debug-error.debug-current,
-.vertical-cell-node.debug-error.debug-current,
-.decision-node.debug-error.debug-current,
-.structure-node.debug-error.debug-current {
-  box-shadow: 0 0 0 3px var(--debug-error-color),
-              0 0 15px var(--debug-error-glow) !important;
-  animation: debug-error-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes debug-error-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px var(--debug-error-color), 0 0 15px var(--debug-error-glow); }
-  50% { box-shadow: 0 0 0 5px var(--debug-error-color), 0 0 25px var(--debug-error-glow); }
 }

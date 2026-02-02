@@ -131,7 +131,7 @@ export const UnifiedOperatorNode = memo(function UnifiedOperatorNode({
 
   return (
     <div
-      className={`vertical-cell-node ${selected ? 'selected' : ''} ${isCollapsed ? 'collapsed' : ''} ${debugClassName}`}
+      className={`dl-node vertical-cell-node ${selected ? 'selected' : ''} ${isCollapsed ? 'collapsed' : ''} ${debugClassName}`}
       style={{
         borderColor: color,
         backgroundColor: `${color}10`,

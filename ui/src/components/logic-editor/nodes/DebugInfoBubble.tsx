@@ -60,7 +60,7 @@ export const DebugInfoBubble = memo(function DebugInfoBubble({
       {/* Result section */}
       <div className="debug-info-section">
         <span className="debug-info-label">
-          {hasError ? 'Error:' : 'Result:'}
+          {hasError ? '\u26A0 Error:' : 'Result:'}
         </span>
         {hasError ? (
           <pre className="debug-info-value debug-info-error">{step.error}</pre>

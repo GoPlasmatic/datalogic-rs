@@ -48,7 +48,7 @@ export const StructureNode = memo(function StructureNode({
 
   return (
     <div
-      className={`structure-node ${selected ? 'selected' : ''} ${isCollapsed ? 'collapsed' : ''} ${debugClassName}`}
+      className={`dl-node structure-node ${selected ? 'selected' : ''} ${isCollapsed ? 'collapsed' : ''} ${debugClassName}`}
       style={{
         borderColor: STRUCTURE_COLOR,
         backgroundColor: `${STRUCTURE_COLOR}10`,

@@ -23,7 +23,7 @@ export const LiteralNode = memo(function LiteralNode({
 
   return (
     <div
-      className={`literal-node ${selected ? 'selected' : ''} ${debugClassName}`}
+      className={`dl-node literal-node ${selected ? 'selected' : ''} ${debugClassName}`}
       style={{
         borderColor: color,
         backgroundColor: `${color}20`,
