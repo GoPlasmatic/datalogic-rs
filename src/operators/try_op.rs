@@ -60,29 +60,20 @@ pub fn evaluate_try(
         // Special handling for the last argument - it can access error context
         if i == args.len() - 1 && i > 0 {
             // This is the last argument and there was at least one error before
-            if let Some(ref err) = last_error {
-                if let Error::Thrown(error_obj) = err {
-                    // Push error context for the last argument
-                    context.push(error_obj.clone());
-                    match engine.evaluate_node(arg, context) {
-                        Ok(result) => {
-                            context.pop();
-                            return Ok(result);
-                        }
-                        Err(new_err) => {
-                            context.pop();
-                            last_error = Some(new_err);
-                        }
+            if let Some(Error::Thrown(error_obj)) = last_error.as_ref() {
+                // Push error context for the last argument
+                context.push(error_obj.clone());
+                match engine.evaluate_node(arg, context) {
+                    Ok(result) => {
+                        context.pop();
+                        return Ok(result);
                     }
-                } else {
-                    // Not a thrown error, just try normally
-                    match engine.evaluate_node(arg, context) {
-                        Ok(result) => return Ok(result),
-                        Err(err) => last_error = Some(err),
+                    Err(new_err) => {
+                        context.pop();
+                        last_error = Some(new_err);
                     }
                 }
             } else {
-                // No previous error, just evaluate normally
                 match engine.evaluate_node(arg, context) {
                     Ok(result) => return Ok(result),
                     Err(err) => last_error = Some(err),
@@ -126,23 +117,16 @@ pub fn evaluate_try_traced(
 
     for (i, arg) in args.iter().enumerate() {
         if i == args.len() - 1 && i > 0 {
-            if let Some(ref err) = last_error {
-                if let Error::Thrown(error_obj) = err {
-                    context.push(error_obj.clone());
-                    match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
-                        Ok(result) => {
-                            context.pop();
-                            return Ok(result);
-                        }
-                        Err(new_err) => {
-                            context.pop();
-                            last_error = Some(new_err);
-                        }
+            if let Some(Error::Thrown(error_obj)) = last_error.as_ref() {
+                context.push(error_obj.clone());
+                match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
+                    Ok(result) => {
+                        context.pop();
+                        return Ok(result);
                     }
-                } else {
-                    match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
-                        Ok(result) => return Ok(result),
-                        Err(err) => last_error = Some(err),
+                    Err(new_err) => {
+                        context.pop();
+                        last_error = Some(new_err);
                     }
                 }
             } else {

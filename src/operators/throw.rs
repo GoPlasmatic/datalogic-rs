@@ -18,14 +18,8 @@ pub fn evaluate_throw(
 
     // If the error value is an object with a "type" field, use that as the error
     // Otherwise, convert the value to a string and use it as the error type
-    let error_obj = if let Value::Object(map) = &error_value {
-        // Check if it's already an error object with a "type" field
-        if map.contains_key("type") {
-            error_value
-        } else {
-            // It's a regular object, use it as is
-            error_value
-        }
+    let error_obj = if let Value::Object(_) = &error_value {
+        error_value
     } else if let Value::String(s) = &error_value {
         // Create an error object with the string as the type
         serde_json::json!({"type": s})
@@ -52,12 +46,8 @@ pub fn evaluate_throw_traced(
         engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?
     };
 
-    let error_obj = if let Value::Object(map) = &error_value {
-        if map.contains_key("type") {
-            error_value
-        } else {
-            error_value
-        }
+    let error_obj = if let Value::Object(_) = &error_value {
+        error_value
     } else if let Value::String(s) = &error_value {
         serde_json::json!({"type": s})
     } else {
