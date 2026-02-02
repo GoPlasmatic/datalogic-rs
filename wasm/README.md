@@ -172,21 +172,29 @@ rule.evaluate('{"age": 16}'); // "false"
 
 ## Supported Operators
 
-This library supports all standard JSONLogic operators plus extended functionality:
+This library supports 59 built-in operators covering all standard JSONLogic plus extended functionality:
 
-**Logical:** `and`, `or`, `!`, `!!`, `if`, `?:`
+**Logical:** `and`, `or`, `!`, `!!`
 
 **Comparison:** `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
 
-**Arithmetic:** `+`, `-`, `*`, `/`, `%`, `min`, `max`
+**Arithmetic:** `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
 
-**Array:** `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`
+**Control Flow:** `if`, `?:`, `??` (coalesce)
 
-**String:** `cat`, `substr`, `startsWith`, `endsWith`
+**Array:** `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`
 
-**Data Access:** `var`, `missing`, `missing_some`
+**String:** `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
 
-**Date/Time:** Date comparison and manipulation operators
+**Data Access:** `var`, `val`, `exists`, `missing`, `missing_some`
+
+**Date/Time:** `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`
+
+**Error Handling:** `try`, `throw`
+
+**Type Operations:** `type`
+
+**Special:** `preserve` (structure preservation for templating)
 
 For the complete list and documentation, see the [main repository](https://github.com/GoPlasmatic/datalogic-rs).
 

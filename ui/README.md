@@ -1,18 +1,16 @@
 # @goplasmatic/datalogic-ui
 
-A React component library for visualizing and debugging JSONLogic expressions as interactive node-based flow diagrams.
-
-## Demo
-
-![DataLogic Debugger Demo](https://raw.githubusercontent.com/GoPlasmatic/datalogic-rs/main/ui/public/demo.gif)
+A React component library for visualizing, debugging, and editing JSONLogic expressions as interactive node-based flow diagrams.
 
 ## Features
 
 - Visual representation of JSONLogic expressions as flow diagrams
-- Support for all standard JSONLogic operators (logical, comparison, arithmetic, string, array, control flow)
-- Tree-based automatic layout using dagre
-- Three modes: Visualization, Debugging, and Editing (future)
-- Built-in WASM-based JSONLogic evaluation
+- Support for all standard JSONLogic operators (logical, comparison, arithmetic, string, array, control flow, datetime, error handling)
+- Tree-based automatic layout using @dagrejs/dagre
+- Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing
+- Editing mode with node selection, properties panel, context menus, and undo/redo
+- Structure preserve mode for JSON templates with embedded JSONLogic
+- Built-in WASM-based JSONLogic evaluation with execution tracing
 - Light/dark theme support with system preference detection
 
 ## Installation
@@ -45,15 +43,9 @@ function App() {
 
 ## Usage Modes
 
-The editor supports three modes, each providing different levels of functionality:
+The editor behavior is controlled by props rather than a mode enum. Different combinations of props enable different functionality:
 
-| Mode | API Value | Description |
-|------|-----------|-------------|
-| ReadOnly | `'visualize'` | Static diagram visualization, no evaluation |
-| Debugger | `'debug'` | Diagram with evaluation results and step-through debugging |
-| Editor | `'edit'` | **Coming Soon** - Full visual builder with live evaluation |
-
-### Mode 1: ReadOnly (`visualize`) - Default
+### Read-only (default)
 
 Simply render a JSONLogic expression as a flow diagram:
 
@@ -61,44 +53,54 @@ Simply render a JSONLogic expression as a flow diagram:
 <DataLogicEditor value={expression} />
 ```
 
-### Mode 2: Debugger (`debug`)
+### With Debugger
 
-Render with evaluation results and step-through debugging. Requires a `data` context:
+Provide `data` to enable debugger controls with step-through execution trace:
 
 ```tsx
 <DataLogicEditor
   value={expression}
   data={{ age: 25, status: "active" }}
-  mode="debug"
 />
 ```
 
-### Mode 3: Editor (`edit`) - Coming Soon
+### Editable
 
-Full visual builder with two-way binding and live evaluation. This mode is planned for a future release.
+Enable full visual editing with node selection, properties panel, context menus, and undo/redo:
 
 ```tsx
-// Coming Soon
 <DataLogicEditor
   value={expression}
   onChange={setExpression}
-  data={contextData}
-  mode="edit"
+  editable
 />
 ```
 
-> **Note:** Using `mode="edit"` currently renders the component in read-only mode with debug evaluation (if `data` is provided). A console warning will indicate this.
+### Editable + Debugger
+
+Combine editing with live debugging:
+
+```tsx
+<DataLogicEditor
+  value={expression}
+  onChange={setExpression}
+  data={{ age: 25, status: "active" }}
+  editable
+/>
+```
 
 ## Props
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `value` | `JsonLogicValue \| null` | required | JSONLogic expression to render |
-| `onChange` | `(expr: JsonLogicValue \| null) => void` | - | Callback when expression changes (edit mode only) |
-| `data` | `unknown` | - | Data context for evaluation (debug mode) |
-| `mode` | `'visualize' \| 'debug' \| 'edit'` | `'visualize'` | Editor mode |
-| `theme` | `'light' \| 'dark'` | system | Theme override |
+| `onChange` | `(expr: JsonLogicValue \| null) => void` | - | Callback when expression changes (only when `editable` is true) |
+| `data` | `unknown` | - | Data context for evaluation. When provided, debugger controls become available |
+| `theme` | `'light' \| 'dark'` | system | Theme override. If not provided, uses system preference |
 | `className` | `string` | - | Additional CSS class |
+| `preserveStructure` | `boolean` | `false` | Enable structure preserve mode for JSON templates with embedded JSONLogic |
+| `onPreserveStructureChange` | `(value: boolean) => void` | - | Callback when preserve structure changes (from toolbar checkbox) |
+| `editable` | `boolean` | `false` | Enable editing: node selection, properties panel, context menus, undo/redo |
 
 ## Exports
 
@@ -113,10 +115,15 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 ```tsx
 import type {
   DataLogicEditorProps,
-  DataLogicEditorMode,
   JsonLogicValue,
   LogicNode,
   LogicEdge,
+  LogicNodeData,
+  OperatorNodeData,
+  VariableNodeData,
+  LiteralNodeData,
+  NodeEvaluationResult,
+  EvaluationResultsMap,
   OperatorCategory,
 } from '@goplasmatic/datalogic-ui';
 ```
@@ -150,11 +157,10 @@ The component respects the `data-theme` attribute on parent elements for theming
 ## Development
 
 ```bash
-npm install       # Install dependencies
-npm run dev       # Start development server
-npm run build     # Build demo app
-npm run build:lib # Build library for publishing
-npm run lint      # Run ESLint
+pnpm install      # Install dependencies
+pnpm dev:ui       # Start development server
+pnpm build:ui:lib # Build library for publishing
+pnpm lint:ui      # Run ESLint
 ```
 
 ## Architecture
@@ -163,8 +169,8 @@ The main component is `DataLogicEditor` which:
 
 1. Accepts a `value` prop (JSONLogic expression) and renders it as a flow diagram
 2. Uses React Flow (`@xyflow/react`) for the node canvas
-3. Internally loads WASM module for JSONLogic evaluation (in debug mode)
-4. Supports three rendering modes: visualize, debug, and edit
+3. Internally loads WASM module for JSONLogic evaluation and execution tracing
+4. Supports read-only, debugger, and editable modes via props
 
 ### Data Flow
 
@@ -175,10 +181,9 @@ The main component is `DataLogicEditor` which:
 
 ### Node Types
 
-- **OperatorNode**: Renders operators (and, or, if, ==, +, etc.)
-- **VariableNode**: Renders variable references (var, val, exists)
-- **LiteralNode**: Renders literal values (strings, numbers, booleans)
-- **VerticalCellNode**: Renders vertical layouts for comparison chains and iterators
+- **OperatorNode** (UnifiedOperatorNode): Renders all operators with cell-based argument display (and, or, if, var, val, ==, +, etc.)
+- **LiteralNode**: Renders primitive values (strings, numbers, booleans, null)
+- **StructureNode**: Renders JSON objects/arrays in structure preserve mode
 
 ## Tech Stack
 
@@ -186,12 +191,11 @@ The main component is `DataLogicEditor` which:
 - TypeScript
 - Vite
 - React Flow (@xyflow/react)
-- dagre (for graph layout)
+- @dagrejs/dagre (graph layout)
+- lucide-react (icons)
+- @msgpack/msgpack (data serialization)
+- fflate (compression)
 - @goplasmatic/datalogic (bundled, for WASM evaluation)
-
-## Roadmap
-
-- **Full Visual Builder (Edit Mode)**: Interactive visual editing of JSONLogic expressions with drag-and-drop node creation, connection editing, and real-time evaluation feedback.
 
 ## Documentation
 

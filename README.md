@@ -56,10 +56,11 @@ assert_eq!(result, json!(true));
 
 - **Thread-Safe** - Compile once, evaluate anywhere with zero-copy `Arc` sharing
 - **Fully Compliant** - Passes the official JSONLogic test suite
-- **50+ Operators** - Including datetime, regex, and extended string/array operations
+- **59 Built-in Operators** - Including datetime, error handling, and extended string/array operations
 - **Extensible** - Add custom operators with a simple trait
+- **Configurable** - Customizable NaN handling, division by zero, and truthiness behavior
 - **Templating Mode** - Preserve object structures for dynamic JSON generation
-- **Multi-Platform** - Rust, WASM (browser/Node.js), with visual React debugger
+- **Multi-Platform** - Rust, WASM (browser/Node.js), with visual React debugger and editor
 
 ## JavaScript / TypeScript
 
@@ -84,7 +85,6 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 <DataLogicEditor
   value={{ "and": [{ ">": [{ "var": "age" }, 18] }, { "var": "active" }] }}
   data={{ age: 25, active: true }}
-  mode="debug"
 />
 ```
 
