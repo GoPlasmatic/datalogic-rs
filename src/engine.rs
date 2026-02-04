@@ -1,5 +1,4 @@
 use serde_json::Value;
-use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -380,12 +379,11 @@ impl DataLogic {
             CompiledNode::Value { value, .. } => Ok(value.clone()),
 
             CompiledNode::Array { nodes, .. } => {
-                // Use SmallVec for common small array sizes to avoid heap allocation
-                let mut results: SmallVec<[Value; 4]> = SmallVec::with_capacity(nodes.len());
+                let mut results = Vec::with_capacity(nodes.len());
                 for node in nodes.iter() {
                     results.push(self.evaluate_node(node, context)?);
                 }
-                Ok(Value::Array(results.into_vec()))
+                Ok(Value::Array(results))
             }
 
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
@@ -525,7 +523,7 @@ impl DataLogic {
             }
 
             CompiledNode::Array { nodes, .. } => {
-                let mut results: SmallVec<[Value; 4]> = SmallVec::with_capacity(nodes.len());
+                let mut results = Vec::with_capacity(nodes.len());
                 for node in nodes.iter() {
                     match self.evaluate_node_traced(node, context, collector, node_id_map) {
                         Ok(val) => results.push(val),
@@ -535,7 +533,7 @@ impl DataLogic {
                         }
                     }
                 }
-                let result = Value::Array(results.into_vec());
+                let result = Value::Array(results);
                 collector.record_step(node_id, current_context, result.clone());
                 Ok(result)
             }
