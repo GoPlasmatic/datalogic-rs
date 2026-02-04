@@ -307,7 +307,7 @@ fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Resu
     if matches!(left, Value::Array(_) | Value::Object(_))
         || matches!(right, Value::Array(_) | Value::Object(_))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     // If both are strings, do string comparison
@@ -327,7 +327,7 @@ fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Resu
     if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
         || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     Ok(false)
@@ -413,7 +413,7 @@ fn compare_greater_than_equal(left: &Value, right: &Value, engine: &DataLogic) -
     if matches!(left, Value::Array(_) | Value::Object(_))
         || matches!(right, Value::Array(_) | Value::Object(_))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     // If both are strings, do string comparison
@@ -433,7 +433,7 @@ fn compare_greater_than_equal(left: &Value, right: &Value, engine: &DataLogic) -
     if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
         || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     Ok(false)
@@ -519,7 +519,7 @@ fn compare_less_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<
     if matches!(left, Value::Array(_) | Value::Object(_))
         || matches!(right, Value::Array(_) | Value::Object(_))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     // If both are strings, do string comparison
@@ -539,7 +539,7 @@ fn compare_less_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<
     if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
         || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     Ok(false)
@@ -626,7 +626,7 @@ fn compare_less_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> R
     if matches!(left, Value::Array(_) | Value::Object(_))
         || matches!(right, Value::Array(_) | Value::Object(_))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     // If both are strings, do string comparison
@@ -646,7 +646,7 @@ fn compare_less_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> R
     if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
         || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
     {
-        return Err(crate::Error::Thrown(serde_json::json!({"type": "NaN"})));
+        return Err(crate::constants::nan_error());
     }
 
     Ok(false)

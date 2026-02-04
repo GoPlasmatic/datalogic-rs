@@ -93,14 +93,14 @@ pub fn evaluate_add(
         // Check if the argument is a literal array (which is invalid for addition)
         if matches!(&args[0], CompiledNode::Array { .. }) {
             // Literal array as argument - this is invalid for addition
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            return Err(crate::constants::nan_error());
         }
 
         // Also check if it's a Value node containing an array (from compilation)
         if let CompiledNode::Value { value, .. } = &args[0]
             && matches!(value, Value::Array(_))
         {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            return Err(crate::constants::nan_error());
         }
 
         let value = engine.evaluate_node(&args[0], context)?;
@@ -138,7 +138,7 @@ pub fn evaluate_add(
                     // Handle based on NaN configuration
                     match engine.config().arithmetic_nan_handling {
                         NanHandling::ThrowError => {
-                            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                            return Err(crate::constants::nan_error());
                         }
                         NanHandling::IgnoreValue => {
                             continue; // Skip this value
@@ -223,7 +223,7 @@ pub fn evaluate_add(
         if matches!(arg, CompiledNode::Array { .. }) {
             match engine.config().arithmetic_nan_handling {
                 NanHandling::ThrowError => {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 NanHandling::IgnoreValue => continue,
                 NanHandling::CoerceToZero => continue,
@@ -237,7 +237,7 @@ pub fn evaluate_add(
         if matches!(value, Value::Array(_) | Value::Object(_)) {
             match engine.config().arithmetic_nan_handling {
                 NanHandling::ThrowError => {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 NanHandling::IgnoreValue => continue,
                 NanHandling::CoerceToZero => continue,
@@ -271,7 +271,7 @@ pub fn evaluate_add(
         } else {
             match engine.config().arithmetic_nan_handling {
                 NanHandling::ThrowError => {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 NanHandling::IgnoreValue => continue,
                 NanHandling::CoerceToZero => continue,
@@ -309,11 +309,11 @@ pub fn evaluate_subtract(
             }
             // Subtract elements: first - second - third - ...
             let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                .ok_or_else(crate::constants::nan_error)?;
 
             for elem in &arr[1..] {
                 let num = coerce_to_number(elem, engine)
-                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                    .ok_or_else(crate::constants::nan_error)?;
                 result = safe_subtract(result, num);
             }
 
@@ -329,7 +329,7 @@ pub fn evaluate_subtract(
             }
         }
         let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
         Ok(number_value(-first_num))
     } else if args.len() == 2 {
         // Special case for datetime/duration arithmetic
@@ -401,9 +401,9 @@ pub fn evaluate_subtract(
         }
 
         let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
         let second_num = coerce_to_number(&second, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
 
         Ok(number_value(first_num - second_num))
     } else {
@@ -443,7 +443,7 @@ pub fn evaluate_subtract(
                 } else {
                     match engine.config().arithmetic_nan_handling {
                         NanHandling::ThrowError => {
-                            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                            return Err(crate::constants::nan_error());
                         }
                         NanHandling::IgnoreValue => continue,
                         NanHandling::CoerceToZero => continue,
@@ -455,7 +455,7 @@ pub fn evaluate_subtract(
             } else {
                 match engine.config().arithmetic_nan_handling {
                     NanHandling::ThrowError => {
-                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                        return Err(crate::constants::nan_error());
                     }
                     NanHandling::IgnoreValue => continue,
                     NanHandling::CoerceToZero => continue,
@@ -521,7 +521,7 @@ pub fn evaluate_multiply(
                 } else {
                     match engine.config().arithmetic_nan_handling {
                         NanHandling::ThrowError => {
-                            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                            return Err(crate::constants::nan_error());
                         }
                         NanHandling::IgnoreValue => continue,
                         NanHandling::CoerceToZero => {
@@ -612,7 +612,7 @@ pub fn evaluate_multiply(
         } else {
             match engine.config().arithmetic_nan_handling {
                 NanHandling::ThrowError => {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 NanHandling::IgnoreValue => {}
                 NanHandling::CoerceToZero => {
@@ -652,13 +652,13 @@ pub fn evaluate_divide(
             }
             // Divide elements: first / second / third / ...
             let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                .ok_or_else(crate::constants::nan_error)?;
 
             for elem in &arr[1..] {
                 let num = coerce_to_number(elem, engine)
-                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                    .ok_or_else(crate::constants::nan_error)?;
                 if num == 0.0 {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 result = safe_divide(result, num);
             }
@@ -668,10 +668,10 @@ pub fn evaluate_divide(
 
         // Single non-array argument: 1 / value
         let num = coerce_to_number(&value, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
 
         if num == 0.0 {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            return Err(crate::constants::nan_error());
         }
 
         // Try to preserve integer type with overflow check
@@ -708,7 +708,7 @@ pub fn evaluate_divide(
             && let Some(divisor) = coerce_to_number(&second, engine)
         {
             if divisor == 0.0 {
-                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                return Err(crate::constants::nan_error());
             }
             let result = dur.divide(divisor);
             return Ok(Value::String(result.to_string()));
@@ -720,7 +720,7 @@ pub fn evaluate_divide(
             try_coerce_to_integer(&second, engine),
         ) {
             if i2 == 0 {
-                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                return Err(crate::constants::nan_error());
             }
             // Special case: avoid overflow when dividing MIN by -1
             if i1 == i64::MIN && i2 == -1 {
@@ -734,12 +734,12 @@ pub fn evaluate_divide(
         }
 
         let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
         let second_num = coerce_to_number(&second, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
 
         if second_num == 0.0 {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            return Err(crate::constants::nan_error());
         }
 
         Ok(number_value(first_num / second_num))
@@ -754,7 +754,7 @@ pub fn evaluate_divide(
             0
         };
         let mut float_result = coerce_to_number(&first, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
 
         for item in args.iter().skip(1) {
             let value = engine.evaluate_node(item, context)?;
@@ -762,7 +762,7 @@ pub fn evaluate_divide(
             if all_integers {
                 if let Some(divisor) = try_coerce_to_integer(&value, engine) {
                     if divisor == 0 {
-                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                        return Err(crate::constants::nan_error());
                     }
                     // Special case: avoid overflow when dividing MIN by -1
                     if int_result == i64::MIN && divisor == -1 {
@@ -778,7 +778,7 @@ pub fn evaluate_divide(
                     }
                 } else if let Some(divisor) = coerce_to_number(&value, engine) {
                     if divisor == 0.0 {
-                        return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                        return Err(crate::constants::nan_error());
                     }
                     all_integers = false;
                     float_result = int_result as f64 / divisor;
@@ -787,9 +787,9 @@ pub fn evaluate_divide(
                 }
             } else {
                 let divisor = coerce_to_number(&value, engine)
-                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                    .ok_or_else(crate::constants::nan_error)?;
                 if divisor == 0.0 {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 float_result = safe_divide(float_result, divisor);
             }
@@ -823,13 +823,13 @@ pub fn evaluate_modulo(
             }
             // Modulo elements: first % second % third % ...
             let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                .ok_or_else(crate::constants::nan_error)?;
 
             for elem in &arr[1..] {
                 let num = coerce_to_number(elem, engine)
-                    .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                    .ok_or_else(crate::constants::nan_error)?;
                 if num == 0.0 {
-                    return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                    return Err(crate::constants::nan_error());
                 }
                 result = safe_modulo(result, num);
             }
@@ -853,7 +853,7 @@ pub fn evaluate_modulo(
             && let (Some(i1), Some(i2)) = (n1.as_i64(), n2.as_i64())
         {
             if i2 == 0 {
-                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                return Err(crate::constants::nan_error());
             }
             // Special case: i64::MIN % -1 would overflow in some contexts
             if i1 == i64::MIN && i2 == -1 {
@@ -863,27 +863,27 @@ pub fn evaluate_modulo(
         }
 
         let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
         let second_num = coerce_to_number(&second, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
 
         if second_num == 0.0 {
-            return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+            return Err(crate::constants::nan_error());
         }
 
         Ok(number_value(first_num % second_num))
     } else {
         // Variadic modulo (3+ arguments)
         let mut result = coerce_to_number(&first, engine)
-            .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+            .ok_or_else(crate::constants::nan_error)?;
 
         for item in args.iter().skip(1) {
             let value = engine.evaluate_node(item, context)?;
             let num = coerce_to_number(&value, engine)
-                .ok_or_else(|| Error::Thrown(serde_json::json!({"type": "NaN"})))?;
+                .ok_or_else(crate::constants::nan_error)?;
 
             if num == 0.0 {
-                return Err(Error::Thrown(serde_json::json!({"type": "NaN"})));
+                return Err(crate::constants::nan_error());
             }
 
             result = safe_modulo(result, num);
