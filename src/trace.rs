@@ -120,6 +120,39 @@ impl ExpressionNode {
                     children,
                 }
             }
+
+            CompiledNode::CompiledVar {
+                scope_level,
+                segments,
+                default_value,
+                ..
+            } => {
+                // CompiledVar has no operator children (default_value is a literal typically)
+                let mut children = Vec::new();
+                if let Some(def) = default_value
+                    && Self::is_operator_node(def)
+                {
+                    children.push(Self::build_node(def, id_counter, node_id_map));
+                }
+                ExpressionNode {
+                    id,
+                    expression: Self::compiled_var_to_json_string(
+                        *scope_level,
+                        segments,
+                        default_value.as_deref(),
+                    ),
+                    children,
+                }
+            }
+
+            CompiledNode::CompiledExists {
+                scope_level,
+                segments,
+            } => ExpressionNode {
+                id,
+                expression: Self::compiled_exists_to_json_string(*scope_level, segments),
+                children: vec![],
+            },
         }
     }
 
@@ -145,6 +178,18 @@ impl ExpressionNode {
             CompiledNode::StructuredObject { fields, .. } => {
                 Self::structured_to_json_string(fields)
             }
+            CompiledNode::CompiledVar {
+                scope_level,
+                segments,
+                default_value,
+                ..
+            } => {
+                Self::compiled_var_to_json_string(*scope_level, segments, default_value.as_deref())
+            }
+            CompiledNode::CompiledExists {
+                scope_level,
+                segments,
+            } => Self::compiled_exists_to_json_string(*scope_level, segments),
         }
     }
 
@@ -175,6 +220,71 @@ impl ExpressionNode {
             .map(|(key, node)| format!("\"{}\": {}", key, Self::node_to_json_string(node)))
             .collect();
         format!("{{{}}}", items.join(", "))
+    }
+
+    fn compiled_var_to_json_string(
+        scope_level: u32,
+        segments: &[crate::compiled::PathSegment],
+        default_value: Option<&CompiledNode>,
+    ) -> String {
+        use crate::compiled::PathSegment;
+        if scope_level == 0 {
+            let path: String = segments
+                .iter()
+                .map(|seg| match seg {
+                    PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s.to_string(),
+                    PathSegment::Index(i) => i.to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join(".");
+            match default_value {
+                Some(def) => {
+                    format!(
+                        "{{\"var\": [\"{}\", {}]}}",
+                        path,
+                        Self::node_to_json_string(def)
+                    )
+                }
+                None => format!("{{\"var\": \"{}\"}}", path),
+            }
+        } else {
+            let mut parts = vec![format!("[{}]", scope_level)];
+            for seg in segments {
+                match seg {
+                    PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
+                        parts.push(format!("\"{}\"", s))
+                    }
+                    PathSegment::Index(i) => parts.push(i.to_string()),
+                }
+            }
+            format!("{{\"val\": [{}]}}", parts.join(", "))
+        }
+    }
+
+    fn compiled_exists_to_json_string(
+        _scope_level: u32,
+        segments: &[crate::compiled::PathSegment],
+    ) -> String {
+        use crate::compiled::PathSegment;
+        if segments.len() == 1 {
+            match &segments[0] {
+                PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
+                    format!("{{\"exists\": \"{}\"}}", s)
+                }
+                PathSegment::Index(i) => format!("{{\"exists\": {}}}", i),
+            }
+        } else {
+            let parts: Vec<String> = segments
+                .iter()
+                .map(|seg| match seg {
+                    PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
+                        format!("\"{}\"", s)
+                    }
+                    PathSegment::Index(i) => i.to_string(),
+                })
+                .collect();
+            format!("{{\"exists\": [{}]}}", parts.join(", "))
+        }
     }
 }
 

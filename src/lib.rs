@@ -57,7 +57,7 @@ mod operators;
 mod trace;
 mod value_helpers;
 
-pub use compiled::{CompiledLogic, CompiledNode};
+pub use compiled::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };

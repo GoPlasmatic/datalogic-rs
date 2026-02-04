@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
+use crate::operators::variable;
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
@@ -412,6 +413,27 @@ impl DataLogic {
                 }
                 Ok(Value::Object(result))
             }
+
+            CompiledNode::CompiledVar {
+                scope_level,
+                segments,
+                reduce_hint,
+                metadata_hint,
+                default_value,
+            } => variable::evaluate_compiled_var(
+                *scope_level,
+                segments,
+                *reduce_hint,
+                *metadata_hint,
+                default_value.as_deref(),
+                context,
+                self,
+            ),
+
+            CompiledNode::CompiledExists {
+                scope_level,
+                segments,
+            } => variable::evaluate_compiled_exists(*scope_level, segments, context),
         }
     }
 
@@ -590,6 +612,19 @@ impl DataLogic {
                 collector.record_step(node_id, current_context, result.clone());
                 Ok(result)
             }
+
+            CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists { .. } => {
+                match self.evaluate_node(node, context) {
+                    Ok(result) => {
+                        collector.record_step(node_id, current_context, result.clone());
+                        Ok(result)
+                    }
+                    Err(err) => {
+                        collector.record_error(node_id, current_context, err.to_string());
+                        Err(err)
+                    }
+                }
+            }
         }
     }
 }
@@ -628,6 +663,71 @@ fn node_to_value(node: &CompiledNode) -> Value {
             }
             Value::Object(obj)
         }
+        CompiledNode::CompiledVar {
+            scope_level,
+            segments,
+            default_value,
+            ..
+        } => {
+            let mut obj = serde_json::Map::new();
+            if *scope_level == 0 {
+                // Reconstruct as var
+                let path = segments_to_dot_path(segments);
+                match default_value {
+                    Some(def) => {
+                        obj.insert(
+                            "var".into(),
+                            Value::Array(vec![Value::String(path), node_to_value(def)]),
+                        );
+                    }
+                    None => {
+                        obj.insert("var".into(), Value::String(path));
+                    }
+                }
+            } else {
+                // Reconstruct as val with level
+                let mut arr: Vec<Value> = vec![Value::Array(vec![Value::Number(
+                    (*scope_level as u64).into(),
+                )])];
+                for seg in segments.iter() {
+                    arr.push(segment_to_value(seg));
+                }
+                obj.insert("val".into(), Value::Array(arr));
+            }
+            Value::Object(obj)
+        }
+        CompiledNode::CompiledExists { segments, .. } => {
+            let mut obj = serde_json::Map::new();
+            if segments.len() == 1 {
+                obj.insert("exists".into(), segment_to_value(&segments[0]));
+            } else {
+                let arr: Vec<Value> = segments.iter().map(segment_to_value).collect();
+                obj.insert("exists".into(), Value::Array(arr));
+            }
+            Value::Object(obj)
+        }
+    }
+}
+
+/// Convert path segments back to a dot-separated path string.
+fn segments_to_dot_path(segments: &[crate::compiled::PathSegment]) -> String {
+    use crate::compiled::PathSegment;
+    segments
+        .iter()
+        .map(|seg| match seg {
+            PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s.to_string(),
+            PathSegment::Index(i) => i.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+/// Convert a path segment to a JSON value.
+fn segment_to_value(seg: &crate::compiled::PathSegment) -> Value {
+    use crate::compiled::PathSegment;
+    match seg {
+        PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => Value::String(s.to_string()),
+        PathSegment::Index(i) => Value::Number((*i as u64).into()),
     }
 }
 
