@@ -47,12 +47,12 @@ pub fn evaluate_merge(
         match value {
             Value::Array(arr) => {
                 // Filter out null values when extending
-                result.extend(arr.iter().filter(|v| !v.is_null()).cloned())
+                result.extend(arr.into_iter().filter(|v| !v.is_null()))
             }
             Value::Null => {
                 // Skip null values entirely
             }
-            v => result.push(v.clone()),
+            v => result.push(v),
         }
     }
 
@@ -214,7 +214,7 @@ pub fn evaluate_filter(
     match collection {
         Value::Array(arr) => {
             let len = arr.len();
-            let mut results = Vec::new();
+            let mut results = Vec::with_capacity(arr.len());
             let mut pushed = false;
 
             for (index, item) in arr.into_iter().enumerate() {
@@ -227,8 +227,8 @@ pub fn evaluate_filter(
                 let keep = engine.evaluate_node(predicate, context)?;
 
                 if is_truthy(&keep, engine) {
-                    // Clone from the context frame (avoids double-clone since item was moved in)
-                    results.push(context.current().data().clone());
+                    // Move data out of context frame instead of cloning
+                    results.push(context.take_top_data());
                 }
             }
             if len > 0 {
@@ -614,8 +614,9 @@ pub fn evaluate_sort(
         for (index, item) in array.iter().enumerate() {
             context.push(item.clone());
             let extracted = engine.evaluate_node(extractor, context)?;
+            let item_back = context.take_top_data();
             context.pop();
-            items_with_values.push((index, item.clone(), extracted));
+            items_with_values.push((index, item_back, extracted));
         }
 
         // Sort by extracted values

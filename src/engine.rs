@@ -375,6 +375,7 @@ impl DataLogic {
     /// # Returns
     ///
     /// The evaluation result, or an error if evaluation fails.
+    #[inline]
     pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
         match node {
             CompiledNode::Value { value, .. } => Ok(value.clone()),

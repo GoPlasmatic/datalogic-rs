@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use super::helpers::{check_invalid_args_marker, is_truthy};
@@ -46,17 +47,17 @@ pub fn evaluate_and(
 
     check_invalid_args_marker(args)?;
 
-    let mut last_value = Value::Bool(true);
+    let mut last_value: Cow<'_, Value> = Cow::Owned(Value::Bool(true));
 
     for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
+        let value = engine.evaluate_node_cow(arg, context)?;
         if !is_truthy(&value, engine) {
-            return Ok(value);
+            return Ok(value.into_owned());
         }
         last_value = value;
     }
 
-    Ok(last_value)
+    Ok(last_value.into_owned())
 }
 
 /// Logical OR operator function - returns first truthy or last value
@@ -72,17 +73,17 @@ pub fn evaluate_or(
 
     check_invalid_args_marker(args)?;
 
-    let mut last_value = Value::Bool(false);
+    let mut last_value: Cow<'_, Value> = Cow::Owned(Value::Bool(false));
 
     for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
+        let value = engine.evaluate_node_cow(arg, context)?;
         if is_truthy(&value, engine) {
-            return Ok(value);
+            return Ok(value.into_owned());
         }
         last_value = value;
     }
 
-    Ok(last_value)
+    Ok(last_value.into_owned())
 }
 
 // ============================================================================

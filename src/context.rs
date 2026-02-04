@@ -200,6 +200,19 @@ impl ContextStack {
         });
     }
 
+    /// Takes the data from the top frame, replacing it with Null.
+    ///
+    /// Moves the data out of the frame instead of cloning it.
+    /// Safe to use when the frame data will be overwritten before next access.
+    #[inline]
+    pub fn take_top_data(&mut self) -> Value {
+        if let Some(frame) = self.frames.last_mut() {
+            std::mem::replace(&mut frame.data, Value::Null)
+        } else {
+            Value::Null
+        }
+    }
+
     /// Replaces the data and index in the top frame in-place.
     ///
     /// Used by array iteration operators to avoid repeated push/pop overhead.
