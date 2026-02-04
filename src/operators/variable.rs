@@ -40,23 +40,38 @@ pub fn evaluate_var(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    // Evaluate the first argument to get the path
-    let path_arg = if args.is_empty() {
-        Value::String(String::new())
-    } else {
-        engine.evaluate_node(&args[0], context)?
-    };
+    if args.is_empty() {
+        return Ok(context.current().data().clone());
+    }
 
-    // Get the path string
+    // Fast path: first arg is a literal string or number (most common case).
+    // Avoids cloning the Value through evaluate_node just to extract a &str path.
+    let path_arg;
     let path_str;
-    let path = match &path_arg {
-        Value::String(s) => s.as_str(),
-        Value::Number(n) => {
-            // Support numeric indices for array access
+    let path = match &args[0] {
+        CompiledNode::Value {
+            value: Value::String(s),
+            ..
+        } => s.as_str(),
+        CompiledNode::Value {
+            value: Value::Number(n),
+            ..
+        } => {
             path_str = n.to_string();
             path_str.as_str()
         }
-        _ => "",
+        // Dynamic path: must evaluate to get the value
+        other => {
+            path_arg = engine.evaluate_node(other, context)?;
+            match &path_arg {
+                Value::String(s) => s.as_str(),
+                Value::Number(n) => {
+                    path_str = n.to_string();
+                    path_str.as_str()
+                }
+                _ => "",
+            }
+        }
     };
 
     // Access the variable in current context
