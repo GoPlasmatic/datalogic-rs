@@ -1,5 +1,6 @@
 use serde_json::Value;
 use smallvec::SmallVec;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -413,6 +414,23 @@ impl DataLogic {
                 }
                 Ok(Value::Object(result))
             }
+        }
+    }
+
+    /// Evaluate a compiled node, returning a `Cow` to avoid cloning literal values.
+    ///
+    /// For `CompiledNode::Value` nodes (constants/literals), returns a borrowed reference
+    /// to the pre-compiled value without cloning. For all other node types, performs full
+    /// evaluation and returns the owned result.
+    #[inline]
+    pub fn evaluate_node_cow<'a>(
+        &self,
+        node: &'a CompiledNode,
+        context: &mut ContextStack,
+    ) -> Result<Cow<'a, Value>> {
+        match node {
+            CompiledNode::Value { value, .. } => Ok(Cow::Borrowed(value)),
+            _ => self.evaluate_node(node, context).map(Cow::Owned),
         }
     }
 

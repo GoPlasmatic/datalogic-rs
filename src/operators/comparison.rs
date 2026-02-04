@@ -62,10 +62,10 @@ pub fn evaluate_equals(
     }
 
     // For chained equality (3+ arguments), check if all are equal
-    let first = engine.evaluate_node(&args[0], context)?;
+    let first = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = engine.evaluate_node(item, context)?;
+        let current = engine.evaluate_node_cow(item, context)?;
 
         // Compare first == current (loose equality)
         let result = compare_equals(&first, &current, false, engine)?;
@@ -91,10 +91,10 @@ pub fn evaluate_strict_equals(
     }
 
     // For chained equality (3+ arguments), check if all are equal
-    let first = engine.evaluate_node(&args[0], context)?;
+    let first = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = engine.evaluate_node(item, context)?;
+        let current = engine.evaluate_node_cow(item, context)?;
 
         // Compare first === current (strict equality)
         let result = compare_equals(&first, &current, true, engine)?;
@@ -108,9 +108,26 @@ pub fn evaluate_strict_equals(
     Ok(Value::Bool(true))
 }
 
+/// Returns true if a string could plausibly be a datetime or duration.
+/// Datetimes start with a digit (year), durations typically contain digits with time units.
+/// Short non-digit strings are definitely not datetime/duration.
+#[inline]
+fn could_be_datetime_or_duration(s: &str) -> bool {
+    s.len() >= 8 && s.as_bytes()[0].is_ascii_digit()
+}
+
 // Helper function for == and === comparison
 #[inline]
 fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic) -> Result<bool> {
+    // Fast path: both numbers — skip datetime/duration extraction entirely
+    if let (Value::Number(_), Value::Number(_)) = (left, right) {
+        return if strict {
+            Ok(strict_equals(left, right))
+        } else {
+            loose_equals(left, right, engine)
+        };
+    }
+
     // Handle datetime comparisons - both objects and strings
     let left_dt = extract_datetime_value(left);
     let right_dt = extract_datetime_value(right);
@@ -150,8 +167,8 @@ pub fn evaluate_not_equals(
     // But we need to handle lazy evaluation differently
 
     // Evaluate first two arguments
-    let first = engine.evaluate_node(&args[0], context)?;
-    let second = engine.evaluate_node(&args[1], context)?;
+    let first = engine.evaluate_node_cow(&args[0], context)?;
+    let second = engine.evaluate_node_cow(&args[1], context)?;
 
     // Compare them (loose equality)
     let equals = compare_equals(&first, &second, false, engine)?;
@@ -188,8 +205,8 @@ pub fn evaluate_strict_not_equals(
     // But we need to handle lazy evaluation differently
 
     // Evaluate first two arguments
-    let first = engine.evaluate_node(&args[0], context)?;
-    let second = engine.evaluate_node(&args[1], context)?;
+    let first = engine.evaluate_node_cow(&args[0], context)?;
+    let second = engine.evaluate_node_cow(&args[1], context)?;
 
     // Compare them (strict equality)
     let equals = compare_equals(&first, &second, true, engine)?;
@@ -224,10 +241,10 @@ pub fn evaluate_greater_than(
 
     // For chained comparisons (3+ arguments), check a > b > c > ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node(&args[0], context)?;
+    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let curr = engine.evaluate_node(item, context)?;
+        let curr = engine.evaluate_node_cow(item, context)?;
 
         // Compare prev > curr
         let result = compare_greater_than(&prev, &curr, engine)?;
@@ -245,6 +262,18 @@ pub fn evaluate_greater_than(
 // Helper function for > comparison
 #[inline]
 fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
+    // Fast path: both numbers — most common case
+    if let (Value::Number(l), Value::Number(r)) = (left, right) {
+        return Ok(l.as_f64().unwrap_or(f64::NAN) > r.as_f64().unwrap_or(f64::NAN));
+    }
+
+    // Fast path: both strings that can't be datetimes — skip datetime parsing
+    if let (Value::String(l), Value::String(r)) = (left, right)
+        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
+    {
+        return Ok(l > r);
+    }
+
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -318,10 +347,10 @@ pub fn evaluate_greater_than_equal(
 
     // For chained comparisons (3+ arguments), check a >= b >= c >= ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node(&args[0], context)?;
+    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let curr = engine.evaluate_node(item, context)?;
+        let curr = engine.evaluate_node_cow(item, context)?;
 
         // Compare prev >= curr
         let result = compare_greater_than_equal(&prev, &curr, engine)?;
@@ -339,6 +368,18 @@ pub fn evaluate_greater_than_equal(
 // Helper function for >= comparison
 #[inline]
 fn compare_greater_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
+    // Fast path: both numbers — most common case
+    if let (Value::Number(l), Value::Number(r)) = (left, right) {
+        return Ok(l.as_f64().unwrap_or(f64::NAN) >= r.as_f64().unwrap_or(f64::NAN));
+    }
+
+    // Fast path: both strings that can't be datetimes — skip datetime parsing
+    if let (Value::String(l), Value::String(r)) = (left, right)
+        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
+    {
+        return Ok(l >= r);
+    }
+
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -412,10 +453,10 @@ pub fn evaluate_less_than(
 
     // For chained comparisons (3+ arguments), check a < b < c < ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node(&args[0], context)?;
+    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = engine.evaluate_node(item, context)?;
+        let current = engine.evaluate_node_cow(item, context)?;
 
         // Compare prev < current
         let result = compare_less_than(&prev, &current, engine)?;
@@ -433,6 +474,18 @@ pub fn evaluate_less_than(
 // Helper function for < comparison
 #[inline]
 fn compare_less_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
+    // Fast path: both numbers — most common case
+    if let (Value::Number(l), Value::Number(r)) = (left, right) {
+        return Ok(l.as_f64().unwrap_or(f64::NAN) < r.as_f64().unwrap_or(f64::NAN));
+    }
+
+    // Fast path: both strings that can't be datetimes — skip datetime parsing
+    if let (Value::String(l), Value::String(r)) = (left, right)
+        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
+    {
+        return Ok(l < r);
+    }
+
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
@@ -506,10 +559,10 @@ pub fn evaluate_less_than_equal(
 
     // For chained comparisons (3+ arguments), check a <= b <= c <= ...
     // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node(&args[0], context)?;
+    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
-        let current = engine.evaluate_node(item, context)?;
+        let current = engine.evaluate_node_cow(item, context)?;
 
         // Compare prev <= current
         let result = compare_less_than_equal(&prev, &current, engine)?;
@@ -528,6 +581,18 @@ pub fn evaluate_less_than_equal(
 // Helper function for <= comparison
 #[inline]
 fn compare_less_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
+    // Fast path: both numbers — most common case
+    if let (Value::Number(l), Value::Number(r)) = (left, right) {
+        return Ok(l.as_f64().unwrap_or(f64::NAN) <= r.as_f64().unwrap_or(f64::NAN));
+    }
+
+    // Fast path: both strings that can't be datetimes — skip datetime parsing
+    if let (Value::String(l), Value::String(r)) = (left, right)
+        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
+    {
+        return Ok(l <= r);
+    }
+
     // Handle datetime comparisons first - both objects and strings
     let left_dt = if is_datetime_object(left) {
         extract_datetime(left)
