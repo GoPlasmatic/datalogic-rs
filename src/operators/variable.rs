@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
+use crate::compiled::{MetadataHint, PathSegment, ReduceHint};
 use crate::value_helpers::{access_path, access_path_ref};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
@@ -224,56 +224,6 @@ pub fn evaluate_val(
 
             return Ok(owned_value.unwrap_or_else(|| current_ref.clone()));
         } else if args.len() == 2 {
-            // Two arguments - check for datetime/duration property access first
-            let first = engine.evaluate_node(&args[0], context)?;
-            let second_val = engine.evaluate_node(&args[1], context)?;
-            let second_str = second_val.as_str();
-
-            if let Some(prop) = second_str {
-                // Check for datetime property access (both objects and strings)
-                let dt = if is_datetime_object(&first) {
-                    extract_datetime(&first)
-                } else if let Value::String(s) = &first {
-                    crate::datetime::DataDateTime::parse(s)
-                } else {
-                    None
-                };
-
-                if let Some(datetime) = dt {
-                    return Ok(match prop {
-                        "year" => json!(datetime.year()),
-                        "month" => json!(datetime.month()),
-                        "day" => json!(datetime.day()),
-                        "hour" => json!(datetime.hour()),
-                        "minute" => json!(datetime.minute()),
-                        "second" => json!(datetime.second()),
-                        "timestamp" => json!(datetime.timestamp()),
-                        "iso" => Value::String(datetime.to_iso_string()),
-                        _ => Value::Null,
-                    });
-                }
-
-                // Check for duration property access (both objects and strings)
-                let dur = if is_duration_object(&first) {
-                    extract_duration(&first)
-                } else if let Value::String(s) = &first {
-                    crate::datetime::DataDuration::parse(s)
-                } else {
-                    None
-                };
-
-                if let Some(duration) = dur {
-                    return Ok(match prop {
-                        "days" => json!(duration.days()),
-                        "hours" => json!(duration.hours()),
-                        "minutes" => json!(duration.minutes()),
-                        "seconds" => json!(duration.seconds()),
-                        "total_seconds" => json!(duration.total_seconds()),
-                        _ => Value::Null,
-                    });
-                }
-            }
-
             // Two arguments - chain access like ["user", "admin"] or [1, 1]
             // Pre-evaluate args, then use reference-based traversal, clone only at the end
             let evaluated_args: Vec<Value> = args
@@ -602,4 +552,214 @@ fn key_exists(value: &Value, key: &str) -> bool {
     } else {
         false
     }
+}
+
+/// Traverse pre-parsed path segments on a value (reference only, no context needed).
+#[inline]
+fn try_traverse_segments<'a>(data: &'a Value, segments: &[PathSegment]) -> Option<&'a Value> {
+    let mut current = data;
+    for seg in segments {
+        match seg {
+            PathSegment::Field(key) => match current {
+                Value::Object(obj) => match obj.get(key.as_ref()) {
+                    Some(v) => current = v,
+                    None => return None,
+                },
+                _ => return None,
+            },
+            PathSegment::Index(idx) => match current {
+                Value::Array(arr) => match arr.get(*idx) {
+                    Some(v) => current = v,
+                    None => return None,
+                },
+                _ => return None,
+            },
+            PathSegment::FieldOrIndex(key, idx) => match current {
+                Value::Object(obj) => match obj.get(key.as_ref()) {
+                    Some(v) => current = v,
+                    None => return None,
+                },
+                Value::Array(arr) => match arr.get(*idx) {
+                    Some(v) => current = v,
+                    None => return None,
+                },
+                _ => return None,
+            },
+        }
+    }
+    Some(current)
+}
+
+/// Return the default value if provided, otherwise null.
+#[inline]
+fn default_or_null(
+    default_value: Option<&CompiledNode>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    match default_value {
+        Some(node) => engine.evaluate_node(node, context),
+        None => Ok(Value::Null),
+    }
+}
+
+/// Evaluate a pre-compiled variable access (unified var/val).
+///
+/// This function handles both var (scope_level=0) and val (scope_level=N) access
+/// with pre-parsed path segments, avoiding runtime string splitting and parsing.
+#[inline]
+pub fn evaluate_compiled_var(
+    scope_level: u32,
+    segments: &[PathSegment],
+    reduce_hint: ReduceHint,
+    metadata_hint: MetadataHint,
+    default_value: Option<&CompiledNode>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    // 1. Metadata fast path (index/key)
+    match metadata_hint {
+        MetadataHint::Index => {
+            if let Some(idx) = context.current().get_index() {
+                return Ok(json!(idx));
+            }
+            if let Some(metadata) = context.current().metadata()
+                && let Some(value) = metadata.get("index")
+            {
+                return Ok(value.clone());
+            }
+        }
+        MetadataHint::Key => {
+            if let Some(key) = context.current().get_key() {
+                return Ok(Value::String(key.to_string()));
+            }
+            if let Some(metadata) = context.current().metadata()
+                && let Some(value) = metadata.get("key")
+            {
+                return Ok(value.clone());
+            }
+        }
+        MetadataHint::None => {}
+    }
+
+    // 2. Reduce context fast path
+    // Use Option<Option<Value>>: None = no reduce, Some(Some(v)) = found, Some(None) = not found
+    let reduce_result = {
+        let frame = context.current();
+        match reduce_hint {
+            ReduceHint::Current => frame.get_reduce_current().map(|v| Some(v.clone())),
+            ReduceHint::Accumulator => frame.get_reduce_accumulator().map(|v| Some(v.clone())),
+            ReduceHint::CurrentPath => frame
+                .get_reduce_current()
+                .map(|current| try_traverse_segments(current, &segments[1..]).cloned()),
+            ReduceHint::AccumulatorPath => frame
+                .get_reduce_accumulator()
+                .map(|acc| try_traverse_segments(acc, &segments[1..]).cloned()),
+            ReduceHint::None => None,
+        }
+    }; // frame borrow ends here
+
+    match reduce_result {
+        Some(Some(v)) => return Ok(v),
+        Some(None) => return default_or_null(default_value, context, engine),
+        None => {} // fall through to normal access
+    }
+
+    // 3. Get data at scope level and traverse
+    let data_result = {
+        let frame = if scope_level == 0 {
+            context.current()
+        } else {
+            context
+                .get_at_level(scope_level as isize)
+                .ok_or(Error::InvalidContextLevel(scope_level as isize))?
+        };
+
+        if segments.is_empty() {
+            Some(frame.data().clone())
+        } else {
+            try_traverse_segments(frame.data(), segments).cloned()
+        }
+    }; // frame borrow ends here
+
+    match data_result {
+        Some(v) => Ok(v),
+        None => default_or_null(default_value, context, engine),
+    }
+}
+
+/// Evaluate a pre-compiled exists check.
+#[inline]
+pub fn evaluate_compiled_exists(
+    scope_level: u32,
+    segments: &[PathSegment],
+    context: &mut ContextStack,
+) -> Result<Value> {
+    let frame = if scope_level == 0 {
+        context.current()
+    } else {
+        match context.get_at_level(scope_level as isize) {
+            Some(f) => f,
+            None => return Ok(Value::Bool(false)),
+        }
+    };
+
+    if segments.is_empty() {
+        return Ok(Value::Bool(true));
+    }
+
+    let mut current = frame.data();
+    let last = segments.len() - 1;
+    for (i, seg) in segments.iter().enumerate() {
+        match seg {
+            PathSegment::Field(key) => {
+                if let Value::Object(obj) = current {
+                    if i == last {
+                        return Ok(Value::Bool(obj.contains_key(key.as_ref())));
+                    }
+                    match obj.get(key.as_ref()) {
+                        Some(v) => current = v,
+                        None => return Ok(Value::Bool(false)),
+                    }
+                } else {
+                    return Ok(Value::Bool(false));
+                }
+            }
+            PathSegment::Index(idx) => {
+                if let Value::Array(arr) = current {
+                    if i == last {
+                        return Ok(Value::Bool(arr.get(*idx).is_some()));
+                    }
+                    match arr.get(*idx) {
+                        Some(v) => current = v,
+                        None => return Ok(Value::Bool(false)),
+                    }
+                } else {
+                    return Ok(Value::Bool(false));
+                }
+            }
+            PathSegment::FieldOrIndex(key, idx) => match current {
+                Value::Object(obj) => {
+                    if i == last {
+                        return Ok(Value::Bool(obj.contains_key(key.as_ref())));
+                    }
+                    match obj.get(key.as_ref()) {
+                        Some(v) => current = v,
+                        None => return Ok(Value::Bool(false)),
+                    }
+                }
+                Value::Array(arr) => {
+                    if i == last {
+                        return Ok(Value::Bool(arr.get(*idx).is_some()));
+                    }
+                    match arr.get(*idx) {
+                        Some(v) => current = v,
+                        None => return Ok(Value::Bool(false)),
+                    }
+                }
+                _ => return Ok(Value::Bool(false)),
+            },
+        }
+    }
+    Ok(Value::Bool(true))
 }

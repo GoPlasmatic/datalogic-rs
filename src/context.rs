@@ -4,12 +4,6 @@ use std::sync::Arc;
 
 // Static string constants for common metadata keys
 pub const INDEX_KEY: &str = "index";
-#[allow(dead_code)]
-pub const KEY_KEY: &str = "key";
-#[allow(dead_code)]
-pub const CURRENT_KEY: &str = "current";
-#[allow(dead_code)]
-pub const ACCUMULATOR_KEY: &str = "accumulator";
 
 /// A single frame in the context stack (for temporary/nested contexts)
 pub struct ContextFrame {

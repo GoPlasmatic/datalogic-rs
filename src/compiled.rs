@@ -2,6 +2,44 @@ use crate::{ContextStack, DataLogic, Result, opcode::OpCode};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// A pre-parsed path segment for compiled variable access.
+#[derive(Debug, Clone)]
+pub enum PathSegment {
+    /// Object field access by key
+    Field(Box<str>),
+    /// Array element access by index
+    Index(usize),
+    /// Try as object key first, then as array index (for segments that could be either).
+    /// Pre-parses the index at compile time to avoid runtime parsing.
+    FieldOrIndex(Box<str>, usize),
+}
+
+/// Hint for reduce context resolution, detected at compile time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReduceHint {
+    /// Normal path access (no reduce context)
+    None,
+    /// Path is exactly "current" — return reduce_current directly
+    Current,
+    /// Path is exactly "accumulator" — return reduce_accumulator directly
+    Accumulator,
+    /// Path starts with "current." — segments[0] is "current", use segments[1..] from reduce_current
+    CurrentPath,
+    /// Path starts with "accumulator." — segments[0] is "accumulator", use segments[1..] from reduce_accumulator
+    AccumulatorPath,
+}
+
+/// Hint for metadata access (index/key), detected at compile time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetadataHint {
+    /// Normal data access
+    None,
+    /// Access frame index metadata
+    Index,
+    /// Access frame key metadata
+    Key,
+}
+
 /// A compiled node representing a single operation or value in the logic tree.
 ///
 /// Nodes are created during the compilation phase and evaluated during execution.
@@ -53,6 +91,27 @@ pub enum CompiledNode {
     /// ensuring they work correctly within preserved structures.
     StructuredObject {
         fields: Box<[(String, CompiledNode)]>,
+    },
+
+    /// A pre-compiled variable access (unified var/val).
+    ///
+    /// scope_level 0 = current context (var-style), N = go up N levels (val with [[N], ...]).
+    /// Segments are pre-parsed at compile time to avoid runtime string splitting.
+    CompiledVar {
+        scope_level: u32,
+        segments: Box<[PathSegment]>,
+        reduce_hint: ReduceHint,
+        metadata_hint: MetadataHint,
+        default_value: Option<Box<CompiledNode>>,
+    },
+
+    /// A pre-compiled exists check.
+    ///
+    /// scope_level 0 = current context, N = go up N levels.
+    /// Segments are pre-parsed at compile time.
+    CompiledExists {
+        scope_level: u32,
+        segments: Box<[PathSegment]>,
     },
 }
 
@@ -248,6 +307,19 @@ impl CompiledLogic {
                     } else {
                         Self::compile_args(args_value, engine, preserve_structure)?
                     };
+                    // Try to optimize variable access operators at compile time
+                    if matches!(opcode, OpCode::Var | OpCode::Val | OpCode::Exists) {
+                        let optimized = match opcode {
+                            OpCode::Var => Self::try_compile_var(&args),
+                            OpCode::Val => Self::try_compile_val(&args),
+                            OpCode::Exists => Self::try_compile_exists(&args),
+                            _ => None,
+                        };
+                        if let Some(node) = optimized {
+                            return Ok(node);
+                        }
+                    }
+
                     let node = CompiledNode::BuiltinOperator { opcode, args };
 
                     // If engine is provided and node is static, evaluate it
@@ -361,6 +433,7 @@ impl CompiledLogic {
                 Self::opcode_is_static(opcode, args)
             }
             CompiledNode::CustomOperator { .. } => false, // Unknown operators are non-static
+            CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists { .. } => false, // Context-dependent
             CompiledNode::StructuredObject { fields, .. } => {
                 fields.iter().all(|(_, node)| Self::node_is_static(node))
             }
@@ -382,6 +455,291 @@ impl CompiledLogic {
     /// 5. Needs runtime disambiguation (`preserve`, `merge`, `min`, `max`)
     ///
     /// All other operators are **static** when their arguments are static.
+    /// Parse a dot-separated path into pre-parsed segments (for var, which uses dot notation).
+    /// Numeric segments become FieldOrIndex to handle both object keys and array indices.
+    fn parse_path_segments(path: &str) -> Vec<PathSegment> {
+        if path.is_empty() {
+            return Vec::new();
+        }
+        if !path.contains('.') {
+            if let Ok(idx) = path.parse::<usize>() {
+                return vec![PathSegment::FieldOrIndex(path.into(), idx)];
+            }
+            return vec![PathSegment::Field(path.into())];
+        }
+        path.split('.')
+            .map(|part| {
+                if let Ok(idx) = part.parse::<usize>() {
+                    PathSegment::FieldOrIndex(part.into(), idx)
+                } else {
+                    PathSegment::Field(part.into())
+                }
+            })
+            .collect()
+    }
+
+    /// Parse a var path and determine the reduce hint.
+    fn parse_var_path(path: &str) -> (ReduceHint, Vec<PathSegment>) {
+        if path == "current" {
+            (
+                ReduceHint::Current,
+                vec![PathSegment::Field("current".into())],
+            )
+        } else if path == "accumulator" {
+            (
+                ReduceHint::Accumulator,
+                vec![PathSegment::Field("accumulator".into())],
+            )
+        } else if let Some(rest) = path.strip_prefix("current.") {
+            let mut segs = vec![PathSegment::Field("current".into())];
+            segs.extend(Self::parse_path_segments(rest));
+            (ReduceHint::CurrentPath, segs)
+        } else if let Some(rest) = path.strip_prefix("accumulator.") {
+            let mut segs = vec![PathSegment::Field("accumulator".into())];
+            segs.extend(Self::parse_path_segments(rest));
+            (ReduceHint::AccumulatorPath, segs)
+        } else {
+            (ReduceHint::None, Self::parse_path_segments(path))
+        }
+    }
+
+    /// Try to compile a var operator into a CompiledVar node.
+    fn try_compile_var(args: &[CompiledNode]) -> Option<CompiledNode> {
+        if args.is_empty() {
+            return Some(CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments: Box::new([]),
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+            });
+        }
+
+        let (segments, reduce_hint) = match &args[0] {
+            CompiledNode::Value {
+                value: Value::String(s),
+            } => {
+                let (hint, segs) = Self::parse_var_path(s);
+                (segs, hint)
+            }
+            CompiledNode::Value {
+                value: Value::Number(n),
+            } => {
+                let s = n.to_string();
+                let segs = Self::parse_path_segments(&s);
+                (segs, ReduceHint::None)
+            }
+            _ => return None, // dynamic path
+        };
+
+        let default_value = if args.len() > 1 {
+            Some(Box::new(args[1].clone()))
+        } else {
+            None
+        };
+
+        Some(CompiledNode::CompiledVar {
+            scope_level: 0,
+            segments: segments.into_boxed_slice(),
+            reduce_hint,
+            metadata_hint: MetadataHint::None,
+            default_value,
+        })
+    }
+
+    /// Try to compile a val operator into a CompiledVar node.
+    fn try_compile_val(args: &[CompiledNode]) -> Option<CompiledNode> {
+        if args.is_empty() {
+            return Some(CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments: Box::new([]),
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+            });
+        }
+
+        // Val does NOT support dot-path notation. Each arg is a literal key/index.
+
+        // Case 2: Single non-empty string → single Field segment (literal key)
+        // Empty string has dual behavior (try key "" then whole-context fallback) — keep as BuiltinOperator.
+        if args.len() == 1 {
+            if let CompiledNode::Value {
+                value: Value::String(s),
+            } = &args[0]
+                && !s.is_empty()
+            {
+                let reduce_hint = if s == "current" {
+                    ReduceHint::Current
+                } else if s == "accumulator" {
+                    ReduceHint::Accumulator
+                } else {
+                    ReduceHint::None
+                };
+                let segment = if let Ok(idx) = s.parse::<usize>() {
+                    PathSegment::FieldOrIndex(s.as_str().into(), idx)
+                } else {
+                    PathSegment::Field(s.as_str().into())
+                };
+                return Some(CompiledNode::CompiledVar {
+                    scope_level: 0,
+                    segments: vec![segment].into_boxed_slice(),
+                    reduce_hint,
+                    metadata_hint: MetadataHint::None,
+                    default_value: None,
+                });
+            }
+            return None;
+        }
+
+        // Case 3: First arg is [[level]] array
+        if let CompiledNode::Value {
+            value: Value::Array(level_arr),
+        } = &args[0]
+            && let Some(Value::Number(level_num)) = level_arr.first()
+            && let Some(level) = level_num.as_u64()
+        {
+            // Check metadata hints for 2-arg case
+            let mut metadata_hint = MetadataHint::None;
+            if args.len() == 2
+                && let CompiledNode::Value {
+                    value: Value::String(s),
+                } = &args[1]
+            {
+                if s == "index" {
+                    metadata_hint = MetadataHint::Index;
+                } else if s == "key" {
+                    metadata_hint = MetadataHint::Key;
+                }
+            }
+
+            return Self::try_compile_val_segments(&args[1..], level as u32, metadata_hint);
+        }
+
+        // Case 4: 2+ args with all literal path segments — compile as path chain.
+        if let Some(first_seg) = Self::val_arg_to_segment(&args[0]) {
+            let reduce_hint = match &args[0] {
+                CompiledNode::Value {
+                    value: Value::String(s),
+                } if s == "current" => ReduceHint::CurrentPath,
+                CompiledNode::Value {
+                    value: Value::String(s),
+                } if s == "accumulator" => ReduceHint::AccumulatorPath,
+                _ => ReduceHint::None,
+            };
+
+            let mut segments = vec![first_seg];
+            if let Some(compiled) =
+                Self::try_collect_val_segments(&args[1..], &mut segments, reduce_hint)
+            {
+                return Some(compiled);
+            }
+        }
+
+        None
+    }
+
+    /// Convert a val argument into a PathSegment.
+    /// Val treats string args as literal keys (no dot-splitting), and numbers as indices.
+    /// Numeric strings get FieldOrIndex to handle both object key and array index access.
+    fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
+        match arg {
+            CompiledNode::Value {
+                value: Value::String(s),
+            } => {
+                if let Ok(idx) = s.parse::<usize>() {
+                    Some(PathSegment::FieldOrIndex(s.as_str().into(), idx))
+                } else {
+                    Some(PathSegment::Field(s.as_str().into()))
+                }
+            }
+            CompiledNode::Value {
+                value: Value::Number(n),
+            } => n.as_u64().map(|idx| PathSegment::Index(idx as usize)),
+            _ => None,
+        }
+    }
+
+    /// Try to compile val path segments (used by level-access and path-chain cases).
+    fn try_compile_val_segments(
+        args: &[CompiledNode],
+        scope_level: u32,
+        metadata_hint: MetadataHint,
+    ) -> Option<CompiledNode> {
+        let mut segments = Vec::new();
+        for arg in args {
+            segments.push(Self::val_arg_to_segment(arg)?);
+        }
+
+        Some(CompiledNode::CompiledVar {
+            scope_level,
+            segments: segments.into_boxed_slice(),
+            reduce_hint: ReduceHint::None,
+            metadata_hint,
+            default_value: None,
+        })
+    }
+
+    /// Try to collect remaining val args into segments and build a CompiledVar.
+    fn try_collect_val_segments(
+        args: &[CompiledNode],
+        segments: &mut Vec<PathSegment>,
+        reduce_hint: ReduceHint,
+    ) -> Option<CompiledNode> {
+        for arg in args {
+            segments.push(Self::val_arg_to_segment(arg)?);
+        }
+
+        Some(CompiledNode::CompiledVar {
+            scope_level: 0,
+            segments: std::mem::take(segments).into_boxed_slice(),
+            reduce_hint,
+            metadata_hint: MetadataHint::None,
+            default_value: None,
+        })
+    }
+
+    /// Try to compile an exists operator into a CompiledExists node.
+    fn try_compile_exists(args: &[CompiledNode]) -> Option<CompiledNode> {
+        if args.is_empty() {
+            return Some(CompiledNode::CompiledExists {
+                scope_level: 0,
+                segments: Box::new([]),
+            });
+        }
+
+        if args.len() == 1 {
+            if let CompiledNode::Value {
+                value: Value::String(s),
+            } = &args[0]
+            {
+                return Some(CompiledNode::CompiledExists {
+                    scope_level: 0,
+                    segments: vec![PathSegment::Field(s.as_str().into())].into_boxed_slice(),
+                });
+            }
+            return None;
+        }
+
+        // Multiple args - all must be literal strings
+        let mut segments = Vec::new();
+        for arg in args {
+            if let CompiledNode::Value {
+                value: Value::String(s),
+            } = arg
+            {
+                segments.push(PathSegment::Field(s.as_str().into()));
+            } else {
+                return None;
+            }
+        }
+
+        Some(CompiledNode::CompiledExists {
+            scope_level: 0,
+            segments: segments.into_boxed_slice(),
+        })
+    }
+
     fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         use OpCode::*;
 

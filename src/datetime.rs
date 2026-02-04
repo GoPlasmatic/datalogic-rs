@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Timelike, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use serde_json::Value;
 use std::fmt;
 
@@ -80,34 +80,6 @@ impl DataDateTime {
 
     pub fn to_iso_string(&self) -> String {
         self.dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-    }
-
-    pub fn year(&self) -> i32 {
-        self.dt.year()
-    }
-
-    pub fn month(&self) -> u32 {
-        self.dt.month()
-    }
-
-    pub fn day(&self) -> u32 {
-        self.dt.day()
-    }
-
-    pub fn hour(&self) -> u32 {
-        self.dt.hour()
-    }
-
-    pub fn minute(&self) -> u32 {
-        self.dt.minute()
-    }
-
-    pub fn second(&self) -> u32 {
-        self.dt.second()
-    }
-
-    pub fn timestamp(&self) -> i64 {
-        self.dt.timestamp()
     }
 
     pub fn add_duration(&self, duration: &DataDuration) -> DataDateTime {
@@ -235,26 +207,6 @@ impl DataDuration {
         } else {
             Duration::try_seconds(total_seconds).map(DataDuration)
         }
-    }
-
-    pub fn days(&self) -> i64 {
-        self.0.num_days()
-    }
-
-    pub fn hours(&self) -> i64 {
-        (self.0.num_seconds() % 86400) / 3600
-    }
-
-    pub fn minutes(&self) -> i64 {
-        (self.0.num_seconds() % 3600) / 60
-    }
-
-    pub fn seconds(&self) -> i64 {
-        self.0.num_seconds() % 60
-    }
-
-    pub fn total_seconds(&self) -> i64 {
-        self.0.num_seconds()
     }
 
     pub fn multiply(&self, factor: f64) -> DataDuration {
