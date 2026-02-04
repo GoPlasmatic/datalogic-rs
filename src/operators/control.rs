@@ -86,9 +86,9 @@ pub fn evaluate_coalesce(
 
     // Return the first non-null value
     for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
-        if value != Value::Null {
-            return Ok(value);
+        let value = engine.evaluate_node_cow(arg, context)?;
+        if *value != Value::Null {
+            return Ok(value.into_owned());
         }
     }
 

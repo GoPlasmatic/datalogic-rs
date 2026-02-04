@@ -24,7 +24,7 @@ pub fn evaluate_abs(
     if args.len() > 1 {
         let mut results = Vec::new();
         for arg in args {
-            let value = engine.evaluate_node(arg, context)?;
+            let value = engine.evaluate_node_cow(arg, context)?;
             if let Some(num) = get_number_strict(&value) {
                 let abs_val = num.abs();
                 // Try to keep as integer if possible
@@ -46,7 +46,7 @@ pub fn evaluate_abs(
     }
 
     // Single argument - evaluate and return abs
-    let value = engine.evaluate_node(&args[0], context)?;
+    let value = engine.evaluate_node_cow(&args[0], context)?;
 
     if let Some(num) = get_number_strict(&value) {
         let abs_val = num.abs();

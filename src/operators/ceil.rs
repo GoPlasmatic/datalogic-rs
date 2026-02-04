@@ -24,7 +24,7 @@ pub fn evaluate_ceil(
     if args.len() > 1 {
         let mut results = Vec::new();
         for arg in args {
-            let value = engine.evaluate_node(arg, context)?;
+            let value = engine.evaluate_node_cow(arg, context)?;
             if let Some(num) = get_number_strict(&value) {
                 let ceil_val = num.ceil();
                 results.push(Value::Number((ceil_val as i64).into()));
@@ -36,7 +36,7 @@ pub fn evaluate_ceil(
     }
 
     // Single argument - evaluate and return ceil
-    let value = engine.evaluate_node(&args[0], context)?;
+    let value = engine.evaluate_node_cow(&args[0], context)?;
 
     if let Some(num) = get_number_strict(&value) {
         let ceil_val = num.ceil();

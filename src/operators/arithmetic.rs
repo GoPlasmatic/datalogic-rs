@@ -164,8 +164,8 @@ pub fn evaluate_add(
 
     // Special case for two arguments (most common)
     if args.len() == 2 {
-        let first = engine.evaluate_node(&args[0], context)?;
-        let second = engine.evaluate_node(&args[1], context)?;
+        let first = engine.evaluate_node_cow(&args[0], context)?;
+        let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Fast path: both are numbers (most common case) — skip datetime checks
         if let (Some(i1), Some(i2)) = (
@@ -188,7 +188,7 @@ pub fn evaluate_add(
         // DateTime + Duration
         let first_dt = if is_datetime_object(&first) {
             extract_datetime(&first)
-        } else if let Value::String(s) = &first {
+        } else if let Value::String(s) = first.as_ref() {
             crate::datetime::DataDateTime::parse(s)
         } else {
             None
@@ -196,7 +196,7 @@ pub fn evaluate_add(
 
         let second_dur = if is_duration_object(&second) {
             extract_duration(&second)
-        } else if let Value::String(s) = &second {
+        } else if let Value::String(s) = second.as_ref() {
             crate::datetime::DataDuration::parse(s)
         } else {
             None
@@ -210,7 +210,7 @@ pub fn evaluate_add(
         // Duration + Duration
         let first_dur = if is_duration_object(&first) {
             extract_duration(&first)
-        } else if let Value::String(s) = &first {
+        } else if let Value::String(s) = first.as_ref() {
             crate::datetime::DataDuration::parse(s)
         } else {
             None
@@ -218,7 +218,7 @@ pub fn evaluate_add(
 
         let second_dur2 = if is_duration_object(&second) {
             extract_duration(&second)
-        } else if let Value::String(s) = &second {
+        } else if let Value::String(s) = second.as_ref() {
             crate::datetime::DataDuration::parse(s)
         } else {
             None
@@ -232,7 +232,7 @@ pub fn evaluate_add(
         // Non-numeric, non-datetime values — handle NaN per config
         // At least one of the two values is not coercible to number
         let mut sum = 0.0f64;
-        for val in [&first, &second] {
+        for val in [first.as_ref(), second.as_ref()] {
             if let Some(f) = coerce_to_number(val, engine) {
                 sum = safe_add(sum, f);
             } else {
@@ -265,10 +265,10 @@ pub fn evaluate_add(
             }
         }
 
-        let value = engine.evaluate_node(arg, context)?;
+        let value = engine.evaluate_node_cow(arg, context)?;
 
         // Arrays and objects are invalid for addition
-        if matches!(value, Value::Array(_) | Value::Object(_)) {
+        if matches!(value.as_ref(), Value::Array(_) | Value::Object(_)) {
             match engine.config().arithmetic_nan_handling {
                 NanHandling::ThrowError => {
                     return Err(crate::constants::nan_error());
@@ -364,7 +364,7 @@ pub fn evaluate_subtract(
         let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
         Ok(number_value(-first_num))
     } else if args.len() == 2 {
-        let second = engine.evaluate_node(&args[1], context)?;
+        let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Fast path: both are numbers (most common case) — skip datetime checks
         if let (Some(i1), Some(i2)) = (
@@ -392,9 +392,9 @@ pub fn evaluate_subtract(
             None
         };
 
-        let second_dt = if is_datetime_object(&second) {
-            extract_datetime(&second)
-        } else if let Value::String(s) = &second {
+        let second_dt = if is_datetime_object(second.as_ref()) {
+            extract_datetime(second.as_ref())
+        } else if let Value::String(s) = second.as_ref() {
             crate::datetime::DataDateTime::parse(s)
         } else {
             None
@@ -408,9 +408,9 @@ pub fn evaluate_subtract(
             None
         };
 
-        let second_dur = if is_duration_object(&second) {
-            extract_duration(&second)
-        } else if let Value::String(s) = &second {
+        let second_dur = if is_duration_object(second.as_ref()) {
+            extract_duration(second.as_ref())
+        } else if let Value::String(s) = second.as_ref() {
             crate::datetime::DataDuration::parse(s)
         } else {
             None
@@ -471,7 +471,7 @@ pub fn evaluate_subtract(
 
         // Subtract remaining arguments
         for item in args.iter().skip(1) {
-            let value = engine.evaluate_node(item, context)?;
+            let value = engine.evaluate_node_cow(item, context)?;
 
             if all_integers {
                 if let Some(i) = try_coerce_to_integer(&value, engine) {
@@ -591,8 +591,8 @@ pub fn evaluate_multiply(
 
     // Special case for two arguments
     if args.len() == 2 {
-        let first = engine.evaluate_node(&args[0], context)?;
-        let second = engine.evaluate_node(&args[1], context)?;
+        let first = engine.evaluate_node_cow(&args[0], context)?;
+        let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Fast path: both are numbers (most common case) — skip duration checks
         if let (Some(i1), Some(i2)) = (
@@ -614,7 +614,7 @@ pub fn evaluate_multiply(
         // Slow path: duration * number
         let first_dur = if is_duration_object(&first) {
             extract_duration(&first)
-        } else if let Value::String(s) = &first {
+        } else if let Value::String(s) = first.as_ref() {
             crate::datetime::DataDuration::parse(s)
         } else {
             None
@@ -630,7 +630,7 @@ pub fn evaluate_multiply(
         // Number * Duration
         let second_dur = if is_duration_object(&second) {
             extract_duration(&second)
-        } else if let Value::String(s) = &second {
+        } else if let Value::String(s) = second.as_ref() {
             crate::datetime::DataDuration::parse(s)
         } else {
             None
@@ -651,7 +651,7 @@ pub fn evaluate_multiply(
     let mut float_product = 1.0;
 
     for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
+        let value = engine.evaluate_node_cow(arg, context)?;
 
         // Try integer coercion first
         if let Some(i) = try_coerce_to_integer(&value, engine) {
@@ -755,7 +755,7 @@ pub fn evaluate_divide(
     let first = engine.evaluate_node(&args[0], context)?;
 
     if args.len() == 2 {
-        let second = engine.evaluate_node(&args[1], context)?;
+        let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Duration / Number
         let first_dur = if is_duration_object(&first) {
@@ -818,7 +818,7 @@ pub fn evaluate_divide(
             coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
 
         for item in args.iter().skip(1) {
-            let value = engine.evaluate_node(item, context)?;
+            let value = engine.evaluate_node_cow(item, context)?;
 
             if all_integers {
                 if let Some(divisor) = try_coerce_to_integer(&value, engine) {
@@ -906,10 +906,10 @@ pub fn evaluate_modulo(
     let first = engine.evaluate_node(&args[0], context)?;
 
     if args.len() == 2 {
-        let second = engine.evaluate_node(&args[1], context)?;
+        let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Check if both are integers
-        if let (Value::Number(n1), Value::Number(n2)) = (&first, &second)
+        if let (Value::Number(n1), Value::Number(n2)) = (&first, second.as_ref())
             && let (Some(i1), Some(i2)) = (n1.as_i64(), n2.as_i64())
         {
             if i2 == 0 {
@@ -937,7 +937,7 @@ pub fn evaluate_modulo(
             coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
 
         for item in args.iter().skip(1) {
-            let value = engine.evaluate_node(item, context)?;
+            let value = engine.evaluate_node_cow(item, context)?;
             let num = coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
 
             if num == 0.0 {

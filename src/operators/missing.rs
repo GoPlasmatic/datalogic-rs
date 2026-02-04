@@ -13,9 +13,9 @@ pub fn evaluate_missing(
     let mut missing = Vec::new();
 
     for arg in args {
-        let path_val = engine.evaluate_node(arg, context)?;
+        let path_val = engine.evaluate_node_cow(arg, context)?;
 
-        match &path_val {
+        match path_val.as_ref() {
             Value::Array(arr) => {
                 for v in arr {
                     if let Some(path) = v.as_str()
@@ -50,15 +50,15 @@ pub fn evaluate_missing_some(
     }
 
     // First argument is the minimum number of fields that must be PRESENT
-    let min_present_val = engine.evaluate_node(&args[0], context)?;
+    let min_present_val = engine.evaluate_node_cow(&args[0], context)?;
     let min_present = min_present_val.as_u64().unwrap_or(1) as usize;
 
-    let paths_val = engine.evaluate_node(&args[1], context)?;
+    let paths_val = engine.evaluate_node_cow(&args[1], context)?;
 
     let mut missing = Vec::new();
     let mut present_count = 0;
 
-    if let Value::Array(arr) = &paths_val {
+    if let Value::Array(arr) = paths_val.as_ref() {
         for v in arr {
             if let Some(path) = v.as_str() {
                 if access_path_ref(context.current().data(), path).is_none() {
