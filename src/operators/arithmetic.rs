@@ -177,7 +177,10 @@ pub fn evaluate_add(
                 None => Ok(number_value(i1 as f64 + i2 as f64)),
             };
         }
-        if let (Some(f1), Some(f2)) = (coerce_to_number(&first, engine), coerce_to_number(&second, engine)) {
+        if let (Some(f1), Some(f2)) = (
+            coerce_to_number(&first, engine),
+            coerce_to_number(&second, engine),
+        ) {
             return Ok(number_value(safe_add(f1, f2)));
         }
 
@@ -373,7 +376,10 @@ pub fn evaluate_subtract(
                 None => Ok(number_value(i1 as f64 - i2 as f64)),
             };
         }
-        if let (Some(f1), Some(f2)) = (coerce_to_number(&first, engine), coerce_to_number(&second, engine)) {
+        if let (Some(f1), Some(f2)) = (
+            coerce_to_number(&first, engine),
+            coerce_to_number(&second, engine),
+        ) {
             return Ok(number_value(safe_subtract(f1, f2)));
         }
 
@@ -598,7 +604,10 @@ pub fn evaluate_multiply(
                 None => Ok(number_value(i1 as f64 * i2 as f64)),
             };
         }
-        if let (Some(f1), Some(f2)) = (coerce_to_number(&first, engine), coerce_to_number(&second, engine)) {
+        if let (Some(f1), Some(f2)) = (
+            coerce_to_number(&first, engine),
+            coerce_to_number(&second, engine),
+        ) {
             return Ok(number_value(safe_multiply(f1, f2)));
         }
 

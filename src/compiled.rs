@@ -51,7 +51,9 @@ pub enum CompiledNode {
     ///
     /// Note: Custom operators are checked before treating keys as structured fields,
     /// ensuring they work correctly within preserved structures.
-    StructuredObject { fields: Box<[(String, CompiledNode)]> },
+    StructuredObject {
+        fields: Box<[(String, CompiledNode)]>,
+    },
 }
 
 // Hash methods removed - no longer needed
@@ -189,13 +191,16 @@ impl CompiledLogic {
                 if preserve_structure {
                     // In preserve_structure mode, treat multi-key objects as structured objects
                     // We'll create a special StructuredObject node that gets evaluated field by field
-                    let fields: Vec<_> = obj.iter()
+                    let fields: Vec<_> = obj
+                        .iter()
                         .map(|(key, val)| {
                             Self::compile_node(val, engine, preserve_structure)
                                 .map(|compiled_val| (key.clone(), compiled_val))
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    Ok(CompiledNode::StructuredObject { fields: fields.into_boxed_slice() })
+                    Ok(CompiledNode::StructuredObject {
+                        fields: fields.into_boxed_slice(),
+                    })
                 } else {
                     // Multi-key objects are not valid operators
                     Err(crate::error::Error::InvalidOperator(
@@ -235,11 +240,10 @@ impl CompiledLogic {
                                 .map(|v| CompiledNode::Value { value: v.clone() })
                                 .collect::<Vec<_>>()
                                 .into_boxed_slice(),
-                            _ => {
-                                vec![CompiledNode::Value {
-                                    value: args_value.clone(),
-                                }].into_boxed_slice()
-                            }
+                            _ => vec![CompiledNode::Value {
+                                value: args_value.clone(),
+                            }]
+                            .into_boxed_slice(),
                         }
                     } else {
                         Self::compile_args(args_value, engine, preserve_structure)?
