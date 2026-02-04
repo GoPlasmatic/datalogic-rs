@@ -13,12 +13,10 @@ pub fn evaluate_not(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    let value = if args.is_empty() {
-        Value::Null
-    } else {
-        engine.evaluate_node(&args[0], context)?
-    };
-
+    if args.is_empty() {
+        return Ok(Value::Bool(true)); // !null = true
+    }
+    let value = engine.evaluate_node_cow(&args[0], context)?;
     Ok(Value::Bool(!is_truthy(&value, engine)))
 }
 
@@ -29,12 +27,10 @@ pub fn evaluate_double_not(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    let value = if args.is_empty() {
-        Value::Null
-    } else {
-        engine.evaluate_node(&args[0], context)?
-    };
-
+    if args.is_empty() {
+        return Ok(Value::Bool(false)); // !!null = false
+    }
+    let value = engine.evaluate_node_cow(&args[0], context)?;
     Ok(Value::Bool(is_truthy(&value, engine)))
 }
 

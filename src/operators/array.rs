@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use super::helpers::is_truthy;
 use crate::constants::INVALID_ARGS;
-use crate::context::{ACCUMULATOR_KEY, CURRENT_KEY, INDEX_KEY, KEY_KEY};
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
@@ -111,20 +110,23 @@ pub fn evaluate_map(
     let collection = engine.evaluate_node(&args[0], context)?;
     let logic = &args[1];
 
-    match &collection {
+    match collection {
         Value::Array(arr) => {
-            let mut results = Vec::with_capacity(arr.len());
+            let len = arr.len();
+            let mut results = Vec::with_capacity(len);
+            let mut pushed = false;
 
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
+            for (index, item) in arr.into_iter().enumerate() {
+                if !pushed {
+                    context.push_with_index(item, 0);
+                    pushed = true;
                 } else {
-                    context.replace_top_data(item.clone(), index);
+                    context.replace_top_data(item, index);
                 }
                 let result = engine.evaluate_node(logic, context)?;
                 results.push(result);
             }
-            if !arr.is_empty() {
+            if len > 0 {
                 context.pop();
             }
 
@@ -134,13 +136,15 @@ pub fn evaluate_map(
             let mut results = Vec::with_capacity(obj.len());
 
             for (index, (key, value)) in obj.iter().enumerate() {
-                let mut metadata = HashMap::with_capacity(2);
-                metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
-                metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                context.push_with_metadata(value.clone(), metadata);
+                if index == 0 {
+                    context.push_with_key_index(value.clone(), 0, key.clone());
+                } else {
+                    context.replace_top_key_data(value.clone(), index, key.clone());
+                }
                 let result = engine.evaluate_node(logic, context)?;
                 results.push(result);
+            }
+            if !obj.is_empty() {
                 context.pop();
             }
 
@@ -148,9 +152,9 @@ pub fn evaluate_map(
         }
         Value::Null => Ok(Value::Array(vec![])),
         // For primitive values (number, string, bool), treat as single-element collection
-        _ => {
+        other => {
             // Use push_with_index to avoid HashMap allocation
-            context.push_with_index(collection, 0);
+            context.push_with_index(other, 0);
             let result = engine.evaluate_node(logic, context)?;
             context.pop();
 
@@ -207,23 +211,27 @@ pub fn evaluate_filter(
     let collection = engine.evaluate_node(&args[0], context)?;
     let predicate = &args[1];
 
-    match &collection {
+    match collection {
         Value::Array(arr) => {
+            let len = arr.len();
             let mut results = Vec::new();
+            let mut pushed = false;
 
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
+            for (index, item) in arr.into_iter().enumerate() {
+                if !pushed {
+                    context.push_with_index(item, 0);
+                    pushed = true;
                 } else {
-                    context.replace_top_data(item.clone(), index);
+                    context.replace_top_data(item, index);
                 }
                 let keep = engine.evaluate_node(predicate, context)?;
 
                 if is_truthy(&keep, engine) {
-                    results.push(item.clone());
+                    // Clone from the context frame (avoids double-clone since item was moved in)
+                    results.push(context.current().data().clone());
                 }
             }
-            if !arr.is_empty() {
+            if len > 0 {
                 context.pop();
             }
 
@@ -233,17 +241,19 @@ pub fn evaluate_filter(
             let mut result_obj = serde_json::Map::new();
 
             for (index, (key, value)) in obj.iter().enumerate() {
-                let mut metadata = HashMap::with_capacity(2);
-                metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
-                metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                context.push_with_metadata(value.clone(), metadata);
+                if index == 0 {
+                    context.push_with_key_index(value.clone(), 0, key.clone());
+                } else {
+                    context.replace_top_key_data(value.clone(), index, key.clone());
+                }
                 let keep = engine.evaluate_node(predicate, context)?;
-                context.pop();
 
                 if is_truthy(&keep, engine) {
                     result_obj.insert(key.clone(), value.clone());
                 }
+            }
+            if !obj.is_empty() {
+                context.pop();
             }
 
             Ok(Value::Object(result_obj))
@@ -295,21 +305,26 @@ pub fn evaluate_reduce(
     let logic = &args[1];
     let initial = engine.evaluate_node(&args[2], context)?;
 
-    match &array {
+    match array {
         Value::Array(arr) => {
             if arr.is_empty() {
                 return Ok(initial);
             }
 
+            let len = arr.len();
             let mut accumulator = initial;
+            let mut pushed = false;
 
-            for current in arr {
-                let mut frame_data = serde_json::Map::with_capacity(2);
-                frame_data.insert(CURRENT_KEY.to_string(), current.clone());
-                frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator.clone());
-
-                context.push(Value::Object(frame_data));
+            for current in arr.into_iter() {
+                if !pushed {
+                    context.push_reduce(current, accumulator);
+                    pushed = true;
+                } else {
+                    context.replace_reduce_data(current, accumulator);
+                }
                 accumulator = engine.evaluate_node(logic, context)?;
+            }
+            if len > 0 {
                 context.pop();
             }
 
@@ -359,13 +374,16 @@ pub fn evaluate_all(
     let collection = engine.evaluate_node(&args[0], context)?;
     let predicate = &args[1];
 
-    match &collection {
+    match collection {
         Value::Array(arr) if !arr.is_empty() => {
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
+            let len = arr.len();
+            let mut pushed = false;
+            for (index, item) in arr.into_iter().enumerate() {
+                if !pushed {
+                    context.push_with_index(item, 0);
+                    pushed = true;
                 } else {
-                    context.replace_top_data(item.clone(), index);
+                    context.replace_top_data(item, index);
                 }
                 let result = engine.evaluate_node(predicate, context)?;
 
@@ -374,7 +392,9 @@ pub fn evaluate_all(
                     return Ok(Value::Bool(false));
                 }
             }
-            context.pop();
+            if len > 0 {
+                context.pop();
+            }
             Ok(Value::Bool(true))
         }
         Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
@@ -421,13 +441,16 @@ pub fn evaluate_some(
     let collection = engine.evaluate_node(&args[0], context)?;
     let predicate = &args[1];
 
-    match &collection {
+    match collection {
         Value::Array(arr) => {
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
+            let len = arr.len();
+            let mut pushed = false;
+            for (index, item) in arr.into_iter().enumerate() {
+                if !pushed {
+                    context.push_with_index(item, 0);
+                    pushed = true;
                 } else {
-                    context.replace_top_data(item.clone(), index);
+                    context.replace_top_data(item, index);
                 }
                 let result = engine.evaluate_node(predicate, context)?;
 
@@ -436,7 +459,7 @@ pub fn evaluate_some(
                     return Ok(Value::Bool(true));
                 }
             }
-            if !arr.is_empty() {
+            if len > 0 {
                 context.pop();
             }
             Ok(Value::Bool(false))
@@ -485,13 +508,16 @@ pub fn evaluate_none(
     let collection = engine.evaluate_node(&args[0], context)?;
     let predicate = &args[1];
 
-    match &collection {
+    match collection {
         Value::Array(arr) => {
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
+            let len = arr.len();
+            let mut pushed = false;
+            for (index, item) in arr.into_iter().enumerate() {
+                if !pushed {
+                    context.push_with_index(item, 0);
+                    pushed = true;
                 } else {
-                    context.replace_top_data(item.clone(), index);
+                    context.replace_top_data(item, index);
                 }
                 let result = engine.evaluate_node(predicate, context)?;
 
@@ -500,7 +526,7 @@ pub fn evaluate_none(
                     return Ok(Value::Bool(false));
                 }
             }
-            if !arr.is_empty() {
+            if len > 0 {
                 context.pop();
             }
             Ok(Value::Bool(true))
@@ -917,17 +943,19 @@ pub fn evaluate_map_traced(
             let mut results = Vec::with_capacity(obj.len());
 
             for (index, (key, value)) in obj.iter().enumerate() {
-                let mut metadata = HashMap::with_capacity(2);
-                metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
-                metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                context.push_with_metadata(value.clone(), metadata);
+                if index == 0 {
+                    context.push_with_key_index(value.clone(), 0, key.clone());
+                } else {
+                    context.replace_top_key_data(value.clone(), index, key.clone());
+                }
                 collector.push_iteration(index as u32, total);
 
                 let result = engine.evaluate_node_traced(logic, context, collector, node_id_map)?;
                 results.push(result);
 
                 collector.pop_iteration();
+            }
+            if !obj.is_empty() {
                 context.pop();
             }
 
@@ -997,22 +1025,24 @@ pub fn evaluate_filter_traced(
             let mut result_obj = serde_json::Map::new();
 
             for (index, (key, value)) in obj.iter().enumerate() {
-                let mut metadata = HashMap::with_capacity(2);
-                metadata.insert(KEY_KEY.to_string(), Value::String(key.clone()));
-                metadata.insert(INDEX_KEY.to_string(), Value::Number(index.into()));
-
-                context.push_with_metadata(value.clone(), metadata);
+                if index == 0 {
+                    context.push_with_key_index(value.clone(), 0, key.clone());
+                } else {
+                    context.replace_top_key_data(value.clone(), index, key.clone());
+                }
                 collector.push_iteration(index as u32, total);
 
                 let keep =
                     engine.evaluate_node_traced(predicate, context, collector, node_id_map)?;
 
                 collector.pop_iteration();
-                context.pop();
 
                 if is_truthy(&keep, engine) {
                     result_obj.insert(key.clone(), value.clone());
                 }
+            }
+            if !obj.is_empty() {
+                context.pop();
             }
 
             Ok(Value::Object(result_obj))
@@ -1049,17 +1079,19 @@ pub fn evaluate_reduce_traced(
             let mut accumulator = initial;
 
             for (index, current) in arr.iter().enumerate() {
-                let mut frame_data = serde_json::Map::with_capacity(2);
-                frame_data.insert(CURRENT_KEY.to_string(), current.clone());
-                frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator.clone());
-
-                context.push(Value::Object(frame_data));
+                if index == 0 {
+                    context.push_reduce(current.clone(), accumulator);
+                } else {
+                    context.replace_reduce_data(current.clone(), accumulator);
+                }
                 collector.push_iteration(index as u32, total);
 
                 accumulator =
                     engine.evaluate_node_traced(logic, context, collector, node_id_map)?;
 
                 collector.pop_iteration();
+            }
+            if !arr.is_empty() {
                 context.pop();
             }
 

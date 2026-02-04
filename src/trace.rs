@@ -293,7 +293,7 @@ mod tests {
             opcode: OpCode::Var,
             args: vec![CompiledNode::Value {
                 value: serde_json::json!("age"),
-            }],
+            }].into_boxed_slice(),
         };
 
         let (tree, node_id_map) = ExpressionNode::build_from_compiled(&node);
@@ -311,7 +311,7 @@ mod tests {
             opcode: OpCode::Var,
             args: vec![CompiledNode::Value {
                 value: serde_json::json!("age"),
-            }],
+            }].into_boxed_slice(),
         };
         let node = CompiledNode::BuiltinOperator {
             opcode: OpCode::GreaterThanEqual,
@@ -320,7 +320,7 @@ mod tests {
                 CompiledNode::Value {
                     value: serde_json::json!(18),
                 },
-            ],
+            ].into_boxed_slice(),
         };
 
         let (tree, node_id_map) = ExpressionNode::build_from_compiled(&node);

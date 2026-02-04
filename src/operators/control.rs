@@ -34,14 +34,14 @@ pub fn evaluate_if(
             return engine.evaluate_node(&args[i], context);
         }
 
-        // Evaluate condition
-        let condition = engine.evaluate_node(&args[i], context)?;
+        // Evaluate condition using Cow to avoid cloning literals
+        let condition = engine.evaluate_node_cow(&args[i], context)?;
         if is_truthy(&condition, engine) {
             // Evaluate then branch
             if i + 1 < args.len() {
                 return engine.evaluate_node(&args[i + 1], context);
             } else {
-                return Ok(condition);
+                return Ok(condition.into_owned());
             }
         }
 
@@ -63,7 +63,7 @@ pub fn evaluate_ternary(
         return Ok(Value::Null);
     }
 
-    let condition = engine.evaluate_node(&args[0], context)?;
+    let condition = engine.evaluate_node_cow(&args[0], context)?;
 
     if is_truthy(&condition, engine) {
         engine.evaluate_node(&args[1], context)

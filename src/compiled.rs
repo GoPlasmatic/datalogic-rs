@@ -31,7 +31,7 @@ pub enum CompiledNode {
     /// significantly improving performance for the 50+ built-in operators.
     BuiltinOperator {
         opcode: OpCode,
-        args: Vec<CompiledNode>,
+        args: Box<[CompiledNode]>,
     },
 
     /// A custom operator registered via `DataLogic::add_operator`.
@@ -40,7 +40,7 @@ pub enum CompiledNode {
     /// from the engine's operator registry.
     CustomOperator {
         name: String,
-        args: Vec<CompiledNode>,
+        args: Box<[CompiledNode]>,
     },
 
     /// A structured object template for preserve_structure mode.
@@ -51,7 +51,7 @@ pub enum CompiledNode {
     ///
     /// Note: Custom operators are checked before treating keys as structured fields,
     /// ensuring they work correctly within preserved structures.
-    StructuredObject { fields: Vec<(String, CompiledNode)> },
+    StructuredObject { fields: Box<[(String, CompiledNode)]> },
 }
 
 // Hash methods removed - no longer needed
@@ -189,12 +189,13 @@ impl CompiledLogic {
                 if preserve_structure {
                     // In preserve_structure mode, treat multi-key objects as structured objects
                     // We'll create a special StructuredObject node that gets evaluated field by field
-                    let mut fields = Vec::new();
-                    for (key, val) in obj.iter() {
-                        let compiled_val = Self::compile_node(val, engine, preserve_structure)?;
-                        fields.push((key.clone(), compiled_val));
-                    }
-                    Ok(CompiledNode::StructuredObject { fields })
+                    let fields: Vec<_> = obj.iter()
+                        .map(|(key, val)| {
+                            Self::compile_node(val, engine, preserve_structure)
+                                .map(|compiled_val| (key.clone(), compiled_val))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(CompiledNode::StructuredObject { fields: fields.into_boxed_slice() })
                 } else {
                     // Multi-key objects are not valid operators
                     Err(crate::error::Error::InvalidOperator(
@@ -221,7 +222,7 @@ impl CompiledLogic {
                         let value_node = CompiledNode::Value {
                             value: invalid_value,
                         };
-                        let args = vec![value_node];
+                        let args = vec![value_node].into_boxed_slice();
                         return Ok(CompiledNode::BuiltinOperator { opcode, args });
                     }
 
@@ -232,11 +233,12 @@ impl CompiledLogic {
                             Value::Array(arr) => arr
                                 .iter()
                                 .map(|v| CompiledNode::Value { value: v.clone() })
-                                .collect(),
+                                .collect::<Vec<_>>()
+                                .into_boxed_slice(),
                             _ => {
                                 vec![CompiledNode::Value {
                                     value: args_value.clone(),
-                                }]
+                                }].into_boxed_slice()
                             }
                         }
                     } else {
@@ -281,7 +283,7 @@ impl CompiledLogic {
                     // Not a built-in operator or custom operator - treat as structured object field
                     // This allows dynamic object generation like {"name": {"var": "user.name"}}
                     let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
-                    let fields = vec![(op_name.clone(), compiled_val)];
+                    let fields = vec![(op_name.clone(), compiled_val)].into_boxed_slice();
                     Ok(CompiledNode::StructuredObject { fields })
                 } else {
                     let args = Self::compile_args(args_value, engine, preserve_structure)?;
@@ -328,15 +330,16 @@ impl CompiledLogic {
         value: &Value,
         engine: Option<&DataLogic>,
         preserve_structure: bool,
-    ) -> Result<Vec<CompiledNode>> {
+    ) -> Result<Box<[CompiledNode]>> {
         match value {
             Value::Array(arr) => arr
                 .iter()
                 .map(|v| Self::compile_node(v, engine, preserve_structure))
-                .collect::<Result<Vec<_>>>(),
+                .collect::<Result<Vec<_>>>()
+                .map(Vec::into_boxed_slice),
             _ => {
                 // Single argument - compile it
-                Ok(vec![Self::compile_node(value, engine, preserve_structure)?])
+                Ok(vec![Self::compile_node(value, engine, preserve_structure)?].into_boxed_slice())
             }
         }
     }

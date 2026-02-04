@@ -126,11 +126,17 @@ pub fn evaluate_val(
                     {
                         return Ok(value.clone());
                     }
-                } else if path == "key"
-                    && let Some(metadata) = context.current().metadata()
-                    && let Some(value) = metadata.get(path)
-                {
-                    return Ok(value.clone());
+                } else if path == "key" {
+                    // Fast path: use get_key() to avoid HashMap lookup
+                    if let Some(key) = context.current().get_key() {
+                        return Ok(Value::String(key.to_string()));
+                    }
+                    // Fallback to metadata HashMap
+                    if let Some(metadata) = context.current().metadata()
+                        && let Some(value) = metadata.get(path)
+                    {
+                        return Ok(value.clone());
+                    }
                 }
             }
 
@@ -311,11 +317,17 @@ pub fn evaluate_val(
                     {
                         return Ok(value.clone());
                     }
-                } else if path == "key"
-                    && let Some(metadata) = context.current().metadata()
-                    && let Some(value) = metadata.get(path)
-                {
-                    return Ok(value.clone());
+                } else if path == "key" {
+                    // Fast path: use get_key() to avoid HashMap lookup
+                    if let Some(key) = context.current().get_key() {
+                        return Ok(Value::String(key.to_string()));
+                    }
+                    // Fallback to metadata HashMap
+                    if let Some(metadata) = context.current().metadata()
+                        && let Some(value) = metadata.get(path)
+                    {
+                        return Ok(value.clone());
+                    }
                 }
             }
 

@@ -162,11 +162,26 @@ pub fn evaluate_add(
         }
     }
 
-    // Special case for datetime/duration arithmetic
+    // Special case for two arguments (most common)
     if args.len() == 2 {
         let first = engine.evaluate_node(&args[0], context)?;
         let second = engine.evaluate_node(&args[1], context)?;
 
+        // Fast path: both are numbers (most common case) — skip datetime checks
+        if let (Some(i1), Some(i2)) = (
+            try_coerce_to_integer(&first, engine),
+            try_coerce_to_integer(&second, engine),
+        ) {
+            return match i1.checked_add(i2) {
+                Some(sum) => Ok(Value::Number(sum.into())),
+                None => Ok(number_value(i1 as f64 + i2 as f64)),
+            };
+        }
+        if let (Some(f1), Some(f2)) = (coerce_to_number(&first, engine), coerce_to_number(&second, engine)) {
+            return Ok(number_value(safe_add(f1, f2)));
+        }
+
+        // Slow path: datetime/duration arithmetic
         // DateTime + Duration
         let first_dt = if is_datetime_object(&first) {
             extract_datetime(&first)
@@ -210,6 +225,22 @@ pub fn evaluate_add(
             let result = dur1.add(&dur2);
             return Ok(Value::String(result.to_string()));
         }
+
+        // Non-numeric, non-datetime values — handle NaN per config
+        // At least one of the two values is not coercible to number
+        let mut sum = 0.0f64;
+        for val in [&first, &second] {
+            if let Some(f) = coerce_to_number(val, engine) {
+                sum = safe_add(sum, f);
+            } else {
+                match engine.config().arithmetic_nan_handling {
+                    NanHandling::ThrowError => return Err(crate::constants::nan_error()),
+                    NanHandling::IgnoreValue | NanHandling::CoerceToZero => {}
+                    NanHandling::ReturnNull => return Ok(Value::Null),
+                }
+            }
+        }
+        return Ok(number_value(sum));
     }
 
     // Regular numeric addition
@@ -330,10 +361,23 @@ pub fn evaluate_subtract(
         let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
         Ok(number_value(-first_num))
     } else if args.len() == 2 {
-        // Special case for datetime/duration arithmetic
         let second = engine.evaluate_node(&args[1], context)?;
 
-        // Try to parse as datetime/duration
+        // Fast path: both are numbers (most common case) — skip datetime checks
+        if let (Some(i1), Some(i2)) = (
+            try_coerce_to_integer(&first, engine),
+            try_coerce_to_integer(&second, engine),
+        ) {
+            return match i1.checked_sub(i2) {
+                Some(diff) => Ok(Value::Number(diff.into())),
+                None => Ok(number_value(i1 as f64 - i2 as f64)),
+            };
+        }
+        if let (Some(f1), Some(f2)) = (coerce_to_number(&first, engine), coerce_to_number(&second, engine)) {
+            return Ok(number_value(safe_subtract(f1, f2)));
+        }
+
+        // Slow path: datetime/duration arithmetic
         let first_dt = if is_datetime_object(&first) {
             extract_datetime(&first)
         } else if let Value::String(s) = &first {
@@ -539,12 +583,26 @@ pub fn evaluate_multiply(
         }
     }
 
-    // Special case for duration * number
+    // Special case for two arguments
     if args.len() == 2 {
         let first = engine.evaluate_node(&args[0], context)?;
         let second = engine.evaluate_node(&args[1], context)?;
 
-        // Duration * Number
+        // Fast path: both are numbers (most common case) — skip duration checks
+        if let (Some(i1), Some(i2)) = (
+            try_coerce_to_integer(&first, engine),
+            try_coerce_to_integer(&second, engine),
+        ) {
+            return match i1.checked_mul(i2) {
+                Some(product) => Ok(Value::Number(product.into())),
+                None => Ok(number_value(i1 as f64 * i2 as f64)),
+            };
+        }
+        if let (Some(f1), Some(f2)) = (coerce_to_number(&first, engine), coerce_to_number(&second, engine)) {
+            return Ok(number_value(safe_multiply(f1, f2)));
+        }
+
+        // Slow path: duration * number
         let first_dur = if is_duration_object(&first) {
             extract_duration(&first)
         } else if let Value::String(s) = &first {

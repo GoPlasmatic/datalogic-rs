@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 // Static string constants for common metadata keys
 pub const INDEX_KEY: &str = "index";
+#[allow(dead_code)]
 pub const KEY_KEY: &str = "key";
 pub const CURRENT_KEY: &str = "current";
 pub const ACCUMULATOR_KEY: &str = "accumulator";
@@ -14,8 +15,10 @@ pub struct ContextFrame {
     pub data: Value,
     /// Optional index for array iteration (avoids HashMap allocation)
     pub index: Option<usize>,
+    /// Optional key for object iteration (avoids HashMap allocation)
+    pub key: Option<String>,
     /// Optional metadata for this frame (e.g., "key" in map operations)
-    /// Only used when additional metadata beyond index is needed
+    /// Only used when additional metadata beyond index/key is needed
     pub metadata: Option<HashMap<String, Value>>,
 }
 
@@ -41,6 +44,15 @@ impl<'a> ContextFrameRef<'a> {
     pub fn get_index(&self) -> Option<usize> {
         match self {
             ContextFrameRef::Frame(frame) => frame.index,
+            ContextFrameRef::Root(_) => None,
+        }
+    }
+
+    /// Get the key if available (fast path, no HashMap lookup)
+    #[inline]
+    pub fn get_key(&self) -> Option<&str> {
+        match self {
+            ContextFrameRef::Frame(frame) => frame.key.as_deref(),
             ContextFrameRef::Root(_) => None,
         }
     }
@@ -82,6 +94,7 @@ impl ContextStack {
         self.frames.push(ContextFrame {
             data,
             index: None,
+            key: None,
             metadata: None,
         });
     }
@@ -100,8 +113,32 @@ impl ContextStack {
         self.frames.push(ContextFrame {
             data,
             index: Some(index),
+            key: None,
             metadata: None,
         });
+    }
+
+    /// Pushes a frame with both index and key (optimized path for object iteration).
+    ///
+    /// Avoids HashMap allocation by storing key and index as dedicated fields.
+    #[inline]
+    pub fn push_with_key_index(&mut self, data: Value, index: usize, key: String) {
+        self.frames.push(ContextFrame {
+            data,
+            index: Some(index),
+            key: Some(key),
+            metadata: None,
+        });
+    }
+
+    /// Replaces data, index, and key in the top frame in-place (for object iteration).
+    #[inline]
+    pub fn replace_top_key_data(&mut self, data: Value, index: usize, key: String) {
+        if let Some(frame) = self.frames.last_mut() {
+            frame.data = data;
+            frame.index = Some(index);
+            frame.key = Some(key);
+        }
     }
 
     /// Pushes a frame with metadata for iteration operations.
@@ -132,6 +169,7 @@ impl ContextStack {
         self.frames.push(ContextFrame {
             data,
             index,
+            key: None,
             metadata: Some(metadata),
         });
     }
@@ -145,6 +183,40 @@ impl ContextStack {
         if let Some(frame) = self.frames.last_mut() {
             frame.data = data;
             frame.index = Some(index);
+        }
+    }
+
+    /// Pushes a reduce frame with pre-built "current" and "accumulator" keys.
+    ///
+    /// The frame stores an Object with two keys. Subsequent iterations should
+    /// use `replace_reduce_data` to swap values in-place without reallocating.
+    #[inline]
+    pub fn push_reduce(&mut self, current: Value, accumulator: Value) {
+        let mut frame_data = serde_json::Map::with_capacity(2);
+        frame_data.insert(CURRENT_KEY.to_string(), current);
+        frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator);
+        self.frames.push(ContextFrame {
+            data: Value::Object(frame_data),
+            index: None,
+            key: None,
+            metadata: None,
+        });
+    }
+
+    /// Replaces current and accumulator values in the top reduce frame in-place.
+    ///
+    /// Avoids reallocating the Map and key strings on each iteration.
+    #[inline]
+    pub fn replace_reduce_data(&mut self, current: Value, accumulator: Value) {
+        if let Some(frame) = self.frames.last_mut()
+            && let Value::Object(ref mut map) = frame.data
+        {
+            if let Some(v) = map.get_mut(CURRENT_KEY) {
+                *v = current;
+            }
+            if let Some(v) = map.get_mut(ACCUMULATOR_KEY) {
+                *v = accumulator;
+            }
         }
     }
 
