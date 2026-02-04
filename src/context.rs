@@ -6,7 +6,9 @@ use std::sync::Arc;
 pub const INDEX_KEY: &str = "index";
 #[allow(dead_code)]
 pub const KEY_KEY: &str = "key";
+#[allow(dead_code)]
 pub const CURRENT_KEY: &str = "current";
+#[allow(dead_code)]
 pub const ACCUMULATOR_KEY: &str = "accumulator";
 
 /// A single frame in the context stack (for temporary/nested contexts)
@@ -20,6 +22,10 @@ pub struct ContextFrame {
     /// Optional metadata for this frame (e.g., "key" in map operations)
     /// Only used when additional metadata beyond index/key is needed
     pub metadata: Option<HashMap<String, Value>>,
+    /// Dedicated field for reduce "current" value (avoids BTreeMap allocation)
+    pub reduce_current: Option<Value>,
+    /// Dedicated field for reduce "accumulator" value (avoids BTreeMap allocation)
+    pub reduce_accumulator: Option<Value>,
 }
 
 /// Reference to a context frame (either actual frame or root)
@@ -64,6 +70,24 @@ impl<'a> ContextFrameRef<'a> {
             ContextFrameRef::Root(_) => None,
         }
     }
+
+    /// Get the reduce "current" value if this is a reduce frame (fast path, no BTreeMap lookup)
+    #[inline]
+    pub fn get_reduce_current(&self) -> Option<&Value> {
+        match self {
+            ContextFrameRef::Frame(frame) => frame.reduce_current.as_ref(),
+            ContextFrameRef::Root(_) => None,
+        }
+    }
+
+    /// Get the reduce "accumulator" value if this is a reduce frame (fast path, no BTreeMap lookup)
+    #[inline]
+    pub fn get_reduce_accumulator(&self) -> Option<&Value> {
+        match self {
+            ContextFrameRef::Frame(frame) => frame.reduce_accumulator.as_ref(),
+            ContextFrameRef::Root(_) => None,
+        }
+    }
 }
 
 /// Context stack for nested evaluations
@@ -96,6 +120,8 @@ impl ContextStack {
             index: None,
             key: None,
             metadata: None,
+            reduce_current: None,
+            reduce_accumulator: None,
         });
     }
 
@@ -115,6 +141,8 @@ impl ContextStack {
             index: Some(index),
             key: None,
             metadata: None,
+            reduce_current: None,
+            reduce_accumulator: None,
         });
     }
 
@@ -128,6 +156,8 @@ impl ContextStack {
             index: Some(index),
             key: Some(key),
             metadata: None,
+            reduce_current: None,
+            reduce_accumulator: None,
         });
     }
 
@@ -171,6 +201,8 @@ impl ContextStack {
             index,
             key: None,
             metadata: Some(metadata),
+            reduce_current: None,
+            reduce_accumulator: None,
         });
     }
 
@@ -192,31 +224,24 @@ impl ContextStack {
     /// use `replace_reduce_data` to swap values in-place without reallocating.
     #[inline]
     pub fn push_reduce(&mut self, current: Value, accumulator: Value) {
-        let mut frame_data = serde_json::Map::with_capacity(2);
-        frame_data.insert(CURRENT_KEY.to_string(), current);
-        frame_data.insert(ACCUMULATOR_KEY.to_string(), accumulator);
         self.frames.push(ContextFrame {
-            data: Value::Object(frame_data),
+            data: Value::Null,
             index: None,
             key: None,
             metadata: None,
+            reduce_current: Some(current),
+            reduce_accumulator: Some(accumulator),
         });
     }
 
     /// Replaces current and accumulator values in the top reduce frame in-place.
     ///
-    /// Avoids reallocating the Map and key strings on each iteration.
+    /// Directly swaps the dedicated fields — no BTreeMap lookup needed.
     #[inline]
     pub fn replace_reduce_data(&mut self, current: Value, accumulator: Value) {
-        if let Some(frame) = self.frames.last_mut()
-            && let Value::Object(ref mut map) = frame.data
-        {
-            if let Some(v) = map.get_mut(CURRENT_KEY) {
-                *v = current;
-            }
-            if let Some(v) = map.get_mut(ACCUMULATOR_KEY) {
-                *v = accumulator;
-            }
+        if let Some(frame) = self.frames.last_mut() {
+            frame.reduce_current = Some(current);
+            frame.reduce_accumulator = Some(accumulator);
         }
     }
 

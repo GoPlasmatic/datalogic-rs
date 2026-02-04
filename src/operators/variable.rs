@@ -74,6 +74,30 @@ pub fn evaluate_var(
         }
     };
 
+    // Fast path for reduce context fields — avoids BTreeMap lookup entirely
+    {
+        let frame = context.current();
+        if path == "current" {
+            if let Some(v) = frame.get_reduce_current() {
+                return Ok(v.clone());
+            }
+        } else if path == "accumulator" {
+            if let Some(v) = frame.get_reduce_accumulator() {
+                return Ok(v.clone());
+            }
+        } else if let Some(rest) = path.strip_prefix("current.") {
+            if let Some(current) = frame.get_reduce_current() {
+                return Ok(access_path_ref(current, rest)
+                    .cloned()
+                    .unwrap_or(Value::Null));
+            }
+        } else if let Some(rest) = path.strip_prefix("accumulator.")
+            && let Some(acc) = frame.get_reduce_accumulator()
+        {
+            return Ok(access_path_ref(acc, rest).cloned().unwrap_or(Value::Null));
+        }
+    }
+
     // Access the variable in current context
     match access_path_ref(context.current().data(), path) {
         Some(result) => Ok(result.clone()),
@@ -257,6 +281,32 @@ pub fn evaluate_val(
                 .map(|arg| engine.evaluate_node(arg, context))
                 .collect::<Result<Vec<_>>>()?;
             let current_frame = context.current();
+
+            // Fast path: resolve reduce context fields for first path element
+            let resolve_start = if let Some(Value::String(s)) = evaluated_args.first() {
+                if s == "current" {
+                    current_frame.get_reduce_current()
+                } else if s == "accumulator" {
+                    current_frame.get_reduce_accumulator()
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(start) = resolve_start {
+                // Chain remaining path elements from the reduce field
+                let mut current = start;
+                for evaluated in &evaluated_args[1..] {
+                    match apply_path_element_ref(current, evaluated) {
+                        Some(v) => current = v,
+                        None => return Ok(Value::Null),
+                    }
+                }
+                return Ok(current.clone());
+            }
+
             let mut current = current_frame.data();
             for evaluated in &evaluated_args {
                 match apply_path_element_ref(current, evaluated) {
@@ -276,6 +326,31 @@ pub fn evaluate_val(
             .map(|arg| engine.evaluate_node(arg, context))
             .collect::<Result<Vec<_>>>()?;
         let current_frame = context.current();
+
+        // Fast path: resolve reduce context fields for first path element
+        let resolve_start = if let Some(Value::String(s)) = evaluated_args.first() {
+            if s == "current" {
+                current_frame.get_reduce_current()
+            } else if s == "accumulator" {
+                current_frame.get_reduce_accumulator()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(start) = resolve_start {
+            let mut current = start;
+            for evaluated in &evaluated_args[1..] {
+                match apply_path_element_ref(current, evaluated) {
+                    Some(v) => current = v,
+                    None => return Ok(Value::Null),
+                }
+            }
+            return Ok(current.clone());
+        }
+
         let mut current = current_frame.data();
         for evaluated in &evaluated_args {
             match apply_path_element_ref(current, evaluated) {
@@ -364,6 +439,30 @@ pub fn evaluate_val(
                 }
             }
             return Ok(current.clone());
+        }
+    }
+
+    // Fast path for reduce context fields in val operator
+    if let Value::String(s) = &path_value {
+        let frame = context.current();
+        if s == "current" {
+            if let Some(v) = frame.get_reduce_current() {
+                return Ok(v.clone());
+            }
+        } else if s == "accumulator" {
+            if let Some(v) = frame.get_reduce_accumulator() {
+                return Ok(v.clone());
+            }
+        } else if let Some(rest) = s.strip_prefix("current.") {
+            if let Some(current) = frame.get_reduce_current() {
+                return Ok(access_path_ref(current, rest)
+                    .cloned()
+                    .unwrap_or(Value::Null));
+            }
+        } else if let Some(rest) = s.strip_prefix("accumulator.")
+            && let Some(acc) = frame.get_reduce_accumulator()
+        {
+            return Ok(access_path_ref(acc, rest).cloned().unwrap_or(Value::Null));
         }
     }
 
