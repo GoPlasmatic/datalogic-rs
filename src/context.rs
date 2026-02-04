@@ -136,6 +136,18 @@ impl ContextStack {
         });
     }
 
+    /// Replaces the data and index in the top frame in-place.
+    ///
+    /// Used by array iteration operators to avoid repeated push/pop overhead.
+    /// After the first element is pushed, subsequent elements reuse the same frame.
+    #[inline]
+    pub fn replace_top_data(&mut self, data: Value, index: usize) {
+        if let Some(frame) = self.frames.last_mut() {
+            frame.data = data;
+            frame.index = Some(index);
+        }
+    }
+
     /// Pops the current context frame from the stack.
     ///
     /// Restores the previous context after nested evaluation completes.

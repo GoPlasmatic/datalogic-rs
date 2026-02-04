@@ -308,12 +308,11 @@ pub fn evaluate_subtract(
                 return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
             }
             // Subtract elements: first - second - third - ...
-            let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(crate::constants::nan_error)?;
+            let mut result =
+                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
 
             for elem in &arr[1..] {
-                let num = coerce_to_number(elem, engine)
-                    .ok_or_else(crate::constants::nan_error)?;
+                let num = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
                 result = safe_subtract(result, num);
             }
 
@@ -328,8 +327,7 @@ pub fn evaluate_subtract(
                 return Ok(number_value(-f));
             }
         }
-        let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
         Ok(number_value(-first_num))
     } else if args.len() == 2 {
         // Special case for datetime/duration arithmetic
@@ -400,10 +398,9 @@ pub fn evaluate_subtract(
             }
         }
 
-        let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(crate::constants::nan_error)?;
-        let second_num = coerce_to_number(&second, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
+        let second_num =
+            coerce_to_number(&second, engine).ok_or_else(crate::constants::nan_error)?;
 
         Ok(number_value(first_num - second_num))
     } else {
@@ -651,12 +648,11 @@ pub fn evaluate_divide(
                 return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
             }
             // Divide elements: first / second / third / ...
-            let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(crate::constants::nan_error)?;
+            let mut result =
+                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
 
             for elem in &arr[1..] {
-                let num = coerce_to_number(elem, engine)
-                    .ok_or_else(crate::constants::nan_error)?;
+                let num = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
                 if num == 0.0 {
                     return Err(crate::constants::nan_error());
                 }
@@ -667,8 +663,7 @@ pub fn evaluate_divide(
         }
 
         // Single non-array argument: 1 / value
-        let num = coerce_to_number(&value, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let num = coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
 
         if num == 0.0 {
             return Err(crate::constants::nan_error());
@@ -733,10 +728,9 @@ pub fn evaluate_divide(
             }
         }
 
-        let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(crate::constants::nan_error)?;
-        let second_num = coerce_to_number(&second, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
+        let second_num =
+            coerce_to_number(&second, engine).ok_or_else(crate::constants::nan_error)?;
 
         if second_num == 0.0 {
             return Err(crate::constants::nan_error());
@@ -753,8 +747,8 @@ pub fn evaluate_divide(
             all_integers = false;
             0
         };
-        let mut float_result = coerce_to_number(&first, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let mut float_result =
+            coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
 
         for item in args.iter().skip(1) {
             let value = engine.evaluate_node(item, context)?;
@@ -786,8 +780,8 @@ pub fn evaluate_divide(
                     return Ok(Value::Null);
                 }
             } else {
-                let divisor = coerce_to_number(&value, engine)
-                    .ok_or_else(crate::constants::nan_error)?;
+                let divisor =
+                    coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
                 if divisor == 0.0 {
                     return Err(crate::constants::nan_error());
                 }
@@ -822,12 +816,11 @@ pub fn evaluate_modulo(
                 return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
             }
             // Modulo elements: first % second % third % ...
-            let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(crate::constants::nan_error)?;
+            let mut result =
+                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
 
             for elem in &arr[1..] {
-                let num = coerce_to_number(elem, engine)
-                    .ok_or_else(crate::constants::nan_error)?;
+                let num = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
                 if num == 0.0 {
                     return Err(crate::constants::nan_error());
                 }
@@ -862,10 +855,9 @@ pub fn evaluate_modulo(
             return Ok(Value::Number((i1 % i2).into()));
         }
 
-        let first_num = coerce_to_number(&first, engine)
-            .ok_or_else(crate::constants::nan_error)?;
-        let second_num = coerce_to_number(&second, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
+        let second_num =
+            coerce_to_number(&second, engine).ok_or_else(crate::constants::nan_error)?;
 
         if second_num == 0.0 {
             return Err(crate::constants::nan_error());
@@ -874,13 +866,12 @@ pub fn evaluate_modulo(
         Ok(number_value(first_num % second_num))
     } else {
         // Variadic modulo (3+ arguments)
-        let mut result = coerce_to_number(&first, engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let mut result =
+            coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
 
         for item in args.iter().skip(1) {
             let value = engine.evaluate_node(item, context)?;
-            let num = coerce_to_number(&value, engine)
-                .ok_or_else(crate::constants::nan_error)?;
+            let num = coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
 
             if num == 0.0 {
                 return Err(crate::constants::nan_error());
