@@ -1,8 +1,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::helpers::is_truthy;
-use crate::constants::INVALID_ARGS;
+use super::helpers::{check_invalid_args_marker, is_truthy};
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -17,14 +16,7 @@ pub fn evaluate_if(
         return Ok(Value::Null);
     }
 
-    // Check if we have the invalid args marker
-    if args.len() == 1
-        && let CompiledNode::Value { value, .. } = &args[0]
-        && let Some(obj) = value.as_object()
-        && obj.contains_key("__invalid_args__")
-    {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.to_string()));
-    }
+    check_invalid_args_marker(args)?;
 
     // Support variadic if/elseif/else chains
     let mut i = 0;
@@ -113,14 +105,7 @@ pub fn evaluate_if_traced(
         return Ok(Value::Null);
     }
 
-    // Check if we have the invalid args marker
-    if args.len() == 1
-        && let CompiledNode::Value { value, .. } = &args[0]
-        && let Some(obj) = value.as_object()
-        && obj.contains_key("__invalid_args__")
-    {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.to_string()));
-    }
+    check_invalid_args_marker(args)?;
 
     // Support variadic if/elseif/else chains
     let mut i = 0;

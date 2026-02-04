@@ -104,7 +104,7 @@ pub fn evaluate_map(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node(&args[0], context)?;
@@ -205,7 +205,7 @@ pub fn evaluate_filter(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node(&args[0], context)?;
@@ -259,7 +259,7 @@ pub fn evaluate_filter(
             Ok(Value::Object(result_obj))
         }
         Value::Null => Ok(Value::Array(vec![])),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -298,7 +298,7 @@ pub fn evaluate_reduce(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() != 3 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let array = engine.evaluate_node(&args[0], context)?;
@@ -331,7 +331,7 @@ pub fn evaluate_reduce(
             Ok(accumulator)
         }
         Value::Null => Ok(initial),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -368,7 +368,7 @@ pub fn evaluate_all(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node(&args[0], context)?;
@@ -399,7 +399,7 @@ pub fn evaluate_all(
         }
         Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
         Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -435,7 +435,7 @@ pub fn evaluate_some(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node(&args[0], context)?;
@@ -465,7 +465,7 @@ pub fn evaluate_some(
             Ok(Value::Bool(false))
         }
         Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -502,7 +502,7 @@ pub fn evaluate_none(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node(&args[0], context)?;
@@ -532,7 +532,7 @@ pub fn evaluate_none(
             Ok(Value::Bool(true))
         }
         Value::Null => Ok(Value::Bool(true)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -571,14 +571,14 @@ pub fn evaluate_sort(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Check if the first argument is a Value node containing null
     if let CompiledNode::Value { value, .. } = &args[0]
         && value.is_null()
     {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Evaluate the array
@@ -587,7 +587,7 @@ pub fn evaluate_sort(
     let mut array = match array_value {
         Value::Array(arr) => arr,
         Value::Null => return Ok(Value::Null), // Missing variable returns null
-        _ => return Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
     };
 
     // Get sort direction (default ascending)
@@ -688,7 +688,7 @@ pub fn evaluate_slice(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Evaluate the collection
@@ -730,7 +730,7 @@ pub fn evaluate_slice(
             Value::Number(n) => {
                 let s = n.as_i64().unwrap_or(1);
                 if s == 0 {
-                    return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
                 }
                 s
             }
@@ -766,7 +766,7 @@ pub fn evaluate_slice(
                 .collect();
             Ok(Value::String(result_string))
         }
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -908,7 +908,7 @@ pub fn evaluate_map_traced(
     node_id_map: &HashMap<usize, u32>,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
@@ -986,7 +986,7 @@ pub fn evaluate_filter_traced(
     node_id_map: &HashMap<usize, u32>,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
@@ -1048,7 +1048,7 @@ pub fn evaluate_filter_traced(
             Ok(Value::Object(result_obj))
         }
         Value::Null => Ok(Value::Array(vec![])),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -1062,7 +1062,7 @@ pub fn evaluate_reduce_traced(
     node_id_map: &HashMap<usize, u32>,
 ) -> Result<Value> {
     if args.len() != 3 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let array = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
@@ -1098,7 +1098,7 @@ pub fn evaluate_reduce_traced(
             Ok(accumulator)
         }
         Value::Null => Ok(initial),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -1112,7 +1112,7 @@ pub fn evaluate_all_traced(
     node_id_map: &HashMap<usize, u32>,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
@@ -1145,7 +1145,7 @@ pub fn evaluate_all_traced(
         }
         Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
         Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -1159,7 +1159,7 @@ pub fn evaluate_some_traced(
     node_id_map: &HashMap<usize, u32>,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
@@ -1193,7 +1193,7 @@ pub fn evaluate_some_traced(
             Ok(Value::Bool(false))
         }
         Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }
 
@@ -1207,7 +1207,7 @@ pub fn evaluate_none_traced(
     node_id_map: &HashMap<usize, u32>,
 ) -> Result<Value> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
@@ -1241,6 +1241,6 @@ pub fn evaluate_none_traced(
             Ok(Value::Bool(true))
         }
         Value::Null => Ok(Value::Bool(true)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.to_string())),
+        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
     }
 }

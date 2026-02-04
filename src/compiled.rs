@@ -115,10 +115,6 @@ pub enum CompiledNode {
     },
 }
 
-// Hash methods removed - no longer needed
-
-// Hash functions removed - no longer needed
-
 /// Compiled logic that can be evaluated multiple times across different data.
 ///
 /// `CompiledLogic` represents a pre-processed JSONLogic expression that has been

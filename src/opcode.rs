@@ -275,8 +275,8 @@ impl OpCode {
         engine: &crate::DataLogic,
     ) -> crate::Result<serde_json::Value> {
         use crate::operators::{
-            abs, arithmetic, array, ceil, comparison, control, datetime, floor, logical, missing,
-            preserve, string, string_ops, throw, try_op, type_op, variable,
+            arithmetic, array, comparison, control, datetime, logical, math, missing, preserve,
+            string, throw, try_op, type_op, variable,
         };
 
         match self {
@@ -318,21 +318,21 @@ impl OpCode {
             OpCode::Modulo => arithmetic::evaluate_modulo(args, context, engine),
             OpCode::Max => arithmetic::evaluate_max(args, context, engine),
             OpCode::Min => arithmetic::evaluate_min(args, context, engine),
-            OpCode::Abs => abs::evaluate_abs(args, context, engine),
-            OpCode::Ceil => ceil::evaluate_ceil(args, context, engine),
-            OpCode::Floor => floor::evaluate_floor(args, context, engine),
+            OpCode::Abs => math::evaluate_abs(args, context, engine),
+            OpCode::Ceil => math::evaluate_ceil(args, context, engine),
+            OpCode::Floor => math::evaluate_floor(args, context, engine),
 
             // String operators - direct function calls
             OpCode::Cat => string::evaluate_cat(args, context, engine),
             OpCode::Substr => string::evaluate_substr(args, context, engine),
             OpCode::In => string::evaluate_in(args, context, engine),
             OpCode::Length => string::evaluate_length(args, context, engine),
-            OpCode::StartsWith => string_ops::evaluate_starts_with(args, context, engine),
-            OpCode::EndsWith => string_ops::evaluate_ends_with(args, context, engine),
-            OpCode::Upper => string_ops::evaluate_upper(args, context, engine),
-            OpCode::Lower => string_ops::evaluate_lower(args, context, engine),
-            OpCode::Trim => string_ops::evaluate_trim(args, context, engine),
-            OpCode::Split => string_ops::evaluate_split(args, context, engine),
+            OpCode::StartsWith => string::evaluate_starts_with(args, context, engine),
+            OpCode::EndsWith => string::evaluate_ends_with(args, context, engine),
+            OpCode::Upper => string::evaluate_upper(args, context, engine),
+            OpCode::Lower => string::evaluate_lower(args, context, engine),
+            OpCode::Trim => string::evaluate_trim(args, context, engine),
+            OpCode::Split => string::evaluate_split(args, context, engine),
 
             // Array operators - direct function calls
             OpCode::Merge => array::evaluate_merge(args, context, engine),

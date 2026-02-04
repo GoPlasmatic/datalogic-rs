@@ -227,30 +227,85 @@ pub fn evaluate_strict_not_equals(
     // This achieves lazy evaluation.
     Ok(Value::Bool(false))
 }
-/// Greater than operator function (>)
+
+/// Ordering comparison operation type
+#[derive(Clone, Copy)]
+enum OrdOp {
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+}
+
+impl OrdOp {
+    #[inline]
+    fn apply_f64(self, l: f64, r: f64) -> bool {
+        match self {
+            OrdOp::Gt => l > r,
+            OrdOp::Gte => l >= r,
+            OrdOp::Lt => l < r,
+            OrdOp::Lte => l <= r,
+        }
+    }
+
+    #[inline]
+    fn apply_str(self, l: &str, r: &str) -> bool {
+        match self {
+            OrdOp::Gt => l > r,
+            OrdOp::Gte => l >= r,
+            OrdOp::Lt => l < r,
+            OrdOp::Lte => l <= r,
+        }
+    }
+
+    #[inline]
+    fn apply_datetime(
+        self,
+        l: &crate::datetime::DataDateTime,
+        r: &crate::datetime::DataDateTime,
+    ) -> bool {
+        match self {
+            OrdOp::Gt => l > r,
+            OrdOp::Gte => l >= r,
+            OrdOp::Lt => l < r,
+            OrdOp::Lte => l <= r,
+        }
+    }
+
+    #[inline]
+    fn apply_duration(
+        self,
+        l: &crate::datetime::DataDuration,
+        r: &crate::datetime::DataDuration,
+    ) -> bool {
+        match self {
+            OrdOp::Gt => l > r,
+            OrdOp::Gte => l >= r,
+            OrdOp::Lt => l < r,
+            OrdOp::Lte => l <= r,
+        }
+    }
+}
+
+/// Generic chained comparison for ordering operators (>, >=, <, <=).
+/// Evaluates args pairwise with short-circuit on first false.
 #[inline]
-pub fn evaluate_greater_than(
+fn evaluate_chained_comparison(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    op: OrdOp,
 ) -> Result<Value> {
-    // Require at least 2 arguments
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    // For chained comparisons (3+ arguments), check a > b > c > ...
-    // This should be evaluated lazily - stop at first false
     let mut prev = engine.evaluate_node_cow(&args[0], context)?;
 
     for item in args.iter().skip(1) {
         let curr = engine.evaluate_node_cow(item, context)?;
 
-        // Compare prev > curr
-        let result = compare_greater_than(&prev, &curr, engine)?;
-
-        if !result {
-            // Short-circuit on first false
+        if !compare_ordered(&prev, &curr, op, engine)? {
             return Ok(Value::Bool(false));
         }
 
@@ -259,19 +314,23 @@ pub fn evaluate_greater_than(
 
     Ok(Value::Bool(true))
 }
-// Helper function for > comparison
+
+/// Generic ordered comparison helper handling numbers, strings, datetimes, and durations.
 #[inline]
-fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
+fn compare_ordered(left: &Value, right: &Value, op: OrdOp, engine: &DataLogic) -> Result<bool> {
     // Fast path: both numbers — most common case
     if let (Value::Number(l), Value::Number(r)) = (left, right) {
-        return Ok(l.as_f64().unwrap_or(f64::NAN) > r.as_f64().unwrap_or(f64::NAN));
+        return Ok(op.apply_f64(
+            l.as_f64().unwrap_or(f64::NAN),
+            r.as_f64().unwrap_or(f64::NAN),
+        ));
     }
 
     // Fast path: both strings that can't be datetimes — skip datetime parsing
     if let (Value::String(l), Value::String(r)) = (left, right)
         && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
     {
-        return Ok(l > r);
+        return Ok(op.apply_str(l, r));
     }
 
     // Handle datetime comparisons first - both objects and strings
@@ -291,16 +350,16 @@ fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Resu
         None
     };
 
-    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-        return Ok(dt1 > dt2);
+    if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
+        return Ok(op.apply_datetime(dt1, dt2));
     }
 
     // Handle duration comparisons - both objects and strings
     let left_dur = extract_duration_value(left);
     let right_dur = extract_duration_value(right);
 
-    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-        return Ok(dur1 > dur2);
+    if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
+        return Ok(op.apply_duration(dur1, dur2));
     }
 
     // Arrays and objects cannot be compared (after checking for special objects)
@@ -312,7 +371,7 @@ fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Resu
 
     // If both are strings, do string comparison
     if let (Value::String(l), Value::String(r)) = (left, right) {
-        return Ok(l > r);
+        return Ok(op.apply_str(l, r));
     }
 
     // Check if both can be coerced to numbers
@@ -320,7 +379,7 @@ fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Resu
     let right_num = coerce_to_number(right, engine);
 
     if let (Some(l), Some(r)) = (left_num, right_num) {
-        return Ok(l > r);
+        return Ok(op.apply_f64(l, r));
     }
 
     // If one is a number and the other is a string that can't be coerced, throw NaN
@@ -331,6 +390,16 @@ fn compare_greater_than(left: &Value, right: &Value, engine: &DataLogic) -> Resu
     }
 
     Ok(false)
+}
+
+/// Greater than operator function (>)
+#[inline]
+pub fn evaluate_greater_than(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    evaluate_chained_comparison(args, context, engine, OrdOp::Gt)
 }
 
 /// Greater than or equal operator function (>=)
@@ -340,103 +409,7 @@ pub fn evaluate_greater_than_equal(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    // Require at least 2 arguments
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // For chained comparisons (3+ arguments), check a >= b >= c >= ...
-    // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
-
-    for item in args.iter().skip(1) {
-        let curr = engine.evaluate_node_cow(item, context)?;
-
-        // Compare prev >= curr
-        let result = compare_greater_than_equal(&prev, &curr, engine)?;
-
-        if !result {
-            // Short-circuit on first false
-            return Ok(Value::Bool(false));
-        }
-
-        prev = curr;
-    }
-
-    Ok(Value::Bool(true))
-}
-// Helper function for >= comparison
-#[inline]
-fn compare_greater_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
-    // Fast path: both numbers — most common case
-    if let (Value::Number(l), Value::Number(r)) = (left, right) {
-        return Ok(l.as_f64().unwrap_or(f64::NAN) >= r.as_f64().unwrap_or(f64::NAN));
-    }
-
-    // Fast path: both strings that can't be datetimes — skip datetime parsing
-    if let (Value::String(l), Value::String(r)) = (left, right)
-        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
-    {
-        return Ok(l >= r);
-    }
-
-    // Handle datetime comparisons first - both objects and strings
-    let left_dt = if is_datetime_object(left) {
-        extract_datetime(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    let right_dt = if is_datetime_object(right) {
-        extract_datetime(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-        return Ok(dt1 >= dt2);
-    }
-
-    // Handle duration comparisons - both objects and strings
-    let left_dur = extract_duration_value(left);
-    let right_dur = extract_duration_value(right);
-
-    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-        return Ok(dur1 >= dur2);
-    }
-
-    // Arrays and objects cannot be compared (after checking for special objects)
-    if matches!(left, Value::Array(_) | Value::Object(_))
-        || matches!(right, Value::Array(_) | Value::Object(_))
-    {
-        return Err(crate::constants::nan_error());
-    }
-
-    // If both are strings, do string comparison
-    if let (Value::String(l), Value::String(r)) = (left, right) {
-        return Ok(l >= r);
-    }
-
-    // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left, engine);
-    let right_num = coerce_to_number(right, engine);
-
-    if let (Some(l), Some(r)) = (left_num, right_num) {
-        return Ok(l >= r);
-    }
-
-    // If one is a number and the other is a string that can't be coerced, throw NaN
-    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
-        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
-    {
-        return Err(crate::constants::nan_error());
-    }
-
-    Ok(false)
+    evaluate_chained_comparison(args, context, engine, OrdOp::Gte)
 }
 
 /// Less than operator function (<) - supports variadic arguments
@@ -446,103 +419,7 @@ pub fn evaluate_less_than(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    // Require at least 2 arguments
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // For chained comparisons (3+ arguments), check a < b < c < ...
-    // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
-
-    for item in args.iter().skip(1) {
-        let current = engine.evaluate_node_cow(item, context)?;
-
-        // Compare prev < current
-        let result = compare_less_than(&prev, &current, engine)?;
-
-        if !result {
-            // Short-circuit on first false
-            return Ok(Value::Bool(false));
-        }
-
-        prev = current;
-    }
-
-    Ok(Value::Bool(true))
-}
-// Helper function for < comparison
-#[inline]
-fn compare_less_than(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
-    // Fast path: both numbers — most common case
-    if let (Value::Number(l), Value::Number(r)) = (left, right) {
-        return Ok(l.as_f64().unwrap_or(f64::NAN) < r.as_f64().unwrap_or(f64::NAN));
-    }
-
-    // Fast path: both strings that can't be datetimes — skip datetime parsing
-    if let (Value::String(l), Value::String(r)) = (left, right)
-        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
-    {
-        return Ok(l < r);
-    }
-
-    // Handle datetime comparisons first - both objects and strings
-    let left_dt = if is_datetime_object(left) {
-        extract_datetime(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    let right_dt = if is_datetime_object(right) {
-        extract_datetime(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-        return Ok(dt1 < dt2);
-    }
-
-    // Handle duration comparisons - both objects and strings
-    let left_dur = extract_duration_value(left);
-    let right_dur = extract_duration_value(right);
-
-    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-        return Ok(dur1 < dur2);
-    }
-
-    // Arrays and objects cannot be compared (after checking for special objects)
-    if matches!(left, Value::Array(_) | Value::Object(_))
-        || matches!(right, Value::Array(_) | Value::Object(_))
-    {
-        return Err(crate::constants::nan_error());
-    }
-
-    // If both are strings, do string comparison
-    if let (Value::String(l), Value::String(r)) = (left, right) {
-        return Ok(l < r);
-    }
-
-    // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left, engine);
-    let right_num = coerce_to_number(right, engine);
-
-    if let (Some(l), Some(r)) = (left_num, right_num) {
-        return Ok(l < r);
-    }
-
-    // If one is a number and the other is a string that can't be coerced, throw NaN
-    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
-        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
-    {
-        return Err(crate::constants::nan_error());
-    }
-
-    Ok(false)
+    evaluate_chained_comparison(args, context, engine, OrdOp::Lt)
 }
 
 /// Less than or equal operator function (<=) - supports variadic arguments
@@ -552,102 +429,5 @@ pub fn evaluate_less_than_equal(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    // Require at least 2 arguments
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // For chained comparisons (3+ arguments), check a <= b <= c <= ...
-    // This should be evaluated lazily - stop at first false
-    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
-
-    for item in args.iter().skip(1) {
-        let current = engine.evaluate_node_cow(item, context)?;
-
-        // Compare prev <= current
-        let result = compare_less_than_equal(&prev, &current, engine)?;
-
-        if !result {
-            // Short-circuit on first false
-            return Ok(Value::Bool(false));
-        }
-
-        prev = current;
-    }
-
-    Ok(Value::Bool(true))
-}
-
-// Helper function for <= comparison
-#[inline]
-fn compare_less_than_equal(left: &Value, right: &Value, engine: &DataLogic) -> Result<bool> {
-    // Fast path: both numbers — most common case
-    if let (Value::Number(l), Value::Number(r)) = (left, right) {
-        return Ok(l.as_f64().unwrap_or(f64::NAN) <= r.as_f64().unwrap_or(f64::NAN));
-    }
-
-    // Fast path: both strings that can't be datetimes — skip datetime parsing
-    if let (Value::String(l), Value::String(r)) = (left, right)
-        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
-    {
-        return Ok(l <= r);
-    }
-
-    // Handle datetime comparisons first - both objects and strings
-    let left_dt = if is_datetime_object(left) {
-        extract_datetime(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    let right_dt = if is_datetime_object(right) {
-        extract_datetime(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-        return Ok(dt1 <= dt2);
-    }
-
-    // Handle duration comparisons - both objects and strings
-    let left_dur = extract_duration_value(left);
-    let right_dur = extract_duration_value(right);
-
-    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-        return Ok(dur1 <= dur2);
-    }
-
-    // Arrays and objects cannot be compared (after checking for special objects)
-    if matches!(left, Value::Array(_) | Value::Object(_))
-        || matches!(right, Value::Array(_) | Value::Object(_))
-    {
-        return Err(crate::constants::nan_error());
-    }
-
-    // If both are strings, do string comparison
-    if let (Value::String(l), Value::String(r)) = (left, right) {
-        return Ok(l <= r);
-    }
-
-    // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left, engine);
-    let right_num = coerce_to_number(right, engine);
-
-    if let (Some(l), Some(r)) = (left_num, right_num) {
-        return Ok(l <= r);
-    }
-
-    // If one is a number and the other is a string that can't be coerced, throw NaN
-    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
-        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
-    {
-        return Err(crate::constants::nan_error());
-    }
-
-    Ok(false)
+    evaluate_chained_comparison(args, context, engine, OrdOp::Lte)
 }

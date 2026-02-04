@@ -67,6 +67,25 @@ use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
+/// Result of NaN handling check: what the caller should do with a non-numeric value.
+enum NanAction {
+    /// Skip/ignore this value (IgnoreValue or CoerceToZero)
+    Skip,
+    /// Return null immediately
+    ReturnNull,
+}
+
+/// Checks the engine's NaN handling config and returns the appropriate action.
+/// Returns `Err` for ThrowError, `Ok(NanAction)` otherwise.
+#[inline]
+fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
+    match engine.config().arithmetic_nan_handling {
+        NanHandling::ThrowError => Err(crate::constants::nan_error()),
+        NanHandling::IgnoreValue | NanHandling::CoerceToZero => Ok(NanAction::Skip),
+        NanHandling::ReturnNull => Ok(NanAction::ReturnNull),
+    }
+}
+
 /// Helper to convert float to integer if it's a whole number
 #[inline]
 fn number_value(f: f64) -> Value {
@@ -135,21 +154,9 @@ pub fn evaluate_add(
                     all_integers = false;
                     float_sum = safe_add(float_sum, f);
                 } else {
-                    // Handle based on NaN configuration
-                    match engine.config().arithmetic_nan_handling {
-                        NanHandling::ThrowError => {
-                            return Err(crate::constants::nan_error());
-                        }
-                        NanHandling::IgnoreValue => {
-                            continue; // Skip this value
-                        }
-                        NanHandling::CoerceToZero => {
-                            // Treat as 0, no need to add
-                            continue;
-                        }
-                        NanHandling::ReturnNull => {
-                            return Ok(Value::Null);
-                        }
+                    match handle_nan(engine)? {
+                        NanAction::Skip => continue,
+                        NanAction::ReturnNull => return Ok(Value::Null),
                     }
                 }
             }
@@ -236,10 +243,9 @@ pub fn evaluate_add(
             if let Some(f) = coerce_to_number(val, engine) {
                 sum = safe_add(sum, f);
             } else {
-                match engine.config().arithmetic_nan_handling {
-                    NanHandling::ThrowError => return Err(crate::constants::nan_error()),
-                    NanHandling::IgnoreValue | NanHandling::CoerceToZero => {}
-                    NanHandling::ReturnNull => return Ok(Value::Null),
+                match handle_nan(engine)? {
+                    NanAction::Skip => {}
+                    NanAction::ReturnNull => return Ok(Value::Null),
                 }
             }
         }
@@ -255,13 +261,9 @@ pub fn evaluate_add(
     for arg in args {
         // Check if this argument is a literal array (invalid for addition)
         if matches!(arg, CompiledNode::Array { .. }) {
-            match engine.config().arithmetic_nan_handling {
-                NanHandling::ThrowError => {
-                    return Err(crate::constants::nan_error());
-                }
-                NanHandling::IgnoreValue => continue,
-                NanHandling::CoerceToZero => continue,
-                NanHandling::ReturnNull => return Ok(Value::Null),
+            match handle_nan(engine)? {
+                NanAction::Skip => continue,
+                NanAction::ReturnNull => return Ok(Value::Null),
             }
         }
 
@@ -269,13 +271,9 @@ pub fn evaluate_add(
 
         // Arrays and objects are invalid for addition
         if matches!(value.as_ref(), Value::Array(_) | Value::Object(_)) {
-            match engine.config().arithmetic_nan_handling {
-                NanHandling::ThrowError => {
-                    return Err(crate::constants::nan_error());
-                }
-                NanHandling::IgnoreValue => continue,
-                NanHandling::CoerceToZero => continue,
-                NanHandling::ReturnNull => return Ok(Value::Null),
+            match handle_nan(engine)? {
+                NanAction::Skip => continue,
+                NanAction::ReturnNull => return Ok(Value::Null),
             }
         }
 
@@ -303,13 +301,9 @@ pub fn evaluate_add(
                 float_sum = safe_add(float_sum, f);
             }
         } else {
-            match engine.config().arithmetic_nan_handling {
-                NanHandling::ThrowError => {
-                    return Err(crate::constants::nan_error());
-                }
-                NanHandling::IgnoreValue => continue,
-                NanHandling::CoerceToZero => continue,
-                NanHandling::ReturnNull => return Ok(Value::Null),
+            match handle_nan(engine)? {
+                NanAction::Skip => continue,
+                NanAction::ReturnNull => return Ok(Value::Null),
             }
         }
     }
@@ -330,7 +324,7 @@ pub fn evaluate_subtract(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let first = engine.evaluate_node(&args[0], context)?;
@@ -339,7 +333,7 @@ pub fn evaluate_subtract(
         // Check if it's an array - subtract all elements
         if let Value::Array(arr) = first {
             if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
             }
             // Subtract elements: first - second - third - ...
             let mut result =
@@ -488,25 +482,17 @@ pub fn evaluate_subtract(
                     all_integers = false;
                     float_result = int_result as f64 - f;
                 } else {
-                    match engine.config().arithmetic_nan_handling {
-                        NanHandling::ThrowError => {
-                            return Err(crate::constants::nan_error());
-                        }
-                        NanHandling::IgnoreValue => continue,
-                        NanHandling::CoerceToZero => continue,
-                        NanHandling::ReturnNull => return Ok(Value::Null),
+                    match handle_nan(engine)? {
+                        NanAction::Skip => continue,
+                        NanAction::ReturnNull => return Ok(Value::Null),
                     }
                 }
             } else if let Some(f) = coerce_to_number(&value, engine) {
                 float_result = safe_subtract(float_result, f);
             } else {
-                match engine.config().arithmetic_nan_handling {
-                    NanHandling::ThrowError => {
-                        return Err(crate::constants::nan_error());
-                    }
-                    NanHandling::IgnoreValue => continue,
-                    NanHandling::CoerceToZero => continue,
-                    NanHandling::ReturnNull => return Ok(Value::Null),
+                match handle_nan(engine)? {
+                    NanAction::Skip => continue,
+                    NanAction::ReturnNull => return Ok(Value::Null),
                 }
             }
         }
@@ -566,17 +552,9 @@ pub fn evaluate_multiply(
                     }
                     all_integers = false;
                 } else {
-                    match engine.config().arithmetic_nan_handling {
-                        NanHandling::ThrowError => {
-                            return Err(crate::constants::nan_error());
-                        }
-                        NanHandling::IgnoreValue => continue,
-                        NanHandling::CoerceToZero => {
-                            // For multiplication, 0 would make the whole product 0
-                            // So we ignore instead (treat as identity element 1)
-                            continue;
-                        }
-                        NanHandling::ReturnNull => return Ok(Value::Null),
+                    match handle_nan(engine)? {
+                        NanAction::Skip => continue,
+                        NanAction::ReturnNull => return Ok(Value::Null),
                     }
                 }
             }
@@ -674,15 +652,9 @@ pub fn evaluate_multiply(
             }
             all_integers = false;
         } else {
-            match engine.config().arithmetic_nan_handling {
-                NanHandling::ThrowError => {
-                    return Err(crate::constants::nan_error());
-                }
-                NanHandling::IgnoreValue => {}
-                NanHandling::CoerceToZero => {
-                    // For multiplication, treat as identity (1) by not changing product
-                }
-                NanHandling::ReturnNull => return Ok(Value::Null),
+            match handle_nan(engine)? {
+                NanAction::Skip => {}
+                NanAction::ReturnNull => return Ok(Value::Null),
             }
         }
     }
@@ -702,7 +674,7 @@ pub fn evaluate_divide(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Special case: single argument
@@ -712,7 +684,7 @@ pub fn evaluate_divide(
         // If it's an array, divide all elements sequentially
         if let Value::Array(arr) = value {
             if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
             }
             // Divide elements: first / second / third / ...
             let mut result =
@@ -872,7 +844,7 @@ pub fn evaluate_modulo(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Special case: single array argument - modulo all elements sequentially
@@ -880,7 +852,7 @@ pub fn evaluate_modulo(
         let value = engine.evaluate_node(&args[0], context)?;
         if let Value::Array(arr) = value {
             if arr.is_empty() || arr.len() < 2 {
-                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
             }
             // Modulo elements: first % second % third % ...
             let mut result =
@@ -896,11 +868,11 @@ pub fn evaluate_modulo(
 
             return Ok(number_value(result));
         }
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     if args.len() < 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let first = engine.evaluate_node(&args[0], context)?;
@@ -959,20 +931,20 @@ pub fn evaluate_max(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Special case: single argument
     if args.len() == 1 {
         // Check if it's a literal array (invalid for max)
         if matches!(&args[0], CompiledNode::Array { .. }) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
         // Also check if it's a Value node containing an array
         if let CompiledNode::Value { value, .. } = &args[0]
             && matches!(value, Value::Array(_))
         {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
 
         let value = engine.evaluate_node(&args[0], context)?;
@@ -980,7 +952,7 @@ pub fn evaluate_max(
         // If evaluation produced an array, find max of its elements
         if let Value::Array(arr) = value {
             if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
             }
 
             // Process array elements directly instead of recursing
@@ -990,7 +962,7 @@ pub fn evaluate_max(
             for elem in arr {
                 // Array elements are already evaluated, just check they're numeric
                 if !matches!(elem, Value::Number(_)) {
-                    return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
                 }
 
                 if let Some(n) = coerce_to_number(&elem, engine)
@@ -1006,7 +978,7 @@ pub fn evaluate_max(
 
         // Single non-array argument - check if it's numeric
         if !matches!(value, Value::Number(_)) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
         return Ok(value);
     }
@@ -1019,7 +991,7 @@ pub fn evaluate_max(
 
         // Only accept numeric values
         if !matches!(value, Value::Number(_)) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
 
         if let Some(n) = coerce_to_number(&value, engine)
@@ -1042,20 +1014,20 @@ pub fn evaluate_min(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     // Special case: single argument
     if args.len() == 1 {
         // Check if it's a literal array (invalid for min)
         if matches!(&args[0], CompiledNode::Array { .. }) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
         // Also check if it's a Value node containing an array
         if let CompiledNode::Value { value, .. } = &args[0]
             && matches!(value, Value::Array(_))
         {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
 
         let value = engine.evaluate_node(&args[0], context)?;
@@ -1063,7 +1035,7 @@ pub fn evaluate_min(
         // If evaluation produced an array, find min of its elements
         if let Value::Array(arr) = value {
             if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
             }
 
             // Process array elements directly instead of recursing
@@ -1073,7 +1045,7 @@ pub fn evaluate_min(
             for elem in arr {
                 // Array elements are already evaluated, just check they're numeric
                 if !matches!(elem, Value::Number(_)) {
-                    return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
                 }
 
                 if let Some(n) = coerce_to_number(&elem, engine)
@@ -1089,7 +1061,7 @@ pub fn evaluate_min(
 
         // Single non-array argument - check if it's numeric
         if !matches!(value, Value::Number(_)) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
         return Ok(value);
     }
@@ -1102,7 +1074,7 @@ pub fn evaluate_min(
 
         // Only accept numeric values
         if !matches!(value, Value::Number(_)) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.to_string()));
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
 
         if let Some(n) = coerce_to_number(&value, engine)

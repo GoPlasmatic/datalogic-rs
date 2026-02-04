@@ -27,19 +27,16 @@
 
 pub mod helpers;
 
-pub mod abs;
 pub mod arithmetic;
 pub mod array;
-pub mod ceil;
 pub mod comparison;
 pub mod control;
 pub mod datetime;
-pub mod floor;
 pub mod logical;
+pub mod math;
 pub mod missing;
 pub mod preserve;
 pub mod string;
-pub mod string_ops;
 pub mod throw;
 pub mod try_op;
 pub mod type_op;

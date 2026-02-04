@@ -1,4 +1,6 @@
+use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
+use crate::constants::INVALID_ARGS;
 use serde_json::Value;
 use std::borrow::Cow;
 
@@ -202,4 +204,18 @@ pub fn extract_duration_value(value: &Value) -> Option<crate::datetime::DataDura
     } else {
         None
     }
+}
+
+/// Checks if args contain the `__invalid_args__` sentinel marker from compilation.
+/// Returns an error if the marker is present, Ok(()) otherwise.
+#[inline]
+pub fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<()> {
+    if args.len() == 1
+        && let CompiledNode::Value { value, .. } = &args[0]
+        && let Some(obj) = value.as_object()
+        && obj.contains_key("__invalid_args__")
+    {
+        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+    Ok(())
 }
