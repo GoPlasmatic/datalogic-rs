@@ -25,8 +25,12 @@ impl DataDateTime {
         // Fast path: exact "YYYY-MM-DDTHH:MM:SSZ" format (20 bytes, UTC)
         // This is the most common format produced by `now` and ISO datetime strings.
         let bytes = s.as_bytes();
-        if bytes.len() == 20 && bytes[4] == b'-' && bytes[7] == b'-'
-            && bytes[10] == b'T' && bytes[13] == b':' && bytes[16] == b':'
+        if bytes.len() == 20
+            && bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes[10] == b'T'
+            && bytes[13] == b':'
+            && bytes[16] == b':'
             && bytes[19] == b'Z'
             && let Some(dt) = Self::parse_utc_fast(bytes)
         {
@@ -342,7 +346,9 @@ pub fn extract_duration(value: &Value) -> Option<DataDuration> {
 fn parse_2digits(b: &[u8], offset: usize) -> Option<u32> {
     let d0 = b[offset].wrapping_sub(b'0');
     let d1 = b[offset + 1].wrapping_sub(b'0');
-    if d0 > 9 || d1 > 9 { return None; }
+    if d0 > 9 || d1 > 9 {
+        return None;
+    }
     Some(d0 as u32 * 10 + d1 as u32)
 }
 
@@ -353,6 +359,8 @@ fn parse_4digits(b: &[u8], offset: usize) -> Option<u32> {
     let d1 = b[offset + 1].wrapping_sub(b'0');
     let d2 = b[offset + 2].wrapping_sub(b'0');
     let d3 = b[offset + 3].wrapping_sub(b'0');
-    if d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 { return None; }
+    if d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 {
+        return None;
+    }
     Some(d0 as u32 * 1000 + d1 as u32 * 100 + d2 as u32 * 10 + d3 as u32)
 }

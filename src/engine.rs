@@ -445,9 +445,7 @@ impl DataLogic {
                 string::evaluate_split_with_regex(args, context, self, regex, capture_names)
             }
 
-            CompiledNode::CompiledThrow { error_obj } => {
-                Err(Error::Thrown(error_obj.clone()))
-            }
+            CompiledNode::CompiledThrow { error_obj } => Err(Error::Thrown(error_obj.clone())),
         }
     }
 

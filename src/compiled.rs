@@ -133,9 +133,7 @@ pub enum CompiledNode {
     ///
     /// When `throw` is called with a literal string, the error object
     /// `{"type": "..."}` is pre-built at compile time.
-    CompiledThrow {
-        error_obj: Value,
-    },
+    CompiledThrow { error_obj: Value },
 }
 
 /// Compiled logic that can be evaluated multiple times across different data.
@@ -349,7 +347,9 @@ impl CompiledLogic {
                     // Pre-compile throw with literal string into CompiledThrow
                     if opcode == OpCode::Throw
                         && args.len() == 1
-                        && let CompiledNode::Value { value: Value::String(s) } = &args[0]
+                        && let CompiledNode::Value {
+                            value: Value::String(s),
+                        } = &args[0]
                     {
                         return Ok(CompiledNode::CompiledThrow {
                             error_obj: serde_json::json!({"type": s}),
