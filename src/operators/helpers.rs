@@ -2,7 +2,6 @@ use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
 use crate::constants::INVALID_ARGS;
 use serde_json::Value;
-use std::borrow::Cow;
 
 /// Checks if a value is truthy using the engine's configuration
 pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
@@ -141,14 +140,6 @@ pub fn safe_modulo(a: f64, b: f64) -> f64 {
     } else {
         let result = a % b;
         if result.is_nan() { 0.0 } else { result }
-    }
-}
-
-/// Extracts a string from a value
-pub fn extract_string(value: &Value) -> Cow<'_, str> {
-    match value {
-        Value::String(s) => Cow::Borrowed(s),
-        _ => Cow::Owned(to_string(value)),
     }
 }
 

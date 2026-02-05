@@ -556,7 +556,10 @@ fn key_exists(value: &Value, key: &str) -> bool {
 
 /// Traverse pre-parsed path segments on a value (reference only, no context needed).
 #[inline]
-fn try_traverse_segments<'a>(data: &'a Value, segments: &[PathSegment]) -> Option<&'a Value> {
+pub(crate) fn try_traverse_segments<'a>(
+    data: &'a Value,
+    segments: &[PathSegment],
+) -> Option<&'a Value> {
     let mut current = data;
     for seg in segments {
         match seg {

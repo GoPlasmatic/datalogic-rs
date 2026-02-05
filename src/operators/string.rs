@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde_json::{Value, json};
 
-use super::helpers::{extract_string, to_string};
+use super::helpers::to_string;
 use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Result, error::Error};
 
@@ -41,9 +41,9 @@ pub fn evaluate_substr(
     }
 
     let string_val = engine.evaluate_node(&args[0], context)?;
-    let string = match &string_val {
-        Value::String(s) => s.clone(),
-        _ => string_val.to_string(),
+    let string: std::borrow::Cow<str> = match &string_val {
+        Value::String(s) => std::borrow::Cow::Borrowed(s.as_str()),
+        _ => std::borrow::Cow::Owned(string_val.to_string()),
     };
 
     // Get character count for proper bounds checking
@@ -175,27 +175,6 @@ pub fn evaluate_length(
     }
 }
 
-/// Shared helper for starts_with/ends_with pattern
-#[inline]
-fn evaluate_string_match(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    matcher: fn(&str, &str) -> bool,
-) -> Result<Value> {
-    if args.len() < 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let text = engine.evaluate_node(&args[0], context)?;
-    let pattern = engine.evaluate_node(&args[1], context)?;
-
-    let text_str = extract_string(&text);
-    let pattern_str = extract_string(&pattern);
-
-    Ok(Value::Bool(matcher(&text_str, &pattern_str)))
-}
-
 /// StartsWithOperator function - checks if a string starts with a prefix
 #[inline]
 pub fn evaluate_starts_with(
@@ -203,7 +182,25 @@ pub fn evaluate_starts_with(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    evaluate_string_match(args, context, engine, |text, pat| text.starts_with(pat))
+    if args.len() < 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let text = engine.evaluate_node(&args[0], context)?;
+    let text_str = text.as_str().unwrap_or("");
+
+    // Fast path: pattern is a literal string (most common case) — avoid clone
+    if let CompiledNode::Value {
+        value: Value::String(p),
+        ..
+    } = &args[1]
+    {
+        return Ok(Value::Bool(text_str.starts_with(p.as_str())));
+    }
+
+    let pattern = engine.evaluate_node(&args[1], context)?;
+    let pattern_str = pattern.as_str().unwrap_or("");
+    Ok(Value::Bool(text_str.starts_with(pattern_str)))
 }
 
 /// EndsWithOperator function - checks if a string ends with a suffix
@@ -213,7 +210,25 @@ pub fn evaluate_ends_with(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    evaluate_string_match(args, context, engine, |text, pat| text.ends_with(pat))
+    if args.len() < 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let text = engine.evaluate_node(&args[0], context)?;
+    let text_str = text.as_str().unwrap_or("");
+
+    // Fast path: pattern is a literal string (most common case) — avoid clone
+    if let CompiledNode::Value {
+        value: Value::String(p),
+        ..
+    } = &args[1]
+    {
+        return Ok(Value::Bool(text_str.ends_with(p.as_str())));
+    }
+
+    let pattern = engine.evaluate_node(&args[1], context)?;
+    let pattern_str = pattern.as_str().unwrap_or("");
+    Ok(Value::Bool(text_str.ends_with(pattern_str)))
 }
 
 /// UpperOperator function - converts a string to uppercase
@@ -228,8 +243,14 @@ pub fn evaluate_upper(
     }
 
     let value = engine.evaluate_node(&args[0], context)?;
+    // Fast path: if ASCII and already uppercase, return original value (no allocation)
+    let already_upper = value
+        .as_str()
+        .is_some_and(|s| s.is_ascii() && !s.bytes().any(|b| b.is_ascii_lowercase()));
+    if already_upper {
+        return Ok(value);
+    }
     let text = value.as_str().unwrap_or("");
-
     Ok(Value::String(text.to_uppercase()))
 }
 
@@ -245,8 +266,14 @@ pub fn evaluate_lower(
     }
 
     let value = engine.evaluate_node(&args[0], context)?;
+    // Fast path: if ASCII and already lowercase, return original value (no allocation)
+    let already_lower = value
+        .as_str()
+        .is_some_and(|s| s.is_ascii() && !s.bytes().any(|b| b.is_ascii_uppercase()));
+    if already_lower {
+        return Ok(value);
+    }
     let text = value.as_str().unwrap_or("");
-
     Ok(Value::String(text.to_lowercase()))
 }
 
@@ -262,8 +289,20 @@ pub fn evaluate_trim(
     }
 
     let value = engine.evaluate_node(&args[0], context)?;
+    // Fast path: check if trimming is needed before allocating
+    let needs_trim = value.as_str().is_some_and(|s| {
+        !s.is_empty() && {
+            // chars().next() and next_back() are O(1) for valid UTF-8
+            s.starts_with(|c: char| c.is_whitespace()) || s.ends_with(|c: char| c.is_whitespace())
+        }
+    });
+    if !needs_trim {
+        return match &value {
+            Value::String(_) => Ok(value),
+            _ => Ok(Value::String(String::new())),
+        };
+    }
     let text = value.as_str().unwrap_or("");
-
     Ok(Value::String(text.trim().to_string()))
 }
 
@@ -279,12 +318,23 @@ pub fn evaluate_split(
     }
 
     let text = engine.evaluate_node(&args[0], context)?;
-    let delimiter = engine.evaluate_node(&args[1], context)?;
-
     let text_str = text.as_str().unwrap_or("");
+
+    // Fast path: delimiter is a literal string — skip regex check entirely.
+    // Valid regex patterns are already handled at compile-time via CompiledSplitRegex,
+    // so any remaining literal delimiter is guaranteed to be a plain string split.
+    if let CompiledNode::Value {
+        value: Value::String(delim),
+        ..
+    } = &args[1]
+    {
+        return split_normal(text_str, delim.as_str());
+    }
+
+    let delimiter = engine.evaluate_node(&args[1], context)?;
     let delimiter_str = delimiter.as_str().unwrap_or("");
 
-    // Check if delimiter is a regex pattern with named groups
+    // Check if delimiter is a regex pattern with named groups (dynamic delimiter case)
     if delimiter_str.contains("(?P<") {
         // Try to parse as regex
         match Regex::new(delimiter_str) {
@@ -320,10 +370,43 @@ pub fn evaluate_split(
     }
 
     // Normal string split
+    split_normal(text_str, delimiter_str)
+}
+
+/// Split with a pre-compiled regex (used when regex is known at compile time)
+#[inline]
+pub fn evaluate_split_with_regex(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    regex: &Regex,
+    capture_names: &[Box<str>],
+) -> Result<Value> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let text = engine.evaluate_node(&args[0], context)?;
+    let text_str = text.as_str().unwrap_or("");
+
+    if let Some(captures) = regex.captures(text_str) {
+        let mut result = serde_json::Map::new();
+        for name in capture_names {
+            if let Some(m) = captures.name(name) {
+                result.insert(name.to_string(), Value::String(m.as_str().to_string()));
+            }
+        }
+        Ok(Value::Object(result))
+    } else {
+        Ok(Value::Object(serde_json::Map::new()))
+    }
+}
+
+#[inline]
+fn split_normal(text_str: &str, delimiter_str: &str) -> Result<Value> {
     if text_str.is_empty() {
         Ok(json!([""]))
     } else if delimiter_str.is_empty() {
-        // Split into individual characters if delimiter is empty
         let chars: Vec<Value> = text_str
             .chars()
             .map(|c| Value::String(c.to_string()))

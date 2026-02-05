@@ -40,3 +40,6 @@ ui/dist-embed/
 docs/src/assets/*.js
 docs/src/assets/*.js.map
 docs/src/assets/*.css
+
+# Benchmark reports
+benchmarks/

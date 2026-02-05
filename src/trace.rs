@@ -153,6 +153,23 @@ impl ExpressionNode {
                 expression: Self::compiled_exists_to_json_string(*scope_level, segments),
                 children: vec![],
             },
+
+            CompiledNode::CompiledSplitRegex { args, regex, .. } => {
+                let children: Vec<ExpressionNode> = args
+                    .iter()
+                    .filter(|n| Self::is_operator_node(n))
+                    .map(|n| Self::build_node(n, id_counter, node_id_map))
+                    .collect();
+                ExpressionNode {
+                    id,
+                    expression: format!(
+                        "{{\"split\": [{}, \"{}\"]}}",
+                        Self::node_to_json_string(&args[0]),
+                        regex.as_str()
+                    ),
+                    children,
+                }
+            }
         }
     }
 
@@ -190,6 +207,14 @@ impl ExpressionNode {
                 scope_level,
                 segments,
             } => Self::compiled_exists_to_json_string(*scope_level, segments),
+
+            CompiledNode::CompiledSplitRegex { args, regex, .. } => {
+                format!(
+                    "{{\"split\": [{}, \"{}\"]}}",
+                    Self::node_to_json_string(&args[0]),
+                    regex.as_str()
+                )
+            }
         }
     }
 

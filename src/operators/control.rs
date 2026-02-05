@@ -132,10 +132,11 @@ pub fn evaluate_switch(
         } => {
             // Entire cases array was statically evaluated
             for case in cases {
-                if let Value::Array(pair) = case {
-                    if pair.len() >= 2 && discriminant == pair[0] {
-                        return Ok(pair[1].clone());
-                    }
+                if let Value::Array(pair) = case
+                    && pair.len() >= 2
+                    && discriminant == pair[0]
+                {
+                    return Ok(pair[1].clone());
                 }
             }
         }
@@ -296,10 +297,11 @@ pub fn evaluate_switch_traced(
             value: Value::Array(cases),
         } => {
             for case in cases {
-                if let Value::Array(pair) = case {
-                    if pair.len() >= 2 && discriminant == pair[0] {
-                        return Ok(pair[1].clone());
-                    }
+                if let Value::Array(pair) = case
+                    && pair.len() >= 2
+                    && discriminant == pair[0]
+                {
+                    return Ok(pair[1].clone());
                 }
             }
         }

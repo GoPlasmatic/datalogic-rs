@@ -435,6 +435,15 @@ impl DataLogic {
                 scope_level,
                 segments,
             } => variable::evaluate_compiled_exists(*scope_level, segments, context),
+
+            CompiledNode::CompiledSplitRegex {
+                args,
+                regex,
+                capture_names,
+            } => {
+                use crate::operators::string;
+                string::evaluate_split_with_regex(args, context, self, regex, capture_names)
+            }
         }
     }
 
@@ -614,18 +623,18 @@ impl DataLogic {
                 Ok(result)
             }
 
-            CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists { .. } => {
-                match self.evaluate_node(node, context) {
-                    Ok(result) => {
-                        collector.record_step(node_id, current_context, result.clone());
-                        Ok(result)
-                    }
-                    Err(err) => {
-                        collector.record_error(node_id, current_context, err.to_string());
-                        Err(err)
-                    }
+            CompiledNode::CompiledVar { .. }
+            | CompiledNode::CompiledExists { .. }
+            | CompiledNode::CompiledSplitRegex { .. } => match self.evaluate_node(node, context) {
+                Ok(result) => {
+                    collector.record_step(node_id, current_context, result.clone());
+                    Ok(result)
                 }
-            }
+                Err(err) => {
+                    collector.record_error(node_id, current_context, err.to_string());
+                    Err(err)
+                }
+            },
         }
     }
 }
@@ -705,6 +714,13 @@ fn node_to_value(node: &CompiledNode) -> Value {
                 let arr: Vec<Value> = segments.iter().map(segment_to_value).collect();
                 obj.insert("exists".into(), Value::Array(arr));
             }
+            Value::Object(obj)
+        }
+        CompiledNode::CompiledSplitRegex { args, regex, .. } => {
+            let mut obj = serde_json::Map::new();
+            let mut arr = vec![node_to_value(&args[0])];
+            arr.push(Value::String(regex.as_str().to_string()));
+            obj.insert("split".into(), Value::Array(arr));
             Value::Object(obj)
         }
     }

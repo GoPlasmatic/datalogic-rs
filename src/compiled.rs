@@ -1,4 +1,5 @@
 use crate::{ContextStack, DataLogic, Result, opcode::OpCode};
+use regex::Regex;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -112,6 +113,20 @@ pub enum CompiledNode {
     CompiledExists {
         scope_level: u32,
         segments: Box<[PathSegment]>,
+    },
+
+    /// A pre-compiled split with regex pattern.
+    ///
+    /// When the split operator's delimiter is a static regex pattern with named
+    /// capture groups, the regex is compiled once during the compilation phase
+    /// instead of on every evaluation.
+    CompiledSplitRegex {
+        /// The text argument (only the first arg of split)
+        args: Box<[CompiledNode]>,
+        /// Pre-compiled regex pattern
+        regex: Arc<Regex>,
+        /// Pre-extracted capture group names
+        capture_names: Box<[Box<str>]>,
     },
 }
 
@@ -316,6 +331,13 @@ impl CompiledLogic {
                         }
                     }
 
+                    // Pre-compile regex for split operator when delimiter is a static pattern
+                    if opcode == OpCode::Split
+                        && let Some(node) = Self::try_compile_split_regex(&args)
+                    {
+                        return Ok(node);
+                    }
+
                     let node = CompiledNode::BuiltinOperator { opcode, args };
 
                     // If engine is provided and node is static, evaluate it
@@ -430,6 +452,7 @@ impl CompiledLogic {
             }
             CompiledNode::CustomOperator { .. } => false, // Unknown operators are non-static
             CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists { .. } => false, // Context-dependent
+            CompiledNode::CompiledSplitRegex { args, .. } => args.iter().all(Self::node_is_static),
             CompiledNode::StructuredObject { fields, .. } => {
                 fields.iter().all(|(_, node)| Self::node_is_static(node))
             }
@@ -736,6 +759,42 @@ impl CompiledLogic {
         })
     }
 
+    /// Try to pre-compile a split operator's regex pattern at compile time.
+    ///
+    /// When the delimiter (second arg) is a static string containing named capture
+    /// groups (`(?P<...)`), the regex is compiled once here instead of on every evaluation.
+    fn try_compile_split_regex(args: &[CompiledNode]) -> Option<CompiledNode> {
+        if args.len() < 2 {
+            return None;
+        }
+
+        // Check if the delimiter is a static string with named capture groups
+        let pattern = match &args[1] {
+            CompiledNode::Value {
+                value: Value::String(s),
+            } if s.contains("(?P<") => s.as_str(),
+            _ => return None,
+        };
+
+        // Try to compile the regex
+        let re = Regex::new(pattern).ok()?;
+        let capture_names: Vec<Box<str>> = re.capture_names().flatten().map(|n| n.into()).collect();
+
+        // Only optimize if there are named capture groups
+        if capture_names.is_empty() {
+            return None;
+        }
+
+        // Keep only the text argument (first arg)
+        let text_args = vec![args[0].clone()].into_boxed_slice();
+
+        Some(CompiledNode::CompiledSplitRegex {
+            args: text_args,
+            regex: Arc::new(re),
+            capture_names: capture_names.into_boxed_slice(),
+        })
+    }
+
     fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         use OpCode::*;
 
@@ -772,8 +831,7 @@ impl CompiledLogic {
             | ParseDate | FormatDate | DateDiff | Abs | Ceil | Floor | Add | Subtract
             | Multiply | Divide | Modulo | Equals | StrictEquals | NotEquals | StrictNotEquals
             | GreaterThan | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And
-            | Or | Ternary | If | Cat | Substr | In | Length | Sort | Slice | Coalesce
-            | Switch => {
+            | Or | Ternary | If | Cat | Substr | In | Length | Sort | Slice | Coalesce | Switch => {
                 args_static()
             }
         }

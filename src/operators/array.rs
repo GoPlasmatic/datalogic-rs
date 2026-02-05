@@ -5,8 +5,43 @@ use std::collections::HashMap;
 
 use super::helpers::is_truthy;
 use crate::constants::INVALID_ARGS;
+use crate::opcode::OpCode;
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
+
+/// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
+/// Used by filter fast path to detect values that can be evaluated once before the loop.
+#[inline]
+fn is_filter_invariant(node: &CompiledNode) -> bool {
+    match node {
+        CompiledNode::Value { .. } => true,
+        CompiledNode::CompiledVar { scope_level, .. } => *scope_level > 0,
+        _ => false,
+    }
+}
+
+/// Try to extract filter fast-path components from a comparison pair.
+/// Returns (field_segments, invariant_node) if `a` is a simple scope_level=0 field var
+/// and `b` is loop-invariant (literal value or parent scope var).
+#[inline]
+fn try_extract_filter_field_cmp<'a>(
+    a: &'a CompiledNode,
+    b: &'a CompiledNode,
+) -> Option<(&'a [crate::compiled::PathSegment], &'a CompiledNode)> {
+    if let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: crate::compiled::ReduceHint::None,
+        metadata_hint: crate::compiled::MetadataHint::None,
+        default_value: None,
+    } = a
+        && !segments.is_empty()
+        && is_filter_invariant(b)
+    {
+        return Some((segments, b));
+    }
+    None
+}
 
 /// The `merge` operator - combines multiple arrays into one.
 ///
@@ -112,6 +147,31 @@ pub fn evaluate_map(
 
     match collection {
         Value::Array(arr) => {
+            // Fast path: if the map body is a simple var/val access,
+            // handle it directly without pushing items into context.
+            if let CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments,
+                reduce_hint: crate::compiled::ReduceHint::None,
+                metadata_hint: crate::compiled::MetadataHint::None,
+                default_value: None,
+            } = logic
+            {
+                if segments.is_empty() {
+                    // Identity map: val([]) returns each item as-is
+                    return Ok(Value::Array(arr));
+                }
+                // Field extraction: val("field") extracts a field from each item
+                let mut results = Vec::with_capacity(arr.len());
+                for item in arr.iter() {
+                    let val = super::variable::try_traverse_segments(item, segments)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    results.push(val);
+                }
+                return Ok(Value::Array(results));
+            }
+
             let len = arr.len();
             let mut results = Vec::with_capacity(len);
             let mut pushed = false;
@@ -213,6 +273,46 @@ pub fn evaluate_filter(
 
     match collection {
         Value::Array(arr) => {
+            // Fast path: detect simple comparison predicates to avoid per-item context push.
+            // Handles patterns like: {"===": [{"val": "field"}, "literal"]}
+            // and {"===": [{"val": "field"}, {"val": [[N], "parent_field"]}]}
+            if let CompiledNode::BuiltinOperator {
+                opcode,
+                args: pred_args,
+            } = predicate
+                && pred_args.len() == 2
+                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
+            {
+                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
+                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
+
+                if let Some((segments, invariant_node)) = fast {
+                    // Evaluate the invariant side once before the loop
+                    let invariant_owned;
+                    let invariant_ref: &Value = match invariant_node {
+                        CompiledNode::Value { value, .. } => value,
+                        _ => {
+                            // Parent scope access: push dummy frame for correct depth
+                            context.push(Value::Null);
+                            invariant_owned = engine.evaluate_node(invariant_node, context)?;
+                            context.pop();
+                            &invariant_owned
+                        }
+                    };
+
+                    let is_eq = matches!(opcode, OpCode::StrictEquals);
+                    let results: Vec<Value> = arr
+                        .into_iter()
+                        .filter(|item| {
+                            let matches = super::variable::try_traverse_segments(item, segments)
+                                == Some(invariant_ref);
+                            if is_eq { matches } else { !matches }
+                        })
+                        .collect();
+                    return Ok(Value::Array(results));
+                }
+            }
+
             let len = arr.len();
             let mut results = Vec::with_capacity(arr.len());
             let mut pushed = false;
@@ -608,28 +708,68 @@ pub fn evaluate_sort(
         // Sort objects by extracted field
         let extractor = &args[2];
 
-        // Create a vector of (index, value, extracted_value) tuples
-        let mut items_with_values: Vec<(usize, Value, Value)> = Vec::new();
+        // Fast path: if extractor is a simple var/val field access,
+        // extract keys directly from items without cloning into context.
+        // This avoids expensive object cloning (N × ~100ns for complex objects).
+        let keys = if let CompiledNode::CompiledVar {
+            scope_level: 0,
+            segments,
+            reduce_hint: crate::compiled::ReduceHint::None,
+            metadata_hint: crate::compiled::MetadataHint::None,
+            default_value: None,
+        } = extractor
+        {
+            if !segments.is_empty() {
+                let mut keys: Vec<Value> = Vec::with_capacity(array.len());
+                for item in array.iter() {
+                    let key = super::variable::try_traverse_segments(item, segments)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    keys.push(key);
+                }
+                Some(keys)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
-        for (index, item) in array.iter().enumerate() {
-            context.push(item.clone());
-            let extracted = engine.evaluate_node(extractor, context)?;
-            let item_back = context.take_top_data();
-            context.pop();
-            items_with_values.push((index, item_back, extracted));
-        }
+        let keys = if let Some(k) = keys {
+            k
+        } else {
+            // General path: push each item into context and evaluate extractor
+            let mut keys: Vec<Value> = Vec::with_capacity(array.len());
+            let mut pushed = false;
 
-        // Sort by extracted values
-        items_with_values.sort_by(|a, b| {
-            let cmp = compare_values(&a.2, &b.2);
+            for (index, item) in array.iter().enumerate() {
+                if !pushed {
+                    context.push_with_index(item.clone(), 0);
+                    pushed = true;
+                } else {
+                    context.replace_top_data(item.clone(), index);
+                }
+                keys.push(engine.evaluate_node(extractor, context)?);
+            }
+            if pushed {
+                context.pop();
+            }
+            keys
+        };
+
+        // Build index array and sort by extracted keys
+        let mut indices: Vec<usize> = (0..array.len()).collect();
+        indices.sort_by(|&a, &b| {
+            let cmp = compare_values(&keys[a], &keys[b]);
             if ascending { cmp } else { cmp.reverse() }
         });
 
-        // Rebuild array from sorted items
-        array = items_with_values
-            .into_iter()
-            .map(|(_, item, _)| item)
-            .collect();
+        // Reorder array by sorted indices
+        let mut sorted = Vec::with_capacity(array.len());
+        for i in indices {
+            sorted.push(std::mem::replace(&mut array[i], Value::Null));
+        }
+        array = sorted;
     } else {
         // Sort primitive values directly
         array.sort_by(|a, b| {
@@ -750,21 +890,7 @@ pub fn evaluate_slice(
         Value::String(s) => {
             let chars: Vec<char> = s.chars().collect();
             let len = chars.len() as i64;
-            let char_values: Vec<Value> = chars
-                .into_iter()
-                .map(|c| Value::String(c.to_string()))
-                .collect();
-            let sliced = slice_sequence(&char_values, len, start, end, step);
-            let result_string: String = sliced
-                .into_iter()
-                .filter_map(|v| {
-                    if let Value::String(s) = v {
-                        Some(s)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let result_string = slice_chars(&chars, len, start, end, step);
             Ok(Value::String(result_string))
         }
         _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
@@ -874,6 +1000,59 @@ fn slice_sequence(
             // Use saturating_add for negative step (step is negative)
             let next_i = i.saturating_add(step);
             // Break if we've wrapped around
+            if step < 0 && next_i > i {
+                break;
+            }
+            i = next_i;
+        }
+    }
+
+    result
+}
+
+// Helper function to slice characters directly without Value conversion
+fn slice_chars(
+    chars: &[char],
+    len: i64,
+    start: Option<i64>,
+    end: Option<i64>,
+    step: i64,
+) -> String {
+    let mut result = String::new();
+
+    let (actual_start, actual_end) = if step > 0 {
+        let s = normalize_index(start.unwrap_or(0), len);
+        let e = normalize_index(end.unwrap_or(len), len);
+        (s, e)
+    } else {
+        let default_start = len.saturating_sub(1);
+        let s = normalize_index(start.unwrap_or(default_start), len);
+        let e = if let Some(e) = end {
+            normalize_index(e, len)
+        } else {
+            -1
+        };
+        (s, e)
+    };
+
+    if step > 0 {
+        let mut i = actual_start;
+        while i < actual_end && i < len {
+            if i >= 0 && (i as usize) < chars.len() {
+                result.push(chars[i as usize]);
+            }
+            i = i.saturating_add(step);
+            if step > 0 && i < actual_start {
+                break;
+            }
+        }
+    } else {
+        let mut i = actual_start;
+        while i > actual_end && i >= 0 && i < len {
+            if (i as usize) < chars.len() {
+                result.push(chars[i as usize]);
+            }
+            let next_i = i.saturating_add(step);
             if step < 0 && next_i > i {
                 break;
             }
