@@ -444,6 +444,10 @@ impl DataLogic {
                 use crate::operators::string;
                 string::evaluate_split_with_regex(args, context, self, regex, capture_names)
             }
+
+            CompiledNode::CompiledThrow { error_obj } => {
+                Err(Error::Thrown(error_obj.clone()))
+            }
         }
     }
 
@@ -625,7 +629,8 @@ impl DataLogic {
 
             CompiledNode::CompiledVar { .. }
             | CompiledNode::CompiledExists { .. }
-            | CompiledNode::CompiledSplitRegex { .. } => match self.evaluate_node(node, context) {
+            | CompiledNode::CompiledSplitRegex { .. }
+            | CompiledNode::CompiledThrow { .. } => match self.evaluate_node(node, context) {
                 Ok(result) => {
                     collector.record_step(node_id, current_context, result.clone());
                     Ok(result)
@@ -721,6 +726,20 @@ fn node_to_value(node: &CompiledNode) -> Value {
             let mut arr = vec![node_to_value(&args[0])];
             arr.push(Value::String(regex.as_str().to_string()));
             obj.insert("split".into(), Value::Array(arr));
+            Value::Object(obj)
+        }
+        CompiledNode::CompiledThrow { error_obj } => {
+            let mut obj = serde_json::Map::new();
+            // Extract the type string from the pre-built error object
+            if let Value::Object(err_map) = error_obj {
+                if let Some(Value::String(s)) = err_map.get("type") {
+                    obj.insert("throw".into(), Value::String(s.clone()));
+                } else {
+                    obj.insert("throw".into(), error_obj.clone());
+                }
+            } else {
+                obj.insert("throw".into(), error_obj.clone());
+            }
             Value::Object(obj)
         }
     }

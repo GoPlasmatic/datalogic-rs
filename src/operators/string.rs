@@ -15,14 +15,14 @@ pub fn evaluate_cat(
     let mut result = String::new();
 
     for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
+        let value = engine.evaluate_node_cow(arg, context)?;
         // If the value is an array, concatenate its elements
-        if let Value::Array(arr) = value {
+        if let Value::Array(arr) = value.as_ref() {
             for item in arr {
-                result.push_str(&to_string(&item));
+                result.push_str(&to_string(item));
             }
         } else {
-            result.push_str(&to_string(&value));
+            result.push_str(&to_string(value.as_ref()));
         }
     }
 
@@ -49,16 +49,25 @@ pub fn evaluate_substr(
     // Get character count for proper bounds checking
     let char_count = string.chars().count();
 
+    // Fast path: read literal integer args directly without evaluate_node dispatch
     let start = if args.len() > 1 {
-        let start_val = engine.evaluate_node(&args[1], context)?;
-        start_val.as_i64().unwrap_or(0)
+        if let CompiledNode::Value { value } = &args[1] {
+            value.as_i64().unwrap_or(0)
+        } else {
+            let start_val = engine.evaluate_node(&args[1], context)?;
+            start_val.as_i64().unwrap_or(0)
+        }
     } else {
         0
     };
 
     let length = if args.len() > 2 {
-        let length_val = engine.evaluate_node(&args[2], context)?;
-        length_val.as_i64()
+        if let CompiledNode::Value { value } = &args[2] {
+            value.as_i64()
+        } else {
+            let length_val = engine.evaluate_node(&args[2], context)?;
+            length_val.as_i64()
+        }
     } else {
         None
     };
@@ -122,15 +131,15 @@ pub fn evaluate_in(
         return Ok(Value::Bool(false));
     }
 
-    let needle = engine.evaluate_node(&args[0], context)?;
-    let haystack = engine.evaluate_node(&args[1], context)?;
+    let needle = engine.evaluate_node_cow(&args[0], context)?;
+    let haystack = engine.evaluate_node_cow(&args[1], context)?;
 
-    let result = match &haystack {
-        Value::String(s) => match &needle {
+    let result = match haystack.as_ref() {
+        Value::String(s) => match needle.as_ref() {
             Value::String(n) => s.contains(n.as_str()),
             _ => false,
         },
-        Value::Array(arr) => arr.iter().any(|v| v == &needle),
+        Value::Array(arr) => arr.iter().any(|v| v == needle.as_ref()),
         _ => false,
     };
 
@@ -148,27 +157,23 @@ pub fn evaluate_length(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    // First evaluate the argument
-    let value = engine.evaluate_node(&args[0], context)?;
+    // Use cow to avoid cloning strings/arrays just to get their length
+    let value = engine.evaluate_node_cow(&args[0], context)?;
 
-    match value {
+    match value.as_ref() {
         Value::String(s) => {
-            // Count Unicode code points (characters)
             let char_count = s.chars().count();
-            // Ensure count fits in i64 (though this is practically impossible to overflow)
             if char_count > i64::MAX as usize {
                 return Err(Error::InvalidArguments("String too long".to_string()));
             }
             Ok(Value::Number(serde_json::Number::from(char_count as i64)))
         }
         Value::Array(arr) => {
-            // Ensure array length fits in i64
             if arr.len() > i64::MAX as usize {
                 return Err(Error::InvalidArguments("Array too long".to_string()));
             }
             Ok(Value::Number(serde_json::Number::from(arr.len() as i64)))
         }
-        // For null, numbers, booleans, and objects, length is invalid
         Value::Null | Value::Number(_) | Value::Bool(_) | Value::Object(_) => {
             Err(Error::InvalidArguments(INVALID_ARGS.into()))
         }

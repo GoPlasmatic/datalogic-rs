@@ -10,7 +10,7 @@ use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
-/// Used by filter fast path to detect values that can be evaluated once before the loop.
+/// Used by filter/quantifier fast paths to detect values that can be evaluated once before the loop.
 #[inline]
 fn is_filter_invariant(node: &CompiledNode) -> bool {
     match node {
@@ -41,6 +41,201 @@ fn try_extract_filter_field_cmp<'a>(
         return Some((segments, b));
     }
     None
+}
+
+/// Represents a detected fast-path predicate pattern for quantifier/filter operators.
+/// Avoids per-item context push/pop and evaluate_node dispatch.
+enum FastPredicate<'a> {
+    /// Compare whole item (val([])) against a literal using strict equality
+    WholeItemStrictEq { literal: &'a Value, negate: bool },
+    /// Compare a field against a literal using strict equality
+    FieldStrictEq { segments: &'a [crate::compiled::PathSegment], literal: &'a Value, negate: bool },
+    /// Compare whole item (val([])) against a numeric literal using ordered comparison
+    WholeItemNumericCmp { literal_f: f64, opcode: OpCode, var_is_lhs: bool },
+    /// Compare a field against a numeric literal using ordered comparison
+    FieldNumericCmp { segments: &'a [crate::compiled::PathSegment], literal_f: f64, opcode: OpCode, var_is_lhs: bool },
+}
+
+impl<'a> FastPredicate<'a> {
+    /// Try to detect a fast predicate pattern from a compiled predicate node.
+    fn try_detect(predicate: &'a CompiledNode) -> Option<Self> {
+        if let CompiledNode::BuiltinOperator { opcode, args: pred_args } = predicate
+            && pred_args.len() == 2
+        {
+            // Try both orderings: (var, literal) and (literal, var)
+            for (var_idx, lit_idx, var_is_lhs) in [(0, 1, true), (1, 0, false)] {
+                if let CompiledNode::CompiledVar {
+                    scope_level: 0,
+                    segments,
+                    reduce_hint: crate::compiled::ReduceHint::None,
+                    metadata_hint: crate::compiled::MetadataHint::None,
+                    default_value: None,
+                } = &pred_args[var_idx]
+                    && let CompiledNode::Value { value: literal } = &pred_args[lit_idx]
+                {
+                    let is_whole_item = segments.is_empty();
+
+                    match opcode {
+                        OpCode::StrictEquals | OpCode::StrictNotEquals => {
+                            let negate = matches!(opcode, OpCode::StrictNotEquals);
+                            if is_whole_item {
+                                return Some(FastPredicate::WholeItemStrictEq { literal, negate });
+                            } else {
+                                return Some(FastPredicate::FieldStrictEq { segments, literal, negate });
+                            }
+                        }
+                        OpCode::GreaterThan | OpCode::GreaterThanEqual
+                        | OpCode::LessThan | OpCode::LessThanEqual => {
+                            if let Some(lit_f) = literal.as_f64() {
+                                if is_whole_item {
+                                    return Some(FastPredicate::WholeItemNumericCmp {
+                                        literal_f: lit_f, opcode: *opcode, var_is_lhs,
+                                    });
+                                } else {
+                                    return Some(FastPredicate::FieldNumericCmp {
+                                        segments, literal_f: lit_f, opcode: *opcode, var_is_lhs,
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Evaluate this predicate against a single item.
+    #[inline(always)]
+    fn evaluate(&self, item: &Value) -> bool {
+        match self {
+            FastPredicate::WholeItemStrictEq { literal, negate } => {
+                let matches = item == *literal;
+                if *negate { !matches } else { matches }
+            }
+            FastPredicate::FieldStrictEq { segments, literal, negate } => {
+                let matches = super::variable::try_traverse_segments(item, segments) == Some(*literal);
+                if *negate { !matches } else { matches }
+            }
+            FastPredicate::WholeItemNumericCmp { literal_f, opcode, var_is_lhs } => {
+                if let Some(item_f) = item.as_f64() {
+                    let (lhs, rhs) = if *var_is_lhs { (item_f, *literal_f) } else { (*literal_f, item_f) };
+                    inline_numeric_cmp(lhs, rhs, *opcode)
+                } else {
+                    false
+                }
+            }
+            FastPredicate::FieldNumericCmp { segments, literal_f, opcode, var_is_lhs } => {
+                if let Some(field_val) = super::variable::try_traverse_segments(item, segments) {
+                    if let Some(field_f) = field_val.as_f64() {
+                        let (lhs, rhs) = if *var_is_lhs { (field_f, *literal_f) } else { (*literal_f, field_f) };
+                        inline_numeric_cmp(lhs, rhs, *opcode)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+/// Inline numeric comparison for fast predicate evaluation.
+#[inline(always)]
+fn inline_numeric_cmp(lhs: f64, rhs: f64, opcode: OpCode) -> bool {
+    match opcode {
+        OpCode::GreaterThan => lhs > rhs,
+        OpCode::GreaterThanEqual => lhs >= rhs,
+        OpCode::LessThan => lhs < rhs,
+        OpCode::LessThanEqual => lhs <= rhs,
+        _ => false,
+    }
+}
+
+/// Try to execute a reduce fast path for simple arithmetic accumulation patterns.
+/// Detects {op: [val("current"), val("accumulator")]} or {op: [val("accumulator"), val("current")]}.
+/// Also handles field access on current: {op: [val("accumulator"), val("current", "field")]}.
+fn try_reduce_fast_path(
+    arr: &[Value],
+    initial: &Value,
+    body_args: &[CompiledNode],
+    opcode: OpCode,
+) -> Option<Value> {
+    use crate::compiled::ReduceHint;
+
+    // Identify which arg is current and which is accumulator
+    let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
+        (CompiledNode::CompiledVar { reduce_hint: hint0, .. },
+         CompiledNode::CompiledVar { reduce_hint: hint1, .. }) => {
+            match (hint0, hint1) {
+                (ReduceHint::Current | ReduceHint::CurrentPath, ReduceHint::Accumulator | ReduceHint::AccumulatorPath) => (&body_args[0], &body_args[1]),
+                (ReduceHint::Accumulator | ReduceHint::AccumulatorPath, ReduceHint::Current | ReduceHint::CurrentPath) => (&body_args[1], &body_args[0]),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+
+    // Extract field segments if current has a path (e.g., val("current", "qty"))
+    let current_segments = if let CompiledNode::CompiledVar { segments, reduce_hint, .. } = current_arg {
+        match reduce_hint {
+            ReduceHint::Current => &[][..], // Direct value access
+            ReduceHint::CurrentPath => {
+                if segments.len() >= 2 { &segments[1..] } else { return None; }
+            }
+            _ => return None,
+        }
+    } else {
+        return None;
+    };
+
+    // Try integer fast path first
+    let mut acc_i = initial.as_i64();
+    if acc_i.is_some() {
+        let mut all_int = true;
+        for item in arr {
+            let current_val = if current_segments.is_empty() {
+                item
+            } else {
+                super::variable::try_traverse_segments(item, current_segments)?
+            };
+            if let Some(cur_i) = current_val.as_i64() {
+                let a = acc_i.unwrap();
+                acc_i = Some(match opcode {
+                    OpCode::Add => a.wrapping_add(cur_i),
+                    OpCode::Multiply => a.wrapping_mul(cur_i),
+                    OpCode::Subtract => a.wrapping_sub(cur_i),
+                    _ => return None,
+                });
+            } else {
+                all_int = false;
+                break;
+            }
+        }
+        if all_int {
+            return acc_i.map(Value::from);
+        }
+    }
+
+    // Fall back to f64 path
+    let mut acc_f = initial.as_f64()?;
+    for item in arr {
+        let current_val = if current_segments.is_empty() {
+            item
+        } else {
+            super::variable::try_traverse_segments(item, current_segments)?
+        };
+        let cur_f = current_val.as_f64()?;
+        acc_f = match opcode {
+            OpCode::Add => acc_f + cur_f,
+            OpCode::Multiply => acc_f * cur_f,
+            OpCode::Subtract => acc_f - cur_f,
+            _ => return None,
+        };
+    }
+    Some(Value::from(acc_f))
 }
 
 /// The `merge` operator - combines multiple arrays into one.
@@ -170,6 +365,51 @@ pub fn evaluate_map(
                     results.push(val);
                 }
                 return Ok(Value::Array(results));
+            }
+
+            // Fast path: arithmetic op on whole item with literal
+            // e.g., {"*": [{"val": []}, 2]}
+            if let CompiledNode::BuiltinOperator { opcode, args: body_args } = logic
+                && body_args.len() == 2
+                && matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply | OpCode::Divide | OpCode::Modulo)
+            {
+                for (var_idx, lit_idx) in [(0, 1), (1, 0)] {
+                    if let CompiledNode::CompiledVar {
+                        scope_level: 0,
+                        segments,
+                        reduce_hint: crate::compiled::ReduceHint::None,
+                        metadata_hint: crate::compiled::MetadataHint::None,
+                        default_value: None,
+                    } = &body_args[var_idx]
+                        && segments.is_empty()
+                        && let CompiledNode::Value { value: lit_val } = &body_args[lit_idx]
+                        && let Some(lit_f) = lit_val.as_f64()
+                    {
+                        let mut results = Vec::with_capacity(arr.len());
+                        for item in &arr {
+                            if let Some(item_f) = item.as_f64() {
+                                let (lhs, rhs) = if var_idx == 0 { (item_f, lit_f) } else { (lit_f, item_f) };
+                                let r = match opcode {
+                                    OpCode::Add => lhs + rhs,
+                                    OpCode::Subtract => lhs - rhs,
+                                    OpCode::Multiply => lhs * rhs,
+                                    OpCode::Divide => lhs / rhs,
+                                    OpCode::Modulo => lhs % rhs,
+                                    _ => unreachable!(),
+                                };
+                                // Preserve integer type when possible
+                                if r.fract() == 0.0 && r >= i64::MIN as f64 && r <= i64::MAX as f64 {
+                                    results.push(Value::from(r as i64));
+                                } else {
+                                    results.push(Value::from(r));
+                                }
+                            } else {
+                                results.push(Value::Null);
+                            }
+                        }
+                        return Ok(Value::Array(results));
+                    }
+                }
             }
 
             let len = arr.len();
@@ -313,6 +553,15 @@ pub fn evaluate_filter(
                 }
             }
 
+            // Fast path for ordered comparisons on whole items or fields (>=, >, <, <=)
+            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+                let results: Vec<Value> = arr
+                    .into_iter()
+                    .filter(|item| fast_pred.evaluate(item))
+                    .collect();
+                return Ok(Value::Array(results));
+            }
+
             let len = arr.len();
             let mut results = Vec::with_capacity(arr.len());
             let mut pushed = false;
@@ -411,6 +660,15 @@ pub fn evaluate_reduce(
                 return Ok(initial);
             }
 
+            // Fast path: detect {op: [val("current"), val("accumulator")]} or reversed
+            if let CompiledNode::BuiltinOperator { opcode, args: body_args } = logic
+                && body_args.len() == 2
+                && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
+                && let Some(result) = try_reduce_fast_path(&arr, &initial, body_args, *opcode)
+            {
+                return Ok(result);
+            }
+
             let len = arr.len();
             let mut accumulator = initial;
             let mut pushed = false;
@@ -476,6 +734,11 @@ pub fn evaluate_all(
 
     match collection {
         Value::Array(arr) if !arr.is_empty() => {
+            // Fast path: detect simple comparison predicates
+            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+                return Ok(Value::Bool(arr.iter().all(|item| fast_pred.evaluate(item))));
+            }
+
             let len = arr.len();
             let mut pushed = false;
             for (index, item) in arr.into_iter().enumerate() {
@@ -543,6 +806,11 @@ pub fn evaluate_some(
 
     match collection {
         Value::Array(arr) => {
+            // Fast path: detect simple comparison predicates
+            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+                return Ok(Value::Bool(arr.iter().any(|item| fast_pred.evaluate(item))));
+            }
+
             let len = arr.len();
             let mut pushed = false;
             for (index, item) in arr.into_iter().enumerate() {
@@ -610,6 +878,11 @@ pub fn evaluate_none(
 
     match collection {
         Value::Array(arr) => {
+            // Fast path: detect simple comparison predicates
+            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+                return Ok(Value::Bool(!arr.iter().any(|item| fast_pred.evaluate(item))));
+            }
+
             let len = arr.len();
             let mut pushed = false;
             for (index, item) in arr.into_iter().enumerate() {

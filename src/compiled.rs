@@ -128,6 +128,14 @@ pub enum CompiledNode {
         /// Pre-extracted capture group names
         capture_names: Box<[Box<str>]>,
     },
+
+    /// A pre-compiled throw with a static error object.
+    ///
+    /// When `throw` is called with a literal string, the error object
+    /// `{"type": "..."}` is pre-built at compile time.
+    CompiledThrow {
+        error_obj: Value,
+    },
 }
 
 /// Compiled logic that can be evaluated multiple times across different data.
@@ -338,6 +346,16 @@ impl CompiledLogic {
                         return Ok(node);
                     }
 
+                    // Pre-compile throw with literal string into CompiledThrow
+                    if opcode == OpCode::Throw
+                        && args.len() == 1
+                        && let CompiledNode::Value { value: Value::String(s) } = &args[0]
+                    {
+                        return Ok(CompiledNode::CompiledThrow {
+                            error_obj: serde_json::json!({"type": s}),
+                        });
+                    }
+
                     let node = CompiledNode::BuiltinOperator { opcode, args };
 
                     // If engine is provided and node is static, evaluate it
@@ -453,6 +471,7 @@ impl CompiledLogic {
             CompiledNode::CustomOperator { .. } => false, // Unknown operators are non-static
             CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists { .. } => false, // Context-dependent
             CompiledNode::CompiledSplitRegex { args, .. } => args.iter().all(Self::node_is_static),
+            CompiledNode::CompiledThrow { .. } => false, // Error-producing, non-static
             CompiledNode::StructuredObject { fields, .. } => {
                 fields.iter().all(|(_, node)| Self::node_is_static(node))
             }
@@ -616,8 +635,10 @@ impl CompiledLogic {
             value: Value::Array(level_arr),
         } = &args[0]
             && let Some(Value::Number(level_num)) = level_arr.first()
-            && let Some(level) = level_num.as_u64()
+            && let Some(level) = level_num.as_i64()
         {
+            let scope_level = level.unsigned_abs() as u32;
+
             // Check metadata hints for 2-arg case
             let mut metadata_hint = MetadataHint::None;
             if args.len() == 2
@@ -632,7 +653,7 @@ impl CompiledLogic {
                 }
             }
 
-            return Self::try_compile_val_segments(&args[1..], level as u32, metadata_hint);
+            return Self::try_compile_val_segments(&args[1..], scope_level, metadata_hint);
         }
 
         // Case 4: 2+ args with all literal path segments — compile as path chain.

@@ -22,6 +22,17 @@ impl DataDateTime {
     }
 
     pub fn parse(s: &str) -> Option<Self> {
+        // Fast path: exact "YYYY-MM-DDTHH:MM:SSZ" format (20 bytes, UTC)
+        // This is the most common format produced by `now` and ISO datetime strings.
+        let bytes = s.as_bytes();
+        if bytes.len() == 20 && bytes[4] == b'-' && bytes[7] == b'-'
+            && bytes[10] == b'T' && bytes[13] == b':' && bytes[16] == b':'
+            && bytes[19] == b'Z'
+            && let Some(dt) = Self::parse_utc_fast(bytes)
+        {
+            return Some(dt);
+        }
+
         // Try parsing as RFC3339/ISO8601
         if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
             let offset = dt.offset().local_minus_utc();
@@ -40,6 +51,24 @@ impl DataDateTime {
         }
 
         None
+    }
+
+    /// Fast manual parser for "YYYY-MM-DDTHH:MM:SSZ" format.
+    #[inline]
+    fn parse_utc_fast(b: &[u8]) -> Option<Self> {
+        let year = parse_4digits(b, 0)? as i32;
+        let month = parse_2digits(b, 5)?;
+        let day = parse_2digits(b, 8)?;
+        let hour = parse_2digits(b, 11)?;
+        let min = parse_2digits(b, 14)?;
+        let sec = parse_2digits(b, 17)?;
+        let date = chrono::NaiveDate::from_ymd_opt(year, month, day)?;
+        let time = chrono::NaiveTime::from_hms_opt(hour, min, sec)?;
+        let naive = NaiveDateTime::new(date, time);
+        Some(DataDateTime {
+            dt: DateTime::from_naive_utc_and_offset(naive, Utc),
+            original_offset: Some(0),
+        })
     }
 
     pub fn parse_with_format(s: &str, format: &str) -> Option<Self> {
@@ -306,4 +335,24 @@ pub fn extract_duration(value: &Value) -> Option<DataDuration> {
         return DataDuration::parse(s);
     }
     None
+}
+
+/// Parse 2 ASCII digits at offset into u32.
+#[inline(always)]
+fn parse_2digits(b: &[u8], offset: usize) -> Option<u32> {
+    let d0 = b[offset].wrapping_sub(b'0');
+    let d1 = b[offset + 1].wrapping_sub(b'0');
+    if d0 > 9 || d1 > 9 { return None; }
+    Some(d0 as u32 * 10 + d1 as u32)
+}
+
+/// Parse 4 ASCII digits at offset into u32.
+#[inline(always)]
+fn parse_4digits(b: &[u8], offset: usize) -> Option<u32> {
+    let d0 = b[offset].wrapping_sub(b'0');
+    let d1 = b[offset + 1].wrapping_sub(b'0');
+    let d2 = b[offset + 2].wrapping_sub(b'0');
+    let d3 = b[offset + 3].wrapping_sub(b'0');
+    if d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 { return None; }
+    Some(d0 as u32 * 1000 + d1 as u32 * 100 + d2 as u32 * 10 + d3 as u32)
 }

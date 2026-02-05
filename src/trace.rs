@@ -170,6 +170,12 @@ impl ExpressionNode {
                     children,
                 }
             }
+
+            CompiledNode::CompiledThrow { .. } => ExpressionNode {
+                id,
+                expression: Self::node_to_json_string(node),
+                children: vec![],
+            },
         }
     }
 
@@ -214,6 +220,14 @@ impl ExpressionNode {
                     Self::node_to_json_string(&args[0]),
                     regex.as_str()
                 )
+            }
+            CompiledNode::CompiledThrow { error_obj } => {
+                if let serde_json::Value::Object(err_map) = error_obj
+                    && let Some(serde_json::Value::String(s)) = err_map.get("type")
+                {
+                    return format!("{{\"throw\": \"{}\"}}", s);
+                }
+                format!("{{\"throw\": {}}}", error_obj)
             }
         }
     }
