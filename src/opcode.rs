@@ -21,7 +21,7 @@
 //! - Variable Access (0-1, 57): `var`, `val`, `exists`
 //! - Comparison (2-9): `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`
 //! - Logical (10-13): `!`, `!!`, `and`, `or`
-//! - Control Flow (14-15, 56): `if`, `?:`, `??`
+//! - Control Flow (14-15, 56, 59): `if`, `?:`, `??`, `switch`/`match`
 //! - Arithmetic (16-22, 49-51): `+`, `-`, `*`, `/`, `%`, `max`, `min`, `abs`, `ceil`, `floor`
 //! - String (23-25, 38-43, 53): `cat`, `substr`, `in`, `starts_with`, etc.
 //! - Array (26-32, 54-55): `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`, `sort`, `slice`
@@ -69,6 +69,7 @@ pub enum OpCode {
     If = 14,
     Ternary = 15,
     Coalesce = 56,
+    Switch = 59,
 
     // === Arithmetic Operators ===
     Add = 16,
@@ -192,6 +193,7 @@ impl FromStr for OpCode {
             "slice" => Ok(OpCode::Slice),
             "??" => Ok(OpCode::Coalesce),
             "exists" => Ok(OpCode::Exists),
+            "switch" | "match" => Ok(OpCode::Switch),
             _ => Err(()),
         }
     }
@@ -199,7 +201,7 @@ impl FromStr for OpCode {
 
 impl OpCode {
     /// Total number of built-in operators
-    pub const COUNT: usize = 59;
+    pub const COUNT: usize = 60;
 
     /// Convert OpCode back to string (for debugging/display)
     pub fn as_str(&self) -> &'static str {
@@ -263,6 +265,7 @@ impl OpCode {
             OpCode::Slice => "slice",
             OpCode::Coalesce => "??",
             OpCode::Exists => "exists",
+            OpCode::Switch => "switch",
         }
     }
 
@@ -309,6 +312,7 @@ impl OpCode {
             OpCode::If => control::evaluate_if(args, context, engine),
             OpCode::Ternary => control::evaluate_ternary(args, context, engine),
             OpCode::Coalesce => control::evaluate_coalesce(args, context, engine),
+            OpCode::Switch => control::evaluate_switch(args, context, engine),
 
             // Arithmetic operators - direct function calls
             OpCode::Add => arithmetic::evaluate_add(args, context, engine),
@@ -417,6 +421,9 @@ impl OpCode {
             }
             OpCode::Coalesce => {
                 control::evaluate_coalesce_traced(args, context, engine, collector, node_id_map)
+            }
+            OpCode::Switch => {
+                control::evaluate_switch_traced(args, context, engine, collector, node_id_map)
             }
 
             // Error handling operators - need traced versions

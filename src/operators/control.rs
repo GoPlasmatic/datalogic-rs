@@ -88,6 +88,68 @@ pub fn evaluate_coalesce(
     Ok(Value::Null)
 }
 
+/// Switch/match operator - evaluates discriminant once and matches against case pairs
+#[inline]
+pub fn evaluate_switch(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    // args[0] = discriminant, args[1] = cases array, args[2] = optional default
+    if args.len() < 2 {
+        return Ok(Value::Null);
+    }
+
+    // Evaluate discriminant once
+    let discriminant = engine.evaluate_node(&args[0], context)?;
+
+    // Cases should be a CompiledNode::Array of [match_value, result] pairs
+    // or a CompiledNode::Value containing a pre-evaluated array (from static optimization)
+    match &args[1] {
+        CompiledNode::Array { nodes } => {
+            for case_node in nodes.iter() {
+                match case_node {
+                    CompiledNode::Array { nodes: pair } if pair.len() >= 2 => {
+                        let case_value = engine.evaluate_node(&pair[0], context)?;
+                        if discriminant == case_value {
+                            return engine.evaluate_node(&pair[1], context);
+                        }
+                    }
+                    CompiledNode::Value {
+                        value: Value::Array(pair),
+                    } if pair.len() >= 2 => {
+                        // Static-optimized pair
+                        if discriminant == pair[0] {
+                            return Ok(pair[1].clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        CompiledNode::Value {
+            value: Value::Array(cases),
+        } => {
+            // Entire cases array was statically evaluated
+            for case in cases {
+                if let Value::Array(pair) = case {
+                    if pair.len() >= 2 && discriminant == pair[0] {
+                        return Ok(pair[1].clone());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    // No match found - evaluate default if present
+    if args.len() > 2 {
+        return engine.evaluate_node(&args[2], context);
+    }
+
+    Ok(Value::Null)
+}
+
 // ============================================================================
 // Traced versions of control flow operators
 // ============================================================================
@@ -180,5 +242,74 @@ pub fn evaluate_coalesce_traced(
     }
 
     // All values were null
+    Ok(Value::Null)
+}
+
+/// Traced version of `switch`/`match` operator - only evaluates matched result.
+#[inline]
+pub fn evaluate_switch_traced(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    collector: &mut TraceCollector,
+    node_id_map: &HashMap<usize, u32>,
+) -> Result<Value> {
+    if args.len() < 2 {
+        return Ok(Value::Null);
+    }
+
+    // Evaluate discriminant once with tracing
+    let discriminant = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
+
+    match &args[1] {
+        CompiledNode::Array { nodes } => {
+            for case_node in nodes.iter() {
+                match case_node {
+                    CompiledNode::Array { nodes: pair } if pair.len() >= 2 => {
+                        let case_value = engine.evaluate_node_traced(
+                            &pair[0],
+                            context,
+                            collector,
+                            node_id_map,
+                        )?;
+                        if discriminant == case_value {
+                            return engine.evaluate_node_traced(
+                                &pair[1],
+                                context,
+                                collector,
+                                node_id_map,
+                            );
+                        }
+                    }
+                    CompiledNode::Value {
+                        value: Value::Array(pair),
+                    } if pair.len() >= 2 => {
+                        if discriminant == pair[0] {
+                            return Ok(pair[1].clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        CompiledNode::Value {
+            value: Value::Array(cases),
+        } => {
+            for case in cases {
+                if let Value::Array(pair) = case {
+                    if pair.len() >= 2 && discriminant == pair[0] {
+                        return Ok(pair[1].clone());
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    // No match found - evaluate default if present
+    if args.len() > 2 {
+        return engine.evaluate_node_traced(&args[2], context, collector, node_id_map);
+    }
+
     Ok(Value::Null)
 }

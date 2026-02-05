@@ -772,7 +772,8 @@ impl CompiledLogic {
             | ParseDate | FormatDate | DateDiff | Abs | Ceil | Floor | Add | Subtract
             | Multiply | Divide | Modulo | Equals | StrictEquals | NotEquals | StrictNotEquals
             | GreaterThan | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And
-            | Or | Ternary | If | Cat | Substr | In | Length | Sort | Slice | Coalesce => {
+            | Or | Ternary | If | Cat | Substr | In | Length | Sort | Slice | Coalesce
+            | Switch => {
                 args_static()
             }
         }

@@ -1,0 +1,620 @@
+[
+  "# Basic switch matching",
+  {
+    "description": "Match first case (string)",
+    "rule": {"switch": [{"var": "color"}, [["red", "stop"], ["green", "go"]], "unknown"]},
+    "data": {"color": "red"},
+    "result": "stop"
+  },
+  {
+    "description": "Match second case (string)",
+    "rule": {"switch": [{"var": "color"}, [["red", "stop"], ["green", "go"]], "unknown"]},
+    "data": {"color": "green"},
+    "result": "go"
+  },
+  {
+    "description": "Match number value",
+    "rule": {"switch": [{"var": "code"}, [[1, "one"], [2, "two"], [3, "three"]], "other"]},
+    "data": {"code": 2},
+    "result": "two"
+  },
+  {
+    "description": "Match first of many cases",
+    "rule": {"switch": [{"var": "status"}, [[200, "OK"], [201, "Created"], [404, "Not Found"], [500, "Error"]], "Unknown"]},
+    "data": {"status": 200},
+    "result": "OK"
+  },
+  {
+    "description": "Match middle of many cases",
+    "rule": {"switch": [{"var": "status"}, [[200, "OK"], [201, "Created"], [404, "Not Found"], [500, "Error"]], "Unknown"]},
+    "data": {"status": 404},
+    "result": "Not Found"
+  },
+  {
+    "description": "Match last of many cases",
+    "rule": {"switch": [{"var": "status"}, [[200, "OK"], [201, "Created"], [404, "Not Found"], [500, "Error"]], "Unknown"]},
+    "data": {"status": 500},
+    "result": "Error"
+  },
+
+  "# match alias",
+  {
+    "description": "match alias - identical to switch",
+    "rule": {"match": [{"var": "color"}, [["red", "stop"], ["green", "go"]], "unknown"]},
+    "data": {"color": "red"},
+    "result": "stop"
+  },
+  {
+    "description": "match alias - second case",
+    "rule": {"match": [{"var": "color"}, [["red", "stop"], ["green", "go"]], "unknown"]},
+    "data": {"color": "green"},
+    "result": "go"
+  },
+  {
+    "description": "match alias - default case",
+    "rule": {"match": [{"var": "color"}, [["red", "stop"]], "unknown"]},
+    "data": {"color": "blue"},
+    "result": "unknown"
+  },
+  {
+    "description": "match alias - no match, no default returns null",
+    "rule": {"match": [{"var": "color"}, [["red", "stop"]]]},
+    "data": {"color": "blue"},
+    "result": null
+  },
+
+  "# Default and no-match behavior",
+  {
+    "description": "Fall through to default",
+    "rule": {"switch": [{"var": "color"}, [["red", "stop"]], "unknown"]},
+    "data": {"color": "blue"},
+    "result": "unknown"
+  },
+  {
+    "description": "No match, no default returns null",
+    "rule": {"switch": [{"var": "color"}, [["red", "stop"]]]},
+    "data": {"color": "blue"},
+    "result": null
+  },
+  {
+    "description": "Empty cases returns default",
+    "rule": {"switch": [{"var": "color"}, [], "fallback"]},
+    "data": {"color": "red"},
+    "result": "fallback"
+  },
+  {
+    "description": "Empty cases, no default returns null",
+    "rule": {"switch": [{"var": "color"}, []]},
+    "data": {"color": "red"},
+    "result": null
+  },
+  {
+    "description": "Default is an expression",
+    "rule": {"switch": [{"var": "lang"}, [["en", "Hello"]], {"cat": ["[", {"var": "lang"}, "]"]}]},
+    "data": {"lang": "de"},
+    "result": "[de]"
+  },
+  {
+    "description": "Default is a number",
+    "rule": {"switch": [{"var": "x"}, [["a", 1]], 0]},
+    "data": {"x": "z"},
+    "result": 0
+  },
+  {
+    "description": "Default is null literal",
+    "rule": {"switch": [{"var": "x"}, [["a", 1]], null]},
+    "data": {"x": "z"},
+    "result": null
+  },
+  {
+    "description": "Default is boolean false",
+    "rule": {"switch": [{"var": "x"}, [["a", true]], false]},
+    "data": {"x": "z"},
+    "result": false
+  },
+  {
+    "description": "Default is a var expression",
+    "rule": {"switch": [{"var": "tier"}, [["gold", {"*": [{"var": "price"}, 0.8]}], ["silver", {"*": [{"var": "price"}, 0.9]}]], {"var": "price"}]},
+    "data": {"tier": "bronze", "price": 100},
+    "result": 100
+  },
+
+  "# Expressions as values",
+  {
+    "description": "Expression as discriminant (addition)",
+    "rule": {"switch": [{"+": [{"var": "a"}, {"var": "b"}]}, [[10, "ten"], [20, "twenty"]], "other"]},
+    "data": {"a": 7, "b": 3},
+    "result": "ten"
+  },
+  {
+    "description": "Expression as discriminant (subtraction)",
+    "rule": {"switch": [{"-": [{"var": "a"}, {"var": "b"}]}, [[5, "five"], [10, "ten"]], "other"]},
+    "data": {"a": 15, "b": 5},
+    "result": "ten"
+  },
+  {
+    "description": "Expression as discriminant (cat)",
+    "rule": {"switch": [{"cat": [{"var": "first"}, {"var": "last"}]}, [["JohnDoe", "found"]], "not found"]},
+    "data": {"first": "John", "last": "Doe"},
+    "result": "found"
+  },
+  {
+    "description": "Expression as result",
+    "rule": {"match": [{"var": "type"}, [["premium", {"+": [{"var": "base"}, 100]}], ["basic", {"var": "base"}]], 0]},
+    "data": {"type": "premium", "base": 50},
+    "result": 150
+  },
+  {
+    "description": "Expression as result - second branch",
+    "rule": {"match": [{"var": "type"}, [["premium", {"+": [{"var": "base"}, 100]}], ["basic", {"var": "base"}]], 0]},
+    "data": {"type": "basic", "base": 50},
+    "result": 50
+  },
+  {
+    "description": "Computed result with discount tiers - gold",
+    "rule": {"switch": [{"var": "tier"}, [["gold", {"*": [{"var": "price"}, 0.8]}], ["silver", {"*": [{"var": "price"}, 0.9]}]], {"var": "price"}]},
+    "data": {"tier": "gold", "price": 100},
+    "result": 80
+  },
+  {
+    "description": "Computed result with discount tiers - silver",
+    "rule": {"switch": [{"var": "tier"}, [["gold", {"*": [{"var": "price"}, 0.8]}], ["silver", {"*": [{"var": "price"}, 0.9]}]], {"var": "price"}]},
+    "data": {"tier": "silver", "price": 100},
+    "result": 90
+  },
+  {
+    "description": "Result is an if expression",
+    "rule": {"switch": [{"var": "mode"}, [["auto", {"if": [{"var": "dark"}, "dark-theme", "light-theme"]}], ["manual", "custom"]], "default"]},
+    "data": {"mode": "auto", "dark": true},
+    "result": "dark-theme"
+  },
+
+  "# Strict equality",
+  {
+    "description": "Strict equality - string '1' does not match number 1",
+    "rule": {"switch": [{"var": "val"}, [[1, "number"], ["1", "string"]], "neither"]},
+    "data": {"val": "1"},
+    "result": "string"
+  },
+  {
+    "description": "Strict equality - number 1 does not match string '1'",
+    "rule": {"switch": [{"var": "val"}, [["1", "string"], [1, "number"]], "neither"]},
+    "data": {"val": 1},
+    "result": "number"
+  },
+  {
+    "description": "Null discriminant matches null case",
+    "rule": {"switch": [{"var": "val"}, [[null, "is null"], ["", "is empty"]], "other"]},
+    "data": {"val": null},
+    "result": "is null"
+  },
+  {
+    "description": "Empty string does not match null",
+    "rule": {"switch": [{"var": "val"}, [[null, "is null"], ["", "is empty"]], "other"]},
+    "data": {"val": ""},
+    "result": "is empty"
+  },
+  {
+    "description": "Boolean true matching",
+    "rule": {"switch": [{"var": "flag"}, [[true, "yes"], [false, "no"]], "unknown"]},
+    "data": {"flag": true},
+    "result": "yes"
+  },
+  {
+    "description": "Boolean false matching",
+    "rule": {"switch": [{"var": "flag"}, [[true, "yes"], [false, "no"]], "unknown"]},
+    "data": {"flag": false},
+    "result": "no"
+  },
+  {
+    "description": "Boolean true does not match number 1",
+    "rule": {"switch": [{"var": "val"}, [[1, "number"], [true, "boolean"]], "neither"]},
+    "data": {"val": true},
+    "result": "boolean"
+  },
+  {
+    "description": "Boolean false does not match number 0",
+    "rule": {"switch": [{"var": "val"}, [[0, "number"], [false, "boolean"]], "neither"]},
+    "data": {"val": false},
+    "result": "boolean"
+  },
+  {
+    "description": "Boolean false does not match null",
+    "rule": {"switch": [{"var": "val"}, [[null, "is null"], [false, "is false"]], "other"]},
+    "data": {"val": false},
+    "result": "is false"
+  },
+  {
+    "description": "Number 0 does not match null",
+    "rule": {"switch": [{"var": "val"}, [[null, "is null"], [0, "is zero"]], "other"]},
+    "data": {"val": 0},
+    "result": "is zero"
+  },
+  {
+    "description": "Number 0 does not match empty string",
+    "rule": {"switch": [{"var": "val"}, [["", "empty string"], [0, "zero"]], "other"]},
+    "data": {"val": 0},
+    "result": "zero"
+  },
+  {
+    "description": "Number 0 does not match boolean false",
+    "rule": {"switch": [{"var": "val"}, [[false, "false"], [0, "zero"]], "other"]},
+    "data": {"val": 0},
+    "result": "zero"
+  },
+  {
+    "description": "Empty string does not match boolean false",
+    "rule": {"switch": [{"var": "val"}, [[false, "false"], ["", "empty"]], "other"]},
+    "data": {"val": ""},
+    "result": "empty"
+  },
+  {
+    "description": "Negative number matching",
+    "rule": {"switch": [{"var": "val"}, [[-1, "neg one"], [0, "zero"], [1, "pos one"]], "other"]},
+    "data": {"val": -1},
+    "result": "neg one"
+  },
+  {
+    "description": "Float number matching",
+    "rule": {"switch": [{"var": "val"}, [[1.5, "one point five"], [2.5, "two point five"]], "other"]},
+    "data": {"val": 1.5},
+    "result": "one point five"
+  },
+
+  "# Short-circuit / lazy evaluation",
+  {
+    "description": "Default not evaluated when a case matches",
+    "rule": {"switch": [{"var": "x"}, [["a", "found"]], {"throw": "should not reach"}]},
+    "data": {"x": "a"},
+    "result": "found"
+  },
+  {
+    "description": "Result of earlier unmatched case not evaluated",
+    "rule": {"switch": [{"var": "x"}, [["a", {"throw": "not reached"}], ["b", "found"]], "default"]},
+    "data": {"x": "b"},
+    "result": "found"
+  },
+  {
+    "description": "Result of later unmatched case not evaluated",
+    "rule": {"switch": [{"var": "x"}, [["a", "found"], ["b", {"throw": "not reached"}]], "default"]},
+    "data": {"x": "a"},
+    "result": "found"
+  },
+  {
+    "description": "Both later case results and default not evaluated after match",
+    "rule": {"switch": [{"var": "x"}, [["a", "found"], ["b", {"throw": "not reached"}]], {"throw": "also not reached"}]},
+    "data": {"x": "a"},
+    "result": "found"
+  },
+  {
+    "description": "Multiple unmatched case results not evaluated",
+    "rule": {"switch": [{"var": "x"}, [["a", {"throw": "skip1"}], ["b", {"throw": "skip2"}], ["c", "found"], ["d", {"throw": "skip3"}]], {"throw": "skip default"}]},
+    "data": {"x": "c"},
+    "result": "found"
+  },
+  {
+    "description": "Default expression is evaluated when no case matches",
+    "rule": {"switch": [{"var": "x"}, [["a", "alpha"]], {"cat": ["fallback:", {"var": "x"}]}]},
+    "data": {"x": "z"},
+    "result": "fallback:z"
+  },
+  {
+    "description": "Default throw is reached when no case matches",
+    "rule": {"switch": [{"var": "x"}, [["a", "alpha"]], {"throw": "no match"}]},
+    "data": {"x": "z"},
+    "error": {"type": "no match"}
+  },
+
+  "# Nested switch/match",
+  {
+    "description": "Nested switch with match alias",
+    "rule": {"switch": [{"var": "category"}, [
+      ["fruit", {"match": [{"var": "item"}, [["apple", "red"], ["banana", "yellow"]], "unknown"]}],
+      ["veggie", "green"]
+    ], "unknown"]},
+    "data": {"category": "fruit", "item": "banana"},
+    "result": "yellow"
+  },
+  {
+    "description": "Nested switch - outer match, inner default",
+    "rule": {"switch": [{"var": "category"}, [
+      ["fruit", {"match": [{"var": "item"}, [["apple", "red"]], "unknown fruit"]}],
+      ["veggie", "green"]
+    ], "unknown"]},
+    "data": {"category": "fruit", "item": "mango"},
+    "result": "unknown fruit"
+  },
+  {
+    "description": "Nested switch - outer default",
+    "rule": {"switch": [{"var": "category"}, [
+      ["fruit", {"match": [{"var": "item"}, [["apple", "red"]], "unknown fruit"]}]
+    ], "unknown category"]},
+    "data": {"category": "animal", "item": "dog"},
+    "result": "unknown category"
+  },
+  {
+    "description": "Nested switch - inner match on second level",
+    "rule": {"switch": [{"var": "category"}, [
+      ["fruit", {"switch": [{"var": "item"}, [["apple", "red"], ["banana", "yellow"]], "unknown"]}],
+      ["veggie", {"switch": [{"var": "item"}, [["carrot", "orange"], ["pea", "green"]], "unknown"]}]
+    ], "unknown"]},
+    "data": {"category": "veggie", "item": "carrot"},
+    "result": "orange"
+  },
+  {
+    "description": "Triple-nested switch",
+    "rule": {"switch": [{"var": "a"}, [
+      ["x", {"switch": [{"var": "b"}, [
+        ["y", {"switch": [{"var": "c"}, [["z", "found xyz"]], "no z"]}]
+      ], "no y"]}]
+    ], "no x"]},
+    "data": {"a": "x", "b": "y", "c": "z"},
+    "result": "found xyz"
+  },
+
+  "# Single case",
+  {
+    "description": "Single case match",
+    "rule": {"switch": [{"var": "x"}, [["only", "matched"]], "default"]},
+    "data": {"x": "only"},
+    "result": "matched"
+  },
+  {
+    "description": "Single case no match",
+    "rule": {"switch": [{"var": "x"}, [["only", "matched"]], "default"]},
+    "data": {"x": "other"},
+    "result": "default"
+  },
+
+  "# Compound key pattern (multi-field matching via cat)",
+  {
+    "description": "Compound key - match on two fields",
+    "rule": {"switch": [{"cat": [{"var": "primary"}, ":", {"var": "secondary"}]}, [["red:blue", "patriotic"], ["black:gold", "luxury"]], "unknown"]},
+    "data": {"primary": "red", "secondary": "blue"},
+    "result": "patriotic"
+  },
+  {
+    "description": "Compound key - second match",
+    "rule": {"switch": [{"cat": [{"var": "primary"}, ":", {"var": "secondary"}]}, [["red:blue", "patriotic"], ["black:gold", "luxury"]], "unknown"]},
+    "data": {"primary": "black", "secondary": "gold"},
+    "result": "luxury"
+  },
+  {
+    "description": "Compound key - no match",
+    "rule": {"switch": [{"cat": [{"var": "primary"}, ":", {"var": "secondary"}]}, [["red:blue", "patriotic"], ["black:gold", "luxury"]], "unknown"]},
+    "data": {"primary": "red", "secondary": "green"},
+    "result": "unknown"
+  },
+
+  "# Discriminant evaluated exactly once",
+  {
+    "description": "Discriminant expression evaluated once, matched against multiple cases",
+    "rule": {"switch": [{"+": [{"var": "a"}, {"var": "b"}]}, [[5, "five"], [10, "ten"], [15, "fifteen"]], "other"]},
+    "data": {"a": 3, "b": 7},
+    "result": "ten"
+  },
+
+  "# First match wins (duplicate case values)",
+  {
+    "description": "First matching case wins when duplicates exist",
+    "rule": {"switch": [{"var": "x"}, [["a", "first"], ["b", "middle"], ["a", "second"]], "default"]},
+    "data": {"x": "a"},
+    "result": "first"
+  },
+  {
+    "description": "First matching case wins - three duplicates",
+    "rule": {"switch": [{"var": "x"}, [["a", "1st"], ["a", "2nd"], ["a", "3rd"]], "default"]},
+    "data": {"x": "a"},
+    "result": "1st"
+  },
+
+  "# Missing variable as discriminant",
+  {
+    "description": "Missing variable evaluates to null, matches null case",
+    "rule": {"switch": [{"var": "missing_key"}, [[null, "was null"], ["", "was empty"]], "other"]},
+    "data": {"other_key": "value"},
+    "result": "was null"
+  },
+  {
+    "description": "Missing variable evaluates to null, falls to default",
+    "rule": {"switch": [{"var": "missing_key"}, [["a", "alpha"]], "missing"]},
+    "data": {"other_key": "value"},
+    "result": "missing"
+  },
+
+  "# Literal discriminant (not a var)",
+  {
+    "description": "Literal string discriminant",
+    "rule": {"switch": ["hello", [["hello", "matched"], ["world", "nope"]], "default"]},
+    "data": {},
+    "result": "matched"
+  },
+  {
+    "description": "Literal number discriminant",
+    "rule": {"switch": [42, [[42, "the answer"]], "unknown"]},
+    "data": {},
+    "result": "the answer"
+  },
+  {
+    "description": "Literal null discriminant",
+    "rule": {"switch": [null, [[null, "is null"], ["", "empty"]], "other"]},
+    "data": {},
+    "result": "is null"
+  },
+  {
+    "description": "Literal boolean discriminant",
+    "rule": {"switch": [true, [[true, "yes"], [false, "no"]], "unknown"]},
+    "data": {},
+    "result": "yes"
+  },
+
+  "# Result value types",
+  {
+    "description": "Result is a number",
+    "rule": {"switch": [{"var": "x"}, [["a", 42]], 0]},
+    "data": {"x": "a"},
+    "result": 42
+  },
+  {
+    "description": "Result is a boolean true",
+    "rule": {"switch": [{"var": "x"}, [["a", true]], false]},
+    "data": {"x": "a"},
+    "result": true
+  },
+  {
+    "description": "Result is a boolean false",
+    "rule": {"switch": [{"var": "x"}, [["a", false]], true]},
+    "data": {"x": "a"},
+    "result": false
+  },
+  {
+    "description": "Result is null",
+    "rule": {"switch": [{"var": "x"}, [["a", null]], "default"]},
+    "data": {"x": "a"},
+    "result": null
+  },
+  {
+    "description": "Result is an array literal",
+    "rule": {"switch": [{"var": "x"}, [["a", [1, 2, 3]]], []]},
+    "data": {"x": "a"},
+    "result": [1, 2, 3]
+  },
+
+  "# Many cases (HTTP status codes)",
+  {
+    "description": "Many cases - match 200",
+    "rule": {"switch": [{"var": "status"}, [
+      [200, "OK"],
+      [201, "Created"],
+      [204, "No Content"],
+      [301, "Moved Permanently"],
+      [400, "Bad Request"],
+      [401, "Unauthorized"],
+      [403, "Forbidden"],
+      [404, "Not Found"],
+      [500, "Internal Server Error"]
+    ], "Unknown Status"]},
+    "data": {"status": 200},
+    "result": "OK"
+  },
+  {
+    "description": "Many cases - match 404",
+    "rule": {"switch": [{"var": "status"}, [
+      [200, "OK"],
+      [201, "Created"],
+      [204, "No Content"],
+      [301, "Moved Permanently"],
+      [400, "Bad Request"],
+      [401, "Unauthorized"],
+      [403, "Forbidden"],
+      [404, "Not Found"],
+      [500, "Internal Server Error"]
+    ], "Unknown Status"]},
+    "data": {"status": 404},
+    "result": "Not Found"
+  },
+  {
+    "description": "Many cases - match last (500)",
+    "rule": {"switch": [{"var": "status"}, [
+      [200, "OK"],
+      [201, "Created"],
+      [204, "No Content"],
+      [301, "Moved Permanently"],
+      [400, "Bad Request"],
+      [401, "Unauthorized"],
+      [403, "Forbidden"],
+      [404, "Not Found"],
+      [500, "Internal Server Error"]
+    ], "Unknown Status"]},
+    "data": {"status": 500},
+    "result": "Internal Server Error"
+  },
+  {
+    "description": "Many cases - no match falls to default",
+    "rule": {"switch": [{"var": "status"}, [
+      [200, "OK"],
+      [201, "Created"],
+      [204, "No Content"],
+      [301, "Moved Permanently"],
+      [400, "Bad Request"],
+      [401, "Unauthorized"],
+      [403, "Forbidden"],
+      [404, "Not Found"],
+      [500, "Internal Server Error"]
+    ], "Unknown Status"]},
+    "data": {"status": 418},
+    "result": "Unknown Status"
+  },
+
+  "# Replacing if/elseif chains",
+  {
+    "description": "Switch equivalent of if/elseif - match first",
+    "rule": {"switch": [{"var": "x"}, [["a", "alpha"], ["b", "beta"], ["c", "gamma"]], "other"]},
+    "data": {"x": "a"},
+    "result": "alpha"
+  },
+  {
+    "description": "Switch equivalent of if/elseif - match middle",
+    "rule": {"switch": [{"var": "x"}, [["a", "alpha"], ["b", "beta"], ["c", "gamma"]], "other"]},
+    "data": {"x": "b"},
+    "result": "beta"
+  },
+  {
+    "description": "Switch equivalent of if/elseif - match last",
+    "rule": {"switch": [{"var": "x"}, [["a", "alpha"], ["b", "beta"], ["c", "gamma"]], "other"]},
+    "data": {"x": "c"},
+    "result": "gamma"
+  },
+  {
+    "description": "Switch equivalent of if/elseif - default",
+    "rule": {"switch": [{"var": "x"}, [["a", "alpha"], ["b", "beta"], ["c", "gamma"]], "other"]},
+    "data": {"x": "d"},
+    "result": "other"
+  },
+
+  "# switch inside other operators",
+  {
+    "description": "Switch as if condition operand",
+    "rule": {"if": [{"switch": [{"var": "role"}, [["admin", true], ["user", false]], false]}, "allowed", "denied"]},
+    "data": {"role": "admin"},
+    "result": "allowed"
+  },
+  {
+    "description": "Switch inside arithmetic",
+    "rule": {"+": [{"switch": [{"var": "tier"}, [["gold", 100], ["silver", 50]], 0]}, {"var": "base"}]},
+    "data": {"tier": "gold", "base": 200},
+    "result": 300
+  },
+  {
+    "description": "Switch inside cat",
+    "rule": {"cat": ["Status: ", {"switch": [{"var": "code"}, [[200, "OK"], [404, "Not Found"]], "Unknown"]}]},
+    "data": {"code": 404},
+    "result": "Status: Not Found"
+  },
+
+  "# All falsy discriminant values distinguished",
+  {
+    "description": "All falsy values - null",
+    "rule": {"switch": [{"var": "val"}, [[null, "null"], [false, "false"], [0, "zero"], ["", "empty"]], "other"]},
+    "data": {"val": null},
+    "result": "null"
+  },
+  {
+    "description": "All falsy values - false",
+    "rule": {"switch": [{"var": "val"}, [[null, "null"], [false, "false"], [0, "zero"], ["", "empty"]], "other"]},
+    "data": {"val": false},
+    "result": "false"
+  },
+  {
+    "description": "All falsy values - zero",
+    "rule": {"switch": [{"var": "val"}, [[null, "null"], [false, "false"], [0, "zero"], ["", "empty"]], "other"]},
+    "data": {"val": 0},
+    "result": "zero"
+  },
+  {
+    "description": "All falsy values - empty string",
+    "rule": {"switch": [{"var": "val"}, [[null, "null"], [false, "false"], [0, "zero"], ["", "empty"]], "other"]},
+    "data": {"val": ""},
+    "result": "empty"
+  }
+]
