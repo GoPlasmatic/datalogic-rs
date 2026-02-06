@@ -44,7 +44,13 @@ pub fn evaluate_preserve(
     // - With multiple arguments: return array of evaluated arguments
     match args.len() {
         0 => Ok(Value::Array(vec![])),
-        1 => engine.evaluate_node(&args[0], context),
+        1 => {
+            // Fast path: literal values skip evaluate_node dispatch
+            if let CompiledNode::Value { value, .. } = &args[0] {
+                return Ok(value.clone());
+            }
+            engine.evaluate_node(&args[0], context)
+        }
         _ => {
             let mut results = Vec::with_capacity(args.len());
             for arg in args {

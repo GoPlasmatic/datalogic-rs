@@ -59,11 +59,11 @@
 use serde_json::Value;
 
 use super::helpers::{
-    create_number_value, safe_add, safe_divide, safe_modulo, safe_multiply, safe_subtract,
+    create_number_value, extract_datetime_value, extract_duration_value, safe_add, safe_divide,
+    safe_modulo, safe_multiply, safe_subtract,
 };
 use crate::config::NanHandling;
 use crate::constants::INVALID_ARGS;
-use crate::datetime::{extract_datetime, extract_duration, is_datetime_object, is_duration_object};
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
@@ -192,47 +192,26 @@ pub fn evaluate_add(
         }
 
         // Slow path: datetime/duration arithmetic
+        // Parse first: try datetime, then duration (mutually exclusive)
+        let first_dt = extract_datetime_value(first.as_ref());
+        let first_dur = if first_dt.is_none() {
+            extract_duration_value(first.as_ref())
+        } else {
+            None
+        };
+
+        // For addition, second is only needed as duration
+        let second_dur = extract_duration_value(second.as_ref());
+
         // DateTime + Duration
-        let first_dt = if is_datetime_object(&first) {
-            extract_datetime(&first)
-        } else if let Value::String(s) = first.as_ref() {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
-
-        let second_dur = if is_duration_object(&second) {
-            extract_duration(&second)
-        } else if let Value::String(s) = second.as_ref() {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        if let (Some(dt), Some(dur)) = (first_dt, second_dur) {
-            let result = dt.add_duration(&dur);
+        if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
+            let result = dt.add_duration(dur);
             return Ok(Value::String(result.to_iso_string()));
         }
 
         // Duration + Duration
-        let first_dur = if is_duration_object(&first) {
-            extract_duration(&first)
-        } else if let Value::String(s) = first.as_ref() {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        let second_dur2 = if is_duration_object(&second) {
-            extract_duration(&second)
-        } else if let Value::String(s) = second.as_ref() {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        if let (Some(dur1), Some(dur2)) = (first_dur, second_dur2) {
-            let result = dur1.add(&dur2);
+        if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
+            let result = dur1.add(dur2);
             return Ok(Value::String(result.to_string()));
         }
 
@@ -378,34 +357,18 @@ pub fn evaluate_subtract(
         }
 
         // Slow path: datetime/duration arithmetic
-        let first_dt = if is_datetime_object(&first) {
-            extract_datetime(&first)
-        } else if let Value::String(s) = &first {
-            crate::datetime::DataDateTime::parse(s)
+        // Parse first: try datetime, then duration (mutually exclusive)
+        let first_dt = extract_datetime_value(&first);
+        let first_dur = if first_dt.is_none() {
+            extract_duration_value(&first)
         } else {
             None
         };
 
-        let second_dt = if is_datetime_object(second.as_ref()) {
-            extract_datetime(second.as_ref())
-        } else if let Value::String(s) = second.as_ref() {
-            crate::datetime::DataDateTime::parse(s)
-        } else {
-            None
-        };
-
-        let first_dur = if is_duration_object(&first) {
-            extract_duration(&first)
-        } else if let Value::String(s) = &first {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
-
-        let second_dur = if is_duration_object(second.as_ref()) {
-            extract_duration(second.as_ref())
-        } else if let Value::String(s) = second.as_ref() {
-            crate::datetime::DataDuration::parse(s)
+        // Parse second: try datetime, then duration (mutually exclusive)
+        let second_dt = extract_datetime_value(second.as_ref());
+        let second_dur = if second_dt.is_none() {
+            extract_duration_value(second.as_ref())
         } else {
             None
         };
@@ -589,36 +552,26 @@ pub fn evaluate_multiply(
             return Ok(number_value(safe_multiply(f1, f2)));
         }
 
-        // Slow path: duration * number
-        let first_dur = if is_duration_object(&first) {
-            extract_duration(&first)
-        } else if let Value::String(s) = first.as_ref() {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
+        // Slow path: duration * number or number * duration
+        let first_dur = extract_duration_value(first.as_ref());
 
-        if let Some(dur) = first_dur
+        if let Some(dur) = &first_dur
             && let Some(factor) = coerce_to_number(&second, engine)
         {
             let result = dur.multiply(factor);
             return Ok(Value::String(result.to_string()));
         }
 
-        // Number * Duration
-        let second_dur = if is_duration_object(&second) {
-            extract_duration(&second)
-        } else if let Value::String(s) = second.as_ref() {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
+        // Number * Duration (only if first wasn't a duration)
+        if first_dur.is_none() {
+            let second_dur = extract_duration_value(second.as_ref());
 
-        if let Some(dur) = second_dur
-            && let Some(factor) = coerce_to_number(&first, engine)
-        {
-            let result = dur.multiply(factor);
-            return Ok(Value::String(result.to_string()));
+            if let Some(dur) = second_dur
+                && let Some(factor) = coerce_to_number(&first, engine)
+            {
+                let result = dur.multiply(factor);
+                return Ok(Value::String(result.to_string()));
+            }
         }
     }
 
@@ -730,13 +683,7 @@ pub fn evaluate_divide(
         let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Duration / Number
-        let first_dur = if is_duration_object(&first) {
-            extract_duration(&first)
-        } else if let Value::String(s) = &first {
-            crate::datetime::DataDuration::parse(s)
-        } else {
-            None
-        };
+        let first_dur = extract_duration_value(&first);
 
         if let Some(dur) = first_dur
             && let Some(divisor) = coerce_to_number(&second, engine)

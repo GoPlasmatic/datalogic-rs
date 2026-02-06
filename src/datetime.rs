@@ -331,16 +331,6 @@ pub fn extract_datetime(value: &Value) -> Option<DataDateTime> {
     None
 }
 
-// Extract duration from object
-pub fn extract_duration(value: &Value) -> Option<DataDuration> {
-    if let Value::Object(map) = value
-        && let Some(Value::String(s)) = map.get("timestamp")
-    {
-        return DataDuration::parse(s);
-    }
-    None
-}
-
 /// Parse 2 ASCII digits at offset into u32.
 #[inline(always)]
 fn parse_2digits(b: &[u8], offset: usize) -> Option<u32> {

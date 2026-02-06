@@ -46,7 +46,6 @@ use serde_json::Value;
 
 use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::constants::INVALID_ARGS;
-use crate::datetime::{extract_datetime, is_datetime_object};
 use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -109,11 +108,19 @@ pub fn evaluate_strict_equals(
 }
 
 /// Returns true if a string could plausibly be a datetime or duration.
-/// Datetimes start with a digit (year), durations typically contain digits with time units.
-/// Short non-digit strings are definitely not datetime/duration.
+/// Filters out pure numeric strings and short strings that can't be either format.
 #[inline]
 fn could_be_datetime_or_duration(s: &str) -> bool {
-    s.len() >= 8 && s.as_bytes()[0].is_ascii_digit()
+    let b = s.as_bytes();
+    if b.len() < 2 || !b[0].is_ascii_digit() {
+        return false;
+    }
+    // Datetime: "YYYY-MM-DD..." requires '-' at position 4
+    if b.len() >= 10 && b[4] == b'-' {
+        return true;
+    }
+    // Duration: must contain a time-unit letter suffix (d/h/m/s)
+    b.iter().any(|&c| matches!(c, b'd' | b'h' | b'm' | b's'))
 }
 
 // Helper function for == and === comparison
@@ -364,29 +371,24 @@ fn compare_ordered(left: &Value, right: &Value, op: OrdOp, engine: &DataLogic) -
     }
 
     // Handle datetime comparisons first - both objects and strings
-    let left_dt = if is_datetime_object(left) {
-        extract_datetime(left)
-    } else if let Value::String(s) = left {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
-
-    let right_dt = if is_datetime_object(right) {
-        extract_datetime(right)
-    } else if let Value::String(s) = right {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
-    };
+    let left_dt = extract_datetime_value(left);
+    let right_dt = extract_datetime_value(right);
 
     if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
         return Ok(op.apply_datetime(dt1, dt2));
     }
 
-    // Handle duration comparisons - both objects and strings
-    let left_dur = extract_duration_value(left);
-    let right_dur = extract_duration_value(right);
+    // Handle duration comparisons - skip if already parsed as datetime (mutually exclusive)
+    let left_dur = if left_dt.is_none() {
+        extract_duration_value(left)
+    } else {
+        None
+    };
+    let right_dur = if right_dt.is_none() {
+        extract_duration_value(right)
+    } else {
+        None
+    };
 
     if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
         return Ok(op.apply_duration(dur1, dur2));

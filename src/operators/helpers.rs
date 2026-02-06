@@ -180,25 +180,37 @@ pub fn create_number_value(n: f64) -> Value {
     }
 }
 
-/// Extracts a datetime from a value (either datetime object or string)
+/// Extracts a datetime from a value (either datetime object or string).
+/// Single map lookup for objects — avoids the double lookup of is_datetime_object + extract_datetime.
+#[inline]
 pub fn extract_datetime_value(value: &Value) -> Option<crate::datetime::DataDateTime> {
-    if crate::datetime::is_datetime_object(value) {
-        crate::datetime::extract_datetime(value)
-    } else if let Value::String(s) = value {
-        crate::datetime::DataDateTime::parse(s)
-    } else {
-        None
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(s)) = map.get("datetime") {
+                crate::datetime::DataDateTime::parse(s)
+            } else {
+                None
+            }
+        }
+        Value::String(s) => crate::datetime::DataDateTime::parse(s),
+        _ => None,
     }
 }
 
-/// Extracts a duration from a value (either duration object or string)
+/// Extracts a duration from a value (either duration object or string).
+/// Single map lookup for objects — avoids the double lookup of is_duration_object + extract_duration.
+#[inline]
 pub fn extract_duration_value(value: &Value) -> Option<crate::datetime::DataDuration> {
-    if crate::datetime::is_duration_object(value) {
-        crate::datetime::extract_duration(value)
-    } else if let Value::String(s) = value {
-        crate::datetime::DataDuration::parse(s)
-    } else {
-        None
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(s)) = map.get("timestamp") {
+                crate::datetime::DataDuration::parse(s)
+            } else {
+                None
+            }
+        }
+        Value::String(s) => crate::datetime::DataDuration::parse(s),
+        _ => None,
     }
 }
 
