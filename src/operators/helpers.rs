@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
 use crate::constants::INVALID_ARGS;
@@ -56,12 +58,13 @@ pub fn is_truthy_js(value: &Value) -> bool {
     }
 }
 
-/// Converts a value to a string
-pub fn to_string(value: &Value) -> String {
+/// Converts a value to a string, borrowing when possible to avoid allocation
+#[inline]
+pub fn to_string_cow(value: &Value) -> Cow<'_, str> {
     match value {
-        Value::String(s) => s.clone(),
-        Value::Null => String::new(),
-        _ => value.to_string(),
+        Value::String(s) => Cow::Borrowed(s.as_str()),
+        Value::Null => Cow::Borrowed(""),
+        _ => Cow::Owned(value.to_string()),
     }
 }
 

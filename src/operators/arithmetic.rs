@@ -960,16 +960,15 @@ pub fn evaluate_max(
             let mut max_num = f64::NEG_INFINITY;
 
             for elem in arr {
-                // Array elements are already evaluated, just check they're numeric
-                if !matches!(elem, Value::Number(_)) {
+                if let Value::Number(n) = &elem {
+                    if let Some(f) = n.as_f64()
+                        && f > max_num
+                    {
+                        max_num = f;
+                        max_value = Some(elem);
+                    }
+                } else {
                     return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-                }
-
-                if let Some(n) = coerce_to_number(&elem, engine)
-                    && n > max_num
-                {
-                    max_num = n;
-                    max_value = Some(elem);
                 }
             }
 
@@ -989,16 +988,15 @@ pub fn evaluate_max(
     for arg in args {
         let value = engine.evaluate_node(arg, context)?;
 
-        // Only accept numeric values
-        if !matches!(value, Value::Number(_)) {
+        if let Value::Number(n) = &value {
+            if let Some(f) = n.as_f64()
+                && f > max_num
+            {
+                max_num = f;
+                max_value = Some(value);
+            }
+        } else {
             return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-
-        if let Some(n) = coerce_to_number(&value, engine)
-            && n > max_num
-        {
-            max_num = n;
-            max_value = Some(value);
         }
     }
 
@@ -1043,16 +1041,15 @@ pub fn evaluate_min(
             let mut min_num = f64::INFINITY;
 
             for elem in arr {
-                // Array elements are already evaluated, just check they're numeric
-                if !matches!(elem, Value::Number(_)) {
+                if let Value::Number(n) = &elem {
+                    if let Some(f) = n.as_f64()
+                        && f < min_num
+                    {
+                        min_num = f;
+                        min_value = Some(elem);
+                    }
+                } else {
                     return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-                }
-
-                if let Some(n) = coerce_to_number(&elem, engine)
-                    && n < min_num
-                {
-                    min_num = n;
-                    min_value = Some(elem);
                 }
             }
 
@@ -1072,16 +1069,15 @@ pub fn evaluate_min(
     for arg in args {
         let value = engine.evaluate_node(arg, context)?;
 
-        // Only accept numeric values
-        if !matches!(value, Value::Number(_)) {
+        if let Value::Number(n) = &value {
+            if let Some(f) = n.as_f64()
+                && f < min_num
+            {
+                min_num = f;
+                min_value = Some(value);
+            }
+        } else {
             return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-
-        if let Some(n) = coerce_to_number(&value, engine)
-            && n < min_num
-        {
-            min_num = n;
-            min_value = Some(value);
         }
     }
 

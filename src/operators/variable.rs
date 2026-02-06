@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::compiled::{MetadataHint, PathSegment, ReduceHint};
 use crate::value_helpers::{access_path, access_path_ref};
@@ -142,7 +142,7 @@ pub fn evaluate_val(
                 if path == "index" {
                     // Fast path: use get_index() to avoid HashMap lookup
                     if let Some(idx) = context.current().get_index() {
-                        return Ok(json!(idx));
+                        return Ok(Value::Number(serde_json::Number::from(idx as u64)));
                     }
                     // Fallback to metadata HashMap
                     if let Some(metadata) = context.current().metadata()
@@ -223,8 +223,8 @@ pub fn evaluate_val(
             }
 
             return Ok(owned_value.unwrap_or_else(|| current_ref.clone()));
-        } else if args.len() == 2 {
-            // Two arguments - chain access like ["user", "admin"] or [1, 1]
+        } else {
+            // Non-level multi-arg path chain: ["user", "admin"] or [1, 1] etc.
             // Pre-evaluate args, then use reference-based traversal, clone only at the end
             let evaluated_args: Vec<Value> = args
                 .iter()
@@ -246,7 +246,6 @@ pub fn evaluate_val(
             };
 
             if let Some(start) = resolve_start {
-                // Chain remaining path elements from the reduce field
                 let mut current = start;
                 for evaluated in &evaluated_args[1..] {
                     match apply_path_element_ref(current, evaluated) {
@@ -266,49 +265,6 @@ pub fn evaluate_val(
             }
             return Ok(current.clone());
         }
-    }
-
-    // Handle multiple arguments (>2) as path chain
-    // Pre-evaluate args, then use reference-based traversal, clone only at the end
-    if args.len() > 2 {
-        let evaluated_args: Vec<Value> = args
-            .iter()
-            .map(|arg| engine.evaluate_node(arg, context))
-            .collect::<Result<Vec<_>>>()?;
-        let current_frame = context.current();
-
-        // Fast path: resolve reduce context fields for first path element
-        let resolve_start = if let Some(Value::String(s)) = evaluated_args.first() {
-            if s == "current" {
-                current_frame.get_reduce_current()
-            } else if s == "accumulator" {
-                current_frame.get_reduce_accumulator()
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        if let Some(start) = resolve_start {
-            let mut current = start;
-            for evaluated in &evaluated_args[1..] {
-                match apply_path_element_ref(current, evaluated) {
-                    Some(v) => current = v,
-                    None => return Ok(Value::Null),
-                }
-            }
-            return Ok(current.clone());
-        }
-
-        let mut current = current_frame.data();
-        for evaluated in &evaluated_args {
-            match apply_path_element_ref(current, evaluated) {
-                Some(v) => current = v,
-                None => return Ok(Value::Null),
-            }
-        }
-        return Ok(current.clone());
     }
 
     // Single argument - evaluate it
@@ -334,7 +290,7 @@ pub fn evaluate_val(
                 if path == "index" {
                     // Fast path: use get_index() to avoid HashMap lookup
                     if let Some(idx) = context.current().get_index() {
-                        return Ok(json!(idx));
+                        return Ok(Value::Number(serde_json::Number::from(idx as u64)));
                     }
                     // Fallback to metadata HashMap
                     if let Some(metadata) = context.current().metadata()
@@ -624,7 +580,7 @@ pub fn evaluate_compiled_var(
     match metadata_hint {
         MetadataHint::Index => {
             if let Some(idx) = context.current().get_index() {
-                return Ok(json!(idx));
+                return Ok(Value::Number(serde_json::Number::from(idx as u64)));
             }
             if let Some(metadata) = context.current().metadata()
                 && let Some(value) = metadata.get("index")

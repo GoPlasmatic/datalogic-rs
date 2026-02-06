@@ -1,7 +1,9 @@
 use regex::Regex;
 use serde_json::{Value, json};
 
-use super::helpers::to_string;
+use super::helpers::to_string_cow;
+use super::variable;
+use crate::compiled::{MetadataHint, ReduceHint};
 use crate::constants::INVALID_ARGS;
 use crate::{CompiledNode, ContextStack, DataLogic, Result, error::Error};
 
@@ -12,17 +14,17 @@ pub fn evaluate_cat(
     context: &mut ContextStack,
     engine: &DataLogic,
 ) -> Result<Value> {
-    let mut result = String::new();
+    let mut result = String::with_capacity(args.len() * 16);
 
     for arg in args {
         let value = engine.evaluate_node_cow(arg, context)?;
         // If the value is an array, concatenate its elements
         if let Value::Array(arr) = value.as_ref() {
             for item in arr {
-                result.push_str(&to_string(item));
+                result.push_str(&to_string_cow(item));
             }
         } else {
-            result.push_str(&to_string(value.as_ref()));
+            result.push_str(&to_string_cow(value.as_ref()));
         }
     }
 
@@ -154,6 +156,27 @@ pub fn evaluate_length(
     engine: &DataLogic,
 ) -> Result<Value> {
     if args.is_empty() || args.len() > 1 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    // Fast path: CompiledVar with scope_level 0 — navigate directly, skip clone
+    if let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        ..
+    } = &args[0]
+    {
+        if let Some(val) = variable::try_traverse_segments(context.current().data(), segments) {
+            return match val {
+                Value::String(s) => Ok(Value::Number(serde_json::Number::from(
+                    s.chars().count() as i64
+                ))),
+                Value::Array(arr) => Ok(Value::Number(serde_json::Number::from(arr.len() as i64))),
+                _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            };
+        }
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 

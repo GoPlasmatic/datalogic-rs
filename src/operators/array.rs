@@ -4,6 +4,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use super::helpers::is_truthy;
+use super::variable;
+use crate::compiled::{MetadataHint, ReduceHint};
 use crate::constants::INVALID_ARGS;
 use crate::opcode::OpCode;
 use crate::trace::TraceCollector;
@@ -31,8 +33,8 @@ fn try_extract_filter_field_cmp<'a>(
     if let CompiledNode::CompiledVar {
         scope_level: 0,
         segments,
-        reduce_hint: crate::compiled::ReduceHint::None,
-        metadata_hint: crate::compiled::MetadataHint::None,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
         default_value: None,
     } = a
         && !segments.is_empty()
@@ -41,6 +43,41 @@ fn try_extract_filter_field_cmp<'a>(
         return Some((segments, b));
     }
     None
+}
+
+/// Evaluate a loop-invariant node without pushing a dummy frame.
+/// For CompiledVar with scope_level > 0, uses scope_level - 1 to compensate for
+/// the missing dummy frame (get_at_level(N) with D+1 frames == get_at_level(N-1) with D frames).
+/// Falls back to dummy push/pop for other node types.
+fn evaluate_invariant_no_push(
+    invariant_node: &CompiledNode,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    match invariant_node {
+        CompiledNode::Value { value, .. } => Ok(value.clone()),
+        CompiledNode::CompiledVar {
+            scope_level,
+            segments,
+            reduce_hint: ReduceHint::None,
+            metadata_hint: MetadataHint::None,
+            default_value,
+        } if *scope_level > 0 => variable::evaluate_compiled_var(
+            scope_level - 1,
+            segments,
+            ReduceHint::None,
+            MetadataHint::None,
+            default_value.as_deref(),
+            context,
+            engine,
+        ),
+        _ => {
+            context.push(Value::Null);
+            let result = engine.evaluate_node(invariant_node, context)?;
+            context.pop();
+            Ok(result)
+        }
+    }
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter operators.
@@ -91,8 +128,8 @@ impl<'a> FastPredicate<'a> {
                 if let CompiledNode::CompiledVar {
                     scope_level: 0,
                     segments,
-                    reduce_hint: crate::compiled::ReduceHint::None,
-                    metadata_hint: crate::compiled::MetadataHint::None,
+                    reduce_hint: ReduceHint::None,
+                    metadata_hint: MetadataHint::None,
                     default_value: None,
                 } = &pred_args[var_idx]
                     && let CompiledNode::Value { value: literal } = &pred_args[lit_idx]
@@ -265,8 +302,6 @@ fn try_reduce_fast_path(
     body_args: &[CompiledNode],
     opcode: OpCode,
 ) -> Option<Value> {
-    use crate::compiled::ReduceHint;
-
     // Identify which arg is current and which is accumulator
     let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
         (
@@ -468,8 +503,8 @@ pub fn evaluate_map(
             if let CompiledNode::CompiledVar {
                 scope_level: 0,
                 segments,
-                reduce_hint: crate::compiled::ReduceHint::None,
-                metadata_hint: crate::compiled::MetadataHint::None,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
                 default_value: None,
             } = logic
             {
@@ -508,8 +543,8 @@ pub fn evaluate_map(
                     if let CompiledNode::CompiledVar {
                         scope_level: 0,
                         segments,
-                        reduce_hint: crate::compiled::ReduceHint::None,
-                        metadata_hint: crate::compiled::MetadataHint::None,
+                        reduce_hint: ReduceHint::None,
+                        metadata_hint: MetadataHint::None,
                         default_value: None,
                     } = &body_args[var_idx]
                         && segments.is_empty()
@@ -663,25 +698,14 @@ pub fn evaluate_filter(
                     .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
 
                 if let Some((segments, invariant_node)) = fast {
-                    // Evaluate the invariant side once before the loop
-                    let invariant_owned;
-                    let invariant_ref: &Value = match invariant_node {
-                        CompiledNode::Value { value, .. } => value,
-                        _ => {
-                            // Parent scope access: push dummy frame for correct depth
-                            context.push(Value::Null);
-                            invariant_owned = engine.evaluate_node(invariant_node, context)?;
-                            context.pop();
-                            &invariant_owned
-                        }
-                    };
-
+                    let invariant_val =
+                        evaluate_invariant_no_push(invariant_node, context, engine)?;
                     let is_eq = matches!(opcode, OpCode::StrictEquals);
                     let results: Vec<Value> = arr
                         .into_iter()
                         .filter(|item| {
                             let matches = super::variable::try_traverse_segments(item, segments)
-                                == Some(invariant_ref);
+                                == Some(&invariant_val);
                             if is_eq { matches } else { !matches }
                         })
                         .collect();
@@ -873,6 +897,28 @@ pub fn evaluate_all(
 
     match collection {
         Value::Array(arr) if !arr.is_empty() => {
+            // Fast path: field-vs-invariant comparison (avoids per-item context push)
+            if let CompiledNode::BuiltinOperator {
+                opcode,
+                args: pred_args,
+            } = predicate
+                && pred_args.len() == 2
+                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
+            {
+                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
+                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
+                if let Some((segments, invariant_node)) = fast {
+                    let invariant_val =
+                        evaluate_invariant_no_push(invariant_node, context, engine)?;
+                    let is_eq = matches!(opcode, OpCode::StrictEquals);
+                    return Ok(Value::Bool(arr.iter().all(|item| {
+                        let matches = super::variable::try_traverse_segments(item, segments)
+                            == Some(&invariant_val);
+                        if is_eq { matches } else { !matches }
+                    })));
+                }
+            }
+
             // Fast path: detect simple comparison predicates
             if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
                 return Ok(Value::Bool(arr.iter().all(|item| fast_pred.evaluate(item))));
@@ -945,6 +991,28 @@ pub fn evaluate_some(
 
     match collection {
         Value::Array(arr) => {
+            // Fast path: field-vs-invariant comparison (avoids per-item context push)
+            if let CompiledNode::BuiltinOperator {
+                opcode,
+                args: pred_args,
+            } = predicate
+                && pred_args.len() == 2
+                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
+            {
+                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
+                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
+                if let Some((segments, invariant_node)) = fast {
+                    let invariant_val =
+                        evaluate_invariant_no_push(invariant_node, context, engine)?;
+                    let is_eq = matches!(opcode, OpCode::StrictEquals);
+                    return Ok(Value::Bool(arr.iter().any(|item| {
+                        let matches = super::variable::try_traverse_segments(item, segments)
+                            == Some(&invariant_val);
+                        if is_eq { matches } else { !matches }
+                    })));
+                }
+            }
+
             // Fast path: detect simple comparison predicates
             if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
                 return Ok(Value::Bool(arr.iter().any(|item| fast_pred.evaluate(item))));
@@ -1017,6 +1085,28 @@ pub fn evaluate_none(
 
     match collection {
         Value::Array(arr) => {
+            // Fast path: field-vs-invariant comparison (avoids per-item context push)
+            if let CompiledNode::BuiltinOperator {
+                opcode,
+                args: pred_args,
+            } = predicate
+                && pred_args.len() == 2
+                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
+            {
+                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
+                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
+                if let Some((segments, invariant_node)) = fast {
+                    let invariant_val =
+                        evaluate_invariant_no_push(invariant_node, context, engine)?;
+                    let is_eq = matches!(opcode, OpCode::StrictEquals);
+                    return Ok(Value::Bool(!arr.iter().any(|item| {
+                        let matches = super::variable::try_traverse_segments(item, segments)
+                            == Some(&invariant_val);
+                        if is_eq { matches } else { !matches }
+                    })));
+                }
+            }
+
             // Fast path: detect simple comparison predicates
             if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
                 return Ok(Value::Bool(
@@ -1128,8 +1218,8 @@ pub fn evaluate_sort(
         let keys = if let CompiledNode::CompiledVar {
             scope_level: 0,
             segments,
-            reduce_hint: crate::compiled::ReduceHint::None,
-            metadata_hint: crate::compiled::MetadataHint::None,
+            reduce_hint: ReduceHint::None,
+            metadata_hint: MetadataHint::None,
             default_value: None,
         } = extractor
         {
@@ -1195,6 +1285,32 @@ pub fn evaluate_sort(
     Ok(Value::Array(array))
 }
 
+/// Extract an optional i64 from a CompiledNode, skipping evaluate_node dispatch for literals.
+#[inline]
+fn extract_opt_i64(
+    node: &CompiledNode,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Option<i64>> {
+    match node {
+        CompiledNode::Value {
+            value: Value::Number(n),
+            ..
+        } => Ok(n.as_i64()),
+        CompiledNode::Value {
+            value: Value::Null, ..
+        } => Ok(None),
+        _ => {
+            let val = engine.evaluate_node(node, context)?;
+            match val {
+                Value::Number(n) => Ok(n.as_i64()),
+                Value::Null => Ok(None),
+                _ => Err(Error::InvalidArguments("NaN".to_string())),
+            }
+        }
+    }
+}
+
 /// The `slice` operator - extracts a portion of an array or string.
 ///
 /// # Syntax
@@ -1256,41 +1372,25 @@ pub fn evaluate_slice(
 
     // Get start index (default to 0 or end for negative step)
     let start = if args.len() > 1 {
-        let start_val = engine.evaluate_node(&args[1], context)?;
-        match start_val {
-            Value::Number(n) => n.as_i64(),
-            Value::Null => None,
-            _ => return Err(Error::InvalidArguments("NaN".to_string())),
-        }
+        extract_opt_i64(&args[1], context, engine)?
     } else {
         None
     };
 
     // Get end index (default to length)
     let end = if args.len() > 2 {
-        let end_val = engine.evaluate_node(&args[2], context)?;
-        match end_val {
-            Value::Number(n) => n.as_i64(),
-            Value::Null => None,
-            _ => return Err(Error::InvalidArguments("NaN".to_string())),
-        }
+        extract_opt_i64(&args[2], context, engine)?
     } else {
         None
     };
 
     // Get step (default to 1)
     let step = if args.len() > 3 {
-        let step_val = engine.evaluate_node(&args[3], context)?;
-        match step_val {
-            Value::Number(n) => {
-                let s = n.as_i64().unwrap_or(1);
-                if s == 0 {
-                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-                }
-                s
-            }
-            _ => 1,
+        let s = extract_opt_i64(&args[3], context, engine)?.unwrap_or(1);
+        if s == 0 {
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
+        s
     } else {
         1
     };
