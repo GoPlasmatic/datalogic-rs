@@ -119,13 +119,43 @@ fn could_be_datetime_or_duration(s: &str) -> bool {
 // Helper function for == and === comparison
 #[inline]
 fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic) -> Result<bool> {
-    // Fast path: both numbers — skip datetime/duration extraction entirely
-    if let (Value::Number(_), Value::Number(_)) = (left, right) {
-        return if strict {
-            Ok(strict_equals(left, right))
-        } else {
-            loose_equals(left, right, engine)
-        };
+    // Fast path: same-type simple comparisons — skip datetime/duration entirely
+    match (left, right) {
+        (Value::Number(_), Value::Number(_))
+        | (Value::Bool(_), Value::Bool(_))
+        | (Value::Null, Value::Null) => {
+            return if strict {
+                Ok(strict_equals(left, right))
+            } else {
+                loose_equals(left, right, engine)
+            };
+        }
+        // Two strings that can't be datetimes — skip extraction
+        (Value::String(l), Value::String(r))
+            if !could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r) =>
+        {
+            return if strict {
+                Ok(strict_equals(left, right))
+            } else {
+                loose_equals(left, right, engine)
+            };
+        }
+        // Non-string primitives vs anything (except objects) — skip datetime extraction
+        (Value::Number(_), _)
+        | (_, Value::Number(_))
+        | (Value::Bool(_), _)
+        | (_, Value::Bool(_))
+        | (Value::Null, _)
+        | (_, Value::Null)
+            if !matches!(left, Value::Object(_)) && !matches!(right, Value::Object(_)) =>
+        {
+            return if strict {
+                Ok(strict_equals(left, right))
+            } else {
+                loose_equals(left, right, engine)
+            };
+        }
+        _ => {}
     }
 
     // Handle datetime comparisons - both objects and strings

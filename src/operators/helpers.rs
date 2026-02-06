@@ -4,6 +4,7 @@ use crate::constants::INVALID_ARGS;
 use serde_json::Value;
 
 /// Checks if a value is truthy using the engine's configuration
+#[inline(always)]
 pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript => is_truthy_js(value),
@@ -37,6 +38,7 @@ pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
 }
 
 /// Checks if a value is truthy according to JavaScript rules (for backward compatibility)
+#[inline(always)]
 pub fn is_truthy_js(value: &Value) -> bool {
     match value {
         Value::Null => false,

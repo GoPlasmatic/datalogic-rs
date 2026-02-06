@@ -67,6 +67,14 @@ enum FastPredicate<'a> {
         opcode: OpCode,
         var_is_lhs: bool,
     },
+    /// Compare whole item against a numeric literal using loose equality (==/!=)
+    WholeItemLooseNumericEq { literal_f: f64, negate: bool },
+    /// Compare a field against a numeric literal using loose equality (==/!=)
+    FieldLooseNumericEq {
+        segments: &'a [crate::compiled::PathSegment],
+        literal_f: f64,
+        negate: bool,
+    },
 }
 
 impl<'a> FastPredicate<'a> {
@@ -102,6 +110,25 @@ impl<'a> FastPredicate<'a> {
                                     literal,
                                     negate,
                                 });
+                            }
+                        }
+                        OpCode::Equals | OpCode::NotEquals => {
+                            // For loose equality with numeric literals, we can use a fast
+                            // numeric comparison (loose == is same as strict for numbers)
+                            if let Some(lit_f) = literal.as_f64() {
+                                let negate = matches!(opcode, OpCode::NotEquals);
+                                if is_whole_item {
+                                    return Some(FastPredicate::WholeItemLooseNumericEq {
+                                        literal_f: lit_f,
+                                        negate,
+                                    });
+                                } else {
+                                    return Some(FastPredicate::FieldLooseNumericEq {
+                                        segments,
+                                        literal_f: lit_f,
+                                        negate,
+                                    });
+                                }
                             }
                         }
                         OpCode::GreaterThan
@@ -186,6 +213,32 @@ impl<'a> FastPredicate<'a> {
                 } else {
                     false
                 }
+            }
+            FastPredicate::WholeItemLooseNumericEq { literal_f, negate } => {
+                let matches = if let Some(item_f) = item.as_f64() {
+                    item_f == *literal_f
+                } else {
+                    false
+                };
+                if *negate { !matches } else { matches }
+            }
+            FastPredicate::FieldLooseNumericEq {
+                segments,
+                literal_f,
+                negate,
+            } => {
+                let matches = if let Some(field_val) =
+                    super::variable::try_traverse_segments(item, segments)
+                {
+                    if let Some(field_f) = field_val.as_f64() {
+                        field_f == *literal_f
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if *negate { !matches } else { matches }
             }
         }
     }
