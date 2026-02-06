@@ -7,6 +7,7 @@
 
 import { memo } from 'react';
 import { BaseEdge, getBezierPath, type EdgeProps } from '@xyflow/react';
+import './edges.css';
 
 export const EditableEdge = memo(function EditableEdge({
   sourceX,

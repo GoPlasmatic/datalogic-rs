@@ -24,5 +24,4 @@ export { PanelRenderer, type PanelRendererRef } from './PanelRenderer';
 // Utilities
 export { evaluateCondition, evaluateConditions } from './visibility';
 
-// Import CSS
-import './panel-inputs.css';
+// CSS imported directly in PanelRenderer.tsx to survive tree-shaking

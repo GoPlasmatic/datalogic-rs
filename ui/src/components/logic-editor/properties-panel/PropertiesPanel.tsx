@@ -8,6 +8,7 @@
 import { memo, useEffect, useState, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { X, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useEditorContext } from '../context/editor';
+import './properties-panel.css';
 import { PanelRenderer, type PanelRendererRef } from '../panel-inputs';
 import { HelpSection } from './HelpSection';
 import { ArgumentsSection } from './ArgumentsSection';

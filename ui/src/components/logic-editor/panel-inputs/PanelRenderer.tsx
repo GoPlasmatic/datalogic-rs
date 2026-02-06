@@ -1,6 +1,7 @@
 import { memo, forwardRef, useImperativeHandle, useRef, useCallback } from 'react';
 import type { PanelConfig, ContextVariable } from '../config/operators.types';
 import { SectionRenderer, type SectionRendererRef } from './SectionRenderer';
+import './panel-inputs.css';
 
 interface PanelRendererProps {
   config: PanelConfig;

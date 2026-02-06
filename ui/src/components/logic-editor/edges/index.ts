@@ -14,5 +14,4 @@ export const edgeTypes = {
   editable: EditableEdge,
 };
 
-// Import CSS
-import './edges.css';
+// CSS imported directly in EditableEdge.tsx to survive tree-shaking

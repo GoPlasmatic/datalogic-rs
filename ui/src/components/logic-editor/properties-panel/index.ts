@@ -18,5 +18,4 @@ export {
   extractArguments,
 } from './utils/argument-parser';
 
-// Import CSS
-import './properties-panel.css';
+// CSS imported directly in PropertiesPanel.tsx to survive tree-shaking
