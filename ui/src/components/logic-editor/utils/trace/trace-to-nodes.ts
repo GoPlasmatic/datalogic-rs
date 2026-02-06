@@ -10,6 +10,7 @@ import {
   createOperatorNodeFromTrace,
   createVerticalCellNodeFromTrace,
   createIfElseNodeFromTrace,
+  createSwitchNodeFromTrace,
   createStructureNodeFromTrace,
 } from './node-creators';
 
@@ -80,6 +81,11 @@ function processExpressionNode(
             nodeId, expression, exprNode.children, context, parentInfo,
             processExpressionNode, createFallbackNode
           );
+        } else if (op === 'switch' || op === 'match') {
+          createSwitchNodeFromTrace(
+            nodeId, expression, exprNode.children, context, parentInfo,
+            processExpressionNode, createFallbackNode
+          );
         } else {
           const operands = obj[op];
           const args = Array.isArray(operands) ? operands : [operands];
@@ -142,6 +148,11 @@ function createFallbackNode(
           createVariableNodeFromTrace(nodeId, value, [], context, parentInfo);
         } else if (op === 'if' || op === '?:') {
           createIfElseNodeFromTrace(
+            nodeId, value, [], context, parentInfo,
+            processExpressionNode, createFallbackNode
+          );
+        } else if (op === 'switch' || op === 'match') {
+          createSwitchNodeFromTrace(
             nodeId, value, [], context, parentInfo,
             processExpressionNode, createFallbackNode
           );

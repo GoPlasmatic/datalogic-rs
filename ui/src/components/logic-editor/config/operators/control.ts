@@ -5,6 +5,7 @@
  * - if: If/then/else branching
  * - ?:: Ternary operator
  * - ??: Nullish coalescing
+ * - switch/match: Switch/case matching
  */
 
 import type { Operator } from '../operators.types';
@@ -241,6 +242,261 @@ export const controlOperators: Record<string, Operator> = {
               inputType: 'expression',
               required: true,
               helpText: 'Value returned if condition is falsy',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  switch: {
+    name: 'switch',
+    label: 'Switch',
+    category: 'control',
+    description: 'Match a value against cases (switch/case)',
+    arity: {
+      type: 'special',
+      min: 2,
+      args: [
+        { name: 'discriminant', label: 'Value', type: 'any', required: true },
+        { name: 'cases', label: 'Cases', type: 'array', required: true },
+        { name: 'default', label: 'Default', type: 'any', required: false },
+      ],
+    },
+    help: {
+      summary: 'Evaluate a value once and match it against case/result pairs',
+      details:
+        'Evaluates the discriminant expression once, then compares it against each case value using strict equality. Returns the result of the first matching case, or the default value if no case matches. If no default is provided and nothing matches, returns null.',
+      returnType: 'any',
+      examples: [
+        {
+          title: 'Simple string matching',
+          rule: {
+            switch: [
+              { var: 'color' },
+              [
+                ['red', 'stop'],
+                ['green', 'go'],
+              ],
+              'unknown',
+            ],
+          },
+          data: { color: 'red' },
+          result: 'stop',
+        },
+        {
+          title: 'HTTP status codes',
+          rule: {
+            switch: [
+              { var: 'status' },
+              [
+                [200, 'OK'],
+                [404, 'Not Found'],
+                [500, 'Error'],
+              ],
+              'Unknown',
+            ],
+          },
+          data: { status: 404 },
+          result: 'Not Found',
+        },
+        {
+          title: 'Computed discriminant',
+          rule: {
+            switch: [
+              { '+': [{ var: 'a' }, { var: 'b' }] },
+              [
+                [10, 'ten'],
+                [20, 'twenty'],
+              ],
+              'other',
+            ],
+          },
+          data: { a: 7, b: 3 },
+          result: 'ten',
+        },
+        {
+          title: 'Expression as result',
+          rule: {
+            switch: [
+              { var: 'tier' },
+              [
+                ['gold', { '*': [{ var: 'price' }, 0.8] }],
+                ['silver', { '*': [{ var: 'price' }, 0.9] }],
+              ],
+              { var: 'price' },
+            ],
+          },
+          data: { tier: 'gold', price: 100 },
+          result: 80,
+        },
+      ],
+      notes: [
+        'Pattern: [discriminant, [[case1, result1], [case2, result2], ...], default]',
+        'Uses strict equality (type-sensitive)',
+        'First matching case wins',
+        'Only the matched result is evaluated (short-circuit)',
+        '"match" is an alias for "switch"',
+      ],
+      seeAlso: ['if', '?:', '=='],
+    },
+    ui: {
+      icon: 'git-branch',
+      shortLabel: 'switch',
+      nodeType: 'decision',
+      collapsible: true,
+      addArgumentLabel: 'Add Case',
+    },
+    panel: {
+      sections: [
+        {
+          id: 'discriminant',
+          title: 'Match Value',
+          fields: [
+            {
+              id: 'discriminant',
+              label: 'Value',
+              inputType: 'expression',
+              required: true,
+              helpText: 'Expression to evaluate and match against cases',
+            },
+          ],
+        },
+        {
+          id: 'cases',
+          title: 'Cases',
+          fields: [
+            {
+              id: 'caseCount',
+              label: 'Number of Cases',
+              inputType: 'number',
+              min: 1,
+              max: 50,
+              defaultValue: 1,
+              helpText: 'Number of case/result pairs',
+            },
+            {
+              id: 'case',
+              label: 'Case',
+              inputType: 'expression',
+              repeatable: true,
+              helpText: 'Case value and result pairs',
+            },
+          ],
+        },
+        {
+          id: 'default',
+          title: 'Default',
+          fields: [
+            {
+              id: 'hasDefault',
+              label: 'Has Default',
+              inputType: 'boolean',
+              defaultValue: false,
+            },
+            {
+              id: 'default',
+              label: 'Default',
+              inputType: 'expression',
+              showWhen: [{ field: 'hasDefault', operator: 'equals', value: true }],
+              helpText: 'Value returned if no cases match',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  match: {
+    name: 'match',
+    label: 'Match',
+    category: 'control',
+    description: 'Match a value against cases (alias for switch)',
+    arity: {
+      type: 'special',
+      min: 2,
+      args: [
+        { name: 'discriminant', label: 'Value', type: 'any', required: true },
+        { name: 'cases', label: 'Cases', type: 'array', required: true },
+        { name: 'default', label: 'Default', type: 'any', required: false },
+      ],
+    },
+    help: {
+      summary: 'Evaluate a value once and match it against case/result pairs (alias for switch)',
+      details:
+        'Identical to "switch". Evaluates the discriminant expression once, then compares it against each case value using strict equality.',
+      returnType: 'any',
+      examples: [
+        {
+          title: 'Simple matching',
+          rule: {
+            match: [
+              { var: 'color' },
+              [
+                ['red', 'stop'],
+                ['green', 'go'],
+              ],
+              'unknown',
+            ],
+          },
+          data: { color: 'green' },
+          result: 'go',
+        },
+      ],
+      notes: ['Alias for "switch"', 'See "switch" for full documentation'],
+      seeAlso: ['switch', 'if', '?:'],
+    },
+    ui: {
+      icon: 'git-branch',
+      shortLabel: 'match',
+      nodeType: 'decision',
+      collapsible: true,
+      addArgumentLabel: 'Add Case',
+    },
+    panel: {
+      sections: [
+        {
+          id: 'discriminant',
+          title: 'Match Value',
+          fields: [
+            {
+              id: 'discriminant',
+              label: 'Value',
+              inputType: 'expression',
+              required: true,
+              helpText: 'Expression to evaluate and match against cases',
+            },
+          ],
+        },
+        {
+          id: 'cases',
+          title: 'Cases',
+          fields: [
+            {
+              id: 'case',
+              label: 'Case',
+              inputType: 'expression',
+              repeatable: true,
+              helpText: 'Case value and result pairs',
+            },
+          ],
+        },
+        {
+          id: 'default',
+          title: 'Default',
+          fields: [
+            {
+              id: 'hasDefault',
+              label: 'Has Default',
+              inputType: 'boolean',
+              defaultValue: false,
+            },
+            {
+              id: 'default',
+              label: 'Default',
+              inputType: 'expression',
+              showWhen: [{ field: 'hasDefault', operator: 'equals', value: true }],
+              helpText: 'Value returned if no cases match',
             },
           ],
         },

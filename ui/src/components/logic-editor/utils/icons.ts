@@ -34,7 +34,8 @@ export type IconName =
   | 'layers'
   | 'clock'
   | 'alert-circle'
-  | 'arrow-up';
+  | 'arrow-up'
+  | 'tag';
 
 // Iterator argument icons
 export const ITERATOR_ARG_ICONS: Record<string, IconName[]> = {

@@ -145,6 +145,11 @@ function convertOperator(
     }
   }
 
+  // Special handling for switch/match: reconstruct nested [[case,result],...] structure
+  if (data.operator === 'switch' || data.operator === 'match') {
+    return convertSwitchFromCells(data, storedOperands, nodeMap);
+  }
+
   // Special handling for val: reconstruct from editable cell values
   // Val format: {"val": [[-N], "comp1", "comp2"]} or {"val": "metadata"}
   if (data.operator === 'val') {
@@ -164,6 +169,71 @@ function convertOperator(
   }
 
   return { [data.operator]: resultArgs };
+}
+
+/**
+ * Convert switch/match operator from cells
+ * Reconstructs {"switch": [discriminant, [[case1, result1], ...], default]}
+ *
+ * storedOperands = [discriminant, [[case1, result1], [case2, result2], ...], default]
+ * cells = [Match(0), Case(1), Then(2), Case(3), Then(4), ..., Default(N)]
+ */
+function convertSwitchFromCells(
+  data: OperatorNodeData,
+  storedOperands: JsonLogicValue[],
+  nodeMap: Map<string, LogicNode>
+): JsonLogicValue {
+  // Extract the original cases array for inline value lookups
+  const storedCases: JsonLogicValue[][] = Array.isArray(storedOperands[1])
+    ? (storedOperands[1] as JsonLogicValue[][])
+    : [];
+
+  let discriminant: JsonLogicValue = null;
+  const casePairs: [JsonLogicValue, JsonLogicValue][] = [];
+  let defaultValue: JsonLogicValue | undefined;
+  let pendingCaseValue: JsonLogicValue | null = null;
+  let caseIndex = 0;
+
+  for (const cell of data.cells) {
+    if (cell.rowLabel === 'Match') {
+      discriminant = resolveCellValue(cell, storedOperands[0], nodeMap);
+    } else if (cell.rowLabel === 'Case') {
+      // Get case value from stored cases array
+      const storedPair = storedCases[caseIndex];
+      pendingCaseValue = resolveCellValue(cell, storedPair?.[0] ?? null, nodeMap);
+    } else if (cell.rowLabel === 'Then' && pendingCaseValue !== null) {
+      const storedPair = storedCases[caseIndex];
+      const resultValue = resolveCellValue(cell, storedPair?.[1] ?? null, nodeMap);
+      casePairs.push([pendingCaseValue, resultValue]);
+      pendingCaseValue = null;
+      caseIndex++;
+    } else if (cell.rowLabel === 'Default') {
+      defaultValue = resolveCellValue(cell, storedOperands[2] ?? null, nodeMap);
+    }
+  }
+
+  const args: JsonLogicValue[] = [discriminant, casePairs as unknown as JsonLogicValue];
+  if (defaultValue !== undefined) {
+    args.push(defaultValue);
+  }
+
+  return { [data.operator]: args };
+}
+
+/** Resolve a cell's value: use branch node if available, otherwise fall back to stored value */
+function resolveCellValue(
+  cell: OperatorNodeData['cells'][0],
+  storedValue: JsonLogicValue,
+  nodeMap: Map<string, LogicNode>
+): JsonLogicValue {
+  if (cell.type === 'branch' && cell.branchId) {
+    const branchNode = nodeMap.get(cell.branchId);
+    if (branchNode) {
+      return convertNode(branchNode.data, nodeMap);
+    }
+  }
+  // For inline cells, use the stored original value
+  return storedValue;
 }
 
 /**

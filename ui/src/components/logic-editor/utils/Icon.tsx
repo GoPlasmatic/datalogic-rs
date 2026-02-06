@@ -33,6 +33,7 @@ import {
   Clock,
   CircleAlert,
   ArrowUp,
+  Tag,
 } from 'lucide-react';
 import type { IconName } from './icons';
 
@@ -70,6 +71,7 @@ const ICON_COMPONENTS: Record<IconName, LucideIcon> = {
   'clock': Clock,
   'alert-circle': CircleAlert,
   'arrow-up': ArrowUp,
+  'tag': Tag,
 };
 
 // Render an icon by name

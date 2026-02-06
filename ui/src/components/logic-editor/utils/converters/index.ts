@@ -4,6 +4,7 @@ import { isPlainObject, isDataStructure } from '../type-helpers';
 import { convertPrimitive, convertInvalidObject } from './primitive-converter';
 import { isVariableOperator, convertVariable } from './variable-converter';
 import { convertIfElse } from './if-else-converter';
+import { convertSwitch } from './switch-converter';
 import { convertOperator } from './operator-converter';
 import { convertStructure } from './structure-converter';
 
@@ -38,6 +39,12 @@ export function convertValue(
   if (operator === 'if' || operator === '?:') {
     const ifArgs: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
     return convertIfElse(ifArgs, context, convertValue);
+  }
+
+  // Handle switch/match
+  if (operator === 'switch' || operator === 'match') {
+    const switchArgs: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
+    return convertSwitch(operator, switchArgs, context, convertValue);
   }
 
   // Handle variable operators

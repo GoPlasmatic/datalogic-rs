@@ -134,6 +134,23 @@ export function generateExpressionText(value: JsonLogicValue, maxLength = 100): 
         return parts.join(' ');
       }
 
+      // Switch/match - discriminant with case/result pairs
+      if (op === 'switch' || op === 'match') {
+        const parts: string[] = [`${op}(${toText(args[0])})`];
+        if (args.length >= 2 && Array.isArray(args[1])) {
+          const cases = args[1] as JsonLogicValue[];
+          for (const c of cases) {
+            if (Array.isArray(c) && c.length >= 2) {
+              parts.push(`${toText(c[0])}: ${toText(c[1])}`);
+            }
+          }
+        }
+        if (args.length >= 3) {
+          parts.push(`default: ${toText(args[2])}`);
+        }
+        return parts.join(', ');
+      }
+
       // Default: function notation
       return `${op}(${args.map(a => toText(a)).join(', ')})`;
     }
