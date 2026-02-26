@@ -12,5 +12,12 @@
     "lint:ui": "pnpm --filter @goplasmatic/datalogic-ui lint",
     "preview:ui": "pnpm --filter @goplasmatic/datalogic-ui preview"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "minimatch": ">=10.2.1",
+      "rollup": ">=4.59.0",
+      "ajv@>=8.0.0 <8.18.0": "8.18.0"
+    }
+  }
 }
