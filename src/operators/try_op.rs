@@ -42,7 +42,7 @@ use std::collections::HashMap;
 
 /// Evaluate the last argument of try with error context if applicable.
 /// Uses `take()` to move the error object instead of cloning.
-#[inline(always)]
+#[inline]
 fn try_last_with_error_context(
     arg: &CompiledNode,
     last_error: &mut Option<Error>,
@@ -111,7 +111,7 @@ pub fn evaluate_try(
 }
 
 /// Traced version of try - evaluates arguments with tracing for step-by-step debugging
-#[inline]
+#[inline(never)]
 pub fn evaluate_try_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,

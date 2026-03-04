@@ -198,7 +198,7 @@ impl<'a> FastPredicate<'a> {
     }
 
     /// Evaluate this predicate against a single item.
-    #[inline(always)]
+    #[inline]
     fn evaluate(&self, item: &Value) -> bool {
         match self {
             FastPredicate::WholeItemStrictEq { literal, negate } => {

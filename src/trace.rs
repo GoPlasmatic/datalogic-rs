@@ -94,8 +94,9 @@ impl ExpressionNode {
                     children,
                 }
             }
-            CompiledNode::CustomOperator { name, args, .. } => {
-                let children: Vec<ExpressionNode> = args
+            CompiledNode::CustomOperator(data) => {
+                let children: Vec<ExpressionNode> = data
+                    .args
                     .iter()
                     .filter(|n| Self::is_operator_node(n))
                     .map(|n| Self::build_node(n, id_counter, node_id_map))
@@ -103,12 +104,13 @@ impl ExpressionNode {
 
                 ExpressionNode {
                     id,
-                    expression: Self::custom_to_json_string(name, args),
+                    expression: Self::custom_to_json_string(&data.name, &data.args),
                     children,
                 }
             }
-            CompiledNode::StructuredObject { fields, .. } => {
-                let children: Vec<ExpressionNode> = fields
+            CompiledNode::StructuredObject(data) => {
+                let children: Vec<ExpressionNode> = data
+                    .fields
                     .iter()
                     .filter(|(_, n)| Self::is_operator_node(n))
                     .map(|(_, n)| Self::build_node(n, id_counter, node_id_map))
@@ -116,7 +118,7 @@ impl ExpressionNode {
 
                 ExpressionNode {
                     id,
-                    expression: Self::structured_to_json_string(fields),
+                    expression: Self::structured_to_json_string(&data.fields),
                     children,
                 }
             }
@@ -145,17 +147,15 @@ impl ExpressionNode {
                 }
             }
 
-            CompiledNode::CompiledExists {
-                scope_level,
-                segments,
-            } => ExpressionNode {
+            CompiledNode::CompiledExists(data) => ExpressionNode {
                 id,
-                expression: Self::compiled_exists_to_json_string(*scope_level, segments),
+                expression: Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
                 children: vec![],
             },
 
-            CompiledNode::CompiledSplitRegex { args, regex, .. } => {
-                let children: Vec<ExpressionNode> = args
+            CompiledNode::CompiledSplitRegex(data) => {
+                let children: Vec<ExpressionNode> = data
+                    .args
                     .iter()
                     .filter(|n| Self::is_operator_node(n))
                     .map(|n| Self::build_node(n, id_counter, node_id_map))
@@ -164,14 +164,14 @@ impl ExpressionNode {
                     id,
                     expression: format!(
                         "{{\"split\": [{}, \"{}\"]}}",
-                        Self::node_to_json_string(&args[0]),
-                        regex.as_str()
+                        Self::node_to_json_string(&data.args[0]),
+                        data.regex.as_str()
                     ),
                     children,
                 }
             }
 
-            CompiledNode::CompiledThrow { .. } => ExpressionNode {
+            CompiledNode::CompiledThrow(_) => ExpressionNode {
                 id,
                 expression: Self::node_to_json_string(node),
                 children: vec![],
@@ -195,12 +195,10 @@ impl ExpressionNode {
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
                 Self::builtin_to_json_string(opcode, args)
             }
-            CompiledNode::CustomOperator { name, args, .. } => {
-                Self::custom_to_json_string(name, args)
+            CompiledNode::CustomOperator(data) => {
+                Self::custom_to_json_string(&data.name, &data.args)
             }
-            CompiledNode::StructuredObject { fields, .. } => {
-                Self::structured_to_json_string(fields)
-            }
+            CompiledNode::StructuredObject(data) => Self::structured_to_json_string(&data.fields),
             CompiledNode::CompiledVar {
                 scope_level,
                 segments,
@@ -209,20 +207,18 @@ impl ExpressionNode {
             } => {
                 Self::compiled_var_to_json_string(*scope_level, segments, default_value.as_deref())
             }
-            CompiledNode::CompiledExists {
-                scope_level,
-                segments,
-            } => Self::compiled_exists_to_json_string(*scope_level, segments),
-
-            CompiledNode::CompiledSplitRegex { args, regex, .. } => {
+            CompiledNode::CompiledExists(data) => {
+                Self::compiled_exists_to_json_string(data.scope_level, &data.segments)
+            }
+            CompiledNode::CompiledSplitRegex(data) => {
                 format!(
                     "{{\"split\": [{}, \"{}\"]}}",
-                    Self::node_to_json_string(&args[0]),
-                    regex.as_str()
+                    Self::node_to_json_string(&data.args[0]),
+                    data.regex.as_str()
                 )
             }
-            CompiledNode::CompiledThrow { error_obj } => {
-                if let serde_json::Value::Object(err_map) = error_obj
+            CompiledNode::CompiledThrow(error_obj) => {
+                if let serde_json::Value::Object(err_map) = error_obj.as_ref()
                     && let Some(serde_json::Value::String(s)) = err_map.get("type")
                 {
                     return format!("{{\"throw\": \"{}\"}}", s);

@@ -270,7 +270,6 @@ impl OpCode {
     }
 
     /// Direct evaluation method - no boxing, no vtables, no array lookups
-    #[inline]
     pub fn evaluate_direct(
         &self,
         args: &[crate::CompiledNode],
@@ -372,7 +371,6 @@ impl OpCode {
     /// This method dispatches to traced versions of operators that need special
     /// handling (iteration and short-circuit operators), while regular operators
     /// use the standard evaluation with child tracing.
-    #[inline]
     pub fn evaluate_traced(
         &self,
         args: &[crate::CompiledNode],

@@ -41,6 +41,34 @@ pub enum MetadataHint {
     Key,
 }
 
+/// Data for a custom operator (boxed inside CompiledNode to reduce enum size).
+#[derive(Debug, Clone)]
+pub struct CustomOperatorData {
+    pub name: String,
+    pub args: Box<[CompiledNode]>,
+}
+
+/// Data for a structured object template (boxed inside CompiledNode to reduce enum size).
+#[derive(Debug, Clone)]
+pub struct StructuredObjectData {
+    pub fields: Box<[(String, CompiledNode)]>,
+}
+
+/// Data for a pre-compiled exists check (boxed inside CompiledNode to reduce enum size).
+#[derive(Debug, Clone)]
+pub struct CompiledExistsData {
+    pub scope_level: u32,
+    pub segments: Box<[PathSegment]>,
+}
+
+/// Data for a pre-compiled split with regex (boxed inside CompiledNode to reduce enum size).
+#[derive(Debug, Clone)]
+pub struct CompiledSplitRegexData {
+    pub args: Box<[CompiledNode]>,
+    pub regex: Arc<Regex>,
+    pub capture_names: Box<[Box<str>]>,
+}
+
 /// A compiled node representing a single operation or value in the logic tree.
 ///
 /// Nodes are created during the compilation phase and evaluated during execution.
@@ -74,25 +102,12 @@ pub enum CompiledNode {
     },
 
     /// A custom operator registered via `DataLogic::add_operator`.
-    ///
-    /// Custom operators use dynamic dispatch and are looked up by name
-    /// from the engine's operator registry.
-    CustomOperator {
-        name: String,
-        args: Box<[CompiledNode]>,
-    },
+    /// Boxed to reduce enum size (rare variant).
+    CustomOperator(Box<CustomOperatorData>),
 
     /// A structured object template for preserve_structure mode.
-    ///
-    /// When structure preservation is enabled, objects with keys that are not
-    /// built-in operators or registered custom operators are preserved as templates.
-    /// Each field is evaluated independently, allowing for dynamic object generation.
-    ///
-    /// Note: Custom operators are checked before treating keys as structured fields,
-    /// ensuring they work correctly within preserved structures.
-    StructuredObject {
-        fields: Box<[(String, CompiledNode)]>,
-    },
+    /// Boxed to reduce enum size (rare variant).
+    StructuredObject(Box<StructuredObjectData>),
 
     /// A pre-compiled variable access (unified var/val).
     ///
@@ -107,33 +122,16 @@ pub enum CompiledNode {
     },
 
     /// A pre-compiled exists check.
-    ///
-    /// scope_level 0 = current context, N = go up N levels.
-    /// Segments are pre-parsed at compile time.
-    CompiledExists {
-        scope_level: u32,
-        segments: Box<[PathSegment]>,
-    },
+    /// Boxed to reduce enum size (rare variant).
+    CompiledExists(Box<CompiledExistsData>),
 
     /// A pre-compiled split with regex pattern.
-    ///
-    /// When the split operator's delimiter is a static regex pattern with named
-    /// capture groups, the regex is compiled once during the compilation phase
-    /// instead of on every evaluation.
-    CompiledSplitRegex {
-        /// The text argument (only the first arg of split)
-        args: Box<[CompiledNode]>,
-        /// Pre-compiled regex pattern
-        regex: Arc<Regex>,
-        /// Pre-extracted capture group names
-        capture_names: Box<[Box<str>]>,
-    },
+    /// Boxed to reduce enum size (rare variant).
+    CompiledSplitRegex(Box<CompiledSplitRegexData>),
 
     /// A pre-compiled throw with a static error object.
-    ///
-    /// When `throw` is called with a literal string, the error object
-    /// `{"type": "..."}` is pre-built at compile time.
-    CompiledThrow { error_obj: Value },
+    /// Boxed to reduce enum size (rare variant).
+    CompiledThrow(Box<Value>),
 }
 
 /// Compiled logic that can be evaluated multiple times across different data.
@@ -195,12 +193,12 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Value { .. } => true,
         CompiledNode::Array { nodes, .. } => nodes.iter().all(node_is_static),
         CompiledNode::BuiltinOperator { opcode, args, .. } => opcode_is_static(opcode, args),
-        CompiledNode::CustomOperator { .. } => false,
-        CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists { .. } => false,
-        CompiledNode::CompiledSplitRegex { args, .. } => args.iter().all(node_is_static),
-        CompiledNode::CompiledThrow { .. } => false,
-        CompiledNode::StructuredObject { fields, .. } => {
-            fields.iter().all(|(_, node)| node_is_static(node))
+        CompiledNode::CustomOperator(_) => false,
+        CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists(_) => false,
+        CompiledNode::CompiledSplitRegex(data) => data.args.iter().all(node_is_static),
+        CompiledNode::CompiledThrow(_) => false,
+        CompiledNode::StructuredObject(data) => {
+            data.fields.iter().all(|(_, node)| node_is_static(node))
         }
     }
 }
@@ -297,19 +295,19 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             obj.insert(opcode.as_str().into(), args_value);
             Value::Object(obj)
         }
-        CompiledNode::CustomOperator { name, args, .. } => {
+        CompiledNode::CustomOperator(data) => {
             let mut obj = serde_json::Map::new();
-            let args_value = if args.len() == 1 {
-                node_to_value(&args[0])
+            let args_value = if data.args.len() == 1 {
+                node_to_value(&data.args[0])
             } else {
-                Value::Array(args.iter().map(node_to_value).collect())
+                Value::Array(data.args.iter().map(node_to_value).collect())
             };
-            obj.insert(name.clone(), args_value);
+            obj.insert(data.name.clone(), args_value);
             Value::Object(obj)
         }
-        CompiledNode::StructuredObject { fields, .. } => {
+        CompiledNode::StructuredObject(data) => {
             let mut obj = serde_json::Map::new();
-            for (key, node) in fields {
+            for (key, node) in data.fields.iter() {
                 obj.insert(key.clone(), node_to_value(node));
             }
             Value::Object(obj)
@@ -347,34 +345,33 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             }
             Value::Object(obj)
         }
-        CompiledNode::CompiledExists { segments, .. } => {
+        CompiledNode::CompiledExists(data) => {
             let mut obj = serde_json::Map::new();
-            if segments.len() == 1 {
-                obj.insert("exists".into(), segment_to_value(&segments[0]));
+            if data.segments.len() == 1 {
+                obj.insert("exists".into(), segment_to_value(&data.segments[0]));
             } else {
-                let arr: Vec<Value> = segments.iter().map(segment_to_value).collect();
+                let arr: Vec<Value> = data.segments.iter().map(segment_to_value).collect();
                 obj.insert("exists".into(), Value::Array(arr));
             }
             Value::Object(obj)
         }
-        CompiledNode::CompiledSplitRegex { args, regex, .. } => {
+        CompiledNode::CompiledSplitRegex(data) => {
             let mut obj = serde_json::Map::new();
-            let mut arr = vec![node_to_value(&args[0])];
-            arr.push(Value::String(regex.as_str().to_string()));
+            let mut arr = vec![node_to_value(&data.args[0])];
+            arr.push(Value::String(data.regex.as_str().to_string()));
             obj.insert("split".into(), Value::Array(arr));
             Value::Object(obj)
         }
-        CompiledNode::CompiledThrow { error_obj } => {
+        CompiledNode::CompiledThrow(error_obj) => {
             let mut obj = serde_json::Map::new();
-            // Extract the type string from the pre-built error object
-            if let Value::Object(err_map) = error_obj {
+            if let Value::Object(err_map) = error_obj.as_ref() {
                 if let Some(Value::String(s)) = err_map.get("type") {
                     obj.insert("throw".into(), Value::String(s.clone()));
                 } else {
-                    obj.insert("throw".into(), error_obj.clone());
+                    obj.insert("throw".into(), error_obj.as_ref().clone());
                 }
             } else {
-                obj.insert("throw".into(), error_obj.clone());
+                obj.insert("throw".into(), error_obj.as_ref().clone());
             }
             Value::Object(obj)
         }

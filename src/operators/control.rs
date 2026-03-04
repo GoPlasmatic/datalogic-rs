@@ -45,7 +45,7 @@ pub fn evaluate_if(
 }
 
 /// Ternary operator function (?:)
-#[inline]
+#[inline(always)]
 pub fn evaluate_ternary(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -156,7 +156,7 @@ pub fn evaluate_switch(
 // ============================================================================
 
 /// Traced version of `if` operator - only evaluates the selected branch.
-#[inline]
+#[inline(never)]
 pub fn evaluate_if_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -197,7 +197,7 @@ pub fn evaluate_if_traced(
 }
 
 /// Traced version of `ternary` (?:) operator - only evaluates the selected branch.
-#[inline]
+#[inline(never)]
 pub fn evaluate_ternary_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -221,7 +221,7 @@ pub fn evaluate_ternary_traced(
 }
 
 /// Traced version of `coalesce` (??) operator - only evaluates until first non-null.
-#[inline]
+#[inline(never)]
 pub fn evaluate_coalesce_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -247,7 +247,7 @@ pub fn evaluate_coalesce_traced(
 }
 
 /// Traced version of `switch`/`match` operator - only evaluates matched result.
-#[inline]
+#[inline(never)]
 pub fn evaluate_switch_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,

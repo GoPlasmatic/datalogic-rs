@@ -101,9 +101,11 @@ impl CompiledLogic {
                                 .map(|compiled_val| (key.clone(), compiled_val))
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    Ok(CompiledNode::StructuredObject {
-                        fields: fields.into_boxed_slice(),
-                    })
+                    Ok(CompiledNode::StructuredObject(Box::new(
+                        crate::node::StructuredObjectData {
+                            fields: fields.into_boxed_slice(),
+                        },
+                    )))
                 } else {
                     // Multi-key objects are not valid operators
                     Err(crate::error::Error::InvalidOperator(
@@ -178,9 +180,9 @@ impl CompiledLogic {
                             value: Value::String(s),
                         } = &args[0]
                     {
-                        return Ok(CompiledNode::CompiledThrow {
-                            error_obj: serde_json::json!({"type": s}),
-                        });
+                        return Ok(CompiledNode::CompiledThrow(Box::new(
+                            serde_json::json!({"type": s}),
+                        )));
                     }
 
                     let mut node = CompiledNode::BuiltinOperator { opcode, args };
@@ -219,23 +221,29 @@ impl CompiledLogic {
                         // This ensures custom operators work correctly in preserve_structure mode,
                         // e.g., {"result": {"custom_op": arg}} will evaluate custom_op properly
                         let args = Self::compile_args(args_value, engine, preserve_structure)?;
-                        return Ok(CompiledNode::CustomOperator {
-                            name: op_name.clone(),
-                            args,
-                        });
+                        return Ok(CompiledNode::CustomOperator(Box::new(
+                            crate::node::CustomOperatorData {
+                                name: op_name.clone(),
+                                args,
+                            },
+                        )));
                     }
                     // Not a built-in operator or custom operator - treat as structured object field
                     // This allows dynamic object generation like {"name": {"var": "user.name"}}
                     let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
                     let fields = vec![(op_name.clone(), compiled_val)].into_boxed_slice();
-                    Ok(CompiledNode::StructuredObject { fields })
+                    Ok(CompiledNode::StructuredObject(Box::new(
+                        crate::node::StructuredObjectData { fields },
+                    )))
                 } else {
                     let args = Self::compile_args(args_value, engine, preserve_structure)?;
                     // Fall back to custom operator - don't pre-evaluate custom operators
-                    Ok(CompiledNode::CustomOperator {
-                        name: op_name.clone(),
-                        args,
-                    })
+                    Ok(CompiledNode::CustomOperator(Box::new(
+                        crate::node::CustomOperatorData {
+                            name: op_name.clone(),
+                            args,
+                        },
+                    )))
                 }
             }
             Value::Array(arr) => {
@@ -537,10 +545,12 @@ impl CompiledLogic {
     /// Try to compile an exists operator into a CompiledExists node.
     fn try_compile_exists(args: &[CompiledNode]) -> Option<CompiledNode> {
         if args.is_empty() {
-            return Some(CompiledNode::CompiledExists {
-                scope_level: 0,
-                segments: Box::new([]),
-            });
+            return Some(CompiledNode::CompiledExists(Box::new(
+                crate::node::CompiledExistsData {
+                    scope_level: 0,
+                    segments: Box::new([]),
+                },
+            )));
         }
 
         if args.len() == 1 {
@@ -548,10 +558,12 @@ impl CompiledLogic {
                 value: Value::String(s),
             } = &args[0]
             {
-                return Some(CompiledNode::CompiledExists {
-                    scope_level: 0,
-                    segments: vec![PathSegment::Field(s.as_str().into())].into_boxed_slice(),
-                });
+                return Some(CompiledNode::CompiledExists(Box::new(
+                    crate::node::CompiledExistsData {
+                        scope_level: 0,
+                        segments: vec![PathSegment::Field(s.as_str().into())].into_boxed_slice(),
+                    },
+                )));
             }
             return None;
         }
@@ -569,10 +581,12 @@ impl CompiledLogic {
             }
         }
 
-        Some(CompiledNode::CompiledExists {
-            scope_level: 0,
-            segments: segments.into_boxed_slice(),
-        })
+        Some(CompiledNode::CompiledExists(Box::new(
+            crate::node::CompiledExistsData {
+                scope_level: 0,
+                segments: segments.into_boxed_slice(),
+            },
+        )))
     }
 
     /// Try to pre-compile a split operator's regex pattern at compile time.
@@ -604,10 +618,12 @@ impl CompiledLogic {
         // Keep only the text argument (first arg)
         let text_args = vec![args[0].clone()].into_boxed_slice();
 
-        Some(CompiledNode::CompiledSplitRegex {
-            args: text_args,
-            regex: Arc::new(re),
-            capture_names: capture_names.into_boxed_slice(),
-        })
+        Some(CompiledNode::CompiledSplitRegex(Box::new(
+            crate::node::CompiledSplitRegexData {
+                args: text_args,
+                regex: Arc::new(re),
+                capture_names: capture_names.into_boxed_slice(),
+            },
+        )))
     }
 }

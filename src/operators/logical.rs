@@ -7,7 +7,7 @@ use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Logical NOT operator function (!)
-#[inline]
+#[inline(always)]
 pub fn evaluate_not(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -21,7 +21,7 @@ pub fn evaluate_not(
 }
 
 /// Double NOT operator function (!!) - converts to boolean
-#[inline]
+#[inline(always)]
 pub fn evaluate_double_not(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -91,7 +91,7 @@ pub fn evaluate_or(
 // ============================================================================
 
 /// Traced version of `and` operator - only evaluates until first falsy value.
-#[inline]
+#[inline(never)]
 pub fn evaluate_and_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,
@@ -120,7 +120,7 @@ pub fn evaluate_and_traced(
 }
 
 /// Traced version of `or` operator - only evaluates until first truthy value.
-#[inline]
+#[inline(never)]
 pub fn evaluate_or_traced(
     args: &[CompiledNode],
     context: &mut ContextStack,

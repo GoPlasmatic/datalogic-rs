@@ -393,22 +393,22 @@ impl DataLogic {
                 opcode.evaluate_direct(args, context, self)
             }
 
-            CompiledNode::CustomOperator { name, args, .. } => {
+            CompiledNode::CustomOperator(data) => {
                 // Custom operators still use dynamic dispatch
                 let operator = self
                     .custom_operators
-                    .get(name)
-                    .ok_or_else(|| Error::InvalidOperator(name.clone()))?;
+                    .get(&data.name)
+                    .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
 
-                let arg_values: Vec<Value> = args.iter().map(node_to_value).collect();
+                let arg_values: Vec<Value> = data.args.iter().map(node_to_value).collect();
                 let evaluator = SimpleEvaluator::new(self);
 
                 operator.evaluate(&arg_values, context, &evaluator)
             }
 
-            CompiledNode::StructuredObject { fields, .. } => {
+            CompiledNode::StructuredObject(data) => {
                 let mut result = serde_json::Map::new();
-                for (key, node) in fields {
+                for (key, node) in data.fields.iter() {
                     let value = self.evaluate_node(node, context)?;
                     result.insert(key.clone(), value);
                 }
@@ -431,21 +431,24 @@ impl DataLogic {
                 self,
             ),
 
-            CompiledNode::CompiledExists {
-                scope_level,
-                segments,
-            } => variable::evaluate_compiled_exists(*scope_level, segments, context),
-
-            CompiledNode::CompiledSplitRegex {
-                args,
-                regex,
-                capture_names,
-            } => {
-                use crate::operators::string;
-                string::evaluate_split_with_regex(args, context, self, regex, capture_names)
+            CompiledNode::CompiledExists(data) => {
+                variable::evaluate_compiled_exists(data.scope_level, &data.segments, context)
             }
 
-            CompiledNode::CompiledThrow { error_obj } => Err(Error::Thrown(error_obj.clone())),
+            CompiledNode::CompiledSplitRegex(data) => {
+                use crate::operators::string;
+                string::evaluate_split_with_regex(
+                    &data.args,
+                    context,
+                    self,
+                    &data.regex,
+                    &data.capture_names,
+                )
+            }
+
+            CompiledNode::CompiledThrow(error_obj) => {
+                Err(Error::Thrown(error_obj.as_ref().clone()))
+            }
         }
     }
 
@@ -586,13 +589,13 @@ impl DataLogic {
                 }
             }
 
-            CompiledNode::CustomOperator { name, args, .. } => {
+            CompiledNode::CustomOperator(data) => {
                 let operator = self
                     .custom_operators
-                    .get(name)
-                    .ok_or_else(|| Error::InvalidOperator(name.clone()))?;
+                    .get(&data.name)
+                    .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
 
-                let arg_values: Vec<Value> = args.iter().map(node_to_value).collect();
+                let arg_values: Vec<Value> = data.args.iter().map(node_to_value).collect();
                 let evaluator = SimpleEvaluator::new(self);
 
                 match operator.evaluate(&arg_values, context, &evaluator) {
@@ -607,9 +610,9 @@ impl DataLogic {
                 }
             }
 
-            CompiledNode::StructuredObject { fields, .. } => {
+            CompiledNode::StructuredObject(data) => {
                 let mut result = serde_json::Map::new();
-                for (key, node) in fields {
+                for (key, node) in data.fields.iter() {
                     match self.evaluate_node_traced(node, context, collector, node_id_map) {
                         Ok(value) => {
                             result.insert(key.clone(), value);
@@ -626,9 +629,9 @@ impl DataLogic {
             }
 
             CompiledNode::CompiledVar { .. }
-            | CompiledNode::CompiledExists { .. }
-            | CompiledNode::CompiledSplitRegex { .. }
-            | CompiledNode::CompiledThrow { .. } => match self.evaluate_node(node, context) {
+            | CompiledNode::CompiledExists(_)
+            | CompiledNode::CompiledSplitRegex(_)
+            | CompiledNode::CompiledThrow(_) => match self.evaluate_node(node, context) {
                 Ok(result) => {
                     collector.record_step(node_id, current_context, result.clone());
                     Ok(result)
