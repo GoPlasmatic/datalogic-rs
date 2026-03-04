@@ -64,7 +64,7 @@ pub use config::{
 pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
 pub use error::Error;
-pub use node::{CompiledLogic, CompiledNode, MetadataHint, OptimizedNode, PathSegment, ReduceHint};
+pub use node::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub use opcode::OpCode;
 pub use trace::{ExecutionStep, ExpressionNode, TraceCollector, TracedResult};
 

@@ -8,9 +8,8 @@
 //!
 //! 1. Create a new file in this directory (e.g., `my_pass.rs`)
 //! 2. Implement a `pub fn optimize(node: CompiledNode, ...) -> CompiledNode`
-//! 3. Add `OptimizedNode` variants as needed in the `node.rs` `OptimizedNode` enum
-//! 4. Call the pass from `optimize()` below
-//! 5. Run `cargo test` — no changes needed in engine.rs or trace.rs
+//! 3. Call the pass from `optimize()` below
+//! 4. Run `cargo test` — no changes needed in engine.rs or trace.rs
 
 pub mod constant_fold;
 pub mod dead_code;
@@ -28,8 +27,7 @@ use crate::node::CompiledNode;
 /// Passes are applied in order:
 /// 1. Dead code elimination (remove unreachable branches)
 /// 2. Constant folding (fold static args in commutative ops, pre-coerce numeric strings)
-/// 3. Arity specialization (binary arithmetic, comparison-with-literal)
-/// 4. Strength reduction (double negation collapse, etc.)
+/// 3. Strength reduction (double negation collapse, etc.)
 pub fn optimize(node: CompiledNode, engine: &DataLogic) -> CompiledNode {
     let node = dead_code::eliminate(node, engine);
     let node = constant_fold::fold(node, engine);

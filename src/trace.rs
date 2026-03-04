@@ -176,12 +176,6 @@ impl ExpressionNode {
                 expression: Self::node_to_json_string(node),
                 children: vec![],
             },
-
-            CompiledNode::Optimized(_) => ExpressionNode {
-                id,
-                expression: Self::node_to_json_string(node),
-                children: vec![],
-            },
         }
     }
 
@@ -234,10 +228,6 @@ impl ExpressionNode {
                     return format!("{{\"throw\": \"{}\"}}", s);
                 }
                 format!("{{\"throw\": {}}}", error_obj)
-            }
-            CompiledNode::Optimized(opt) => {
-                // Optimized nodes reconstruct their JSON representation
-                opt.to_value().to_string()
             }
         }
     }

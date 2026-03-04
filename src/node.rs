@@ -51,7 +51,6 @@ pub enum MetadataHint {
 /// - **BuiltinOperator**: Fast OpCode-based dispatch for built-in operators
 /// - **CustomOperator**: User-defined operators with dynamic dispatch
 /// - **StructuredObject**: Template objects for structure preservation
-/// - **Optimized**: Compiler-optimized nodes (arity specialization, strength reduction, etc.)
 #[derive(Debug, Clone)]
 pub enum CompiledNode {
     /// A static JSON value that requires no evaluation.
@@ -135,61 +134,6 @@ pub enum CompiledNode {
     /// When `throw` is called with a literal string, the error object
     /// `{"type": "..."}` is pre-built at compile time.
     CompiledThrow { error_obj: Value },
-
-    /// A compiler-optimized node produced by optimization passes.
-    ///
-    /// This variant wraps all optimization-produced node types (binary arithmetic
-    /// specialization, comparison-with-literal, date format pre-compilation, etc.).
-    /// New optimizations only need to add variants to `OptimizedNode` — no changes
-    /// needed in engine.rs, opcode.rs, or trace.rs.
-    Optimized(OptimizedNode),
-}
-
-/// Compiler-optimized node types produced by optimization passes.
-///
-/// Each variant represents a specialized evaluation pattern detected at compile time.
-/// All evaluation, serialization, and classification logic is self-contained here,
-/// so adding a new optimization only requires modifying this enum and its impls.
-///
-/// NOTE: The `Optimized` wrapper adds one level of indirection via `opt.evaluate()`.
-/// Only use this for optimizations that save significantly more work than the ~2-3ns
-/// overhead of the extra dispatch. For hot-path micro-optimizations (e.g., skipping
-/// one `evaluate_node_cow` call), adding variants directly to `CompiledNode` and
-/// inlining evaluation in `engine.rs` is more effective.
-#[derive(Debug, Clone)]
-pub enum OptimizedNode {
-    // Variants will be added as optimization passes are implemented.
-    // This placeholder ensures the enum is non-empty for compilation.
-    #[doc(hidden)]
-    _Placeholder,
-}
-
-impl OptimizedNode {
-    /// Evaluate this optimized node against the given context.
-    #[inline]
-    pub fn evaluate(
-        &self,
-        _context: &mut crate::ContextStack,
-        _engine: &crate::DataLogic,
-    ) -> crate::Result<Value> {
-        match self {
-            OptimizedNode::_Placeholder => unreachable!("placeholder node should never be created"),
-        }
-    }
-
-    /// Check if this optimized node is statically evaluable.
-    pub fn is_static(&self) -> bool {
-        match self {
-            OptimizedNode::_Placeholder => false,
-        }
-    }
-
-    /// Convert this optimized node back to a JSON value (for custom operator fallback).
-    pub fn to_value(&self) -> Value {
-        match self {
-            OptimizedNode::_Placeholder => Value::Null,
-        }
-    }
 }
 
 /// Compiled logic that can be evaluated multiple times across different data.
@@ -258,7 +202,6 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::StructuredObject { fields, .. } => {
             fields.iter().all(|(_, node)| node_is_static(node))
         }
-        CompiledNode::Optimized(opt) => opt.is_static(),
     }
 }
 
@@ -435,6 +378,5 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             }
             Value::Object(obj)
         }
-        CompiledNode::Optimized(opt) => opt.to_value(),
     }
 }

@@ -446,8 +446,6 @@ impl DataLogic {
             }
 
             CompiledNode::CompiledThrow { error_obj } => Err(Error::Thrown(error_obj.clone())),
-
-            CompiledNode::Optimized(opt) => opt.evaluate(context, self),
         }
     }
 
@@ -631,7 +629,7 @@ impl DataLogic {
             | CompiledNode::CompiledExists { .. }
             | CompiledNode::CompiledSplitRegex { .. }
             | CompiledNode::CompiledThrow { .. }
-            | CompiledNode::Optimized(_) => match self.evaluate_node(node, context) {
+            => match self.evaluate_node(node, context) {
                 Ok(result) => {
                     collector.record_step(node_id, current_context, result.clone());
                     Ok(result)

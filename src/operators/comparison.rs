@@ -125,7 +125,7 @@ fn could_be_datetime_or_duration(s: &str) -> bool {
 
 // Helper function for == and === comparison
 #[inline]
-pub(crate) fn compare_equals(
+fn compare_equals(
     left: &Value,
     right: &Value,
     strict: bool,
@@ -271,8 +271,8 @@ pub fn evaluate_strict_not_equals(
 }
 
 /// Ordering comparison operation type
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum OrdOp {
+#[derive(Clone, Copy)]
+enum OrdOp {
     Gt,
     Gte,
     Lt,
@@ -359,7 +359,7 @@ fn evaluate_chained_comparison(
 
 /// Generic ordered comparison helper handling numbers, strings, datetimes, and durations.
 #[inline]
-pub(crate) fn compare_ordered(
+fn compare_ordered(
     left: &Value,
     right: &Value,
     op: OrdOp,
