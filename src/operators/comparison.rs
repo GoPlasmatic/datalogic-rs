@@ -125,12 +125,7 @@ fn could_be_datetime_or_duration(s: &str) -> bool {
 
 // Helper function for == and === comparison
 #[inline]
-fn compare_equals(
-    left: &Value,
-    right: &Value,
-    strict: bool,
-    engine: &DataLogic,
-) -> Result<bool> {
+fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic) -> Result<bool> {
     // Fast path: same-type simple comparisons — skip datetime/duration entirely
     match (left, right) {
         (Value::Number(_), Value::Number(_))
@@ -359,12 +354,7 @@ fn evaluate_chained_comparison(
 
 /// Generic ordered comparison helper handling numbers, strings, datetimes, and durations.
 #[inline]
-fn compare_ordered(
-    left: &Value,
-    right: &Value,
-    op: OrdOp,
-    engine: &DataLogic,
-) -> Result<bool> {
+fn compare_ordered(left: &Value, right: &Value, op: OrdOp, engine: &DataLogic) -> Result<bool> {
     // Fast path: both numbers — most common case
     if let (Value::Number(l), Value::Number(r)) = (left, right) {
         return Ok(op.apply_f64(

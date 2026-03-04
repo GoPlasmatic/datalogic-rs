@@ -628,8 +628,7 @@ impl DataLogic {
             CompiledNode::CompiledVar { .. }
             | CompiledNode::CompiledExists { .. }
             | CompiledNode::CompiledSplitRegex { .. }
-            | CompiledNode::CompiledThrow { .. }
-            => match self.evaluate_node(node, context) {
+            | CompiledNode::CompiledThrow { .. } => match self.evaluate_node(node, context) {
                 Ok(result) => {
                     collector.record_step(node_id, current_context, result.clone());
                     Ok(result)
