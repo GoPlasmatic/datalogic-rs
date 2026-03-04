@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::compiled::{MetadataHint, PathSegment, ReduceHint};
+use crate::node::{MetadataHint, PathSegment, ReduceHint};
 use crate::value_helpers::{access_path, access_path_ref};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 

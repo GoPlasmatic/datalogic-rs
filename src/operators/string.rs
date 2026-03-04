@@ -3,8 +3,8 @@ use serde_json::{Value, json};
 
 use super::helpers::to_string_cow;
 use super::variable;
-use crate::compiled::{MetadataHint, ReduceHint};
 use crate::constants::INVALID_ARGS;
+use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, ContextStack, DataLogic, Result, error::Error};
 
 /// String concatenation operator function (cat) - variadic

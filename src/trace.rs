@@ -176,6 +176,12 @@ impl ExpressionNode {
                 expression: Self::node_to_json_string(node),
                 children: vec![],
             },
+
+            CompiledNode::Optimized(_) => ExpressionNode {
+                id,
+                expression: Self::node_to_json_string(node),
+                children: vec![],
+            },
         }
     }
 
@@ -229,6 +235,10 @@ impl ExpressionNode {
                 }
                 format!("{{\"throw\": {}}}", error_obj)
             }
+            CompiledNode::Optimized(opt) => {
+                // Optimized nodes reconstruct their JSON representation
+                opt.to_value().to_string()
+            }
         }
     }
 
@@ -263,10 +273,10 @@ impl ExpressionNode {
 
     fn compiled_var_to_json_string(
         scope_level: u32,
-        segments: &[crate::compiled::PathSegment],
+        segments: &[crate::node::PathSegment],
         default_value: Option<&CompiledNode>,
     ) -> String {
-        use crate::compiled::PathSegment;
+        use crate::node::PathSegment;
         if scope_level == 0 {
             let path: String = segments
                 .iter()
@@ -302,9 +312,9 @@ impl ExpressionNode {
 
     fn compiled_exists_to_json_string(
         _scope_level: u32,
-        segments: &[crate::compiled::PathSegment],
+        segments: &[crate::node::PathSegment],
     ) -> String {
-        use crate::compiled::PathSegment;
+        use crate::node::PathSegment;
         if segments.len() == 1 {
             match &segments[0] {
                 PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {

@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use super::helpers::is_truthy;
 use super::variable;
-use crate::compiled::{MetadataHint, ReduceHint};
 use crate::constants::INVALID_ARGS;
+use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
@@ -29,7 +29,7 @@ fn is_filter_invariant(node: &CompiledNode) -> bool {
 fn try_extract_filter_field_cmp<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-) -> Option<(&'a [crate::compiled::PathSegment], &'a CompiledNode)> {
+) -> Option<(&'a [crate::node::PathSegment], &'a CompiledNode)> {
     if let CompiledNode::CompiledVar {
         scope_level: 0,
         segments,
@@ -87,7 +87,7 @@ enum FastPredicate<'a> {
     WholeItemStrictEq { literal: &'a Value, negate: bool },
     /// Compare a field against a literal using strict equality
     FieldStrictEq {
-        segments: &'a [crate::compiled::PathSegment],
+        segments: &'a [crate::node::PathSegment],
         literal: &'a Value,
         negate: bool,
     },
@@ -99,7 +99,7 @@ enum FastPredicate<'a> {
     },
     /// Compare a field against a numeric literal using ordered comparison
     FieldNumericCmp {
-        segments: &'a [crate::compiled::PathSegment],
+        segments: &'a [crate::node::PathSegment],
         literal_f: f64,
         opcode: OpCode,
         var_is_lhs: bool,
@@ -108,7 +108,7 @@ enum FastPredicate<'a> {
     WholeItemLooseNumericEq { literal_f: f64, negate: bool },
     /// Compare a field against a numeric literal using loose equality (==/!=)
     FieldLooseNumericEq {
-        segments: &'a [crate::compiled::PathSegment],
+        segments: &'a [crate::node::PathSegment],
         literal_f: f64,
         negate: bool,
     },

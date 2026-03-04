@@ -45,25 +45,26 @@
 //! This design enables sharing compiled logic across threads and eliminates
 //! repeated parsing overhead.
 
-mod compiled;
+mod compile;
 mod config;
 mod constants;
 mod context;
 mod datetime;
 mod engine;
 mod error;
+mod node;
 mod opcode;
 mod operators;
 mod trace;
 mod value_helpers;
 
-pub use compiled::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };
 pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
 pub use error::Error;
+pub use node::{CompiledLogic, CompiledNode, MetadataHint, OptimizedNode, PathSegment, ReduceHint};
 pub use opcode::OpCode;
 pub use trace::{ExecutionStep, ExpressionNode, TraceCollector, TracedResult};
 
