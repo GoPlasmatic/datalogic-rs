@@ -30,7 +30,7 @@ export function convertVariable(
   const op = getOperator(operator);
   const category = op?.category ?? 'variable';
   const icon: IconName = getCategoryIcon(category) as IconName;
-  let branchIndex = 0;
+  const branchIndex = 0;
 
   // Parse operands to extract path, default value, scope, and path components
   let path = '';
@@ -98,7 +98,6 @@ export function convertVariable(
       summary,
     });
     context.edges.push(createBranchEdge(nodeId, branchId, branchIndex));
-    branchIndex++;
   }
 
   const originalExpr = { [operator]: operands };

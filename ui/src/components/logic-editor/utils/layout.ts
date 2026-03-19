@@ -23,7 +23,7 @@ function estimateTextWidth(text: string, isMonospace = false, isHeader = false):
 
 // Calculate width needed for a node based on its content
 function calculateNodeWidth(node: LogicNode): number {
-  let contentWidth = 0;
+  let contentWidth: number;
 
   if (isOperatorNode(node)) {
     const opData = node.data as OperatorNodeData;

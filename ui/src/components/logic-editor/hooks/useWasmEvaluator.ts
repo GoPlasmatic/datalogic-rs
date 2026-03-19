@@ -86,7 +86,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       const resultStr = moduleRef.current.evaluate(logicStr, dataStr, preserveStructure);
       return JSON.parse(resultStr);
     } catch (err) {
-      throw new Error(extractErrorMessage(err, 'Evaluation failed'));
+      throw new Error(extractErrorMessage(err, 'Evaluation failed'), { cause: err });
     }
   }, [preserveStructure]);
 
@@ -105,7 +105,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       const resultStr = moduleRef.current.evaluate_with_trace(logicStr, dataStr, preserveStructure);
       return JSON.parse(resultStr) as TracedResult;
     } catch (err) {
-      throw new Error(extractErrorMessage(err, 'Trace evaluation failed'));
+      throw new Error(extractErrorMessage(err, 'Trace evaluation failed'), { cause: err });
     }
   }, [preserveStructure]);
 
