@@ -82,33 +82,25 @@ fn evaluate_invariant_no_push(
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter operators.
 /// Avoids per-item context push/pop and evaluate_node dispatch.
+/// When `segments` is `Some`, compares a field extracted via path traversal;
+/// when `None`, compares the whole item directly.
 enum FastPredicate<'a> {
-    /// Compare whole item (val([])) against a literal using strict equality
-    WholeItemStrictEq { literal: &'a Value, negate: bool },
-    /// Compare a field against a literal using strict equality
-    FieldStrictEq {
-        segments: &'a [crate::node::PathSegment],
+    /// Strict equality (===) or inequality (!==) against a literal
+    StrictEq {
+        segments: Option<&'a [crate::node::PathSegment]>,
         literal: &'a Value,
         negate: bool,
     },
-    /// Compare whole item (val([])) against a numeric literal using ordered comparison
-    WholeItemNumericCmp {
+    /// Ordered numeric comparison (>, >=, <, <=) against a numeric literal
+    NumericCmp {
+        segments: Option<&'a [crate::node::PathSegment]>,
         literal_f: f64,
         opcode: OpCode,
         var_is_lhs: bool,
     },
-    /// Compare a field against a numeric literal using ordered comparison
-    FieldNumericCmp {
-        segments: &'a [crate::node::PathSegment],
-        literal_f: f64,
-        opcode: OpCode,
-        var_is_lhs: bool,
-    },
-    /// Compare whole item against a numeric literal using loose equality (==/!=)
-    WholeItemLooseNumericEq { literal_f: f64, negate: bool },
-    /// Compare a field against a numeric literal using loose equality (==/!=)
-    FieldLooseNumericEq {
-        segments: &'a [crate::node::PathSegment],
+    /// Loose numeric equality (==) or inequality (!=) against a numeric literal
+    LooseNumericEq {
+        segments: Option<&'a [crate::node::PathSegment]>,
         literal_f: f64,
         negate: bool,
     },
@@ -134,38 +126,31 @@ impl<'a> FastPredicate<'a> {
                 } = &pred_args[var_idx]
                     && let CompiledNode::Value { value: literal } = &pred_args[lit_idx]
                 {
-                    let is_whole_item = segments.is_empty();
+                    let segs = if segments.is_empty() {
+                        None
+                    } else {
+                        Some(&**segments)
+                    };
 
                     match opcode {
                         OpCode::StrictEquals | OpCode::StrictNotEquals => {
                             let negate = matches!(opcode, OpCode::StrictNotEquals);
-                            if is_whole_item {
-                                return Some(FastPredicate::WholeItemStrictEq { literal, negate });
-                            } else {
-                                return Some(FastPredicate::FieldStrictEq {
-                                    segments,
-                                    literal,
-                                    negate,
-                                });
-                            }
+                            return Some(FastPredicate::StrictEq {
+                                segments: segs,
+                                literal,
+                                negate,
+                            });
                         }
                         OpCode::Equals | OpCode::NotEquals => {
                             // For loose equality with numeric literals, we can use a fast
                             // numeric comparison (loose == is same as strict for numbers)
                             if let Some(lit_f) = literal.as_f64() {
                                 let negate = matches!(opcode, OpCode::NotEquals);
-                                if is_whole_item {
-                                    return Some(FastPredicate::WholeItemLooseNumericEq {
-                                        literal_f: lit_f,
-                                        negate,
-                                    });
-                                } else {
-                                    return Some(FastPredicate::FieldLooseNumericEq {
-                                        segments,
-                                        literal_f: lit_f,
-                                        negate,
-                                    });
-                                }
+                                return Some(FastPredicate::LooseNumericEq {
+                                    segments: segs,
+                                    literal_f: lit_f,
+                                    negate,
+                                });
                             }
                         }
                         OpCode::GreaterThan
@@ -173,20 +158,12 @@ impl<'a> FastPredicate<'a> {
                         | OpCode::LessThan
                         | OpCode::LessThanEqual => {
                             if let Some(lit_f) = literal.as_f64() {
-                                if is_whole_item {
-                                    return Some(FastPredicate::WholeItemNumericCmp {
-                                        literal_f: lit_f,
-                                        opcode: *opcode,
-                                        var_is_lhs,
-                                    });
-                                } else {
-                                    return Some(FastPredicate::FieldNumericCmp {
-                                        segments,
-                                        literal_f: lit_f,
-                                        opcode: *opcode,
-                                        var_is_lhs,
-                                    });
-                                }
+                                return Some(FastPredicate::NumericCmp {
+                                    segments: segs,
+                                    literal_f: lit_f,
+                                    opcode: *opcode,
+                                    var_is_lhs,
+                                });
                             }
                         }
                         _ => {}
@@ -197,81 +174,58 @@ impl<'a> FastPredicate<'a> {
         None
     }
 
+    /// Resolve the value to compare: either the whole item or a field within it.
+    #[inline]
+    fn resolve_value<'v>(
+        segments: Option<&[crate::node::PathSegment]>,
+        item: &'v Value,
+    ) -> Option<&'v Value> {
+        match segments {
+            None => Some(item),
+            Some(segs) => super::variable::try_traverse_segments(item, segs),
+        }
+    }
+
     /// Evaluate this predicate against a single item.
     #[inline]
     fn evaluate(&self, item: &Value) -> bool {
         match self {
-            FastPredicate::WholeItemStrictEq { literal, negate } => {
-                let matches = item == *literal;
-                if *negate { !matches } else { matches }
-            }
-            FastPredicate::FieldStrictEq {
+            FastPredicate::StrictEq {
                 segments,
                 literal,
                 negate,
             } => {
-                let matches =
-                    super::variable::try_traverse_segments(item, segments) == Some(*literal);
+                let matches = Self::resolve_value(*segments, item) == Some(*literal);
                 if *negate { !matches } else { matches }
             }
-            FastPredicate::WholeItemNumericCmp {
+            FastPredicate::NumericCmp {
+                segments,
                 literal_f,
                 opcode,
                 var_is_lhs,
             } => {
-                if let Some(item_f) = item.as_f64() {
+                if let Some(val) = Self::resolve_value(*segments, item)
+                    && let Some(val_f) = val.as_f64()
+                {
                     let (lhs, rhs) = if *var_is_lhs {
-                        (item_f, *literal_f)
+                        (val_f, *literal_f)
                     } else {
-                        (*literal_f, item_f)
+                        (*literal_f, val_f)
                     };
                     inline_numeric_cmp(lhs, rhs, *opcode)
                 } else {
                     false
                 }
             }
-            FastPredicate::FieldNumericCmp {
-                segments,
-                literal_f,
-                opcode,
-                var_is_lhs,
-            } => {
-                if let Some(field_val) = super::variable::try_traverse_segments(item, segments) {
-                    if let Some(field_f) = field_val.as_f64() {
-                        let (lhs, rhs) = if *var_is_lhs {
-                            (field_f, *literal_f)
-                        } else {
-                            (*literal_f, field_f)
-                        };
-                        inline_numeric_cmp(lhs, rhs, *opcode)
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-            FastPredicate::WholeItemLooseNumericEq { literal_f, negate } => {
-                let matches = if let Some(item_f) = item.as_f64() {
-                    item_f == *literal_f
-                } else {
-                    false
-                };
-                if *negate { !matches } else { matches }
-            }
-            FastPredicate::FieldLooseNumericEq {
+            FastPredicate::LooseNumericEq {
                 segments,
                 literal_f,
                 negate,
             } => {
-                let matches = if let Some(field_val) =
-                    super::variable::try_traverse_segments(item, segments)
+                let matches = if let Some(val) = Self::resolve_value(*segments, item)
+                    && let Some(val_f) = val.as_f64()
                 {
-                    if let Some(field_f) = field_val.as_f64() {
-                        field_f == *literal_f
-                    } else {
-                        false
-                    }
+                    val_f == *literal_f
                 } else {
                     false
                 };

@@ -10,23 +10,7 @@ use serde_json::Value;
 pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript => is_truthy_js(value),
-        TruthyEvaluator::Python => {
-            // Python-style truthiness (same as JavaScript for these types)
-            match value {
-                Value::Null => false,
-                Value::Bool(b) => *b,
-                Value::Number(n) => {
-                    if let Some(f) = n.as_f64() {
-                        f != 0.0 && !f.is_nan()
-                    } else {
-                        n.as_i64() != Some(0) && n.as_u64() != Some(0)
-                    }
-                }
-                Value::String(s) => !s.is_empty(),
-                Value::Array(arr) => !arr.is_empty(),
-                Value::Object(obj) => !obj.is_empty(),
-            }
-        }
+        TruthyEvaluator::Python => is_truthy_js(value),
         TruthyEvaluator::StrictBoolean => {
             // Strict boolean truthiness
             match value {
@@ -68,9 +52,9 @@ pub fn to_string_cow(value: &Value) -> Cow<'_, str> {
     }
 }
 
-/// Safe arithmetic operations with overflow protection
-pub fn safe_add(a: f64, b: f64) -> f64 {
-    let result = a + b;
+/// Clamps an arithmetic result: infinite -> MAX/MIN, NaN -> 0.0
+#[inline(always)]
+fn clamp_result(result: f64) -> f64 {
     if result.is_infinite() {
         if result.is_sign_positive() {
             f64::MAX
@@ -84,19 +68,13 @@ pub fn safe_add(a: f64, b: f64) -> f64 {
     }
 }
 
+/// Safe arithmetic operations with overflow protection
+pub fn safe_add(a: f64, b: f64) -> f64 {
+    clamp_result(a + b)
+}
+
 pub fn safe_subtract(a: f64, b: f64) -> f64 {
-    let result = a - b;
-    if result.is_infinite() {
-        if result.is_sign_positive() {
-            f64::MAX
-        } else {
-            f64::MIN
-        }
-    } else if result.is_nan() {
-        0.0
-    } else {
-        result
-    }
+    clamp_result(a - b)
 }
 
 pub fn safe_multiply(a: f64, b: f64) -> f64 {
@@ -124,18 +102,7 @@ pub fn safe_divide(a: f64, b: f64) -> f64 {
             0.0
         }
     } else {
-        let result = a / b;
-        if result.is_infinite() {
-            if result.is_sign_positive() {
-                f64::MAX
-            } else {
-                f64::MIN
-            }
-        } else if result.is_nan() {
-            0.0
-        } else {
-            result
-        }
+        clamp_result(a / b)
     }
 }
 
