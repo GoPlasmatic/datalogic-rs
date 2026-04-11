@@ -1,7 +1,7 @@
 {
   "name": "@goplasmatic/datalogic-ui",
   "private": false,
-  "version": "4.0.20",
+  "version": "4.0.21",
   "type": "module",
   "description": "DataLogic Debugger - Visual JSONLogic Debugger & Editor for debugging and visualizing JSONLogic expressions",
   "keywords": [
@@ -24,15 +24,15 @@
   "license": "MIT",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/lib.d.ts",
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/index.d.ts",
+        "types": "./dist/lib.d.ts",
         "default": "./dist/index.js"
       },
       "require": {
-        "types": "./dist/index.d.ts",
+        "types": "./dist/lib.d.ts",
         "default": "./dist/index.cjs"
       }
     },
@@ -41,7 +41,8 @@
   "files": [
     "dist/index.js",
     "dist/index.cjs",
-    "dist/index.d.ts",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
     "dist/styles.css",
     "dist/datalogic_wasm-*.js",
     "dist/datalogic_wasm-*.cjs",

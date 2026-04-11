@@ -11,7 +11,6 @@ export default defineConfig({
     wasm(),
     dts({
       tsconfigPath: './tsconfig.lib.json',
-      rollupTypes: true,
       outDir: 'dist',
     }),
   ],

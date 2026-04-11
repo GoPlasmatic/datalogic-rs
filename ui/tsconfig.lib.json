@@ -16,6 +16,7 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
+    "rootDir": "./src",
     "outDir": "./dist",
 
     /* Linting */
@@ -25,6 +26,7 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": [
+    "src/css.d.ts",
     "src/lib.ts",
     "src/components/logic-editor/**/*"
   ],
