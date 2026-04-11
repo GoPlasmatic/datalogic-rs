@@ -6,7 +6,7 @@ export interface ConversionContext {
   edges: LogicEdge[];
   parentId?: string;
   argIndex?: number;
-  branchType?: 'yes' | 'no' | 'branch';
+  branchType?: 'yes' | 'no' | 'branch' | 'condition';
   /** Enable structure preserve mode for JSON templates with embedded JSONLogic */
   preserveStructure?: boolean;
 }
@@ -15,7 +15,7 @@ export interface ConversionContext {
 export interface ParentInfo {
   parentId?: string;
   argIndex?: number;
-  branchType?: 'yes' | 'no' | 'branch';
+  branchType?: 'yes' | 'no' | 'branch' | 'condition';
 }
 
 // Converter function signature - returns the created node ID

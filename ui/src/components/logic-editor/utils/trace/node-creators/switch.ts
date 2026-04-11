@@ -62,7 +62,7 @@ export function createSwitchNodeFromTrace(
   function processBranch(
     value: JsonLogicValue,
     argIndex: number,
-    branchType?: string
+    branchType?: ParentInfo['branchType']
   ): string {
     let branchId: string;
     const match = findMatchingChild(value, children, usedChildIndices);

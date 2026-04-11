@@ -12,7 +12,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   type: VisualNodeType;
   parentId?: string;
   argIndex?: number;
-  branchType?: 'yes' | 'no'; // For decision tree branches
+  branchType?: 'yes' | 'no' | 'branch' | 'condition'; // For decision tree branches
   expression?: JsonLogicValue; // Original JSONLogic expression for this node (for debugging)
 }
 

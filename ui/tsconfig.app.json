@@ -25,10 +25,9 @@
     "noUncheckedSideEffectImports": true,
 
     /* Path aliases */
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@logic-editor/*": ["src/components/logic-editor/*"]
+      "@/*": ["./src/*"],
+      "@logic-editor/*": ["./src/components/logic-editor/*"]
     }
   },
   "include": ["src"]

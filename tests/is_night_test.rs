@@ -25,23 +25,22 @@ impl Operator for IsNightOperator {
             .ok_or_else(|| Error::InvalidArguments("Invalid datetime argument".to_string()))?;
 
         let hour = datetime.hour();
-        let is_night = hour >= 19 || hour < 7;
+        let is_night = !(7..19).contains(&hour);
         Ok(json!(is_night))
     }
 }
 
 fn parse_datetime(value: &Value) -> Option<DateTime<chrono::Utc>> {
-    if let Value::Object(map) = value {
-        if let Some(Value::String(datetime_str)) = map.get("datetime") {
-            if let Ok(dt) = DateTime::parse_from_rfc3339(datetime_str) {
-                return Some(dt.with_timezone(&chrono::Utc));
-            }
-        }
+    if let Value::Object(map) = value
+        && let Some(Value::String(datetime_str)) = map.get("datetime")
+        && let Ok(dt) = DateTime::parse_from_rfc3339(datetime_str)
+    {
+        return Some(dt.with_timezone(&chrono::Utc));
     }
-    if let Value::String(datetime_str) = value {
-        if let Ok(dt) = DateTime::parse_from_rfc3339(datetime_str) {
-            return Some(dt.with_timezone(&chrono::Utc));
-        }
+    if let Value::String(datetime_str) = value
+        && let Ok(dt) = DateTime::parse_from_rfc3339(datetime_str)
+    {
+        return Some(dt.with_timezone(&chrono::Utc));
     }
     None
 }

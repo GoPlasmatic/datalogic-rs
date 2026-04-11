@@ -1,5 +1,8 @@
 import Dagre from '@dagrejs/dagre';
 import type { LogicNode, LogicEdge, OperatorNodeData, StructureNodeData } from '../types';
+
+type DagreGraph = InstanceType<typeof Dagre.graphlib.Graph>;
+interface DagreNode { x: number; y: number; width: number; height: number }
 import {
   NODE_DIMENSIONS,
   VERTICAL_CELL_DIMENSIONS,
@@ -254,10 +257,10 @@ function collectDescendants(
 // Compute the vertical extent (bounding box) of a node and all its descendants
 function computeSubtreeExtent(
   nodeId: string,
-  g: Dagre.graphlib.Graph,
+  g: DagreGraph,
   childrenMap: Map<string, string[]>
 ): { minY: number; maxY: number } {
-  const node = g.node(nodeId);
+  const node = g.node(nodeId) as DagreNode;
   const halfHeight = (node.height || 0) / 2;
   let minY = node.y - halfHeight;
   let maxY = node.y + halfHeight;
@@ -278,14 +281,14 @@ function computeSubtreeExtent(
 function shiftSubtree(
   nodeId: string,
   delta: number,
-  g: Dagre.graphlib.Graph,
+  g: DagreGraph,
   childrenMap: Map<string, string[]>
 ): void {
-  g.node(nodeId).y += delta;
+  (g.node(nodeId) as DagreNode).y += delta;
   const descendants = new Set<string>();
   collectDescendants(nodeId, childrenMap, descendants);
   for (const descId of descendants) {
-    const descNode = g.node(descId);
+    const descNode = g.node(descId) as DagreNode | undefined;
     if (descNode) {
       descNode.y += delta;
     }
@@ -295,7 +298,7 @@ function shiftSubtree(
 // Reorder children to match handle order on parent nodes.
 // Uses subtree-aware repacking to avoid overlaps when subtrees have different heights.
 function fixChildOrdering(
-  g: Dagre.graphlib.Graph,
+  g: DagreGraph,
   nodes: LogicNode[],
   nodeIdSet: Set<string>
 ): void {
@@ -317,7 +320,7 @@ function fixChildOrdering(
 
   for (const { orderedChildren } of parentsToFix) {
     // Check if children are already in correct Y order
-    const currentYs = orderedChildren.map((id) => g.node(id).y);
+    const currentYs = orderedChildren.map((id) => (g.node(id) as DagreNode).y);
     let needsFix = false;
     for (let i = 1; i < currentYs.length; i++) {
       if (currentYs[i] < currentYs[i - 1]) {

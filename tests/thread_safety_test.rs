@@ -231,10 +231,7 @@ mod async_tests {
 
             let task = tokio::spawn(async move {
                 let compiled = engine.compile(&logic).unwrap();
-                let result = engine.evaluate(&compiled, data).unwrap();
-
-                // Return the result for verification
-                result
+                engine.evaluate(&compiled, data).unwrap()
             });
 
             tasks.push(task);

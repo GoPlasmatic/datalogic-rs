@@ -161,11 +161,11 @@ impl Operator for WhenPositiveOperator {
         let condition = evaluator.evaluate(&args[0], context)?;
         let value = condition.as_f64();
 
-        if let Some(v) = value {
-            if v > 0.0 {
-                // Recursively evaluate the second argument
-                return evaluator.evaluate(&args[1], context);
-            }
+        if let Some(v) = value
+            && v > 0.0
+        {
+            // Recursively evaluate the second argument
+            return evaluator.evaluate(&args[1], context);
         }
 
         Ok(Value::Null)

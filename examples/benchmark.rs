@@ -26,13 +26,13 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
         if entry.is_string() {
             continue;
         }
-        if let Value::Object(test_case) = entry {
-            if let Some(logic) = test_case.get("rule") {
-                let data = test_case.get("data").cloned().unwrap_or(Value::Null);
-                let data_arc = Arc::new(data);
-                if let Ok(compiled) = engine.compile(logic) {
-                    test_cases.push((compiled, data_arc));
-                }
+        if let Value::Object(test_case) = entry
+            && let Some(logic) = test_case.get("rule")
+        {
+            let data = test_case.get("data").cloned().unwrap_or(Value::Null);
+            let data_arc = Arc::new(data);
+            if let Ok(compiled) = engine.compile(logic) {
+                test_cases.push((compiled, data_arc));
             }
         }
     }

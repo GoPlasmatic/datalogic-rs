@@ -270,10 +270,10 @@ mod tests {
         let engine = DataLogic::new();
         let node = builtin(OpCode::Add, vec![val(json!("5")), var_node("x")]);
         let result = fold(node, &engine);
-        if let CompiledNode::BuiltinOperator { args, .. } = &result {
-            if let CompiledNode::Value { value } = &args[0] {
-                assert_eq!(*value, json!(5));
-            }
+        if let CompiledNode::BuiltinOperator { args, .. } = &result
+            && let CompiledNode::Value { value } = &args[0]
+        {
+            assert_eq!(*value, json!(5));
         }
     }
 }
