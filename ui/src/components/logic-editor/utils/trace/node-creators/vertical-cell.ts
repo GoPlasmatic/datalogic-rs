@@ -53,7 +53,6 @@ export function createVerticalCellNodeFromTrace(
   const op = getOperator(operator);
   const opCategory = op?.category ?? 'utility';
   const cells: CellData[] = [];
-  let branchIndex = 0;
   const usedChildIndices = new Set<number>();
 
   // Determine icon
@@ -95,6 +94,7 @@ export function createVerticalCellNodeFromTrace(
         branchId = processExpressionNode(match.child, context, {
           parentId: nodeId,
           argIndex: idx,
+          branchType: 'branch',
         });
       } else {
         // Fallback: create appropriate node based on value type
@@ -102,6 +102,7 @@ export function createVerticalCellNodeFromTrace(
         createFallbackNode(branchId, operand as JsonLogicValue, context, {
           parentId: nodeId,
           argIndex: idx,
+          branchType: 'branch',
         });
       }
 
@@ -116,8 +117,8 @@ export function createVerticalCellNodeFromTrace(
         summary,
       });
 
-      context.edges.push(createBranchEdge(nodeId, branchId, branchIndex));
-      branchIndex++;
+      // Use idx (cell.index) to match CellHandles handle IDs
+      context.edges.push(createBranchEdge(nodeId, branchId, idx));
     }
   });
 

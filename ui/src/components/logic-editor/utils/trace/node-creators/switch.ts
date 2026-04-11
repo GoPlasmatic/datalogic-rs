@@ -57,13 +57,12 @@ export function createSwitchNodeFromTrace(
 
   const cells: CellData[] = [];
   let cellIndex = 0;
-  let branchIndex = 0;
 
   // Helper to process a branch value from trace
   function processBranch(
     value: JsonLogicValue,
     argIndex: number,
-    branchType?: 'yes' | 'no'
+    branchType?: string
   ): string {
     let branchId: string;
     const match = findMatchingChild(value, children, usedChildIndices);
@@ -109,8 +108,8 @@ export function createSwitchNodeFromTrace(
         index: cellIndex,
       });
     } else {
-      const discBranchId = processBranch(discriminant, 0);
-      context.edges.push(createBranchEdge(nodeId, discBranchId, branchIndex));
+      const discBranchId = processBranch(discriminant, 0, 'branch');
+      context.edges.push(createBranchEdge(nodeId, discBranchId, cellIndex));
 
       cells.push({
         type: 'branch',
@@ -120,7 +119,6 @@ export function createSwitchNodeFromTrace(
         branchId: discBranchId,
         index: cellIndex,
       });
-      branchIndex++;
     }
     cellIndex++;
   }
@@ -149,8 +147,8 @@ export function createSwitchNodeFromTrace(
           index: cellIndex,
         });
       } else {
-        const caseBranchId = processBranch(caseValue, cellIndex);
-        context.edges.push(createBranchEdge(nodeId, caseBranchId, branchIndex));
+        const caseBranchId = processBranch(caseValue, cellIndex, 'branch');
+        context.edges.push(createBranchEdge(nodeId, caseBranchId, cellIndex));
 
         cells.push({
           type: 'branch',
@@ -160,7 +158,6 @@ export function createSwitchNodeFromTrace(
           branchId: caseBranchId,
           index: cellIndex,
         });
-        branchIndex++;
       }
       cellIndex++;
 
@@ -175,7 +172,7 @@ export function createSwitchNodeFromTrace(
         });
       } else {
         const resultBranchId = processBranch(resultValue, cellIndex, 'yes');
-        context.edges.push(createBranchEdge(nodeId, resultBranchId, branchIndex));
+        context.edges.push(createBranchEdge(nodeId, resultBranchId, cellIndex));
 
         cells.push({
           type: 'branch',
@@ -185,7 +182,6 @@ export function createSwitchNodeFromTrace(
           branchId: resultBranchId,
           index: cellIndex,
         });
-        branchIndex++;
       }
       cellIndex++;
     }
@@ -205,7 +201,7 @@ export function createSwitchNodeFromTrace(
       });
     } else {
       const defaultBranchId = processBranch(defaultValue, cellIndex, 'no');
-      context.edges.push(createBranchEdge(nodeId, defaultBranchId, branchIndex));
+      context.edges.push(createBranchEdge(nodeId, defaultBranchId, cellIndex));
 
       cells.push({
         type: 'branch',

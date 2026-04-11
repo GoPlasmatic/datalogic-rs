@@ -1,5 +1,5 @@
 import Dagre from '@dagrejs/dagre';
-import type { LogicNode, LogicEdge, OperatorNodeData } from '../types';
+import type { LogicNode, LogicEdge, OperatorNodeData, StructureNodeData } from '../types';
 import {
   NODE_DIMENSIONS,
   VERTICAL_CELL_DIMENSIONS,
@@ -172,6 +172,12 @@ export function applyTreeLayout(nodes: LogicNode[], edges?: LogicEdge[]): LogicN
   // Run the dagre layout algorithm
   Dagre.layout(g);
 
+  // Post-process: reorder children to match handle (port) order.
+  // Dagre treats nodes as single vertices and doesn't know about handle positions,
+  // so children may be placed in a vertical order that doesn't match their
+  // source handle positions on the parent, causing edges to cross.
+  fixChildOrdering(g, nodes, nodeIdSet);
+
   // Apply the calculated positions and dimensions to nodes
   return nodes.map((node) => {
     const nodeWithPosition = g.node(node.id);
@@ -194,6 +200,153 @@ export function applyTreeLayout(nodes: LogicNode[], edges?: LogicEdge[]): LogicN
     }
     return node;
   });
+}
+
+// Get children of a node in their visual (top-to-bottom) order based on cell/element data
+function getChildrenInVisualOrder(node: LogicNode, nodeIdSet: Set<string>): string[] {
+  if (isOperatorNode(node)) {
+    const opData = node.data as OperatorNodeData;
+    if (opData.collapsed) return [];
+    const children: string[] = [];
+    for (const cell of opData.cells) {
+      // Condition handle is above then handle within the same row
+      if (cell.conditionBranchId && nodeIdSet.has(cell.conditionBranchId)) {
+        children.push(cell.conditionBranchId);
+      }
+      if (cell.thenBranchId && nodeIdSet.has(cell.thenBranchId)) {
+        children.push(cell.thenBranchId);
+      }
+      // Standard branch (mutually exclusive with condition/then)
+      if (cell.branchId && !cell.conditionBranchId && !cell.thenBranchId && nodeIdSet.has(cell.branchId)) {
+        children.push(cell.branchId);
+      }
+    }
+    return children;
+  }
+
+  if (isStructureNode(node)) {
+    const structData = node.data as StructureNodeData;
+    if (structData.collapsed || !structData.elements) return [];
+    return structData.elements
+      .filter((el) => el.type === 'expression' && el.branchId && nodeIdSet.has(el.branchId))
+      .map((el) => el.branchId!);
+  }
+
+  return [];
+}
+
+// Recursively collect all descendant node IDs
+function collectDescendants(
+  nodeId: string,
+  childrenMap: Map<string, string[]>,
+  result: Set<string>
+): void {
+  const children = childrenMap.get(nodeId);
+  if (!children) return;
+  for (const child of children) {
+    if (!result.has(child)) {
+      result.add(child);
+      collectDescendants(child, childrenMap, result);
+    }
+  }
+}
+
+// Compute the vertical extent (bounding box) of a node and all its descendants
+function computeSubtreeExtent(
+  nodeId: string,
+  g: Dagre.graphlib.Graph,
+  childrenMap: Map<string, string[]>
+): { minY: number; maxY: number } {
+  const node = g.node(nodeId);
+  const halfHeight = (node.height || 0) / 2;
+  let minY = node.y - halfHeight;
+  let maxY = node.y + halfHeight;
+
+  const children = childrenMap.get(nodeId);
+  if (children) {
+    for (const childId of children) {
+      const childExtent = computeSubtreeExtent(childId, g, childrenMap);
+      minY = Math.min(minY, childExtent.minY);
+      maxY = Math.max(maxY, childExtent.maxY);
+    }
+  }
+
+  return { minY, maxY };
+}
+
+// Shift a node and all its descendants by a Y delta
+function shiftSubtree(
+  nodeId: string,
+  delta: number,
+  g: Dagre.graphlib.Graph,
+  childrenMap: Map<string, string[]>
+): void {
+  g.node(nodeId).y += delta;
+  const descendants = new Set<string>();
+  collectDescendants(nodeId, childrenMap, descendants);
+  for (const descId of descendants) {
+    const descNode = g.node(descId);
+    if (descNode) {
+      descNode.y += delta;
+    }
+  }
+}
+
+// Reorder children to match handle order on parent nodes.
+// Uses subtree-aware repacking to avoid overlaps when subtrees have different heights.
+function fixChildOrdering(
+  g: Dagre.graphlib.Graph,
+  nodes: LogicNode[],
+  nodeIdSet: Set<string>
+): void {
+  // Build children map and collect parents that need ordering fixes
+  const childrenMap = new Map<string, string[]>();
+  const parentsToFix: { orderedChildren: string[] }[] = [];
+
+  for (const node of nodes) {
+    const children = getChildrenInVisualOrder(node, nodeIdSet);
+    if (children.length > 0) {
+      childrenMap.set(node.id, children);
+      if (children.length >= 2) {
+        parentsToFix.push({ orderedChildren: children });
+      }
+    }
+  }
+
+  const gap = DAGRE_OPTIONS.nodeSep;
+
+  for (const { orderedChildren } of parentsToFix) {
+    // Check if children are already in correct Y order
+    const currentYs = orderedChildren.map((id) => g.node(id).y);
+    let needsFix = false;
+    for (let i = 1; i < currentYs.length; i++) {
+      if (currentYs[i] < currentYs[i - 1]) {
+        needsFix = true;
+        break;
+      }
+    }
+    if (!needsFix) continue;
+
+    // Compute subtree extents for each child (in handle order)
+    const subtrees = orderedChildren.map((childId) => ({
+      childId,
+      extent: computeSubtreeExtent(childId, g, childrenMap),
+    }));
+
+    // Find the starting Y: top of the topmost subtree in the current layout
+    const overallMinY = Math.min(...subtrees.map((s) => s.extent.minY));
+
+    // Repack subtrees top-to-bottom in handle order with proper gaps
+    let currentTop = overallMinY;
+    for (const subtree of subtrees) {
+      const delta = currentTop - subtree.extent.minY;
+      if (delta !== 0) {
+        shiftSubtree(subtree.childId, delta, g, childrenMap);
+      }
+      const subtreeHeight = subtree.extent.maxY - subtree.extent.minY;
+      currentTop += subtreeHeight + gap;
+    }
+  }
 }
 
 // Build edges from node parent relationships

@@ -24,7 +24,6 @@ export function convertOperator(
   const op = getOperator(operator);
   const category = op?.category ?? 'utility';
   const cells: CellData[] = [];
-  let branchIndex = 0;
 
   // Determine icon based on operator type
   let icon: IconName = getCategoryIcon(category) as IconName;
@@ -53,6 +52,7 @@ export function convertOperator(
         edges: context.edges,
         parentId: nodeId,
         argIndex: idx,
+        branchType: 'branch',
         preserveStructure: context.preserveStructure,
       });
       const summary = generateArgSummary(operand);
@@ -65,9 +65,8 @@ export function convertOperator(
         summary,
       });
 
-      // Add edge from this node to the branch
-      context.edges.push(createBranchEdge(nodeId, branchId, branchIndex));
-      branchIndex++;
+      // Add edge from this node to the branch (use idx to match cell.index / CellHandles)
+      context.edges.push(createBranchEdge(nodeId, branchId, idx));
     }
   });
 

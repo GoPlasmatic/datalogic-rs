@@ -29,7 +29,6 @@ export function convertIfElse(
 
   const cells: CellData[] = [];
   let cellIndex = 0;
-  let branchIndex = 0;
 
   // Parse the if-else chain
   let idx = 0;
@@ -44,15 +43,16 @@ export function convertIfElse(
       edges: context.edges,
       parentId: nodeId,
       argIndex: idx,
+      branchType: 'condition',
       preserveStructure: context.preserveStructure,
     });
 
-    // Create condition edge
+    // Create condition edge (sourceHandle uses cellIndex to match CellHandles)
     context.edges.push({
       id: `${nodeId}-cond-${conditionBranchId}`,
       source: nodeId,
       target: conditionBranchId,
-      sourceHandle: `branch-${branchIndex}`,
+      sourceHandle: `branch-${cellIndex}`,
       targetHandle: 'left',
     });
 
@@ -67,7 +67,6 @@ export function convertIfElse(
       index: cellIndex,
     });
     cellIndex++;
-    branchIndex++;
 
     // Convert then branch
     const thenBranchId = convertValue(thenValue, {
@@ -84,7 +83,7 @@ export function convertIfElse(
       id: `${nodeId}-then-${thenBranchId}`,
       source: nodeId,
       target: thenBranchId,
-      sourceHandle: `branch-${branchIndex}`,
+      sourceHandle: `branch-${cellIndex}`,
       targetHandle: 'left',
     });
 
@@ -99,7 +98,6 @@ export function convertIfElse(
       index: cellIndex,
     });
     cellIndex++;
-    branchIndex++;
 
     idx += 2;
   }
@@ -124,7 +122,7 @@ export function convertIfElse(
       id: `${nodeId}-else-${elseBranchId}`,
       source: nodeId,
       target: elseBranchId,
-      sourceHandle: `branch-${branchIndex}`,
+      sourceHandle: `branch-${cellIndex}`,
       targetHandle: 'left',
     });
 

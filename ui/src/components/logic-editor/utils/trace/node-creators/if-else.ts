@@ -47,7 +47,6 @@ export function createIfElseNodeFromTrace(
 
   const cells: CellData[] = [];
   let cellIndex = 0;
-  let branchIndex = 0;
 
   // Parse the if-else chain
   let idx = 0;
@@ -64,6 +63,7 @@ export function createIfElseNodeFromTrace(
       conditionBranchId = processExpressionNode(condMatch.child, context, {
         parentId: nodeId,
         argIndex: idx,
+        branchType: 'condition',
       });
     } else {
       // Try positional matching if exact matching fails and value is complex
@@ -75,6 +75,7 @@ export function createIfElseNodeFromTrace(
         conditionBranchId = processExpressionNode(nextUnused.child, context, {
           parentId: nodeId,
           argIndex: idx,
+          branchType: 'condition',
         }, condition); // Pass original value to preserve key ordering
       } else {
         // True fallback: create node without trace mapping
@@ -82,12 +83,13 @@ export function createIfElseNodeFromTrace(
         createFallbackNode(conditionBranchId, condition, context, {
           parentId: nodeId,
           argIndex: idx,
+          branchType: 'condition',
         });
       }
     }
 
-    // Create condition edge
-    context.edges.push(createBranchEdge(nodeId, conditionBranchId, branchIndex));
+    // Create condition edge (use cellIndex to match CellHandles)
+    context.edges.push(createBranchEdge(nodeId, conditionBranchId, cellIndex));
 
     // Create cell for condition (If or Else If)
     const conditionText = generateExpressionText(condition, 40);
@@ -100,7 +102,6 @@ export function createIfElseNodeFromTrace(
       index: cellIndex,
     });
     cellIndex++;
-    branchIndex++;
 
     // Process then branch
     let thenBranchId: string;
@@ -136,7 +137,7 @@ export function createIfElseNodeFromTrace(
     }
 
     // Create then edge
-    context.edges.push(createBranchEdge(nodeId, thenBranchId, branchIndex));
+    context.edges.push(createBranchEdge(nodeId, thenBranchId, cellIndex));
 
     // Create cell for then value
     const thenText = generateExpressionText(thenValue, 40);
@@ -149,7 +150,6 @@ export function createIfElseNodeFromTrace(
       index: cellIndex,
     });
     cellIndex++;
-    branchIndex++;
 
     idx += 2;
   }
@@ -193,7 +193,7 @@ export function createIfElseNodeFromTrace(
     }
 
     // Create else edge
-    context.edges.push(createBranchEdge(nodeId, elseBranchId, branchIndex));
+    context.edges.push(createBranchEdge(nodeId, elseBranchId, cellIndex));
 
     const elseText = generateExpressionText(elseValue, 40);
 

@@ -32,7 +32,6 @@ export function convertSwitch(
 
   const cells: CellData[] = [];
   let cellIndex = 0;
-  let branchIndex = 0;
 
   // args[0] = discriminant
   if (switchArgs.length >= 1) {
@@ -52,10 +51,11 @@ export function convertSwitch(
         edges: context.edges,
         parentId: nodeId,
         argIndex: 0,
+        branchType: 'branch',
         preserveStructure: context.preserveStructure,
       });
 
-      context.edges.push(createBranchEdge(nodeId, discBranchId, branchIndex));
+      context.edges.push(createBranchEdge(nodeId, discBranchId, cellIndex));
 
       cells.push({
         type: 'branch',
@@ -65,7 +65,6 @@ export function convertSwitch(
         branchId: discBranchId,
         index: cellIndex,
       });
-      branchIndex++;
     }
     cellIndex++;
   }
@@ -99,10 +98,11 @@ export function convertSwitch(
           edges: context.edges,
           parentId: nodeId,
           argIndex: cellIndex,
+          branchType: 'branch',
           preserveStructure: context.preserveStructure,
         });
 
-        context.edges.push(createBranchEdge(nodeId, caseBranchId, branchIndex));
+        context.edges.push(createBranchEdge(nodeId, caseBranchId, cellIndex));
 
         cells.push({
           type: 'branch',
@@ -112,7 +112,6 @@ export function convertSwitch(
           branchId: caseBranchId,
           index: cellIndex,
         });
-        branchIndex++;
       }
       cellIndex++;
 
@@ -135,7 +134,7 @@ export function convertSwitch(
           preserveStructure: context.preserveStructure,
         });
 
-        context.edges.push(createBranchEdge(nodeId, resultBranchId, branchIndex));
+        context.edges.push(createBranchEdge(nodeId, resultBranchId, cellIndex));
 
         cells.push({
           type: 'branch',
@@ -145,7 +144,6 @@ export function convertSwitch(
           branchId: resultBranchId,
           index: cellIndex,
         });
-        branchIndex++;
       }
       cellIndex++;
     }
@@ -173,7 +171,7 @@ export function convertSwitch(
         preserveStructure: context.preserveStructure,
       });
 
-      context.edges.push(createBranchEdge(nodeId, defaultBranchId, branchIndex));
+      context.edges.push(createBranchEdge(nodeId, defaultBranchId, cellIndex));
 
       cells.push({
         type: 'branch',
