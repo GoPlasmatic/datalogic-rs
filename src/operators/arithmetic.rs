@@ -59,9 +59,11 @@
 use serde_json::Value;
 
 use super::helpers::{
-    create_number_value, extract_datetime_value, extract_duration_value, safe_add, safe_divide,
+    create_number_value, safe_add, safe_divide,
     safe_modulo, safe_multiply, safe_subtract,
 };
+#[cfg(feature = "datetime")]
+use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::config::NanHandling;
 use crate::constants::INVALID_ARGS;
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
@@ -192,27 +194,30 @@ pub fn evaluate_add(
         }
 
         // Slow path: datetime/duration arithmetic
-        // Parse first: try datetime, then duration (mutually exclusive)
-        let first_dt = extract_datetime_value(first.as_ref());
-        let first_dur = if first_dt.is_none() {
-            extract_duration_value(first.as_ref())
-        } else {
-            None
-        };
+        #[cfg(feature = "datetime")]
+        {
+            // Parse first: try datetime, then duration (mutually exclusive)
+            let first_dt = extract_datetime_value(first.as_ref());
+            let first_dur = if first_dt.is_none() {
+                extract_duration_value(first.as_ref())
+            } else {
+                None
+            };
 
-        // For addition, second is only needed as duration
-        let second_dur = extract_duration_value(second.as_ref());
+            // For addition, second is only needed as duration
+            let second_dur = extract_duration_value(second.as_ref());
 
-        // DateTime + Duration
-        if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
-            let result = dt.add_duration(dur);
-            return Ok(Value::String(result.to_iso_string()));
-        }
+            // DateTime + Duration
+            if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
+                let result = dt.add_duration(dur);
+                return Ok(Value::String(result.to_iso_string()));
+            }
 
-        // Duration + Duration
-        if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
-            let result = dur1.add(dur2);
-            return Ok(Value::String(result.to_string()));
+            // Duration + Duration
+            if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
+                let result = dur1.add(dur2);
+                return Ok(Value::String(result.to_string()));
+            }
         }
 
         // Non-numeric, non-datetime values — handle NaN per config
@@ -357,38 +362,41 @@ pub fn evaluate_subtract(
         }
 
         // Slow path: datetime/duration arithmetic
-        // Parse first: try datetime, then duration (mutually exclusive)
-        let first_dt = extract_datetime_value(&first);
-        let first_dur = if first_dt.is_none() {
-            extract_duration_value(&first)
-        } else {
-            None
-        };
+        #[cfg(feature = "datetime")]
+        {
+            // Parse first: try datetime, then duration (mutually exclusive)
+            let first_dt = extract_datetime_value(&first);
+            let first_dur = if first_dt.is_none() {
+                extract_duration_value(&first)
+            } else {
+                None
+            };
 
-        // Parse second: try datetime, then duration (mutually exclusive)
-        let second_dt = extract_datetime_value(second.as_ref());
-        let second_dur = if second_dt.is_none() {
-            extract_duration_value(second.as_ref())
-        } else {
-            None
-        };
+            // Parse second: try datetime, then duration (mutually exclusive)
+            let second_dt = extract_datetime_value(second.as_ref());
+            let second_dur = if second_dt.is_none() {
+                extract_duration_value(second.as_ref())
+            } else {
+                None
+            };
 
-        // DateTime - DateTime = Duration (check this first)
-        if let (Some(dt1), Some(dt2)) = (&first_dt, &second_dt) {
-            let result = dt1.diff(dt2);
-            return Ok(Value::String(result.to_string()));
-        }
+            // DateTime - DateTime = Duration (check this first)
+            if let (Some(dt1), Some(dt2)) = (&first_dt, &second_dt) {
+                let result = dt1.diff(dt2);
+                return Ok(Value::String(result.to_string()));
+            }
 
-        // DateTime - Duration
-        if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
-            let result = dt.sub_duration(dur);
-            return Ok(Value::String(result.to_iso_string()));
-        }
+            // DateTime - Duration
+            if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
+                let result = dt.sub_duration(dur);
+                return Ok(Value::String(result.to_iso_string()));
+            }
 
-        // Duration - Duration
-        if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
-            let result = dur1.sub(dur2);
-            return Ok(Value::String(result.to_string()));
+            // Duration - Duration
+            if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
+                let result = dur1.sub(dur2);
+                return Ok(Value::String(result.to_string()));
+            }
         }
 
         // Try integer coercion first for both operands
@@ -553,24 +561,27 @@ pub fn evaluate_multiply(
         }
 
         // Slow path: duration * number or number * duration
-        let first_dur = extract_duration_value(first.as_ref());
-
-        if let Some(dur) = &first_dur
-            && let Some(factor) = coerce_to_number(&second, engine)
+        #[cfg(feature = "datetime")]
         {
-            let result = dur.multiply(factor);
-            return Ok(Value::String(result.to_string()));
-        }
+            let first_dur = extract_duration_value(first.as_ref());
 
-        // Number * Duration (only if first wasn't a duration)
-        if first_dur.is_none() {
-            let second_dur = extract_duration_value(second.as_ref());
-
-            if let Some(dur) = second_dur
-                && let Some(factor) = coerce_to_number(&first, engine)
+            if let Some(dur) = &first_dur
+                && let Some(factor) = coerce_to_number(&second, engine)
             {
                 let result = dur.multiply(factor);
                 return Ok(Value::String(result.to_string()));
+            }
+
+            // Number * Duration (only if first wasn't a duration)
+            if first_dur.is_none() {
+                let second_dur = extract_duration_value(second.as_ref());
+
+                if let Some(dur) = second_dur
+                    && let Some(factor) = coerce_to_number(&first, engine)
+                {
+                    let result = dur.multiply(factor);
+                    return Ok(Value::String(result.to_string()));
+                }
             }
         }
     }
@@ -683,16 +694,19 @@ pub fn evaluate_divide(
         let second = engine.evaluate_node_cow(&args[1], context)?;
 
         // Duration / Number
-        let first_dur = extract_duration_value(&first);
-
-        if let Some(dur) = first_dur
-            && let Some(divisor) = coerce_to_number(&second, engine)
+        #[cfg(feature = "datetime")]
         {
-            if divisor == 0.0 {
-                return Err(crate::constants::nan_error());
+            let first_dur = extract_duration_value(&first);
+
+            if let Some(dur) = first_dur
+                && let Some(divisor) = coerce_to_number(&second, engine)
+            {
+                if divisor == 0.0 {
+                    return Err(crate::constants::nan_error());
+                }
+                let result = dur.divide(divisor);
+                return Ok(Value::String(result.to_string()));
             }
-            let result = dur.divide(divisor);
-            return Ok(Value::String(result.to_string()));
         }
 
         // Try integer division first if both can be coerced to integers

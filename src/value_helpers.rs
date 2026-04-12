@@ -104,6 +104,7 @@ pub fn access_path_ref<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 /// - Object field access: "field" or "field.nested"
 /// - Array index access: "0" or "field.0"
 /// - Mixed: "field.0.nested"
+#[cfg(feature = "ext-control")]
 pub fn access_path(value: &Value, path: &str) -> Option<Value> {
     access_path_ref(value, path).cloned()
 }

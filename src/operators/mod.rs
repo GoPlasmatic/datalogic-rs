@@ -27,17 +27,26 @@
 
 pub mod helpers;
 
+// Core - always compiled
 pub mod arithmetic;
 pub mod array;
 pub mod comparison;
 pub mod control;
-pub mod datetime;
 pub mod logical;
-pub mod math;
 pub mod missing;
-pub mod preserve;
 pub mod string;
-pub mod throw;
-pub mod try_op;
-pub mod type_op;
 pub mod variable;
+
+// Feature-gated extended operators
+#[cfg(feature = "preserve")]
+pub mod preserve;
+#[cfg(feature = "datetime")]
+pub mod datetime;
+#[cfg(feature = "ext-control")]
+pub mod type_op;
+#[cfg(feature = "error-handling")]
+pub mod throw;
+#[cfg(feature = "error-handling")]
+pub mod try_op;
+#[cfg(feature = "ext-math")]
+pub mod math;

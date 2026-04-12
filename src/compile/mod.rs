@@ -5,6 +5,7 @@ use crate::node::{
 };
 use crate::opcode::OpCode;
 use crate::{ContextStack, DataLogic, Result};
+#[cfg(feature = "ext-string")]
 use regex::Regex;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -42,6 +43,7 @@ impl CompiledLogic {
     /// # Returns
     ///
     /// A compiled logic structure without static optimizations.
+    #[cfg(feature = "trace")]
     pub fn compile_for_trace(logic: &Value, preserve_structure: bool) -> Result<Self> {
         let root = Self::compile_node(logic, None, preserve_structure)?;
         Ok(Self::new(root))
@@ -91,6 +93,7 @@ impl CompiledLogic {
     ) -> Result<CompiledNode> {
         match value {
             Value::Object(obj) if obj.len() > 1 => {
+                #[cfg(feature = "preserve")]
                 if preserve_structure {
                     // In preserve_structure mode, treat multi-key objects as structured objects
                     // We'll create a special StructuredObject node that gets evaluated field by field
@@ -101,13 +104,15 @@ impl CompiledLogic {
                                 .map(|compiled_val| (key.clone(), compiled_val))
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    Ok(CompiledNode::StructuredObject(Box::new(
+                    return Ok(CompiledNode::StructuredObject(Box::new(
                         crate::node::StructuredObjectData {
                             fields: fields.into_boxed_slice(),
                         },
-                    )))
-                } else {
+                    )));
+                }
+                {
                     // Multi-key objects are not valid operators
+                    let _ = obj;
                     Err(crate::error::Error::InvalidOperator(
                         "Unknown Operator".to_string(),
                     ))
@@ -137,6 +142,7 @@ impl CompiledLogic {
                     }
 
                     // Special handling for preserve operator - don't compile its arguments
+                    #[cfg(feature = "preserve")]
                     let args = if opcode == OpCode::Preserve {
                         // Preserve takes raw values, not compiled logic
                         match args_value {
@@ -153,10 +159,17 @@ impl CompiledLogic {
                     } else {
                         Self::compile_args(args_value, engine, preserve_structure)?
                     };
+                    #[cfg(not(feature = "preserve"))]
+                    let args = Self::compile_args(args_value, engine, preserve_structure)?;
                     // Try to optimize variable access operators at compile time
-                    if matches!(opcode, OpCode::Var | OpCode::Val | OpCode::Exists) {
+                    if opcode == OpCode::Var
+                        && let Some(node) = Self::try_compile_var(&args)
+                    {
+                        return Ok(node);
+                    }
+                    #[cfg(feature = "ext-control")]
+                    if matches!(opcode, OpCode::Val | OpCode::Exists) {
                         let optimized = match opcode {
-                            OpCode::Var => Self::try_compile_var(&args),
                             OpCode::Val => Self::try_compile_val(&args),
                             OpCode::Exists => Self::try_compile_exists(&args),
                             _ => None,
@@ -167,6 +180,7 @@ impl CompiledLogic {
                     }
 
                     // Pre-compile regex for split operator when delimiter is a static pattern
+                    #[cfg(feature = "ext-string")]
                     if opcode == OpCode::Split
                         && let Some(node) = Self::try_compile_split_regex(&args)
                     {
@@ -174,6 +188,7 @@ impl CompiledLogic {
                     }
 
                     // Pre-compile throw with literal string into CompiledThrow
+                    #[cfg(feature = "error-handling")]
                     if opcode == OpCode::Throw
                         && args.len() == 1
                         && let CompiledNode::Value {
@@ -207,8 +222,11 @@ impl CompiledLogic {
                         }
                     }
 
-                    Ok(node)
-                } else if preserve_structure {
+                    return Ok(node);
+                }
+
+                #[cfg(feature = "preserve")]
+                if preserve_structure {
                     // In preserve_structure mode, we need to distinguish between:
                     // 1. Custom operators (should be evaluated as operators)
                     // 2. Unknown keys (should be preserved as structured object fields)
@@ -232,10 +250,12 @@ impl CompiledLogic {
                     // This allows dynamic object generation like {"name": {"var": "user.name"}}
                     let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
                     let fields = vec![(op_name.clone(), compiled_val)].into_boxed_slice();
-                    Ok(CompiledNode::StructuredObject(Box::new(
+                    return Ok(CompiledNode::StructuredObject(Box::new(
                         crate::node::StructuredObjectData { fields },
-                    )))
-                } else {
+                    )));
+                }
+
+                {
                     let args = Self::compile_args(args_value, engine, preserve_structure)?;
                     // Fall back to custom operator - don't pre-evaluate custom operators
                     Ok(CompiledNode::CustomOperator(Box::new(
@@ -389,6 +409,7 @@ impl CompiledLogic {
     }
 
     /// Try to compile a val operator into a CompiledVar node.
+    #[cfg(feature = "ext-control")]
     fn try_compile_val(args: &[CompiledNode]) -> Option<CompiledNode> {
         if args.is_empty() {
             return Some(CompiledNode::CompiledVar {
@@ -485,6 +506,7 @@ impl CompiledLogic {
     /// Convert a val argument into a PathSegment.
     /// Val treats string args as literal keys (no dot-splitting), and numbers as indices.
     /// Numeric strings get FieldOrIndex to handle both object key and array index access.
+    #[cfg(feature = "ext-control")]
     fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
         match arg {
             CompiledNode::Value {
@@ -504,6 +526,7 @@ impl CompiledLogic {
     }
 
     /// Try to compile val path segments (used by level-access and path-chain cases).
+    #[cfg(feature = "ext-control")]
     fn try_compile_val_segments(
         args: &[CompiledNode],
         scope_level: u32,
@@ -524,6 +547,7 @@ impl CompiledLogic {
     }
 
     /// Try to collect remaining val args into segments and build a CompiledVar.
+    #[cfg(feature = "ext-control")]
     fn try_collect_val_segments(
         args: &[CompiledNode],
         segments: &mut Vec<PathSegment>,
@@ -543,6 +567,7 @@ impl CompiledLogic {
     }
 
     /// Try to compile an exists operator into a CompiledExists node.
+    #[cfg(feature = "ext-control")]
     fn try_compile_exists(args: &[CompiledNode]) -> Option<CompiledNode> {
         if args.is_empty() {
             return Some(CompiledNode::CompiledExists(Box::new(
@@ -593,6 +618,7 @@ impl CompiledLogic {
     ///
     /// When the delimiter (second arg) is a static string containing named capture
     /// groups (`(?P<...>`), the regex is compiled once here instead of on every evaluation.
+    #[cfg(feature = "ext-string")]
     fn try_compile_split_regex(args: &[CompiledNode]) -> Option<CompiledNode> {
         if args.len() < 2 {
             return None;

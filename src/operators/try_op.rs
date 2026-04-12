@@ -111,6 +111,7 @@ pub fn evaluate_try(
 }
 
 /// Traced version of try - evaluates arguments with tracing for step-by-step debugging
+#[cfg(feature = "trace")]
 #[inline(never)]
 pub fn evaluate_try_traced(
     args: &[CompiledNode],

@@ -1,11 +1,19 @@
+#[cfg(feature = "ext-string")]
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(feature = "ext-string")]
+use serde_json::json;
 
 use super::helpers::to_string_cow;
+#[cfg(feature = "ext-string")]
 use super::variable;
+#[cfg(feature = "ext-string")]
 use crate::constants::INVALID_ARGS;
+#[cfg(feature = "ext-string")]
 use crate::node::{MetadataHint, ReduceHint};
-use crate::{CompiledNode, ContextStack, DataLogic, Result, error::Error};
+use crate::{CompiledNode, ContextStack, DataLogic, Result};
+#[cfg(feature = "ext-string")]
+use crate::error::Error;
 
 /// String concatenation operator function (cat) - variadic
 #[inline]
@@ -149,6 +157,7 @@ pub fn evaluate_in(
 }
 
 /// Length operator function - returns the length of a string or array
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_length(
     args: &[CompiledNode],
@@ -204,6 +213,7 @@ pub fn evaluate_length(
 }
 
 /// StartsWithOperator function - checks if a string starts with a prefix
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_starts_with(
     args: &[CompiledNode],
@@ -232,6 +242,7 @@ pub fn evaluate_starts_with(
 }
 
 /// EndsWithOperator function - checks if a string ends with a suffix
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_ends_with(
     args: &[CompiledNode],
@@ -260,6 +271,7 @@ pub fn evaluate_ends_with(
 }
 
 /// UpperOperator function - converts a string to uppercase
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_upper(
     args: &[CompiledNode],
@@ -283,6 +295,7 @@ pub fn evaluate_upper(
 }
 
 /// LowerOperator function - converts a string to lowercase
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_lower(
     args: &[CompiledNode],
@@ -306,6 +319,7 @@ pub fn evaluate_lower(
 }
 
 /// TrimOperator function - removes leading and trailing whitespace from a string
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_trim(
     args: &[CompiledNode],
@@ -335,6 +349,7 @@ pub fn evaluate_trim(
 }
 
 /// SplitOperator function - splits a string by delimiter or extracts regex groups
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_split(
     args: &[CompiledNode],
@@ -402,6 +417,7 @@ pub fn evaluate_split(
 }
 
 /// Split with a pre-compiled regex (used when regex is known at compile time)
+#[cfg(feature = "ext-string")]
 #[inline]
 pub fn evaluate_split_with_regex(
     args: &[CompiledNode],
@@ -430,6 +446,7 @@ pub fn evaluate_split_with_regex(
     }
 }
 
+#[cfg(feature = "ext-string")]
 #[inline]
 fn split_normal(text_str: &str, delimiter_str: &str) -> Result<Value> {
     if text_str.is_empty() {

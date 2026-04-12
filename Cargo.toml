@@ -13,13 +13,21 @@ keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 
 [features]
-default = []
-wasm = ["chrono/wasmbind"]
+default = ["preserve", "datetime", "ext-string", "ext-array", "ext-control", "error-handling", "ext-math", "trace"]
+preserve = []
+datetime = ["dep:chrono"]
+trace = []
+ext-string = []
+ext-array = []
+ext-control = []
+error-handling = []
+ext-math = []
+wasm = ["datetime", "chrono/wasmbind"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"] }
+chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"], optional = true }
 regex = { version = "1.12.3", default-features = false, features = ["std", "perf", "unicode"] }
 
 [dev-dependencies]

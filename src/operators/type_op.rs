@@ -34,6 +34,7 @@
 
 use serde_json::Value;
 
+#[cfg(feature = "datetime")]
 use crate::datetime::{is_datetime_object, is_duration_object};
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -65,11 +66,14 @@ pub fn evaluate_type(
     };
 
     // Check for datetime/duration objects first
-    if is_datetime_object(&value) {
-        return Ok(Value::String("datetime".to_string()));
-    }
-    if is_duration_object(&value) {
-        return Ok(Value::String("duration".to_string()));
+    #[cfg(feature = "datetime")]
+    {
+        if is_datetime_object(&value) {
+            return Ok(Value::String("datetime".to_string()));
+        }
+        if is_duration_object(&value) {
+            return Ok(Value::String("duration".to_string()));
+        }
     }
 
     let type_str = match &value {
@@ -77,18 +81,24 @@ pub fn evaluate_type(
         Value::Bool(_) => "boolean",
         Value::Number(_) => "number",
         Value::String(s) => {
-            // Check for special datetime/duration formats in strings
-            // Simple heuristic: if it looks like an ISO datetime or duration
-            if s.contains('T') && s.contains(':') && (s.contains('Z') || s.contains('+')) {
-                "datetime"
-            } else if s.chars().any(|c| matches!(c, 'd' | 'h' | 'm' | 's'))
-                && s.chars().any(|c| c.is_ascii_digit())
-                && !s.contains(' ')
-            // Avoid matching regular strings with these letters
+            #[cfg(feature = "datetime")]
             {
-                // Simple duration check (e.g., "1d", "2h30m")
-                "duration"
-            } else {
+                // Check for special datetime/duration formats in strings
+                // Simple heuristic: if it looks like an ISO datetime or duration
+                if s.contains('T') && s.contains(':') && (s.contains('Z') || s.contains('+')) {
+                    "datetime"
+                } else if s.chars().any(|c| matches!(c, 'd' | 'h' | 'm' | 's'))
+                    && s.chars().any(|c| c.is_ascii_digit())
+                    && !s.contains(' ')
+                {
+                    "duration"
+                } else {
+                    "string"
+                }
+            }
+            #[cfg(not(feature = "datetime"))]
+            {
+                let _ = s;
                 "string"
             }
         }

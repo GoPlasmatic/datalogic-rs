@@ -108,6 +108,7 @@ impl ExpressionNode {
                     children,
                 }
             }
+            #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => {
                 let children: Vec<ExpressionNode> = data
                     .fields
@@ -147,12 +148,14 @@ impl ExpressionNode {
                 }
             }
 
+            #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(data) => ExpressionNode {
                 id,
                 expression: Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
                 children: vec![],
             },
 
+            #[cfg(feature = "ext-string")]
             CompiledNode::CompiledSplitRegex(data) => {
                 let children: Vec<ExpressionNode> = data
                     .args
@@ -171,6 +174,7 @@ impl ExpressionNode {
                 }
             }
 
+            #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(_) => ExpressionNode {
                 id,
                 expression: Self::node_to_json_string(node),
@@ -198,6 +202,7 @@ impl ExpressionNode {
             CompiledNode::CustomOperator(data) => {
                 Self::custom_to_json_string(&data.name, &data.args)
             }
+            #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => Self::structured_to_json_string(&data.fields),
             CompiledNode::CompiledVar {
                 scope_level,
@@ -207,9 +212,11 @@ impl ExpressionNode {
             } => {
                 Self::compiled_var_to_json_string(*scope_level, segments, default_value.as_deref())
             }
+            #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(data) => {
                 Self::compiled_exists_to_json_string(data.scope_level, &data.segments)
             }
+            #[cfg(feature = "ext-string")]
             CompiledNode::CompiledSplitRegex(data) => {
                 format!(
                     "{{\"split\": [{}, \"{}\"]}}",
@@ -217,6 +224,7 @@ impl ExpressionNode {
                     data.regex.as_str()
                 )
             }
+            #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(error_obj) => {
                 if let serde_json::Value::Object(err_map) = error_obj.as_ref()
                     && let Some(serde_json::Value::String(s)) = err_map.get("type")
@@ -249,6 +257,7 @@ impl ExpressionNode {
         format!("{{\"{}\": {}}}", name, args_str)
     }
 
+    #[cfg(feature = "preserve")]
     fn structured_to_json_string(fields: &[(String, CompiledNode)]) -> String {
         let items: Vec<String> = fields
             .iter()
@@ -296,6 +305,7 @@ impl ExpressionNode {
         }
     }
 
+    #[cfg(feature = "ext-control")]
     fn compiled_exists_to_json_string(
         _scope_level: u32,
         segments: &[crate::node::PathSegment],

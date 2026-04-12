@@ -117,6 +117,7 @@ pub fn safe_modulo(a: f64, b: f64) -> f64 {
 
 /// Strict number extraction - only accepts actual numbers or numeric strings.
 /// Used by abs, floor, ceil operators.
+#[cfg(feature = "ext-math")]
 #[inline]
 pub fn get_number_strict(value: &Value) -> Option<f64> {
     match value {
@@ -149,6 +150,7 @@ pub fn create_number_value(n: f64) -> Value {
 
 /// Extracts a datetime from a value (either datetime object or string).
 /// Single map lookup for objects — avoids the double lookup of is_datetime_object + extract_datetime.
+#[cfg(feature = "datetime")]
 #[inline]
 pub fn extract_datetime_value(value: &Value) -> Option<crate::datetime::DataDateTime> {
     match value {
@@ -166,6 +168,7 @@ pub fn extract_datetime_value(value: &Value) -> Option<crate::datetime::DataDate
 
 /// Extracts a duration from a value (either duration object or string).
 /// Single map lookup for objects — avoids the double lookup of is_duration_object + extract_duration.
+#[cfg(feature = "datetime")]
 #[inline]
 pub fn extract_duration_value(value: &Value) -> Option<crate::datetime::DataDuration> {
     match value {

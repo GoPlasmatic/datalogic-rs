@@ -49,12 +49,14 @@ mod compile;
 mod config;
 mod constants;
 mod context;
+#[cfg(feature = "datetime")]
 mod datetime;
 mod engine;
 mod error;
 mod node;
 mod opcode;
 mod operators;
+#[cfg(feature = "trace")]
 mod trace;
 mod value_helpers;
 
@@ -66,6 +68,7 @@ pub use engine::DataLogic;
 pub use error::Error;
 pub use node::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub use opcode::OpCode;
+#[cfg(feature = "trace")]
 pub use trace::{ExecutionStep, ExpressionNode, TraceCollector, TracedResult};
 
 use serde_json::Value;

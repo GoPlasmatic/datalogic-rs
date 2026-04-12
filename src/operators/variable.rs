@@ -1,11 +1,14 @@
 use serde_json::Value;
 
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
-use crate::value_helpers::{access_path, access_path_ref};
+#[cfg(feature = "ext-control")]
+use crate::value_helpers::access_path;
+use crate::value_helpers::access_path_ref;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Helper to apply a single path element (string or number) to a value (reference variant).
 /// Returns None if the path element is an invalid type (not string/number) or path doesn't exist.
+#[cfg(feature = "ext-control")]
 #[inline]
 fn apply_path_element_ref<'a>(current: &'a Value, path_elem: &Value) -> Option<&'a Value> {
     match path_elem {
@@ -112,6 +115,7 @@ pub fn evaluate_var(
     }
 }
 /// Value access operator function (val) with context level support
+#[cfg(feature = "ext-control")]
 #[inline]
 pub fn evaluate_val(
     args: &[CompiledNode],
@@ -407,6 +411,7 @@ pub fn evaluate_val(
     }
 }
 /// Exists operator function - checks if a key exists in the data
+#[cfg(feature = "ext-control")]
 #[inline]
 pub fn evaluate_exists(
     args: &[CompiledNode],
@@ -501,6 +506,7 @@ pub fn evaluate_exists(
     }
 }
 /// Helper function to check if a key exists in an object
+#[cfg(feature = "ext-control")]
 #[inline]
 fn key_exists(value: &Value, key: &str) -> bool {
     if let Value::Object(obj) = value {
@@ -648,6 +654,7 @@ pub fn evaluate_compiled_var(
 }
 
 /// Evaluate a pre-compiled exists check.
+#[cfg(feature = "ext-control")]
 #[inline]
 pub fn evaluate_compiled_exists(
     scope_level: u32,

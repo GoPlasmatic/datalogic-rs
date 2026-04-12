@@ -1,8 +1,10 @@
 use serde_json::Value;
 use std::borrow::Cow;
+#[cfg(feature = "trace")]
 use std::collections::HashMap;
 
 use super::helpers::{check_invalid_args_marker, is_truthy};
+#[cfg(feature = "trace")]
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -91,6 +93,7 @@ pub fn evaluate_or(
 // ============================================================================
 
 /// Traced version of `and` operator - only evaluates until first falsy value.
+#[cfg(feature = "trace")]
 #[inline(never)]
 pub fn evaluate_and_traced(
     args: &[CompiledNode],
@@ -120,6 +123,7 @@ pub fn evaluate_and_traced(
 }
 
 /// Traced version of `or` operator - only evaluates until first truthy value.
+#[cfg(feature = "trace")]
 #[inline(never)]
 pub fn evaluate_or_traced(
     args: &[CompiledNode],

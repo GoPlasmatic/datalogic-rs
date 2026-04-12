@@ -1,6 +1,8 @@
 use serde_json::Value;
 
+#[cfg(feature = "ext-array")]
 use std::cmp::Ordering;
+#[cfg(feature = "trace")]
 use std::collections::HashMap;
 
 use super::helpers::is_truthy;
@@ -8,6 +10,7 @@ use super::variable;
 use crate::constants::INVALID_ARGS;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
+#[cfg(feature = "trace")]
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
@@ -1122,6 +1125,7 @@ pub fn evaluate_none(
 /// }
 /// ```
 /// Returns: Sorted by name alphabetically
+#[cfg(feature = "ext-array")]
 #[inline]
 pub fn evaluate_sort(
     args: &[CompiledNode],
@@ -1239,6 +1243,7 @@ pub fn evaluate_sort(
     Ok(Value::Array(array))
 }
 
+#[cfg(feature = "ext-array")]
 /// Extract an optional i64 from a CompiledNode, skipping evaluate_node dispatch for literals.
 #[inline]
 fn extract_opt_i64(
@@ -1265,6 +1270,7 @@ fn extract_opt_i64(
     }
 }
 
+#[cfg(feature = "ext-array")]
 /// The `slice` operator - extracts a portion of an array or string.
 ///
 /// # Syntax
@@ -1365,6 +1371,7 @@ pub fn evaluate_slice(
     }
 }
 
+#[cfg(feature = "ext-array")]
 // Helper function to compare JSON values for sorting
 fn compare_values(a: &Value, b: &Value) -> Ordering {
     match (a, b) {
@@ -1417,6 +1424,7 @@ fn compare_values(a: &Value, b: &Value) -> Ordering {
     }
 }
 
+#[cfg(feature = "ext-array")]
 // Helper function to slice a sequence with start, end, and step
 fn slice_sequence(
     arr: &[Value],
@@ -1478,6 +1486,7 @@ fn slice_sequence(
     result
 }
 
+#[cfg(feature = "ext-array")]
 // Helper function to slice characters directly without Value conversion
 fn slice_chars(
     chars: &[char],
@@ -1531,6 +1540,7 @@ fn slice_chars(
     result
 }
 
+#[cfg(feature = "ext-array")]
 // Helper function to normalize slice indices with overflow protection
 fn normalize_index(index: i64, len: i64) -> i64 {
     if index < 0 {
@@ -1547,6 +1557,7 @@ fn normalize_index(index: i64, len: i64) -> i64 {
 // ============================================================================
 
 /// Traced version of `map` operator that records iteration steps.
+#[cfg(feature = "trace")]
 #[inline]
 pub fn evaluate_map_traced(
     args: &[CompiledNode],
@@ -1624,6 +1635,7 @@ pub fn evaluate_map_traced(
     }
 }
 
+#[cfg(feature = "trace")]
 /// Traced version of `filter` operator that records iteration steps.
 #[inline]
 pub fn evaluate_filter_traced(
@@ -1700,6 +1712,7 @@ pub fn evaluate_filter_traced(
     }
 }
 
+#[cfg(feature = "trace")]
 /// Traced version of `reduce` operator that records iteration steps.
 #[inline]
 pub fn evaluate_reduce_traced(
@@ -1750,6 +1763,7 @@ pub fn evaluate_reduce_traced(
     }
 }
 
+#[cfg(feature = "trace")]
 /// Traced version of `all` operator that records iteration steps.
 #[inline]
 pub fn evaluate_all_traced(
@@ -1797,6 +1811,7 @@ pub fn evaluate_all_traced(
     }
 }
 
+#[cfg(feature = "trace")]
 /// Traced version of `some` operator that records iteration steps.
 #[inline]
 pub fn evaluate_some_traced(
@@ -1845,6 +1860,7 @@ pub fn evaluate_some_traced(
     }
 }
 
+#[cfg(feature = "trace")]
 /// Traced version of `none` operator that records iteration steps.
 #[inline]
 pub fn evaluate_none_traced(

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
 use crate::operators::variable;
+#[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
 
@@ -40,6 +41,7 @@ pub struct DataLogic {
     /// HashMap for custom operators only
     custom_operators: HashMap<String, Box<dyn Operator>>,
     /// Flag to preserve structure of objects with unknown operators
+    #[cfg(feature = "preserve")]
     preserve_structure: bool,
     /// Configuration for evaluation behavior
     config: EvaluationConfig,
@@ -67,6 +69,7 @@ impl DataLogic {
     pub fn new() -> Self {
         Self {
             custom_operators: HashMap::new(),
+            #[cfg(feature = "preserve")]
             preserve_structure: false,
             config: EvaluationConfig::default(),
         }
@@ -122,6 +125,7 @@ impl DataLogic {
     /// let result = engine.evaluate(&compiled, Arc::new(json!({"text": "hello", "num": 5}))).unwrap();
     /// // Returns: {"message": "HELLO", "count": 5}
     /// ```
+    #[cfg(feature = "preserve")]
     pub fn with_preserve_structure() -> Self {
         Self {
             custom_operators: HashMap::new(),
@@ -148,6 +152,7 @@ impl DataLogic {
     pub fn with_config(config: EvaluationConfig) -> Self {
         Self {
             custom_operators: HashMap::new(),
+            #[cfg(feature = "preserve")]
             preserve_structure: false,
             config,
         }
@@ -169,6 +174,7 @@ impl DataLogic {
     ///     .with_nan_handling(NanHandling::IgnoreValue);
     /// let engine = DataLogic::with_config_and_structure(config, true);
     /// ```
+    #[cfg(feature = "preserve")]
     pub fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
         Self {
             custom_operators: HashMap::new(),
@@ -184,7 +190,10 @@ impl DataLogic {
 
     /// Returns whether structure preservation is enabled.
     pub fn preserve_structure(&self) -> bool {
-        self.preserve_structure
+        #[cfg(feature = "preserve")]
+        { self.preserve_structure }
+        #[cfg(not(feature = "preserve"))]
+        { false }
     }
 
     /// Registers a custom operator with the engine.
@@ -406,6 +415,7 @@ impl DataLogic {
                 operator.evaluate(&arg_values, context, &evaluator)
             }
 
+            #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => {
                 let mut result = serde_json::Map::new();
                 for (key, node) in data.fields.iter() {
@@ -431,10 +441,12 @@ impl DataLogic {
                 self,
             ),
 
+            #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(data) => {
                 variable::evaluate_compiled_exists(data.scope_level, &data.segments, context)
             }
 
+            #[cfg(feature = "ext-string")]
             CompiledNode::CompiledSplitRegex(data) => {
                 use crate::operators::string;
                 string::evaluate_split_with_regex(
@@ -446,6 +458,7 @@ impl DataLogic {
                 )
             }
 
+            #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(error_obj) => {
                 Err(Error::Thrown(error_obj.as_ref().clone()))
             }
@@ -497,6 +510,7 @@ impl DataLogic {
     /// println!("Result: {}", result.result);
     /// println!("Steps: {}", result.steps.len());
     /// ```
+    #[cfg(feature = "trace")]
     pub fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
@@ -542,6 +556,7 @@ impl DataLogic {
     /// Evaluate a compiled node with tracing.
     ///
     /// This method records each step of the evaluation for debugging.
+    #[cfg(feature = "trace")]
     pub fn evaluate_node_traced(
         &self,
         node: &CompiledNode,
@@ -610,6 +625,7 @@ impl DataLogic {
                 }
             }
 
+            #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => {
                 let mut result = serde_json::Map::new();
                 for (key, node) in data.fields.iter() {
@@ -628,10 +644,43 @@ impl DataLogic {
                 Ok(result)
             }
 
-            CompiledNode::CompiledVar { .. }
-            | CompiledNode::CompiledExists(_)
-            | CompiledNode::CompiledSplitRegex(_)
-            | CompiledNode::CompiledThrow(_) => match self.evaluate_node(node, context) {
+            CompiledNode::CompiledVar { .. } => match self.evaluate_node(node, context) {
+                Ok(result) => {
+                    collector.record_step(node_id, current_context, result.clone());
+                    Ok(result)
+                }
+                Err(err) => {
+                    collector.record_error(node_id, current_context, err.to_string());
+                    Err(err)
+                }
+            },
+
+            #[cfg(feature = "ext-control")]
+            CompiledNode::CompiledExists(_) => match self.evaluate_node(node, context) {
+                Ok(result) => {
+                    collector.record_step(node_id, current_context, result.clone());
+                    Ok(result)
+                }
+                Err(err) => {
+                    collector.record_error(node_id, current_context, err.to_string());
+                    Err(err)
+                }
+            },
+
+            #[cfg(feature = "ext-string")]
+            CompiledNode::CompiledSplitRegex(_) => match self.evaluate_node(node, context) {
+                Ok(result) => {
+                    collector.record_step(node_id, current_context, result.clone());
+                    Ok(result)
+                }
+                Err(err) => {
+                    collector.record_error(node_id, current_context, err.to_string());
+                    Err(err)
+                }
+            },
+
+            #[cfg(feature = "error-handling")]
+            CompiledNode::CompiledThrow(_) => match self.evaluate_node(node, context) {
                 Ok(result) => {
                     collector.record_step(node_id, current_context, result.clone());
                     Ok(result)
@@ -668,6 +717,7 @@ impl Evaluator for SimpleEvaluator<'_> {
                 let compiled = CompiledLogic::compile_with_static_eval(logic, self.engine)?;
                 self.engine.evaluate_node(&compiled.root, context)
             }
+            #[cfg(feature = "preserve")]
             Value::Object(obj) if obj.len() > 1 && self.engine.preserve_structure => {
                 // Multi-key object in preserve_structure mode
                 let compiled = CompiledLogic::compile_with_static_eval(logic, self.engine)?;

@@ -1,6 +1,8 @@
 use crate::opcode::OpCode;
+#[cfg(feature = "ext-string")]
 use regex::Regex;
 use serde_json::Value;
+#[cfg(feature = "ext-string")]
 use std::sync::Arc;
 
 /// A pre-parsed path segment for compiled variable access.
@@ -49,12 +51,14 @@ pub struct CustomOperatorData {
 }
 
 /// Data for a structured object template (boxed inside CompiledNode to reduce enum size).
+#[cfg(feature = "preserve")]
 #[derive(Debug, Clone)]
 pub struct StructuredObjectData {
     pub fields: Box<[(String, CompiledNode)]>,
 }
 
 /// Data for a pre-compiled exists check (boxed inside CompiledNode to reduce enum size).
+#[cfg(feature = "ext-control")]
 #[derive(Debug, Clone)]
 pub struct CompiledExistsData {
     pub scope_level: u32,
@@ -62,6 +66,7 @@ pub struct CompiledExistsData {
 }
 
 /// Data for a pre-compiled split with regex (boxed inside CompiledNode to reduce enum size).
+#[cfg(feature = "ext-string")]
 #[derive(Debug, Clone)]
 pub struct CompiledSplitRegexData {
     pub args: Box<[CompiledNode]>,
@@ -107,6 +112,7 @@ pub enum CompiledNode {
 
     /// A structured object template for preserve_structure mode.
     /// Boxed to reduce enum size (rare variant).
+    #[cfg(feature = "preserve")]
     StructuredObject(Box<StructuredObjectData>),
 
     /// A pre-compiled variable access (unified var/val).
@@ -123,14 +129,17 @@ pub enum CompiledNode {
 
     /// A pre-compiled exists check.
     /// Boxed to reduce enum size (rare variant).
+    #[cfg(feature = "ext-control")]
     CompiledExists(Box<CompiledExistsData>),
 
     /// A pre-compiled split with regex pattern.
     /// Boxed to reduce enum size (rare variant).
+    #[cfg(feature = "ext-string")]
     CompiledSplitRegex(Box<CompiledSplitRegexData>),
 
     /// A pre-compiled throw with a static error object.
     /// Boxed to reduce enum size (rare variant).
+    #[cfg(feature = "error-handling")]
     CompiledThrow(Box<Value>),
 }
 
@@ -194,9 +203,14 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Array { nodes, .. } => nodes.iter().all(node_is_static),
         CompiledNode::BuiltinOperator { opcode, args, .. } => opcode_is_static(opcode, args),
         CompiledNode::CustomOperator(_) => false,
-        CompiledNode::CompiledVar { .. } | CompiledNode::CompiledExists(_) => false,
+        CompiledNode::CompiledVar { .. } => false,
+        #[cfg(feature = "ext-control")]
+        CompiledNode::CompiledExists(_) => false,
+        #[cfg(feature = "ext-string")]
         CompiledNode::CompiledSplitRegex(data) => data.args.iter().all(node_is_static),
+        #[cfg(feature = "error-handling")]
         CompiledNode::CompiledThrow(_) => false,
+        #[cfg(feature = "preserve")]
         CompiledNode::StructuredObject(data) => {
             data.fields.iter().all(|(_, node)| node_is_static(node))
         }
@@ -227,7 +241,9 @@ pub(crate) fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
     match opcode {
         // Context-dependent: These operators read from the data context, which is
         // not available at compile time. They must remain dynamic.
-        Var | Val | Missing | MissingSome | Exists => false,
+        Var | Missing | MissingSome => false,
+        #[cfg(feature = "ext-control")]
+        Val | Exists => false,
 
         // Iteration operators: These push new contexts for each iteration and use
         // callbacks that may reference the iteration variable. Even with static
@@ -236,25 +252,24 @@ pub(crate) fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
 
         // Error handling: These have control flow effects (early exit, error propagation)
         // that should be preserved for runtime execution.
+        #[cfg(feature = "error-handling")]
         Try | Throw => false,
 
         // Time-dependent: Returns current UTC time, inherently non-static.
+        #[cfg(feature = "datetime")]
         Now => false,
 
         // Runtime disambiguation needed:
         // - Preserve: Must know it was explicitly used as an operator, not inferred
         // - Merge/Min/Max: Need to distinguish [1,2,3] literal from operator arguments
         //   at runtime to handle nested arrays correctly
+        #[cfg(feature = "preserve")]
         Preserve => false,
         Merge | Min | Max => false,
 
         // Pure operators: Static when all arguments are static. These perform
         // deterministic transformations without side effects or context access.
-        Type | StartsWith | EndsWith | Upper | Lower | Trim | Split | Datetime | Timestamp
-        | ParseDate | FormatDate | DateDiff | Abs | Ceil | Floor | Add | Subtract | Multiply
-        | Divide | Modulo | Equals | StrictEquals | NotEquals | StrictNotEquals | GreaterThan
-        | GreaterThanEqual | LessThan | LessThanEqual | Not | DoubleNot | And | Or | Ternary
-        | If | Cat | Substr | In | Length | Sort | Slice | Coalesce | Switch => args_static(),
+        _ => args_static(),
     }
 }
 
@@ -305,6 +320,7 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             obj.insert(data.name.clone(), args_value);
             Value::Object(obj)
         }
+        #[cfg(feature = "preserve")]
         CompiledNode::StructuredObject(data) => {
             let mut obj = serde_json::Map::new();
             for (key, node) in data.fields.iter() {
@@ -345,6 +361,7 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             }
             Value::Object(obj)
         }
+        #[cfg(feature = "ext-control")]
         CompiledNode::CompiledExists(data) => {
             let mut obj = serde_json::Map::new();
             if data.segments.len() == 1 {
@@ -355,6 +372,7 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             }
             Value::Object(obj)
         }
+        #[cfg(feature = "ext-string")]
         CompiledNode::CompiledSplitRegex(data) => {
             let mut obj = serde_json::Map::new();
             let mut arr = vec![node_to_value(&data.args[0])];
@@ -362,6 +380,7 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             obj.insert("split".into(), Value::Array(arr));
             Value::Object(obj)
         }
+        #[cfg(feature = "error-handling")]
         CompiledNode::CompiledThrow(error_obj) => {
             let mut obj = serde_json::Map::new();
             if let Value::Object(err_map) = error_obj.as_ref() {

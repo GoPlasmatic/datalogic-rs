@@ -1,7 +1,9 @@
 use serde_json::Value;
+#[cfg(feature = "trace")]
 use std::collections::HashMap;
 
 use super::helpers::{check_invalid_args_marker, is_truthy};
+#[cfg(feature = "trace")]
 use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
@@ -65,6 +67,7 @@ pub fn evaluate_ternary(
 }
 
 /// Coalesce operator function (??) - returns first non-null value
+#[cfg(feature = "ext-control")]
 #[inline]
 pub fn evaluate_coalesce(
     args: &[CompiledNode],
@@ -89,6 +92,7 @@ pub fn evaluate_coalesce(
 }
 
 /// Switch/match operator - evaluates discriminant once and matches against case pairs
+#[cfg(feature = "ext-control")]
 #[inline]
 pub fn evaluate_switch(
     args: &[CompiledNode],
@@ -156,6 +160,7 @@ pub fn evaluate_switch(
 // ============================================================================
 
 /// Traced version of `if` operator - only evaluates the selected branch.
+#[cfg(feature = "trace")]
 #[inline(never)]
 pub fn evaluate_if_traced(
     args: &[CompiledNode],
@@ -197,6 +202,7 @@ pub fn evaluate_if_traced(
 }
 
 /// Traced version of `ternary` (?:) operator - only evaluates the selected branch.
+#[cfg(feature = "trace")]
 #[inline(never)]
 pub fn evaluate_ternary_traced(
     args: &[CompiledNode],
@@ -221,6 +227,7 @@ pub fn evaluate_ternary_traced(
 }
 
 /// Traced version of `coalesce` (??) operator - only evaluates until first non-null.
+#[cfg(all(feature = "ext-control", feature = "trace"))]
 #[inline(never)]
 pub fn evaluate_coalesce_traced(
     args: &[CompiledNode],
@@ -247,6 +254,7 @@ pub fn evaluate_coalesce_traced(
 }
 
 /// Traced version of `switch`/`match` operator - only evaluates matched result.
+#[cfg(all(feature = "ext-control", feature = "trace"))]
 #[inline(never)]
 pub fn evaluate_switch_traced(
     args: &[CompiledNode],

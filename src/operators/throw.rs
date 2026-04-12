@@ -35,6 +35,7 @@ pub fn evaluate_throw(
 }
 
 /// Traced version of throw - evaluates argument with tracing before throwing
+#[cfg(feature = "trace")]
 #[inline]
 pub fn evaluate_throw_traced(
     args: &[CompiledNode],

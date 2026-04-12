@@ -44,6 +44,7 @@
 
 use serde_json::Value;
 
+#[cfg(feature = "datetime")]
 use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::constants::INVALID_ARGS;
 use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
@@ -109,6 +110,7 @@ pub fn evaluate_strict_equals(
 
 /// Returns true if a string could plausibly be a datetime or duration.
 /// Filters out pure numeric strings and short strings that can't be either format.
+#[cfg(feature = "datetime")]
 #[inline]
 fn could_be_datetime_or_duration(s: &str) -> bool {
     let b = s.as_bytes();
@@ -138,6 +140,7 @@ fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic)
             };
         }
         // Two strings that can't be datetimes — skip extraction
+        #[cfg(feature = "datetime")]
         (Value::String(l), Value::String(r))
             if !could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r) =>
         {
@@ -165,20 +168,23 @@ fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic)
         _ => {}
     }
 
-    // Handle datetime comparisons - both objects and strings
-    let left_dt = extract_datetime_value(left);
-    let right_dt = extract_datetime_value(right);
+    #[cfg(feature = "datetime")]
+    {
+        // Handle datetime comparisons - both objects and strings
+        let left_dt = extract_datetime_value(left);
+        let right_dt = extract_datetime_value(right);
 
-    if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-        return Ok(dt1 == dt2);
-    }
+        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
+            return Ok(dt1 == dt2);
+        }
 
-    // Handle duration comparisons - both objects and strings
-    let left_dur = extract_duration_value(left);
-    let right_dur = extract_duration_value(right);
+        // Handle duration comparisons - both objects and strings
+        let left_dur = extract_duration_value(left);
+        let right_dur = extract_duration_value(right);
 
-    if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-        return Ok(dur1 == dur2);
+        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
+            return Ok(dur1 == dur2);
+        }
     }
 
     if strict {
@@ -295,6 +301,7 @@ impl OrdOp {
         }
     }
 
+    #[cfg(feature = "datetime")]
     #[inline]
     fn apply_datetime(
         self,
@@ -309,6 +316,7 @@ impl OrdOp {
         }
     }
 
+    #[cfg(feature = "datetime")]
     #[inline]
     fn apply_duration(
         self,
@@ -364,34 +372,38 @@ fn compare_ordered(left: &Value, right: &Value, op: OrdOp, engine: &DataLogic) -
     }
 
     // Fast path: both strings that can't be datetimes — skip datetime parsing
+    #[cfg(feature = "datetime")]
     if let (Value::String(l), Value::String(r)) = (left, right)
         && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
     {
         return Ok(op.apply_str(l, r));
     }
 
-    // Handle datetime comparisons first - both objects and strings
-    let left_dt = extract_datetime_value(left);
-    let right_dt = extract_datetime_value(right);
+    #[cfg(feature = "datetime")]
+    {
+        // Handle datetime comparisons first - both objects and strings
+        let left_dt = extract_datetime_value(left);
+        let right_dt = extract_datetime_value(right);
 
-    if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
-        return Ok(op.apply_datetime(dt1, dt2));
-    }
+        if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
+            return Ok(op.apply_datetime(dt1, dt2));
+        }
 
-    // Handle duration comparisons - skip if already parsed as datetime (mutually exclusive)
-    let left_dur = if left_dt.is_none() {
-        extract_duration_value(left)
-    } else {
-        None
-    };
-    let right_dur = if right_dt.is_none() {
-        extract_duration_value(right)
-    } else {
-        None
-    };
+        // Handle duration comparisons - skip if already parsed as datetime (mutually exclusive)
+        let left_dur = if left_dt.is_none() {
+            extract_duration_value(left)
+        } else {
+            None
+        };
+        let right_dur = if right_dt.is_none() {
+            extract_duration_value(right)
+        } else {
+            None
+        };
 
-    if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
-        return Ok(op.apply_duration(dur1, dur2));
+        if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
+            return Ok(op.apply_duration(dur1, dur2));
+        }
     }
 
     // Arrays and objects cannot be compared (after checking for special objects)
