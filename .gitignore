@@ -44,3 +44,9 @@ docs/src/assets/*.css
 
 # Benchmark reports
 benchmarks/
+
+# cargo-flamegraph / cargo-instruments output
+flamegraph.svg
+*.trace/
+cargo-flamegraph.*
+perf.data*
