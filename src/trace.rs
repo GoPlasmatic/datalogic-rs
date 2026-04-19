@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 
 use crate::{CompiledNode, OpCode, StructuredError};
 
@@ -40,45 +39,30 @@ pub struct ExpressionNode {
 }
 
 impl ExpressionNode {
-    /// Build an expression tree from a CompiledNode, assigning unique IDs.
+    /// Build an expression tree from a CompiledNode.
     ///
-    /// Returns the expression tree and a mapping from node pointers to IDs.
-    pub fn build_from_compiled(node: &CompiledNode) -> (ExpressionNode, HashMap<usize, u32>) {
-        let mut id_counter = 0u32;
-        let mut node_id_map = HashMap::new();
-        let tree = Self::build_node(node, &mut id_counter, &mut node_id_map);
-        (tree, node_id_map)
+    /// Every tree node inherits its compile-time id from the source
+    /// [`CompiledNode::id`]. No side-table is needed: both tracing and error
+    /// reporting look the id up directly on the node.
+    pub fn build_from_compiled(node: &CompiledNode) -> ExpressionNode {
+        Self::build_node(node)
     }
 
-    fn build_node(
-        node: &CompiledNode,
-        id_counter: &mut u32,
-        node_id_map: &mut HashMap<usize, u32>,
-    ) -> ExpressionNode {
-        let id = *id_counter;
-        *id_counter += 1;
-
-        // Store the mapping from node pointer to ID
-        let node_ptr = node as *const CompiledNode as usize;
-        node_id_map.insert(node_ptr, id);
+    fn build_node(node: &CompiledNode) -> ExpressionNode {
+        let id = node.id();
 
         match node {
-            CompiledNode::Value { value, .. } => {
-                // Literals don't have children but we still need to represent them
-                // in the tree for completeness
-                ExpressionNode {
-                    id,
-                    expression: value.to_string(),
-                    children: vec![],
-                }
-            }
+            CompiledNode::Value { value, .. } => ExpressionNode {
+                id,
+                expression: value.to_string(),
+                children: vec![],
+            },
             CompiledNode::Array { nodes, .. } => {
                 let children: Vec<ExpressionNode> = nodes
                     .iter()
                     .filter(|n| Self::is_operator_node(n))
-                    .map(|n| Self::build_node(n, id_counter, node_id_map))
+                    .map(Self::build_node)
                     .collect();
-
                 ExpressionNode {
                     id,
                     expression: Self::node_to_json_string(node),
@@ -89,9 +73,8 @@ impl ExpressionNode {
                 let children: Vec<ExpressionNode> = args
                     .iter()
                     .filter(|n| Self::is_operator_node(n))
-                    .map(|n| Self::build_node(n, id_counter, node_id_map))
+                    .map(Self::build_node)
                     .collect();
-
                 ExpressionNode {
                     id,
                     expression: Self::builtin_to_json_string(opcode, args),
@@ -103,9 +86,8 @@ impl ExpressionNode {
                     .args
                     .iter()
                     .filter(|n| Self::is_operator_node(n))
-                    .map(|n| Self::build_node(n, id_counter, node_id_map))
+                    .map(Self::build_node)
                     .collect();
-
                 ExpressionNode {
                     id,
                     expression: Self::custom_to_json_string(&data.name, &data.args),
@@ -118,9 +100,8 @@ impl ExpressionNode {
                     .fields
                     .iter()
                     .filter(|(_, n)| Self::is_operator_node(n))
-                    .map(|(_, n)| Self::build_node(n, id_counter, node_id_map))
+                    .map(|(_, n)| Self::build_node(n))
                     .collect();
-
                 ExpressionNode {
                     id,
                     expression: Self::structured_to_json_string(&data.fields),
@@ -134,12 +115,11 @@ impl ExpressionNode {
                 default_value,
                 ..
             } => {
-                // CompiledVar has no operator children (default_value is a literal typically)
                 let mut children = Vec::new();
                 if let Some(def) = default_value
                     && Self::is_operator_node(def)
                 {
-                    children.push(Self::build_node(def, id_counter, node_id_map));
+                    children.push(Self::build_node(def));
                 }
                 ExpressionNode {
                     id,
@@ -165,7 +145,7 @@ impl ExpressionNode {
                     .args
                     .iter()
                     .filter(|n| Self::is_operator_node(n))
-                    .map(|n| Self::build_node(n, id_counter, node_id_map))
+                    .map(Self::build_node)
                     .collect();
                 ExpressionNode {
                     id,
@@ -455,12 +435,13 @@ mod tests {
                 .into_boxed_slice(),
         };
 
-        let (tree, node_id_map) = ExpressionNode::build_from_compiled(&node);
+        let tree = ExpressionNode::build_from_compiled(&node);
 
-        assert_eq!(tree.id, 0);
+        // Synthetic test nodes all share SYNTHETIC_ID (0); the structural
+        // assertions below still hold.
+        assert_eq!(tree.id, crate::node::SYNTHETIC_ID);
         assert_eq!(tree.expression, r#"{"var": "age"}"#);
         assert!(tree.children.is_empty()); // "age" is a literal, not a child
-        assert_eq!(node_id_map.len(), 1);
     }
 
     #[test]
@@ -482,14 +463,12 @@ mod tests {
             .into_boxed_slice(),
         };
 
-        let (tree, node_id_map) = ExpressionNode::build_from_compiled(&node);
+        let tree = ExpressionNode::build_from_compiled(&node);
 
-        assert_eq!(tree.id, 0);
+        assert_eq!(tree.id, crate::node::SYNTHETIC_ID);
         assert!(tree.expression.contains(">="));
         assert_eq!(tree.children.len(), 1); // var node is a child
-        assert_eq!(tree.children[0].id, 1);
         assert!(tree.children[0].expression.contains("var"));
-        assert_eq!(node_id_map.len(), 2);
     }
 
     #[test]

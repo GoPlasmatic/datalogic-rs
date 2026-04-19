@@ -173,8 +173,8 @@ fn test_expression_tree_structure() {
         .evaluate_json_with_trace(r#"{">=": [{"var": "age"}, 18]}"#, r#"{"age": 25}"#)
         .unwrap();
 
-    // Root should have id 0
-    assert_eq!(result.expression_tree.id, 0);
+    // Root should have a nonzero compile-time id (0 is the synthetic sentinel)
+    assert!(result.expression_tree.id > 0);
 
     // Root expression should contain >=
     assert!(result.expression_tree.expression.contains(">="));
@@ -182,8 +182,9 @@ fn test_expression_tree_structure() {
     // Should have one child (the var node)
     assert_eq!(result.expression_tree.children.len(), 1);
 
-    // Child should have id > 0
+    // Child should also have a nonzero id and should differ from the root's
     assert!(result.expression_tree.children[0].id > 0);
+    assert_ne!(result.expression_tree.children[0].id, result.expression_tree.id);
 
     // Child should be the var node
     assert!(

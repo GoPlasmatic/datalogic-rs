@@ -604,15 +604,14 @@ impl DataLogic {
         )?);
 
         // Build expression tree and node ID mapping
-        let (expression_tree, node_id_map) = ExpressionNode::build_from_compiled(&compiled.root);
+        let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
 
         // Create context and trace collector
         let mut context = ContextStack::new(data_arc);
         let mut collector = TraceCollector::new();
 
         // Evaluate with tracing
-        let result =
-            self.evaluate_node_traced(&compiled.root, &mut context, &mut collector, &node_id_map);
+        let result = self.evaluate_node_traced(&compiled.root, &mut context, &mut collector);
 
         match result {
             Ok(value) => Ok(TracedResult {
@@ -664,12 +663,11 @@ impl DataLogic {
                 .map_err(Error::from)?,
         );
 
-        let (expression_tree, node_id_map) = ExpressionNode::build_from_compiled(&compiled.root);
+        let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut context = ContextStack::new(data_arc);
         let mut collector = TraceCollector::new();
 
-        let result =
-            self.evaluate_node_traced(&compiled.root, &mut context, &mut collector, &node_id_map);
+        let result = self.evaluate_node_traced(&compiled.root, &mut context, &mut collector);
 
         match result {
             Ok(value) => Ok(TracedResult {
@@ -697,20 +695,16 @@ impl DataLogic {
     }
 
     /// Traced dispatch. Thin wrapper around [`evaluate_node_with_mode`]
-    /// specialised to [`Traced`](crate::eval_mode::Traced). The collector and
-    /// node-id map carry the per-node recording state.
+    /// specialised to [`Traced`](crate::eval_mode::Traced). Node IDs come
+    /// directly from each [`CompiledNode::id`] — no pointer-keyed side-table.
     #[cfg(feature = "trace")]
     pub fn evaluate_node_traced(
         &self,
         node: &CompiledNode,
         context: &mut ContextStack,
         collector: &mut TraceCollector,
-        node_id_map: &HashMap<usize, u32>,
     ) -> Result<Value> {
-        let mut traced = crate::eval_mode::Traced {
-            collector,
-            node_id_map,
-        };
+        let mut traced = crate::eval_mode::Traced { collector };
         self.evaluate_node_with_mode(node, context, &mut traced)
     }
 }

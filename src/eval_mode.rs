@@ -59,14 +59,12 @@ impl Mode for Plain {
 /// Traced evaluation mode.
 ///
 /// Records an [`ExecutionStep`](crate::trace::ExecutionStep) per non-literal
-/// node into the wrapped [`TraceCollector`], keyed by node id.
+/// node into the wrapped [`TraceCollector`], keyed by the compile-time id
+/// stored directly on the [`CompiledNode`]. No pointer-keyed side-table.
 #[cfg(feature = "trace")]
 pub struct Traced<'a> {
     /// Collector receiving recorded steps.
     pub collector: &'a mut crate::trace::TraceCollector,
-    /// Map from node pointer (as `usize`) to node id, built alongside the
-    /// expression tree during `compile_for_trace`.
-    pub node_id_map: &'a std::collections::HashMap<usize, u32>,
 }
 
 #[cfg(feature = "trace")]
@@ -74,8 +72,7 @@ impl Mode for Traced<'_> {
     const TRACED: bool = true;
 
     fn on_node_result(&mut self, node: &CompiledNode, ctx_data: &Value, result: &Result<Value>) {
-        let node_ptr = node as *const CompiledNode as usize;
-        let id = self.node_id_map.get(&node_ptr).copied().unwrap_or(0);
+        let id = node.id();
         match result {
             Ok(v) => self.collector.record_step(id, ctx_data.clone(), v.clone()),
             Err(e) => self
