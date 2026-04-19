@@ -2,16 +2,13 @@ use serde_json::Value;
 
 #[cfg(feature = "ext-array")]
 use std::cmp::Ordering;
-#[cfg(feature = "trace")]
-use std::collections::HashMap;
 
 use super::helpers::is_truthy;
 use super::variable;
 use crate::constants::INVALID_ARGS;
+use crate::eval_mode::Mode;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
-#[cfg(feature = "trace")]
-use crate::trace::TraceCollector;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 
 /// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
@@ -441,29 +438,32 @@ pub fn evaluate_merge(
 /// ```
 /// Returns: `[2, 4, 6]`
 #[inline]
-pub fn evaluate_map(
+pub fn evaluate_map<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.len() != 2 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection = engine.evaluate_node(&args[0], context)?;
+    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
     let logic = &args[1];
 
     match collection {
         Value::Array(arr) => {
             // Fast path: if the map body is a simple var/val access,
             // handle it directly without pushing items into context.
-            if let CompiledNode::CompiledVar {
-                scope_level: 0,
-                segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-            } = logic
+            // Skipped under tracing so per-iteration steps are still recorded.
+            if !M::TRACED
+                && let CompiledNode::CompiledVar {
+                    scope_level: 0,
+                    segments,
+                    reduce_hint: ReduceHint::None,
+                    metadata_hint: MetadataHint::None,
+                    default_value: None,
+                } = logic
             {
                 if segments.is_empty() {
                     // Identity map: val([]) returns each item as-is
@@ -482,10 +482,11 @@ pub fn evaluate_map(
 
             // Fast path: arithmetic op on whole item with literal
             // e.g., {"*": [{"val": []}, 2]}
-            if let CompiledNode::BuiltinOperator {
-                opcode,
-                args: body_args,
-            } = logic
+            if !M::TRACED
+                && let CompiledNode::BuiltinOperator {
+                    opcode,
+                    args: body_args,
+                } = logic
                 && body_args.len() == 2
                 && matches!(
                     opcode,
@@ -541,6 +542,7 @@ pub fn evaluate_map(
             }
 
             let len = arr.len();
+            let total = len as u32;
             let mut results = Vec::with_capacity(len);
             let mut pushed = false;
 
@@ -551,8 +553,10 @@ pub fn evaluate_map(
                 } else {
                     context.replace_top_data(item, index);
                 }
-                let result = engine.evaluate_node(logic, context)?;
-                results.push(result);
+                mode.push_iteration(index as u32, total);
+                let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
+                mode.pop_iteration();
+                results.push(result?);
             }
             if len > 0 {
                 context.pop();
@@ -561,6 +565,7 @@ pub fn evaluate_map(
             Ok(Value::Array(results))
         }
         Value::Object(obj) => {
+            let total = obj.len() as u32;
             let mut results = Vec::with_capacity(obj.len());
 
             for (index, (key, value)) in obj.iter().enumerate() {
@@ -569,8 +574,10 @@ pub fn evaluate_map(
                 } else {
                     context.replace_top_key_data(value.clone(), index, key.clone());
                 }
-                let result = engine.evaluate_node(logic, context)?;
-                results.push(result);
+                mode.push_iteration(index as u32, total);
+                let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
+                mode.pop_iteration();
+                results.push(result?);
             }
             if !obj.is_empty() {
                 context.pop();
@@ -583,10 +590,12 @@ pub fn evaluate_map(
         other => {
             // Use push_with_index to avoid HashMap allocation
             context.push_with_index(other, 0);
-            let result = engine.evaluate_node(logic, context)?;
+            mode.push_iteration(0, 1);
+            let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
+            mode.pop_iteration();
             context.pop();
 
-            Ok(Value::Array(vec![result]))
+            Ok(Value::Array(vec![result?]))
         }
     }
 }
@@ -627,27 +636,28 @@ pub fn evaluate_map(
 /// ```
 /// Returns: `{"a": 10, "c": 20}`
 #[inline]
-pub fn evaluate_filter(
+pub fn evaluate_filter<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.len() != 2 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection = engine.evaluate_node(&args[0], context)?;
+    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
     let predicate = &args[1];
 
     match collection {
         Value::Array(arr) => {
             // Fast path: detect simple comparison predicates to avoid per-item context push.
-            // Handles patterns like: {"===": [{"val": "field"}, "literal"]}
-            // and {"===": [{"val": "field"}, {"val": [[N], "parent_field"]}]}
-            if let CompiledNode::BuiltinOperator {
-                opcode,
-                args: pred_args,
-            } = predicate
+            // Skipped under tracing so per-iteration steps are still recorded.
+            if !M::TRACED
+                && let CompiledNode::BuiltinOperator {
+                    opcode,
+                    args: pred_args,
+                } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
             {
@@ -671,7 +681,9 @@ pub fn evaluate_filter(
             }
 
             // Fast path for ordered comparisons on whole items or fields (>=, >, <, <=)
-            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+            if !M::TRACED
+                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
+            {
                 let results: Vec<Value> = arr
                     .into_iter()
                     .filter(|item| fast_pred.evaluate(item))
@@ -680,6 +692,7 @@ pub fn evaluate_filter(
             }
 
             let len = arr.len();
+            let total = len as u32;
             let mut results = Vec::with_capacity(arr.len());
             let mut pushed = false;
 
@@ -690,7 +703,10 @@ pub fn evaluate_filter(
                 } else {
                     context.replace_top_data(item, index);
                 }
-                let keep = engine.evaluate_node(predicate, context)?;
+                mode.push_iteration(index as u32, total);
+                let keep = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
+                mode.pop_iteration();
+                let keep = keep?;
 
                 if is_truthy(&keep, engine) {
                     // Move data out of context frame instead of cloning
@@ -704,6 +720,7 @@ pub fn evaluate_filter(
             Ok(Value::Array(results))
         }
         Value::Object(obj) => {
+            let total = obj.len() as u32;
             let mut result_obj = serde_json::Map::new();
 
             for (index, (key, value)) in obj.iter().enumerate() {
@@ -712,7 +729,10 @@ pub fn evaluate_filter(
                 } else {
                     context.replace_top_key_data(value.clone(), index, key.clone());
                 }
-                let keep = engine.evaluate_node(predicate, context)?;
+                mode.push_iteration(index as u32, total);
+                let keep = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
+                mode.pop_iteration();
+                let keep = keep?;
 
                 if is_truthy(&keep, engine) {
                     result_obj.insert(key.clone(), value.clone());
@@ -758,18 +778,19 @@ pub fn evaluate_filter(
 /// ```
 /// Returns: `10`
 #[inline]
-pub fn evaluate_reduce(
+pub fn evaluate_reduce<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.len() != 3 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let array = engine.evaluate_node(&args[0], context)?;
+    let array = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
     let logic = &args[1];
-    let initial = engine.evaluate_node(&args[2], context)?;
+    let initial = engine.evaluate_node_with_mode::<M>(&args[2], context, mode)?;
 
     match array {
         Value::Array(arr) => {
@@ -777,11 +798,13 @@ pub fn evaluate_reduce(
                 return Ok(initial);
             }
 
-            // Fast path: detect {op: [val("current"), val("accumulator")]} or reversed
-            if let CompiledNode::BuiltinOperator {
-                opcode,
-                args: body_args,
-            } = logic
+            // Fast path: detect {op: [val("current"), val("accumulator")]} or reversed.
+            // Skipped under tracing so per-iteration steps are still recorded.
+            if !M::TRACED
+                && let CompiledNode::BuiltinOperator {
+                    opcode,
+                    args: body_args,
+                } = logic
                 && body_args.len() == 2
                 && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
                 && let Some(result) = try_reduce_fast_path(&arr, &initial, body_args, *opcode)
@@ -790,17 +813,21 @@ pub fn evaluate_reduce(
             }
 
             let len = arr.len();
+            let total = len as u32;
             let mut accumulator = initial;
             let mut pushed = false;
 
-            for current in arr.into_iter() {
+            for (index, current) in arr.into_iter().enumerate() {
                 if !pushed {
                     context.push_reduce(current, accumulator);
                     pushed = true;
                 } else {
                     context.replace_reduce_data(current, accumulator);
                 }
-                accumulator = engine.evaluate_node(logic, context)?;
+                mode.push_iteration(index as u32, total);
+                let next = engine.evaluate_node_with_mode::<M>(logic, context, mode);
+                mode.pop_iteration();
+                accumulator = next?;
             }
             if len > 0 {
                 context.pop();
@@ -840,25 +867,28 @@ pub fn evaluate_reduce(
 /// ```
 /// Returns: `true` (all are greater than 5)
 #[inline]
-pub fn evaluate_all(
+pub fn evaluate_all<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.len() != 2 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection = engine.evaluate_node(&args[0], context)?;
+    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
     let predicate = &args[1];
 
     match collection {
         Value::Array(arr) if !arr.is_empty() => {
-            // Fast path: field-vs-invariant comparison (avoids per-item context push)
-            if let CompiledNode::BuiltinOperator {
-                opcode,
-                args: pred_args,
-            } = predicate
+            // Fast path: field-vs-invariant comparison (avoids per-item context push).
+            // Skipped under tracing so per-iteration steps are still recorded.
+            if !M::TRACED
+                && let CompiledNode::BuiltinOperator {
+                    opcode,
+                    args: pred_args,
+                } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
             {
@@ -877,11 +907,14 @@ pub fn evaluate_all(
             }
 
             // Fast path: detect simple comparison predicates
-            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+            if !M::TRACED
+                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
+            {
                 return Ok(Value::Bool(arr.iter().all(|item| fast_pred.evaluate(item))));
             }
 
             let len = arr.len();
+            let total = len as u32;
             let mut pushed = false;
             for (index, item) in arr.into_iter().enumerate() {
                 if !pushed {
@@ -890,7 +923,10 @@ pub fn evaluate_all(
                 } else {
                     context.replace_top_data(item, index);
                 }
-                let result = engine.evaluate_node(predicate, context)?;
+                mode.push_iteration(index as u32, total);
+                let result = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
+                mode.pop_iteration();
+                let result = result?;
 
                 if !is_truthy(&result, engine) {
                     context.pop();
@@ -934,25 +970,28 @@ pub fn evaluate_all(
 /// ```
 /// Returns: `true`
 #[inline]
-pub fn evaluate_some(
+pub fn evaluate_some<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.len() != 2 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection = engine.evaluate_node(&args[0], context)?;
+    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
     let predicate = &args[1];
 
     match collection {
         Value::Array(arr) => {
-            // Fast path: field-vs-invariant comparison (avoids per-item context push)
-            if let CompiledNode::BuiltinOperator {
-                opcode,
-                args: pred_args,
-            } = predicate
+            // Fast path: field-vs-invariant comparison (avoids per-item context push).
+            // Skipped under tracing so per-iteration steps are still recorded.
+            if !M::TRACED
+                && let CompiledNode::BuiltinOperator {
+                    opcode,
+                    args: pred_args,
+                } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
             {
@@ -971,11 +1010,14 @@ pub fn evaluate_some(
             }
 
             // Fast path: detect simple comparison predicates
-            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+            if !M::TRACED
+                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
+            {
                 return Ok(Value::Bool(arr.iter().any(|item| fast_pred.evaluate(item))));
             }
 
             let len = arr.len();
+            let total = len as u32;
             let mut pushed = false;
             for (index, item) in arr.into_iter().enumerate() {
                 if !pushed {
@@ -984,7 +1026,10 @@ pub fn evaluate_some(
                 } else {
                     context.replace_top_data(item, index);
                 }
-                let result = engine.evaluate_node(predicate, context)?;
+                mode.push_iteration(index as u32, total);
+                let result = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
+                mode.pop_iteration();
+                let result = result?;
 
                 if is_truthy(&result, engine) {
                     context.pop();
@@ -1028,25 +1073,28 @@ pub fn evaluate_some(
 /// ```
 /// Returns: `true` (none are even)
 #[inline]
-pub fn evaluate_none(
+pub fn evaluate_none<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.len() != 2 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection = engine.evaluate_node(&args[0], context)?;
+    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
     let predicate = &args[1];
 
     match collection {
         Value::Array(arr) => {
-            // Fast path: field-vs-invariant comparison (avoids per-item context push)
-            if let CompiledNode::BuiltinOperator {
-                opcode,
-                args: pred_args,
-            } = predicate
+            // Fast path: field-vs-invariant comparison (avoids per-item context push).
+            // Skipped under tracing so per-iteration steps are still recorded.
+            if !M::TRACED
+                && let CompiledNode::BuiltinOperator {
+                    opcode,
+                    args: pred_args,
+                } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
             {
@@ -1065,13 +1113,16 @@ pub fn evaluate_none(
             }
 
             // Fast path: detect simple comparison predicates
-            if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+            if !M::TRACED
+                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
+            {
                 return Ok(Value::Bool(
                     !arr.iter().any(|item| fast_pred.evaluate(item)),
                 ));
             }
 
             let len = arr.len();
+            let total = len as u32;
             let mut pushed = false;
             for (index, item) in arr.into_iter().enumerate() {
                 if !pushed {
@@ -1080,7 +1131,10 @@ pub fn evaluate_none(
                 } else {
                     context.replace_top_data(item, index);
                 }
-                let result = engine.evaluate_node(predicate, context)?;
+                mode.push_iteration(index as u32, total);
+                let result = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
+                mode.pop_iteration();
+                let result = result?;
 
                 if is_truthy(&result, engine) {
                     context.pop();
@@ -1552,359 +1606,3 @@ fn normalize_index(index: i64, len: i64) -> i64 {
     }
 }
 
-// ============================================================================
-// Traced versions of iteration operators for step-by-step debugging
-// ============================================================================
-
-/// Traced version of `map` operator that records iteration steps.
-#[cfg(feature = "trace")]
-#[inline]
-pub fn evaluate_map_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
-    let logic = &args[1];
-
-    match &collection {
-        Value::Array(arr) => {
-            let total = arr.len() as u32;
-            let mut results = Vec::with_capacity(arr.len());
-
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
-                } else {
-                    context.replace_top_data(item.clone(), index);
-                }
-                collector.push_iteration(index as u32, total);
-
-                let result = engine.evaluate_node_traced(logic, context, collector, node_id_map)?;
-                results.push(result);
-
-                collector.pop_iteration();
-            }
-            if !arr.is_empty() {
-                context.pop();
-            }
-
-            Ok(Value::Array(results))
-        }
-        Value::Object(obj) => {
-            let total = obj.len() as u32;
-            let mut results = Vec::with_capacity(obj.len());
-
-            for (index, (key, value)) in obj.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_key_index(value.clone(), 0, key.clone());
-                } else {
-                    context.replace_top_key_data(value.clone(), index, key.clone());
-                }
-                collector.push_iteration(index as u32, total);
-
-                let result = engine.evaluate_node_traced(logic, context, collector, node_id_map)?;
-                results.push(result);
-
-                collector.pop_iteration();
-            }
-            if !obj.is_empty() {
-                context.pop();
-            }
-
-            Ok(Value::Array(results))
-        }
-        Value::Null => Ok(Value::Array(vec![])),
-        _ => {
-            context.push_with_index(collection, 0);
-            collector.push_iteration(0, 1);
-
-            let result = engine.evaluate_node_traced(logic, context, collector, node_id_map)?;
-
-            collector.pop_iteration();
-            context.pop();
-
-            Ok(Value::Array(vec![result]))
-        }
-    }
-}
-
-#[cfg(feature = "trace")]
-/// Traced version of `filter` operator that records iteration steps.
-#[inline]
-pub fn evaluate_filter_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
-    let predicate = &args[1];
-
-    match &collection {
-        Value::Array(arr) => {
-            let total = arr.len() as u32;
-            let mut results = Vec::new();
-
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
-                } else {
-                    context.replace_top_data(item.clone(), index);
-                }
-                collector.push_iteration(index as u32, total);
-
-                let keep =
-                    engine.evaluate_node_traced(predicate, context, collector, node_id_map)?;
-
-                collector.pop_iteration();
-
-                if is_truthy(&keep, engine) {
-                    results.push(item.clone());
-                }
-            }
-            if !arr.is_empty() {
-                context.pop();
-            }
-
-            Ok(Value::Array(results))
-        }
-        Value::Object(obj) => {
-            let total = obj.len() as u32;
-            let mut result_obj = serde_json::Map::new();
-
-            for (index, (key, value)) in obj.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_key_index(value.clone(), 0, key.clone());
-                } else {
-                    context.replace_top_key_data(value.clone(), index, key.clone());
-                }
-                collector.push_iteration(index as u32, total);
-
-                let keep =
-                    engine.evaluate_node_traced(predicate, context, collector, node_id_map)?;
-
-                collector.pop_iteration();
-
-                if is_truthy(&keep, engine) {
-                    result_obj.insert(key.clone(), value.clone());
-                }
-            }
-            if !obj.is_empty() {
-                context.pop();
-            }
-
-            Ok(Value::Object(result_obj))
-        }
-        Value::Null => Ok(Value::Array(vec![])),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-#[cfg(feature = "trace")]
-/// Traced version of `reduce` operator that records iteration steps.
-#[inline]
-pub fn evaluate_reduce_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.len() != 3 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let array = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
-    let logic = &args[1];
-    let initial = engine.evaluate_node_traced(&args[2], context, collector, node_id_map)?;
-
-    match &array {
-        Value::Array(arr) => {
-            if arr.is_empty() {
-                return Ok(initial);
-            }
-
-            let total = arr.len() as u32;
-            let mut accumulator = initial;
-
-            for (index, current) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_reduce(current.clone(), accumulator);
-                } else {
-                    context.replace_reduce_data(current.clone(), accumulator);
-                }
-                collector.push_iteration(index as u32, total);
-
-                accumulator =
-                    engine.evaluate_node_traced(logic, context, collector, node_id_map)?;
-
-                collector.pop_iteration();
-            }
-            if !arr.is_empty() {
-                context.pop();
-            }
-
-            Ok(accumulator)
-        }
-        Value::Null => Ok(initial),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-#[cfg(feature = "trace")]
-/// Traced version of `all` operator that records iteration steps.
-#[inline]
-pub fn evaluate_all_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
-    let predicate = &args[1];
-
-    match &collection {
-        Value::Array(arr) if !arr.is_empty() => {
-            let total = arr.len() as u32;
-
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
-                } else {
-                    context.replace_top_data(item.clone(), index);
-                }
-                collector.push_iteration(index as u32, total);
-
-                let result =
-                    engine.evaluate_node_traced(predicate, context, collector, node_id_map)?;
-
-                collector.pop_iteration();
-
-                if !is_truthy(&result, engine) {
-                    context.pop();
-                    return Ok(Value::Bool(false));
-                }
-            }
-            context.pop();
-            Ok(Value::Bool(true))
-        }
-        Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
-        Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-#[cfg(feature = "trace")]
-/// Traced version of `some` operator that records iteration steps.
-#[inline]
-pub fn evaluate_some_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
-    let predicate = &args[1];
-
-    match &collection {
-        Value::Array(arr) => {
-            let total = arr.len() as u32;
-
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
-                } else {
-                    context.replace_top_data(item.clone(), index);
-                }
-                collector.push_iteration(index as u32, total);
-
-                let result =
-                    engine.evaluate_node_traced(predicate, context, collector, node_id_map)?;
-
-                collector.pop_iteration();
-
-                if is_truthy(&result, engine) {
-                    context.pop();
-                    return Ok(Value::Bool(true));
-                }
-            }
-            if !arr.is_empty() {
-                context.pop();
-            }
-            Ok(Value::Bool(false))
-        }
-        Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-#[cfg(feature = "trace")]
-/// Traced version of `none` operator that records iteration steps.
-#[inline]
-pub fn evaluate_none_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_traced(&args[0], context, collector, node_id_map)?;
-    let predicate = &args[1];
-
-    match &collection {
-        Value::Array(arr) => {
-            let total = arr.len() as u32;
-
-            for (index, item) in arr.iter().enumerate() {
-                if index == 0 {
-                    context.push_with_index(item.clone(), 0);
-                } else {
-                    context.replace_top_data(item.clone(), index);
-                }
-                collector.push_iteration(index as u32, total);
-
-                let result =
-                    engine.evaluate_node_traced(predicate, context, collector, node_id_map)?;
-
-                collector.pop_iteration();
-
-                if is_truthy(&result, engine) {
-                    context.pop();
-                    return Ok(Value::Bool(false));
-                }
-            }
-            if !arr.is_empty() {
-                context.pop();
-            }
-            Ok(Value::Bool(true))
-        }
-        Value::Null => Ok(Value::Bool(true)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
