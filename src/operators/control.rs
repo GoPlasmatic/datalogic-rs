@@ -21,7 +21,15 @@ pub fn evaluate_if<M: Mode>(
 
     check_invalid_args_marker(args)?;
 
-    // Support variadic if/elseif/else chains
+    // Fast path: the overwhelmingly common 3-arg if/then/else shape.
+    // Avoids the variadic-chain loop's bookkeeping.
+    if args.len() == 3 {
+        let condition = engine.evaluate_node_cow_with_mode::<M>(&args[0], context, mode)?;
+        let idx = if is_truthy(&condition, engine) { 1 } else { 2 };
+        return engine.evaluate_node_with_mode::<M>(&args[idx], context, mode);
+    }
+
+    // Variadic if/elseif/else chains
     let mut i = 0;
     while i < args.len() {
         if i == args.len() - 1 {

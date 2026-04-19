@@ -49,6 +49,17 @@ pub fn evaluate_and<M: Mode>(
 
     check_invalid_args_marker(args)?;
 
+    // Fast path: 2-arg case (the common shape). Avoids the loop and the
+    // initial `Cow::Owned(Bool(true))` allocation that the variadic path
+    // pays for every call.
+    if args.len() == 2 {
+        let a = engine.evaluate_node_cow_with_mode::<M>(&args[0], context, mode)?;
+        if !is_truthy(&a, engine) {
+            return Ok(a.into_owned());
+        }
+        return engine.evaluate_node_with_mode::<M>(&args[1], context, mode);
+    }
+
     let mut last_value: Cow<'_, Value> = Cow::Owned(Value::Bool(true));
 
     for arg in args {
@@ -77,6 +88,15 @@ pub fn evaluate_or<M: Mode>(
     }
 
     check_invalid_args_marker(args)?;
+
+    // Fast path: 2-arg case. Same rationale as `evaluate_and` above.
+    if args.len() == 2 {
+        let a = engine.evaluate_node_cow_with_mode::<M>(&args[0], context, mode)?;
+        if is_truthy(&a, engine) {
+            return Ok(a.into_owned());
+        }
+        return engine.evaluate_node_with_mode::<M>(&args[1], context, mode);
+    }
 
     let mut last_value: Cow<'_, Value> = Cow::Owned(Value::Bool(false));
 
