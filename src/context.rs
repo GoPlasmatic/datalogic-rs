@@ -137,6 +137,15 @@ pub struct ContextStack {
     root: Arc<Value>,
     /// Stack of temporary frames (excludes root)
     frames: Vec<ContextFrame>,
+    /// Breadcrumb of [`CompiledNode`](crate::CompiledNode) ids accumulated
+    /// as errors unwind. The dispatch hub pushes the current node's id on
+    /// each `Err` return; `try` snapshots and truncates the length around
+    /// catches so swallowed errors don't pollute the trail.
+    ///
+    /// The path is leaf-first (deepest failure first, root last), which is
+    /// a natural consequence of accumulating during unwind. Consumers that
+    /// prefer root-first can reverse it.
+    error_path: Vec<u32>,
 }
 
 impl ContextStack {
@@ -145,7 +154,37 @@ impl ContextStack {
         Self {
             root,
             frames: Vec::new(),
+            error_path: Vec::new(),
         }
+    }
+
+    /// Append `id` to the error breadcrumb. Called by the dispatch hub on
+    /// every `Err` return so the trail grows from failure site up to root.
+    #[inline]
+    pub fn push_error_step(&mut self, id: u32) {
+        self.error_path.push(id);
+    }
+
+    /// Snapshot the current breadcrumb length. Paired with
+    /// [`truncate_error_path`] in catch-like operators (`try`) to drop any
+    /// steps accumulated while evaluating an arm that ultimately succeeded.
+    #[inline]
+    pub fn error_path_len(&self) -> usize {
+        self.error_path.len()
+    }
+
+    /// Truncate the breadcrumb back to the given length.
+    #[inline]
+    pub fn truncate_error_path(&mut self, len: usize) {
+        self.error_path.truncate(len);
+    }
+
+    /// Take the accumulated breadcrumb, leaving the context with an empty
+    /// trail. Used at public boundaries when attaching the path to a
+    /// [`StructuredError`](crate::StructuredError).
+    #[inline]
+    pub fn take_error_path(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.error_path)
     }
 
     /// Pushes a new context frame for nested evaluation (data only).

@@ -63,6 +63,10 @@ fn try_last_with_error_context<M: Mode>(
 /// Try operator — catches errors and falls back through alternative arguments.
 ///
 /// Generic over [`Mode`] so plain and traced dispatch share the same body.
+/// Snapshots the error breadcrumb length on entry and truncates back to it
+/// whenever a catch succeeds, so the final breadcrumb only reflects the
+/// error that escapes `try` (if any) — not every arm that was tried and
+/// swallowed along the way.
 #[inline]
 pub fn evaluate_try<M: Mode>(
     args: &[CompiledNode],
@@ -83,9 +87,12 @@ pub fn evaluate_try<M: Mode>(
 
     // Fast path: two arguments (most common pattern)
     if args.len() == 2 {
+        let checkpoint = context.error_path_len();
         match engine.evaluate_node_with_mode::<M>(&args[0], context, mode) {
             Ok(result) => return Ok(result),
             Err(err) => {
+                // Swallowed error — drop any breadcrumb it accumulated.
+                context.truncate_error_path(checkpoint);
                 let mut last_error = Some(err);
                 return try_last_with_error_context::<M>(
                     &args[1],
@@ -112,9 +119,13 @@ pub fn evaluate_try<M: Mode>(
                 mode,
             );
         }
+        let checkpoint = context.error_path_len();
         match engine.evaluate_node_with_mode::<M>(arg, context, mode) {
             Ok(result) => return Ok(result),
-            Err(err) => last_error = Some(err),
+            Err(err) => {
+                context.truncate_error_path(checkpoint);
+                last_error = Some(err);
+            }
         }
     }
 

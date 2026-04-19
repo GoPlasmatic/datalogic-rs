@@ -381,14 +381,17 @@ impl DataLogic {
         data: Arc<Value>,
     ) -> std::result::Result<Value, StructuredError> {
         let mut context = ContextStack::new(data);
-        self.evaluate_node(&compiled.root, &mut context)
-            .map_err(|e| {
-                let mut se = StructuredError::from(e);
+        match self.evaluate_node(&compiled.root, &mut context) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let path = context.take_error_path();
+                let mut se = StructuredError::from(e).with_path(path);
                 if let Some(name) = compiled.root.operator_name() {
                     se = se.with_operator(name);
                 }
-                se
-            })
+                Err(se)
+            }
+        }
     }
 
     /// Convenience method: parse, compile, and evaluate with a structured
@@ -522,6 +525,13 @@ impl DataLogic {
             CompiledNode::CompiledThrow(data) => Err(Error::Thrown(data.error.clone())),
         };
 
+        // Accumulate the error breadcrumb on every Err. Runs under Plain too
+        // — this is how structured errors get their `path` field even without
+        // tracing. `try` truncates the trail around its catches.
+        if result.is_err() {
+            context.push_error_step(node.id());
+        }
+
         if M::TRACED {
             mode.on_node_result(node, &ctx_data, &result);
         }
@@ -624,7 +634,8 @@ impl DataLogic {
             Err(e) => {
                 // Return error but include partial steps for debugging
                 let message = e.to_string();
-                let mut structured = StructuredError::from(e);
+                let path = context.take_error_path();
+                let mut structured = StructuredError::from(e).with_path(path);
                 if let Some(name) = compiled.root.operator_name() {
                     structured = structured.with_operator(name);
                 }
@@ -679,7 +690,8 @@ impl DataLogic {
             }),
             Err(e) => {
                 let message = e.to_string();
-                let mut structured = StructuredError::from(e);
+                let path = context.take_error_path();
+                let mut structured = StructuredError::from(e).with_path(path);
                 if let Some(name) = compiled.root.operator_name() {
                     structured = structured.with_operator(name);
                 }

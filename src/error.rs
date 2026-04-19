@@ -126,23 +126,42 @@ impl Serialize for Error {
 /// occurred. Produced at the WASM/engine boundary for structured consumption
 /// by non-Rust callers (e.g. the React debugger).
 ///
-/// Serializes by flattening the inner `Error` — the JSON shape is exactly
-/// `{"type": ..., "message": ..., ...extras, "operator": ...}`.
-#[derive(Debug, Clone)]
+/// Serializes by flattening the inner `Error` — the JSON shape is:
+/// `{"type": ..., "message": ..., ...extras, "operator": ..., "path": [...]}`.
+///
+/// The `path` field is a breadcrumb of [`CompiledNode`](crate::CompiledNode)
+/// ids from the failing sub-expression up to the root, collected by the
+/// dispatch hub during error unwinding. It is empty when the error came from
+/// parse/compile (before evaluation began) or when tracing is running via
+/// `compile_for_trace` where source-level ids are themselves synthetic.
+#[derive(Debug, Clone, Default)]
 pub struct StructuredError {
     pub error: Error,
 
     /// Name of the outermost operator that produced the error, when known.
     pub operator: Option<String>,
+
+    /// Breadcrumb of node ids from the failure site toward the root.
+    /// Empty means no evaluation path was collected.
+    pub path: Vec<u32>,
+}
+
+impl Default for Error {
+    fn default() -> Self {
+        Error::Custom(String::new())
+    }
 }
 
 impl Serialize for StructuredError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // Flatten the inner Error fields, then append `operator` when present.
+        // Flatten the inner Error fields, then append operator + path when present.
         let mut map = serializer.serialize_map(None)?;
         self.error.serialize_fields(&mut map)?;
         if let Some(op) = &self.operator {
             map.serialize_entry("operator", op)?;
+        }
+        if !self.path.is_empty() {
+            map.serialize_entry("path", &self.path)?;
         }
         map.end()
     }
@@ -154,6 +173,12 @@ impl StructuredError {
         self.operator = Some(operator.into());
         self
     }
+
+    /// Attach the given breadcrumb path and return self.
+    pub fn with_path(mut self, path: Vec<u32>) -> Self {
+        self.path = path;
+        self
+    }
 }
 
 impl From<Error> for StructuredError {
@@ -161,6 +186,7 @@ impl From<Error> for StructuredError {
         StructuredError {
             error,
             operator: None,
+            path: Vec::new(),
         }
     }
 }

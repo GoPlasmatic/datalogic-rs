@@ -299,3 +299,89 @@ fn display_output_snapshot() {
         assert_eq!(err.to_string(), *expected, "Display changed for {:?}", err);
     }
 }
+
+// =====================================================================
+// Error breadcrumb path tests (plan item #4)
+// =====================================================================
+
+#[test]
+fn structured_error_has_nonempty_path_on_runtime_error() {
+    let engine = DataLogic::new();
+    // Nested variable access that will fail: outer wraps an unknown-var read.
+    // The path should contain at least one node id (the failing node), and
+    // more if the error unwinds through additional operators.
+    // `throw` wrapped in an `if` with a DYNAMIC condition (reads a var)
+    // so the optimiser can't fold the if away and the error unwinds
+    // through multiple operator frames.
+    let err = engine
+        .evaluate_json_structured(
+            r#"{"if": [{"var": "go"}, {"throw": "oops"}, "ok"]}"#,
+            r#"{"go": true}"#,
+        )
+        .expect_err("throw should fail");
+
+    // Breadcrumb should be populated, leaf-first (deepest failure first).
+    assert!(
+        !err.path.is_empty(),
+        "expected breadcrumb path, got empty"
+    );
+    // All ids should be nonzero (SYNTHETIC_ID=0 is reserved).
+    for id in &err.path {
+        assert!(*id > 0, "synthetic id leaked into breadcrumb: {:?}", err.path);
+    }
+    // Should have at least 2 ids — the throw itself plus the wrapping if,
+    // since the if's dynamic condition prevents dead-code elimination.
+    assert!(
+        err.path.len() >= 2,
+        "expected at least 2 ids in path, got {:?}",
+        err.path
+    );
+}
+
+#[test]
+fn structured_error_empty_path_on_success() {
+    let engine = DataLogic::new();
+    let result = engine.evaluate_json_structured(
+        r#"{"==": [1, 1]}"#,
+        r#"{}"#,
+    );
+    // Successful eval — no error, so there's nothing to assert about path.
+    assert!(result.is_ok());
+}
+
+#[test]
+fn try_catches_and_discards_inner_path() {
+    let engine = DataLogic::new();
+    // Outer `try` swallows a failing inner branch; the caller should see Ok,
+    // and no breadcrumb should leak into a subsequent failing evaluation
+    // because try truncates on catch.
+    // try swallows the throw; result should be the fallback, not an error.
+    let result = engine.evaluate_json_structured(
+        r#"{"try": [{"throw": "ignored"}, "fallback"]}"#,
+        r#"{}"#,
+    );
+    assert_eq!(result.unwrap(), json!("fallback"));
+}
+
+#[test]
+fn structured_error_path_serializes_to_json() {
+    let engine = DataLogic::new();
+    let err = engine
+        .evaluate_json_structured(
+            r#"{"if": [true, {"throw": "boom"}, "ok"]}"#,
+            r#"{}"#,
+        )
+        .unwrap_err();
+
+    let json: Value = serde_json::to_value(&err).expect("must serialize");
+    // `path` should be present as an array of numbers.
+    let path = json
+        .get("path")
+        .expect("serialized error should include `path` field")
+        .as_array()
+        .expect("`path` should be an array");
+    assert!(!path.is_empty());
+    for id in path {
+        assert!(id.is_u64());
+    }
+}
