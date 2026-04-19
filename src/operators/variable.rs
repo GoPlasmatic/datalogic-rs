@@ -607,27 +607,34 @@ pub fn evaluate_compiled_var(
         MetadataHint::None => {}
     }
 
-    // 2. Reduce context fast path
-    // Use Option<Option<Value>>: None = no reduce, Some(Some(v)) = found, Some(None) = not found
-    let reduce_result = {
-        let frame = context.current();
-        match reduce_hint {
-            ReduceHint::Current => frame.get_reduce_current().map(|v| Some(v.clone())),
-            ReduceHint::Accumulator => frame.get_reduce_accumulator().map(|v| Some(v.clone())),
-            ReduceHint::CurrentPath => frame
-                .get_reduce_current()
-                .map(|current| try_traverse_segments(current, &segments[1..]).cloned()),
-            ReduceHint::AccumulatorPath => frame
-                .get_reduce_accumulator()
-                .map(|acc| try_traverse_segments(acc, &segments[1..]).cloned()),
-            ReduceHint::None => None,
-        }
-    }; // frame borrow ends here
+    // 2. Reduce context fast path — only enter the frame if the compile-time
+    // hint says we might hit one. Most vars in compat have `ReduceHint::None`
+    // and skipping the whole block avoids a redundant `context.current()`
+    // call plus a match on the common path.
+    if reduce_hint != ReduceHint::None {
+        // Use Option<Option<Value>>: None = no reduce, Some(Some(v)) = found, Some(None) = not found
+        let reduce_result = {
+            let frame = context.current();
+            match reduce_hint {
+                ReduceHint::Current => frame.get_reduce_current().map(|v| Some(v.clone())),
+                ReduceHint::Accumulator => {
+                    frame.get_reduce_accumulator().map(|v| Some(v.clone()))
+                }
+                ReduceHint::CurrentPath => frame
+                    .get_reduce_current()
+                    .map(|current| try_traverse_segments(current, &segments[1..]).cloned()),
+                ReduceHint::AccumulatorPath => frame
+                    .get_reduce_accumulator()
+                    .map(|acc| try_traverse_segments(acc, &segments[1..]).cloned()),
+                ReduceHint::None => unreachable!(),
+            }
+        }; // frame borrow ends here
 
-    match reduce_result {
-        Some(Some(v)) => return Ok(v),
-        Some(None) => return default_or_null(default_value, context, engine),
-        None => {} // fall through to normal access
+        match reduce_result {
+            Some(Some(v)) => return Ok(v),
+            Some(None) => return default_or_null(default_value, context, engine),
+            None => {} // fall through to normal access
+        }
     }
 
     // 3. Get data at scope level and traverse
