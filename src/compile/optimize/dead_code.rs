@@ -16,37 +16,46 @@ use serde_json::Value;
 use super::helpers::is_truthy_literal;
 
 /// Eliminate dead branches from a compiled node tree.
-/// Only transforms the top-level node — recursive application is handled by the pipeline.
-pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> CompiledNode {
+///
+/// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
+/// the input. Only transforms the top-level node — recursive application
+/// is driven by the optimiser pipeline's fixpoint loop.
+pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
     match &node {
-        CompiledNode::BuiltinOperator { opcode, args } => match opcode {
-            OpCode::If => eliminate_if(args, engine),
-            OpCode::Ternary => eliminate_ternary(args, engine),
-            OpCode::And => eliminate_and(args, engine),
-            OpCode::Or => eliminate_or(args, engine),
-            _ => node,
-        },
-        _ => node,
+        CompiledNode::BuiltinOperator { opcode, args } => {
+            let rewritten = match opcode {
+                OpCode::If => eliminate_if(args, engine),
+                OpCode::Ternary => eliminate_ternary(args, engine),
+                OpCode::And => eliminate_and(args, engine),
+                OpCode::Or => eliminate_or(args, engine),
+                _ => None,
+            };
+            match rewritten {
+                Some(new_node) => (new_node, true),
+                None => (node, false),
+            }
+        }
+        _ => (node, false),
     }
 }
 
 /// Eliminate dead branches in if/elseif/else chains.
-/// `{"if": [true, A, B]}` → `A`
-/// `{"if": [false, A, true, B, C]}` → `B`
-fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
+/// Returns `Some(new_node)` if the input was rewritten, `None` otherwise.
+fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
-        return CompiledNode::Value { value: Value::Null };
+        return Some(CompiledNode::Value { value: Value::Null });
     }
 
     let mut i = 0;
     let mut new_args: Vec<CompiledNode> = Vec::new();
+    let mut skipped_any = false;
 
     while i < args.len() {
         if i == args.len() - 1 {
             // Final else clause — keep it
             if new_args.is_empty() {
                 // All previous conditions were false → this is the result
-                return args[i].clone();
+                return Some(args[i].clone());
             }
             new_args.push(args[i].clone());
             break;
@@ -58,16 +67,18 @@ fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
                 // Condition is statically true → return the then-branch
                 if i + 1 < args.len() {
                     if new_args.is_empty() {
-                        return args[i + 1].clone();
+                        return Some(args[i + 1].clone());
                     }
                     // We had prior non-static conditions; this becomes the else
                     new_args.push(args[i + 1].clone());
+                    skipped_any = true;
                     break;
                 }
-                return args[i].clone();
+                return Some(args[i].clone());
             }
             Some(false) => {
                 // Condition is statically false → skip this condition+then pair
+                skipped_any = true;
                 i += 2;
                 continue;
             }
@@ -84,50 +95,42 @@ fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
 
     if new_args.is_empty() {
         // All conditions were statically false, no else clause
-        return CompiledNode::Value { value: Value::Null };
+        return Some(CompiledNode::Value { value: Value::Null });
     }
 
     if new_args.len() == 1 {
         // Single remaining element is the else clause
-        return new_args.into_iter().next().unwrap();
+        return Some(new_args.into_iter().next().unwrap());
     }
 
-    CompiledNode::BuiltinOperator {
+    if !skipped_any && new_args.len() == args.len() {
+        // No-op rebuild — leave input untouched
+        return None;
+    }
+
+    Some(CompiledNode::BuiltinOperator {
         opcode: OpCode::If,
         args: new_args.into_boxed_slice(),
-    }
+    })
 }
 
 /// Eliminate dead branches in ternary (`?:`) operator.
-/// `{"?:": [true, A, B]}` → `A`
-/// `{"?:": [false, A, B]}` → `B`
-fn eliminate_ternary(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
+fn eliminate_ternary(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.len() < 3 {
-        return CompiledNode::BuiltinOperator {
-            opcode: OpCode::Ternary,
-            args: args.to_vec().into_boxed_slice(),
-        };
+        return None;
     }
 
     match is_truthy_literal(&args[0], engine) {
-        Some(true) => args[1].clone(),
-        Some(false) => args[2].clone(),
-        None => CompiledNode::BuiltinOperator {
-            opcode: OpCode::Ternary,
-            args: args.to_vec().into_boxed_slice(),
-        },
+        Some(true) => Some(args[1].clone()),
+        Some(false) => Some(args[2].clone()),
+        None => None,
     }
 }
 
 /// Eliminate identity/absorbing elements in `and`.
-/// `{"and": [true, X]}` → `X`
-/// `{"and": [false, X]}` → `false`
-fn eliminate_and(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
+fn eliminate_and(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
-        return CompiledNode::BuiltinOperator {
-            opcode: OpCode::And,
-            args: args.to_vec().into_boxed_slice(),
-        };
+        return None;
     }
 
     let mut remaining: Vec<CompiledNode> = Vec::new();
@@ -136,11 +139,10 @@ fn eliminate_and(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
         match is_truthy_literal(arg, engine) {
             Some(false) => {
                 // Absorbing element — and short-circuits, returns the falsy value
-                return arg.clone();
+                return Some(arg.clone());
             }
             Some(true) => {
                 // Identity element — skip (and returns the value, not bool)
-                // But if this is the last one, we need it as the result
                 continue;
             }
             None => {
@@ -151,36 +153,28 @@ fn eliminate_and(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
 
     if remaining.is_empty() {
         // All elements were truthy literals — return the last one
-        return args.last().unwrap().clone();
+        return Some(args.last().unwrap().clone());
     }
 
     if remaining.len() == 1 {
-        return remaining.into_iter().next().unwrap();
+        return Some(remaining.into_iter().next().unwrap());
     }
 
-    // Check if we actually stripped anything
     if remaining.len() == args.len() {
-        return CompiledNode::BuiltinOperator {
-            opcode: OpCode::And,
-            args: args.to_vec().into_boxed_slice(),
-        };
+        // Nothing stripped — no change
+        return None;
     }
 
-    CompiledNode::BuiltinOperator {
+    Some(CompiledNode::BuiltinOperator {
         opcode: OpCode::And,
         args: remaining.into_boxed_slice(),
-    }
+    })
 }
 
 /// Eliminate identity/absorbing elements in `or`.
-/// `{"or": [true, X]}` → `true`
-/// `{"or": [false, X]}` → `X`
-fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
+fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
-        return CompiledNode::BuiltinOperator {
-            opcode: OpCode::Or,
-            args: args.to_vec().into_boxed_slice(),
-        };
+        return None;
     }
 
     let mut remaining: Vec<CompiledNode> = Vec::new();
@@ -189,7 +183,7 @@ fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
         match is_truthy_literal(arg, engine) {
             Some(true) => {
                 // Absorbing element — or short-circuits, returns the truthy value
-                return arg.clone();
+                return Some(arg.clone());
             }
             Some(false) => {
                 // Identity element — skip
@@ -203,24 +197,21 @@ fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> CompiledNode {
 
     if remaining.is_empty() {
         // All elements were falsy literals — return the last one
-        return args.last().unwrap().clone();
+        return Some(args.last().unwrap().clone());
     }
 
     if remaining.len() == 1 {
-        return remaining.into_iter().next().unwrap();
+        return Some(remaining.into_iter().next().unwrap());
     }
 
     if remaining.len() == args.len() {
-        return CompiledNode::BuiltinOperator {
-            opcode: OpCode::Or,
-            args: args.to_vec().into_boxed_slice(),
-        };
+        return None;
     }
 
-    CompiledNode::BuiltinOperator {
+    Some(CompiledNode::BuiltinOperator {
         opcode: OpCode::Or,
         args: remaining.into_boxed_slice(),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -256,7 +247,7 @@ mod tests {
             OpCode::If,
             vec![val(json!(true)), var_node("x"), var_node("y")],
         );
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
 
@@ -267,7 +258,7 @@ mod tests {
             OpCode::If,
             vec![val(json!(false)), var_node("x"), var_node("y")],
         );
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         // Should return "y" (the else branch)
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
@@ -276,7 +267,7 @@ mod tests {
     fn test_and_with_true_prefix() {
         let engine = DataLogic::new();
         let node = builtin(OpCode::And, vec![val(json!(true)), var_node("x")]);
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
 
@@ -284,7 +275,7 @@ mod tests {
     fn test_and_with_false() {
         let engine = DataLogic::new();
         let node = builtin(OpCode::And, vec![val(json!(false)), var_node("x")]);
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::Value { .. }));
     }
 
@@ -292,7 +283,7 @@ mod tests {
     fn test_or_with_true() {
         let engine = DataLogic::new();
         let node = builtin(OpCode::Or, vec![val(json!(true)), var_node("x")]);
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::Value { .. }));
     }
 
@@ -300,7 +291,7 @@ mod tests {
     fn test_or_with_false_prefix() {
         let engine = DataLogic::new();
         let node = builtin(OpCode::Or, vec![val(json!(false)), var_node("x")]);
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
 
@@ -311,7 +302,7 @@ mod tests {
             OpCode::Ternary,
             vec![val(json!(true)), var_node("x"), var_node("y")],
         );
-        let result = eliminate(node, &engine);
+        let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
 }

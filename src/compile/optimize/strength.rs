@@ -8,7 +8,10 @@ use crate::node::CompiledNode;
 use crate::opcode::OpCode;
 
 /// Apply strength reduction to a compiled node.
-pub fn reduce(node: CompiledNode) -> CompiledNode {
+///
+/// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
+/// the input. Used by the optimiser pipeline to drive fixpoint iteration.
+pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator { opcode, args } => {
             match opcode {
@@ -20,12 +23,15 @@ pub fn reduce(node: CompiledNode) -> CompiledNode {
                     } = &args[0]
                         && inner_args.len() == 1
                     {
-                        return CompiledNode::BuiltinOperator {
-                            opcode: OpCode::DoubleNot,
-                            args: inner_args.clone(),
-                        };
+                        return (
+                            CompiledNode::BuiltinOperator {
+                                opcode: OpCode::DoubleNot,
+                                args: inner_args.clone(),
+                            },
+                            true,
+                        );
                     }
-                    node
+                    (node, false)
                 }
                 OpCode::DoubleNot if args.len() == 1 => {
                     // Check if inner is also DoubleNot → collapse (idempotent)
@@ -35,17 +41,20 @@ pub fn reduce(node: CompiledNode) -> CompiledNode {
                     } = &args[0]
                         && inner_args.len() == 1
                     {
-                        return CompiledNode::BuiltinOperator {
-                            opcode: OpCode::DoubleNot,
-                            args: inner_args.clone(),
-                        };
+                        return (
+                            CompiledNode::BuiltinOperator {
+                                opcode: OpCode::DoubleNot,
+                                args: inner_args.clone(),
+                            },
+                            true,
+                        );
                     }
-                    node
+                    (node, false)
                 }
-                _ => node,
+                _ => (node, false),
             }
         }
-        _ => node,
+        _ => (node, false),
     }
 }
 
@@ -74,7 +83,8 @@ mod tests {
     fn test_double_negation() {
         let inner = builtin(OpCode::Not, vec![var_node("x")]);
         let outer = builtin(OpCode::Not, vec![inner]);
-        let result = reduce(outer);
+        let (result, changed) = reduce(outer);
+        assert!(changed);
         if let CompiledNode::BuiltinOperator { opcode, args } = &result {
             assert_eq!(*opcode, OpCode::DoubleNot);
             assert_eq!(args.len(), 1);
@@ -87,7 +97,8 @@ mod tests {
     fn test_idempotent_double_not() {
         let inner = builtin(OpCode::DoubleNot, vec![var_node("x")]);
         let outer = builtin(OpCode::DoubleNot, vec![inner]);
-        let result = reduce(outer);
+        let (result, changed) = reduce(outer);
+        assert!(changed);
         if let CompiledNode::BuiltinOperator { opcode, args } = &result {
             assert_eq!(*opcode, OpCode::DoubleNot);
             assert_eq!(args.len(), 1);
@@ -95,5 +106,12 @@ mod tests {
         } else {
             panic!("expected BuiltinOperator");
         }
+    }
+
+    #[test]
+    fn test_unchanged_when_no_pattern() {
+        let node = var_node("x");
+        let (_result, changed) = reduce(node);
+        assert!(!changed);
     }
 }

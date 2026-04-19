@@ -14,27 +14,39 @@ use serde_json::Value;
 use std::sync::Arc;
 
 /// Apply partial constant folding to a compiled node.
-pub fn fold(node: CompiledNode, engine: &DataLogic) -> CompiledNode {
+///
+/// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
+/// the input. Used by the optimiser pipeline to drive fixpoint iteration.
+pub fn fold(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator { .. } => {
             // First: pre-coerce numeric strings in arithmetic operators
-            let node = precoerce_numeric_strings(&node);
+            let (node, coerced) = match precoerce_numeric_strings(&node) {
+                Some(new) => (new, true),
+                None => (node, false),
+            };
 
             match &node {
                 CompiledNode::BuiltinOperator { opcode, args } => {
                     // Partial fold for commutative operators with mixed static/dynamic args
                     if is_commutative(opcode) && args.len() >= 2 {
-                        try_partial_fold(*opcode, args, engine).unwrap_or(node)
+                        match try_partial_fold(*opcode, args, engine) {
+                            Some(new) => (new, true),
+                            None => (node, coerced),
+                        }
                     } else if *opcode == OpCode::Cat && args.len() >= 2 {
-                        try_fold_cat(args).unwrap_or(node)
+                        match try_fold_cat(args) {
+                            Some(new) => (new, true),
+                            None => (node, coerced),
+                        }
                     } else {
-                        node
+                        (node, coerced)
                     }
                 }
-                other => other.clone(),
+                _ => (node, coerced),
             }
         }
-        _ => node,
+        _ => (node, false),
     }
 }
 
@@ -142,11 +154,12 @@ fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
 }
 
 /// Pre-coerce numeric string literals in arithmetic contexts.
-/// `{"+": ["5", {"var": "x"}]}` → `{"+": [5, {"var": "x"}]}`
-fn precoerce_numeric_strings(node: &CompiledNode) -> CompiledNode {
+/// `{"+": ["5", {"var": "x"}]}` → `{"+": [5, {"var": "x"}]}`.
+/// Returns `Some(new_node)` if any string was coerced, `None` otherwise.
+fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
     if let CompiledNode::BuiltinOperator { opcode, args } = node {
         if !is_arithmetic(opcode) {
-            return node.clone();
+            return None;
         }
 
         let mut changed = false;
@@ -186,14 +199,14 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> CompiledNode {
             .collect();
 
         if changed {
-            return CompiledNode::BuiltinOperator {
+            return Some(CompiledNode::BuiltinOperator {
                 opcode: *opcode,
                 args: new_args.into_boxed_slice(),
-            };
+            });
         }
     }
 
-    node.clone()
+    None
 }
 
 fn is_arithmetic(opcode: &OpCode) -> bool {
@@ -236,7 +249,7 @@ mod tests {
             OpCode::Add,
             vec![val(json!(1)), val(json!(2)), var_node("x"), val(json!(3))],
         );
-        let result = fold(node, &engine);
+        let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
             if let CompiledNode::Value { value } = &args[0] {
@@ -256,7 +269,7 @@ mod tests {
             OpCode::Cat,
             vec![val(json!("hello ")), val(json!("world")), var_node("x")],
         );
-        let result = fold(node, &engine);
+        let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
             if let CompiledNode::Value { value } = &args[0] {
@@ -269,7 +282,7 @@ mod tests {
     fn test_precoerce_numeric_string() {
         let engine = DataLogic::new();
         let node = builtin(OpCode::Add, vec![val(json!("5")), var_node("x")]);
-        let result = fold(node, &engine);
+        let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result
             && let CompiledNode::Value { value } = &args[0]
         {
