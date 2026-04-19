@@ -577,7 +577,7 @@ fn eager_apply<M: crate::eval_mode::Mode>(
         let mut value_nodes: Vec<crate::CompiledNode> = Vec::with_capacity(args.len());
         for arg in args {
             let value = engine.evaluate_node_with_mode::<M>(arg, context, mode)?;
-            value_nodes.push(crate::CompiledNode::Value { value });
+            value_nodes.push(crate::CompiledNode::synthetic_value(value));
         }
         f(&value_nodes, context, engine)
     } else {

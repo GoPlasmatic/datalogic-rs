@@ -15,7 +15,7 @@ pub fn evaluate_throw<M: Mode>(
 ) -> Result<Value> {
     let error_value = if args.is_empty() {
         Value::Null
-    } else if let CompiledNode::Value { value } = &args[0] {
+    } else if let CompiledNode::Value { value, .. } = &args[0] {
         // Fast path: access literal directly without evaluate_node dispatch
         value.clone()
     } else {

@@ -490,6 +490,7 @@ impl DataLogic {
                 reduce_hint,
                 metadata_hint,
                 default_value,
+                ..
             } => variable::evaluate_compiled_var(
                 *scope_level,
                 segments,
@@ -518,9 +519,7 @@ impl DataLogic {
             }
 
             #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(error_obj) => {
-                Err(Error::Thrown(error_obj.as_ref().clone()))
-            }
+            CompiledNode::CompiledThrow(data) => Err(Error::Thrown(data.error.clone())),
         };
 
         if M::TRACED {

@@ -229,13 +229,13 @@ impl ExpressionNode {
                 )
             }
             #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(error_obj) => {
-                if let serde_json::Value::Object(err_map) = error_obj.as_ref()
+            CompiledNode::CompiledThrow(data) => {
+                if let serde_json::Value::Object(err_map) = &data.error
                     && let Some(serde_json::Value::String(s)) = err_map.get("type")
                 {
                     return format!("{{\"throw\": \"{}\"}}", s);
                 }
-                format!("{{\"throw\": {}}}", error_obj)
+                format!("{{\"throw\": {}}}", data.error)
             }
         }
     }
@@ -449,11 +449,10 @@ mod tests {
     fn test_expression_node_from_simple_operator() {
         // Create a simple {"var": "age"} node
         let node = CompiledNode::BuiltinOperator {
+            id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Var,
-            args: vec![CompiledNode::Value {
-                value: serde_json::json!("age"),
-            }]
-            .into_boxed_slice(),
+            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))]
+                .into_boxed_slice(),
         };
 
         let (tree, node_id_map) = ExpressionNode::build_from_compiled(&node);
@@ -468,19 +467,17 @@ mod tests {
     fn test_expression_node_from_nested_operator() {
         // Create {">=": [{"var": "age"}, 18]}
         let var_node = CompiledNode::BuiltinOperator {
+            id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Var,
-            args: vec![CompiledNode::Value {
-                value: serde_json::json!("age"),
-            }]
-            .into_boxed_slice(),
+            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))]
+                .into_boxed_slice(),
         };
         let node = CompiledNode::BuiltinOperator {
+            id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::GreaterThanEqual,
             args: vec![
                 var_node,
-                CompiledNode::Value {
-                    value: serde_json::json!(18),
-                },
+                CompiledNode::synthetic_value(serde_json::json!(18)),
             ]
             .into_boxed_slice(),
         };

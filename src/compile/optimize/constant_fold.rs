@@ -7,7 +7,7 @@
 //!
 //! Also pre-coerces numeric string literals in arithmetic contexts.
 
-use crate::node::{CompiledNode, node_is_static};
+use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
 use crate::opcode::OpCode;
 use crate::{ContextStack, DataLogic};
 use serde_json::Value;
@@ -27,15 +27,15 @@ pub fn fold(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
             };
 
             match &node {
-                CompiledNode::BuiltinOperator { opcode, args } => {
+                CompiledNode::BuiltinOperator { id, opcode, args } => {
                     // Partial fold for commutative operators with mixed static/dynamic args
                     if is_commutative(opcode) && args.len() >= 2 {
-                        match try_partial_fold(*opcode, args, engine) {
+                        match try_partial_fold(*id, *opcode, args, engine) {
                             Some(new) => (new, true),
                             None => (node, coerced),
                         }
                     } else if *opcode == OpCode::Cat && args.len() >= 2 {
-                        match try_fold_cat(args) {
+                        match try_fold_cat(*id, args) {
                             Some(new) => (new, true),
                             None => (node, coerced),
                         }
@@ -58,6 +58,7 @@ fn is_commutative(opcode: &OpCode) -> bool {
 /// Try to fold static args in a commutative operator.
 /// E.g., `{"+": [1, {"var":"x"}, 2, 3]}` → `{"+": [6, {"var":"x"}]}`
 fn try_partial_fold(
+    outer_id: u32,
     opcode: OpCode,
     args: &[CompiledNode],
     engine: &DataLogic,
@@ -78,22 +79,25 @@ fn try_partial_fold(
         return None;
     }
 
-    // Evaluate the static portion
+    // Evaluate the static portion. The transient node is purely local — it
+    // doesn't appear in the compiled tree, so synthetic ids are fine.
     let static_node = CompiledNode::BuiltinOperator {
+        id: SYNTHETIC_ID,
         opcode,
         args: static_args.into_boxed_slice(),
     };
     let mut context = ContextStack::new(Arc::new(Value::Null));
     let folded_value = engine.evaluate_node(&static_node, &mut context).ok()?;
 
-    // Reconstruct: [folded_constant, ...dynamic_args]
+    // Reconstruct: [folded_constant, ...dynamic_args]. The folded literal
+    // gets SYNTHETIC_ID (literals never emit trace steps). The outer op keeps
+    // its original id so tracing / error reporting still point at the source.
     let mut new_args = Vec::with_capacity(1 + dynamic_args.len());
-    new_args.push(CompiledNode::Value {
-        value: folded_value,
-    });
+    new_args.push(CompiledNode::synthetic_value(folded_value));
     new_args.extend(dynamic_args);
 
     Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
         opcode,
         args: new_args.into_boxed_slice(),
     })
@@ -101,7 +105,7 @@ fn try_partial_fold(
 
 /// Try to fold adjacent static strings in cat operator.
 /// `{"cat": ["hello ", "world", {"var": "x"}]}` → `{"cat": ["hello world", {"var": "x"}]}`
-fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
+fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
     let mut new_args: Vec<CompiledNode> = Vec::new();
     let mut current_static_str: Option<String> = None;
     let mut folded_any = false;
@@ -109,6 +113,7 @@ fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
     for arg in args {
         if let CompiledNode::Value {
             value: Value::String(s),
+            ..
         } = arg
         {
             match &mut current_static_str {
@@ -123,9 +128,7 @@ fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
         } else {
             // Flush any accumulated static string
             if let Some(s) = current_static_str.take() {
-                new_args.push(CompiledNode::Value {
-                    value: Value::String(s),
-                });
+                new_args.push(CompiledNode::synthetic_value(Value::String(s)));
             }
             new_args.push(arg.clone());
         }
@@ -133,9 +136,7 @@ fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
 
     // Flush final accumulated string
     if let Some(s) = current_static_str.take() {
-        new_args.push(CompiledNode::Value {
-            value: Value::String(s),
-        });
+        new_args.push(CompiledNode::synthetic_value(Value::String(s)));
     }
 
     if !folded_any {
@@ -148,6 +149,7 @@ fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
     }
 
     Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
         opcode: OpCode::Cat,
         args: new_args.into_boxed_slice(),
     })
@@ -157,7 +159,7 @@ fn try_fold_cat(args: &[CompiledNode]) -> Option<CompiledNode> {
 /// `{"+": ["5", {"var": "x"}]}` → `{"+": [5, {"var": "x"}]}`.
 /// Returns `Some(new_node)` if any string was coerced, `None` otherwise.
 fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
-    if let CompiledNode::BuiltinOperator { opcode, args } = node {
+    if let CompiledNode::BuiltinOperator { id, opcode, args } = node {
         if !is_arithmetic(opcode) {
             return None;
         }
@@ -168,21 +170,18 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
             .map(|arg| {
                 if let CompiledNode::Value {
                     value: Value::String(s),
+                    ..
                 } = arg
                 {
                     // Try parsing as integer first, then float
                     if let Ok(i) = s.parse::<i64>() {
                         changed = true;
-                        CompiledNode::Value {
-                            value: Value::Number(i.into()),
-                        }
+                        CompiledNode::synthetic_value(Value::Number(i.into()))
                     } else if let Ok(f) = s.parse::<f64>() {
                         if f.is_finite() {
                             if let Some(n) = serde_json::Number::from_f64(f) {
                                 changed = true;
-                                CompiledNode::Value {
-                                    value: Value::Number(n),
-                                }
+                                CompiledNode::synthetic_value(Value::Number(n))
                             } else {
                                 arg.clone()
                             }
@@ -200,6 +199,7 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
 
         if changed {
             return Some(CompiledNode::BuiltinOperator {
+                id: *id,
                 opcode: *opcode,
                 args: new_args.into_boxed_slice(),
             });
@@ -222,11 +222,12 @@ mod tests {
     use serde_json::json;
 
     fn val(v: Value) -> CompiledNode {
-        CompiledNode::Value { value: v }
+        CompiledNode::synthetic_value(v)
     }
 
     fn var_node(name: &str) -> CompiledNode {
         CompiledNode::CompiledVar {
+            id: SYNTHETIC_ID,
             scope_level: 0,
             segments: vec![crate::node::PathSegment::Field(name.into())].into_boxed_slice(),
             reduce_hint: crate::node::ReduceHint::None,
@@ -237,6 +238,7 @@ mod tests {
 
     fn builtin(opcode: OpCode, args: Vec<CompiledNode>) -> CompiledNode {
         CompiledNode::BuiltinOperator {
+            id: SYNTHETIC_ID,
             opcode,
             args: args.into_boxed_slice(),
         }
@@ -252,7 +254,7 @@ mod tests {
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
-            if let CompiledNode::Value { value } = &args[0] {
+            if let CompiledNode::Value { value, .. } = &args[0] {
                 assert_eq!(*value, json!(6));
             } else {
                 panic!("expected folded value");
@@ -272,7 +274,7 @@ mod tests {
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
-            if let CompiledNode::Value { value } = &args[0] {
+            if let CompiledNode::Value { value, .. } = &args[0] {
                 assert_eq!(*value, json!("hello world"));
             }
         }
@@ -284,7 +286,7 @@ mod tests {
         let node = builtin(OpCode::Add, vec![val(json!("5")), var_node("x")]);
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result
-            && let CompiledNode::Value { value } = &args[0]
+            && let CompiledNode::Value { value, .. } = &args[0]
         {
             assert_eq!(*value, json!(5));
         }

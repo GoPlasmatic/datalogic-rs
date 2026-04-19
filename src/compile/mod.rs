@@ -1,7 +1,8 @@
 pub mod optimize;
 
 use crate::node::{
-    CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint, node_is_static,
+    CompileCtx, CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint, SYNTHETIC_ID,
+    node_is_static,
 };
 use crate::opcode::OpCode;
 use crate::{ContextStack, DataLogic, Result};
@@ -15,16 +16,9 @@ impl CompiledLogic {
     ///
     /// This method performs basic compilation without static evaluation.
     /// For optimal performance, use `compile_with_static_eval` instead.
-    ///
-    /// # Arguments
-    ///
-    /// * `logic` - The JSON logic expression to compile
-    ///
-    /// # Returns
-    ///
-    /// A compiled logic structure, or an error if compilation fails.
     pub fn compile(logic: &Value) -> Result<Self> {
-        let root = Self::compile_node(logic, None, false)?;
+        let mut ctx = CompileCtx::new();
+        let root = Self::compile_node(logic, None, false, &mut ctx)?;
         Ok(Self::new(root))
     }
 
@@ -32,86 +26,48 @@ impl CompiledLogic {
     ///
     /// This method compiles the logic without performing static evaluation,
     /// ensuring that all operators remain in the tree for step-by-step debugging.
-    /// Use this when you need to trace execution through operators that would
-    /// otherwise be pre-evaluated at compile time.
-    ///
-    /// # Arguments
-    ///
-    /// * `logic` - The JSON logic expression to compile
-    /// * `preserve_structure` - Whether to preserve unknown object structure
-    ///
-    /// # Returns
-    ///
-    /// A compiled logic structure without static optimizations.
     #[cfg(feature = "trace")]
     pub fn compile_for_trace(logic: &Value, preserve_structure: bool) -> Result<Self> {
-        let root = Self::compile_node(logic, None, preserve_structure)?;
+        let mut ctx = CompileCtx::new();
+        let root = Self::compile_node(logic, None, preserve_structure, &mut ctx)?;
         Ok(Self::new(root))
     }
 
     /// Compiles with static evaluation using the provided engine.
-    ///
-    /// This method performs optimizations including:
-    /// - Static evaluation of constant expressions
-    /// - OpCode assignment for built-in operators
-    /// - Structure preservation based on engine settings
-    ///
-    /// # Arguments
-    ///
-    /// * `logic` - The JSON logic expression to compile
-    /// * `engine` - The DataLogic engine for static evaluation
-    ///
-    /// # Returns
-    ///
-    /// An optimized compiled logic structure, or an error if compilation fails.
     pub fn compile_with_static_eval(logic: &Value, engine: &DataLogic) -> Result<Self> {
-        let root = Self::compile_node(logic, Some(engine), engine.preserve_structure())?;
+        let mut ctx = CompileCtx::new();
+        let root =
+            Self::compile_node(logic, Some(engine), engine.preserve_structure(), &mut ctx)?;
         Ok(Self::new(root))
     }
 
     /// Compiles a single JSON value into a CompiledNode.
-    ///
-    /// This recursive method handles all node types:
-    /// - Objects with operators
-    /// - Arrays
-    /// - Primitive values
-    /// - Structured objects (in preserve mode)
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The JSON value to compile
-    /// * `engine` - Optional engine for static evaluation
-    /// * `preserve_structure` - Whether to preserve unknown object structure
-    ///
-    /// # Returns
-    ///
-    /// A compiled node, or an error if the value is invalid.
     fn compile_node(
         value: &Value,
         engine: Option<&DataLogic>,
         preserve_structure: bool,
+        ctx: &mut CompileCtx,
     ) -> Result<CompiledNode> {
         match value {
             Value::Object(obj) if obj.len() > 1 => {
                 #[cfg(feature = "preserve")]
                 if preserve_structure {
                     // In preserve_structure mode, treat multi-key objects as structured objects
-                    // We'll create a special StructuredObject node that gets evaluated field by field
                     let fields: Vec<_> = obj
                         .iter()
                         .map(|(key, val)| {
-                            Self::compile_node(val, engine, preserve_structure)
+                            Self::compile_node(val, engine, preserve_structure, ctx)
                                 .map(|compiled_val| (key.clone(), compiled_val))
                         })
                         .collect::<Result<Vec<_>>>()?;
                     return Ok(CompiledNode::StructuredObject(Box::new(
                         crate::node::StructuredObjectData {
+                            id: ctx.next_id(),
                             fields: fields.into_boxed_slice(),
                         },
                     )));
                 }
                 {
-                    // Multi-key objects are not valid operators
                     let _ = obj;
                     Err(crate::error::Error::InvalidOperator(
                         "Unknown Operator".to_string(),
@@ -119,15 +75,11 @@ impl CompiledLogic {
                 }
             }
             Value::Object(obj) if obj.len() == 1 => {
-                // Single key object is an operator
                 let (op_name, args_value) = obj.iter().next().unwrap();
 
-                // Try to parse as built-in operator first
                 if let Ok(opcode) = op_name.parse::<OpCode>() {
-                    // Check if this operator requires array arguments
                     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
 
-                    // For operators that require arrays, check the raw value
                     if requires_array && !matches!(args_value, Value::Array(_)) {
                         // Create a special marker node for invalid arguments
                         let invalid_value = json!({
@@ -135,43 +87,51 @@ impl CompiledLogic {
                             "value": args_value
                         });
                         let value_node = CompiledNode::Value {
+                            id: ctx.next_id(),
                             value: invalid_value,
                         };
                         let args = vec![value_node].into_boxed_slice();
-                        return Ok(CompiledNode::BuiltinOperator { opcode, args });
+                        return Ok(CompiledNode::BuiltinOperator {
+                            id: ctx.next_id(),
+                            opcode,
+                            args,
+                        });
                     }
 
-                    // Special handling for preserve operator - don't compile its arguments
                     #[cfg(feature = "preserve")]
                     let args = if opcode == OpCode::Preserve {
                         // Preserve takes raw values, not compiled logic
                         match args_value {
                             Value::Array(arr) => arr
                                 .iter()
-                                .map(|v| CompiledNode::Value { value: v.clone() })
+                                .map(|v| CompiledNode::Value {
+                                    id: ctx.next_id(),
+                                    value: v.clone(),
+                                })
                                 .collect::<Vec<_>>()
                                 .into_boxed_slice(),
                             _ => vec![CompiledNode::Value {
+                                id: ctx.next_id(),
                                 value: args_value.clone(),
                             }]
                             .into_boxed_slice(),
                         }
                     } else {
-                        Self::compile_args(args_value, engine, preserve_structure)?
+                        Self::compile_args(args_value, engine, preserve_structure, ctx)?
                     };
                     #[cfg(not(feature = "preserve"))]
-                    let args = Self::compile_args(args_value, engine, preserve_structure)?;
-                    // Try to optimize variable access operators at compile time
+                    let args = Self::compile_args(args_value, engine, preserve_structure, ctx)?;
+
                     if opcode == OpCode::Var
-                        && let Some(node) = Self::try_compile_var(&args)
+                        && let Some(node) = Self::try_compile_var(&args, ctx)
                     {
                         return Ok(node);
                     }
                     #[cfg(feature = "ext-control")]
                     if matches!(opcode, OpCode::Val | OpCode::Exists) {
                         let optimized = match opcode {
-                            OpCode::Val => Self::try_compile_val(&args),
-                            OpCode::Exists => Self::try_compile_exists(&args),
+                            OpCode::Val => Self::try_compile_val(&args, ctx),
+                            OpCode::Exists => Self::try_compile_exists(&args, ctx),
                             _ => None,
                         };
                         if let Some(node) = optimized {
@@ -179,28 +139,34 @@ impl CompiledLogic {
                         }
                     }
 
-                    // Pre-compile regex for split operator when delimiter is a static pattern
                     #[cfg(feature = "ext-string")]
                     if opcode == OpCode::Split
-                        && let Some(node) = Self::try_compile_split_regex(&args)
+                        && let Some(node) = Self::try_compile_split_regex(&args, ctx)
                     {
                         return Ok(node);
                     }
 
-                    // Pre-compile throw with literal string into CompiledThrow
                     #[cfg(feature = "error-handling")]
                     if opcode == OpCode::Throw
                         && args.len() == 1
                         && let CompiledNode::Value {
                             value: Value::String(s),
+                            ..
                         } = &args[0]
                     {
                         return Ok(CompiledNode::CompiledThrow(Box::new(
-                            serde_json::json!({"type": s}),
+                            crate::node::CompiledThrowData {
+                                id: ctx.next_id(),
+                                error: serde_json::json!({"type": s}),
+                            },
                         )));
                     }
 
-                    let mut node = CompiledNode::BuiltinOperator { opcode, args };
+                    let mut node = CompiledNode::BuiltinOperator {
+                        id: ctx.next_id(),
+                        opcode,
+                        args,
+                    };
 
                     // Run optimization passes when engine is available
                     if let std::option::Option::Some(eng) = engine {
@@ -211,13 +177,14 @@ impl CompiledLogic {
                     if let std::option::Option::Some(eng) = engine
                         && node_is_static(&node)
                     {
-                        // Evaluate with empty context since it's static
                         let mut context = ContextStack::new(Arc::new(Value::Null));
                         match eng.evaluate_node(&node, &mut context) {
                             Ok(value) => {
-                                return Ok(CompiledNode::Value { value });
+                                return Ok(CompiledNode::Value {
+                                    id: ctx.next_id(),
+                                    value,
+                                });
                             }
-                            // If evaluation fails, keep as operator node
                             Err(_) => return Ok(node),
                         }
                     }
@@ -227,39 +194,34 @@ impl CompiledLogic {
 
                 #[cfg(feature = "preserve")]
                 if preserve_structure {
-                    // In preserve_structure mode, we need to distinguish between:
-                    // 1. Custom operators (should be evaluated as operators)
-                    // 2. Unknown keys (should be preserved as structured object fields)
-                    //
-                    // Check if this is a custom operator first
                     if let Some(eng) = engine
                         && eng.has_custom_operator(op_name)
                     {
-                        // It's a registered custom operator - compile as CustomOperator
-                        // This ensures custom operators work correctly in preserve_structure mode,
-                        // e.g., {"result": {"custom_op": arg}} will evaluate custom_op properly
-                        let args = Self::compile_args(args_value, engine, preserve_structure)?;
+                        let args = Self::compile_args(args_value, engine, preserve_structure, ctx)?;
                         return Ok(CompiledNode::CustomOperator(Box::new(
                             crate::node::CustomOperatorData {
+                                id: ctx.next_id(),
                                 name: op_name.clone(),
                                 args,
                             },
                         )));
                     }
-                    // Not a built-in operator or custom operator - treat as structured object field
-                    // This allows dynamic object generation like {"name": {"var": "user.name"}}
-                    let compiled_val = Self::compile_node(args_value, engine, preserve_structure)?;
+                    let compiled_val =
+                        Self::compile_node(args_value, engine, preserve_structure, ctx)?;
                     let fields = vec![(op_name.clone(), compiled_val)].into_boxed_slice();
                     return Ok(CompiledNode::StructuredObject(Box::new(
-                        crate::node::StructuredObjectData { fields },
+                        crate::node::StructuredObjectData {
+                            id: ctx.next_id(),
+                            fields,
+                        },
                     )));
                 }
 
                 {
-                    let args = Self::compile_args(args_value, engine, preserve_structure)?;
-                    // Fall back to custom operator - don't pre-evaluate custom operators
+                    let args = Self::compile_args(args_value, engine, preserve_structure, ctx)?;
                     Ok(CompiledNode::CustomOperator(Box::new(
                         crate::node::CustomOperatorData {
+                            id: ctx.next_id(),
                             name: op_name.clone(),
                             args,
                         },
@@ -267,33 +229,35 @@ impl CompiledLogic {
                 }
             }
             Value::Array(arr) => {
-                // Array of logic expressions
                 let nodes = arr
                     .iter()
-                    .map(|v| Self::compile_node(v, engine, preserve_structure))
+                    .map(|v| Self::compile_node(v, engine, preserve_structure, ctx))
                     .collect::<Result<Vec<_>>>()?;
 
                 let nodes_boxed = nodes.into_boxed_slice();
-                let node = CompiledNode::Array { nodes: nodes_boxed };
+                let node = CompiledNode::Array {
+                    id: ctx.next_id(),
+                    nodes: nodes_boxed,
+                };
 
-                // If engine is provided and array is static, evaluate it
                 if let std::option::Option::Some(eng) = engine
                     && node_is_static(&node)
                 {
                     let mut context = ContextStack::new(Arc::new(Value::Null));
                     if let Ok(value) = eng.evaluate_node(&node, &mut context) {
-                        return Ok(CompiledNode::Value { value });
+                        return Ok(CompiledNode::Value {
+                            id: ctx.next_id(),
+                            value,
+                        });
                     }
                 }
 
                 Ok(node)
             }
-            _ => {
-                // Static value
-                Ok(CompiledNode::Value {
-                    value: value.clone(),
-                })
-            }
+            _ => Ok(CompiledNode::Value {
+                id: ctx.next_id(),
+                value: value.clone(),
+            }),
         }
     }
 
@@ -302,22 +266,20 @@ impl CompiledLogic {
         value: &Value,
         engine: Option<&DataLogic>,
         preserve_structure: bool,
+        ctx: &mut CompileCtx,
     ) -> Result<Box<[CompiledNode]>> {
         match value {
             Value::Array(arr) => arr
                 .iter()
-                .map(|v| Self::compile_node(v, engine, preserve_structure))
+                .map(|v| Self::compile_node(v, engine, preserve_structure, ctx))
                 .collect::<Result<Vec<_>>>()
                 .map(Vec::into_boxed_slice),
-            _ => {
-                // Single argument - compile it
-                Ok(vec![Self::compile_node(value, engine, preserve_structure)?].into_boxed_slice())
-            }
+            _ => Ok(vec![Self::compile_node(value, engine, preserve_structure, ctx)?]
+                .into_boxed_slice()),
         }
     }
 
-    /// Parse a dot-separated path into pre-parsed segments (for var, which uses dot notation).
-    /// Numeric segments become FieldOrIndex to handle both object keys and array indices.
+    /// Parse a dot-separated path into pre-parsed segments.
     fn parse_path_segments(path: &str) -> Vec<PathSegment> {
         if path.is_empty() {
             return Vec::new();
@@ -365,9 +327,10 @@ impl CompiledLogic {
     }
 
     /// Try to compile a var operator into a CompiledVar node.
-    fn try_compile_var(args: &[CompiledNode]) -> Option<CompiledNode> {
+    fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
         if args.is_empty() {
             return Some(CompiledNode::CompiledVar {
+                id: ctx.next_id(),
                 scope_level: 0,
                 segments: Box::new([]),
                 reduce_hint: ReduceHint::None,
@@ -379,18 +342,20 @@ impl CompiledLogic {
         let (segments, reduce_hint) = match &args[0] {
             CompiledNode::Value {
                 value: Value::String(s),
+                ..
             } => {
                 let (hint, segs) = Self::parse_var_path(s);
                 (segs, hint)
             }
             CompiledNode::Value {
                 value: Value::Number(n),
+                ..
             } => {
                 let s = n.to_string();
                 let segs = Self::parse_path_segments(&s);
                 (segs, ReduceHint::None)
             }
-            _ => return None, // dynamic path
+            _ => return None,
         };
 
         let default_value = if args.len() > 1 {
@@ -400,6 +365,7 @@ impl CompiledLogic {
         };
 
         Some(CompiledNode::CompiledVar {
+            id: ctx.next_id(),
             scope_level: 0,
             segments: segments.into_boxed_slice(),
             reduce_hint,
@@ -410,9 +376,10 @@ impl CompiledLogic {
 
     /// Try to compile a val operator into a CompiledVar node.
     #[cfg(feature = "ext-control")]
-    fn try_compile_val(args: &[CompiledNode]) -> Option<CompiledNode> {
+    fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
         if args.is_empty() {
             return Some(CompiledNode::CompiledVar {
+                id: ctx.next_id(),
                 scope_level: 0,
                 segments: Box::new([]),
                 reduce_hint: ReduceHint::None,
@@ -421,13 +388,10 @@ impl CompiledLogic {
             });
         }
 
-        // Val does NOT support dot-path notation. Each arg is a literal key/index.
-
-        // Case 2: Single non-empty string → single Field segment (literal key)
-        // Empty string has dual behavior (try key "" then whole-context fallback) — keep as BuiltinOperator.
         if args.len() == 1 {
             if let CompiledNode::Value {
                 value: Value::String(s),
+                ..
             } = &args[0]
                 && !s.is_empty()
             {
@@ -444,6 +408,7 @@ impl CompiledLogic {
                     PathSegment::Field(s.as_str().into())
                 };
                 return Some(CompiledNode::CompiledVar {
+                    id: ctx.next_id(),
                     scope_level: 0,
                     segments: vec![segment].into_boxed_slice(),
                     reduce_hint,
@@ -454,20 +419,20 @@ impl CompiledLogic {
             return None;
         }
 
-        // Case 3: First arg is [[level]] array
         if let CompiledNode::Value {
             value: Value::Array(level_arr),
+            ..
         } = &args[0]
             && let Some(Value::Number(level_num)) = level_arr.first()
             && let Some(level) = level_num.as_i64()
         {
             let scope_level = level.unsigned_abs() as u32;
 
-            // Check metadata hints for 2-arg case
             let mut metadata_hint = MetadataHint::None;
             if args.len() == 2
                 && let CompiledNode::Value {
                     value: Value::String(s),
+                    ..
                 } = &args[1]
             {
                 if s == "index" {
@@ -477,24 +442,25 @@ impl CompiledLogic {
                 }
             }
 
-            return Self::try_compile_val_segments(&args[1..], scope_level, metadata_hint);
+            return Self::try_compile_val_segments(&args[1..], scope_level, metadata_hint, ctx);
         }
 
-        // Case 4: 2+ args with all literal path segments — compile as path chain.
         if let Some(first_seg) = Self::val_arg_to_segment(&args[0]) {
             let reduce_hint = match &args[0] {
                 CompiledNode::Value {
                     value: Value::String(s),
+                    ..
                 } if s == "current" => ReduceHint::CurrentPath,
                 CompiledNode::Value {
                     value: Value::String(s),
+                    ..
                 } if s == "accumulator" => ReduceHint::AccumulatorPath,
                 _ => ReduceHint::None,
             };
 
             let mut segments = vec![first_seg];
             if let Some(compiled) =
-                Self::try_collect_val_segments(&args[1..], &mut segments, reduce_hint)
+                Self::try_collect_val_segments(&args[1..], &mut segments, reduce_hint, ctx)
             {
                 return Some(compiled);
             }
@@ -503,14 +469,12 @@ impl CompiledLogic {
         None
     }
 
-    /// Convert a val argument into a PathSegment.
-    /// Val treats string args as literal keys (no dot-splitting), and numbers as indices.
-    /// Numeric strings get FieldOrIndex to handle both object key and array index access.
     #[cfg(feature = "ext-control")]
     fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
         match arg {
             CompiledNode::Value {
                 value: Value::String(s),
+                ..
             } => {
                 if let Ok(idx) = s.parse::<usize>() {
                     Some(PathSegment::FieldOrIndex(s.as_str().into(), idx))
@@ -520,17 +484,18 @@ impl CompiledLogic {
             }
             CompiledNode::Value {
                 value: Value::Number(n),
+                ..
             } => n.as_u64().map(|idx| PathSegment::Index(idx as usize)),
             _ => None,
         }
     }
 
-    /// Try to compile val path segments (used by level-access and path-chain cases).
     #[cfg(feature = "ext-control")]
     fn try_compile_val_segments(
         args: &[CompiledNode],
         scope_level: u32,
         metadata_hint: MetadataHint,
+        ctx: &mut CompileCtx,
     ) -> Option<CompiledNode> {
         let mut segments = Vec::new();
         for arg in args {
@@ -538,6 +503,7 @@ impl CompiledLogic {
         }
 
         Some(CompiledNode::CompiledVar {
+            id: ctx.next_id(),
             scope_level,
             segments: segments.into_boxed_slice(),
             reduce_hint: ReduceHint::None,
@@ -546,18 +512,19 @@ impl CompiledLogic {
         })
     }
 
-    /// Try to collect remaining val args into segments and build a CompiledVar.
     #[cfg(feature = "ext-control")]
     fn try_collect_val_segments(
         args: &[CompiledNode],
         segments: &mut Vec<PathSegment>,
         reduce_hint: ReduceHint,
+        ctx: &mut CompileCtx,
     ) -> Option<CompiledNode> {
         for arg in args {
             segments.push(Self::val_arg_to_segment(arg)?);
         }
 
         Some(CompiledNode::CompiledVar {
+            id: ctx.next_id(),
             scope_level: 0,
             segments: std::mem::take(segments).into_boxed_slice(),
             reduce_hint,
@@ -566,12 +533,12 @@ impl CompiledLogic {
         })
     }
 
-    /// Try to compile an exists operator into a CompiledExists node.
     #[cfg(feature = "ext-control")]
-    fn try_compile_exists(args: &[CompiledNode]) -> Option<CompiledNode> {
+    fn try_compile_exists(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
         if args.is_empty() {
             return Some(CompiledNode::CompiledExists(Box::new(
                 crate::node::CompiledExistsData {
+                    id: ctx.next_id(),
                     scope_level: 0,
                     segments: Box::new([]),
                 },
@@ -581,10 +548,12 @@ impl CompiledLogic {
         if args.len() == 1 {
             if let CompiledNode::Value {
                 value: Value::String(s),
+                ..
             } = &args[0]
             {
                 return Some(CompiledNode::CompiledExists(Box::new(
                     crate::node::CompiledExistsData {
+                        id: ctx.next_id(),
                         scope_level: 0,
                         segments: vec![PathSegment::Field(s.as_str().into())].into_boxed_slice(),
                     },
@@ -593,11 +562,11 @@ impl CompiledLogic {
             return None;
         }
 
-        // Multiple args - all must be literal strings
         let mut segments = Vec::new();
         for arg in args {
             if let CompiledNode::Value {
                 value: Value::String(s),
+                ..
             } = arg
             {
                 segments.push(PathSegment::Field(s.as_str().into()));
@@ -608,44 +577,43 @@ impl CompiledLogic {
 
         Some(CompiledNode::CompiledExists(Box::new(
             crate::node::CompiledExistsData {
+                id: ctx.next_id(),
                 scope_level: 0,
                 segments: segments.into_boxed_slice(),
             },
         )))
     }
 
-    /// Try to pre-compile a split operator's regex pattern at compile time.
-    ///
-    /// When the delimiter (second arg) is a static string containing named capture
-    /// groups (`(?P<...>`), the regex is compiled once here instead of on every evaluation.
     #[cfg(feature = "ext-string")]
-    fn try_compile_split_regex(args: &[CompiledNode]) -> Option<CompiledNode> {
+    fn try_compile_split_regex(
+        args: &[CompiledNode],
+        ctx: &mut CompileCtx,
+    ) -> Option<CompiledNode> {
         if args.len() < 2 {
             return None;
         }
 
-        // Check if the delimiter is a static string with named capture groups
         let pattern = match &args[1] {
             CompiledNode::Value {
                 value: Value::String(s),
+                ..
             } if s.contains("(?P<") => s.as_str(),
             _ => return None,
         };
 
-        // Try to compile the regex
         let re = Regex::new(pattern).ok()?;
-        let capture_names: Vec<Box<str>> = re.capture_names().flatten().map(|n| n.into()).collect();
+        let capture_names: Vec<Box<str>> =
+            re.capture_names().flatten().map(|n| n.into()).collect();
 
-        // Only optimize if there are named capture groups
         if capture_names.is_empty() {
             return None;
         }
 
-        // Keep only the text argument (first arg)
         let text_args = vec![args[0].clone()].into_boxed_slice();
 
         Some(CompiledNode::CompiledSplitRegex(Box::new(
             crate::node::CompiledSplitRegexData {
+                id: ctx.next_id(),
                 args: text_args,
                 regex: Arc::new(re),
                 capture_names: capture_names.into_boxed_slice(),
@@ -653,3 +621,8 @@ impl CompiledLogic {
         )))
     }
 }
+
+// Re-export SYNTHETIC_ID so `Self::...` usages in this file don't break if a
+// future refactor wants to construct synthetic nodes here.
+#[allow(dead_code)]
+pub(crate) const _SYNTHETIC_REXP: u32 = SYNTHETIC_ID;

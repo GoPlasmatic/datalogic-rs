@@ -22,12 +22,12 @@ use super::helpers::is_truthy_literal;
 /// is driven by the optimiser pipeline's fixpoint loop.
 pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
     match &node {
-        CompiledNode::BuiltinOperator { opcode, args } => {
+        CompiledNode::BuiltinOperator { id, opcode, args } => {
             let rewritten = match opcode {
-                OpCode::If => eliminate_if(args, engine),
+                OpCode::If => eliminate_if(*id, args, engine),
                 OpCode::Ternary => eliminate_ternary(args, engine),
-                OpCode::And => eliminate_and(args, engine),
-                OpCode::Or => eliminate_or(args, engine),
+                OpCode::And => eliminate_and(*id, args, engine),
+                OpCode::Or => eliminate_or(*id, args, engine),
                 _ => None,
             };
             match rewritten {
@@ -41,9 +41,9 @@ pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool)
 
 /// Eliminate dead branches in if/elseif/else chains.
 /// Returns `Some(new_node)` if the input was rewritten, `None` otherwise.
-fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
+fn eliminate_if(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::Value { value: Value::Null });
+        return Some(CompiledNode::synthetic_value(Value::Null));
     }
 
     let mut i = 0;
@@ -95,7 +95,7 @@ fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNod
 
     if new_args.is_empty() {
         // All conditions were statically false, no else clause
-        return Some(CompiledNode::Value { value: Value::Null });
+        return Some(CompiledNode::synthetic_value(Value::Null));
     }
 
     if new_args.len() == 1 {
@@ -109,6 +109,7 @@ fn eliminate_if(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNod
     }
 
     Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
         opcode: OpCode::If,
         args: new_args.into_boxed_slice(),
     })
@@ -128,7 +129,7 @@ fn eliminate_ternary(args: &[CompiledNode], engine: &DataLogic) -> Option<Compil
 }
 
 /// Eliminate identity/absorbing elements in `and`.
-fn eliminate_and(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
+fn eliminate_and(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
         return None;
     }
@@ -166,13 +167,14 @@ fn eliminate_and(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNo
     }
 
     Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
         opcode: OpCode::And,
         args: remaining.into_boxed_slice(),
     })
 }
 
 /// Eliminate identity/absorbing elements in `or`.
-fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
+fn eliminate_or(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
         return None;
     }
@@ -209,6 +211,7 @@ fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNod
     }
 
     Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
         opcode: OpCode::Or,
         args: remaining.into_boxed_slice(),
     })
@@ -217,14 +220,16 @@ fn eliminate_or(args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNod
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::SYNTHETIC_ID;
     use serde_json::json;
 
     fn val(v: Value) -> CompiledNode {
-        CompiledNode::Value { value: v }
+        CompiledNode::synthetic_value(v)
     }
 
     fn var_node(name: &str) -> CompiledNode {
         CompiledNode::CompiledVar {
+            id: SYNTHETIC_ID,
             scope_level: 0,
             segments: vec![crate::node::PathSegment::Field(name.into())].into_boxed_slice(),
             reduce_hint: crate::node::ReduceHint::None,
@@ -235,6 +240,7 @@ mod tests {
 
     fn builtin(opcode: OpCode, args: Vec<CompiledNode>) -> CompiledNode {
         CompiledNode::BuiltinOperator {
+            id: SYNTHETIC_ID,
             opcode,
             args: args.into_boxed_slice(),
         }

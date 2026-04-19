@@ -114,10 +114,10 @@ pub fn evaluate_switch<M: Mode>(
     // Cases should be a CompiledNode::Array of [match_value, result] pairs
     // or a CompiledNode::Value containing a pre-evaluated array (from static optimization)
     match &args[1] {
-        CompiledNode::Array { nodes } => {
+        CompiledNode::Array { nodes, .. } => {
             for case_node in nodes.iter() {
                 match case_node {
-                    CompiledNode::Array { nodes: pair } if pair.len() >= 2 => {
+                    CompiledNode::Array { nodes: pair, .. } if pair.len() >= 2 => {
                         let case_value =
                             engine.evaluate_node_with_mode::<M>(&pair[0], context, mode)?;
                         if discriminant == case_value {
@@ -126,6 +126,7 @@ pub fn evaluate_switch<M: Mode>(
                     }
                     CompiledNode::Value {
                         value: Value::Array(pair),
+                    ..
                     } if pair.len() >= 2 => {
                         // Static-optimized pair
                         if discriminant == pair[0] {
@@ -138,6 +139,7 @@ pub fn evaluate_switch<M: Mode>(
         }
         CompiledNode::Value {
             value: Value::Array(cases),
+        ..
         } => {
             // Entire cases array was statically evaluated
             for case in cases {

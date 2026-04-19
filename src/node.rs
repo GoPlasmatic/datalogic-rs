@@ -43,9 +43,15 @@ pub enum MetadataHint {
     Key,
 }
 
+/// Sentinel id used for synthetic nodes built outside the compile pipeline
+/// (test helpers, run-time value wrappers in `eager_apply`, etc.). Real IDs
+/// are always nonzero since `CompileCtx` starts the counter at 1.
+pub const SYNTHETIC_ID: u32 = 0;
+
 /// Data for a custom operator (boxed inside CompiledNode to reduce enum size).
 #[derive(Debug, Clone)]
 pub struct CustomOperatorData {
+    pub id: u32,
     pub name: String,
     pub args: Box<[CompiledNode]>,
 }
@@ -54,6 +60,7 @@ pub struct CustomOperatorData {
 #[cfg(feature = "preserve")]
 #[derive(Debug, Clone)]
 pub struct StructuredObjectData {
+    pub id: u32,
     pub fields: Box<[(String, CompiledNode)]>,
 }
 
@@ -61,6 +68,7 @@ pub struct StructuredObjectData {
 #[cfg(feature = "ext-control")]
 #[derive(Debug, Clone)]
 pub struct CompiledExistsData {
+    pub id: u32,
     pub scope_level: u32,
     pub segments: Box<[PathSegment]>,
 }
@@ -69,9 +77,20 @@ pub struct CompiledExistsData {
 #[cfg(feature = "ext-string")]
 #[derive(Debug, Clone)]
 pub struct CompiledSplitRegexData {
+    pub id: u32,
     pub args: Box<[CompiledNode]>,
     pub regex: Arc<Regex>,
     pub capture_names: Box<[Box<str>]>,
+}
+
+/// Data for a pre-compiled throw with a static error object.
+/// Previously `Box<Value>`; upgraded to a named struct so it can carry an id
+/// alongside the error payload.
+#[cfg(feature = "error-handling")]
+#[derive(Debug, Clone)]
+pub struct CompiledThrowData {
+    pub id: u32,
+    pub error: Value,
 }
 
 /// A compiled node representing a single operation or value in the logic tree.
@@ -89,19 +108,20 @@ pub enum CompiledNode {
     /// A static JSON value that requires no evaluation.
     ///
     /// Used for literals like numbers, strings, booleans, and null.
-    Value { value: Value },
+    Value { id: u32, value: Value },
 
     /// An array of compiled nodes.
     ///
     /// Each node is evaluated in sequence, and the results are collected into a JSON array.
     /// Uses `Box<[CompiledNode]>` for memory efficiency.
-    Array { nodes: Box<[CompiledNode]> },
+    Array { id: u32, nodes: Box<[CompiledNode]> },
 
     /// A built-in operator optimized with OpCode dispatch.
     ///
     /// The OpCode enum enables direct dispatch without string lookups,
     /// significantly improving performance for the 50+ built-in operators.
     BuiltinOperator {
+        id: u32,
         opcode: OpCode,
         args: Box<[CompiledNode]>,
     },
@@ -120,6 +140,7 @@ pub enum CompiledNode {
     /// scope_level 0 = current context (var-style), N = go up N levels (val with [[N], ...]).
     /// Segments are pre-parsed at compile time to avoid runtime string splitting.
     CompiledVar {
+        id: u32,
         scope_level: u32,
         segments: Box<[PathSegment]>,
         reduce_hint: ReduceHint,
@@ -140,10 +161,48 @@ pub enum CompiledNode {
     /// A pre-compiled throw with a static error object.
     /// Boxed to reduce enum size (rare variant).
     #[cfg(feature = "error-handling")]
-    CompiledThrow(Box<Value>),
+    CompiledThrow(Box<CompiledThrowData>),
 }
 
 impl CompiledNode {
+    /// Returns the unique id assigned to this node during compilation.
+    ///
+    /// IDs are shared across tracing and error breadcrumbs — one source of
+    /// truth per node. Synthetic nodes built outside the compile pipeline
+    /// (test helpers, `eager_apply` value wrappers) carry [`SYNTHETIC_ID`].
+    #[inline]
+    pub fn id(&self) -> u32 {
+        match self {
+            CompiledNode::Value { id, .. } => *id,
+            CompiledNode::Array { id, .. } => *id,
+            CompiledNode::BuiltinOperator { id, .. } => *id,
+            CompiledNode::CustomOperator(data) => data.id,
+            #[cfg(feature = "preserve")]
+            CompiledNode::StructuredObject(data) => data.id,
+            CompiledNode::CompiledVar { id, .. } => *id,
+            #[cfg(feature = "ext-control")]
+            CompiledNode::CompiledExists(data) => data.id,
+            #[cfg(feature = "ext-string")]
+            CompiledNode::CompiledSplitRegex(data) => data.id,
+            #[cfg(feature = "error-handling")]
+            CompiledNode::CompiledThrow(data) => data.id,
+        }
+    }
+
+    /// Convenience constructor for a `Value` node with a [`SYNTHETIC_ID`].
+    ///
+    /// Used by operator fast paths that wrap runtime values back into
+    /// `CompiledNode::Value` purely for dispatch. These wrappers are never
+    /// observed by tracing or error reporting, so assigning a real id would
+    /// be misleading.
+    #[inline]
+    pub fn synthetic_value(value: Value) -> Self {
+        CompiledNode::Value {
+            id: SYNTHETIC_ID,
+            value,
+        }
+    }
+
     /// Returns the name of this node's top-level operator, if any.
     ///
     /// Used when wrapping an error with structured context — we only report
@@ -161,6 +220,30 @@ impl CompiledNode {
             CompiledNode::CompiledThrow(_) => Some("throw".to_string()),
             _ => None,
         }
+    }
+}
+
+/// Compile-time context for assigning unique node ids.
+///
+/// Threaded through `compile_node` so every node constructed during
+/// compilation gets a fresh, monotonically increasing id. The counter starts
+/// at 1 — id 0 is reserved for synthetic nodes (see [`SYNTHETIC_ID`]).
+#[derive(Debug)]
+pub(crate) struct CompileCtx {
+    next_id: u32,
+}
+
+impl CompileCtx {
+    pub(crate) fn new() -> Self {
+        Self { next_id: 1 }
+    }
+
+    /// Allocate a fresh node id.
+    #[inline]
+    pub(crate) fn next_id(&mut self) -> u32 {
+        let id = self.next_id;
+        self.next_id = self.next_id.saturating_add(1);
+        id
     }
 }
 
@@ -402,16 +485,16 @@ pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
             Value::Object(obj)
         }
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(error_obj) => {
+        CompiledNode::CompiledThrow(data) => {
             let mut obj = serde_json::Map::new();
-            if let Value::Object(err_map) = error_obj.as_ref() {
+            if let Value::Object(err_map) = &data.error {
                 if let Some(Value::String(s)) = err_map.get("type") {
                     obj.insert("throw".into(), Value::String(s.clone()));
                 } else {
-                    obj.insert("throw".into(), error_obj.as_ref().clone());
+                    obj.insert("throw".into(), data.error.clone());
                 }
             } else {
-                obj.insert("throw".into(), error_obj.as_ref().clone());
+                obj.insert("throw".into(), data.error.clone());
             }
             Value::Object(obj)
         }

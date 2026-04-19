@@ -61,7 +61,7 @@ pub fn evaluate_substr(
 
     // Fast path: read literal integer args directly without evaluate_node dispatch
     let start = if args.len() > 1 {
-        if let CompiledNode::Value { value } = &args[1] {
+        if let CompiledNode::Value { value, .. } = &args[1] {
             value.as_i64().unwrap_or(0)
         } else {
             let start_val = engine.evaluate_node(&args[1], context)?;
@@ -72,7 +72,7 @@ pub fn evaluate_substr(
     };
 
     let length = if args.len() > 2 {
-        if let CompiledNode::Value { value } = &args[2] {
+        if let CompiledNode::Value { value, .. } = &args[2] {
             value.as_i64()
         } else {
             let length_val = engine.evaluate_node(&args[2], context)?;
