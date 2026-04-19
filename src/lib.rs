@@ -65,7 +65,7 @@ pub use config::{
 };
 pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
-pub use error::Error;
+pub use error::{Error, StructuredError};
 pub use node::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub use opcode::OpCode;
 #[cfg(feature = "trace")]

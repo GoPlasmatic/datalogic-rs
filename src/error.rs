@@ -1,3 +1,4 @@
+use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::fmt;
 
 /// Error type for DataLogic operations
@@ -72,3 +73,105 @@ impl From<serde_json::Error> for Error {
         Error::ParseError(err.to_string())
     }
 }
+
+impl Error {
+    /// Stable string tag for the error kind. Used in JSON serialization and
+    /// stable across releases — TS consumers can match on it.
+    fn tag(&self) -> &'static str {
+        match self {
+            Error::InvalidOperator(_) => "InvalidOperator",
+            Error::InvalidArguments(_) => "InvalidArguments",
+            Error::VariableNotFound(_) => "VariableNotFound",
+            Error::InvalidContextLevel(_) => "InvalidContextLevel",
+            Error::TypeError(_) => "TypeError",
+            Error::ArithmeticError(_) => "ArithmeticError",
+            Error::Custom(_) => "Custom",
+            Error::ParseError(_) => "ParseError",
+            Error::Thrown(_) => "Thrown",
+            Error::FormatError(_) => "FormatError",
+            Error::IndexOutOfBounds { .. } => "IndexOutOfBounds",
+            Error::ConfigurationError(_) => "ConfigurationError",
+        }
+    }
+
+    /// Writes the `type`, `message`, and any variant-specific extra fields
+    /// into an existing `SerializeMap`. Shared by `Error` and
+    /// `StructuredError` so the JSON shape stays in one place.
+    fn serialize_fields<M: SerializeMap>(&self, map: &mut M) -> Result<(), M::Error> {
+        map.serialize_entry("type", self.tag())?;
+        map.serialize_entry("message", &self.to_string())?;
+        match self {
+            Error::VariableNotFound(name) => map.serialize_entry("variable", name),
+            Error::InvalidContextLevel(level) => map.serialize_entry("level", level),
+            Error::Thrown(value) => map.serialize_entry("thrown", value),
+            Error::IndexOutOfBounds { index, length } => {
+                map.serialize_entry("index", index)?;
+                map.serialize_entry("length", length)
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Serialize for Error {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Shape: { "type": <tag>, "message": <Display>, ...variant-specific extras }
+        let mut map = serializer.serialize_map(None)?;
+        self.serialize_fields(&mut map)?;
+        map.end()
+    }
+}
+
+/// An `Error` paired with optional contextual metadata about where it
+/// occurred. Produced at the WASM/engine boundary for structured consumption
+/// by non-Rust callers (e.g. the React debugger).
+///
+/// Serializes by flattening the inner `Error` — the JSON shape is exactly
+/// `{"type": ..., "message": ..., ...extras, "operator": ...}`.
+#[derive(Debug, Clone)]
+pub struct StructuredError {
+    pub error: Error,
+
+    /// Name of the outermost operator that produced the error, when known.
+    pub operator: Option<String>,
+}
+
+impl Serialize for StructuredError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Flatten the inner Error fields, then append `operator` when present.
+        let mut map = serializer.serialize_map(None)?;
+        self.error.serialize_fields(&mut map)?;
+        if let Some(op) = &self.operator {
+            map.serialize_entry("operator", op)?;
+        }
+        map.end()
+    }
+}
+
+impl StructuredError {
+    /// Attach the given operator name and return self.
+    pub fn with_operator(mut self, operator: impl Into<String>) -> Self {
+        self.operator = Some(operator.into());
+        self
+    }
+}
+
+impl From<Error> for StructuredError {
+    fn from(error: Error) -> Self {
+        StructuredError {
+            error,
+            operator: None,
+        }
+    }
+}
+
+impl fmt::Display for StructuredError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.operator {
+            Some(op) => write!(f, "{} (in operator: {})", self.error, op),
+            None => write!(f, "{}", self.error),
+        }
+    }
+}
+
+impl std::error::Error for StructuredError {}

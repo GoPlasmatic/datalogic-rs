@@ -143,6 +143,27 @@ pub enum CompiledNode {
     CompiledThrow(Box<Value>),
 }
 
+impl CompiledNode {
+    /// Returns the name of this node's top-level operator, if any.
+    ///
+    /// Used when wrapping an error with structured context — we only report
+    /// the outermost operator, not the full nested call chain.
+    pub fn operator_name(&self) -> Option<String> {
+        match self {
+            CompiledNode::BuiltinOperator { opcode, .. } => Some(opcode.as_str().to_string()),
+            CompiledNode::CustomOperator(data) => Some(data.name.clone()),
+            CompiledNode::CompiledVar { .. } => Some("var".to_string()),
+            #[cfg(feature = "ext-control")]
+            CompiledNode::CompiledExists(_) => Some("exists".to_string()),
+            #[cfg(feature = "ext-string")]
+            CompiledNode::CompiledSplitRegex(_) => Some("split".to_string()),
+            #[cfg(feature = "error-handling")]
+            CompiledNode::CompiledThrow(_) => Some("throw".to_string()),
+            _ => None,
+        }
+    }
+}
+
 /// Compiled logic that can be evaluated multiple times across different data.
 ///
 /// `CompiledLogic` represents a pre-processed JSONLogic expression that has been

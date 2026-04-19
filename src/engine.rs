@@ -7,7 +7,9 @@ use crate::config::EvaluationConfig;
 use crate::operators::variable;
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
-use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result};
+use crate::{
+    CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result, StructuredError,
+};
 
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
 ///
@@ -367,6 +369,43 @@ impl DataLogic {
         self.evaluate(&compiled, data_arc)
     }
 
+    /// Evaluates a compiled rule, returning a `StructuredError` on failure.
+    ///
+    /// Identical to [`evaluate`](Self::evaluate) on success. On error, the
+    /// `Error` is wrapped with the name of the outermost operator in the
+    /// compiled logic, so non-Rust consumers can surface typed error
+    /// information without parsing `Display` strings.
+    pub fn evaluate_structured(
+        &self,
+        compiled: &CompiledLogic,
+        data: Arc<Value>,
+    ) -> std::result::Result<Value, StructuredError> {
+        let mut context = ContextStack::new(data);
+        self.evaluate_node(&compiled.root, &mut context)
+            .map_err(|e| {
+                let mut se = StructuredError::from(e);
+                if let Some(name) = compiled.root.operator_name() {
+                    se = se.with_operator(name);
+                }
+                se
+            })
+    }
+
+    /// Convenience method: parse, compile, and evaluate with a structured
+    /// error on failure. Sibling of [`evaluate_json`](Self::evaluate_json).
+    pub fn evaluate_json_structured(
+        &self,
+        logic: &str,
+        data: &str,
+    ) -> std::result::Result<Value, StructuredError> {
+        let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
+        let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
+        let data_arc = Arc::new(data_value);
+
+        let compiled = self.compile(&logic_value)?;
+        self.evaluate_structured(&compiled, data_arc)
+    }
+
     /// Evaluates a compiled node using OpCode dispatch.
     ///
     /// This is the core evaluation method that handles:
@@ -540,14 +579,77 @@ impl DataLogic {
                 expression_tree,
                 steps: collector.into_steps(),
                 error: None,
+                error_structured: None,
             }),
             Err(e) => {
                 // Return error but include partial steps for debugging
+                let message = e.to_string();
+                let mut structured = StructuredError::from(e);
+                if let Some(name) = compiled.root.operator_name() {
+                    structured = structured.with_operator(name);
+                }
                 Ok(TracedResult {
                     result: Value::Null,
                     expression_tree,
                     steps: collector.into_steps(),
-                    error: Some(e.to_string()),
+                    error: Some(message),
+                    error_structured: Some(structured),
+                })
+            }
+        }
+    }
+
+    /// Traced evaluation that returns a [`StructuredError`] on any setup
+    /// failure (parse / compile) and embeds a structured error inside
+    /// [`TracedResult`] on runtime failure.
+    ///
+    /// Unlike [`evaluate_json_with_trace`](Self::evaluate_json_with_trace),
+    /// this method returns `Err` for parse/compile problems rather than
+    /// wrapping them in a trace payload, which matches what non-Rust
+    /// consumers usually want (no partial trace data when the rule never
+    /// started evaluating).
+    #[cfg(feature = "trace")]
+    pub fn evaluate_json_with_trace_structured(
+        &self,
+        logic: &str,
+        data: &str,
+    ) -> std::result::Result<TracedResult, StructuredError> {
+        let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
+        let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
+        let data_arc = Arc::new(data_value);
+
+        let compiled = Arc::new(
+            CompiledLogic::compile_for_trace(&logic_value, self.preserve_structure())
+                .map_err(Error::from)?,
+        );
+
+        let (expression_tree, node_id_map) = ExpressionNode::build_from_compiled(&compiled.root);
+        let mut context = ContextStack::new(data_arc);
+        let mut collector = TraceCollector::new();
+
+        let result =
+            self.evaluate_node_traced(&compiled.root, &mut context, &mut collector, &node_id_map);
+
+        match result {
+            Ok(value) => Ok(TracedResult {
+                result: value,
+                expression_tree,
+                steps: collector.into_steps(),
+                error: None,
+                error_structured: None,
+            }),
+            Err(e) => {
+                let message = e.to_string();
+                let mut structured = StructuredError::from(e);
+                if let Some(name) = compiled.root.operator_name() {
+                    structured = structured.with_operator(name);
+                }
+                Ok(TracedResult {
+                    result: Value::Null,
+                    expression_tree,
+                    steps: collector.into_steps(),
+                    error: Some(message),
+                    error_structured: Some(structured),
                 })
             }
         }

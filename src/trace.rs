@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::{CompiledNode, OpCode};
+use crate::{CompiledNode, OpCode, StructuredError};
 
 /// The result of a traced evaluation, containing both the result and execution trace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +22,10 @@ pub struct TracedResult {
     /// Top-level error message if evaluation failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Structured top-level error if evaluation failed. Serialize-only —
+    /// ignored on deserialize (StructuredError is a Rust→JS shape).
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, default)]
+    pub error_structured: Option<StructuredError>,
 }
 
 /// Represents a node in the expression tree for flow diagram rendering.
