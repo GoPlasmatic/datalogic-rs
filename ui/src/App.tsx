@@ -15,8 +15,9 @@ import {
   type JsonLogicValue,
 } from "./components/logic-editor";
 import { DebugPanel } from "./components/debug-panel";
+import type { DebugError } from "./components/debug-panel/DebugPanel";
 import { MobileNav, type MobileTab } from "./components/mobile-nav/MobileNav";
-import { useWasmEvaluator } from "./components/logic-editor/hooks";
+import { useWasmEvaluator, DataLogicEvaluationError } from "./components/logic-editor/hooks";
 import { useTheme, useIsMobile } from "./hooks";
 import { SAMPLE_EXPRESSIONS } from "./constants/sample-expressions";
 import "./App.css";
@@ -33,7 +34,7 @@ function App() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [result, setResult] = useState<unknown>(undefined);
-  const [resultError, setResultError] = useState<string | null>(null);
+  const [resultError, setResultError] = useState<DebugError>(null);
 
   // Preserve structure mode state
   const [preserveStructure, setPreserveStructure] = useState<boolean>(false);
@@ -230,7 +231,11 @@ function App() {
       setResultError(null);
     } catch (err) {
       setResult(undefined);
-      setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
+      if (err instanceof DataLogicEvaluationError) {
+        setResultError(err.structured);
+      } else {
+        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
+      }
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluate]);
   /* eslint-enable react-hooks/set-state-in-effect */

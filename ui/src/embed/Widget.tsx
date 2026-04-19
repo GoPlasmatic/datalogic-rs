@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { DataLogicEditor, type JsonLogicValue } from '../components/logic-editor';
-import { useWasmEvaluator } from '../components/logic-editor/hooks';
+import { useWasmEvaluator, DataLogicEvaluationError } from '../components/logic-editor/hooks';
 import { JsonHighlight } from './JsonHighlight';
 import { JsonEditor } from './JsonEditor';
 import { detectTheme, type WidgetProps } from './utils';
@@ -84,7 +84,11 @@ export function Widget({ logic: initialLogic, data: initialData = {}, height = '
       setResultError(null);
     } catch (err) {
       setResult(undefined);
-      setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
+      if (err instanceof DataLogicEvaluationError) {
+        setResultError(err.structured.message);
+      } else {
+        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
+      }
     }
   }, [wasmReady, logic, data, logicError, dataError, evaluate]);
   /* eslint-enable react-hooks/set-state-in-effect */

@@ -1,20 +1,45 @@
 import { useState, useCallback } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { JsonLogicValue } from '../logic-editor/types';
+import type { JsonLogicValue, StructuredError } from '../logic-editor/types';
 import { JsonEditor, JsonDisplay } from './JsonHighlighter';
 import './DebugPanel.css';
+
+/** Error shape accepted by the debug panel: a plain string for parse-level
+ * problems, or a `StructuredError` for runtime errors out of the engine. */
+export type DebugError = StructuredError | string | null;
+
+function ErrorDisplay({ error }: { error: Exclude<DebugError, null> }) {
+  if (typeof error === 'string') {
+    return (
+      <>
+        <span className="error-icon">!</span>
+        {error}
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="error-icon">!</span>
+      <span className="error-type-pill" data-kind={error.type}>{error.type}</span>
+      <span className="error-message">{error.message}</span>
+      {error.operator && (
+        <span className="error-operator-chip">op: {error.operator}</span>
+      )}
+    </>
+  );
+}
 
 interface DebugPanelProps {
   logic: JsonLogicValue | null;
   logicText: string;
   onLogicChange: (text: string) => void;
-  logicError: string | null;
+  logicError: DebugError;
   data: unknown;
   dataText: string;
   onDataChange: (text: string) => void;
-  dataError: string | null;
+  dataError: DebugError;
   result: unknown;
-  resultError: string | null;
+  resultError: DebugError;
   wasmReady: boolean;
   wasmLoading: boolean;
   accordion?: boolean;
@@ -99,8 +124,7 @@ export function DebugPanel({
             />
             {logicError && (
               <div className="debug-error">
-                <span className="error-icon">!</span>
-                {logicError}
+                <ErrorDisplay error={logicError} />
               </div>
             )}
           </div>
@@ -143,8 +167,7 @@ export function DebugPanel({
             />
             {dataError && (
               <div className="debug-error">
-                <span className="error-icon">!</span>
-                {dataError}
+                <ErrorDisplay error={dataError} />
               </div>
             )}
           </div>
@@ -176,8 +199,7 @@ export function DebugPanel({
           <div className="debug-section-content">
             {resultError ? (
               <div className="debug-result error">
-                <span className="error-icon">!</span>
-                {resultError}
+                <ErrorDisplay error={resultError} />
               </div>
             ) : (
               <JsonDisplay value={result} />

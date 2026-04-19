@@ -1,18 +1,41 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import type { TracedResult } from '../types';
+import type { StructuredError, TracedResult } from '../types';
 
-/** Extract error message from unknown error types (Error objects, strings from WASM, etc.) */
-function extractErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === 'string') return err;
-  return fallback;
+/** Error thrown from the WASM boundary that carries the parsed StructuredError. */
+export class DataLogicEvaluationError extends Error {
+  readonly structured: StructuredError;
+
+  constructor(structured: StructuredError) {
+    super(structured.message || structured.type);
+    this.name = 'DataLogicEvaluationError';
+    this.structured = structured;
+  }
+}
+
+/**
+ * Attempt to parse a WASM error message as a StructuredError JSON document.
+ * The structured entry points always produce JSON; legacy string errors fall
+ * back to a synthetic `Unknown` StructuredError so downstream code has a
+ * uniform shape.
+ */
+function parseStructuredError(err: unknown, fallbackMessage: string): StructuredError {
+  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : fallbackMessage;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && 'type' in parsed && 'message' in parsed) {
+      return parsed as StructuredError;
+    }
+  } catch {
+    // Fall through — raw isn't JSON (e.g. legacy panic or network error).
+  }
+  return { type: 'Unknown', message: raw };
 }
 
 interface WasmModule {
-  evaluate: (logic: string, data: string, preserve_structure: boolean) => string;
-  evaluate_with_trace: (logic: string, data: string, preserve_structure: boolean) => string;
+  evaluateStructured: (logic: string, data: string, preserve_structure: boolean) => string;
+  evaluateWithTraceStructured: (logic: string, data: string, preserve_structure: boolean) => string;
   CompiledRule: new (logic: string, preserve_structure: boolean) => {
-    evaluate: (data: string) => string;
+    evaluateStructured: (data: string) => string;
     free: () => void;
   };
 }
@@ -53,8 +76,8 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
 
         if (!cancelled) {
           moduleRef.current = {
-            evaluate: wasm.evaluate,
-            evaluate_with_trace: wasm.evaluate_with_trace,
+            evaluateStructured: wasm.evaluateStructured,
+            evaluateWithTraceStructured: wasm.evaluateWithTraceStructured,
             CompiledRule: wasm.CompiledRule,
           };
           setReady(true);
@@ -80,13 +103,13 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       throw new Error('WASM module not initialized');
     }
 
+    const logicStr = JSON.stringify(logic);
+    const dataStr = JSON.stringify(data);
     try {
-      const logicStr = JSON.stringify(logic);
-      const dataStr = JSON.stringify(data);
-      const resultStr = moduleRef.current.evaluate(logicStr, dataStr, preserveStructure);
+      const resultStr = moduleRef.current.evaluateStructured(logicStr, dataStr, preserveStructure);
       return JSON.parse(resultStr);
     } catch (err) {
-      throw new Error(extractErrorMessage(err, 'Evaluation failed'), { cause: err });
+      throw new DataLogicEvaluationError(parseStructuredError(err, 'Evaluation failed'));
     }
   }, [preserveStructure]);
 
@@ -95,17 +118,21 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       throw new Error('WASM module not initialized');
     }
 
-    if (!moduleRef.current.evaluate_with_trace) {
-      throw new Error('evaluate_with_trace not available in WASM module');
+    if (!moduleRef.current.evaluateWithTraceStructured) {
+      throw new Error('evaluateWithTraceStructured not available in WASM module');
     }
 
+    const logicStr = JSON.stringify(logic);
+    const dataStr = JSON.stringify(data);
     try {
-      const logicStr = JSON.stringify(logic);
-      const dataStr = JSON.stringify(data);
-      const resultStr = moduleRef.current.evaluate_with_trace(logicStr, dataStr, preserveStructure);
+      const resultStr = moduleRef.current.evaluateWithTraceStructured(
+        logicStr,
+        dataStr,
+        preserveStructure,
+      );
       return JSON.parse(resultStr) as TracedResult;
     } catch (err) {
-      throw new Error(extractErrorMessage(err, 'Trace evaluation failed'), { cause: err });
+      throw new DataLogicEvaluationError(parseStructuredError(err, 'Trace evaluation failed'));
     }
   }, [preserveStructure]);
 

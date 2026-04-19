@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { DataLogicEditor, type JsonLogicValue } from '../components/logic-editor';
-import { useWasmEvaluator } from '../components/logic-editor/hooks';
+import { useWasmEvaluator, DataLogicEvaluationError } from '../components/logic-editor/hooks';
 import { EMBED_SAMPLE_EXPRESSIONS as SAMPLE_EXPRESSIONS } from '../constants/embed-sample-expressions';
 import { JsonHighlight } from './JsonHighlight';
 import { JsonEditor } from './JsonEditor';
@@ -108,7 +108,11 @@ export function Playground({ editable = false }: PlaygroundProps) {
       setResultError(null);
     } catch (err) {
       setResult(undefined);
-      setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
+      if (err instanceof DataLogicEvaluationError) {
+        setResultError(err.structured.message);
+      } else {
+        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
+      }
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluate]);
   /* eslint-enable react-hooks/set-state-in-effect */

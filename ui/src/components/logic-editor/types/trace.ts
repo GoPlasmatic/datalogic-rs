@@ -16,9 +16,29 @@ export interface ExecutionStep {
   iteration_total?: number;
 }
 
+/**
+ * Structured error shape emitted by the WASM `*_structured` entry points.
+ *
+ * Mirrors the Rust `StructuredError` serialization — `type` is a stable
+ * machine-readable kind, `message` is human-readable, and variant-specific
+ * extras appear as extra fields.
+ */
+export interface StructuredError {
+  type: string;
+  message: string;
+  operator?: string;
+  variable?: string;
+  level?: number;
+  thrown?: unknown;
+  index?: number;
+  length?: number;
+  stage?: string;
+}
+
 export interface TracedResult {
   result: unknown;
   expression_tree: ExpressionNode;
   steps: ExecutionStep[];
   error?: string;
+  error_structured?: StructuredError;
 }
