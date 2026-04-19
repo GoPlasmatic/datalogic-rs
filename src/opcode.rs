@@ -636,6 +636,13 @@ fn eager_apply<M: crate::eval_mode::Mode>(
     f: EagerOp,
 ) -> crate::Result<serde_json::Value> {
     if M::TRACED {
+        // Fast path for 1-arg eager ops (most unary string/math ops): avoid
+        // Vec heap allocation by using a stack array.
+        if args.len() == 1 {
+            let value = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
+            let node = [crate::CompiledNode::synthetic_value(value)];
+            return f(&node, context, engine);
+        }
         let mut value_nodes: Vec<crate::CompiledNode> = Vec::with_capacity(args.len());
         for arg in args {
             let value = engine.evaluate_node_with_mode::<M>(arg, context, mode)?;
