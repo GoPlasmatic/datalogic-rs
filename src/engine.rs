@@ -381,7 +381,10 @@ impl DataLogic {
         data: Arc<Value>,
     ) -> std::result::Result<Value, StructuredError> {
         let mut context = ContextStack::new(data);
-        match self.evaluate_node(&compiled.root, &mut context) {
+        // Route through Structured mode so the breadcrumb push fires;
+        // Plain callers never pay for it.
+        let mut mode = crate::eval_mode::Structured;
+        match self.evaluate_node_with_mode(&compiled.root, &mut context, &mut mode) {
             Ok(v) => Ok(v),
             Err(e) => {
                 let path = context.take_error_path();
@@ -525,10 +528,11 @@ impl DataLogic {
             CompiledNode::CompiledThrow(data) => Err(Error::Thrown(data.error.clone())),
         };
 
-        // Accumulate the error breadcrumb on every Err. Runs under Plain too
-        // — this is how structured errors get their `path` field even without
-        // tracing. `try` truncates the trail around its catches.
-        if result.is_err() {
+        // Accumulate the error breadcrumb on every Err — but only when the
+        // mode actually collects it. `M::TRACK_PATH` is `const bool`, so this
+        // entire branch is DCE'd under `Plain` (zero cost on the hot path).
+        // `Structured` and `Traced` callers pay one `is_err` check per node.
+        if M::TRACK_PATH && result.is_err() {
             context.push_error_step(node.id());
         }
 

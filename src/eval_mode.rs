@@ -26,6 +26,12 @@ pub trait Mode {
     /// `if M::TRACED { ... }` and let the optimiser fold it away.
     const TRACED: bool;
 
+    /// `true` for modes that collect the error breadcrumb path on the
+    /// [`ContextStack`]. The dispatch hub gates its per-dispatch
+    /// `push_error_step` on this flag so [`Plain`] callers pay nothing —
+    /// only [`Structured`] and [`Traced`] consumers read the path.
+    const TRACK_PATH: bool;
+
     /// Record a completed node result. Called once per non-literal node
     /// after its value (or error) has been computed.
     fn on_node_result(&mut self, node: &CompiledNode, ctx_data: &Value, result: &Result<Value>);
@@ -39,12 +45,36 @@ pub trait Mode {
 
 /// Zero-sized plain (untraced) evaluation mode.
 ///
-/// All methods are inlined no-ops, and `TRACED` is `false`, so the
-/// optimiser collapses any trace-gated branches under this mode.
+/// All methods are inlined no-ops, and both `TRACED` and `TRACK_PATH` are
+/// `false`, so the optimiser collapses every trace-gated and path-gated
+/// branch under this mode.
 pub struct Plain;
 
 impl Mode for Plain {
     const TRACED: bool = false;
+    const TRACK_PATH: bool = false;
+
+    #[inline(always)]
+    fn on_node_result(&mut self, _: &CompiledNode, _: &Value, _: &Result<Value>) {}
+
+    #[inline(always)]
+    fn push_iteration(&mut self, _: u32, _: u32) {}
+
+    #[inline(always)]
+    fn pop_iteration(&mut self) {}
+}
+
+/// Zero-sized untraced mode that still collects the error breadcrumb path.
+///
+/// Used by the `evaluate_structured` / `evaluate_json_structured` entry
+/// points so a [`StructuredError`](crate::StructuredError) can surface the
+/// failing node path without paying for full tracing. Plain callers stay on
+/// [`Plain`] and pay nothing.
+pub struct Structured;
+
+impl Mode for Structured {
+    const TRACED: bool = false;
+    const TRACK_PATH: bool = true;
 
     #[inline(always)]
     fn on_node_result(&mut self, _: &CompiledNode, _: &Value, _: &Result<Value>) {}
@@ -70,6 +100,7 @@ pub struct Traced<'a> {
 #[cfg(feature = "trace")]
 impl Mode for Traced<'_> {
     const TRACED: bool = true;
+    const TRACK_PATH: bool = true;
 
     fn on_node_result(&mut self, node: &CompiledNode, ctx_data: &Value, result: &Result<Value>) {
         let id = node.id();
