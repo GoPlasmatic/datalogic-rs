@@ -573,20 +573,21 @@ pub fn evaluate_map<M: Mode>(
         }
         Value::Object(obj) => {
             let total = obj.len() as u32;
-            let mut results = Vec::with_capacity(obj.len());
+            let len = obj.len();
+            let mut results = Vec::with_capacity(len);
 
-            for (index, (key, value)) in obj.iter().enumerate() {
+            for (index, (key, value)) in obj.into_iter().enumerate() {
                 if index == 0 {
-                    context.push_with_key_index(value.clone(), 0, key.clone());
+                    context.push_with_key_index(value, 0, key);
                 } else {
-                    context.replace_top_key_data(value.clone(), index, key.clone());
+                    context.replace_top_key_data(value, index, key);
                 }
                 mode.push_iteration(index as u32, total);
                 let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
                 mode.pop_iteration();
                 results.push(result?);
             }
-            if !obj.is_empty() {
+            if len > 0 {
                 context.pop();
             }
 
@@ -729,9 +730,10 @@ pub fn evaluate_filter<M: Mode>(
         }
         Value::Object(obj) => {
             let total = obj.len() as u32;
+            let len = obj.len();
             let mut result_obj = serde_json::Map::new();
 
-            for (index, (key, value)) in obj.iter().enumerate() {
+            for (index, (key, value)) in obj.into_iter().enumerate() {
                 if index == 0 {
                     context.push_with_key_index(value.clone(), 0, key.clone());
                 } else {
@@ -743,10 +745,10 @@ pub fn evaluate_filter<M: Mode>(
                 let keep = keep?;
 
                 if is_truthy(&keep, engine) {
-                    result_obj.insert(key.clone(), value.clone());
+                    result_obj.insert(key, value);
                 }
             }
-            if !obj.is_empty() {
+            if len > 0 {
                 context.pop();
             }
 
@@ -1267,20 +1269,29 @@ pub fn evaluate_sort(
         let keys = if let Some(k) = keys {
             k
         } else {
-            // General path: push each item into context and evaluate extractor
-            let mut keys: Vec<Value> = Vec::with_capacity(array.len());
+            // General path: move each item into context (no clone), evaluate
+            // the extractor, then restore the item back into its array slot
+            // so the sort-by-indices reorder below still sees the original
+            // values.
+            let n = array.len();
+            let mut keys: Vec<Value> = Vec::with_capacity(n);
             let mut pushed = false;
 
-            for (index, item) in array.iter().enumerate() {
+            for index in 0..n {
+                let item = std::mem::replace(&mut array[index], Value::Null);
                 if !pushed {
-                    context.push_with_index(item.clone(), 0);
+                    context.push_with_index(item, 0);
                     pushed = true;
                 } else {
-                    context.replace_top_data(item.clone(), index);
+                    let prev = context.take_top_data();
+                    array[index - 1] = prev;
+                    context.replace_top_data(item, index);
                 }
                 keys.push(engine.evaluate_node(extractor, context)?);
             }
             if pushed {
+                let last = context.take_top_data();
+                array[n - 1] = last;
                 context.pop();
             }
             keys
