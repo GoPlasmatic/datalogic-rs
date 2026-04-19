@@ -37,34 +37,38 @@
 
 use serde_json::Value;
 
+use crate::eval_mode::Mode;
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
-use std::collections::HashMap;
 
 /// Evaluate the last argument of try with error context if applicable.
 /// Uses `take()` to move the error object instead of cloning.
 #[inline]
-fn try_last_with_error_context(
+fn try_last_with_error_context<M: Mode>(
     arg: &CompiledNode,
     last_error: &mut Option<Error>,
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if let Some(Error::Thrown(error_obj)) = last_error.take() {
         context.push(error_obj);
-        let result = engine.evaluate_node(arg, context);
+        let result = engine.evaluate_node_with_mode::<M>(arg, context, mode);
         context.pop();
         result
     } else {
-        engine.evaluate_node(arg, context)
+        engine.evaluate_node_with_mode::<M>(arg, context, mode)
     }
 }
 
-/// Try operator function - catches errors and provides fallback values
+/// Try operator — catches errors and falls back through alternative arguments.
+///
+/// Generic over [`Mode`] so plain and traced dispatch share the same body.
 #[inline]
-pub fn evaluate_try(
+pub fn evaluate_try<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(
@@ -74,16 +78,22 @@ pub fn evaluate_try(
 
     // Fast path: single argument — just evaluate it
     if args.len() == 1 {
-        return engine.evaluate_node(&args[0], context);
+        return engine.evaluate_node_with_mode::<M>(&args[0], context, mode);
     }
 
     // Fast path: two arguments (most common pattern)
     if args.len() == 2 {
-        match engine.evaluate_node(&args[0], context) {
+        match engine.evaluate_node_with_mode::<M>(&args[0], context, mode) {
             Ok(result) => return Ok(result),
             Err(err) => {
                 let mut last_error = Some(err);
-                return try_last_with_error_context(&args[1], &mut last_error, context, engine);
+                return try_last_with_error_context::<M>(
+                    &args[1],
+                    &mut last_error,
+                    context,
+                    engine,
+                    mode,
+                );
             }
         }
     }
@@ -94,65 +104,17 @@ pub fn evaluate_try(
 
     for (i, arg) in args.iter().enumerate() {
         if i == last_idx {
-            return try_last_with_error_context(arg, &mut last_error, context, engine);
+            return try_last_with_error_context::<M>(
+                arg,
+                &mut last_error,
+                context,
+                engine,
+                mode,
+            );
         }
-        match engine.evaluate_node(arg, context) {
+        match engine.evaluate_node_with_mode::<M>(arg, context, mode) {
             Ok(result) => return Ok(result),
             Err(err) => last_error = Some(err),
-        }
-    }
-
-    match last_error {
-        Some(err) => Err(err),
-        None => Err(Error::InvalidArguments(
-            "try: no arguments provided".to_string(),
-        )),
-    }
-}
-
-/// Traced version of try - evaluates arguments with tracing for step-by-step debugging
-#[cfg(feature = "trace")]
-#[inline(never)]
-pub fn evaluate_try_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut crate::trace::TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(
-            "try requires at least one argument".to_string(),
-        ));
-    }
-
-    let mut last_error: Option<Error> = None;
-
-    for (i, arg) in args.iter().enumerate() {
-        if i == args.len() - 1 && i > 0 {
-            if let Some(Error::Thrown(error_obj)) = last_error.take() {
-                context.push(error_obj);
-                match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
-                    Ok(result) => {
-                        context.pop();
-                        return Ok(result);
-                    }
-                    Err(new_err) => {
-                        context.pop();
-                        last_error = Some(new_err);
-                    }
-                }
-            } else {
-                match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
-                    Ok(result) => return Ok(result),
-                    Err(err) => last_error = Some(err),
-                }
-            }
-        } else {
-            match engine.evaluate_node_traced(arg, context, collector, node_id_map) {
-                Ok(result) => return Ok(result),
-                Err(err) => last_error = Some(err),
-            }
         }
     }
 

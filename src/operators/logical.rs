@@ -1,11 +1,8 @@
 use serde_json::Value;
 use std::borrow::Cow;
-#[cfg(feature = "trace")]
-use std::collections::HashMap;
 
 use super::helpers::{check_invalid_args_marker, is_truthy};
-#[cfg(feature = "trace")]
-use crate::trace::TraceCollector;
+use crate::eval_mode::Mode;
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
 
 /// Logical NOT operator function (!)
@@ -36,12 +33,15 @@ pub fn evaluate_double_not(
     Ok(Value::Bool(is_truthy(&value, engine)))
 }
 
-/// Logical AND operator function - returns first falsy or last value
+/// Logical AND operator - returns first falsy or last value.
+///
+/// Generic over [`Mode`] so plain and traced dispatch share a single body.
 #[inline]
-pub fn evaluate_and(
+pub fn evaluate_and<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(Value::Null);
@@ -52,7 +52,7 @@ pub fn evaluate_and(
     let mut last_value: Cow<'_, Value> = Cow::Owned(Value::Bool(true));
 
     for arg in args {
-        let value = engine.evaluate_node_cow(arg, context)?;
+        let value = engine.evaluate_node_cow_with_mode::<M>(arg, context, mode)?;
         if !is_truthy(&value, engine) {
             return Ok(value.into_owned());
         }
@@ -62,12 +62,15 @@ pub fn evaluate_and(
     Ok(last_value.into_owned())
 }
 
-/// Logical OR operator function - returns first truthy or last value
+/// Logical OR operator - returns first truthy or last value.
+///
+/// Generic over [`Mode`] so plain and traced dispatch share a single body.
 #[inline]
-pub fn evaluate_or(
+pub fn evaluate_or<M: Mode>(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    mode: &mut M,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(Value::Null);
@@ -78,7 +81,7 @@ pub fn evaluate_or(
     let mut last_value: Cow<'_, Value> = Cow::Owned(Value::Bool(false));
 
     for arg in args {
-        let value = engine.evaluate_node_cow(arg, context)?;
+        let value = engine.evaluate_node_cow_with_mode::<M>(arg, context, mode)?;
         if is_truthy(&value, engine) {
             return Ok(value.into_owned());
         }
@@ -86,68 +89,4 @@ pub fn evaluate_or(
     }
 
     Ok(last_value.into_owned())
-}
-
-// ============================================================================
-// Traced versions of short-circuit logical operators
-// ============================================================================
-
-/// Traced version of `and` operator - only evaluates until first falsy value.
-#[cfg(feature = "trace")]
-#[inline(never)]
-pub fn evaluate_and_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Ok(Value::Null);
-    }
-
-    check_invalid_args_marker(args)?;
-
-    let mut last_value = Value::Bool(true);
-
-    for arg in args {
-        let value = engine.evaluate_node_traced(arg, context, collector, node_id_map)?;
-        if !is_truthy(&value, engine) {
-            // Short-circuit: stop here, don't evaluate remaining args
-            return Ok(value);
-        }
-        last_value = value;
-    }
-
-    Ok(last_value)
-}
-
-/// Traced version of `or` operator - only evaluates until first truthy value.
-#[cfg(feature = "trace")]
-#[inline(never)]
-pub fn evaluate_or_traced(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    collector: &mut TraceCollector,
-    node_id_map: &HashMap<usize, u32>,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Ok(Value::Null);
-    }
-
-    check_invalid_args_marker(args)?;
-
-    let mut last_value = Value::Bool(false);
-
-    for arg in args {
-        let value = engine.evaluate_node_traced(arg, context, collector, node_id_map)?;
-        if is_truthy(&value, engine) {
-            // Short-circuit: stop here, don't evaluate remaining args
-            return Ok(value);
-        }
-        last_value = value;
-    }
-
-    Ok(last_value)
 }
