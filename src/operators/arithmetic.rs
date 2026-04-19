@@ -129,6 +129,31 @@ pub fn evaluate_add(
             if arr.is_empty() {
                 return Ok(Value::Number(0.into())); // Identity element for addition
             }
+
+            // Fast path: every element is Number(i64). Avoids per-elem engine
+            // config checks in try_coerce_to_integer.
+            let mut int_sum: i64 = 0;
+            let mut fast_ok = true;
+            for elem in &arr {
+                if let Value::Number(n) = elem
+                    && let Some(i) = n.as_i64()
+                {
+                    match int_sum.checked_add(i) {
+                        Some(s) => int_sum = s,
+                        None => {
+                            fast_ok = false;
+                            break;
+                        }
+                    }
+                } else {
+                    fast_ok = false;
+                    break;
+                }
+            }
+            if fast_ok {
+                return Ok(Value::Number(int_sum.into()));
+            }
+
             // Don't recursively call evaluate - that would treat the array as literal
             // Instead, evaluate each element and sum them
             let mut all_integers = true;
@@ -494,6 +519,30 @@ pub fn evaluate_multiply(
             if arr.is_empty() {
                 return Ok(Value::Number(1.into())); // Identity element for multiplication
             }
+
+            // Fast path: every element is Number(i64).
+            let mut int_product: i64 = 1;
+            let mut fast_ok = true;
+            for elem in &arr {
+                if let Value::Number(n) = elem
+                    && let Some(i) = n.as_i64()
+                {
+                    match int_product.checked_mul(i) {
+                        Some(p) => int_product = p,
+                        None => {
+                            fast_ok = false;
+                            break;
+                        }
+                    }
+                } else {
+                    fast_ok = false;
+                    break;
+                }
+            }
+            if fast_ok {
+                return Ok(Value::Number(int_product.into()));
+            }
+
             // Don't recursively call evaluate - that would treat the array as literal
             // Instead, evaluate each element and multiply them
             let mut all_integers = true;
