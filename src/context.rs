@@ -123,12 +123,6 @@ impl<'a> ContextFrameRef<'a> {
         }
     }
 
-    /// Get metadata — always returns None (metadata HashMap has been removed;
-    /// index/key/reduce fields are accessed through dedicated methods).
-    #[inline]
-    pub fn metadata(&self) -> Option<&std::collections::HashMap<String, Value>> {
-        None
-    }
 }
 
 /// Context stack for nested evaluations

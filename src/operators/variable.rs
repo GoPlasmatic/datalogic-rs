@@ -143,28 +143,14 @@ pub fn evaluate_val(
 
                 // Special handling for metadata keys like "index" and "key"
                 // These are always in the current frame's metadata, regardless of level
-                if path == "index" {
-                    // Fast path: use get_index() to avoid HashMap lookup
-                    if let Some(idx) = context.current().get_index() {
-                        return Ok(Value::Number(serde_json::Number::from(idx as u64)));
-                    }
-                    // Fallback to metadata HashMap
-                    if let Some(metadata) = context.current().metadata()
-                        && let Some(value) = metadata.get(path)
-                    {
-                        return Ok(value.clone());
-                    }
-                } else if path == "key" {
-                    // Fast path: use get_key() to avoid HashMap lookup
-                    if let Some(key) = context.current().get_key() {
-                        return Ok(Value::String(key.to_string()));
-                    }
-                    // Fallback to metadata HashMap
-                    if let Some(metadata) = context.current().metadata()
-                        && let Some(value) = metadata.get(path)
-                    {
-                        return Ok(value.clone());
-                    }
+                if path == "index"
+                    && let Some(idx) = context.current().get_index()
+                {
+                    return Ok(Value::Number(serde_json::Number::from(idx as u64)));
+                } else if path == "key"
+                    && let Some(key) = context.current().get_key()
+                {
+                    return Ok(Value::String(key.to_string()));
                 }
             }
 
@@ -291,28 +277,14 @@ pub fn evaluate_val(
 
                 // Special handling for metadata keys like "index" and "key"
                 // These are always in the current frame's metadata, regardless of level
-                if path == "index" {
-                    // Fast path: use get_index() to avoid HashMap lookup
-                    if let Some(idx) = context.current().get_index() {
-                        return Ok(Value::Number(serde_json::Number::from(idx as u64)));
-                    }
-                    // Fallback to metadata HashMap
-                    if let Some(metadata) = context.current().metadata()
-                        && let Some(value) = metadata.get(path)
-                    {
-                        return Ok(value.clone());
-                    }
-                } else if path == "key" {
-                    // Fast path: use get_key() to avoid HashMap lookup
-                    if let Some(key) = context.current().get_key() {
-                        return Ok(Value::String(key.to_string()));
-                    }
-                    // Fallback to metadata HashMap
-                    if let Some(metadata) = context.current().metadata()
-                        && let Some(value) = metadata.get(path)
-                    {
-                        return Ok(value.clone());
-                    }
+                if path == "index"
+                    && let Some(idx) = context.current().get_index()
+                {
+                    return Ok(Value::Number(serde_json::Number::from(idx as u64)));
+                } else if path == "key"
+                    && let Some(key) = context.current().get_key()
+                {
+                    return Ok(Value::String(key.to_string()));
                 }
             }
 
@@ -588,20 +560,10 @@ pub fn evaluate_compiled_var(
             if let Some(idx) = context.current().get_index() {
                 return Ok(Value::Number(serde_json::Number::from(idx as u64)));
             }
-            if let Some(metadata) = context.current().metadata()
-                && let Some(value) = metadata.get("index")
-            {
-                return Ok(value.clone());
-            }
         }
         MetadataHint::Key => {
             if let Some(key) = context.current().get_key() {
                 return Ok(Value::String(key.to_string()));
-            }
-            if let Some(metadata) = context.current().metadata()
-                && let Some(value) = metadata.get("key")
-            {
-                return Ok(value.clone());
             }
         }
         MetadataHint::None => {}
