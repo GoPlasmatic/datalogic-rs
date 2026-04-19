@@ -112,6 +112,18 @@ pub trait Evaluator {
 /// Custom operators extend the functionality of the DataLogic engine by
 /// providing domain-specific logic. Operators must be thread-safe (`Send + Sync`).
 ///
+/// # ⚠️ Arguments are UNEVALUATED
+///
+/// `args` contains **raw JSONLogic expressions**, not already-evaluated values.
+/// For example, given `{"my_op": [{"var": "x"}, 5]}`, `args[0]` is the literal
+/// JSON `{"var": "x"}` — not the value of `x`. You must call
+/// `evaluator.evaluate(&args[i], context)` to resolve each argument.
+///
+/// This matches how built-in operators work and lets you control evaluation
+/// order (e.g. for short-circuiting or conditional branches). If you simply
+/// forward a raw `Value::Object` as a result, it will not be interpreted as
+/// logic — it will be returned as-is.
+///
 /// # Example
 ///
 /// ```rust
@@ -124,25 +136,39 @@ pub trait Evaluator {
 ///     fn evaluate(
 ///         &self,
 ///         args: &[Value],
-///         _context: &mut ContextStack,
-///         _evaluator: &dyn Evaluator,
+///         context: &mut ContextStack,
+///         evaluator: &dyn Evaluator,
 ///     ) -> Result<Value> {
-///         if let Some(s) = args.first().and_then(|v| v.as_str()) {
-///             Ok(json!(s.to_uppercase()))
-///         } else {
-///             Err(Error::InvalidArguments("Argument must be a string".to_string()))
+///         // Evaluate the argument first — it may be a `var` reference,
+///         // a nested expression, or a literal.
+///         let arg = args.first().ok_or_else(|| {
+///             Error::InvalidArguments("upper requires 1 argument".to_string())
+///         })?;
+///         let value = evaluator.evaluate(arg, context)?;
+///
+///         match value.as_str() {
+///             Some(s) => Ok(json!(s.to_uppercase())),
+///             None => Err(Error::InvalidArguments(
+///                 "Argument must evaluate to a string".to_string(),
+///             )),
 ///         }
 ///     }
 /// }
 /// ```
+///
+/// See `examples/custom_operator.rs` for more patterns (variadic args,
+/// short-circuiting, forwarding to built-ins).
 pub trait Operator: Send + Sync {
     /// Evaluates the operator with the given arguments.
     ///
     /// # Arguments
     ///
-    /// * `args` - The evaluated arguments passed to the operator
+    /// * `args` - The **unevaluated** JSONLogic expressions passed to the
+    ///   operator. Call `evaluator.evaluate(&args[i], context)` to resolve
+    ///   each one.
     /// * `context` - The context stack for accessing data and metadata
-    /// * `evaluator` - The evaluator for recursive evaluation of sub-expressions
+    /// * `evaluator` - The evaluator used to recursively evaluate `args`
+    ///   and any other sub-expressions
     ///
     /// # Returns
     ///

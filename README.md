@@ -88,6 +88,44 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 />
 ```
 
+## Debugging Rules
+
+When a rule returns something unexpected, use the `trace` feature (enabled
+by default) to see every evaluation step — which branches were taken,
+which sub-expressions short-circuited, and what each one returned.
+
+From Rust:
+
+```rust
+let engine = DataLogic::new();
+let traced = engine.evaluate_json_with_trace(
+    r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
+    r#"{"age": 21}"#,
+)?;
+
+println!("result: {}", traced.result);        // "adult"
+println!("{} steps recorded", traced.steps.len());
+```
+
+From JavaScript / TypeScript:
+
+```javascript
+import init, { evaluate_with_trace } from '@goplasmatic/datalogic';
+
+await init();
+const traced = JSON.parse(evaluate_with_trace(logic, data));
+console.log(traced.result, traced.steps);
+```
+
+For an interactive view of the trace, drop in the React debugger
+(`@goplasmatic/datalogic-ui`) or use the
+[online playground](https://goplasmatic.github.io/datalogic-rs/playground/).
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, test, and PR
+guidelines. Architecture notes live in [CLAUDE.md](./CLAUDE.md).
+
 ## About Plasmatic
 
 Created by [Plasmatic](https://github.com/GoPlasmatic), building open-source tools for financial infrastructure and data processing.
