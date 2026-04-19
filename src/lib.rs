@@ -53,6 +53,7 @@ mod context;
 mod datetime;
 mod engine;
 mod error;
+pub mod eval_mode;
 mod node;
 mod opcode;
 mod operators;
@@ -66,6 +67,9 @@ pub use config::{
 pub use context::{ContextFrame, ContextStack};
 pub use engine::DataLogic;
 pub use error::{Error, StructuredError};
+pub use eval_mode::{Mode, Plain};
+#[cfg(feature = "trace")]
+pub use eval_mode::Traced;
 pub use node::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub use opcode::OpCode;
 #[cfg(feature = "trace")]
