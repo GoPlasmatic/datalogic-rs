@@ -112,7 +112,7 @@ impl DataDateTime {
     }
 
     pub fn to_iso_string(&self) -> String {
-        self.dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+        format_utc_iso_secs(&self.dt)
     }
 
     pub fn add_duration(&self, duration: &DataDuration) -> DataDateTime {
@@ -329,6 +329,50 @@ pub fn extract_datetime(value: &Value) -> Option<DataDateTime> {
         return DataDateTime::parse(s);
     }
     None
+}
+
+/// Fast formatter for `YYYY-MM-DDTHH:MM:SSZ` (20 bytes) UTC datetimes.
+/// Hand-rolled digit extraction avoids chrono's format-string parser.
+#[inline]
+fn format_utc_iso_secs(dt: &DateTime<Utc>) -> String {
+    use chrono::{Datelike, Timelike};
+    let year = dt.year();
+    let month = dt.month() as u8;
+    let day = dt.day() as u8;
+    let hour = dt.hour() as u8;
+    let minute = dt.minute() as u8;
+    let second = dt.second() as u8;
+
+    // Guard against out-of-range years — fall back to chrono for those.
+    if !(0..=9999).contains(&year) {
+        return dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    }
+
+    let y = year as u16;
+    let mut buf = [0u8; 20];
+    buf[0] = b'0' + ((y / 1000) % 10) as u8;
+    buf[1] = b'0' + ((y / 100) % 10) as u8;
+    buf[2] = b'0' + ((y / 10) % 10) as u8;
+    buf[3] = b'0' + (y % 10) as u8;
+    buf[4] = b'-';
+    buf[5] = b'0' + month / 10;
+    buf[6] = b'0' + month % 10;
+    buf[7] = b'-';
+    buf[8] = b'0' + day / 10;
+    buf[9] = b'0' + day % 10;
+    buf[10] = b'T';
+    buf[11] = b'0' + hour / 10;
+    buf[12] = b'0' + hour % 10;
+    buf[13] = b':';
+    buf[14] = b'0' + minute / 10;
+    buf[15] = b'0' + minute % 10;
+    buf[16] = b':';
+    buf[17] = b'0' + second / 10;
+    buf[18] = b'0' + second % 10;
+    buf[19] = b'Z';
+
+    // SAFETY: every byte written above is ASCII.
+    unsafe { String::from_utf8_unchecked(buf.to_vec()) }
 }
 
 /// Parse 2 ASCII digits at offset into u32.
