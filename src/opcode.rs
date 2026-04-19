@@ -386,271 +386,201 @@ impl OpCode {
         }
     }
 
-    /// Direct evaluation method - no boxing, no vtables, no array lookups
-    pub fn evaluate_direct(
+    /// Generic dispatch — single source of truth for both plain and traced execution.
+    ///
+    /// Lazy / iteration operators (`and`, `or`, `if`, `?:`, `??`, `switch`, map/filter/reduce/all/some/none,
+    /// `try`, `throw`) are themselves generic over `M`, so tracing threads cleanly through
+    /// their children and short-circuit semantics are preserved. All other ("eager") operators
+    /// have their children pre-evaluated here via [`eager_apply`]; under [`Plain`](crate::eval_mode::Plain)
+    /// that function is a straight pass-through that calls the operator on the original nodes.
+    pub fn evaluate_with_mode<M: crate::eval_mode::Mode>(
         &self,
         args: &[crate::CompiledNode],
         context: &mut crate::ContextStack,
         engine: &crate::DataLogic,
+        mode: &mut M,
     ) -> crate::Result<serde_json::Value> {
         use crate::operators::{arithmetic, array, comparison, control, logical, missing, string, variable};
 
         match self {
-            // Core: Variable access
-            OpCode::Var => variable::evaluate_var(args, context, engine),
+            // ==== Lazy / iteration operators — generic over M ====
+            OpCode::And => logical::evaluate_and::<M>(args, context, engine, mode),
+            OpCode::Or => logical::evaluate_or::<M>(args, context, engine, mode),
+            OpCode::If => control::evaluate_if::<M>(args, context, engine, mode),
+            OpCode::Ternary => control::evaluate_ternary::<M>(args, context, engine, mode),
+            OpCode::Filter => array::evaluate_filter::<M>(args, context, engine, mode),
+            OpCode::Map => array::evaluate_map::<M>(args, context, engine, mode),
+            OpCode::Reduce => array::evaluate_reduce::<M>(args, context, engine, mode),
+            OpCode::All => array::evaluate_all::<M>(args, context, engine, mode),
+            OpCode::Some => array::evaluate_some::<M>(args, context, engine, mode),
+            OpCode::None => array::evaluate_none::<M>(args, context, engine, mode),
 
-            // Core: Comparison operators
-            OpCode::Equals => comparison::evaluate_equals(args, context, engine),
-            OpCode::StrictEquals => comparison::evaluate_strict_equals(args, context, engine),
-            OpCode::NotEquals => comparison::evaluate_not_equals(args, context, engine),
-            OpCode::StrictNotEquals => {
-                comparison::evaluate_strict_not_equals(args, context, engine)
+            #[cfg(feature = "ext-control")]
+            OpCode::Coalesce => control::evaluate_coalesce::<M>(args, context, engine, mode),
+            #[cfg(feature = "ext-control")]
+            OpCode::Switch => control::evaluate_switch::<M>(args, context, engine, mode),
+
+            #[cfg(feature = "error-handling")]
+            OpCode::Try => {
+                use crate::operators::try_op;
+                try_op::evaluate_try::<M>(args, context, engine, mode)
             }
-            OpCode::GreaterThan => comparison::evaluate_greater_than(args, context, engine),
-            OpCode::GreaterThanEqual => {
-                comparison::evaluate_greater_than_equal(args, context, engine)
+            #[cfg(feature = "error-handling")]
+            OpCode::Throw => {
+                use crate::operators::throw;
+                throw::evaluate_throw::<M>(args, context, engine, mode)
             }
-            OpCode::LessThan => comparison::evaluate_less_than(args, context, engine),
-            OpCode::LessThanEqual => comparison::evaluate_less_than_equal(args, context, engine),
 
-            // Core: Logical operators
-            OpCode::Not => logical::evaluate_not(args, context, engine),
-            OpCode::DoubleNot => logical::evaluate_double_not(args, context, engine),
-            OpCode::And => logical::evaluate_and(args, context, engine),
-            OpCode::Or => logical::evaluate_or(args, context, engine),
+            // ==== Eager operators — children pre-evaluated under Traced ====
+            OpCode::Var => eager_apply::<M>(args, context, engine, mode, variable::evaluate_var),
 
-            // Core: Control flow
-            OpCode::If => control::evaluate_if(args, context, engine),
-            OpCode::Ternary => control::evaluate_ternary(args, context, engine),
+            OpCode::Equals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_equals),
+            OpCode::StrictEquals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_strict_equals),
+            OpCode::NotEquals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_not_equals),
+            OpCode::StrictNotEquals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_strict_not_equals),
+            OpCode::GreaterThan => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_greater_than),
+            OpCode::GreaterThanEqual => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_greater_than_equal),
+            OpCode::LessThan => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_less_than),
+            OpCode::LessThanEqual => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_less_than_equal),
 
-            // Core: Arithmetic operators
-            OpCode::Add => arithmetic::evaluate_add(args, context, engine),
-            OpCode::Subtract => arithmetic::evaluate_subtract(args, context, engine),
-            OpCode::Multiply => arithmetic::evaluate_multiply(args, context, engine),
-            OpCode::Divide => arithmetic::evaluate_divide(args, context, engine),
-            OpCode::Modulo => arithmetic::evaluate_modulo(args, context, engine),
-            OpCode::Max => arithmetic::evaluate_max(args, context, engine),
-            OpCode::Min => arithmetic::evaluate_min(args, context, engine),
+            OpCode::Not => eager_apply::<M>(args, context, engine, mode, logical::evaluate_not),
+            OpCode::DoubleNot => eager_apply::<M>(args, context, engine, mode, logical::evaluate_double_not),
 
-            // Core: String operators
-            OpCode::Cat => string::evaluate_cat(args, context, engine),
-            OpCode::Substr => string::evaluate_substr(args, context, engine),
-            OpCode::In => string::evaluate_in(args, context, engine),
+            OpCode::Add => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_add),
+            OpCode::Subtract => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_subtract),
+            OpCode::Multiply => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_multiply),
+            OpCode::Divide => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_divide),
+            OpCode::Modulo => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_modulo),
+            OpCode::Max => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_max),
+            OpCode::Min => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_min),
 
-            // Core: Array operators
-            OpCode::Merge => array::evaluate_merge(args, context, engine),
-            OpCode::Filter => array::evaluate_filter(args, context, engine),
-            OpCode::Map => array::evaluate_map(args, context, engine),
-            OpCode::Reduce => array::evaluate_reduce(args, context, engine),
-            OpCode::All => array::evaluate_all(args, context, engine),
-            OpCode::Some => array::evaluate_some(args, context, engine),
-            OpCode::None => array::evaluate_none(args, context, engine),
+            OpCode::Cat => eager_apply::<M>(args, context, engine, mode, string::evaluate_cat),
+            OpCode::Substr => eager_apply::<M>(args, context, engine, mode, string::evaluate_substr),
+            OpCode::In => eager_apply::<M>(args, context, engine, mode, string::evaluate_in),
 
-            // Core: Missing
-            OpCode::Missing => missing::evaluate_missing(args, context, engine),
-            OpCode::MissingSome => missing::evaluate_missing_some(args, context, engine),
+            OpCode::Merge => eager_apply::<M>(args, context, engine, mode, array::evaluate_merge),
 
-            // preserve
+            OpCode::Missing => eager_apply::<M>(args, context, engine, mode, missing::evaluate_missing),
+            OpCode::MissingSome => eager_apply::<M>(args, context, engine, mode, missing::evaluate_missing_some),
+
             #[cfg(feature = "preserve")]
             OpCode::Preserve => {
                 use crate::operators::preserve;
-                preserve::evaluate_preserve(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, preserve::evaluate_preserve)
             }
 
-            // datetime
             #[cfg(feature = "datetime")]
             OpCode::Datetime => {
                 use crate::operators::datetime;
-                datetime::evaluate_datetime(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, datetime::evaluate_datetime)
             }
             #[cfg(feature = "datetime")]
             OpCode::Timestamp => {
                 use crate::operators::datetime;
-                datetime::evaluate_timestamp(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, datetime::evaluate_timestamp)
             }
             #[cfg(feature = "datetime")]
             OpCode::ParseDate => {
                 use crate::operators::datetime;
-                datetime::evaluate_parse_date(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, datetime::evaluate_parse_date)
             }
             #[cfg(feature = "datetime")]
             OpCode::FormatDate => {
                 use crate::operators::datetime;
-                datetime::evaluate_format_date(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, datetime::evaluate_format_date)
             }
             #[cfg(feature = "datetime")]
             OpCode::DateDiff => {
                 use crate::operators::datetime;
-                datetime::evaluate_date_diff(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, datetime::evaluate_date_diff)
             }
             #[cfg(feature = "datetime")]
             OpCode::Now => {
                 use crate::operators::datetime;
-                datetime::evaluate_now(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, datetime::evaluate_now)
             }
 
-            // ext-string
             #[cfg(feature = "ext-string")]
-            OpCode::Length => string::evaluate_length(args, context, engine),
+            OpCode::Length => eager_apply::<M>(args, context, engine, mode, string::evaluate_length),
             #[cfg(feature = "ext-string")]
-            OpCode::StartsWith => string::evaluate_starts_with(args, context, engine),
+            OpCode::StartsWith => eager_apply::<M>(args, context, engine, mode, string::evaluate_starts_with),
             #[cfg(feature = "ext-string")]
-            OpCode::EndsWith => string::evaluate_ends_with(args, context, engine),
+            OpCode::EndsWith => eager_apply::<M>(args, context, engine, mode, string::evaluate_ends_with),
             #[cfg(feature = "ext-string")]
-            OpCode::Upper => string::evaluate_upper(args, context, engine),
+            OpCode::Upper => eager_apply::<M>(args, context, engine, mode, string::evaluate_upper),
             #[cfg(feature = "ext-string")]
-            OpCode::Lower => string::evaluate_lower(args, context, engine),
+            OpCode::Lower => eager_apply::<M>(args, context, engine, mode, string::evaluate_lower),
             #[cfg(feature = "ext-string")]
-            OpCode::Trim => string::evaluate_trim(args, context, engine),
+            OpCode::Trim => eager_apply::<M>(args, context, engine, mode, string::evaluate_trim),
             #[cfg(feature = "ext-string")]
-            OpCode::Split => string::evaluate_split(args, context, engine),
+            OpCode::Split => eager_apply::<M>(args, context, engine, mode, string::evaluate_split),
 
-            // ext-array
             #[cfg(feature = "ext-array")]
-            OpCode::Sort => array::evaluate_sort(args, context, engine),
+            OpCode::Sort => eager_apply::<M>(args, context, engine, mode, array::evaluate_sort),
             #[cfg(feature = "ext-array")]
-            OpCode::Slice => array::evaluate_slice(args, context, engine),
+            OpCode::Slice => eager_apply::<M>(args, context, engine, mode, array::evaluate_slice),
 
-            // ext-control
             #[cfg(feature = "ext-control")]
-            OpCode::Val => variable::evaluate_val(args, context, engine),
+            OpCode::Val => eager_apply::<M>(args, context, engine, mode, variable::evaluate_val),
             #[cfg(feature = "ext-control")]
-            OpCode::Exists => variable::evaluate_exists(args, context, engine),
-            #[cfg(feature = "ext-control")]
-            OpCode::Coalesce => control::evaluate_coalesce(args, context, engine),
-            #[cfg(feature = "ext-control")]
-            OpCode::Switch => control::evaluate_switch(args, context, engine),
+            OpCode::Exists => eager_apply::<M>(args, context, engine, mode, variable::evaluate_exists),
             #[cfg(feature = "ext-control")]
             OpCode::Type => {
                 use crate::operators::type_op;
-                type_op::evaluate_type(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, type_op::evaluate_type)
             }
 
-            // error-handling
-            #[cfg(feature = "error-handling")]
-            OpCode::Try => {
-                use crate::operators::try_op;
-                try_op::evaluate_try(args, context, engine)
-            }
-            #[cfg(feature = "error-handling")]
-            OpCode::Throw => {
-                use crate::operators::throw;
-                throw::evaluate_throw(args, context, engine)
-            }
-
-            // ext-math
             #[cfg(feature = "ext-math")]
             OpCode::Abs => {
                 use crate::operators::math;
-                math::evaluate_abs(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, math::evaluate_abs)
             }
             #[cfg(feature = "ext-math")]
             OpCode::Ceil => {
                 use crate::operators::math;
-                math::evaluate_ceil(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, math::evaluate_ceil)
             }
             #[cfg(feature = "ext-math")]
             OpCode::Floor => {
                 use crate::operators::math;
-                math::evaluate_floor(args, context, engine)
+                eager_apply::<M>(args, context, engine, mode, math::evaluate_floor)
             }
         }
     }
+}
 
-    /// Traced evaluation method - records steps for debugging.
-    ///
-    /// This method dispatches to traced versions of operators that need special
-    /// handling (iteration and short-circuit operators), while regular operators
-    /// use the standard evaluation with child tracing.
-    #[cfg(feature = "trace")]
-    pub fn evaluate_traced(
-        &self,
-        args: &[crate::CompiledNode],
-        context: &mut crate::ContextStack,
-        engine: &crate::DataLogic,
-        collector: &mut crate::trace::TraceCollector,
-        node_id_map: &std::collections::HashMap<usize, u32>,
-    ) -> crate::Result<serde_json::Value> {
-        use crate::operators::{array, control, logical};
+/// Signature of every eager (non-lazy) operator implementation. Eager
+/// operators do not need to know about tracing themselves — their children
+/// are pre-evaluated by [`eager_apply`] when tracing is active.
+type EagerOp = fn(
+    &[crate::CompiledNode],
+    &mut crate::ContextStack,
+    &crate::DataLogic,
+) -> crate::Result<serde_json::Value>;
 
-        match self {
-            // Core: Iteration operators - need traced versions
-            OpCode::Map => {
-                array::evaluate_map_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::Filter => {
-                array::evaluate_filter_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::Reduce => {
-                array::evaluate_reduce_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::All => {
-                array::evaluate_all_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::Some => {
-                array::evaluate_some_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::None => {
-                array::evaluate_none_traced(args, context, engine, collector, node_id_map)
-            }
-
-            // Core: Short-circuit logical operators - need traced versions
-            OpCode::And => {
-                logical::evaluate_and_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::Or => {
-                logical::evaluate_or_traced(args, context, engine, collector, node_id_map)
-            }
-
-            // Core: Control flow operators - need traced versions
-            OpCode::If => {
-                control::evaluate_if_traced(args, context, engine, collector, node_id_map)
-            }
-            OpCode::Ternary => {
-                control::evaluate_ternary_traced(args, context, engine, collector, node_id_map)
-            }
-
-            // ext-control: traced versions
-            #[cfg(feature = "ext-control")]
-            OpCode::Coalesce => {
-                control::evaluate_coalesce_traced(args, context, engine, collector, node_id_map)
-            }
-            #[cfg(feature = "ext-control")]
-            OpCode::Switch => {
-                control::evaluate_switch_traced(args, context, engine, collector, node_id_map)
-            }
-
-            // error-handling: traced versions
-            #[cfg(feature = "error-handling")]
-            OpCode::Try => {
-                use crate::operators::try_op;
-                try_op::evaluate_try_traced(args, context, engine, collector, node_id_map)
-            }
-            #[cfg(feature = "error-handling")]
-            OpCode::Throw => {
-                use crate::operators::throw;
-                throw::evaluate_throw_traced(args, context, engine, collector, node_id_map)
-            }
-
-            // All other operators - evaluate children with tracing, then apply operator
-            _ => {
-                // Evaluate all arguments with tracing
-                let mut evaluated_args: Vec<serde_json::Value> = Vec::with_capacity(args.len());
-                for arg in args {
-                    let value =
-                        engine.evaluate_node_traced(arg, context, collector, node_id_map)?;
-                    evaluated_args.push(value);
-                }
-
-                // Create temporary Value nodes for the direct evaluation
-                let value_nodes: Vec<crate::CompiledNode> = evaluated_args
-                    .into_iter()
-                    .map(|v| crate::CompiledNode::Value { value: v })
-                    .collect();
-
-                // Evaluate the operator with pre-evaluated arguments
-                self.evaluate_direct(&value_nodes, context, engine)
-            }
+/// Drive an eager operator under `M`. Under [`Plain`](crate::eval_mode::Plain)
+/// this is a thin pass-through to `f(args, context, engine)` with zero extra
+/// work — the `if M::TRACED` branch is dead-code-eliminated at monomorphisation.
+/// Under [`Traced`](crate::eval_mode::Traced) each argument is first evaluated
+/// (with tracing) to a concrete value and re-wrapped as a literal
+/// `CompiledNode::Value`, so the operator sees plain values and tracing of its
+/// subtree is fully recorded by the children's own `on_node_result`.
+#[inline]
+fn eager_apply<M: crate::eval_mode::Mode>(
+    args: &[crate::CompiledNode],
+    context: &mut crate::ContextStack,
+    engine: &crate::DataLogic,
+    mode: &mut M,
+    f: EagerOp,
+) -> crate::Result<serde_json::Value> {
+    if M::TRACED {
+        let mut value_nodes: Vec<crate::CompiledNode> = Vec::with_capacity(args.len());
+        for arg in args {
+            let value = engine.evaluate_node_with_mode::<M>(arg, context, mode)?;
+            value_nodes.push(crate::CompiledNode::Value { value });
         }
+        f(&value_nodes, context, engine)
+    } else {
+        f(args, context, engine)
     }
 }

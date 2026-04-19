@@ -423,26 +423,46 @@ impl DataLogic {
     /// # Returns
     ///
     /// The evaluation result, or an error if evaluation fails.
+    /// Core generic dispatch. Parameterised over [`Mode`] so plain and traced
+    /// execution share a single body. `Plain` monomorphisation DCEs the
+    /// trace-only bookkeeping; `Traced` records a step per non-literal node.
     #[inline]
-    pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
-        match node {
-            CompiledNode::Value { value, .. } => Ok(value.clone()),
+    pub fn evaluate_node_with_mode<M: crate::eval_mode::Mode>(
+        &self,
+        node: &CompiledNode,
+        context: &mut ContextStack,
+        mode: &mut M,
+    ) -> Result<Value> {
+        // Literals never emit trace steps (matches previous behaviour) and
+        // don't need a context snapshot.
+        if let CompiledNode::Value { value, .. } = node {
+            return Ok(value.clone());
+        }
+
+        // Snapshot context data for tracing BEFORE children mutate it.
+        // Under Plain the branch is const-false and gets DCE'd.
+        let ctx_data = if M::TRACED {
+            context.current().data().clone()
+        } else {
+            Value::Null
+        };
+
+        let result: Result<Value> = match node {
+            CompiledNode::Value { .. } => unreachable!(),
 
             CompiledNode::Array { nodes, .. } => {
                 let mut results = Vec::with_capacity(nodes.len());
-                for node in nodes.iter() {
-                    results.push(self.evaluate_node(node, context)?);
+                for n in nodes.iter() {
+                    results.push(self.evaluate_node_with_mode::<M>(n, context, mode)?);
                 }
                 Ok(Value::Array(results))
             }
 
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                // Direct OpCode dispatch with CompiledNode args
-                opcode.evaluate_direct(args, context, self)
+                opcode.evaluate_with_mode::<M>(args, context, self, mode)
             }
 
             CompiledNode::CustomOperator(data) => {
-                // Custom operators still use dynamic dispatch
                 let operator = self
                     .custom_operators
                     .get(&data.name)
@@ -457,8 +477,8 @@ impl DataLogic {
             #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => {
                 let mut result = serde_json::Map::new();
-                for (key, node) in data.fields.iter() {
-                    let value = self.evaluate_node(node, context)?;
+                for (key, n) in data.fields.iter() {
+                    let value = self.evaluate_node_with_mode::<M>(n, context, mode)?;
                     result.insert(key.clone(), value);
                 }
                 Ok(Value::Object(result))
@@ -501,24 +521,46 @@ impl DataLogic {
             CompiledNode::CompiledThrow(error_obj) => {
                 Err(Error::Thrown(error_obj.as_ref().clone()))
             }
+        };
+
+        if M::TRACED {
+            mode.on_node_result(node, &ctx_data, &result);
+        }
+        result
+    }
+
+    /// Plain (untraced) dispatch. Thin wrapper around
+    /// [`evaluate_node_with_mode`] specialised to [`Plain`](crate::eval_mode::Plain).
+    #[inline]
+    pub fn evaluate_node(&self, node: &CompiledNode, context: &mut ContextStack) -> Result<Value> {
+        self.evaluate_node_with_mode(node, context, &mut crate::eval_mode::Plain)
+    }
+
+    /// Mode-aware Cow evaluator. Borrows literal values without cloning;
+    /// full evaluates (with tracing threaded through `mode`) otherwise.
+    #[inline]
+    pub fn evaluate_node_cow_with_mode<'a, M: crate::eval_mode::Mode>(
+        &self,
+        node: &'a CompiledNode,
+        context: &mut ContextStack,
+        mode: &mut M,
+    ) -> Result<Cow<'a, Value>> {
+        match node {
+            CompiledNode::Value { value, .. } => Ok(Cow::Borrowed(value)),
+            _ => self
+                .evaluate_node_with_mode::<M>(node, context, mode)
+                .map(Cow::Owned),
         }
     }
 
-    /// Evaluate a compiled node, returning a `Cow` to avoid cloning literal values.
-    ///
-    /// For `CompiledNode::Value` nodes (constants/literals), returns a borrowed reference
-    /// to the pre-compiled value without cloning. For all other node types, performs full
-    /// evaluation and returns the owned result.
+    /// Plain (untraced) Cow wrapper. See [`evaluate_node_cow_with_mode`].
     #[inline]
     pub fn evaluate_node_cow<'a>(
         &self,
         node: &'a CompiledNode,
         context: &mut ContextStack,
     ) -> Result<Cow<'a, Value>> {
-        match node {
-            CompiledNode::Value { value, .. } => Ok(Cow::Borrowed(value)),
-            _ => self.evaluate_node(node, context).map(Cow::Owned),
-        }
+        self.evaluate_node_cow_with_mode(node, context, &mut crate::eval_mode::Plain)
     }
 
     /// Evaluate JSON logic with execution trace for debugging.
@@ -655,9 +697,9 @@ impl DataLogic {
         }
     }
 
-    /// Evaluate a compiled node with tracing.
-    ///
-    /// This method records each step of the evaluation for debugging.
+    /// Traced dispatch. Thin wrapper around [`evaluate_node_with_mode`]
+    /// specialised to [`Traced`](crate::eval_mode::Traced). The collector and
+    /// node-id map carry the per-node recording state.
     #[cfg(feature = "trace")]
     pub fn evaluate_node_traced(
         &self,
@@ -666,133 +708,11 @@ impl DataLogic {
         collector: &mut TraceCollector,
         node_id_map: &HashMap<usize, u32>,
     ) -> Result<Value> {
-        let node_ptr = node as *const CompiledNode as usize;
-        let node_id = node_id_map.get(&node_ptr).copied().unwrap_or(0);
-        let current_context = context.current().data().clone();
-
-        match node {
-            CompiledNode::Value { value, .. } => {
-                // Literal values don't generate steps per the proposal
-                Ok(value.clone())
-            }
-
-            CompiledNode::Array { nodes, .. } => {
-                let mut results = Vec::with_capacity(nodes.len());
-                for node in nodes.iter() {
-                    match self.evaluate_node_traced(node, context, collector, node_id_map) {
-                        Ok(val) => results.push(val),
-                        Err(err) => {
-                            collector.record_error(node_id, current_context, err.to_string());
-                            return Err(err);
-                        }
-                    }
-                }
-                let result = Value::Array(results);
-                collector.record_step(node_id, current_context, result.clone());
-                Ok(result)
-            }
-
-            CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                // Use traced dispatch for operators that need special handling
-                match opcode.evaluate_traced(args, context, self, collector, node_id_map) {
-                    Ok(result) => {
-                        collector.record_step(node_id, current_context, result.clone());
-                        Ok(result)
-                    }
-                    Err(err) => {
-                        collector.record_error(node_id, current_context, err.to_string());
-                        Err(err)
-                    }
-                }
-            }
-
-            CompiledNode::CustomOperator(data) => {
-                let operator = self
-                    .custom_operators
-                    .get(&data.name)
-                    .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
-
-                let arg_values: Vec<Value> = data.args.iter().map(node_to_value).collect();
-                let evaluator = SimpleEvaluator::new(self);
-
-                match operator.evaluate(&arg_values, context, &evaluator) {
-                    Ok(result) => {
-                        collector.record_step(node_id, current_context, result.clone());
-                        Ok(result)
-                    }
-                    Err(err) => {
-                        collector.record_error(node_id, current_context, err.to_string());
-                        Err(err)
-                    }
-                }
-            }
-
-            #[cfg(feature = "preserve")]
-            CompiledNode::StructuredObject(data) => {
-                let mut result = serde_json::Map::new();
-                for (key, node) in data.fields.iter() {
-                    match self.evaluate_node_traced(node, context, collector, node_id_map) {
-                        Ok(value) => {
-                            result.insert(key.clone(), value);
-                        }
-                        Err(err) => {
-                            collector.record_error(node_id, current_context, err.to_string());
-                            return Err(err);
-                        }
-                    }
-                }
-                let result = Value::Object(result);
-                collector.record_step(node_id, current_context, result.clone());
-                Ok(result)
-            }
-
-            CompiledNode::CompiledVar { .. } => match self.evaluate_node(node, context) {
-                Ok(result) => {
-                    collector.record_step(node_id, current_context, result.clone());
-                    Ok(result)
-                }
-                Err(err) => {
-                    collector.record_error(node_id, current_context, err.to_string());
-                    Err(err)
-                }
-            },
-
-            #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(_) => match self.evaluate_node(node, context) {
-                Ok(result) => {
-                    collector.record_step(node_id, current_context, result.clone());
-                    Ok(result)
-                }
-                Err(err) => {
-                    collector.record_error(node_id, current_context, err.to_string());
-                    Err(err)
-                }
-            },
-
-            #[cfg(feature = "ext-string")]
-            CompiledNode::CompiledSplitRegex(_) => match self.evaluate_node(node, context) {
-                Ok(result) => {
-                    collector.record_step(node_id, current_context, result.clone());
-                    Ok(result)
-                }
-                Err(err) => {
-                    collector.record_error(node_id, current_context, err.to_string());
-                    Err(err)
-                }
-            },
-
-            #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(_) => match self.evaluate_node(node, context) {
-                Ok(result) => {
-                    collector.record_step(node_id, current_context, result.clone());
-                    Ok(result)
-                }
-                Err(err) => {
-                    collector.record_error(node_id, current_context, err.to_string());
-                    Err(err)
-                }
-            },
-        }
+        let mut traced = crate::eval_mode::Traced {
+            collector,
+            node_id_map,
+        };
+        self.evaluate_node_with_mode(node, context, &mut traced)
     }
 }
 
