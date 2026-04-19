@@ -10,10 +10,10 @@ use super::variable;
 #[cfg(feature = "ext-string")]
 use crate::constants::INVALID_ARGS;
 #[cfg(feature = "ext-string")]
+use crate::error::Error;
+#[cfg(feature = "ext-string")]
 use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, ContextStack, DataLogic, Result};
-#[cfg(feature = "ext-string")]
-use crate::error::Error;
 
 /// String concatenation operator function (cat) - variadic
 #[inline]

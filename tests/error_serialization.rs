@@ -133,8 +133,8 @@ fn serialize_configuration_error() {
 
 #[test]
 fn structured_error_adds_operator_field() {
-    let se = StructuredError::from(Error::ArithmeticError("divide by zero".into()))
-        .with_operator("/");
+    let se =
+        StructuredError::from(Error::ArithmeticError("divide by zero".into())).with_operator("/");
     let v = serde_json::to_value(&se).unwrap();
     assert_eq!(
         v,
@@ -150,10 +150,7 @@ fn structured_error_adds_operator_field() {
 fn structured_error_omits_operator_when_none() {
     let se = StructuredError::from(Error::TypeError("x".into()));
     let v = serde_json::to_value(&se).unwrap();
-    assert_eq!(
-        v,
-        json!({"type": "TypeError", "message": "Type error: x"})
-    );
+    assert_eq!(v, json!({"type": "TypeError", "message": "Type error: x"}));
 }
 
 #[test]
@@ -261,27 +258,21 @@ fn evaluate_json_with_trace_structured_populates_error_fields() {
 #[test]
 fn display_output_snapshot() {
     let cases: &[(Error, &str)] = &[
-        (Error::InvalidOperator("foo".into()), "Invalid operator: foo"),
+        (
+            Error::InvalidOperator("foo".into()),
+            "Invalid operator: foo",
+        ),
         (Error::InvalidArguments("x".into()), "Invalid arguments: x"),
         (
             Error::VariableNotFound("user.name".into()),
             "Variable not found: user.name",
         ),
-        (
-            Error::InvalidContextLevel(-2),
-            "Invalid context level: -2",
-        ),
+        (Error::InvalidContextLevel(-2), "Invalid context level: -2"),
         (Error::TypeError("x".into()), "Type error: x"),
-        (
-            Error::ArithmeticError("x".into()),
-            "Arithmetic error: x",
-        ),
+        (Error::ArithmeticError("x".into()), "Arithmetic error: x"),
         (Error::Custom("raw".into()), "raw"),
         (Error::ParseError("x".into()), "Parse error: x"),
-        (
-            Error::Thrown(json!({"k": 1})),
-            "Thrown: {\"k\":1}",
-        ),
+        (Error::Thrown(json!({"k": 1})), "Thrown: {\"k\":1}"),
         (Error::FormatError("x".into()), "Format error: x"),
         (
             Error::IndexOutOfBounds {
@@ -321,13 +312,14 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
         .expect_err("throw should fail");
 
     // Breadcrumb should be populated, leaf-first (deepest failure first).
-    assert!(
-        !err.path.is_empty(),
-        "expected breadcrumb path, got empty"
-    );
+    assert!(!err.path.is_empty(), "expected breadcrumb path, got empty");
     // All ids should be nonzero (SYNTHETIC_ID=0 is reserved).
     for id in &err.path {
-        assert!(*id > 0, "synthetic id leaked into breadcrumb: {:?}", err.path);
+        assert!(
+            *id > 0,
+            "synthetic id leaked into breadcrumb: {:?}",
+            err.path
+        );
     }
     // Should have at least 2 ids — the throw itself plus the wrapping if,
     // since the if's dynamic condition prevents dead-code elimination.
@@ -341,10 +333,7 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
 #[test]
 fn structured_error_empty_path_on_success() {
     let engine = DataLogic::new();
-    let result = engine.evaluate_json_structured(
-        r#"{"==": [1, 1]}"#,
-        r#"{}"#,
-    );
+    let result = engine.evaluate_json_structured(r#"{"==": [1, 1]}"#, r#"{}"#);
     // Successful eval — no error, so there's nothing to assert about path.
     assert!(result.is_ok());
 }
@@ -356,10 +345,8 @@ fn try_catches_and_discards_inner_path() {
     // and no breadcrumb should leak into a subsequent failing evaluation
     // because try truncates on catch.
     // try swallows the throw; result should be the fallback, not an error.
-    let result = engine.evaluate_json_structured(
-        r#"{"try": [{"throw": "ignored"}, "fallback"]}"#,
-        r#"{}"#,
-    );
+    let result =
+        engine.evaluate_json_structured(r#"{"try": [{"throw": "ignored"}, "fallback"]}"#, r#"{}"#);
     assert_eq!(result.unwrap(), json!("fallback"));
 }
 
@@ -367,10 +354,7 @@ fn try_catches_and_discards_inner_path() {
 fn structured_error_path_serializes_to_json() {
     let engine = DataLogic::new();
     let err = engine
-        .evaluate_json_structured(
-            r#"{"if": [true, {"throw": "boom"}, "ok"]}"#,
-            r#"{}"#,
-        )
+        .evaluate_json_structured(r#"{"if": [true, {"throw": "boom"}, "ok"]}"#, r#"{}"#)
         .unwrap_err();
 
     let json: Value = serde_json::to_value(&err).expect("must serialize");

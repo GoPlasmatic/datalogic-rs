@@ -431,8 +431,7 @@ mod tests {
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Var,
-            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))]
-                .into_boxed_slice(),
+            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))].into_boxed_slice(),
         };
 
         let tree = ExpressionNode::build_from_compiled(&node);
@@ -450,8 +449,7 @@ mod tests {
         let var_node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Var,
-            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))]
-                .into_boxed_slice(),
+            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))].into_boxed_slice(),
         };
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,

@@ -36,8 +36,7 @@ impl CompiledLogic {
     /// Compiles with static evaluation using the provided engine.
     pub fn compile_with_static_eval(logic: &Value, engine: &DataLogic) -> Result<Self> {
         let mut ctx = CompileCtx::new();
-        let root =
-            Self::compile_node(logic, Some(engine), engine.preserve_structure(), &mut ctx)?;
+        let root = Self::compile_node(logic, Some(engine), engine.preserve_structure(), &mut ctx)?;
         Ok(Self::new(root))
     }
 
@@ -274,8 +273,10 @@ impl CompiledLogic {
                 .map(|v| Self::compile_node(v, engine, preserve_structure, ctx))
                 .collect::<Result<Vec<_>>>()
                 .map(Vec::into_boxed_slice),
-            _ => Ok(vec![Self::compile_node(value, engine, preserve_structure, ctx)?]
-                .into_boxed_slice()),
+            _ => Ok(
+                vec![Self::compile_node(value, engine, preserve_structure, ctx)?]
+                    .into_boxed_slice(),
+            ),
         }
     }
 
@@ -602,8 +603,7 @@ impl CompiledLogic {
         };
 
         let re = Regex::new(pattern).ok()?;
-        let capture_names: Vec<Box<str>> =
-            re.capture_names().flatten().map(|n| n.into()).collect();
+        let capture_names: Vec<Box<str>> = re.capture_names().flatten().map(|n| n.into()).collect();
 
         if capture_names.is_empty() {
             return None;

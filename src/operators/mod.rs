@@ -38,15 +38,15 @@ pub mod string;
 pub mod variable;
 
 // Feature-gated extended operators
-#[cfg(feature = "preserve")]
-pub mod preserve;
 #[cfg(feature = "datetime")]
 pub mod datetime;
-#[cfg(feature = "ext-control")]
-pub mod type_op;
+#[cfg(feature = "ext-math")]
+pub mod math;
+#[cfg(feature = "preserve")]
+pub mod preserve;
 #[cfg(feature = "error-handling")]
 pub mod throw;
 #[cfg(feature = "error-handling")]
 pub mod try_op;
-#[cfg(feature = "ext-math")]
-pub mod math;
+#[cfg(feature = "ext-control")]
+pub mod type_op;

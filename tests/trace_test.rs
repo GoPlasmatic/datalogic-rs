@@ -184,7 +184,10 @@ fn test_expression_tree_structure() {
 
     // Child should also have a nonzero id and should differ from the root's
     assert!(result.expression_tree.children[0].id > 0);
-    assert_ne!(result.expression_tree.children[0].id, result.expression_tree.id);
+    assert_ne!(
+        result.expression_tree.children[0].id,
+        result.expression_tree.id
+    );
 
     // Child should be the var node
     assert!(

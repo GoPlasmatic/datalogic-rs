@@ -193,9 +193,13 @@ impl DataLogic {
     /// Returns whether structure preservation is enabled.
     pub fn preserve_structure(&self) -> bool {
         #[cfg(feature = "preserve")]
-        { self.preserve_structure }
+        {
+            self.preserve_structure
+        }
         #[cfg(not(feature = "preserve"))]
-        { false }
+        {
+            false
+        }
     }
 
     /// Registers a custom operator with the engine.
@@ -673,10 +677,10 @@ impl DataLogic {
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
         let data_arc = Arc::new(data_value);
 
-        let compiled = Arc::new(
-            CompiledLogic::compile_for_trace(&logic_value, self.preserve_structure())
-                .map_err(Error::from)?,
-        );
+        let compiled = Arc::new(CompiledLogic::compile_for_trace(
+            &logic_value,
+            self.preserve_structure(),
+        )?);
 
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut context = ContextStack::new(data_arc);

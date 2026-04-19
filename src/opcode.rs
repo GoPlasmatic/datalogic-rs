@@ -400,7 +400,9 @@ impl OpCode {
         engine: &crate::DataLogic,
         mode: &mut M,
     ) -> crate::Result<serde_json::Value> {
-        use crate::operators::{arithmetic, array, comparison, control, logical, missing, string, variable};
+        use crate::operators::{
+            arithmetic, array, comparison, control, logical, missing, string, variable,
+        };
 
         match self {
             // ==== Lazy / iteration operators — generic over M ====
@@ -434,34 +436,86 @@ impl OpCode {
             // ==== Eager operators — children pre-evaluated under Traced ====
             OpCode::Var => eager_apply::<M>(args, context, engine, mode, variable::evaluate_var),
 
-            OpCode::Equals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_equals),
-            OpCode::StrictEquals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_strict_equals),
-            OpCode::NotEquals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_not_equals),
-            OpCode::StrictNotEquals => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_strict_not_equals),
-            OpCode::GreaterThan => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_greater_than),
-            OpCode::GreaterThanEqual => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_greater_than_equal),
-            OpCode::LessThan => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_less_than),
-            OpCode::LessThanEqual => eager_apply::<M>(args, context, engine, mode, comparison::evaluate_less_than_equal),
+            OpCode::Equals => {
+                eager_apply::<M>(args, context, engine, mode, comparison::evaluate_equals)
+            }
+            OpCode::StrictEquals => eager_apply::<M>(
+                args,
+                context,
+                engine,
+                mode,
+                comparison::evaluate_strict_equals,
+            ),
+            OpCode::NotEquals => {
+                eager_apply::<M>(args, context, engine, mode, comparison::evaluate_not_equals)
+            }
+            OpCode::StrictNotEquals => eager_apply::<M>(
+                args,
+                context,
+                engine,
+                mode,
+                comparison::evaluate_strict_not_equals,
+            ),
+            OpCode::GreaterThan => eager_apply::<M>(
+                args,
+                context,
+                engine,
+                mode,
+                comparison::evaluate_greater_than,
+            ),
+            OpCode::GreaterThanEqual => eager_apply::<M>(
+                args,
+                context,
+                engine,
+                mode,
+                comparison::evaluate_greater_than_equal,
+            ),
+            OpCode::LessThan => {
+                eager_apply::<M>(args, context, engine, mode, comparison::evaluate_less_than)
+            }
+            OpCode::LessThanEqual => eager_apply::<M>(
+                args,
+                context,
+                engine,
+                mode,
+                comparison::evaluate_less_than_equal,
+            ),
 
             OpCode::Not => eager_apply::<M>(args, context, engine, mode, logical::evaluate_not),
-            OpCode::DoubleNot => eager_apply::<M>(args, context, engine, mode, logical::evaluate_double_not),
+            OpCode::DoubleNot => {
+                eager_apply::<M>(args, context, engine, mode, logical::evaluate_double_not)
+            }
 
             OpCode::Add => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_add),
-            OpCode::Subtract => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_subtract),
-            OpCode::Multiply => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_multiply),
-            OpCode::Divide => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_divide),
-            OpCode::Modulo => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_modulo),
+            OpCode::Subtract => {
+                eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_subtract)
+            }
+            OpCode::Multiply => {
+                eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_multiply)
+            }
+            OpCode::Divide => {
+                eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_divide)
+            }
+            OpCode::Modulo => {
+                eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_modulo)
+            }
             OpCode::Max => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_max),
             OpCode::Min => eager_apply::<M>(args, context, engine, mode, arithmetic::evaluate_min),
 
             OpCode::Cat => eager_apply::<M>(args, context, engine, mode, string::evaluate_cat),
-            OpCode::Substr => eager_apply::<M>(args, context, engine, mode, string::evaluate_substr),
+            OpCode::Substr => {
+                eager_apply::<M>(args, context, engine, mode, string::evaluate_substr)
+            }
             OpCode::In => eager_apply::<M>(args, context, engine, mode, string::evaluate_in),
 
             OpCode::Merge => eager_apply::<M>(args, context, engine, mode, array::evaluate_merge),
 
-            OpCode::Missing => eager_apply::<M>(args, context, engine, mode, missing::evaluate_missing),
-            OpCode::MissingSome => eager_apply::<M>(args, context, engine, mode, missing::evaluate_missing_some),
+            OpCode::Missing => {
+                eager_apply::<M>(args, context, engine, mode, missing::evaluate_missing)
+            }
+            OpCode::MissingSome => {
+                eager_apply::<M>(args, context, engine, mode, missing::evaluate_missing_some)
+            }
 
             #[cfg(feature = "preserve")]
             OpCode::Preserve => {
@@ -501,11 +555,17 @@ impl OpCode {
             }
 
             #[cfg(feature = "ext-string")]
-            OpCode::Length => eager_apply::<M>(args, context, engine, mode, string::evaluate_length),
+            OpCode::Length => {
+                eager_apply::<M>(args, context, engine, mode, string::evaluate_length)
+            }
             #[cfg(feature = "ext-string")]
-            OpCode::StartsWith => eager_apply::<M>(args, context, engine, mode, string::evaluate_starts_with),
+            OpCode::StartsWith => {
+                eager_apply::<M>(args, context, engine, mode, string::evaluate_starts_with)
+            }
             #[cfg(feature = "ext-string")]
-            OpCode::EndsWith => eager_apply::<M>(args, context, engine, mode, string::evaluate_ends_with),
+            OpCode::EndsWith => {
+                eager_apply::<M>(args, context, engine, mode, string::evaluate_ends_with)
+            }
             #[cfg(feature = "ext-string")]
             OpCode::Upper => eager_apply::<M>(args, context, engine, mode, string::evaluate_upper),
             #[cfg(feature = "ext-string")]
@@ -523,7 +583,9 @@ impl OpCode {
             #[cfg(feature = "ext-control")]
             OpCode::Val => eager_apply::<M>(args, context, engine, mode, variable::evaluate_val),
             #[cfg(feature = "ext-control")]
-            OpCode::Exists => eager_apply::<M>(args, context, engine, mode, variable::evaluate_exists),
+            OpCode::Exists => {
+                eager_apply::<M>(args, context, engine, mode, variable::evaluate_exists)
+            }
             #[cfg(feature = "ext-control")]
             OpCode::Type => {
                 use crate::operators::type_op;

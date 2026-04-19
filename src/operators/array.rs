@@ -36,7 +36,7 @@ fn try_extract_filter_field_cmp<'a>(
         reduce_hint: ReduceHint::None,
         metadata_hint: MetadataHint::None,
         default_value: None,
-    ..
+        ..
     } = a
         && !segments.is_empty()
         && is_filter_invariant(b)
@@ -63,7 +63,7 @@ fn evaluate_invariant_no_push(
             reduce_hint: ReduceHint::None,
             metadata_hint: MetadataHint::None,
             default_value,
-        ..
+            ..
         } if *scope_level > 0 => variable::evaluate_compiled_var(
             scope_level - 1,
             segments,
@@ -114,7 +114,7 @@ impl<'a> FastPredicate<'a> {
         if let CompiledNode::BuiltinOperator {
             opcode,
             args: pred_args,
-        ..
+            ..
         } = predicate
             && pred_args.len() == 2
         {
@@ -126,7 +126,7 @@ impl<'a> FastPredicate<'a> {
                     reduce_hint: ReduceHint::None,
                     metadata_hint: MetadataHint::None,
                     default_value: None,
-                ..
+                    ..
                 } = &pred_args[var_idx]
                     && let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx]
                 {
@@ -467,7 +467,7 @@ pub fn evaluate_map<M: Mode>(
                     reduce_hint: ReduceHint::None,
                     metadata_hint: MetadataHint::None,
                     default_value: None,
-                ..
+                    ..
                 } = logic
             {
                 if segments.is_empty() {
@@ -491,7 +491,7 @@ pub fn evaluate_map<M: Mode>(
                 && let CompiledNode::BuiltinOperator {
                     opcode,
                     args: body_args,
-                ..
+                    ..
                 } = logic
                 && body_args.len() == 2
                 && matches!(
@@ -510,7 +510,7 @@ pub fn evaluate_map<M: Mode>(
                         reduce_hint: ReduceHint::None,
                         metadata_hint: MetadataHint::None,
                         default_value: None,
-                    ..
+                        ..
                     } = &body_args[var_idx]
                         && segments.is_empty()
                         && let CompiledNode::Value { value: lit_val, .. } = &body_args[lit_idx]
@@ -664,7 +664,7 @@ pub fn evaluate_filter<M: Mode>(
                 && let CompiledNode::BuiltinOperator {
                     opcode,
                     args: pred_args,
-                ..
+                    ..
                 } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
@@ -812,7 +812,7 @@ pub fn evaluate_reduce<M: Mode>(
                 && let CompiledNode::BuiltinOperator {
                     opcode,
                     args: body_args,
-                ..
+                    ..
                 } = logic
                 && body_args.len() == 2
                 && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
@@ -897,7 +897,7 @@ pub fn evaluate_all<M: Mode>(
                 && let CompiledNode::BuiltinOperator {
                     opcode,
                     args: pred_args,
-                ..
+                    ..
                 } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
@@ -1001,7 +1001,7 @@ pub fn evaluate_some<M: Mode>(
                 && let CompiledNode::BuiltinOperator {
                     opcode,
                     args: pred_args,
-                ..
+                    ..
                 } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
@@ -1105,7 +1105,7 @@ pub fn evaluate_none<M: Mode>(
                 && let CompiledNode::BuiltinOperator {
                     opcode,
                     args: pred_args,
-                ..
+                    ..
                 } = predicate
                 && pred_args.len() == 2
                 && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
@@ -1245,7 +1245,7 @@ pub fn evaluate_sort(
             reduce_hint: ReduceHint::None,
             metadata_hint: MetadataHint::None,
             default_value: None,
-        ..
+            ..
         } = extractor
         {
             if !segments.is_empty() {
@@ -1618,4 +1618,3 @@ fn normalize_index(index: i64, len: i64) -> i64 {
         index.min(len)
     }
 }
-

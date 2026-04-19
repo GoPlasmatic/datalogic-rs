@@ -59,8 +59,7 @@
 use serde_json::Value;
 
 use super::helpers::{
-    create_number_value, safe_add, safe_divide,
-    safe_modulo, safe_multiply, safe_subtract,
+    create_number_value, safe_add, safe_divide, safe_modulo, safe_multiply, safe_subtract,
 };
 #[cfg(feature = "datetime")]
 use super::helpers::{extract_datetime_value, extract_duration_value};

@@ -134,7 +134,7 @@ pub fn evaluate_switch<M: Mode>(
                     }
                     CompiledNode::Value {
                         value: Value::Array(pair),
-                    ..
+                        ..
                     } if pair.len() >= 2 => {
                         // Static-optimized pair
                         if discriminant == pair[0] {
@@ -147,7 +147,7 @@ pub fn evaluate_switch<M: Mode>(
         }
         CompiledNode::Value {
             value: Value::Array(cases),
-        ..
+            ..
         } => {
             // Entire cases array was statically evaluated
             for case in cases {

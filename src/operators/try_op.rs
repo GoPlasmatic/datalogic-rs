@@ -111,13 +111,7 @@ pub fn evaluate_try<M: Mode>(
 
     for (i, arg) in args.iter().enumerate() {
         if i == last_idx {
-            return try_last_with_error_context::<M>(
-                arg,
-                &mut last_error,
-                context,
-                engine,
-                mode,
-            );
+            return try_last_with_error_context::<M>(arg, &mut last_error, context, engine, mode);
         }
         let checkpoint = context.error_path_len();
         match engine.evaluate_node_with_mode::<M>(arg, context, mode) {

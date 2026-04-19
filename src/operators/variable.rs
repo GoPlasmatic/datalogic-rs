@@ -617,9 +617,7 @@ pub fn evaluate_compiled_var(
             let frame = context.current();
             match reduce_hint {
                 ReduceHint::Current => frame.get_reduce_current().map(|v| Some(v.clone())),
-                ReduceHint::Accumulator => {
-                    frame.get_reduce_accumulator().map(|v| Some(v.clone()))
-                }
+                ReduceHint::Accumulator => frame.get_reduce_accumulator().map(|v| Some(v.clone())),
                 ReduceHint::CurrentPath => frame
                     .get_reduce_current()
                     .map(|current| try_traverse_segments(current, &segments[1..]).cloned()),
