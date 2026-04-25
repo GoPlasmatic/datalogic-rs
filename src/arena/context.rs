@@ -4,9 +4,13 @@
 //! is borrowed from the caller's `Arc<Value>` (held by the `evaluate()` call
 //! frame for the lifetime `'a`).
 //!
-//! POC scope: only the methods needed by `evaluate_filter_arena` and
-//! `evaluate_length_arena` are implemented. Full parity with `ContextStack`
-//! is deferred until Phase 3 operator migrations need it.
+//! POC scope: this type is reserved for Phase 4 (composition INTO arena —
+//! when iterators consume `&[ArenaValue]` rather than `&[Value]`). Phase 2/3
+//! reuse the existing `ContextStack` for predicate evaluation, so the API
+//! here is intentionally unused right now. The definitions stay in-tree to
+//! avoid re-litigating the design when Phase 4 lands.
+
+#![allow(dead_code)] // forward-looking scaffolding for Phase 4
 
 use bumpalo::Bump;
 use serde_json::Value;
@@ -35,8 +39,8 @@ impl<'a> ArenaContextFrame<'a> {
     #[inline]
     pub(crate) fn data(&self) -> &'a ArenaValue<'a> {
         match self {
-            Self::Indexed { data, .. } | Self::Keyed { data, .. } | Self::Data(data) => *data,
-            Self::Reduce { current, .. } => *current,
+            Self::Indexed { data, .. } | Self::Keyed { data, .. } | Self::Data(data) => data,
+            Self::Reduce { current, .. } => current,
         }
     }
 }

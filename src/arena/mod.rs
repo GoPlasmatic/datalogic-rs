@@ -8,5 +8,4 @@
 pub(crate) mod context;
 pub(crate) mod value;
 
-pub(crate) use context::ArenaContextStack;
 pub(crate) use value::{ArenaValue, arena_to_value, value_to_arena};

@@ -69,11 +69,11 @@ fn main() {
     println!("  {}", "-".repeat(90));
 
     // ---- Cases that should not regress (unchanged dispatch path) ----
-    measure(&"const true", &engine, serde_json::json!(true), Value::Null, iters);
-    measure(&"var: a", &engine, serde_json::json!({"var": "a"}), serde_json::json!({"a": 1}), iters);
-    measure(&"+ (2 ints)", &engine, serde_json::json!({"+": [{"var":"a"},{"var":"b"}]}), serde_json::json!({"a":1,"b":2}), iters);
+    measure("const true", &engine, serde_json::json!(true), Value::Null, iters);
+    measure("var: a", &engine, serde_json::json!({"var": "a"}), serde_json::json!({"a": 1}), iters);
+    measure("+ (2 ints)", &engine, serde_json::json!({"+": [{"var":"a"},{"var":"b"}]}), serde_json::json!({"a":1,"b":2}), iters);
     measure(
-        &"if/=== (true str branch)",
+        "if/=== (true str branch)",
         &engine,
         serde_json::json!({"if": [{"===": [{"var":"x"}, "yes"]}, 1, 0]}),
         serde_json::json!({"x":"yes"}),
@@ -82,7 +82,7 @@ fn main() {
 
     // ---- Filter ALONE (POC target: ≥1.5× over baseline 638 ns) ----
     measure(
-        &"filter == on field, 10 [ARENA]",
+        "filter == on field, 10 [ARENA]",
         &engine,
         serde_json::json!({"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}),
         serde_json::json!({"xs": (1..=10).map(|i| serde_json::json!({"k": i % 2})).collect::<Vec<_>>()}),
@@ -91,7 +91,7 @@ fn main() {
 
     // ---- Length on raw data (sanity) ----
     measure(
-        &"length(xs) [ARENA]",
+        "length(xs) [ARENA]",
         &engine,
         serde_json::json!({"length": {"var":"xs"}}),
         serde_json::json!({"xs": (0..10).collect::<Vec<_>>()}),
@@ -101,7 +101,7 @@ fn main() {
     // ---- COMPOSITION test (POC target: ≥2.0× over baseline) ----
     // length(filter(...)) — filter result lives in arena, length reads slice len.
     measure(
-        &"length(filter(==)), 10 [ARENA]",
+        "length(filter(==)), 10 [ARENA]",
         &engine,
         serde_json::json!({"length": {"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}}),
         serde_json::json!({"xs": (1..=10).map(|i| serde_json::json!({"k": i % 2})).collect::<Vec<_>>()}),
@@ -110,7 +110,7 @@ fn main() {
 
     // Larger array to amplify the composition win
     measure(
-        &"length(filter(==)), 100 [ARENA]",
+        "length(filter(==)), 100 [ARENA]",
         &engine,
         serde_json::json!({"length": {"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}}),
         serde_json::json!({"xs": (1..=100).map(|i| serde_json::json!({"k": i % 2})).collect::<Vec<_>>()}),
@@ -119,35 +119,35 @@ fn main() {
 
     // ---- Phase 3 operators ----
     measure(
-        &"map +1, 10 ints",
+        "map +1, 10 ints",
         &engine,
         serde_json::json!({"map": [{"var":"xs"}, {"+": [{"var":""}, 1]}]}),
         serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
         iters,
     );
     measure(
-        &"map field-extract, 10 objs [ARENA]",
+        "map field-extract, 10 objs [ARENA]",
         &engine,
         serde_json::json!({"map": [{"var":"xs"}, {"var":"k"}]}),
         serde_json::json!({"xs": (1..=10).map(|i| serde_json::json!({"k": i, "other": "noise"})).collect::<Vec<_>>()}),
         iters,
     );
     measure(
-        &"all >0, 10 ints [ARENA]",
+        "all >0, 10 ints [ARENA]",
         &engine,
         serde_json::json!({"all": [{"var":"xs"}, {">": [{"var":""}, 0]}]}),
         serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
         iters,
     );
     measure(
-        &"some ==5, 10 ints [ARENA]",
+        "some ==5, 10 ints [ARENA]",
         &engine,
         serde_json::json!({"some": [{"var":"xs"}, {"===": [{"var":""}, 5]}]}),
         serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
         iters,
     );
     measure(
-        &"reduce sum, 10 ints [ARENA]",
+        "reduce sum, 10 ints [ARENA]",
         &engine,
         serde_json::json!({"reduce": [{"var":"xs"}, {"+":[{"var":"current"},{"var":"accumulator"}]}, 0]}),
         serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
@@ -156,14 +156,14 @@ fn main() {
 
     // ---- Phase 3 COMPOSITION ----
     measure(
-        &"length(map(filter)), 100 [ARENA]",
+        "length(map(filter)), 100 [ARENA]",
         &engine,
         serde_json::json!({"length": {"map": [{"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}, {"var":"k"}]}}),
         serde_json::json!({"xs": (1..=100).map(|i| serde_json::json!({"k": i % 2, "noise": "x"})).collect::<Vec<_>>()}),
         iters,
     );
     measure(
-        &"all(filter()), 100 [ARENA]",
+        "all(filter()), 100 [ARENA]",
         &engine,
         serde_json::json!({"all": [{"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}, {">": [{"var":"k"}, 0]}]}),
         serde_json::json!({"xs": (1..=100).map(|i| serde_json::json!({"k": i % 2})).collect::<Vec<_>>()}),
@@ -172,7 +172,7 @@ fn main() {
 
     // ---- Sanity: should not regress ----
     measure(
-        &"sort by field, 10",
+        "sort by field, 10",
         &engine,
         serde_json::json!({"sort": [{"var":"xs"}, true, {"var":"k"}]}),
         serde_json::json!({"xs": (1..=10).rev().map(|i| serde_json::json!({"k": i})).collect::<Vec<_>>()}),

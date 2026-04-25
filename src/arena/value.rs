@@ -32,8 +32,10 @@ pub(crate) enum ArenaValue<'a> {
 impl<'a> ArenaValue<'a> {
     /// Truthiness check matching the JavaScript-default semantics used by the
     /// existing `is_truthy` helper. Replicated here to avoid a `to_value` round
-    /// trip during predicate evaluation.
+    /// trip during predicate evaluation. Reserved for Phase 4 when predicates
+    /// can run in arena mode.
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn is_truthy_default(&self) -> bool {
         match self {
             ArenaValue::Null => false,

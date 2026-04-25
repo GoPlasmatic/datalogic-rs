@@ -1666,8 +1666,8 @@ pub(crate) fn evaluate_filter_arena<'a>(
             // Bridge: evaluate normally, store in arena, treat as InputRef-equivalent.
             // For POC simplicity, we promote the cloned Vec into the arena.
             let v = engine.evaluate_node(&args[0], context)?;
-            let promoted = arena.alloc(v);
-            promoted
+            
+            (arena.alloc(v)) as _
         };
 
     let predicate = &args[1];
@@ -1912,6 +1912,8 @@ pub(crate) fn evaluate_map_arena<'a>(
 ///   - `some`: early_truthy = true (true ⇒ return true immediately)
 ///   - `none`: same as `some` but invert the final result
 #[inline]
+#[allow(clippy::too_many_arguments)] // 5 contextual + 3 quantifier-shape flags; bundling the flags
+                                     // into a struct adds noise without simplifying the call sites.
 fn evaluate_quantifier_arena<'a>(
     args: &[CompiledNode],
     context: &mut ContextStack,
