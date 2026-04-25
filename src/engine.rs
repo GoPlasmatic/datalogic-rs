@@ -5,76 +5,6 @@ use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
 
-// The arena-dispatch decision is computed at compile time in `node.rs`
-// (`root_uses_arena_pure` and helpers) and cached on `CompiledLogic` as
-// `uses_arena_dispatch`. This file just reads that bool in `evaluate()`.
-
-/// Runtime peek for iterator-shaped arena roots: returns true iff the root
-/// op's first arg resolves (via root borrow) to a `Value::Array` or `Null`.
-/// Used to avoid arena setup when the input would force a value-mode bridge.
-/// Conservatively returns true when we can't peek cheaply — the in-arena
-/// `peek_root_value` will then bridge correctly if needed.
-#[inline]
-fn iter_root_input_is_array(root: &CompiledNode, data: &Value) -> bool {
-    let CompiledNode::BuiltinOperator { args, .. } = root else {
-        return true;
-    };
-    let Some(arg0) = args.first() else {
-        return true;
-    };
-    let CompiledNode::CompiledVar {
-        scope_level: 0,
-        segments,
-        reduce_hint: crate::node::ReduceHint::None,
-        metadata_hint: crate::node::MetadataHint::None,
-        default_value: None,
-        ..
-    } = arg0
-    else {
-        // Not a simple root var — could be a nested arena op, literal array, etc.
-        // The full arena dispatch handles those correctly; let it run.
-        return true;
-    };
-    let resolved = if segments.is_empty() {
-        Some(data)
-    } else {
-        crate::operators::variable::try_traverse_segments(data, segments)
-    };
-    matches!(resolved, Some(Value::Array(_)) | Some(Value::Null) | None)
-}
-
-/// Peek at what an iterator's first arg would resolve to *without evaluating*.
-/// Returns `Some(&Value)` only when the arg is a simple root-scope `var` — the
-/// only case we can resolve with a borrow. For anything else (computed
-/// collection, nested expression), returns `None` and the caller proceeds with
-/// the regular arena dispatch (which will evaluate the arg properly). The
-/// borrow lifetime is `'a` because `root` lives for the call's duration.
-#[inline]
-fn peek_root_value<'a>(
-    arg: &CompiledNode,
-    context: &ContextStack,
-    root: &'a Value,
-) -> Option<&'a Value> {
-    if context.depth() != 0 {
-        return None;
-    }
-    if let CompiledNode::CompiledVar {
-        scope_level: 0,
-        segments,
-        reduce_hint: crate::node::ReduceHint::None,
-        metadata_hint: crate::node::MetadataHint::None,
-        default_value: None,
-        ..
-    } = arg
-    {
-        if segments.is_empty() {
-            return Some(root);
-        }
-        return crate::operators::variable::try_traverse_segments(root, segments);
-    }
-    None
-}
-
 use crate::operators::variable;
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
@@ -427,16 +357,7 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        // Hot path: cheap rules go straight to value-mode dispatch with no
-        // intermediate branching. Arena routing is hoisted into a `#[cold]`
-        // helper so its code lays out far from the hot fast path, freeing
-        // L1i pressure for tiny rules (var / + / if/===) that dominate the
-        // suite average.
-        if compiled.uses_arena_dispatch {
-            return self.evaluate_arena_dispatch(compiled, data);
-        }
-        let mut context = ContextStack::new(data);
-        self.evaluate_node(&compiled.root, &mut context)
+        self.evaluate_via_arena(compiled, data)
     }
 
     /// Evaluates compiled logic against borrowed data.
@@ -455,47 +376,6 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        if compiled.uses_arena_dispatch {
-            return self.evaluate_arena_dispatch_ref(compiled, data);
-        }
-        // Value-mode bridge currently still needs `Arc<Value>` for `ContextStack`.
-        // Clone the value into a fresh Arc — removed in a later stage when
-        // `ContextStack` supports a borrowed root.
-        let mut context = ContextStack::new(Arc::new(data.clone()));
-        self.evaluate_node(&compiled.root, &mut context)
-    }
-
-    /// Cold arena dispatch trampoline. Decides between in-arena evaluation
-    /// and a value-mode bridge (used when an iterator's input collection
-    /// turns out to be a `Value::Object`, which `evaluate_via_arena` would
-    /// just bridge back anyway — skipping arena setup is the win).
-    #[cold]
-    #[inline(never)]
-    fn evaluate_arena_dispatch(
-        &self,
-        compiled: &CompiledLogic,
-        data: Arc<Value>,
-    ) -> Result<Value> {
-        if compiled.arena_iter_root && !iter_root_input_is_array(&compiled.root, &data) {
-            let mut context = ContextStack::new(data);
-            return self.evaluate_node(&compiled.root, &mut context);
-        }
-        self.evaluate_via_arena(compiled, data)
-    }
-
-    /// Cold arena dispatch trampoline for the borrowed-data API.
-    #[cold]
-    #[inline(never)]
-    fn evaluate_arena_dispatch_ref(
-        &self,
-        compiled: &CompiledLogic,
-        data: &Value,
-    ) -> Result<Value> {
-        if compiled.arena_iter_root && !iter_root_input_is_array(&compiled.root, data) {
-            // Value-mode bridge — clone for ContextStack until it supports borrowed root.
-            let mut context = ContextStack::new(Arc::new(data.clone()));
-            return self.evaluate_node(&compiled.root, &mut context);
-        }
         self.evaluate_via_arena_ref(compiled, data)
     }
 
@@ -504,8 +384,7 @@ impl DataLogic {
     /// through `evaluate_arena_node`, and converts the result back to owned
     /// `Value` at the boundary. The arena is reset and returned to the pool
     /// when `guard` drops at end of function.
-    #[cold]
-    #[inline(never)]
+    #[inline]
     fn evaluate_via_arena(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
         use crate::arena::{ArenaGuard, arena_to_value};
         // Size hint for first-time pool fills: static_bytes × 2, min 4 KiB.
@@ -530,8 +409,7 @@ impl DataLogic {
     /// Borrowed-data variant of `evaluate_via_arena`. No Arc::clone — the
     /// caller's `&Value` lives on the caller's stack; we synthesize an Arc
     /// only for the legacy `ContextStack` bridge (removed in Stage E).
-    #[cold]
-    #[inline(never)]
+    #[inline]
     fn evaluate_via_arena_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         use crate::arena::{ArenaGuard, arena_to_value};
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
@@ -867,30 +745,6 @@ impl DataLogic {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::ArenaValue<'a>> {
         use crate::arena::{ArenaValue, value_to_arena};
-        use crate::node::{MetadataHint, ReduceHint};
-
-        // POC limitation: arena ops handle Array (and Null) inputs only. For
-        // other collection shapes — Value::Object (object iteration semantics)
-        // or scalar inputs (existing ops treat as 1-item) — bridge the entire
-        // op to the value-mode dispatcher. Cheap to detect via root borrow
-        // without re-evaluating args[0].
-        if let CompiledNode::BuiltinOperator { opcode, args, .. } = node
-            && matches!(
-                opcode,
-                crate::OpCode::Filter
-                    | crate::OpCode::Map
-                    | crate::OpCode::All
-                    | crate::OpCode::Some
-                    | crate::OpCode::None
-                    | crate::OpCode::Reduce
-            )
-            && !args.is_empty()
-            && let Some(v) = peek_root_value(&args[0], context, actx.root_input())
-            && !matches!(v, Value::Array(_) | Value::Null)
-        {
-            let result = self.evaluate_node(node, context)?;
-            return Ok(arena.alloc(value_to_arena(&result, arena)));
-        }
 
         match node {
             // Compiled var: full dispatch via the arena helper. Root-scope

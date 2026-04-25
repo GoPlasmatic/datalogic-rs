@@ -131,23 +131,63 @@ pub(crate) fn evaluate_type_arena<'a>(
         return Ok(arena.alloc(ArenaValue::String("null")));
     }
     let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+
+    // Datetime/duration object detection (e.g. {"datetime": "..."}).
+    #[cfg(feature = "datetime")]
+    {
+        if let ArenaValue::InputRef(v) = av {
+            if is_datetime_object(v) {
+                return Ok(arena.alloc(ArenaValue::String("datetime")));
+            }
+            if is_duration_object(v) {
+                return Ok(arena.alloc(ArenaValue::String("duration")));
+            }
+        }
+    }
+
     let type_str: &'static str = match av {
         ArenaValue::Null => "null",
         ArenaValue::Bool(_) => "boolean",
         ArenaValue::Number(_) => "number",
-        ArenaValue::String(_) => "string",
+        ArenaValue::String(s) => classify_string(s),
         ArenaValue::Array(_) => "array",
         ArenaValue::Object(_) => "object",
         #[cfg(feature = "datetime")]
-        ArenaValue::DateTime(_) | ArenaValue::Duration(_) => "object",
+        ArenaValue::DateTime(_) => "datetime",
+        #[cfg(feature = "datetime")]
+        ArenaValue::Duration(_) => "duration",
         ArenaValue::InputRef(v) => match v {
             Value::Null => "null",
             Value::Bool(_) => "boolean",
             Value::Number(_) => "number",
-            Value::String(_) => "string",
+            Value::String(s) => classify_string(s),
             Value::Array(_) => "array",
             Value::Object(_) => "object",
         },
     };
     Ok(arena.alloc(ArenaValue::String(type_str)))
+}
+
+/// Classify a string into "datetime" / "duration" / "string" using the same
+/// heuristic as value-mode `evaluate_type`.
+#[inline]
+fn classify_string(s: &str) -> &'static str {
+    #[cfg(feature = "datetime")]
+    {
+        if s.contains('T') && s.contains(':') && (s.contains('Z') || s.contains('+')) {
+            return "datetime";
+        }
+        if s.chars().any(|c| matches!(c, 'd' | 'h' | 'm' | 's'))
+            && s.chars().any(|c| c.is_ascii_digit())
+            && !s.contains(' ')
+        {
+            return "duration";
+        }
+        "string"
+    }
+    #[cfg(not(feature = "datetime"))]
+    {
+        let _ = s;
+        "string"
+    }
 }

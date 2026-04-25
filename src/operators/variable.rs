@@ -724,9 +724,15 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    // 1. Metadata hints
+    // 1. Metadata hints — prefer actx (arena iteration frames push here),
+    //    fall back to legacy context (custom-op shim or value-mode pushes here).
     match metadata_hint {
         MetadataHint::Index => {
+            if let Some(idx) = actx.current().get_index() {
+                return Ok(arena.alloc(ArenaValue::Number(
+                    crate::value::NumberValue::Integer(idx as i64),
+                )));
+            }
             if let Some(idx) = context.current().get_index() {
                 return Ok(arena.alloc(ArenaValue::Number(
                     crate::value::NumberValue::Integer(idx as i64),
@@ -734,6 +740,10 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
             }
         }
         MetadataHint::Key => {
+            if let Some(key) = actx.current().get_key() {
+                let s: &'a str = arena.alloc_str(key);
+                return Ok(arena.alloc(ArenaValue::String(s)));
+            }
             if let Some(key) = context.current().get_key() {
                 let s: &'a str = arena.alloc_str(key);
                 return Ok(arena.alloc(ArenaValue::String(s)));

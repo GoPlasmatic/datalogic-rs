@@ -5,11 +5,11 @@ use std::cmp::Ordering;
 
 use super::helpers::is_truthy;
 use super::variable;
+use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use crate::constants::INVALID_ARGS;
 use crate::eval_mode::Mode;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
-use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 use bumpalo::Bump;
 
@@ -1692,7 +1692,9 @@ pub(crate) fn evaluate_slice_arena<'a>(
         let mut out: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(indices.len(), arena);
         for i in indices {
-            out.push(crate::arena::value::reborrow_arena_value(&items[i as usize]));
+            out.push(crate::arena::value::reborrow_arena_value(
+                &items[i as usize],
+            ));
         }
         return Ok(arena.alloc(ArenaValue::Array(out.into_bump_slice())));
     }
@@ -1754,7 +1756,11 @@ fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> V
         let default_start = len.saturating_sub(1);
         let s = normalize_index(start.unwrap_or(default_start), len);
         let e = if let Some(e) = end {
-            if e < -len { -1 } else { normalize_index(e, len) }
+            if e < -len {
+                -1
+            } else {
+                normalize_index(e, len)
+            }
         } else {
             -1
         };
@@ -2022,10 +2028,10 @@ pub(crate) fn evaluate_filter_arena<'a>(
     Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
 }
 
-/// Filter Bridge case — input is an Object or non-array. Object inputs
-/// iterate `(key, value)` pairs and accumulate matched pairs into a
-/// new arena `Object`; non-array non-object non-null inputs error per
-/// value-mode semantics.
+/// Filter Bridge case — input is an Object, an inline arena Array (e.g. a
+/// literal `[1,2,3]` arg) or a non-array primitive. Object inputs iterate
+/// `(key, value)` pairs into a new arena `Object`; arena Array inputs iterate
+/// items into a new arena `Array`; other shapes error per value-mode semantics.
 #[inline]
 fn filter_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
@@ -2058,12 +2064,34 @@ fn filter_arena_bridge<'a>(
         }
         return Ok(arena.alloc(ArenaValue::Object(kept.into_bump_slice())));
     }
+    if let ArenaValue::Array(items) = input {
+        let mut kept: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
+        let mut pushed = false;
+        for i in 0..items.len() {
+            let item_av: &'a ArenaValue<'a> = &items[i];
+            if !pushed {
+                actx.push_with_index(item_av, 0);
+                pushed = true;
+            } else {
+                actx.replace_top_data(item_av, i);
+            }
+            let keep = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+            if crate::arena::is_truthy_arena(keep, engine) {
+                kept.push(crate::arena::value::reborrow_arena_value(item_av));
+            }
+        }
+        if pushed {
+            actx.pop();
+        }
+        return Ok(arena.alloc(ArenaValue::Array(kept.into_bump_slice())));
+    }
     Err(Error::InvalidArguments(INVALID_ARGS.into()))
 }
 
-/// Map Bridge case — Object inputs iterate (key, value) pairs and
-/// produce an arena `Array` of mapped results. Non-array non-object
-/// non-null primitives are treated as a single-element collection.
+/// Map Bridge case — Object inputs iterate (key, value) pairs; inline arena
+/// Array inputs (e.g. literal `[1,2,3]` arg) iterate items; other shapes are
+/// treated as a single-element collection per value-mode semantics.
 #[inline]
 fn map_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
@@ -2094,6 +2122,26 @@ fn map_arena_bridge<'a>(
         }
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
     }
+    if let ArenaValue::Array(items) = input {
+        let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
+        let mut pushed = false;
+        for i in 0..items.len() {
+            let item_av: &'a ArenaValue<'a> = &items[i];
+            if !pushed {
+                actx.push_with_index(item_av, 0);
+                pushed = true;
+            } else {
+                actx.replace_top_data(item_av, i);
+            }
+            let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+            results.push(crate::arena::value::reborrow_arena_value(av));
+        }
+        if pushed {
+            actx.pop();
+        }
+        return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
+    }
     // Single-element collection (number, string, bool primitive input).
     let item_av: &'a ArenaValue<'a> = input;
     actx.push_with_index(item_av, 0);
@@ -2104,8 +2152,9 @@ fn map_arena_bridge<'a>(
     Ok(arena.alloc(ArenaValue::Array(slice)))
 }
 
-/// Reduce Bridge case — Object inputs iterate (key, value) pairs.
-/// Non-array non-object non-null inputs return the initial value.
+/// Reduce Bridge case — Object inputs iterate (key, value) pairs; inline
+/// arena Array inputs iterate items. Non-array non-object non-null inputs
+/// return the initial value.
 #[inline]
 fn reduce_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
@@ -2131,6 +2180,25 @@ fn reduce_arena_bridge<'a>(
                 actx.replace_reduce_data(item_av, acc_av);
             }
             let _ = i;
+            acc_av = engine.evaluate_arena_node(body, actx, context, arena)?;
+        }
+        if pushed {
+            actx.pop();
+        }
+        return Ok(acc_av);
+    }
+    if let ArenaValue::Array(items) = input {
+        let mut acc_av: &'a ArenaValue<'a> =
+            arena.alloc(crate::arena::value_to_arena(initial, arena));
+        let mut pushed = false;
+        for i in 0..items.len() {
+            let item_av: &'a ArenaValue<'a> = &items[i];
+            if !pushed {
+                actx.push_reduce(item_av, acc_av);
+                pushed = true;
+            } else {
+                actx.replace_reduce_data(item_av, acc_av);
+            }
             acc_av = engine.evaluate_arena_node(body, actx, context, arena)?;
         }
         if pushed {
@@ -2180,7 +2248,47 @@ fn quantifier_arena_bridge<'a>(
             actx.pop();
         }
         let result = if found_short {
-            if invert_final { !short_circuit_on } else { short_circuit_on }
+            if invert_final {
+                !short_circuit_on
+            } else {
+                short_circuit_on
+            }
+        } else if invert_final {
+            short_circuit_on
+        } else {
+            !short_circuit_on
+        };
+        return Ok(arena.alloc(ArenaValue::Bool(result)));
+    }
+    if let ArenaValue::Array(items) = input {
+        if items.is_empty() {
+            return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
+        }
+        let mut pushed = false;
+        let mut found_short = false;
+        for i in 0..items.len() {
+            let item_av: &'a ArenaValue<'a> = &items[i];
+            if !pushed {
+                actx.push_with_index(item_av, 0);
+                pushed = true;
+            } else {
+                actx.replace_top_data(item_av, i);
+            }
+            let av = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+            if crate::arena::is_truthy_arena(av, engine) == short_circuit_on {
+                found_short = true;
+                break;
+            }
+        }
+        if pushed {
+            actx.pop();
+        }
+        let result = if found_short {
+            if invert_final {
+                !short_circuit_on
+            } else {
+                short_circuit_on
+            }
         } else if invert_final {
             short_circuit_on
         } else {
@@ -2257,7 +2365,9 @@ pub(crate) fn evaluate_sort_arena<'a>(
             if ascending { cmp } else { cmp.reverse() }
         });
         let slice = arena.alloc_slice_fill_iter(
-            indices.into_iter().map(|i| ArenaValue::InputRef(src.get(i))),
+            indices
+                .into_iter()
+                .map(|i| ArenaValue::InputRef(src.get(i))),
         );
         return Ok(arena.alloc(ArenaValue::Array(slice)));
     }
@@ -2275,7 +2385,12 @@ pub(crate) fn evaluate_sort_arena<'a>(
         && !segments.is_empty()
     {
         let mut keyed: Vec<(usize, Option<&Value>)> = (0..len)
-            .map(|i| (i, super::variable::try_traverse_segments(src.get(i), segments)))
+            .map(|i| {
+                (
+                    i,
+                    super::variable::try_traverse_segments(src.get(i), segments),
+                )
+            })
             .collect();
         keyed.sort_by(|(_, ka), (_, kb)| {
             let cmp = match (ka, kb) {
@@ -2287,7 +2402,9 @@ pub(crate) fn evaluate_sort_arena<'a>(
             if ascending { cmp } else { cmp.reverse() }
         });
         let slice = arena.alloc_slice_fill_iter(
-            keyed.into_iter().map(|(i, _)| ArenaValue::InputRef(src.get(i))),
+            keyed
+                .into_iter()
+                .map(|(i, _)| ArenaValue::InputRef(src.get(i))),
         );
         return Ok(arena.alloc(ArenaValue::Array(slice)));
     }
@@ -2319,7 +2436,9 @@ pub(crate) fn evaluate_sort_arena<'a>(
         if ascending { cmp } else { cmp.reverse() }
     });
     let slice = arena.alloc_slice_fill_iter(
-        indices.into_iter().map(|i| ArenaValue::InputRef(src.get(i))),
+        indices
+            .into_iter()
+            .map(|i| ArenaValue::InputRef(src.get(i))),
     );
     Ok(arena.alloc(ArenaValue::Array(slice)))
 }
@@ -2370,7 +2489,9 @@ fn sort_arena_from_value<'a>(
         });
         // Materialize into the arena.
         let items = arena.alloc_slice_fill_iter(
-            sorted.into_iter().map(|v| crate::arena::value_to_arena(&v, arena)),
+            sorted
+                .into_iter()
+                .map(|v| crate::arena::value_to_arena(&v, arena)),
         );
         return Ok(arena.alloc(ArenaValue::Array(items)));
     }
@@ -2381,10 +2502,11 @@ fn sort_arena_from_value<'a>(
     let n = owned.len();
     // Promote each item into the arena once so push_with_index can take a
     // reference whose lifetime matches `'a`.
-    let arena_items: bumpalo::collections::Vec<'a, ArenaValue<'a>> = bumpalo::collections::Vec::from_iter_in(
-        owned.iter().map(|v| crate::arena::value_to_arena(v, arena)),
-        arena,
-    );
+    let arena_items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+        bumpalo::collections::Vec::from_iter_in(
+            owned.iter().map(|v| crate::arena::value_to_arena(v, arena)),
+            arena,
+        );
     let arena_items_slice: &'a [ArenaValue<'a>] = arena_items.into_bump_slice();
 
     let mut keys: Vec<Value> = Vec::with_capacity(n);
@@ -2569,7 +2691,7 @@ pub(crate) fn evaluate_map_arena<'a>(
 ///   - `none`: same as `some` but invert the final result
 #[inline]
 #[allow(clippy::too_many_arguments)] // 5 contextual + 3 quantifier-shape flags; bundling the flags
-                                     // into a struct adds noise without simplifying the call sites.
+// into a struct adds noise without simplifying the call sites.
 fn evaluate_quantifier_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
@@ -2663,29 +2785,6 @@ fn evaluate_quantifier_arena<'a>(
         !short_circuit_on
     };
     Ok(arena.alloc(ArenaValue::Bool(result)))
-}
-
-/// Bridge a quantifier op to its value-mode implementation. Used when the
-/// arena resolver can't iterate the input (e.g. computed non-array, object).
-fn bridge_quantifier_value_mode(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    short_circuit_on: bool,
-    invert_final: bool,
-) -> Result<Value> {
-    use crate::eval_mode::Plain;
-    // Map (short_circuit_on, invert_final) back to which quantifier this is.
-    // (false, false) = all
-    // (true,  false) = some
-    // (true,  true)  = none
-    if !short_circuit_on {
-        evaluate_all::<Plain>(args, context, engine, &mut Plain)
-    } else if invert_final {
-        evaluate_none::<Plain>(args, context, engine, &mut Plain)
-    } else {
-        evaluate_some::<Plain>(args, context, engine, &mut Plain)
-    }
 }
 
 /// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.
@@ -2813,8 +2912,12 @@ fn try_reduce_fast_path_arena(
     // Identify which arg is current and which is accumulator.
     let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
         (
-            CompiledNode::CompiledVar { reduce_hint: hint0, .. },
-            CompiledNode::CompiledVar { reduce_hint: hint1, .. },
+            CompiledNode::CompiledVar {
+                reduce_hint: hint0, ..
+            },
+            CompiledNode::CompiledVar {
+                reduce_hint: hint1, ..
+            },
         ) => match (hint0, hint1) {
             (
                 ReduceHint::Current | ReduceHint::CurrentPath,
@@ -2829,8 +2932,11 @@ fn try_reduce_fast_path_arena(
         _ => return None,
     };
 
-    let current_segments = if let CompiledNode::CompiledVar { segments, reduce_hint, .. } =
-        current_arg
+    let current_segments = if let CompiledNode::CompiledVar {
+        segments,
+        reduce_hint,
+        ..
+    } = current_arg
     {
         match reduce_hint {
             ReduceHint::Current => &[][..],

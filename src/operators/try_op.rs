@@ -154,8 +154,20 @@ pub(crate) fn evaluate_try_arena<'a>(
     if args.is_empty() {
         return Ok(arena.alloc(ArenaValue::Null));
     }
+    if args.len() == 1 {
+        return engine.evaluate_arena_node(&args[0], actx, context, arena);
+    }
+
+    // Multi-arg form: try arms in sequence; final arm receives the error
+    // object as its context (mirrors value-mode `try_last_with_error_context`).
+    let last_idx = args.len() - 1;
     let mut last_err: Option<Error> = None;
-    for arg in args {
+    for (i, arg) in args.iter().enumerate() {
+        if i == last_idx {
+            return arena_try_last_with_error_context(
+                arg, &mut last_err, actx, context, engine, arena,
+            );
+        }
         let saved_len = context.error_path_len();
         match engine.evaluate_arena_node(arg, actx, context, arena) {
             Ok(v) => return Ok(v),
@@ -166,4 +178,30 @@ pub(crate) fn evaluate_try_arena<'a>(
         }
     }
     Err(last_err.unwrap_or_else(|| Error::InvalidArguments(crate::constants::INVALID_ARGS.into())))
+}
+
+/// Arena variant of [`try_last_with_error_context`]. Pushes the thrown error
+/// object onto both the arena context stack (so arena `var`/`val` lookups see
+/// it) and the legacy context stack (so any legacy fallback path sees it too).
+#[inline]
+fn arena_try_last_with_error_context<'a>(
+    arg: &CompiledNode,
+    last_error: &mut Option<Error>,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    if let Some(Error::Thrown(error_obj)) = last_error.take() {
+        let av: &'a ArenaValue<'a> =
+            arena.alloc(crate::arena::value_to_arena(&error_obj, arena));
+        actx.push(av);
+        context.push(error_obj);
+        let result = engine.evaluate_arena_node(arg, actx, context, arena);
+        actx.pop();
+        context.pop();
+        result
+    } else {
+        engine.evaluate_arena_node(arg, actx, context, arena)
+    }
 }
