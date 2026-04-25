@@ -6,19 +6,31 @@ use std::sync::Arc;
 use crate::config::EvaluationConfig;
 
 /// Returns true when this root node should be evaluated via the arena path.
-/// POC scope: only Filter and Length. Other roots use the existing value path.
+/// POC scope: arena helps when (a) the root is filter (input borrow win) or
+/// (b) the root is length(filter(...)) (composition win). For plain length()
+/// on a string/array, the Bump setup cost outweighs any savings — use the
+/// existing value path instead.
 #[inline]
 fn root_uses_arena(node: &CompiledNode) -> bool {
-    matches!(
-        node,
+    match node {
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Filter,
             ..
-        } | CompiledNode::BuiltinOperator {
+        } => true,
+        CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Length,
+            args,
             ..
-        }
-    )
+        } => args.len() == 1
+            && matches!(
+                &args[0],
+                CompiledNode::BuiltinOperator {
+                    opcode: crate::OpCode::Filter,
+                    ..
+                }
+            ),
+        _ => false,
+    }
 }
 
 use crate::operators::variable;
