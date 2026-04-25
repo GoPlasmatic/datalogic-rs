@@ -744,46 +744,77 @@ impl DataLogic {
         }
 
         match node {
-            // var fast path: root-scope lookups borrow into the input data via
-            // InputRef without cloning. Path B (Phase 2) scope: handles the
-            // root case (depth == 0, scope_level == 0, no iteration hints)
-            // including default-value fallback. Var inside iteration frames
-            // remains on the value-mode bridge until Phase 5's collection-op
-            // migration replaces frame storage with `&'a ArenaValue<'a>`.
+            // Compiled var: full dispatch via the arena helper. Root-scope
+            // hits return `InputRef` (no allocation); frame-data lookups
+            // currently clone via `value_to_arena` until Phase 5's
+            // ArenaContextStack migration changes frame storage.
             CompiledNode::CompiledVar {
-                scope_level: 0,
+                scope_level,
                 segments,
-                // At depth=0 the reduce/metadata hints are no-ops because
-                // the root frame has no reduce slot and no index/key — the
-                // value-mode helper falls through to normal access in that
-                // case anyway. So we can absorb every hint variant here.
+                reduce_hint,
+                metadata_hint,
                 default_value,
                 ..
-            } if context.depth() == 0 => {
-                let resolved: Option<&'a Value> = if segments.is_empty() {
-                    Some(root)
-                } else {
-                    crate::operators::variable::try_traverse_segments(root, segments)
-                };
-                match resolved {
-                    Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-                    None => match default_value {
-                        Some(d) => self.evaluate_arena_node(d, context, arena, root),
-                        None => Ok(arena.alloc(ArenaValue::Null)),
-                    },
-                }
+            } => crate::operators::variable::evaluate_compiled_var_arena(
+                *scope_level,
+                segments,
+                *reduce_hint,
+                *metadata_hint,
+                default_value.as_deref(),
+                context,
+                self,
+                arena,
+                root,
+            ),
+
+            // Compiled exists: full dispatch — root scope walks the input
+            // directly, others bridge to the value-mode helper. Result is
+            // always a Bool singleton.
+            #[cfg(feature = "ext-control")]
+            CompiledNode::CompiledExists(data) => {
+                crate::operators::variable::evaluate_compiled_exists_arena(
+                    data.scope_level,
+                    &data.segments,
+                    context,
+                    root,
+                )
             }
 
-            // exists at root scope: returns Bool from preallocated singleton.
+            // Value literal: arena-promote directly from the borrowed `&Value`.
+            // Avoids the redundant `Value::clone()` that the fallback path
+            // performs by going through `evaluate_node`.
+            CompiledNode::Value { value, .. } => match value {
+                Value::Null => Ok(crate::arena::pool::singleton_null()),
+                Value::Bool(b) => Ok(crate::arena::pool::singleton_bool(*b)),
+                Value::String(s) if s.is_empty() => {
+                    Ok(crate::arena::pool::singleton_empty_string())
+                }
+                Value::Array(a) if a.is_empty() => {
+                    Ok(crate::arena::pool::singleton_empty_array())
+                }
+                _ => Ok(arena.alloc(value_to_arena(value, arena))),
+            },
+
+            // Raw var/val/exists operator forms (rare — most are precompiled
+            // to CompiledVar/CompiledExists, but dynamic-path forms remain
+            // as BuiltinOperator).
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Var,
+                args,
+                ..
+            } => crate::operators::variable::evaluate_var_arena(args, context, self, arena, root),
             #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(data)
-                if data.scope_level == 0 && context.depth() == 0 =>
-            {
-                let found = data.segments.is_empty()
-                    || crate::operators::variable::try_traverse_segments(root, &data.segments)
-                        .is_some();
-                Ok(crate::arena::pool::singleton_bool(found))
-            }
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Val,
+                args,
+                ..
+            } => crate::operators::variable::evaluate_val_arena(args, context, self, arena, root),
+            #[cfg(feature = "ext-control")]
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Exists,
+                args,
+                ..
+            } => crate::operators::variable::evaluate_exists_arena(args, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Filter,
@@ -1187,21 +1218,19 @@ impl DataLogic {
                 Ok(arena.alloc(value_to_arena(&result, arena)))
             }
 
-            // CompiledSplitRegex (ext-string regex split): bridge to value-mode.
+            // CompiledSplitRegex (ext-string regex split): build the result
+            // object directly in the arena.
             #[cfg(feature = "ext-string")]
             CompiledNode::CompiledSplitRegex(data) => {
-                use crate::operators::string;
-                for arg in data.args.iter() {
-                    let _ = self.evaluate_arena_node(arg, context, arena, root)?;
-                }
-                let v = string::evaluate_split_with_regex(
+                crate::operators::string::evaluate_split_with_regex_arena(
                     &data.args,
                     context,
                     self,
                     &data.regex,
                     &data.capture_names,
-                )?;
-                Ok(arena.alloc(value_to_arena(&v, arena)))
+                    arena,
+                    root,
+                )
             }
 
             // Fallback: bridge through the existing value-mode evaluator and

@@ -696,3 +696,181 @@ pub fn evaluate_compiled_exists(
     }
     Ok(Value::Bool(true))
 }
+
+// =============================================================================
+// Arena-mode variable access
+// =============================================================================
+//
+// Arena variants for var / val / exists. The compiled forms (CompiledVar /
+// CompiledExists) get the fast path: when the lookup resolves into the input
+// `Arc<Value>` we return `InputRef` with zero allocation. Frame-data lookups
+// during iteration still clone via `value_to_arena` until Phase 5's
+// ArenaContextStack adoption changes frames to hold `&'a ArenaValue<'a>`.
+
+use crate::arena::{ArenaValue, value_to_arena};
+use bumpalo::Bump;
+
+/// Arena variant of `evaluate_compiled_var`. Returns `InputRef` for root-scope
+/// lookups that hit the input data; otherwise clones into the arena.
+#[inline]
+pub(crate) fn evaluate_compiled_var_arena<'a>(
+    scope_level: u32,
+    segments: &[PathSegment],
+    reduce_hint: ReduceHint,
+    metadata_hint: MetadataHint,
+    default_value: Option<&CompiledNode>,
+    context: &mut ContextStack,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    // 1. Metadata hints
+    match metadata_hint {
+        MetadataHint::Index => {
+            if let Some(idx) = context.current().get_index() {
+                return Ok(arena.alloc(ArenaValue::Number(
+                    crate::value::NumberValue::Integer(idx as i64),
+                )));
+            }
+        }
+        MetadataHint::Key => {
+            if let Some(key) = context.current().get_key() {
+                let s: &'a str = arena.alloc_str(key);
+                return Ok(arena.alloc(ArenaValue::String(s)));
+            }
+        }
+        MetadataHint::None => {}
+    }
+
+    // 2. Reduce-context hints
+    if reduce_hint != ReduceHint::None {
+        let frame = context.current();
+        let reduce_result: Option<Option<&Value>> = match reduce_hint {
+            ReduceHint::Current => frame.get_reduce_current().map(Some),
+            ReduceHint::Accumulator => frame.get_reduce_accumulator().map(Some),
+            ReduceHint::CurrentPath => frame
+                .get_reduce_current()
+                .map(|cur| try_traverse_segments(cur, &segments[1..])),
+            ReduceHint::AccumulatorPath => frame
+                .get_reduce_accumulator()
+                .map(|acc| try_traverse_segments(acc, &segments[1..])),
+            ReduceHint::None => unreachable!(),
+        };
+        match reduce_result {
+            Some(Some(v)) => return Ok(arena.alloc(value_to_arena(v, arena))),
+            Some(None) => return default_or_null_arena(default_value, context, engine, arena, root),
+            None => {} // fall through
+        }
+    }
+
+    // 3. Root-scope fast path: borrow into input via InputRef.
+    if scope_level == 0 && context.depth() == 0 {
+        let resolved: Option<&'a Value> = if segments.is_empty() {
+            Some(root)
+        } else {
+            try_traverse_segments(root, segments)
+        };
+        return match resolved {
+            Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
+            None => default_or_null_arena(default_value, context, engine, arena, root),
+        };
+    }
+
+    // 4. General path: walk frame data. Until ArenaContextStack adoption,
+    // frame data is owned `Value` so we must clone into the arena.
+    let data_result: Option<Value> = {
+        let frame = if scope_level == 0 {
+            context.current()
+        } else {
+            context
+                .get_at_level(scope_level as isize)
+                .ok_or(Error::InvalidContextLevel(scope_level as isize))?
+        };
+        if segments.is_empty() {
+            Some(frame.data().clone())
+        } else {
+            try_traverse_segments(frame.data(), segments).cloned()
+        }
+    };
+
+    match data_result {
+        Some(v) => Ok(arena.alloc(value_to_arena(&v, arena))),
+        None => default_or_null_arena(default_value, context, engine, arena, root),
+    }
+}
+
+/// Arena variant of `evaluate_compiled_exists`. Always returns a Bool singleton.
+#[cfg(feature = "ext-control")]
+#[inline]
+pub(crate) fn evaluate_compiled_exists_arena<'a>(
+    scope_level: u32,
+    segments: &[PathSegment],
+    context: &mut ContextStack,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    // Root scope: walk input directly (no clone, no frame access).
+    if scope_level == 0 && context.depth() == 0 {
+        let found = segments.is_empty() || try_traverse_segments(root, segments).is_some();
+        return Ok(crate::arena::pool::singleton_bool(found));
+    }
+    // General path: bridge to the value-mode helper.
+    let v = evaluate_compiled_exists(scope_level, segments, context)?;
+    let b = matches!(v, Value::Bool(true));
+    Ok(crate::arena::pool::singleton_bool(b))
+}
+
+/// Arena variant of raw `var` operator (path resolved at runtime).
+#[inline]
+pub(crate) fn evaluate_var_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    _root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    let v = evaluate_var(args, context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
+}
+
+/// Arena variant of raw `val` operator.
+#[cfg(feature = "ext-control")]
+#[inline]
+pub(crate) fn evaluate_val_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    _root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    let v = evaluate_val(args, context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
+}
+
+/// Arena variant of raw `exists` operator.
+#[cfg(feature = "ext-control")]
+#[inline]
+pub(crate) fn evaluate_exists_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    _root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    let v = evaluate_exists(args, context, engine)?;
+    let b = matches!(v, Value::Bool(true));
+    Ok(crate::arena::pool::singleton_bool(b))
+}
+
+#[inline]
+fn default_or_null_arena<'a>(
+    default_value: Option<&CompiledNode>,
+    context: &mut ContextStack,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    match default_value {
+        Some(node) => engine.evaluate_arena_node(node, context, arena, root),
+        None => Ok(crate::arena::pool::singleton_null()),
+    }
+}
