@@ -2059,8 +2059,11 @@ pub(crate) fn evaluate_sort_arena<'a>(
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Null)),
         ResolvedInput::Bridge => {
-            let v = evaluate_sort(args, context, engine)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+            // Input wasn't borrowable as &[Value] (e.g. computed expression).
+            // Evaluate once and pattern-match natively — Object inputs are
+            // an error per value-mode semantics; Array sorts in place.
+            let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+            return sort_arena_from_value(av, args, actx, context, engine, arena);
         }
     };
 
@@ -2072,9 +2075,9 @@ pub(crate) fn evaluate_sort_arena<'a>(
     // Sort direction: defaults to ascending; non-Bool means ascending too
     // (matches the value-mode default at line 1230).
     let ascending = if args.len() > 1 {
-        let dir = engine.evaluate_node(&args[1], context)?;
+        let dir = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
         match dir {
-            Value::Bool(b) => b,
+            ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => *b,
             _ => true,
         }
     } else {
@@ -2126,10 +2129,129 @@ pub(crate) fn evaluate_sort_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Array(slice)));
     }
 
-    // General extractor — bridge to value-mode sort. The full op runs once
-    // through the existing path (no double-eval, no per-iteration arena cost).
-    let v = evaluate_sort(args, context, engine)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    // General extractor — push each item into the arena context, evaluate
+    // the extractor, collect keys, then sort indices by key. Result emits
+    // `InputRef` views into the original input data.
+    let mut keys: Vec<Value> = Vec::with_capacity(len);
+    let mut pushed = false;
+    for i in 0..len {
+        let item = src.get(i);
+        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
+        if !pushed {
+            actx.push_with_index(item_av, 0);
+            pushed = true;
+        } else {
+            actx.replace_top_data(item_av, i);
+        }
+        let key_av = engine.evaluate_arena_node(extractor, actx, context, arena)?;
+        keys.push(crate::arena::arena_to_value(key_av));
+    }
+    if pushed {
+        actx.pop();
+    }
+
+    let mut indices: Vec<usize> = (0..len).collect();
+    indices.sort_by(|&a, &b| {
+        let cmp = compare_values(&keys[a], &keys[b]);
+        if ascending { cmp } else { cmp.reverse() }
+    });
+    let slice = arena.alloc_slice_fill_iter(
+        indices.into_iter().map(|i| ArenaValue::InputRef(src.get(i))),
+    );
+    Ok(arena.alloc(ArenaValue::Array(slice)))
+}
+
+/// Sort a resolved arena value when the input wasn't borrowable as a
+/// flat `&[Value]` — falls into one of: Null (→ Null), Array (→ sort),
+/// anything else (→ error). Re-uses the same direction/extractor logic
+/// as the borrowed path.
+#[cfg(feature = "ext-array")]
+#[inline]
+fn sort_arena_from_value<'a>(
+    av: &'a ArenaValue<'a>,
+    args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    // Convert to a flat `Vec<Value>` we can sort. Borrowed cases go
+    // straight through; arena cases materialize once.
+    let owned: Vec<Value> = match av {
+        ArenaValue::Null | ArenaValue::InputRef(Value::Null) => {
+            return Ok(crate::arena::pool::singleton_null());
+        }
+        ArenaValue::InputRef(Value::Array(arr)) => arr.iter().cloned().collect(),
+        ArenaValue::Array(items) => items.iter().map(crate::arena::arena_to_value).collect(),
+        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+    };
+    if owned.is_empty() {
+        return Ok(arena.alloc(ArenaValue::Array(&[])));
+    }
+
+    let ascending = if args.len() > 1 {
+        let dir = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+        match dir {
+            ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => *b,
+            _ => true,
+        }
+    } else {
+        true
+    };
+
+    if args.len() <= 2 {
+        let mut sorted = owned;
+        sorted.sort_by(|a, b| {
+            let cmp = compare_values(a, b);
+            if ascending { cmp } else { cmp.reverse() }
+        });
+        // Materialize into the arena.
+        let items = arena.alloc_slice_fill_iter(
+            sorted.into_iter().map(|v| crate::arena::value_to_arena(&v, arena)),
+        );
+        return Ok(arena.alloc(ArenaValue::Array(items)));
+    }
+
+    // Extractor present — push items into arena context, evaluate,
+    // collect keys, sort indices.
+    let extractor = &args[2];
+    let n = owned.len();
+    // Promote each item into the arena once so push_with_index can take a
+    // reference whose lifetime matches `'a`.
+    let arena_items: bumpalo::collections::Vec<'a, ArenaValue<'a>> = bumpalo::collections::Vec::from_iter_in(
+        owned.iter().map(|v| crate::arena::value_to_arena(v, arena)),
+        arena,
+    );
+    let arena_items_slice: &'a [ArenaValue<'a>] = arena_items.into_bump_slice();
+
+    let mut keys: Vec<Value> = Vec::with_capacity(n);
+    let mut pushed = false;
+    for (i, item_av) in arena_items_slice.iter().enumerate() {
+        if !pushed {
+            actx.push_with_index(item_av, 0);
+            pushed = true;
+        } else {
+            actx.replace_top_data(item_av, i);
+        }
+        let key_av = engine.evaluate_arena_node(extractor, actx, context, arena)?;
+        keys.push(crate::arena::arena_to_value(key_av));
+    }
+    if pushed {
+        actx.pop();
+    }
+
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_by(|&a, &b| {
+        let cmp = compare_values(&keys[a], &keys[b]);
+        if ascending { cmp } else { cmp.reverse() }
+    });
+
+    let out = arena.alloc_slice_fill_iter(
+        indices
+            .into_iter()
+            .map(|i| crate::arena::value::reborrow_arena_value(&arena_items_slice[i])),
+    );
+    Ok(arena.alloc(ArenaValue::Array(out)))
 }
 
 /// Arena-mode `length`. Critical for the COMPOSITION test: when called as
