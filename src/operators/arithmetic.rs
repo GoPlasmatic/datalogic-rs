@@ -1109,7 +1109,7 @@ pub fn evaluate_min(
 // involve array iteration so arena gives no win.
 // =============================================================================
 
-use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
+use crate::arena::{ArenaContextStack, ArenaValue};
 use crate::operators::array::{ResolvedInput, resolve_iter_input};
 use bumpalo::Bump;
 

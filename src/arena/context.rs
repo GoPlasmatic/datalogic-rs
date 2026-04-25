@@ -279,6 +279,38 @@ impl<'a> ArenaContextStack<'a> {
     }
 }
 
+/// Mirror the top of `actx` onto the legacy `ContextStack` as a synthetic
+/// frame, so legacy operator helpers (which read `context.current()`) see
+/// the current iteration item when an arena dispatch reaches into them.
+///
+/// Returns `true` iff a frame was pushed; the caller MUST call
+/// `context.pop()` once before returning.
+#[inline]
+pub(crate) fn sync_actx_top_to_context(
+    actx: &ArenaContextStack<'_>,
+    context: &mut crate::ContextStack,
+) -> bool {
+    if actx.depth() == 0 {
+        return false;
+    }
+    let ArenaContextRef::Frame(f) = actx.current() else {
+        return false;
+    };
+    let frame_value = crate::arena::arena_to_value(f.data());
+    match (f.get_index(), f.get_key()) {
+        (Some(idx), Some(key)) => {
+            context.push_with_key_index(frame_value, idx, key.to_string());
+        }
+        (Some(idx), None) => {
+            context.push_with_index(frame_value, idx);
+        }
+        _ => {
+            context.push(frame_value);
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

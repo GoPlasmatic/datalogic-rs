@@ -1232,36 +1232,10 @@ impl DataLogic {
                 }
                 let evaluator = SimpleEvaluator::new(self);
 
-                // Push a synthetic frame onto `context` mirroring actx's top
-                // (if any), so legacy ops reading `context.current()` see the
-                // current iter item.
-                let pushed_synthetic = if actx.depth() > 0 {
-                    use crate::arena::context::ArenaContextRef;
-                    if let ArenaContextRef::Frame(f) = actx.current() {
-                        let frame_value =
-                            crate::arena::arena_to_value(f.data());
-                        match (f.get_index(), f.get_key()) {
-                            (Some(idx), Some(key)) => {
-                                context.push_with_key_index(
-                                    frame_value,
-                                    idx,
-                                    key.to_string(),
-                                );
-                            }
-                            (Some(idx), None) => {
-                                context.push_with_index(frame_value, idx);
-                            }
-                            _ => {
-                                context.push(frame_value);
-                            }
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
+                // Mirror actx's top frame onto `context` so the legacy custom
+                // op sees the current iter item via `context.current()`.
+                let pushed_synthetic =
+                    crate::arena::context::sync_actx_top_to_context(actx, context);
 
                 let result = operator.evaluate(&owned_args, context, &evaluator);
 

@@ -952,44 +952,63 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
 }
 
 /// Arena variant of raw `var` operator (path resolved at runtime).
+///
+/// Raw `var` (i.e. not statically compiled to `CompiledVar`) is rare —
+/// hit only for dynamic paths like `{"var": [{"if": ...}, "x"]}`. We delegate
+/// to the value-mode helper but first mirror the arena iteration frame onto
+/// the legacy `ContextStack`, so the helper's `context.current()` read sees
+/// the current iter item rather than the engine root.
 #[inline]
 pub(crate) fn evaluate_var_arena<'a>(
     args: &[CompiledNode],
-    _actx: &mut ArenaContextStack<'a>,
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let v = evaluate_var(args, context, engine)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    let pushed = crate::arena::context::sync_actx_top_to_context(actx, context);
+    let v = evaluate_var(args, context, engine);
+    if pushed {
+        context.pop();
+    }
+    Ok(arena.alloc(value_to_arena(&v?, arena)))
 }
 
-/// Arena variant of raw `val` operator.
+/// Arena variant of raw `val` operator. See [`evaluate_var_arena`] for the
+/// iter-frame mirroring rationale.
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
     args: &[CompiledNode],
-    _actx: &mut ArenaContextStack<'a>,
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let v = evaluate_val(args, context, engine)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    let pushed = crate::arena::context::sync_actx_top_to_context(actx, context);
+    let v = evaluate_val(args, context, engine);
+    if pushed {
+        context.pop();
+    }
+    Ok(arena.alloc(value_to_arena(&v?, arena)))
 }
 
-/// Arena variant of raw `exists` operator.
+/// Arena variant of raw `exists` operator. See [`evaluate_var_arena`].
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_exists_arena<'a>(
     args: &[CompiledNode],
-    _actx: &mut ArenaContextStack<'a>,
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     _arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let v = evaluate_exists(args, context, engine)?;
-    let b = matches!(v, Value::Bool(true));
+    let pushed = crate::arena::context::sync_actx_top_to_context(actx, context);
+    let v = evaluate_exists(args, context, engine);
+    if pushed {
+        context.pop();
+    }
+    let b = matches!(v?, Value::Bool(true));
     Ok(crate::arena::pool::singleton_bool(b))
 }
 
