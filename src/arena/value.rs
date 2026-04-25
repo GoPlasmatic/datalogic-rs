@@ -293,6 +293,108 @@ pub(crate) fn arena_to_value_cow<'a>(v: &'a ArenaValue<'a>) -> Cow<'a, Value> {
     }
 }
 
+/// Walk path segments on an `&'a ArenaValue<'a>`. Used by variable-arena
+/// non-root lookups when frame data lives in `ArenaContextStack`. Returns
+/// `None` if any segment misses or the value isn't traversable.
+///
+/// Strategy:
+/// - `InputRef(v)`: delegate to value-mode `try_traverse_segments` and wrap
+///   the leaf as a fresh `InputRef` allocated in the arena.
+/// - `Object((&str, ArenaValue))`: linear scan for the key.
+/// - `Array([ArenaValue])`: numeric segment.
+/// - Anything else: `None`.
+pub(crate) fn arena_traverse_segments<'a>(
+    av: &'a ArenaValue<'a>,
+    segments: &[crate::node::PathSegment],
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    use crate::node::PathSegment;
+
+    if segments.is_empty() {
+        return Some(av);
+    }
+
+    // InputRef: defer to the value-mode walker (zero-clone) and wrap the leaf.
+    if let ArenaValue::InputRef(v) = av {
+        let leaf = crate::operators::variable::try_traverse_segments(v, segments)?;
+        return Some(arena.alloc(ArenaValue::InputRef(leaf)));
+    }
+
+    let mut cur: &'a ArenaValue<'a> = av;
+    for seg in segments {
+        match seg {
+            PathSegment::Field(key) => match cur {
+                ArenaValue::Object(pairs) => {
+                    let target: &str = key.as_ref();
+                    let mut found: Option<&'a ArenaValue<'a>> = None;
+                    for (k, v) in *pairs {
+                        if *k == target {
+                            // SAFETY: pairs has lifetime 'a, but the entry value
+                            // is stored by value. We need an &'a reference to it,
+                            // which requires re-allocating in the arena.
+                            // Cheap: re-borrow the entry's value reference.
+                            let av_ref: &'a ArenaValue<'a> =
+                                unsafe { &*(v as *const ArenaValue<'a>) };
+                            found = Some(av_ref);
+                            break;
+                        }
+                    }
+                    cur = found?;
+                }
+                ArenaValue::InputRef(Value::Object(obj)) => {
+                    let leaf = obj.get(key.as_ref())?;
+                    cur = arena.alloc(ArenaValue::InputRef(leaf));
+                }
+                _ => return None,
+            },
+            PathSegment::Index(idx) => match cur {
+                ArenaValue::Array(items) => {
+                    let entry = items.get(*idx)?;
+                    let av_ref: &'a ArenaValue<'a> =
+                        unsafe { &*(entry as *const ArenaValue<'a>) };
+                    cur = av_ref;
+                }
+                ArenaValue::InputRef(Value::Array(arr)) => {
+                    let leaf = arr.get(*idx)?;
+                    cur = arena.alloc(ArenaValue::InputRef(leaf));
+                }
+                _ => return None,
+            },
+            PathSegment::FieldOrIndex(key, idx) => match cur {
+                ArenaValue::Object(pairs) => {
+                    let target: &str = key.as_ref();
+                    let mut found: Option<&'a ArenaValue<'a>> = None;
+                    for (k, v) in *pairs {
+                        if *k == target {
+                            let av_ref: &'a ArenaValue<'a> =
+                                unsafe { &*(v as *const ArenaValue<'a>) };
+                            found = Some(av_ref);
+                            break;
+                        }
+                    }
+                    cur = found?;
+                }
+                ArenaValue::Array(items) => {
+                    let entry = items.get(*idx)?;
+                    let av_ref: &'a ArenaValue<'a> =
+                        unsafe { &*(entry as *const ArenaValue<'a>) };
+                    cur = av_ref;
+                }
+                ArenaValue::InputRef(Value::Object(obj)) => {
+                    let leaf = obj.get(key.as_ref())?;
+                    cur = arena.alloc(ArenaValue::InputRef(leaf));
+                }
+                ArenaValue::InputRef(Value::Array(arr)) => {
+                    let leaf = arr.get(*idx)?;
+                    cur = arena.alloc(ArenaValue::InputRef(leaf));
+                }
+                _ => return None,
+            },
+        }
+    }
+    Some(cur)
+}
+
 /// Render an `ArenaValue` as a `&'a str` allocated in the arena (or borrowed
 /// when already a string). Mirrors `helpers::to_string_cow` but produces
 /// arena-resident strings so string-building operators (cat, substr) can

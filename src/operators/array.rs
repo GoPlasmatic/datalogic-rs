@@ -1869,27 +1869,28 @@ pub(crate) fn evaluate_filter_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
     }
 
-    // GENERAL PATH: predicate needs the iteration context. Pay the per-item
-    // clone (item.clone() into context frame) — same cost as the existing
-    // value-mode filter for this predicate shape.
+    // GENERAL PATH: zero-clone via ArenaContextStack. Frame data is
+    // `&'a ArenaValue<'a>` pointing at `InputRef(item)`; predicate body
+    // dispatches through arena and the var-arena reads the frame directly.
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
     for i in 0..len {
         let item = src.get(i);
+        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            context.push_with_index(item.clone(), 0);
+            actx.push_with_index(item_av, 0);
             pushed = true;
         } else {
-            context.replace_top_data(item.clone(), i);
+            actx.replace_top_data(item_av, i);
         }
-        let keep = engine.evaluate_node(predicate, context)?;
-        if is_truthy(&keep, engine) {
+        let keep = engine.evaluate_arena_node(predicate, actx, context, arena, root)?;
+        if crate::arena::is_truthy_arena(keep, engine) {
             results.push(ArenaValue::InputRef(item));
         }
     }
     if pushed {
-        context.pop();
+        actx.pop();
     }
     Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
 }
@@ -2132,23 +2133,25 @@ pub(crate) fn evaluate_map_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
     }
 
-    // GENERAL PATH: push items to context, evaluate body via value-mode.
+    // GENERAL PATH: zero-clone via ArenaContextStack — frame data is
+    // `InputRef(item)`; body dispatches through arena.
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
     for i in 0..len {
         let item = src.get(i);
+        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            context.push_with_index(item.clone(), 0);
+            actx.push_with_index(item_av, 0);
             pushed = true;
         } else {
-            context.replace_top_data(item.clone(), i);
+            actx.replace_top_data(item_av, i);
         }
-        let v = engine.evaluate_node(body, context)?;
-        results.push(value_to_arena(&v, arena));
+        let av = engine.evaluate_arena_node(body, actx, context, arena, root)?;
+        results.push(crate::arena::value::reborrow_arena_value(av));
     }
     if pushed {
-        context.pop();
+        actx.pop();
     }
     Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
 }

@@ -1323,6 +1323,9 @@ fn bridge_arith(
         "min" => evaluate_min(args, context, engine),
         "+" => evaluate_add(args, context, engine),
         "*" => evaluate_multiply(args, context, engine),
+        "-" => evaluate_subtract(args, context, engine),
+        "/" => evaluate_divide(args, context, engine),
+        "%" => evaluate_modulo(args, context, engine),
         _ => unreachable!("unknown arena arith bridge: {}", op_name),
     }
 }

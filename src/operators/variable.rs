@@ -765,7 +765,9 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
     }
 
     // 3. Root-scope fast path: borrow into input via InputRef.
-    if scope_level == 0 && context.depth() == 0 {
+    // Only when BOTH stacks are at depth 0 — otherwise an iteration frame
+    // is on one of them and we must walk it instead.
+    if scope_level == 0 && actx.depth() == 0 && context.depth() == 0 {
         let resolved: Option<&'a Value> = if segments.is_empty() {
             Some(root)
         } else {
@@ -777,8 +779,44 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         };
     }
 
-    // 4. General path: walk frame data. Until ArenaContextStack adoption,
-    // frame data is owned `Value` so we must clone into the arena.
+    // 4. General path: prefer `actx` (zero-clone — frames hold &'a ArenaValue)
+    //    over `context` (legacy — frames hold owned Value).
+    if actx.depth() > 0 {
+        use crate::arena::context::ArenaContextRef;
+        let aref = if scope_level == 0 {
+            actx.current()
+        } else {
+            actx.get_at_level(scope_level as isize)
+                .ok_or(Error::InvalidContextLevel(scope_level as isize))?
+        };
+        match aref {
+            ArenaContextRef::Frame(f) => {
+                let av: &'a ArenaValue<'a> = f.data();
+                if segments.is_empty() {
+                    return Ok(av);
+                }
+                return match crate::arena::value::arena_traverse_segments(av, segments, arena) {
+                    Some(child) => Ok(child),
+                    None => default_or_null_arena(default_value, actx, context, engine, arena, root),
+                };
+            }
+            ArenaContextRef::Root(v) => {
+                // scope_level walks past the bottom of the frame stack into the
+                // root data. Same as the root-scope fast path above.
+                let resolved = if segments.is_empty() {
+                    Some(v)
+                } else {
+                    try_traverse_segments(v, segments)
+                };
+                return match resolved {
+                    Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
+                    None => default_or_null_arena(default_value, actx, context, engine, arena, root),
+                };
+            }
+        }
+    }
+
+    // Legacy `context` fallback — frame data is owned `Value`, must clone.
     let data_result: Option<Value> = {
         let frame = if scope_level == 0 {
             context.current()
@@ -806,15 +844,45 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
 pub(crate) fn evaluate_compiled_exists_arena<'a>(
     scope_level: u32,
     segments: &[PathSegment],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
+    arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     // Root scope: walk input directly (no clone, no frame access).
-    if scope_level == 0 && context.depth() == 0 {
+    if scope_level == 0 && actx.depth() == 0 && context.depth() == 0 {
         let found = segments.is_empty() || try_traverse_segments(root, segments).is_some();
         return Ok(crate::arena::pool::singleton_bool(found));
     }
-    // General path: bridge to the value-mode helper.
+
+    // Prefer `actx` when it has frames; falls through to context otherwise.
+    if actx.depth() > 0 {
+        use crate::arena::context::ArenaContextRef;
+        let aref = if scope_level == 0 {
+            actx.current()
+        } else {
+            match actx.get_at_level(scope_level as isize) {
+                Some(f) => f,
+                None => return Ok(crate::arena::pool::singleton_false()),
+            }
+        };
+        let found = match aref {
+            ArenaContextRef::Frame(f) => {
+                if segments.is_empty() {
+                    true
+                } else {
+                    crate::arena::value::arena_traverse_segments(f.data(), segments, arena)
+                        .is_some()
+                }
+            }
+            ArenaContextRef::Root(v) => {
+                segments.is_empty() || try_traverse_segments(v, segments).is_some()
+            }
+        };
+        return Ok(crate::arena::pool::singleton_bool(found));
+    }
+
+    // Legacy `context` fallback.
     let v = evaluate_compiled_exists(scope_level, segments, context)?;
     let b = matches!(v, Value::Bool(true));
     Ok(crate::arena::pool::singleton_bool(b))

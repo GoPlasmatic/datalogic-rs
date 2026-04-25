@@ -858,7 +858,9 @@ impl DataLogic {
                 crate::operators::variable::evaluate_compiled_exists_arena(
                     data.scope_level,
                     &data.segments,
+                    actx,
                     context,
+                    arena,
                     root,
                 )
             }
