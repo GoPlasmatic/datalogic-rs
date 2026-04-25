@@ -1334,9 +1334,7 @@ pub(crate) fn evaluate_add_arena<'a>(
         return Ok(arena_number(arena, NumberValue::from_i64(0)));
     }
     if args.len() == 1 {
-        // Match value-mode literal-array reject and full single-arg semantics.
-        let v = evaluate_add(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+        return arena_one_arg_arith(&args[0], actx, context, engine, arena, ArithOp::Add);
     }
     if args.len() == 2 {
         let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
@@ -1412,8 +1410,7 @@ pub(crate) fn evaluate_multiply_arena<'a>(
         return Ok(arena_number(arena, NumberValue::from_i64(1)));
     }
     if args.len() == 1 {
-        let v = evaluate_multiply(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+        return arena_one_arg_arith(&args[0], actx, context, engine, arena, ArithOp::Multiply);
     }
     if args.len() == 2 {
         let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
@@ -1566,6 +1563,136 @@ fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a ArenaValue<'a> {
     arena.alloc(ArenaValue::Number(n))
 }
 
+/// Operation discriminator for the shared 1-arg fold (`+` and `*`).
+#[derive(Clone, Copy)]
+enum ArithOp {
+    Add,
+    Multiply,
+}
+
+impl ArithOp {
+    #[inline]
+    fn identity_int(self) -> i64 {
+        match self {
+            ArithOp::Add => 0,
+            ArithOp::Multiply => 1,
+        }
+    }
+
+    #[inline]
+    fn combine_int(self, a: i64, b: i64) -> Option<i64> {
+        match self {
+            ArithOp::Add => a.checked_add(b),
+            ArithOp::Multiply => a.checked_mul(b),
+        }
+    }
+
+    #[inline]
+    fn combine_f(self, a: f64, b: f64) -> f64 {
+        match self {
+            ArithOp::Add => a + b,
+            ArithOp::Multiply => a * b,
+        }
+    }
+}
+
+/// Native arena 1-arg `+` / `*`. Mirrors value-mode `evaluate_add` / `evaluate_multiply`
+/// 1-arg semantics: literal-array reject, then either array-fold the elements
+/// or treat as a single-value sum/product.
+fn arena_one_arg_arith<'a>(
+    arg: &CompiledNode,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    op: ArithOp,
+) -> Result<&'a ArenaValue<'a>> {
+    // Literal array argument is invalid for + / *. Apply NaN config (default
+    // ThrowError → propagates the error up).
+    let is_literal_array = matches!(arg, CompiledNode::Array { .. })
+        || matches!(arg, CompiledNode::Value { value: Value::Array(_), .. });
+    if is_literal_array {
+        return match handle_nan(engine)? {
+            NanAction::Skip => Ok(arena_number(arena, NumberValue::from_i64(op.identity_int()))),
+            NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+        };
+    }
+
+    let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+
+    // Array result (e.g. from `var "items"`): fold all elements.
+    let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
+        ArenaValue::InputRef(Value::Array(arr)) => Some(std::borrow::Cow::Borrowed(arr.as_slice())),
+        ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
+            items.iter().map(crate::arena::arena_to_value).collect::<Vec<_>>(),
+        )),
+        _ => None,
+    };
+    if let Some(arr) = array_cow {
+        if arr.is_empty() {
+            // 1-arg evaluating to empty array: + → 0, * → 1.
+            return Ok(arena_number(arena, NumberValue::from_i64(op.identity_int())));
+        }
+        let mut all_int = true;
+        let mut int_acc: i64 = op.identity_int();
+        let mut float_acc: f64 = op.identity_int() as f64;
+        for elem in arr.iter() {
+            if let Some(i) = try_coerce_to_integer(elem, engine) {
+                if all_int {
+                    match op.combine_int(int_acc, i) {
+                        Some(r) => int_acc = r,
+                        None => {
+                            all_int = false;
+                            float_acc = op.combine_f(int_acc as f64, i as f64);
+                        }
+                    }
+                } else {
+                    float_acc = op.combine_f(float_acc, i as f64);
+                }
+            } else if let Some(f) = coerce_to_number(elem, engine) {
+                if all_int {
+                    all_int = false;
+                    float_acc = op.combine_f(int_acc as f64, f);
+                } else {
+                    float_acc = op.combine_f(float_acc, f);
+                }
+            } else {
+                match handle_nan(engine)? {
+                    NanAction::Skip => continue,
+                    NanAction::ReturnNull => return Ok(crate::arena::pool::singleton_null()),
+                }
+            }
+        }
+        return if all_int {
+            Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+        } else {
+            Ok(arena_number(arena, NumberValue::from_f64(float_acc)))
+        };
+    }
+
+    // Non-array single value: coerce and return (op identity * coerced).
+    let cow = crate::arena::arena_to_value_cow(av);
+    if let Some(i) = try_coerce_to_integer(&cow, engine) {
+        return match op.combine_int(op.identity_int(), i) {
+            Some(r) => Ok(arena_number(arena, NumberValue::from_i64(r))),
+            None => Ok(arena_number(
+                arena,
+                NumberValue::from_f64(op.combine_f(op.identity_int() as f64, i as f64)),
+            )),
+        };
+    }
+    if let Some(f) = coerce_to_number(&cow, engine) {
+        return Ok(arena_number(
+            arena,
+            NumberValue::from_f64(op.combine_f(op.identity_int() as f64, f)),
+        ));
+    }
+    match handle_nan(engine)? {
+        NanAction::Skip => Ok(arena_number(arena, NumberValue::from_i64(op.identity_int()))),
+        NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+    }
+}
+
 /// Native arena datetime/duration subtract.
 /// - DateTime - DateTime → Duration string.
 /// - DateTime - Duration → DateTime ISO string.
@@ -1688,11 +1815,46 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    // 1-arg subtract has multiple sub-forms (negate, array fold) and the
-    // exact value-mode semantics — defer to the value-mode helper.
+    // 1-arg subtract: array → fold (first - second - ...); else negate.
     if args.len() == 1 {
-        let v = evaluate_subtract(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+        let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        // Array fold case.
+        let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
+            ArenaValue::InputRef(Value::Array(arr)) => {
+                Some(std::borrow::Cow::Borrowed(arr.as_slice()))
+            }
+            ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
+                items.iter().map(crate::arena::arena_to_value).collect::<Vec<_>>(),
+            )),
+            _ => None,
+        };
+        if let Some(arr) = array_cow {
+            if arr.is_empty() {
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+            }
+            let mut result = coerce_to_number(&arr[0], engine)
+                .ok_or_else(crate::constants::nan_error)?;
+            for elem in &arr[1..] {
+                let n = coerce_to_number(elem, engine)
+                    .ok_or_else(crate::constants::nan_error)?;
+                result -= n;
+            }
+            return Ok(arena_number(arena, NumberValue::from_f64(result)));
+        }
+        // Negate single value (preserve integer typing when possible).
+        if let Some(i) = av.as_i64() {
+            return Ok(arena_number(
+                arena,
+                i.checked_neg()
+                    .map(NumberValue::from_i64)
+                    .unwrap_or_else(|| NumberValue::from_f64(-(i as f64))),
+            ));
+        }
+        let cow = crate::arena::arena_to_value_cow(av);
+        if let Some(f) = coerce_to_number(&cow, engine) {
+            return Ok(arena_number(arena, NumberValue::from_f64(-f)));
+        }
+        return Err(crate::constants::nan_error());
     }
     if args.len() == 2 {
         let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
