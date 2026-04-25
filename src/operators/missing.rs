@@ -103,7 +103,6 @@ pub(crate) fn evaluate_missing_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
@@ -141,7 +140,6 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
         // Bridge: matches the value-mode "return empty array" semantics.

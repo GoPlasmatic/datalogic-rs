@@ -75,7 +75,6 @@ pub(crate) fn evaluate_preserve_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     let v = evaluate_preserve(args, context, engine)?;
     Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))

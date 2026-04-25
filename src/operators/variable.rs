@@ -723,7 +723,6 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     // 1. Metadata hints
     match metadata_hint {
@@ -781,7 +780,6 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
                             context,
                             engine,
                             arena,
-                            root,
                         );
                     }
                     _ => {}
@@ -804,7 +802,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         };
         match reduce_result {
             Some(Some(v)) => return Ok(arena.alloc(value_to_arena(v, arena))),
-            Some(None) => return default_or_null_arena(default_value, actx, context, engine, arena, root),
+            Some(None) => return default_or_null_arena(default_value, actx, context, engine, arena),
             None => {} // fall through
         }
     }
@@ -813,14 +811,15 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
     // Only when BOTH stacks are at depth 0 — otherwise an iteration frame
     // is on one of them and we must walk it instead.
     if scope_level == 0 && actx.depth() == 0 && context.depth() == 0 {
+        let root_input = actx.root_input();
         let resolved: Option<&'a Value> = if segments.is_empty() {
-            Some(root)
+            Some(root_input)
         } else {
-            try_traverse_segments(root, segments)
+            try_traverse_segments(root_input, segments)
         };
         return match resolved {
             Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-            None => default_or_null_arena(default_value, actx, context, engine, arena, root),
+            None => default_or_null_arena(default_value, actx, context, engine, arena),
         };
     }
 
@@ -842,7 +841,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
                 }
                 return match crate::arena::value::arena_traverse_segments(av, segments, arena) {
                     Some(child) => Ok(child),
-                    None => default_or_null_arena(default_value, actx, context, engine, arena, root),
+                    None => default_or_null_arena(default_value, actx, context, engine, arena),
                 };
             }
             ArenaContextRef::Root(v) => {
@@ -855,7 +854,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
                 };
                 return match resolved {
                     Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-                    None => default_or_null_arena(default_value, actx, context, engine, arena, root),
+                    None => default_or_null_arena(default_value, actx, context, engine, arena),
                 };
             }
         }
@@ -879,7 +878,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
 
     match data_result {
         Some(v) => Ok(arena.alloc(value_to_arena(&v, arena))),
-        None => default_or_null_arena(default_value, actx, context, engine, arena, root),
+        None => default_or_null_arena(default_value, actx, context, engine, arena),
     }
 }
 
@@ -892,11 +891,11 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
     actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     // Root scope: walk input directly (no clone, no frame access).
     if scope_level == 0 && actx.depth() == 0 && context.depth() == 0 {
-        let found = segments.is_empty() || try_traverse_segments(root, segments).is_some();
+        let found =
+            segments.is_empty() || try_traverse_segments(actx.root_input(), segments).is_some();
         return Ok(crate::arena::pool::singleton_bool(found));
     }
 
@@ -941,7 +940,6 @@ pub(crate) fn evaluate_var_arena<'a>(
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     let v = evaluate_var(args, context, engine)?;
     Ok(arena.alloc(value_to_arena(&v, arena)))
@@ -956,7 +954,6 @@ pub(crate) fn evaluate_val_arena<'a>(
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     let v = evaluate_val(args, context, engine)?;
     Ok(arena.alloc(value_to_arena(&v, arena)))
@@ -971,7 +968,6 @@ pub(crate) fn evaluate_exists_arena<'a>(
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     let v = evaluate_exists(args, context, engine)?;
     let b = matches!(v, Value::Bool(true));
@@ -985,10 +981,9 @@ fn default_or_null_arena<'a>(
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     match default_value {
-        Some(node) => engine.evaluate_arena_node(node, actx, context, arena, root),
+        Some(node) => engine.evaluate_arena_node(node, actx, context, arena),
         None => Ok(crate::arena::pool::singleton_null()),
     }
 }

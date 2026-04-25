@@ -87,12 +87,11 @@ pub(crate) fn evaluate_not_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_true());
     }
-    let v = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let v = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     Ok(crate::arena::pool::singleton_bool(!is_truthy_arena(v, engine)))
 }
 
@@ -103,12 +102,11 @@ pub(crate) fn evaluate_double_not_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_false());
     }
-    let v = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let v = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     Ok(crate::arena::pool::singleton_bool(is_truthy_arena(v, engine)))
 }
 
@@ -119,7 +117,6 @@ pub(crate) fn evaluate_and_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Ok(arena.alloc(ArenaValue::Null));
@@ -127,7 +124,7 @@ pub(crate) fn evaluate_and_arena<'a>(
     check_invalid_args_marker(args)?;
     let mut last: &ArenaValue<'a> = arena.alloc(ArenaValue::Bool(true));
     for arg in args {
-        let v = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
+        let v = engine.evaluate_arena_node(arg, actx, context, arena)?;
         if !is_truthy_arena(v, engine) {
             return Ok(v);
         }
@@ -143,7 +140,6 @@ pub(crate) fn evaluate_or_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Ok(arena.alloc(ArenaValue::Null));
@@ -151,7 +147,7 @@ pub(crate) fn evaluate_or_arena<'a>(
     check_invalid_args_marker(args)?;
     let mut last: &ArenaValue<'a> = arena.alloc(ArenaValue::Bool(false));
     for arg in args {
-        let v = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
+        let v = engine.evaluate_arena_node(arg, actx, context, arena)?;
         if is_truthy_arena(v, engine) {
             return Ok(v);
         }

@@ -150,7 +150,6 @@ pub(crate) fn evaluate_try_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Ok(arena.alloc(ArenaValue::Null));
@@ -158,7 +157,7 @@ pub(crate) fn evaluate_try_arena<'a>(
     let mut last_err: Option<Error> = None;
     for arg in args {
         let saved_len = context.error_path_len();
-        match engine.evaluate_arena_node(arg, actx, context, arena, root) {
+        match engine.evaluate_arena_node(arg, actx, context, arena) {
             Ok(v) => return Ok(v),
             Err(e) => {
                 context.truncate_error_path(saved_len);

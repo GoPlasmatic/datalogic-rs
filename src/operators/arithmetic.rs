@@ -1123,7 +1123,6 @@ fn arena_min_max<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
     op_name: &str, // for bridge fallback
@@ -1134,7 +1133,7 @@ fn arena_min_max<'a>(
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
 
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
         ResolvedInput::Bridge => {
@@ -1182,7 +1181,6 @@ pub(crate) fn evaluate_max_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     arena_min_max(
         args,
@@ -1190,7 +1188,6 @@ pub(crate) fn evaluate_max_arena<'a>(
         context,
         engine,
         arena,
-        root,
         f64::NEG_INFINITY,
         |c, b| c > b,
         "max",
@@ -1205,7 +1202,6 @@ pub(crate) fn evaluate_min_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     arena_min_max(
         args,
@@ -1213,7 +1209,6 @@ pub(crate) fn evaluate_min_arena<'a>(
         context,
         engine,
         arena,
-        root,
         f64::INFINITY,
         |c, b| c < b,
         "min",
@@ -1228,13 +1223,12 @@ pub(crate) fn evaluate_add_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 1 {
         let v = bridge_arith("+", args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    arena_fold(args, actx, context, engine, arena, root, "+", 0.0, |acc, x| acc + x)
+    arena_fold(args, actx, context, engine, arena, "+", 0.0, |acc, x| acc + x)
 }
 
 /// Arena-mode *(single_array_arg) — product over array. Multi-arg form bridges.
@@ -1245,13 +1239,12 @@ pub(crate) fn evaluate_multiply_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 1 {
         let v = bridge_arith("*", args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    arena_fold(args, actx, context, engine, arena, root, "*", 1.0, |acc, x| acc * x)
+    arena_fold(args, actx, context, engine, arena, "*", 1.0, |acc, x| acc * x)
 }
 
 /// Generic fold for sum/product over an arena-iterable input. Preserves
@@ -1264,12 +1257,11 @@ fn arena_fold<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
     op_name: &str,
     init: f64,
     combine: fn(f64, f64) -> f64,
 ) -> Result<&'a ArenaValue<'a>> {
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => {
             // Match value-mode: empty +/* returns the identity? Existing impl
@@ -1360,7 +1352,6 @@ fn evaluate_binary_arith_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
     op_name: &str,
     apply: fn(&NumberValue, &NumberValue) -> Option<NumberValue>,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -1368,8 +1359,8 @@ fn evaluate_binary_arith_arena<'a>(
         let v = bridge_arith(op_name, args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
-    let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena, root)?;
+    let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
     let af = match coerce_arena_to_number(a_av) {
         Some(f) => f,
         None => {
@@ -1404,18 +1395,17 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     // Unary form: negate
     if args.len() == 1 {
-        let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+        let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
         if let Some(f) = coerce_arena_to_number(av) {
             return Ok(arena_number(arena, NumberValue::from_f64(f).neg()));
         }
         let v = evaluate_subtract(args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    evaluate_binary_arith_arena(args, actx, context, engine, arena, root, "-", |a, b| {
+    evaluate_binary_arith_arena(args, actx, context, engine, arena, "-", |a, b| {
         Some(a.sub(b))
     })
 }
@@ -1427,9 +1417,8 @@ pub(crate) fn evaluate_divide_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_binary_arith_arena(args, actx, context, engine, arena, root, "/", |a, b| a.div(b))
+    evaluate_binary_arith_arena(args, actx, context, engine, arena, "/", |a, b| a.div(b))
 }
 
 #[inline]
@@ -1439,9 +1428,8 @@ pub(crate) fn evaluate_modulo_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_binary_arith_arena(args, actx, context, engine, arena, root, "%", |a, b| a.rem(b))
+    evaluate_binary_arith_arena(args, actx, context, engine, arena, "%", |a, b| a.rem(b))
 }
 
 #[cfg(feature = "ext-math")]
@@ -1452,13 +1440,12 @@ pub(crate) fn evaluate_abs_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 1 {
         let v = evaluate_abs(args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     if let Some(f) = coerce_arena_to_number(av) {
         return Ok(arena_number(arena, NumberValue::from_f64(f).abs()));
     }
@@ -1474,13 +1461,12 @@ pub(crate) fn evaluate_ceil_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 1 {
         let v = evaluate_ceil(args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     if let Some(f) = coerce_arena_to_number(av) {
         let c = f.ceil();
         return Ok(arena_number(arena, NumberValue::from_f64(c)));
@@ -1497,13 +1483,12 @@ pub(crate) fn evaluate_floor_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 1 {
         let v = evaluate_floor(args, context, engine)?;
         return Ok(arena.alloc(value_to_arena(&v, arena)));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     if let Some(f) = coerce_arena_to_number(av) {
         let c = f.floor();
         return Ok(arena_number(arena, NumberValue::from_f64(c)));

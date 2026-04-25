@@ -54,7 +54,6 @@ pub(crate) fn evaluate_throw_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    _root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     let v = evaluate_throw::<crate::eval_mode::Plain>(args, context, engine, &mut crate::eval_mode::Plain)?;
     Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))

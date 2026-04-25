@@ -126,12 +126,11 @@ pub(crate) fn evaluate_type_arena<'a>(
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Ok(arena.alloc(ArenaValue::String("null")));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     let type_str: &'static str = match av {
         ArenaValue::Null => "null",
         ArenaValue::Bool(_) => "boolean",
