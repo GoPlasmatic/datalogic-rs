@@ -1620,8 +1620,9 @@ fn slice_chars(
     result
 }
 
-/// Arena-mode slice. Pre-evaluates args (so var lookups borrow), bridges
-/// to value-mode for the slice/range logic, wraps result in arena.
+/// Native arena-mode `slice`. Returns array slices as `InputRef` slices
+/// (zero-copy borrow into the input) when possible; string slices are
+/// allocated in the arena.
 #[cfg(feature = "ext-array")]
 #[inline]
 pub(crate) fn evaluate_slice_arena<'a>(
@@ -1631,11 +1632,143 @@ pub(crate) fn evaluate_slice_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a crate::arena::ArenaValue<'a>> {
-    for arg in args {
-        let _ = engine.evaluate_arena_node(arg, actx, context, arena)?;
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let v = evaluate_slice(args, context, engine)?;
-    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+
+    let coll_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+
+    // Null passthrough.
+    if matches!(
+        coll_av,
+        ArenaValue::Null | ArenaValue::InputRef(Value::Null)
+    ) {
+        return Ok(crate::arena::pool::singleton_null());
+    }
+
+    // Resolve start/end/step.
+    let start = if args.len() > 1 {
+        extract_opt_i64_arena(&args[1], actx, context, engine, arena)?
+    } else {
+        None
+    };
+    let end = if args.len() > 2 {
+        extract_opt_i64_arena(&args[2], actx, context, engine, arena)?
+    } else {
+        None
+    };
+    let step = if args.len() > 3 {
+        let s = extract_opt_i64_arena(&args[3], actx, context, engine, arena)?.unwrap_or(1);
+        if s == 0 {
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        }
+        s
+    } else {
+        1
+    };
+
+    // Resolve the input collection. Borrow the source slice when possible
+    // so the result can be a view of arena InputRefs.
+    let arr_borrow: Option<&'a [Value]> = match coll_av {
+        ArenaValue::InputRef(Value::Array(arr)) => Some(arr.as_slice()),
+        _ => None,
+    };
+
+    if let Some(arr) = arr_borrow {
+        let len = arr.len() as i64;
+        let indices = slice_indices(len, start, end, step);
+        let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(indices.len(), arena);
+        for i in indices {
+            items.push(ArenaValue::InputRef(&arr[i as usize]));
+        }
+        return Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())));
+    }
+
+    // Composite arena array — slice through the arena items.
+    if let ArenaValue::Array(items) = coll_av {
+        let len = items.len() as i64;
+        let indices = slice_indices(len, start, end, step);
+        let mut out: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(indices.len(), arena);
+        for i in indices {
+            out.push(crate::arena::value::reborrow_arena_value(&items[i as usize]));
+        }
+        return Ok(arena.alloc(ArenaValue::Array(out.into_bump_slice())));
+    }
+
+    // String slice — allocate result in the arena.
+    let s_str: Option<&str> = match coll_av {
+        ArenaValue::String(s) => Some(*s),
+        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
+        _ => None,
+    };
+    if let Some(s) = s_str {
+        let chars: Vec<char> = s.chars().collect();
+        let result_string = slice_chars(&chars, chars.len() as i64, start, end, step);
+        let s_arena: &'a str = arena.alloc_str(&result_string);
+        return Ok(arena.alloc(ArenaValue::String(s_arena)));
+    }
+
+    Err(Error::InvalidArguments(INVALID_ARGS.into()))
+}
+
+#[cfg(feature = "ext-array")]
+#[inline]
+fn extract_opt_i64_arena<'a>(
+    node: &CompiledNode,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<Option<i64>> {
+    if let CompiledNode::Value { value, .. } = node {
+        return match value {
+            Value::Number(n) => Ok(n.as_i64()),
+            Value::Null => Ok(None),
+            _ => Err(Error::InvalidArguments("NaN".to_string())),
+        };
+    }
+    let av = engine.evaluate_arena_node(node, actx, context, arena)?;
+    match av {
+        ArenaValue::Null | ArenaValue::InputRef(Value::Null) => Ok(None),
+        _ => match av.as_i64() {
+            Some(i) => Ok(Some(i)),
+            None => Err(Error::InvalidArguments("NaN".to_string())),
+        },
+    }
+}
+
+/// Index list for a slice given start/end/step. Mirrors the value-mode
+/// `slice_sequence` selection logic without materializing values.
+#[cfg(feature = "ext-array")]
+#[inline]
+fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> Vec<i64> {
+    let mut out = Vec::new();
+    let (actual_start, actual_end) = if step > 0 {
+        (
+            normalize_index(start.unwrap_or(0), len),
+            normalize_index(end.unwrap_or(len), len),
+        )
+    } else {
+        let default_start = len.saturating_sub(1);
+        let s = normalize_index(start.unwrap_or(default_start), len);
+        let e = if let Some(e) = end {
+            if e < -len { -1 } else { normalize_index(e, len) }
+        } else {
+            -1
+        };
+        (s, e)
+    };
+
+    let mut i = actual_start;
+    while (step > 0 && i < actual_end) || (step < 0 && i > actual_end) {
+        if i >= 0 && i < len {
+            out.push(i);
+        }
+        i += step;
+    }
+    out
 }
 
 #[cfg(feature = "ext-array")]

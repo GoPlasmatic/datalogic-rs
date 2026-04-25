@@ -93,9 +93,29 @@ pub fn evaluate_missing_some(
 // allocations are deferred to the boundary conversion).
 // =============================================================================
 
-use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
+use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
 use bumpalo::Bump;
 
+/// Snapshot of the lookup-target Value for `missing` / `missing_some` —
+/// the current context's data view (iter frame when iterating, root
+/// otherwise). Materialized once before any arg evaluation so the
+/// borrow doesn't conflict with subsequent mutable borrows of actx/context.
+#[inline]
+fn lookup_snapshot(actx: &ArenaContextStack<'_>, context: &ContextStack) -> Value {
+    if actx.depth() > 0 {
+        use crate::arena::context::ArenaContextRef;
+        if let ArenaContextRef::Frame(f) = actx.current() {
+            return arena_to_value(f.data());
+        }
+    }
+    if context.depth() > 0 {
+        return context.current().data().clone();
+    }
+    actx.root_input().clone()
+}
+
+/// Native arena-mode `missing`. Accumulates missing-path strings directly
+/// into the arena.
 #[inline]
 pub(crate) fn evaluate_missing_arena<'a>(
     args: &[CompiledNode],
@@ -104,26 +124,39 @@ pub(crate) fn evaluate_missing_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
+    let lookup = lookup_snapshot(actx, context);
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
 
     for arg in args {
-        let path_val = engine.evaluate_node_cow(arg, context)?;
-        match path_val.as_ref() {
-            Value::Array(arr) => {
-                for v in arr {
-                    if let Some(path) = v.as_str()
-                        && access_path_ref(context.current().data(), path).is_none()
+        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        match av {
+            ArenaValue::Array(items) => {
+                for it in *items {
+                    if let Some(path) = arena_value_as_str(it)
+                        && access_path_ref(&lookup, path).is_none()
                     {
-                        let s = arena.alloc_str(path);
-                        missing.push(ArenaValue::String(s));
+                        missing.push(ArenaValue::String(arena.alloc_str(path)));
                     }
                 }
             }
-            Value::String(s) => {
-                if access_path_ref(context.current().data(), s).is_none() {
-                    let owned = arena.alloc_str(s);
-                    missing.push(ArenaValue::String(owned));
+            ArenaValue::InputRef(Value::Array(arr)) => {
+                for v in arr {
+                    if let Some(path) = v.as_str()
+                        && access_path_ref(&lookup, path).is_none()
+                    {
+                        missing.push(ArenaValue::String(arena.alloc_str(path)));
+                    }
+                }
+            }
+            ArenaValue::String(s) => {
+                if access_path_ref(&lookup, s).is_none() {
+                    missing.push(ArenaValue::String(arena.alloc_str(s)));
+                }
+            }
+            ArenaValue::InputRef(Value::String(s)) => {
+                if access_path_ref(&lookup, s).is_none() {
+                    missing.push(ArenaValue::String(arena.alloc_str(s.as_str())));
                 }
             }
             _ => {}
@@ -133,6 +166,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
     Ok(arena.alloc(ArenaValue::Array(missing.into_bump_slice())))
 }
 
+/// Native arena-mode `missing_some`.
 #[inline]
 pub(crate) fn evaluate_missing_some_arena<'a>(
     args: &[CompiledNode],
@@ -142,38 +176,58 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        // Bridge: matches the value-mode "return empty array" semantics.
-        let v = evaluate_missing_some(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+        return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    let min_present_val = engine.evaluate_node_cow(&args[0], context)?;
-    let min_present = min_present_val.as_u64().unwrap_or(1) as usize;
-    let paths_val = engine.evaluate_node_cow(&args[1], context)?;
+    let min_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
+
+    let paths_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+    let lookup = lookup_snapshot(actx, context);
 
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
-    let mut present_count = 0usize;
+    let mut present_count: usize = 0;
 
-    if let Value::Array(arr) = paths_val.as_ref() {
-        for v in arr {
-            if let Some(path) = v.as_str() {
-                if access_path_ref(context.current().data(), path).is_none() {
-                    let s = arena.alloc_str(path);
-                    missing.push(ArenaValue::String(s));
-                } else {
-                    present_count += 1;
-                    if present_count >= min_present {
-                        return Ok(arena.alloc(ArenaValue::Array(&[])));
-                    }
-                }
+    let mut process_path = |path: &str,
+                            missing: &mut bumpalo::collections::Vec<'a, ArenaValue<'a>>,
+                            present_count: &mut usize|
+     -> bool {
+        if access_path_ref(&lookup, path).is_none() {
+            missing.push(ArenaValue::String(arena.alloc_str(path)));
+        } else {
+            *present_count += 1;
+            if *present_count >= min_present {
+                return true; // short-circuit
             }
         }
-    }
+        false
+    };
 
-    if present_count >= min_present {
-        Ok(arena.alloc(ArenaValue::Array(&[])))
-    } else {
-        Ok(arena.alloc(ArenaValue::Array(missing.into_bump_slice())))
+    let short_circuit = match paths_av {
+        ArenaValue::Array(items) => items.iter().any(|it| {
+            arena_value_as_str(it)
+                .is_some_and(|p| process_path(p, &mut missing, &mut present_count))
+        }),
+        ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
+            v.as_str()
+                .is_some_and(|p| process_path(p, &mut missing, &mut present_count))
+        }),
+        _ => false,
+    };
+
+    if short_circuit || present_count >= min_present {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
+    Ok(arena.alloc(ArenaValue::Array(missing.into_bump_slice())))
+}
+
+#[inline]
+fn arena_value_as_str<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
+    match av {
+        ArenaValue::String(s) => Some(*s),
+        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
+        _ => None,
     }
 }
+
