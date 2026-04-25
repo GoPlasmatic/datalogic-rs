@@ -417,8 +417,38 @@ fn root_uses_arena_pure(node: &CompiledNode) -> bool {
                         )
                 )
         }
+        // Sort: arena win comes from skipping the input array deep-clone the
+        // value-mode path pays. Eligible when the input is borrowable (root
+        // var or upstream arena op) AND the extractor is either absent or a
+        // simple root-scope `var`. Other extractor shapes bridge to value
+        // mode so they don't regress.
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Sort,
+            args,
+            ..
+        } => {
+            !args.is_empty()
+                && arena_friendly_iter_input_pure(args)
+                && (args.len() <= 2 || sort_extractor_is_var(&args[2]))
+        }
         _ => false,
     }
+}
+
+/// True when a sort extractor is a simple root-scope `var` with non-empty
+/// segments — the shape `evaluate_sort_arena` handles directly.
+fn sort_extractor_is_var(node: &CompiledNode) -> bool {
+    matches!(
+        node,
+        CompiledNode::CompiledVar {
+            scope_level: 0,
+            segments,
+            reduce_hint: ReduceHint::None,
+            metadata_hint: MetadataHint::None,
+            default_value: None,
+            ..
+        } if !segments.is_empty()
+    )
 }
 
 fn arena_friendly_iter_input_pure(args: &[CompiledNode]) -> bool {
@@ -460,6 +490,7 @@ fn root_is_arena_iter(node: &CompiledNode) -> bool {
                     | OpCode::Some
                     | OpCode::None
                     | OpCode::Merge
+                    | OpCode::Sort
             )
     )
 }

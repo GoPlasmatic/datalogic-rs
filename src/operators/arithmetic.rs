@@ -1294,12 +1294,12 @@ fn arena_fold<'a>(
         }
     }
 
-    let n = if all_int && acc_f.fract() == 0.0 && acc_f >= i64::MIN as f64 && acc_f <= i64::MAX as f64 {
-        serde_json::Number::from(acc_f as i64)
+    let nv = if all_int && acc_f.fract() == 0.0 && acc_f >= i64::MIN as f64 && acc_f <= i64::MAX as f64 {
+        crate::value::NumberValue::from_i64(acc_f as i64)
     } else {
-        serde_json::Number::from_f64(acc_f).unwrap_or_else(|| serde_json::Number::from(0))
+        crate::value::NumberValue::from_f64(acc_f)
     };
-    Ok(arena.alloc(ArenaValue::Number(n)))
+    Ok(arena.alloc(ArenaValue::Number(nv)))
 }
 
 /// Bridge an arithmetic op to its value-mode implementation.

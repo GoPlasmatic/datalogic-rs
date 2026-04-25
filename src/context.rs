@@ -292,6 +292,14 @@ impl ContextStack {
         ContextFrameRef::Root(&self.root)
     }
 
+    /// Borrow the root data directly. Used by arena dispatch to obtain a
+    /// `&Value` reference whose lifetime matches the context (and therefore
+    /// the in-flight `Arc<Value>` it owns), avoiding a redundant `Arc::clone`.
+    #[inline]
+    pub(crate) fn root_data(&self) -> &Value {
+        &self.root
+    }
+
     /// Get the current depth (number of frames)
     pub fn depth(&self) -> usize {
         self.frames.len()

@@ -1873,6 +1873,113 @@ pub(crate) fn evaluate_filter_arena<'a>(
     Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
 }
 
+/// Arena-mode `sort`. Borrows input via `IterSrc` (no input clone), runs
+/// `slice::sort_by` over indices, and emits `ArenaValue::Array` of `InputRef`s
+/// pointing at the original items in their sorted order. The win vs the
+/// value-mode `evaluate_sort` is the eliminated initial deep-clone of the
+/// whole input array (line 1217 in the value-mode path) — for sort that's
+/// the dominant cost on object arrays.
+///
+/// Fast path (extractor is a root-scope `var`): keys come from
+/// `try_traverse_segments` returning `&Value` directly, no key clones.
+/// General-extractor path bridges to value-mode `evaluate_sort`.
+#[cfg(feature = "ext-array")]
+#[inline]
+pub(crate) fn evaluate_sort_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    // Match the existing value-mode behavior: literal-null first arg is an error.
+    if let CompiledNode::Value { value, .. } = &args[0]
+        && value.is_null()
+    {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Null)),
+        ResolvedInput::Bridge => {
+            let v = evaluate_sort(args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+    };
+
+    let len = src.len();
+    if len == 0 {
+        return Ok(arena.alloc(ArenaValue::Array(&[])));
+    }
+
+    // Sort direction: defaults to ascending; non-Bool means ascending too
+    // (matches the value-mode default at line 1230).
+    let ascending = if args.len() > 1 {
+        let dir = engine.evaluate_node(&args[1], context)?;
+        match dir {
+            Value::Bool(b) => b,
+            _ => true,
+        }
+    } else {
+        true
+    };
+
+    let has_extractor = args.len() > 2;
+
+    if !has_extractor {
+        // No extractor — sort items directly by Value order.
+        let mut indices: Vec<usize> = (0..len).collect();
+        indices.sort_by(|&a, &b| {
+            let cmp = compare_values(src.get(a), src.get(b));
+            if ascending { cmp } else { cmp.reverse() }
+        });
+        let slice = arena.alloc_slice_fill_iter(
+            indices.into_iter().map(|i| ArenaValue::InputRef(src.get(i))),
+        );
+        return Ok(arena.alloc(ArenaValue::Array(slice)));
+    }
+
+    // Extractor present — fast path for root-scope `var` segments.
+    let extractor = &args[2];
+    if let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        default_value: None,
+        ..
+    } = extractor
+        && !segments.is_empty()
+    {
+        let mut keyed: Vec<(usize, Option<&Value>)> = (0..len)
+            .map(|i| (i, super::variable::try_traverse_segments(src.get(i), segments)))
+            .collect();
+        keyed.sort_by(|(_, ka), (_, kb)| {
+            let cmp = match (ka, kb) {
+                (Some(a), Some(b)) => compare_values(a, b),
+                (Some(_), None) => Ordering::Greater,
+                (None, Some(_)) => Ordering::Less,
+                (None, None) => Ordering::Equal,
+            };
+            if ascending { cmp } else { cmp.reverse() }
+        });
+        let slice = arena.alloc_slice_fill_iter(
+            keyed.into_iter().map(|(i, _)| ArenaValue::InputRef(src.get(i))),
+        );
+        return Ok(arena.alloc(ArenaValue::Array(slice)));
+    }
+
+    // General extractor — bridge to value-mode sort. The full op runs once
+    // through the existing path (no double-eval, no per-iteration arena cost).
+    let v = evaluate_sort(args, context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
+}
+
 /// Arena-mode `length`. Critical for the COMPOSITION test: when called as
 /// `length(filter(...))`, the filter result lives in the arena and length
 /// just reads the slice length — zero conversion cost on the intermediate.
@@ -1904,7 +2011,7 @@ pub(crate) fn evaluate_length_arena<'a>(
         _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
     };
 
-    Ok(arena.alloc(ArenaValue::Number(serde_json::Number::from(n))))
+    Ok(arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(n))))
 }
 
 /// Try to obtain the input collection by borrowing from the caller's root data.
@@ -2417,10 +2524,14 @@ fn reborrow_arena<'a>(av: &ArenaValue<'a>) -> ArenaValue<'a> {
     match av {
         ArenaValue::Null => ArenaValue::Null,
         ArenaValue::Bool(b) => ArenaValue::Bool(*b),
-        ArenaValue::Number(n) => ArenaValue::Number(n.clone()),
+        ArenaValue::Number(n) => ArenaValue::Number(*n),
         ArenaValue::String(s) => ArenaValue::String(s),
         ArenaValue::Array(items) => ArenaValue::Array(items),
         ArenaValue::Object(pairs) => ArenaValue::Object(pairs),
+        #[cfg(feature = "datetime")]
+        ArenaValue::DateTime(dt) => ArenaValue::DateTime(dt.clone()),
+        #[cfg(feature = "datetime")]
+        ArenaValue::Duration(d) => ArenaValue::Duration(d.clone()),
         ArenaValue::InputRef(v) => ArenaValue::InputRef(v),
     }
 }

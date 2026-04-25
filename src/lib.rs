@@ -60,6 +60,7 @@ mod opcode;
 mod operators;
 #[cfg(feature = "trace")]
 mod trace;
+mod value;
 mod value_helpers;
 
 pub use config::{

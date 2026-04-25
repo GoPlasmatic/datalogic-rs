@@ -373,21 +373,34 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        // Arena dispatch decision is precomputed at compile time and cached on
-        // CompiledLogic — single bool load instead of per-call tree walk.
+        // Hot path: cheap rules go straight to value-mode dispatch with no
+        // intermediate branching. Arena routing is hoisted into a `#[cold]`
+        // helper so its code lays out far from the hot fast path, freeing
+        // L1i pressure for tiny rules (var / + / if/===) that dominate the
+        // suite average.
         if compiled.uses_arena_dispatch {
-            // For iterator-shaped roots (filter/map/reduce/etc.), the arena
-            // win evaporates if the input collection is a Value::Object — the
-            // op would bridge back to value mode after paying the arena setup
-            // cost. Cheap runtime peek avoids that wasted overhead.
-            if compiled.arena_iter_root && !iter_root_input_is_array(&compiled.root, &data) {
-                let mut context = ContextStack::new(data);
-                return self.evaluate_node(&compiled.root, &mut context);
-            }
-            return self.evaluate_via_arena(compiled, data);
+            return self.evaluate_arena_dispatch(compiled, data);
         }
         let mut context = ContextStack::new(data);
         self.evaluate_node(&compiled.root, &mut context)
+    }
+
+    /// Cold arena dispatch trampoline. Decides between in-arena evaluation
+    /// and a value-mode bridge (used when an iterator's input collection
+    /// turns out to be a `Value::Object`, which `evaluate_via_arena` would
+    /// just bridge back anyway — skipping arena setup is the win).
+    #[cold]
+    #[inline(never)]
+    fn evaluate_arena_dispatch(
+        &self,
+        compiled: &CompiledLogic,
+        data: Arc<Value>,
+    ) -> Result<Value> {
+        if compiled.arena_iter_root && !iter_root_input_is_array(&compiled.root, &data) {
+            let mut context = ContextStack::new(data);
+            return self.evaluate_node(&compiled.root, &mut context);
+        }
+        self.evaluate_via_arena(compiled, data)
     }
 
     /// Arena-mode evaluation entry. Acquires a thread-local `Bump` (from the
@@ -395,19 +408,21 @@ impl DataLogic {
     /// through `evaluate_arena_node`, and converts the result back to owned
     /// `Value` at the boundary. The arena is reset and returned to the pool
     /// when `guard` drops at end of function.
+    #[cold]
+    #[inline(never)]
     fn evaluate_via_arena(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
         use crate::arena::{ArenaGuard, arena_to_value};
         // Size hint for first-time pool fills: static_bytes × 2, min 4 KiB.
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
-        let mut context = ContextStack::new(Arc::clone(&data));
-        // `data` is held by `context` (as Arc) AND borrowed via `&*data` for the
-        // arena lifetime. Both live for the duration of this function — safe.
-        let root_ref: &Value = &data;
+        let mut context = ContextStack::new(data);
+        let root_ref: &Value = unsafe {
+            // SAFETY: context owns the Arc for this function's body.
+            &*(context.root_data() as *const Value)
+        };
         let result = self.evaluate_arena_node(&compiled.root, &mut context, arena, root_ref)?;
         let owned = arena_to_value(result);
-        // `guard` drops here: arena.reset() then pushed back into TLS pool.
         drop(guard);
         Ok(owned)
     }
@@ -729,25 +744,45 @@ impl DataLogic {
         }
 
         match node {
-            // var fast path: borrow into root data via InputRef when the lookup
-            // resolves at the root scope. This is the eliminated-clone win.
+            // var fast path: root-scope lookups borrow into the input data via
+            // InputRef without cloning. Path B (Phase 2) scope: handles the
+            // root case (depth == 0, scope_level == 0, no iteration hints)
+            // including default-value fallback. Var inside iteration frames
+            // remains on the value-mode bridge until Phase 5's collection-op
+            // migration replaces frame storage with `&'a ArenaValue<'a>`.
             CompiledNode::CompiledVar {
                 scope_level: 0,
                 segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
+                // At depth=0 the reduce/metadata hints are no-ops because
+                // the root frame has no reduce slot and no index/key — the
+                // value-mode helper falls through to normal access in that
+                // case anyway. So we can absorb every hint variant here.
+                default_value,
                 ..
             } if context.depth() == 0 => {
-                let result = if segments.is_empty() {
-                    ArenaValue::InputRef(root)
+                let resolved: Option<&'a Value> = if segments.is_empty() {
+                    Some(root)
                 } else {
-                    match crate::operators::variable::try_traverse_segments(root, segments) {
-                        Some(v) => ArenaValue::InputRef(v),
-                        None => ArenaValue::Null,
-                    }
+                    crate::operators::variable::try_traverse_segments(root, segments)
                 };
-                Ok(arena.alloc(result))
+                match resolved {
+                    Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
+                    None => match default_value {
+                        Some(d) => self.evaluate_arena_node(d, context, arena, root),
+                        None => Ok(arena.alloc(ArenaValue::Null)),
+                    },
+                }
+            }
+
+            // exists at root scope: returns Bool from preallocated singleton.
+            #[cfg(feature = "ext-control")]
+            CompiledNode::CompiledExists(data)
+                if data.scope_level == 0 && context.depth() == 0 =>
+            {
+                let found = data.segments.is_empty()
+                    || crate::operators::variable::try_traverse_segments(root, &data.segments)
+                        .is_some();
+                Ok(crate::arena::pool::singleton_bool(found))
             }
 
             CompiledNode::BuiltinOperator {
@@ -809,6 +844,13 @@ impl DataLogic {
                 args,
                 ..
             } => crate::operators::array::evaluate_length_arena(args, context, self, arena, root),
+
+            #[cfg(feature = "ext-array")]
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Sort,
+                args,
+                ..
+            } => crate::operators::array::evaluate_sort_arena(args, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Max,
