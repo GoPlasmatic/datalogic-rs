@@ -1994,17 +1994,11 @@ fn arena_div_or_mod<'a>(
     if args.is_empty() {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    if args.len() != 2 {
-        // Value-mode supports 1-arg (array fold or 1/x) and >2 (variadic).
-        // Defer to value-mode for those edge cases — divide-by-zero and
-        // overflow-special-cases are dense enough that re-implementing
-        // adds risk without changing compatible.json's hot path.
-        let v = if is_modulo {
-            evaluate_modulo(args, context, engine)?
-        } else {
-            evaluate_divide(args, context, engine)?
-        };
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    if args.len() == 1 {
+        return arena_one_arg_div_mod(&args[0], actx, context, engine, arena, is_modulo);
+    }
+    if args.len() > 2 {
+        return arena_variadic_div_mod(args, actx, context, engine, arena, is_modulo);
     }
     let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
     let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
@@ -2065,6 +2059,99 @@ fn divbyzero_arena<'a>(
             Ok(arena_number(arena, NumberValue::from_f64(v)))
         }
     }
+}
+
+/// Native arena 1-arg `/` / `%`. Mirrors value-mode evaluate_divide / evaluate_modulo
+/// 1-arg semantics:
+///   * `/` with array → fold (a/b/c). `/` with non-array → 1/x.
+///   * `%` with array of ≥2 numeric elements → fold (a%b%c). `%` with single
+///     non-array argument → InvalidArguments (matches value-mode).
+fn arena_one_arg_div_mod<'a>(
+    arg: &CompiledNode,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    is_modulo: bool,
+) -> Result<&'a ArenaValue<'a>> {
+    let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+
+    let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
+        ArenaValue::InputRef(Value::Array(arr)) => {
+            Some(std::borrow::Cow::Borrowed(arr.as_slice()))
+        }
+        ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
+            items.iter().map(crate::arena::arena_to_value).collect::<Vec<_>>(),
+        )),
+        _ => None,
+    };
+    if let Some(arr) = array_cow {
+        // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
+        if arr.is_empty() || (is_modulo && arr.len() < 2) {
+            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        }
+        let mut result = coerce_to_number(&arr[0], engine)
+            .ok_or_else(crate::constants::nan_error)?;
+        for elem in &arr[1..] {
+            let n = coerce_to_number(elem, engine)
+                .ok_or_else(crate::constants::nan_error)?;
+            if n == 0.0 {
+                return Err(crate::constants::nan_error());
+            }
+            result = if is_modulo { result % n } else { result / n };
+        }
+        return Ok(arena_number(arena, NumberValue::from_f64(result)));
+    }
+
+    // Non-array single value.
+    if is_modulo {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+    // 1/x with integer-preserving fast path.
+    if let Some(i) = av.as_i64() {
+        if i == 0 {
+            return Err(crate::constants::nan_error());
+        }
+        if i == -1 {
+            return Ok(arena_number(arena, NumberValue::from_i64(-1)));
+        }
+        if 1 % i == 0 {
+            return Ok(arena_number(arena, NumberValue::from_i64(1 / i)));
+        }
+        return Ok(arena_number(arena, NumberValue::from_f64(1.0 / i as f64)));
+    }
+    let cow = crate::arena::arena_to_value_cow(av);
+    let f = coerce_to_number(&cow, engine).ok_or_else(crate::constants::nan_error)?;
+    if f == 0.0 {
+        return Err(crate::constants::nan_error());
+    }
+    Ok(arena_number(arena, NumberValue::from_f64(1.0 / f)))
+}
+
+/// Native arena variadic (≥3 args) `/` / `%`. Folds left-associatively with
+/// per-step zero-divisor check.
+fn arena_variadic_div_mod<'a>(
+    args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    is_modulo: bool,
+) -> Result<&'a ArenaValue<'a>> {
+    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let first_cow = crate::arena::arena_to_value_cow(first_av);
+    let mut result = coerce_to_number(&first_cow, engine)
+        .ok_or_else(crate::constants::nan_error)?;
+    for arg in args.iter().skip(1) {
+        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let cow = crate::arena::arena_to_value_cow(av);
+        let n = coerce_to_number(&cow, engine).ok_or_else(crate::constants::nan_error)?;
+        if n == 0.0 {
+            return Err(crate::constants::nan_error());
+        }
+        result = if is_modulo { result % n } else { result / n };
+    }
+    Ok(arena_number(arena, NumberValue::from_f64(result)))
 }
 
 /// `get_number_strict` for arena values — Number variants and string-as-number
