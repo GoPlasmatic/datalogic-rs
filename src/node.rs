@@ -287,6 +287,10 @@ pub struct CompiledLogic {
     /// Used to size the per-call `Bump` so the first chunk is large enough.
     /// `pub(crate)` — internal arena infrastructure.
     pub(crate) arena_static_bytes: usize,
+    /// Pre-computed decision: should `evaluate()` route through the arena
+    /// dispatch path? Cached at compile time so the per-call check is a
+    /// single bool load instead of a tree pattern-match.
+    pub(crate) uses_arena_dispatch: bool,
 }
 
 impl CompiledLogic {
@@ -297,9 +301,11 @@ impl CompiledLogic {
     /// * `root` - The root node of the compiled logic tree
     pub fn new(root: CompiledNode) -> Self {
         let arena_static_bytes = estimate_arena_static_bytes(&root);
+        let uses_arena_dispatch = root_uses_arena_pure(&root);
         Self {
             root,
             arena_static_bytes,
+            uses_arena_dispatch,
         }
     }
 
@@ -307,6 +313,82 @@ impl CompiledLogic {
     pub fn is_static(&self) -> bool {
         node_is_static(&self.root)
     }
+}
+
+/// Pure compile-time predicate matching `engine::root_uses_arena`. Lives here
+/// so the result can be cached on `CompiledLogic`. Keep in sync with the
+/// dispatch logic in `engine.rs`.
+fn root_uses_arena_pure(node: &CompiledNode) -> bool {
+    match node {
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Filter,
+            args,
+            ..
+        } => arena_friendly_iter_input_pure(args),
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Map,
+            args,
+            ..
+        } => arena_friendly_iter_input_pure(args) && map_body_is_var_pure(args),
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::All | OpCode::Some | OpCode::None,
+            args,
+            ..
+        } => arena_friendly_iter_input_pure(args),
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Length,
+            args,
+            ..
+        } => {
+            args.len() == 1
+                && matches!(
+                    &args[0],
+                    CompiledNode::BuiltinOperator { opcode, .. }
+                        if matches!(
+                            opcode,
+                            OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None
+                        )
+                )
+        }
+        _ => false,
+    }
+}
+
+fn arena_friendly_iter_input_pure(args: &[CompiledNode]) -> bool {
+    if args.is_empty() {
+        return false;
+    }
+    matches!(
+        &args[0],
+        CompiledNode::CompiledVar {
+            scope_level: 0,
+            reduce_hint: ReduceHint::None,
+            metadata_hint: MetadataHint::None,
+            default_value: None,
+            ..
+        }
+    ) || matches!(
+        &args[0],
+        CompiledNode::BuiltinOperator { opcode, .. }
+            if matches!(
+                opcode,
+                OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None
+            )
+    )
+}
+
+fn map_body_is_var_pure(args: &[CompiledNode]) -> bool {
+    args.len() == 2
+        && matches!(
+            &args[1],
+            CompiledNode::CompiledVar {
+                scope_level: 0,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            }
+        )
 }
 
 /// Estimate the static (rule-dependent, data-independent) portion of arena

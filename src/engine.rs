@@ -5,116 +5,9 @@ use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
 
-/// Returns true when this root node should be evaluated via the arena path.
-///
-/// Validated win-shapes (per `examples/alloc_profile.rs` measurements):
-///   - `filter` at root → arena always wins (input borrow + InputRef results)
-///   - `length(filter(...))` → composition saves intermediate materialization
-///   - `map` at root WHEN body is a simple `var` (field extract / identity) —
-///     these hit the InputRef fast path. Other map bodies fall back to the
-///     value-mode general path (slower than baseline due to Bump overhead);
-///     keep them on the existing path.
-///   - `all` / `some` / `none` at root when input is arena-friendly and
-///     predicate is FastPredicate-detectable. Returns Bool (cheap boundary).
-///
-/// Phase 4 expansion: arena-friendly inputs now include nested arena-aware ops
-/// (e.g. `map(filter(...), var)` dispatches arena throughout). Composition INTO
-/// arena is wired through `resolve_iter_input` in `array.rs`.
-///
-/// Deliberately excluded for now:
-///   - `reduce` — existing impl has inline arithmetic fast paths the arena
-///     version doesn't replicate yet; arena path regresses.
-///   - `map` with non-var body — same reason; the existing arithmetic fast
-///     path beats our general arena path.
-#[inline]
-fn root_uses_arena(node: &CompiledNode) -> bool {
-    match node {
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Filter,
-            args,
-            ..
-        } => arena_friendly_iter_input(args),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Map,
-            args,
-            ..
-        } => arena_friendly_iter_input(args) && map_body_is_var(args),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::All | crate::OpCode::Some | crate::OpCode::None,
-            args,
-            ..
-        } => arena_friendly_iter_input(args),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Length,
-            args,
-            ..
-        } => {
-            args.len() == 1
-                && matches!(
-                    &args[0],
-                    CompiledNode::BuiltinOperator { opcode, .. }
-                        if matches!(
-                            opcode,
-                            crate::OpCode::Filter
-                                | crate::OpCode::Map
-                                | crate::OpCode::All
-                                | crate::OpCode::Some
-                                | crate::OpCode::None
-                        )
-                )
-        }
-        _ => false,
-    }
-}
-
-/// Iterator input is arena-friendly when args[0] is either:
-///   - A simple root-scope `var` (we borrow into the input data), OR
-///   - Another arena-aware iterator op (composition — the inner op produces
-///     `&[ArenaValue::InputRef(&Value)]` which `IterSrc::Refs` consumes).
-#[inline]
-fn arena_friendly_iter_input(args: &[CompiledNode]) -> bool {
-    if args.is_empty() {
-        return false;
-    }
-    matches!(
-        &args[0],
-        CompiledNode::CompiledVar {
-            scope_level: 0,
-            reduce_hint: crate::node::ReduceHint::None,
-            metadata_hint: crate::node::MetadataHint::None,
-            default_value: None,
-            ..
-        }
-    ) || matches!(
-        &args[0],
-        CompiledNode::BuiltinOperator { opcode, .. }
-            if matches!(
-                opcode,
-                crate::OpCode::Filter
-                    | crate::OpCode::Map
-                    | crate::OpCode::All
-                    | crate::OpCode::Some
-                    | crate::OpCode::None
-            )
-    )
-}
-
-/// Map body is a simple var (field extract or identity). Other body shapes
-/// are still better served by the existing value-mode arithmetic fast paths.
-#[inline]
-fn map_body_is_var(args: &[CompiledNode]) -> bool {
-    args.len() == 2
-        && matches!(
-            &args[1],
-            CompiledNode::CompiledVar {
-                scope_level: 0,
-                reduce_hint: crate::node::ReduceHint::None,
-                metadata_hint: crate::node::MetadataHint::None,
-                default_value: None,
-                ..
-            }
-        )
-}
+// The arena-dispatch decision is computed at compile time in `node.rs`
+// (`root_uses_arena_pure` and helpers) and cached on `CompiledLogic` as
+// `uses_arena_dispatch`. This file just reads that bool in `evaluate()`.
 
 /// Peek at what an iterator's first arg would resolve to *without evaluating*.
 /// Returns `Some(&Value)` only when the arg is a simple root-scope `var` — the
@@ -446,11 +339,9 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        // Arena dispatch path: only when the root operator is one of the
-        // arena-migrated set (POC: Filter, Length). For all other roots, the
-        // arena would be unused — keep the existing path to avoid the per-call
-        // Bump::new() cost.
-        if root_uses_arena(&compiled.root) {
+        // Arena dispatch decision is precomputed at compile time and cached on
+        // CompiledLogic — single bool load instead of per-call tree walk.
+        if compiled.uses_arena_dispatch {
             return self.evaluate_via_arena(compiled, data);
         }
         let mut context = ContextStack::new(data);
