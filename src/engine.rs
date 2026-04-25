@@ -82,6 +82,7 @@ use crate::{
     CompiledLogic, CompiledNode, ContextStack, Error, Evaluator, Operator, Result, StructuredError,
 };
 
+
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
 ///
 /// The engine provides a two-phase approach to logic evaluation:
@@ -536,9 +537,10 @@ impl DataLogic {
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
-        // Synthetic Arc for the legacy ContextStack bridge. The clone goes
-        // away when ContextStack supports borrowed-root or is removed from
-        // the arena dispatch path.
+        // ContextStack is required by bridges (legacy custom ops, value-mode
+        // arithmetic fallbacks). Promotes the borrowed input into an Arc —
+        // a deep clone of the Value is unavoidable until ContextStack itself
+        // supports a borrowed root.
         let mut context = ContextStack::new(Arc::new(data.clone()));
         let mut actx = crate::arena::ArenaContextStack::new(arena, data);
         let result =
@@ -1361,7 +1363,10 @@ impl DataLogic {
                 }
 
                 // Legacy `Operator` form — promote args to owned `Value`
-                // and call through the existing trait.
+                // and call through the existing trait. Mirror actx's top
+                // frame onto the legacy `context` so the legacy op sees the
+                // expected iteration state (post-Stage-D arena dispatch
+                // pushes only to actx, never to context).
                 let operator = self
                     .custom_operators
                     .get(&data.name)
@@ -1372,7 +1377,44 @@ impl DataLogic {
                     owned_args.push(crate::arena::arena_to_value(av));
                 }
                 let evaluator = SimpleEvaluator::new(self);
-                let result = operator.evaluate(&owned_args, context, &evaluator)?;
+
+                // Push a synthetic frame onto `context` mirroring actx's top
+                // (if any), so legacy ops reading `context.current()` see the
+                // current iter item.
+                let pushed_synthetic = if actx.depth() > 0 {
+                    use crate::arena::context::ArenaContextRef;
+                    if let ArenaContextRef::Frame(f) = actx.current() {
+                        let frame_value =
+                            crate::arena::arena_to_value(f.data());
+                        match (f.get_index(), f.get_key()) {
+                            (Some(idx), Some(key)) => {
+                                context.push_with_key_index(
+                                    frame_value,
+                                    idx,
+                                    key.to_string(),
+                                );
+                            }
+                            (Some(idx), None) => {
+                                context.push_with_index(frame_value, idx);
+                            }
+                            _ => {
+                                context.push(frame_value);
+                            }
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                let result = operator.evaluate(&owned_args, context, &evaluator);
+
+                if pushed_synthetic {
+                    context.pop();
+                }
+                let result = result?;
                 Ok(arena.alloc(value_to_arena(&result, arena)))
             }
 
