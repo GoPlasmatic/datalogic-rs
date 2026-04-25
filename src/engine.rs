@@ -1304,13 +1304,15 @@ impl DataLogic {
                 )
             }
 
-            // Fallback: bridge through the existing value-mode evaluator and
-            // promote the result into the arena. No win at this point but
-            // composition still works (parent arena ops can consume us).
-            _ => {
-                let v = self.evaluate_node(node, context)?;
-                Ok(arena.alloc(value_to_arena(&v, arena)))
-            }
+            // No fallback — every CompiledNode shape is covered by an
+            // explicit arm above. Reaching this branch is a compile-error
+            // (missing match arm) for newly-added shapes, not a runtime
+            // panic. If a future variant lands and you see this, add the
+            // dispatch arm.
+            #[allow(unreachable_patterns)]
+            _ => Err(Error::InvalidArguments(
+                "internal: unhandled CompiledNode shape in arena dispatch".into(),
+            )),
         }
     }
 
