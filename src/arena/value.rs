@@ -13,43 +13,142 @@ use crate::value::NumberValue;
 #[cfg(feature = "datetime")]
 use crate::datetime::{DataDateTime, DataDuration};
 
-/// Internal value type for arena-mode evaluation. Mirrors `serde_json::Value`
-/// but uses arena-allocated slices and string slices in place of `Vec`/`String`/
-/// `BTreeMap` — directly attacking the heap traffic that dominates the v4 profile.
+/// Arena-allocated mirror of [`serde_json::Value`].
 ///
-/// **Variants**:
-/// - `Null` / `Bool` / `Number` — inline (no arena allocation).
-///   `Number` uses `crate::value::NumberValue` for native Integer/Float
-///   distinction and overflow-aware arithmetic (vs. the opaque
-///   `serde_json::Number`).
+/// Lifetime `'a` is tied to a [`bumpalo::Bump`] that lives for the
+/// duration of one [`crate::DataLogic::evaluate_ref`] call. Composite
+/// variants (`String`, `Array`, `Object`) hold arena-allocated slices
+/// instead of `Vec` / `BTreeMap` / heap `String` — that's the key
+/// allocation win over the public [`Value`] type.
+///
+/// Most users implementing [`crate::ArenaOperator`] will read inputs via
+/// the accessors (`as_f64`, `as_str`, `as_bool`, `is_null`, …) and
+/// construct results via the `from_*` constructors, only reaching into
+/// the variants directly for advanced cases.
+///
+/// ## Variants
+///
+/// - `Null` / `Bool` — inline.
+/// - `Number` — wraps [`NumberValue`], distinguishing `Integer(i64)` from
+///   `Float(f64)` natively (vs. the opaque `serde_json::Number`).
 /// - `String` — UTF-8 bytes allocated in the arena.
 /// - `Array` — slice of `ArenaValue` allocated in the arena.
-/// - `Object` — sorted slice of `(key, value)` pairs (binary-search lookup).
-/// - `DateTime` / `Duration` — chrono-backed values, inline (no arena alloc).
-///   Boundary representation in `Value` is `{"datetime": "ISO"}` /
-///   `{"timestamp": "..."}` matching the existing `extract_datetime_value`
-///   contract in `src/operators/helpers.rs`.
-/// - `InputRef` — borrow into the caller's `Arc<Value>` tree without copying.
-///   Used by `var` lookups so input data never gets cloned during evaluation.
+/// - `Object` — slice of `(key, value)` pairs allocated in the arena.
+/// - `DateTime` / `Duration` — chrono-backed values, inline. Boundary
+///   representation in `serde_json::Value` is `{"datetime": "..."}` /
+///   `{"timestamp": "..."}` matching the existing helper contract.
+/// - `InputRef` — borrow into the caller's input `&Value` without copying.
+///   Used by `var` lookups so input data never gets cloned.
 #[derive(Debug)]
-pub(crate) enum ArenaValue<'a> {
+pub enum ArenaValue<'a> {
+    /// JSON null.
     Null,
+    /// JSON boolean.
     Bool(bool),
+    /// JSON number with native Integer/Float distinction.
     Number(NumberValue),
+    /// JSON string allocated in the arena.
     String(&'a str),
+    /// JSON array of arena-allocated values.
     Array(&'a [ArenaValue<'a>]),
+    /// JSON object as arena-allocated `(key, value)` pairs.
     Object(&'a [(&'a str, ArenaValue<'a>)]),
+    /// Chrono-backed datetime (feature `datetime`).
     #[cfg(feature = "datetime")]
     DateTime(DataDateTime),
+    /// Chrono-backed duration (feature `datetime`).
     #[cfg(feature = "datetime")]
     Duration(DataDuration),
+    /// Zero-clone borrow into the caller's input `&Value`.
     InputRef(&'a Value),
 }
 
 impl<'a> ArenaValue<'a> {
-    /// Truthiness check matching the JavaScript-default semantics used by the
-    /// existing `is_truthy` helper. Replicated here to avoid a `to_value` round
-    /// trip during predicate evaluation.
+    // ---- Constructors ----
+
+    /// Null literal.
+    #[inline]
+    pub fn null() -> Self {
+        ArenaValue::Null
+    }
+
+    /// Boolean literal.
+    #[inline]
+    pub fn bool(b: bool) -> Self {
+        ArenaValue::Bool(b)
+    }
+
+    /// Numeric literal from i64 (no allocation).
+    #[inline]
+    pub fn from_i64(i: i64) -> Self {
+        ArenaValue::Number(NumberValue::from_i64(i))
+    }
+
+    /// Numeric literal from f64. Whole-valued floats within i64 range
+    /// collapse to the integer fast path automatically.
+    #[inline]
+    pub fn from_f64(f: f64) -> Self {
+        ArenaValue::Number(NumberValue::from_f64(f))
+    }
+
+    /// String literal — allocates the bytes in the arena.
+    #[inline]
+    pub fn from_str(s: &str, arena: &'a Bump) -> Self {
+        ArenaValue::String(arena.alloc_str(s))
+    }
+
+    // ---- Accessors ----
+
+    /// Returns true if this value is `Null` or wraps `Value::Null`.
+    #[inline]
+    pub fn is_null(&self) -> bool {
+        matches!(
+            self,
+            ArenaValue::Null | ArenaValue::InputRef(Value::Null)
+        )
+    }
+
+    /// Extract a boolean if this value is a `Bool` (or wraps one).
+    #[inline]
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Extract an `i64` if this value is integer-valued.
+    #[inline]
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            ArenaValue::Number(n) => n.as_i64(),
+            ArenaValue::InputRef(Value::Number(n)) => n.as_i64(),
+            _ => None,
+        }
+    }
+
+    /// Extract an `f64` if this value is numeric.
+    #[inline]
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            ArenaValue::Number(n) => Some(n.as_f64()),
+            ArenaValue::InputRef(Value::Number(n)) => n.as_f64(),
+            _ => None,
+        }
+    }
+
+    /// Extract a string slice if this value is a string.
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            ArenaValue::String(s) => Some(s),
+            ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Truthiness check matching JavaScript-default semantics. For
+    /// config-aware truthiness use [`is_truthy_arena`] from the crate root.
     #[inline]
     #[allow(dead_code)]
     pub(crate) fn is_truthy_default(&self) -> bool {

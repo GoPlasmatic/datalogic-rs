@@ -16,21 +16,21 @@ use std::fmt;
 /// Specialised numeric representation. Integers stay in i64 unless they
 /// overflow during arithmetic, in which case the result falls back to f64.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum NumberValue {
+pub enum NumberValue {
     Integer(i64),
     Float(f64),
 }
 
 impl NumberValue {
     #[inline]
-    pub(crate) fn from_i64(value: i64) -> Self {
+    pub fn from_i64(value: i64) -> Self {
         NumberValue::Integer(value)
     }
 
     /// Construct from an f64. Whole-valued floats within i64 range collapse
     /// to `Integer` so subsequent arithmetic uses the integer fast path.
     #[inline]
-    pub(crate) fn from_f64(value: f64) -> Self {
+    pub fn from_f64(value: f64) -> Self {
         if value.fract() == 0.0
             && !value.is_nan()
             && !value.is_infinite()
@@ -46,7 +46,7 @@ impl NumberValue {
     /// Construct from a `serde_json::Number`. Used at the API boundary when
     /// converting input `Value::Number` into the arena.
     #[inline]
-    pub(crate) fn from_serde(n: &SerdeNumber) -> Self {
+    pub fn from_serde(n: &SerdeNumber) -> Self {
         if let Some(i) = n.as_i64() {
             NumberValue::Integer(i)
         } else if let Some(u) = n.as_u64() {
@@ -67,7 +67,7 @@ impl NumberValue {
     /// produce `None` because `serde_json::Number` rejects them; callers
     /// must handle that case (typically by emitting `Value::Null`).
     #[inline]
-    pub(crate) fn to_serde(self) -> Option<SerdeNumber> {
+    pub fn to_serde(self) -> Option<SerdeNumber> {
         match self {
             NumberValue::Integer(i) => Some(SerdeNumber::from(i)),
             NumberValue::Float(f) => SerdeNumber::from_f64(f),
@@ -75,12 +75,12 @@ impl NumberValue {
     }
 
     #[inline]
-    pub(crate) fn is_integer(&self) -> bool {
+    pub fn is_integer(&self) -> bool {
         matches!(self, NumberValue::Integer(_))
     }
 
     #[inline]
-    pub(crate) fn as_i64(&self) -> Option<i64> {
+    pub fn as_i64(&self) -> Option<i64> {
         match *self {
             NumberValue::Integer(i) => Some(i),
             NumberValue::Float(f) => {
@@ -99,7 +99,7 @@ impl NumberValue {
     }
 
     #[inline]
-    pub(crate) fn as_f64(&self) -> f64 {
+    pub fn as_f64(&self) -> f64 {
         match *self {
             NumberValue::Integer(i) => i as f64,
             NumberValue::Float(f) => f,
@@ -107,7 +107,7 @@ impl NumberValue {
     }
 
     #[inline]
-    pub(crate) fn is_zero(&self) -> bool {
+    pub fn is_zero(&self) -> bool {
         match *self {
             NumberValue::Integer(i) => i == 0,
             NumberValue::Float(f) => f == 0.0,
@@ -115,12 +115,12 @@ impl NumberValue {
     }
 
     #[inline]
-    pub(crate) fn is_nan(&self) -> bool {
+    pub fn is_nan(&self) -> bool {
         matches!(*self, NumberValue::Float(f) if f.is_nan())
     }
 
     /// Add. Integer-integer uses checked_add; on overflow falls back to f64.
-    pub(crate) fn add(&self, other: &NumberValue) -> NumberValue {
+    pub fn add(&self, other: &NumberValue) -> NumberValue {
         match (*self, *other) {
             (NumberValue::Integer(a), NumberValue::Integer(b)) => match a.checked_add(b) {
                 Some(r) => NumberValue::Integer(r),
@@ -130,7 +130,7 @@ impl NumberValue {
         }
     }
 
-    pub(crate) fn sub(&self, other: &NumberValue) -> NumberValue {
+    pub fn sub(&self, other: &NumberValue) -> NumberValue {
         match (*self, *other) {
             (NumberValue::Integer(a), NumberValue::Integer(b)) => match a.checked_sub(b) {
                 Some(r) => NumberValue::Integer(r),
@@ -140,7 +140,7 @@ impl NumberValue {
         }
     }
 
-    pub(crate) fn mul(&self, other: &NumberValue) -> NumberValue {
+    pub fn mul(&self, other: &NumberValue) -> NumberValue {
         match (*self, *other) {
             (NumberValue::Integer(a), NumberValue::Integer(b)) => match a.checked_mul(b) {
                 Some(r) => NumberValue::Integer(r),
@@ -152,7 +152,7 @@ impl NumberValue {
 
     /// Divide. Returns `None` for division by zero — callers handle per
     /// `EvaluationConfig::division_by_zero` semantics.
-    pub(crate) fn div(&self, other: &NumberValue) -> Option<NumberValue> {
+    pub fn div(&self, other: &NumberValue) -> Option<NumberValue> {
         if other.is_zero() {
             return None;
         }
@@ -169,7 +169,7 @@ impl NumberValue {
     }
 
     /// Modulo. Returns `None` for division by zero — caller handles.
-    pub(crate) fn rem(&self, other: &NumberValue) -> Option<NumberValue> {
+    pub fn rem(&self, other: &NumberValue) -> Option<NumberValue> {
         if other.is_zero() {
             return None;
         }
@@ -179,7 +179,7 @@ impl NumberValue {
         }
     }
 
-    pub(crate) fn neg(&self) -> NumberValue {
+    pub fn neg(&self) -> NumberValue {
         match *self {
             NumberValue::Integer(i) => match i.checked_neg() {
                 Some(r) => NumberValue::Integer(r),
@@ -189,7 +189,7 @@ impl NumberValue {
         }
     }
 
-    pub(crate) fn abs(&self) -> NumberValue {
+    pub fn abs(&self) -> NumberValue {
         match *self {
             NumberValue::Integer(i) => match i.checked_abs() {
                 Some(r) => NumberValue::Integer(r),

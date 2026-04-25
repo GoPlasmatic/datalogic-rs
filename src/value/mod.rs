@@ -1,8 +1,9 @@
-//! Internal value types for the arena evaluation path.
+//! Numeric type used by the arena evaluation path.
 //!
-//! These types are `pub(crate)` only — they never appear in public APIs.
-//! See `ARENA_RFC.md` and the migration plan for context.
+//! [`NumberValue`] is also re-exported from the crate root so users
+//! implementing [`crate::ArenaOperator`] can construct numeric results
+//! without depending on this internal module path.
 
-pub(crate) mod number;
+pub mod number;
 
-pub(crate) use number::NumberValue;
+pub use number::NumberValue;

@@ -111,8 +111,12 @@ use crate::{
 /// ```
 pub struct DataLogic {
     // No more builtin_operators array - OpCode handles dispatch directly!
-    /// HashMap for custom operators only
+    /// Legacy `Operator`-trait custom operators.
     custom_operators: HashMap<String, Box<dyn Operator>>,
+    /// `ArenaOperator`-trait custom operators (opt-in zero-clone variant).
+    /// Looked up first; falls through to `custom_operators` for legacy ops
+    /// or names registered only under the legacy trait.
+    custom_arena_operators: HashMap<String, Box<dyn crate::ArenaOperator>>,
     /// Flag to preserve structure of objects with unknown operators
     #[cfg(feature = "preserve")]
     preserve_structure: bool,
@@ -142,6 +146,7 @@ impl DataLogic {
     pub fn new() -> Self {
         Self {
             custom_operators: HashMap::new(),
+            custom_arena_operators: HashMap::new(),
             #[cfg(feature = "preserve")]
             preserve_structure: false,
             config: EvaluationConfig::default(),
@@ -202,6 +207,7 @@ impl DataLogic {
     pub fn with_preserve_structure() -> Self {
         Self {
             custom_operators: HashMap::new(),
+            custom_arena_operators: HashMap::new(),
             preserve_structure: true,
             config: EvaluationConfig::default(),
         }
@@ -225,6 +231,7 @@ impl DataLogic {
     pub fn with_config(config: EvaluationConfig) -> Self {
         Self {
             custom_operators: HashMap::new(),
+            custom_arena_operators: HashMap::new(),
             #[cfg(feature = "preserve")]
             preserve_structure: false,
             config,
@@ -251,6 +258,7 @@ impl DataLogic {
     pub fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
         Self {
             custom_operators: HashMap::new(),
+            custom_arena_operators: HashMap::new(),
             preserve_structure,
             config,
         }
@@ -313,6 +321,49 @@ impl DataLogic {
         self.custom_operators.insert(name, operator);
     }
 
+    /// Registers a zero-clone arena-mode custom operator.
+    ///
+    /// Implementations of [`crate::ArenaOperator`] take pre-evaluated args
+    /// as `&'a ArenaValue<'a>` and return an arena-allocated result —
+    /// avoiding the per-call promotion to owned [`Value`] that the legacy
+    /// [`Operator`] trait incurs.
+    ///
+    /// When both an arena and a legacy operator are registered under the
+    /// same name, the arena form takes precedence.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Result};
+    /// use bumpalo::Bump;
+    /// use serde_json::json;
+    ///
+    /// struct Plus42;
+    /// impl ArenaOperator for Plus42 {
+    ///     fn evaluate_arena<'a>(
+    ///         &self,
+    ///         args: &[&'a ArenaValue<'a>],
+    ///         _actx: &mut ArenaContextStack<'a>,
+    ///         arena: &'a Bump,
+    ///     ) -> Result<&'a ArenaValue<'a>> {
+    ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
+    ///         Ok(arena.alloc(ArenaValue::from_f64(n + 42.0)))
+    ///     }
+    /// }
+    ///
+    /// let mut engine = DataLogic::new();
+    /// engine.add_arena_operator("plus42".into(), Box::new(Plus42));
+    /// let compiled = engine.compile(&json!({"plus42": 8})).unwrap();
+    /// assert_eq!(engine.evaluate_ref(&compiled, &json!({})).unwrap(), json!(50));
+    /// ```
+    pub fn add_arena_operator(
+        &mut self,
+        name: String,
+        operator: Box<dyn crate::ArenaOperator>,
+    ) {
+        self.custom_arena_operators.insert(name, operator);
+    }
+
     /// Checks if a custom operator with the given name is registered.
     ///
     /// # Arguments
@@ -321,9 +372,10 @@ impl DataLogic {
     ///
     /// # Returns
     ///
-    /// `true` if the operator exists, `false` otherwise.
+    /// `true` if the operator exists (arena or legacy form), `false` otherwise.
     pub fn has_custom_operator(&self, name: &str) -> bool {
         self.custom_operators.contains_key(name)
+            || self.custom_arena_operators.contains_key(name)
     }
 
     /// Compiles a JSON logic expression into an optimized form.
@@ -665,15 +717,39 @@ impl DataLogic {
             }
 
             CompiledNode::CustomOperator(data) => {
-                let operator = self
-                    .custom_operators
-                    .get(&data.name)
-                    .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
-
-                let arg_values: Vec<Value> = data.args.iter().map(node_to_value).collect();
-                let evaluator = SimpleEvaluator::new(self);
-
-                operator.evaluate(&arg_values, context, &evaluator)
+                // Arena form takes precedence — synthesize a one-shot arena
+                // and run the arena operator with promoted args. Matches the
+                // arena-dispatch precedence so behavior is consistent regardless
+                // of which path is in use.
+                if let Some(arena_op) = self.custom_arena_operators.get(&data.name) {
+                    use crate::arena::{ArenaContextStack, ArenaGuard, arena_to_value};
+                    let guard = ArenaGuard::acquire(4096);
+                    let arena = guard.arena();
+                    let mut evaluated: Vec<Value> = Vec::with_capacity(data.args.len());
+                    for arg in data.args.iter() {
+                        evaluated.push(self.evaluate_node_with_mode::<M>(arg, context, mode)?);
+                    }
+                    let mut arena_args: bumpalo::collections::Vec<&crate::arena::ArenaValue> =
+                        bumpalo::collections::Vec::with_capacity_in(evaluated.len(), arena);
+                    for v in &evaluated {
+                        let av: &crate::arena::ArenaValue =
+                            arena.alloc(crate::arena::value_to_arena(v, arena));
+                        arena_args.push(av);
+                    }
+                    let frame_ref = context.current();
+                    let root_input = frame_ref.data();
+                    let mut actx = ArenaContextStack::new(arena, root_input);
+                    let result = arena_op.evaluate_arena(&arena_args, &mut actx, arena)?;
+                    return Ok(arena_to_value(result));
+                }
+                // Legacy operator: direct dispatch.
+                if let Some(operator) = self.custom_operators.get(&data.name) {
+                    let arg_values: Vec<Value> =
+                        data.args.iter().map(node_to_value).collect();
+                    let evaluator = SimpleEvaluator::new(self);
+                    return operator.evaluate(&arg_values, context, &evaluator);
+                }
+                Err(Error::InvalidOperator(data.name.clone()))
             }
 
             #[cfg(feature = "preserve")]
@@ -1272,6 +1348,20 @@ impl DataLogic {
             // user's operator, wrap the result back into the arena. The
             // round-trip cost is bounded by the user op's arg count.
             CompiledNode::CustomOperator(data) => {
+                // Try the arena form first (zero-clone fast path). If
+                // registered under this name, dispatch and return — the
+                // legacy form is never reached.
+                if let Some(arena_op) = self.custom_arena_operators.get(&data.name) {
+                    let mut arena_args: bumpalo::collections::Vec<'a, &'a ArenaValue<'a>> =
+                        bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
+                    for arg in data.args.iter() {
+                        arena_args.push(self.evaluate_arena_node(arg, actx, context, arena)?);
+                    }
+                    return arena_op.evaluate_arena(&arena_args, actx, arena);
+                }
+
+                // Legacy `Operator` form — promote args to owned `Value`
+                // and call through the existing trait.
                 let operator = self
                     .custom_operators
                     .get(&data.name)
@@ -1282,11 +1372,7 @@ impl DataLogic {
                     owned_args.push(crate::arena::arena_to_value(av));
                 }
                 let evaluator = SimpleEvaluator::new(self);
-                // Translate evaluated args into synthetic CompiledNode::Value
-                // entries so the user's op sees pre-resolved values via
-                // evaluator.evaluate. Existing custom-op contract preserved.
-                let synth_args: Vec<Value> = owned_args;
-                let result = operator.evaluate(&synth_args, context, &evaluator)?;
+                let result = operator.evaluate(&owned_args, context, &evaluator)?;
                 Ok(arena.alloc(value_to_arena(&result, arena)))
             }
 

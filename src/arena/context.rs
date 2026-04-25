@@ -122,7 +122,7 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
 /// root borrows from the caller's `Arc<Value>` for the same `'a`.
-pub(crate) struct ArenaContextStack<'a> {
+pub struct ArenaContextStack<'a> {
     root: &'a Value,
     frames: Vec<ArenaContextFrame<'a>>,
     /// Available for arena-allocating frame-local strings (object iteration).
@@ -143,15 +143,15 @@ impl<'a> ArenaContextStack<'a> {
         }
     }
 
-    /// Get the root input data (borrowed from the caller's `Arc<Value>`).
+    /// Get the root input data (borrowed for the call's duration).
     #[inline]
-    pub(crate) fn root_input(&self) -> &'a Value {
+    pub fn root_input(&self) -> &'a Value {
         self.root
     }
 
-    /// Current depth (number of pushed frames).
+    /// Current depth (number of pushed iteration frames).
     #[inline]
-    pub(crate) fn depth(&self) -> usize {
+    pub fn depth(&self) -> usize {
         self.frames.len()
     }
 
