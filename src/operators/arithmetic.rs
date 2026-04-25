@@ -1697,6 +1697,7 @@ fn arena_one_arg_arith<'a>(
 /// - DateTime - DateTime → Duration string.
 /// - DateTime - Duration → DateTime ISO string.
 /// - Duration - Duration → Duration string.
+///
 /// Returns `None` when neither operand is a datetime/duration form.
 #[cfg(feature = "datetime")]
 #[inline]
@@ -1741,6 +1742,7 @@ fn arena_datetime_subtract<'a>(
 /// Native arena datetime/duration add.
 /// - DateTime + Duration → DateTime ISO string.
 /// - Duration + Duration → Duration string.
+///
 /// Returns `None` when neither operand is a datetime/duration form.
 #[cfg(feature = "datetime")]
 #[inline]
@@ -1776,6 +1778,7 @@ fn arena_datetime_add<'a>(
 /// Native arena duration/scalar multiply.
 /// - Duration * scalar → Duration string.
 /// - scalar * Duration → Duration string.
+///
 /// Returns `None` when neither operand is a duration paired with a number.
 #[cfg(feature = "datetime")]
 #[inline]
