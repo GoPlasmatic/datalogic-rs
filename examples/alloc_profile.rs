@@ -170,6 +170,49 @@ fn main() {
         iters,
     );
 
+    // ---- Phase 5 array-consumer ops ----
+    measure(
+        "max(xs) on 10 nums [ARENA]",
+        &engine,
+        serde_json::json!({"max": {"var":"xs"}}),
+        serde_json::json!({"xs": [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]}),
+        iters,
+    );
+    measure(
+        "+(xs) sum 10 nums [ARENA]",
+        &engine,
+        serde_json::json!({"+": {"var":"xs"}}),
+        serde_json::json!({"xs": [1,2,3,4,5,6,7,8,9,10]}),
+        iters,
+    );
+    // chained.json complex pattern: max(map(filter(people, eng), salary))
+    measure(
+        "max(map(filter())), 10 ppl [ARENA]",
+        &engine,
+        serde_json::json!({"max": {"map": [{"filter": [{"var":"people"}, {"===": [{"var":"dept"}, "eng"]}]}, {"var":"salary"}]}}),
+        serde_json::json!({"people": [
+            {"name":"a", "dept":"eng", "salary": 100},
+            {"name":"b", "dept":"sales", "salary": 200},
+            {"name":"c", "dept":"eng", "salary": 150},
+            {"name":"d", "dept":"sales", "salary": 175},
+            {"name":"e", "dept":"eng", "salary": 125},
+            {"name":"f", "dept":"sales", "salary": 90},
+            {"name":"g", "dept":"eng", "salary": 200},
+            {"name":"h", "dept":"sales", "salary": 110},
+            {"name":"i", "dept":"eng", "salary": 175},
+            {"name":"j", "dept":"sales", "salary": 80}
+        ]}),
+        iters,
+    );
+    // sum-after-filter — common business pattern
+    measure(
+        "+(map(filter(), amt)), 10 [ARENA]",
+        &engine,
+        serde_json::json!({"+": {"map": [{"filter": [{"var":"items"}, {"===": [{"var":"k"}, 1]}]}, {"var":"amt"}]}}),
+        serde_json::json!({"items": (1..=10).map(|i| serde_json::json!({"k": i % 2, "amt": i * 10})).collect::<Vec<_>>()}),
+        iters,
+    );
+
     // ---- Sanity: should not regress ----
     measure(
         "sort by field, 10",

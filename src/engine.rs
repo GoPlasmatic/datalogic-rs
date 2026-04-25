@@ -745,6 +745,27 @@ impl DataLogic {
                 ..
             } => crate::operators::array::evaluate_length_arena(args, context, self, arena, root),
 
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Max,
+                args,
+                ..
+            } => crate::operators::arithmetic::evaluate_max_arena(args, context, self, arena, root),
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Min,
+                args,
+                ..
+            } => crate::operators::arithmetic::evaluate_min_arena(args, context, self, arena, root),
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Add,
+                args,
+                ..
+            } => crate::operators::arithmetic::evaluate_add_arena(args, context, self, arena, root),
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Multiply,
+                args,
+                ..
+            } => crate::operators::arithmetic::evaluate_multiply_arena(args, context, self, arena, root),
+
             // Fallback: bridge through the existing value-mode evaluator and
             // promote the result into the arena. No win at this point but
             // composition still works (parent arena ops can consume us).

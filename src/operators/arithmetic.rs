@@ -1093,3 +1093,228 @@ pub fn evaluate_min(
     // Return the actual value that was min (preserving integer type)
     Ok(min_value.unwrap_or(Value::Null))
 }
+
+// =============================================================================
+// Arena-mode array-consumer ops (Phase 5: max / min / + / *)
+//
+// These are "pipeline tops" — they consume an array (typically produced by an
+// upstream filter/map) and return a single Number. They benefit from arena
+// dispatch in two ways:
+//   1. Input borrow: when args[0] is a root var, no clone of the input array.
+//   2. Composition: when args[0] is filter/map/all/some/none, the arena
+//      intermediate slice is consumed directly without value-mode bridging.
+//
+// Each op handles the SINGLE-ARG ARRAY form (e.g. `max(items)` over an array).
+// The multi-arg form (`max(a, b, c)`) stays on the value path — it doesn't
+// involve array iteration so arena gives no win.
+// =============================================================================
+
+use crate::arena::{ArenaValue, value_to_arena};
+use crate::operators::array::{ResolvedInput, resolve_iter_input};
+use bumpalo::Bump;
+
+/// Generic helper for max/min over an arena-iterable input. `pick_better`
+/// returns true when `candidate_f` should replace `best_f` (strictly better).
+#[inline]
+#[allow(clippy::too_many_arguments)] // 5 contextual + init/pick_better/op_name
+fn arena_min_max<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+    init: f64,
+    pick_better: fn(f64, f64) -> bool,
+    op_name: &str, // for bridge fallback
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        // Multi-arg max/min isn't a pipeline top — bridge.
+        let v = bridge_arith(op_name, args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        ResolvedInput::Bridge => {
+            let v = bridge_arith(op_name, args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+    };
+
+    if src.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let mut best_f = init;
+    let mut best_idx: Option<usize> = None;
+    let len = src.len();
+    for i in 0..len {
+        match src.get(i) {
+            Value::Number(n) => {
+                if let Some(f) = n.as_f64()
+                    && pick_better(f, best_f)
+                {
+                    best_f = f;
+                    best_idx = Some(i);
+                }
+            }
+            _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        }
+    }
+
+    match best_idx {
+        Some(i) => {
+            // Borrow the original Number to preserve integer typing — the arena
+            // result is just an InputRef, no Number copy.
+            Ok(arena.alloc(ArenaValue::InputRef(src.get(i))))
+        }
+        None => Ok(arena.alloc(ArenaValue::Null)),
+    }
+}
+
+/// Arena-mode max(single_array_arg).
+#[inline]
+pub(crate) fn evaluate_max_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    arena_min_max(
+        args,
+        context,
+        engine,
+        arena,
+        root,
+        f64::NEG_INFINITY,
+        |c, b| c > b,
+        "max",
+    )
+}
+
+/// Arena-mode min(single_array_arg).
+#[inline]
+pub(crate) fn evaluate_min_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    arena_min_max(
+        args,
+        context,
+        engine,
+        arena,
+        root,
+        f64::INFINITY,
+        |c, b| c < b,
+        "min",
+    )
+}
+
+/// Arena-mode +(single_array_arg) — sum over array. Multi-arg form bridges.
+#[inline]
+pub(crate) fn evaluate_add_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        let v = bridge_arith("+", args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    arena_fold(args, context, engine, arena, root, "+", 0.0, |acc, x| acc + x)
+}
+
+/// Arena-mode *(single_array_arg) — product over array. Multi-arg form bridges.
+#[inline]
+pub(crate) fn evaluate_multiply_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        let v = bridge_arith("*", args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    arena_fold(args, context, engine, arena, root, "*", 1.0, |acc, x| acc * x)
+}
+
+/// Generic fold for sum/product over an arena-iterable input. Preserves
+/// integer typing when the result fits.
+#[inline]
+#[allow(clippy::too_many_arguments)] // 5 contextual + op_name/init/combine
+fn arena_fold<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+    op_name: &str,
+    init: f64,
+    combine: fn(f64, f64) -> f64,
+) -> Result<&'a ArenaValue<'a>> {
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => {
+            // Match value-mode: empty +/* returns the identity? Existing impl
+            // varies — defer to value-mode for definitive semantics.
+            let v = bridge_arith(op_name, args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+        ResolvedInput::Bridge => {
+            let v = bridge_arith(op_name, args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+    };
+
+    let mut acc_f = init;
+    let mut all_int = true;
+    let len = src.len();
+    for i in 0..len {
+        match src.get(i) {
+            Value::Number(n) => {
+                if let Some(f) = n.as_f64() {
+                    acc_f = combine(acc_f, f);
+                    if all_int && n.as_i64().is_none() {
+                        all_int = false;
+                    }
+                } else {
+                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+                }
+            }
+            _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        }
+    }
+
+    let n = if all_int && acc_f.fract() == 0.0 && acc_f >= i64::MIN as f64 && acc_f <= i64::MAX as f64 {
+        serde_json::Number::from(acc_f as i64)
+    } else {
+        serde_json::Number::from_f64(acc_f).unwrap_or_else(|| serde_json::Number::from(0))
+    };
+    Ok(arena.alloc(ArenaValue::Number(n)))
+}
+
+/// Bridge an arithmetic op to its value-mode implementation.
+#[inline]
+fn bridge_arith(
+    op_name: &str,
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+) -> Result<Value> {
+    match op_name {
+        "max" => evaluate_max(args, context, engine),
+        "min" => evaluate_min(args, context, engine),
+        "+" => evaluate_add(args, context, engine),
+        "*" => evaluate_multiply(args, context, engine),
+        _ => unreachable!("unknown arena arith bridge: {}", op_name),
+    }
+}

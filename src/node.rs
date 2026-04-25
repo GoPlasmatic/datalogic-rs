@@ -335,6 +335,19 @@ fn root_uses_arena_pure(node: &CompiledNode) -> bool {
             args,
             ..
         } => arena_friendly_iter_input_pure(args),
+        // Phase 5: array-consumer ops at root. Single-arg form means the arg
+        // is an array; for + and *, multi-arg is the binary form (a + b)
+        // which has no arena win.
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Max | OpCode::Min,
+            args,
+            ..
+        } => args.len() == 1 && arena_friendly_iter_input_pure(args),
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Add | OpCode::Multiply,
+            args,
+            ..
+        } => args.len() == 1 && arena_friendly_iter_input_pure(args),
         CompiledNode::BuiltinOperator {
             opcode: OpCode::Length,
             args,

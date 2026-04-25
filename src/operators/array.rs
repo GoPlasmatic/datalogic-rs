@@ -1651,7 +1651,7 @@ fn normalize_index(index: i64, len: i64) -> i64 {
 /// Unified view over an iterator op's input collection. Either points at the
 /// caller's input data (`&[Value]`) or at an arena slice of `&Value`s
 /// extracted from an upstream arena op's `InputRef` items.
-enum IterSrc<'a> {
+pub(crate) enum IterSrc<'a> {
     /// Direct slice from caller's input data (zero allocs).
     Direct(&'a [Value]),
     /// Arena-allocated slice of references gathered from `ArenaValue::InputRef`
@@ -1661,7 +1661,7 @@ enum IterSrc<'a> {
 
 impl<'a> IterSrc<'a> {
     #[inline]
-    fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         match self {
             Self::Direct(s) => s.len(),
             Self::Refs(s) => s.len(),
@@ -1669,7 +1669,7 @@ impl<'a> IterSrc<'a> {
     }
 
     #[inline]
-    fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
@@ -1677,7 +1677,7 @@ impl<'a> IterSrc<'a> {
     /// lifetime (either through the caller's `Arc<Value>` or via the upstream
     /// op's `InputRef`).
     #[inline]
-    fn get(&self, i: usize) -> &'a Value {
+    pub(crate) fn get(&self, i: usize) -> &'a Value {
         match self {
             Self::Direct(s) => &s[i],
             Self::Refs(s) => s[i],
@@ -1686,7 +1686,7 @@ impl<'a> IterSrc<'a> {
 }
 
 /// Outcome of resolving an iterator op's first arg in arena mode.
-enum ResolvedInput<'a> {
+pub(crate) enum ResolvedInput<'a> {
     /// Iterable input — proceed with iteration.
     Iterable(IterSrc<'a>),
     /// Empty/null input — caller returns its empty-collection result.
@@ -1706,7 +1706,7 @@ enum ResolvedInput<'a> {
 /// while the caller mutates `context` for predicate evaluation, because the
 /// underlying data lives in either the input `Arc` (held for the call's
 /// duration) or arena slices (allocated on the same arena).
-fn resolve_iter_input<'a>(
+pub(crate) fn resolve_iter_input<'a>(
     arg: &CompiledNode,
     context: &mut ContextStack,
     engine: &DataLogic,
