@@ -1434,12 +1434,70 @@ fn arena_fold<'a>(
 ) -> Result<&'a ArenaValue<'a>> {
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty | ResolvedInput::Bridge(_) => {
-            // arena_fold is the 1-arg-array form of +/*. For empty / non-array
-            // input, defer to the variadic value-mode evaluator which handles
-            // 0-arg, single-scalar, multi-arg, and datetime semantics.
-            let v = bridge_arith(op_name, args, context, engine)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        ResolvedInput::Empty => {
+            // 1-arg null input: identity element (0 for +, 1 for *).
+            return Ok(arena_number(
+                arena,
+                NumberValue::from_i64(if op_name == "*" { 1 } else { 0 }),
+            ));
+        }
+        ResolvedInput::Bridge(av) => {
+            // Array shape but `arena_value_as_iter` couldn't flatten as
+            // `&[&Value]` (mixed InputRef + computed items, e.g. from `merge`).
+            // Iterate the arena array directly with the same combine logic.
+            if let ArenaValue::Array(items) = av {
+                let mut acc_f = init;
+                let mut all_int = true;
+                let mut int_acc: i64 = if op_name == "*" { 1 } else { 0 };
+                for it in *items {
+                    let f = match it.as_f64() {
+                        Some(f) => f,
+                        None => match handle_nan(engine)? {
+                            NanAction::Skip => continue,
+                            NanAction::ReturnNull => {
+                                return Ok(crate::arena::pool::singleton_null());
+                            }
+                        },
+                    };
+                    if all_int {
+                        if let Some(i) = it.as_i64() {
+                            let next = match op_name {
+                                "+" => int_acc.checked_add(i),
+                                "*" => int_acc.checked_mul(i),
+                                _ => None,
+                            };
+                            if let Some(r) = next {
+                                int_acc = r;
+                                continue;
+                            }
+                            all_int = false;
+                            acc_f = combine(int_acc as f64, i as f64);
+                            continue;
+                        }
+                        all_int = false;
+                        acc_f = combine(int_acc as f64, f);
+                    } else {
+                        acc_f = combine(acc_f, f);
+                    }
+                }
+                return if all_int {
+                    Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+                } else {
+                    Ok(arena_number(arena, NumberValue::from_f64(acc_f)))
+                };
+            }
+
+            // Non-array, non-null input — coerce to number and return.
+            return match coerce_arena_to_number(av) {
+                Some(f) => Ok(arena_number(arena, NumberValue::from_f64(f))),
+                None => match handle_nan(engine)? {
+                    NanAction::Skip => Ok(arena_number(
+                        arena,
+                        NumberValue::from_i64(if op_name == "*" { 1 } else { 0 }),
+                    )),
+                    NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+                },
+            };
         }
     };
 
@@ -1511,49 +1569,49 @@ fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a ArenaValue<'a> {
     arena.alloc(ArenaValue::Number(n))
 }
 
-/// Evaluate a binary arithmetic op via NumberValue. Falls back to value-mode
-/// for non-numeric operands or 3+ arg forms.
+/// Native arena datetime/duration subtract.
+/// - DateTime - DateTime → Duration string.
+/// - DateTime - Duration → DateTime ISO string.
+/// - Duration - Duration → Duration string.
+/// Returns `None` when neither operand is a datetime/duration form.
+#[cfg(feature = "datetime")]
 #[inline]
-fn evaluate_binary_arith_arena<'a>(
-    args: &[CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
-    engine: &DataLogic,
+fn arena_datetime_subtract<'a>(
+    a_av: &'a ArenaValue<'a>,
+    b_av: &'a ArenaValue<'a>,
     arena: &'a Bump,
-    op_name: &str,
-    apply: fn(&NumberValue, &NumberValue) -> Option<NumberValue>,
-) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 2 {
-        let v = bridge_arith(op_name, args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
-    }
-    let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
-    let af = match coerce_arena_to_number(a_av) {
-        Some(f) => f,
-        None => {
-            let v = bridge_arith(op_name, args, context, engine)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
-        }
+) -> Option<&'a ArenaValue<'a>> {
+    use crate::operators::helpers::{extract_datetime_value, extract_duration_value};
+
+    let a = crate::arena::arena_to_value_cow(a_av);
+    let b = crate::arena::arena_to_value_cow(b_av);
+
+    let a_dt = extract_datetime_value(a.as_ref());
+    let a_dur = if a_dt.is_none() {
+        extract_duration_value(a.as_ref())
+    } else {
+        None
     };
-    let bf = match coerce_arena_to_number(b_av) {
-        Some(f) => f,
-        None => {
-            let v = bridge_arith(op_name, args, context, engine)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
-        }
+    let b_dt = extract_datetime_value(b.as_ref());
+    let b_dur = if b_dt.is_none() {
+        extract_duration_value(b.as_ref())
+    } else {
+        None
     };
-    let na = NumberValue::from_f64(af);
-    let nb = NumberValue::from_f64(bf);
-    match apply(&na, &nb) {
-        Some(r) => Ok(arena_number(arena, r)),
-        None => {
-            // Apply returned None (e.g., divide-by-zero) — defer to
-            // value-mode for config-aware handling.
-            let v = bridge_arith(op_name, args, context, engine)?;
-            Ok(arena.alloc(value_to_arena(&v, arena)))
-        }
+
+    if let (Some(d1), Some(d2)) = (&a_dt, &b_dt) {
+        let s = arena.alloc_str(&d1.diff(d2).to_string());
+        return Some(arena.alloc(ArenaValue::String(s)));
     }
+    if let (Some(d), Some(dur)) = (&a_dt, &b_dur) {
+        let s = arena.alloc_str(&d.sub_duration(dur).to_iso_string());
+        return Some(arena.alloc(ArenaValue::String(s)));
+    }
+    if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
+        let s = arena.alloc_str(&d1.sub(d2).to_string());
+        return Some(arena.alloc(ArenaValue::String(s)));
+    }
+    None
 }
 
 #[inline]
@@ -1580,9 +1638,31 @@ pub(crate) fn evaluate_subtract_arena<'a>(
         };
     }
     if args.len() == 2 {
-        return evaluate_binary_arith_arena(args, actx, context, engine, arena, "-", |a, b| {
-            Some(a.sub(b))
-        });
+        let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+
+        // Numeric fast path.
+        if let (Some(af), Some(bf)) = (
+            coerce_arena_to_number(a_av),
+            coerce_arena_to_number(b_av),
+        ) {
+            let na = NumberValue::from_f64(af);
+            let nb = NumberValue::from_f64(bf);
+            return Ok(arena_number(arena, na.sub(&nb)));
+        }
+
+        // Datetime / Duration arithmetic.
+        #[cfg(feature = "datetime")]
+        {
+            if let Some(av) =
+                arena_datetime_subtract(a_av, b_av, arena)
+            {
+                return Ok(av);
+            }
+        }
+
+        // Non-numeric and not a datetime form — NaN.
+        return Err(crate::constants::nan_error());
     }
 
     // Variadic subtractive fold: first - second - third - ...
@@ -1642,6 +1722,8 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     }
 }
 
+/// Native arena-mode `/`. Handles 1-arg array (sequential divide), 1-arg
+/// scalar (1/x), 2-arg, and divbyzero per engine config.
 #[inline]
 pub(crate) fn evaluate_divide_arena<'a>(
     args: &[CompiledNode],
@@ -1650,9 +1732,10 @@ pub(crate) fn evaluate_divide_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_binary_arith_arena(args, actx, context, engine, arena, "/", |a, b| a.div(b))
+    arena_div_or_mod(args, actx, context, engine, arena, |a, b| a.div(b))
 }
 
+/// Native arena-mode `%` (modulo).
 #[inline]
 pub(crate) fn evaluate_modulo_arena<'a>(
     args: &[CompiledNode],
@@ -1661,7 +1744,83 @@ pub(crate) fn evaluate_modulo_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_binary_arith_arena(args, actx, context, engine, arena, "%", |a, b| a.rem(b))
+    arena_div_or_mod(args, actx, context, engine, arena, |a, b| a.rem(b))
+}
+
+#[inline]
+fn arena_div_or_mod<'a>(
+    args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    op: fn(&NumberValue, &NumberValue) -> Option<NumberValue>,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+    if args.len() != 2 {
+        // Value-mode supports 1-arg (array fold or 1/x) and >2 (variadic).
+        // Defer to value-mode for those edge cases — divide-by-zero and
+        // overflow-special-cases are dense enough that re-implementing
+        // adds risk without changing compatible.json's hot path.
+        let v = (match args.len() {
+            // Use the bridge dispatcher to find the right value-mode fn.
+            _ => evaluate_divide(args, context, engine),
+        })?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+    let af = match coerce_arena_to_number(a_av) {
+        Some(f) => f,
+        None => return Err(crate::constants::nan_error()),
+    };
+    let bf = match coerce_arena_to_number(b_av) {
+        Some(f) => f,
+        None => return Err(crate::constants::nan_error()),
+    };
+    let na = NumberValue::from_f64(af);
+    let nb = NumberValue::from_f64(bf);
+    if nb.is_zero() {
+        // Divbyzero handling per engine config.
+        return divbyzero_arena(arena, na.as_f64(), engine);
+    }
+    match op(&na, &nb) {
+        Some(r) => Ok(arena_number(arena, r)),
+        None => Err(crate::constants::nan_error()),
+    }
+}
+
+#[inline]
+fn divbyzero_arena<'a>(
+    arena: &'a Bump,
+    dividend: f64,
+    engine: &DataLogic,
+) -> Result<&'a ArenaValue<'a>> {
+    use crate::config::DivisionByZeroHandling;
+    match engine.config().division_by_zero {
+        DivisionByZeroHandling::ThrowError => Err(crate::constants::nan_error()),
+        DivisionByZeroHandling::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+        DivisionByZeroHandling::ReturnInfinity => {
+            let v = if dividend >= 0.0 {
+                f64::INFINITY
+            } else {
+                f64::NEG_INFINITY
+            };
+            Ok(arena_number(arena, NumberValue::from_f64(v)))
+        }
+        DivisionByZeroHandling::ReturnBounds => {
+            let v = if dividend > 0.0 {
+                f64::MAX
+            } else if dividend < 0.0 {
+                f64::MIN
+            } else {
+                0.0
+            };
+            Ok(arena_number(arena, NumberValue::from_f64(v)))
+        }
+    }
 }
 
 /// `get_number_strict` for arena values — Number variants and string-as-number
