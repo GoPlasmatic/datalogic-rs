@@ -9,7 +9,9 @@ use crate::constants::INVALID_ARGS;
 use crate::eval_mode::Mode;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
+use crate::arena::{ArenaValue, value_to_arena};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
+use bumpalo::Bump;
 
 /// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
 /// Used by filter/quantifier fast paths to detect values that can be evaluated once before the loop.
@@ -1628,4 +1630,187 @@ fn normalize_index(index: i64, len: i64) -> i64 {
     } else {
         index.min(len)
     }
+}
+
+// =============================================================================
+// Arena-mode operators (POC: filter + length).
+//
+// These return `&'a ArenaValue<'a>` and may borrow into the caller's input
+// `Value` tree via `ArenaValue::InputRef`. Predicate evaluation still uses the
+// existing value-mode path (`engine.evaluate_node`) — the arena win comes from
+// (a) borrowing the input collection instead of cloning it and (b) staying in
+// the arena when our output is consumed by another arena-mode operator.
+// =============================================================================
+
+/// Arena-mode `filter`. POC: handles only the case where the input collection
+/// resolves at root scope (the dominant pattern in real workloads). Falls back
+/// to the value-mode filter via the dispatch hub for everything else.
+#[inline]
+pub(crate) fn evaluate_filter_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    // Resolve input collection. Try the borrow-from-root fast path first;
+    // otherwise fall back to value-mode evaluate (then promote to arena).
+    let collection_ref: &'a Value =
+        if let Some(borrowed) = try_borrow_collection_from_root(&args[0], context, root) {
+            borrowed
+        } else {
+            // Bridge: evaluate normally, store in arena, treat as InputRef-equivalent.
+            // For POC simplicity, we promote the cloned Vec into the arena.
+            let v = engine.evaluate_node(&args[0], context)?;
+            let promoted = arena.alloc(v);
+            promoted
+        };
+
+    let predicate = &args[1];
+
+    let arr = match collection_ref {
+        Value::Array(a) => a,
+        Value::Null => {
+            return Ok(arena.alloc(ArenaValue::Array(&[])));
+        }
+        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+    };
+
+    let len = arr.len();
+    if len == 0 {
+        return Ok(arena.alloc(ArenaValue::Array(&[])));
+    }
+
+    // FAST PATH: detect predicates that can be evaluated by direct field
+    // traversal — no context push, no item clone. Mirrors the existing
+    // value-mode `try_extract_filter_field_cmp` and `FastPredicate` paths.
+    // This is where the arena win actually materializes: zero allocations
+    // during iteration, only the result slice in the arena.
+    if let CompiledNode::BuiltinOperator {
+        opcode,
+        args: pred_args,
+        ..
+    } = predicate
+        && pred_args.len() == 2
+        && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
+    {
+        let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
+            .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
+        if let Some((segments, invariant_node)) = fast {
+            let invariant_val = evaluate_invariant_no_push(invariant_node, context, engine)?;
+            let is_eq = matches!(opcode, OpCode::StrictEquals);
+            let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+                bumpalo::collections::Vec::with_capacity_in(len, arena);
+            for item in arr.iter() {
+                let matches =
+                    super::variable::try_traverse_segments(item, segments) == Some(&invariant_val);
+                if matches == is_eq {
+                    results.push(ArenaValue::InputRef(item));
+                }
+            }
+            return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
+        }
+    }
+
+    if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+        let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(len, arena);
+        for item in arr.iter() {
+            if fast_pred.evaluate(item) {
+                results.push(ArenaValue::InputRef(item));
+            }
+        }
+        return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
+    }
+
+    // GENERAL PATH: predicate needs the iteration context. Pay the
+    // per-item clone (item.clone() into context frame) — same cost as
+    // existing value-mode filter for this predicate shape.
+    let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(len, arena);
+    let mut pushed = false;
+    for (index, item) in arr.iter().enumerate() {
+        if !pushed {
+            context.push_with_index(item.clone(), 0);
+            pushed = true;
+        } else {
+            context.replace_top_data(item.clone(), index);
+        }
+        let keep = engine.evaluate_node(predicate, context)?;
+        if is_truthy(&keep, engine) {
+            results.push(ArenaValue::InputRef(item));
+        }
+    }
+    if pushed {
+        context.pop();
+    }
+    Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
+}
+
+/// Arena-mode `length`. Critical for the COMPOSITION test: when called as
+/// `length(filter(...))`, the filter result lives in the arena and length
+/// just reads the slice length — zero conversion cost on the intermediate.
+#[cfg(feature = "ext-string")]
+#[inline]
+pub(crate) fn evaluate_length_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
+    // stay arena-resident on the intermediate.
+    let arg = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+
+    let n: i64 = match arg {
+        ArenaValue::String(s) => s.chars().count() as i64,
+        ArenaValue::Array(items) => items.len() as i64,
+        ArenaValue::InputRef(v) => match v {
+            Value::String(s) => s.chars().count() as i64,
+            Value::Array(arr) => arr.len() as i64,
+            _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        },
+        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+    };
+
+    Ok(arena.alloc(ArenaValue::Number(serde_json::Number::from(n))))
+}
+
+/// Try to obtain the input collection by borrowing from the caller's root data.
+/// Returns `Some(&Value)` when args[0] is a simple root-scope `var` that
+/// resolves into the input data. The returned reference lives for the arena
+/// lifetime `'a` because `root` is held alive for the call's duration.
+#[inline]
+fn try_borrow_collection_from_root<'a>(
+    arg: &CompiledNode,
+    context: &ContextStack,
+    root: &'a Value,
+) -> Option<&'a Value> {
+    if context.depth() != 0 {
+        return None; // POC: only root-scope borrows
+    }
+    if let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        default_value: None,
+        ..
+    } = arg
+    {
+        if segments.is_empty() {
+            return Some(root);
+        }
+        return variable::try_traverse_segments(root, segments);
+    }
+    None
 }

@@ -4,6 +4,23 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
+
+/// Returns true when this root node should be evaluated via the arena path.
+/// POC scope: only Filter and Length. Other roots use the existing value path.
+#[inline]
+fn root_uses_arena(node: &CompiledNode) -> bool {
+    matches!(
+        node,
+        CompiledNode::BuiltinOperator {
+            opcode: crate::OpCode::Filter,
+            ..
+        } | CompiledNode::BuiltinOperator {
+            opcode: crate::OpCode::Length,
+            ..
+        }
+    )
+}
+
 use crate::operators::variable;
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
@@ -302,8 +319,31 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
+        // Arena dispatch path: only when the root operator is one of the
+        // arena-migrated set (POC: Filter, Length). For all other roots, the
+        // arena would be unused — keep the existing path to avoid the per-call
+        // Bump::new() cost.
+        if root_uses_arena(&compiled.root) {
+            return self.evaluate_via_arena(compiled, data);
+        }
         let mut context = ContextStack::new(data);
         self.evaluate_node(&compiled.root, &mut context)
+    }
+
+    /// Arena-mode evaluation entry. Allocates a `Bump` sized from the static
+    /// portion of the rule, dispatches through `evaluate_arena_node`, and
+    /// converts the result back to owned `Value` at the boundary.
+    fn evaluate_via_arena(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
+        use crate::arena::arena_to_value;
+        // Size the arena from the compile-time hint with 2× headroom.
+        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
+        let arena = bumpalo::Bump::with_capacity(cap);
+        let mut context = ContextStack::new(Arc::clone(&data));
+        // `data` is held by `context` (as Arc) AND borrowed via `&*data` for the
+        // arena lifetime. Both live for the duration of this function — safe.
+        let root_ref: &Value = &data;
+        let result = self.evaluate_arena_node(&compiled.root, &mut context, &arena, root_ref)?;
+        Ok(arena_to_value(result))
     }
 
     /// Evaluates compiled logic with owned data.
@@ -578,6 +618,70 @@ impl DataLogic {
         context: &mut ContextStack,
     ) -> Result<Cow<'a, Value>> {
         self.evaluate_node_cow_with_mode(node, context, &mut crate::eval_mode::Plain)
+    }
+
+    /// Arena-mode dispatch (POC scope: filter / length / var-of-root).
+    ///
+    /// Returns `&'a ArenaValue<'a>`. For nodes not yet arena-migrated, falls
+    /// back to the existing `evaluate_node` path and promotes the resulting
+    /// `Value` into the arena via `value_to_arena`.
+    ///
+    /// `root` must outlive `'a` and is the data the caller passed to
+    /// `evaluate()`. Used by `var` to return `InputRef`s without copying.
+    #[inline]
+    pub(crate) fn evaluate_arena_node<'a>(
+        &self,
+        node: &CompiledNode,
+        context: &mut ContextStack,
+        arena: &'a bumpalo::Bump,
+        root: &'a Value,
+    ) -> Result<&'a crate::arena::ArenaValue<'a>> {
+        use crate::arena::{ArenaValue, value_to_arena};
+        use crate::node::{MetadataHint, ReduceHint};
+
+        match node {
+            // var fast path: borrow into root data via InputRef when the lookup
+            // resolves at the root scope. This is the eliminated-clone win.
+            CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            } if context.depth() == 0 => {
+                let result = if segments.is_empty() {
+                    ArenaValue::InputRef(root)
+                } else {
+                    match crate::operators::variable::try_traverse_segments(root, segments) {
+                        Some(v) => ArenaValue::InputRef(v),
+                        None => ArenaValue::Null,
+                    }
+                };
+                Ok(arena.alloc(result))
+            }
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Filter,
+                args,
+                ..
+            } => crate::operators::array::evaluate_filter_arena(args, context, self, arena, root),
+
+            #[cfg(feature = "ext-string")]
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Length,
+                args,
+                ..
+            } => crate::operators::array::evaluate_length_arena(args, context, self, arena, root),
+
+            // Fallback: bridge through the existing value-mode evaluator and
+            // promote the result into the arena. No win at this point but
+            // composition still works (parent arena ops can consume us).
+            _ => {
+                let v = self.evaluate_node(node, context)?;
+                Ok(arena.alloc(value_to_arena(&v, arena)))
+            }
+        }
     }
 
     /// Evaluate JSON logic with execution trace for debugging.

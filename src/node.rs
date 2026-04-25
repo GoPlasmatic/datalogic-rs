@@ -282,6 +282,11 @@ impl CompileCtx {
 pub struct CompiledLogic {
     /// The root node of the compiled logic tree
     pub root: CompiledNode,
+    /// Conservative upper bound on the static portion of arena allocations
+    /// this rule will need (literals, structured-object skeletons, etc.).
+    /// Used to size the per-call `Bump` so the first chunk is large enough.
+    /// `pub(crate)` — internal arena infrastructure.
+    pub(crate) arena_static_bytes: usize,
 }
 
 impl CompiledLogic {
@@ -291,12 +296,81 @@ impl CompiledLogic {
     ///
     /// * `root` - The root node of the compiled logic tree
     pub fn new(root: CompiledNode) -> Self {
-        Self { root }
+        let arena_static_bytes = estimate_arena_static_bytes(&root);
+        Self {
+            root,
+            arena_static_bytes,
+        }
     }
 
     /// Check if this compiled logic is static (can be evaluated without context)
     pub fn is_static(&self) -> bool {
         node_is_static(&self.root)
+    }
+}
+
+/// Estimate the static (rule-dependent, data-independent) portion of arena
+/// bytes this rule will need at evaluation time. Conservative — overestimating
+/// is harmless (one larger bumpalo chunk), underestimating costs an extra
+/// chunk allocation. Data-dependent allocations (filter results, map outputs)
+/// can't be predicted here.
+fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
+    // Base cost per node when promoted to ArenaValue: ~32 bytes for the enum +
+    // a small fudge for slice headers. Add string content separately.
+    const PER_NODE: usize = 48;
+    let mut bytes = PER_NODE;
+    match node {
+        CompiledNode::Value { value, .. } => {
+            bytes += estimate_value_bytes(value);
+        }
+        CompiledNode::Array { nodes, .. } => {
+            for n in nodes.iter() {
+                bytes += estimate_arena_static_bytes(n);
+            }
+        }
+        CompiledNode::BuiltinOperator { args, .. } => {
+            for n in args.iter() {
+                bytes += estimate_arena_static_bytes(n);
+            }
+        }
+        CompiledNode::CustomOperator(data) => {
+            for n in data.args.iter() {
+                bytes += estimate_arena_static_bytes(n);
+            }
+        }
+        CompiledNode::CompiledVar { default_value, .. } => {
+            if let Some(d) = default_value {
+                bytes += estimate_arena_static_bytes(d);
+            }
+        }
+        #[cfg(feature = "ext-control")]
+        CompiledNode::CompiledExists(_) => {}
+        #[cfg(feature = "ext-string")]
+        CompiledNode::CompiledSplitRegex(data) => {
+            for n in data.args.iter() {
+                bytes += estimate_arena_static_bytes(n);
+            }
+        }
+        #[cfg(feature = "error-handling")]
+        CompiledNode::CompiledThrow(data) => {
+            bytes += estimate_value_bytes(&data.error);
+        }
+        #[cfg(feature = "preserve")]
+        CompiledNode::StructuredObject(data) => {
+            for (k, n) in data.fields.iter() {
+                bytes += k.len() + estimate_arena_static_bytes(n);
+            }
+        }
+    }
+    bytes
+}
+
+fn estimate_value_bytes(v: &Value) -> usize {
+    match v {
+        Value::String(s) => s.len() + 16,
+        Value::Array(arr) => 16 + arr.iter().map(estimate_value_bytes).sum::<usize>(),
+        Value::Object(obj) => 16 + obj.iter().map(|(k, v)| k.len() + estimate_value_bytes(v)).sum::<usize>(),
+        _ => 0,
     }
 }
 

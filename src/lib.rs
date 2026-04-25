@@ -45,6 +45,7 @@
 //! This design enables sharing compiled logic across threads and eliminates
 //! repeated parsing overhead.
 
+mod arena;
 mod compile;
 mod config;
 mod constants;
