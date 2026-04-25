@@ -1633,14 +1633,135 @@ fn normalize_index(index: i64, len: i64) -> i64 {
 }
 
 // =============================================================================
-// Arena-mode operators (POC: filter + length).
+// Arena-mode operators (Phase 4: filter / map / quantifiers + composition IN).
 //
 // These return `&'a ArenaValue<'a>` and may borrow into the caller's input
 // `Value` tree via `ArenaValue::InputRef`. Predicate evaluation still uses the
 // existing value-mode path (`engine.evaluate_node`) — the arena win comes from
 // (a) borrowing the input collection instead of cloning it and (b) staying in
 // the arena when our output is consumed by another arena-mode operator.
+//
+// Phase 4 adds: iterator inputs can themselves be arena-mode op outputs
+// (`map(filter(...))`, `length(map(filter))`). The `IterSrc` helper unifies
+// `&[Value]` (borrowed input data) and `&[&'a Value]` (extracted from an
+// upstream arena op's `InputRef` items) into one iteration interface, so
+// each operator's iteration body stays single-version.
 // =============================================================================
+
+/// Unified view over an iterator op's input collection. Either points at the
+/// caller's input data (`&[Value]`) or at an arena slice of `&Value`s
+/// extracted from an upstream arena op's `InputRef` items.
+enum IterSrc<'a> {
+    /// Direct slice from caller's input data (zero allocs).
+    Direct(&'a [Value]),
+    /// Arena-allocated slice of references gathered from `ArenaValue::InputRef`
+    /// items produced by an upstream arena op.
+    Refs(&'a [&'a Value]),
+}
+
+impl<'a> IterSrc<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        match self {
+            Self::Direct(s) => s.len(),
+            Self::Refs(s) => s.len(),
+        }
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get item by index. The returned `&'a Value` lives for the arena
+    /// lifetime (either through the caller's `Arc<Value>` or via the upstream
+    /// op's `InputRef`).
+    #[inline]
+    fn get(&self, i: usize) -> &'a Value {
+        match self {
+            Self::Direct(s) => &s[i],
+            Self::Refs(s) => s[i],
+        }
+    }
+}
+
+/// Outcome of resolving an iterator op's first arg in arena mode.
+enum ResolvedInput<'a> {
+    /// Iterable input — proceed with iteration.
+    Iterable(IterSrc<'a>),
+    /// Empty/null input — caller returns its empty-collection result.
+    Empty,
+    /// Object or scalar input — caller bridges the entire op to value-mode
+    /// (via the `peek_root_value` check in `engine.rs`, this case usually
+    /// shouldn't reach here, but we handle it defensively).
+    Bridge,
+}
+
+/// Resolve `args[0]` for an arena-mode iterator op. Tries (in order):
+///   1. Borrow from root data (cheapest — no eval, no alloc)
+///   2. Dispatch to arena (when arg is e.g. another filter — composition path)
+///   3. Bridge: caller falls back to value-mode for the whole op
+///
+/// The returned `IterSrc` borrows from the arena (`'a`) and is safe to iterate
+/// while the caller mutates `context` for predicate evaluation, because the
+/// underlying data lives in either the input `Arc` (held for the call's
+/// duration) or arena slices (allocated on the same arena).
+fn resolve_iter_input<'a>(
+    arg: &CompiledNode,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<ResolvedInput<'a>> {
+    // Path 1: root borrow.
+    if let Some(borrowed) = try_borrow_collection_from_root(arg, context, root) {
+        return Ok(match borrowed {
+            Value::Array(arr) => ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice())),
+            Value::Null => ResolvedInput::Empty,
+            _ => ResolvedInput::Bridge,
+        });
+    }
+
+    // Path 2: composition — arg is another arena-aware op. Dispatch and inspect.
+    if let CompiledNode::BuiltinOperator { opcode, .. } = arg
+        && matches!(
+            opcode,
+            OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Reduce
+        )
+    {
+        let av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        return Ok(arena_value_as_iter(av, arena));
+    }
+
+    // Path 3: anything else — bridge.
+    Ok(ResolvedInput::Bridge)
+}
+
+/// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
+fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedInput<'a> {
+    match av {
+        ArenaValue::InputRef(Value::Array(arr)) => {
+            ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice()))
+        }
+        ArenaValue::InputRef(Value::Null) | ArenaValue::Null => ResolvedInput::Empty,
+        ArenaValue::Array(items) => {
+            // Items from an arena op are typically `InputRef(&Value)`. Extract
+            // them into an arena-allocated `&[&Value]`. If any item is not an
+            // InputRef (e.g. a computed Number/Bool from a future arena op),
+            // we'd need value-mode bridging — for POC scope, signal Bridge.
+            let mut refs: bumpalo::collections::Vec<'a, &'a Value> =
+                bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
+            for item in items.iter() {
+                match item {
+                    ArenaValue::InputRef(v) => refs.push(*v),
+                    _ => return ResolvedInput::Bridge,
+                }
+            }
+            ResolvedInput::Iterable(IterSrc::Refs(refs.into_bump_slice()))
+        }
+        _ => ResolvedInput::Bridge,
+    }
+}
 
 /// Arena-mode `filter`. POC: handles only the case where the input collection
 /// resolves at root scope (the dominant pattern in real workloads). Falls back
@@ -1658,38 +1779,30 @@ pub(crate) fn evaluate_filter_arena<'a>(
     }
 
     // Resolve input collection. Try the borrow-from-root fast path first;
-    // otherwise fall back to value-mode evaluate (then promote to arena).
-    let collection_ref: &'a Value =
-        if let Some(borrowed) = try_borrow_collection_from_root(&args[0], context, root) {
-            borrowed
-        } else {
-            // Bridge: evaluate normally, store in arena, treat as InputRef-equivalent.
-            // For POC simplicity, we promote the cloned Vec into the arena.
-            let v = engine.evaluate_node(&args[0], context)?;
-            
-            (arena.alloc(v)) as _
-        };
-
-    let predicate = &args[1];
-
-    let arr = match collection_ref {
-        Value::Array(a) => a,
-        Value::Null => {
-            return Ok(arena.alloc(ArenaValue::Array(&[])));
+    // Phase 4: resolve input via unified helper (root borrow OR upstream arena op).
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
+        ResolvedInput::Bridge => {
+            let v = crate::operators::array::evaluate_filter::<crate::eval_mode::Plain>(
+                args,
+                context,
+                engine,
+                &mut crate::eval_mode::Plain,
+            )?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
         }
-        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
     };
 
-    let len = arr.len();
+    let predicate = &args[1];
+    let len = src.len();
     if len == 0 {
         return Ok(arena.alloc(ArenaValue::Array(&[])));
     }
 
-    // FAST PATH: detect predicates that can be evaluated by direct field
-    // traversal — no context push, no item clone. Mirrors the existing
-    // value-mode `try_extract_filter_field_cmp` and `FastPredicate` paths.
-    // This is where the arena win actually materializes: zero allocations
-    // during iteration, only the result slice in the arena.
+    // FAST PATH: predicates evaluable by direct field traversal — no context
+    // push, no item clone. The arena win materializes here: zero per-item
+    // allocations, only the result slice in the arena.
     if let CompiledNode::BuiltinOperator {
         opcode,
         args: pred_args,
@@ -1705,7 +1818,8 @@ pub(crate) fn evaluate_filter_arena<'a>(
             let is_eq = matches!(opcode, OpCode::StrictEquals);
             let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
                 bumpalo::collections::Vec::with_capacity_in(len, arena);
-            for item in arr.iter() {
+            for i in 0..len {
+                let item = src.get(i);
                 let matches =
                     super::variable::try_traverse_segments(item, segments) == Some(&invariant_val);
                 if matches == is_eq {
@@ -1719,7 +1833,8 @@ pub(crate) fn evaluate_filter_arena<'a>(
     if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
         let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(len, arena);
-        for item in arr.iter() {
+        for i in 0..len {
+            let item = src.get(i);
             if fast_pred.evaluate(item) {
                 results.push(ArenaValue::InputRef(item));
             }
@@ -1727,18 +1842,19 @@ pub(crate) fn evaluate_filter_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
     }
 
-    // GENERAL PATH: predicate needs the iteration context. Pay the
-    // per-item clone (item.clone() into context frame) — same cost as
-    // existing value-mode filter for this predicate shape.
+    // GENERAL PATH: predicate needs the iteration context. Pay the per-item
+    // clone (item.clone() into context frame) — same cost as the existing
+    // value-mode filter for this predicate shape.
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
-    for (index, item) in arr.iter().enumerate() {
+    for i in 0..len {
+        let item = src.get(i);
         if !pushed {
             context.push_with_index(item.clone(), 0);
             pushed = true;
         } else {
-            context.replace_top_data(item.clone(), index);
+            context.replace_top_data(item.clone(), i);
         }
         let keep = engine.evaluate_node(predicate, context)?;
         if is_truthy(&keep, engine) {
@@ -1830,32 +1946,28 @@ pub(crate) fn evaluate_map_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    // Fast path: input borrowable from root.
-    let collection_ref = try_borrow_collection_from_root(&args[0], context, root);
     let body = &args[1];
-
-    let arr: &'a [Value] = match collection_ref {
-        Some(Value::Array(a)) => a.as_slice(),
-        Some(Value::Null) => return Ok(arena.alloc(ArenaValue::Array(&[]))),
-        Some(_) => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-        None => {
-            // Bridge: evaluate input, promote
-            let v = engine.evaluate_node(&args[0], context)?;
-            let promoted = arena.alloc(v);
-            match promoted {
-                Value::Array(a) => a.as_slice(),
-                Value::Null => return Ok(arena.alloc(ArenaValue::Array(&[]))),
-                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-            }
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
+        ResolvedInput::Bridge => {
+            let v = crate::operators::array::evaluate_map::<crate::eval_mode::Plain>(
+                args,
+                context,
+                engine,
+                &mut crate::eval_mode::Plain,
+            )?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
         }
     };
 
-    let len = arr.len();
+    let len = src.len();
     if len == 0 {
         return Ok(arena.alloc(ArenaValue::Array(&[])));
     }
 
-    // BODY FAST PATH 1: identity map (val [] / var "" with empty path) — borrow each item.
+    // BODY FAST PATH: var with simple shape — identity (empty segments) or
+    // field extract. Both emit InputRef per item with zero per-iteration allocs.
     if let CompiledNode::CompiledVar {
         scope_level: 0,
         segments,
@@ -1865,22 +1977,19 @@ pub(crate) fn evaluate_map_arena<'a>(
         ..
     } = body
     {
-        if segments.is_empty() {
-            // Identity: result is just InputRef per item.
-            let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-                bumpalo::collections::Vec::with_capacity_in(len, arena);
-            for item in arr.iter() {
-                results.push(ArenaValue::InputRef(item));
-            }
-            return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
-        }
-        // BODY FAST PATH 2: field extract — borrow inner field per item.
         let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(len, arena);
-        for item in arr.iter() {
-            match super::variable::try_traverse_segments(item, segments) {
-                Some(v) => results.push(ArenaValue::InputRef(v)),
-                None => results.push(ArenaValue::Null),
+        if segments.is_empty() {
+            for i in 0..len {
+                results.push(ArenaValue::InputRef(src.get(i)));
+            }
+        } else {
+            for i in 0..len {
+                let item = src.get(i);
+                match super::variable::try_traverse_segments(item, segments) {
+                    Some(v) => results.push(ArenaValue::InputRef(v)),
+                    None => results.push(ArenaValue::Null),
+                }
             }
         }
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
@@ -1890,12 +1999,13 @@ pub(crate) fn evaluate_map_arena<'a>(
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
-    for (index, item) in arr.iter().enumerate() {
+    for i in 0..len {
+        let item = src.get(i);
         if !pushed {
             context.push_with_index(item.clone(), 0);
             pushed = true;
         } else {
-            context.replace_top_data(item.clone(), index);
+            context.replace_top_data(item.clone(), i);
         }
         let v = engine.evaluate_node(body, context)?;
         results.push(value_to_arena(&v, arena));
@@ -1928,32 +2038,26 @@ fn evaluate_quantifier_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection_ref = try_borrow_collection_from_root(&args[0], context, root);
     let predicate = &args[1];
-
-    let arr: &'a [Value] = match collection_ref {
-        Some(Value::Array(a)) => a.as_slice(),
-        Some(Value::Null) => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
-        Some(_) => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-        None => {
-            let v = engine.evaluate_node(&args[0], context)?;
-            let promoted = arena.alloc(v);
-            match promoted {
-                Value::Array(a) => a.as_slice(),
-                Value::Null => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
-                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-            }
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
+        ResolvedInput::Bridge => {
+            // Bridge to the appropriate value-mode quantifier.
+            let v = bridge_quantifier_value_mode(args, context, engine, short_circuit_on, invert_final)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
         }
     };
 
-    if arr.is_empty() {
+    if src.is_empty() {
         return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
     }
 
     // Fast predicate path — no context push, no clones.
     if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
-        for item in arr.iter() {
-            if fast_pred.evaluate(item) == short_circuit_on {
+        let len = src.len();
+        for i in 0..len {
+            if fast_pred.evaluate(src.get(i)) == short_circuit_on {
                 let result = if invert_final {
                     !short_circuit_on
                 } else {
@@ -1973,12 +2077,14 @@ fn evaluate_quantifier_arena<'a>(
     // General path.
     let mut pushed = false;
     let mut found_short = false;
-    for (index, item) in arr.iter().enumerate() {
+    let len = src.len();
+    for i in 0..len {
+        let item = src.get(i);
         if !pushed {
             context.push_with_index(item.clone(), 0);
             pushed = true;
         } else {
-            context.replace_top_data(item.clone(), index);
+            context.replace_top_data(item.clone(), i);
         }
         let v = engine.evaluate_node(predicate, context)?;
         if is_truthy(&v, engine) == short_circuit_on {
@@ -2002,6 +2108,29 @@ fn evaluate_quantifier_arena<'a>(
         !short_circuit_on
     };
     Ok(arena.alloc(ArenaValue::Bool(result)))
+}
+
+/// Bridge a quantifier op to its value-mode implementation. Used when the
+/// arena resolver can't iterate the input (e.g. computed non-array, object).
+fn bridge_quantifier_value_mode(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    short_circuit_on: bool,
+    invert_final: bool,
+) -> Result<Value> {
+    use crate::eval_mode::Plain;
+    // Map (short_circuit_on, invert_final) back to which quantifier this is.
+    // (false, false) = all
+    // (true,  false) = some
+    // (true,  true)  = none
+    if !short_circuit_on {
+        evaluate_all::<Plain>(args, context, engine, &mut Plain)
+    } else if invert_final {
+        evaluate_none::<Plain>(args, context, engine, &mut Plain)
+    } else {
+        evaluate_some::<Plain>(args, context, engine, &mut Plain)
+    }
 }
 
 /// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.

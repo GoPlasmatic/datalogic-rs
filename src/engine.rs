@@ -14,17 +14,18 @@ use crate::config::EvaluationConfig;
 ///     these hit the InputRef fast path. Other map bodies fall back to the
 ///     value-mode general path (slower than baseline due to Bump overhead);
 ///     keep them on the existing path.
-///   - `all` / `some` / `none` at root when input is borrowable from root and
+///   - `all` / `some` / `none` at root when input is arena-friendly and
 ///     predicate is FastPredicate-detectable. Returns Bool (cheap boundary).
+///
+/// Phase 4 expansion: arena-friendly inputs now include nested arena-aware ops
+/// (e.g. `map(filter(...), var)` dispatches arena throughout). Composition INTO
+/// arena is wired through `resolve_iter_input` in `array.rs`.
 ///
 /// Deliberately excluded for now:
 ///   - `reduce` — existing impl has inline arithmetic fast paths the arena
 ///     version doesn't replicate yet; arena path regresses.
 ///   - `map` with non-var body — same reason; the existing arithmetic fast
 ///     path beats our general arena path.
-///   - Iterator ops where args[0] is a nested operator (not a root var) —
-///     composition INTO arena is currently broken (map(filter(...), x)
-///     re-evaluates filter via value-mode).
 #[inline]
 fn root_uses_arena(node: &CompiledNode) -> bool {
     match node {
@@ -51,31 +52,51 @@ fn root_uses_arena(node: &CompiledNode) -> bool {
             args.len() == 1
                 && matches!(
                     &args[0],
-                    CompiledNode::BuiltinOperator {
-                        opcode: crate::OpCode::Filter,
-                        ..
-                    }
+                    CompiledNode::BuiltinOperator { opcode, .. }
+                        if matches!(
+                            opcode,
+                            crate::OpCode::Filter
+                                | crate::OpCode::Map
+                                | crate::OpCode::All
+                                | crate::OpCode::Some
+                                | crate::OpCode::None
+                        )
                 )
         }
         _ => false,
     }
 }
 
-/// Iterator input is arena-friendly when args[0] is a simple root-scope var.
-/// Composition INTO arena (args[0] = nested op) isn't fully wired in POC.
+/// Iterator input is arena-friendly when args[0] is either:
+///   - A simple root-scope `var` (we borrow into the input data), OR
+///   - Another arena-aware iterator op (composition — the inner op produces
+///     `&[ArenaValue::InputRef(&Value)]` which `IterSrc::Refs` consumes).
 #[inline]
 fn arena_friendly_iter_input(args: &[CompiledNode]) -> bool {
-    !args.is_empty()
-        && matches!(
-            &args[0],
-            CompiledNode::CompiledVar {
-                scope_level: 0,
-                reduce_hint: crate::node::ReduceHint::None,
-                metadata_hint: crate::node::MetadataHint::None,
-                default_value: None,
-                ..
-            }
-        )
+    if args.is_empty() {
+        return false;
+    }
+    matches!(
+        &args[0],
+        CompiledNode::CompiledVar {
+            scope_level: 0,
+            reduce_hint: crate::node::ReduceHint::None,
+            metadata_hint: crate::node::MetadataHint::None,
+            default_value: None,
+            ..
+        }
+    ) || matches!(
+        &args[0],
+        CompiledNode::BuiltinOperator { opcode, .. }
+            if matches!(
+                opcode,
+                crate::OpCode::Filter
+                    | crate::OpCode::Map
+                    | crate::OpCode::All
+                    | crate::OpCode::Some
+                    | crate::OpCode::None
+            )
+    )
 }
 
 /// Map body is a simple var (field extract or identity). Other body shapes
