@@ -1125,12 +1125,44 @@ fn arena_min_max<'a>(
     arena: &'a Bump,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
-    op_name: &str, // for bridge fallback
+    _op_name: &str,
 ) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 1 {
-        // Multi-arg max/min isn't a pipeline top — bridge.
-        let v = bridge_arith(op_name, args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    // Multi-arg variadic form: evaluate each arg, pick the best Number.
+    if args.len() > 1 {
+        let mut best_f = init;
+        let mut best_av: Option<&'a ArenaValue<'a>> = None;
+        for arg in args {
+            let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+            let f = match av {
+                ArenaValue::Number(n) => n.as_f64(),
+                ArenaValue::InputRef(Value::Number(n)) => n
+                    .as_f64()
+                    .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?,
+                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            };
+            if pick_better(f, best_f) {
+                best_f = f;
+                best_av = Some(av);
+            }
+        }
+        return match best_av {
+            Some(av) => Ok(av),
+            None => Ok(crate::arena::pool::singleton_null()),
+        };
+    }
+
+    // Reject literal-array arg shape (matches value-mode error).
+    if matches!(&args[0], CompiledNode::Array { .. }) {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+    if let CompiledNode::Value { value, .. } = &args[0]
+        && matches!(value, Value::Array(_))
+    {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
@@ -1272,7 +1304,8 @@ pub(crate) fn evaluate_min_arena<'a>(
     )
 }
 
-/// Arena-mode +(single_array_arg) — sum over array. Multi-arg form bridges.
+/// Arena-mode `+`. Handles 0-arg (identity), 1-arg array (sum elements),
+/// 1-arg single value (coerce + return), and variadic (sum all args).
 #[inline]
 pub(crate) fn evaluate_add_arena<'a>(
     args: &[CompiledNode],
@@ -1281,14 +1314,20 @@ pub(crate) fn evaluate_add_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 1 {
-        let v = bridge_arith("+", args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    if args.is_empty() {
+        return Ok(arena_number(arena, NumberValue::from_i64(0)));
     }
-    arena_fold(args, actx, context, engine, arena, "+", 0.0, |acc, x| acc + x)
+    if args.len() == 1 {
+        return arena_fold(args, actx, context, engine, arena, "+", 0.0, |acc, x| {
+            acc + x
+        });
+    }
+    arena_variadic_fold(args, actx, context, engine, arena, "+", 0, 0.0, |a, b| {
+        a.checked_add(b)
+    })
 }
 
-/// Arena-mode *(single_array_arg) — product over array. Multi-arg form bridges.
+/// Arena-mode `*`. 0-arg (1), 1-arg array (product), 1-arg scalar, variadic.
 #[inline]
 pub(crate) fn evaluate_multiply_arena<'a>(
     args: &[CompiledNode],
@@ -1297,11 +1336,86 @@ pub(crate) fn evaluate_multiply_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 1 {
-        let v = bridge_arith("*", args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    if args.is_empty() {
+        return Ok(arena_number(arena, NumberValue::from_i64(1)));
     }
-    arena_fold(args, actx, context, engine, arena, "*", 1.0, |acc, x| acc * x)
+    if args.len() == 1 {
+        return arena_fold(args, actx, context, engine, arena, "*", 1.0, |acc, x| {
+            acc * x
+        });
+    }
+    arena_variadic_fold(args, actx, context, engine, arena, "*", 1, 1.0, |a, b| {
+        a.checked_mul(b)
+    })
+}
+
+/// Variadic fold over arena-evaluated args with integer-fast-path and
+/// overflow promotion to f64. Used by `+` and `*` for the 2+ arg form.
+/// `f_combine` produces the f64 result; `i_combine` does the checked
+/// integer op. Non-numeric args trigger NaN handling per engine config.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn arena_variadic_fold<'a>(
+    args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    op_name: &str,
+    int_init: i64,
+    float_init: f64,
+    i_combine: fn(i64, i64) -> Option<i64>,
+) -> Result<&'a ArenaValue<'a>> {
+    let mut int_acc: i64 = int_init;
+    let mut float_acc: f64 = float_init;
+    let mut all_int = true;
+
+    for arg in args {
+        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        if all_int {
+            if let Some(i) = av.as_i64() {
+                match i_combine(int_acc, i) {
+                    Some(r) => int_acc = r,
+                    None => {
+                        all_int = false;
+                        float_acc = match op_name {
+                            "+" => int_acc as f64 + i as f64,
+                            "*" => int_acc as f64 * i as f64,
+                            _ => unreachable!(),
+                        };
+                    }
+                }
+                continue;
+            }
+        }
+        if let Some(f) = av.as_f64() {
+            if all_int {
+                all_int = false;
+                float_acc = match op_name {
+                    "+" => int_acc as f64 + f,
+                    "*" => int_acc as f64 * f,
+                    _ => unreachable!(),
+                };
+            } else {
+                float_acc = match op_name {
+                    "+" => float_acc + f,
+                    "*" => float_acc * f,
+                    _ => unreachable!(),
+                };
+            }
+        } else {
+            // Non-numeric — defer to NaN config or value-mode for datetime
+            // semantics (which arena doesn't yet implement).
+            let v = bridge_arith(op_name, args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+    }
+
+    if all_int {
+        Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+    } else {
+        Ok(arena_number(arena, NumberValue::from_f64(float_acc)))
+    }
 }
 
 /// Generic fold for sum/product over an arena-iterable input. Preserves
@@ -1465,9 +1579,67 @@ pub(crate) fn evaluate_subtract_arena<'a>(
             NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
         };
     }
-    evaluate_binary_arith_arena(args, actx, context, engine, arena, "-", |a, b| {
-        Some(a.sub(b))
-    })
+    if args.len() == 2 {
+        return evaluate_binary_arith_arena(args, actx, context, engine, arena, "-", |a, b| {
+            Some(a.sub(b))
+        });
+    }
+
+    // Variadic subtractive fold: first - second - third - ...
+    // Native port mirrors value-mode evaluate_subtract for the >2 case
+    // (see arithmetic.rs:430-500). Integer fast path with overflow promotion.
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let mut int_acc: i64 = match first_av.as_i64() {
+        Some(i) => i,
+        None => match first_av.as_f64() {
+            Some(_) => 0, // float path — int_acc unused
+            None => return Ok(crate::arena::pool::singleton_null()),
+        },
+    };
+    let mut all_int = first_av.as_i64().is_some();
+    let mut float_acc: f64 = if all_int {
+        int_acc as f64
+    } else {
+        first_av.as_f64().unwrap()
+    };
+
+    for arg in args.iter().skip(1) {
+        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        if all_int {
+            if let Some(i) = av.as_i64() {
+                match int_acc.checked_sub(i) {
+                    Some(r) => int_acc = r,
+                    None => {
+                        all_int = false;
+                        float_acc = int_acc as f64 - i as f64;
+                    }
+                }
+                continue;
+            }
+        }
+        if let Some(f) = av.as_f64() {
+            if all_int {
+                all_int = false;
+                float_acc = int_acc as f64 - f;
+            } else {
+                float_acc -= f;
+            }
+        } else {
+            match handle_nan(engine)? {
+                NanAction::Skip => continue,
+                NanAction::ReturnNull => return Ok(crate::arena::pool::singleton_null()),
+            }
+        }
+    }
+
+    if all_int {
+        Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+    } else {
+        Ok(arena_number(arena, NumberValue::from_f64(float_acc)))
+    }
 }
 
 #[inline]
