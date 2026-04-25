@@ -255,3 +255,102 @@ pub fn evaluate_now(
     // Return as ISO string
     Ok(Value::String(data_dt.to_iso_string()))
 }
+
+// =============================================================================
+// Arena-mode datetime operators
+// =============================================================================
+//
+// All bridge to value-mode internally. Args are pre-evaluated through arena
+// (so var lookups borrow). The boundary conversion at the end is the same
+// cost as today's bridge fallback — but having named variants keeps the
+// dispatch table consistent.
+
+use crate::arena::ArenaValue;
+use bumpalo::Bump;
+
+#[inline]
+pub(crate) fn evaluate_datetime_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    for arg in args {
+        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+    }
+    let v = evaluate_datetime(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
+
+#[inline]
+pub(crate) fn evaluate_timestamp_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    for arg in args {
+        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+    }
+    let v = evaluate_timestamp(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
+
+#[inline]
+pub(crate) fn evaluate_parse_date_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    for arg in args {
+        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+    }
+    let v = evaluate_parse_date(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
+
+#[inline]
+pub(crate) fn evaluate_format_date_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    for arg in args {
+        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+    }
+    let v = evaluate_format_date(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
+
+#[inline]
+pub(crate) fn evaluate_date_diff_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    for arg in args {
+        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+    }
+    let v = evaluate_date_diff(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
+
+#[inline]
+pub(crate) fn evaluate_now_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    _root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    let v = evaluate_now(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}

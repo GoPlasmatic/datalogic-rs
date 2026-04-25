@@ -130,3 +130,40 @@ pub fn evaluate_try<M: Mode>(
         )),
     }
 }
+
+// =============================================================================
+// Arena-mode try
+// =============================================================================
+//
+// Try evaluates arms in sequence until one succeeds. Each arm is dispatched
+// through `evaluate_arena_node` so successful arms stay in arena. The error
+// path management uses the same value-mode `ContextStack` since arena ops
+// don't yet manage their own error breadcrumb.
+
+use crate::arena::ArenaValue;
+use bumpalo::Bump;
+
+#[inline]
+pub(crate) fn evaluate_try_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.is_empty() {
+        return Ok(arena.alloc(ArenaValue::Null));
+    }
+    let mut last_err: Option<Error> = None;
+    for arg in args {
+        let saved_len = context.error_path_len();
+        match engine.evaluate_arena_node(arg, context, arena, root) {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                context.truncate_error_path(saved_len);
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| Error::InvalidArguments(crate::constants::INVALID_ARGS.into())))
+}

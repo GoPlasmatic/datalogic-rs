@@ -1620,6 +1620,24 @@ fn slice_chars(
     result
 }
 
+/// Arena-mode slice. Pre-evaluates args (so var lookups borrow), bridges
+/// to value-mode for the slice/range logic, wraps result in arena.
+#[cfg(feature = "ext-array")]
+#[inline]
+pub(crate) fn evaluate_slice_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a crate::arena::ArenaValue<'a>> {
+    for arg in args {
+        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+    }
+    let v = evaluate_slice(args, context, engine)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
+
 #[cfg(feature = "ext-array")]
 // Helper function to normalize slice indices with overflow protection
 fn normalize_index(index: i64, len: i64) -> i64 {

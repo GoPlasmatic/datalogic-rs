@@ -108,3 +108,46 @@ pub fn evaluate_type(
 
     Ok(Value::String(type_str.to_string()))
 }
+
+// =============================================================================
+// Arena-mode type operator
+// =============================================================================
+//
+// Evaluates the arg via arena dispatch and returns a `&'static str` from a
+// small set of type names. The string is allocated once into the arena.
+
+use crate::arena::ArenaValue;
+use bumpalo::Bump;
+
+#[inline]
+pub(crate) fn evaluate_type_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.is_empty() {
+        return Ok(arena.alloc(ArenaValue::String("null")));
+    }
+    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let type_str: &'static str = match av {
+        ArenaValue::Null => "null",
+        ArenaValue::Bool(_) => "boolean",
+        ArenaValue::Number(_) => "number",
+        ArenaValue::String(_) => "string",
+        ArenaValue::Array(_) => "array",
+        ArenaValue::Object(_) => "object",
+        #[cfg(feature = "datetime")]
+        ArenaValue::DateTime(_) | ArenaValue::Duration(_) => "object",
+        ArenaValue::InputRef(v) => match v {
+            Value::Null => "null",
+            Value::Bool(_) => "boolean",
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+        },
+    };
+    Ok(arena.alloc(ArenaValue::String(type_str)))
+}

@@ -6,6 +6,7 @@
 
 use bumpalo::Bump;
 use serde_json::Value;
+use std::borrow::Cow;
 
 use crate::value::NumberValue;
 
@@ -251,6 +252,44 @@ fn arena_value_to_string_lossy(v: &ArenaValue<'_>) -> String {
         ArenaValue::InputRef(Value::String(s)) => s.clone(),
         ArenaValue::Null | ArenaValue::InputRef(Value::Null) => String::new(),
         _ => format!("{:?}", v),
+    }
+}
+
+/// Build a fresh `ArenaValue` mirroring the source variant. Used to
+/// reborrow into an arena slice (e.g., when constructing an Object from
+/// arena-resident field values). Most variants are Copy-shaped; only
+/// DateTime/Duration require Clone.
+#[inline]
+pub(crate) fn reborrow_arena_value<'a>(av: &ArenaValue<'a>) -> ArenaValue<'a> {
+    match av {
+        ArenaValue::Null => ArenaValue::Null,
+        ArenaValue::Bool(b) => ArenaValue::Bool(*b),
+        ArenaValue::Number(n) => ArenaValue::Number(*n),
+        ArenaValue::String(s) => ArenaValue::String(s),
+        ArenaValue::Array(items) => ArenaValue::Array(items),
+        ArenaValue::Object(pairs) => ArenaValue::Object(pairs),
+        #[cfg(feature = "datetime")]
+        ArenaValue::DateTime(dt) => ArenaValue::DateTime(dt.clone()),
+        #[cfg(feature = "datetime")]
+        ArenaValue::Duration(d) => ArenaValue::Duration(d.clone()),
+        ArenaValue::InputRef(v) => ArenaValue::InputRef(v),
+    }
+}
+
+/// Render an `ArenaValue` as a `Cow<Value>` for use with existing value-mode
+/// helpers. Borrowed when the source is `InputRef` (zero-cost — most common
+/// path for var-lookups); owned otherwise. Owned conversion is cheap for
+/// primitives (Number/Bool/Null are inline) but allocates for
+/// String/Array/Object/DateTime/Duration.
+///
+/// This is the primary bridge between arena-evaluated args and value-mode
+/// operator helpers. New arena ops use it to leverage existing logic
+/// without re-implementing semantics.
+#[inline]
+pub(crate) fn arena_to_value_cow<'a>(v: &'a ArenaValue<'a>) -> Cow<'a, Value> {
+    match v {
+        ArenaValue::InputRef(vr) => Cow::Borrowed(*vr),
+        _ => Cow::Owned(arena_to_value(v)),
     }
 }
 

@@ -1318,3 +1318,178 @@ fn bridge_arith(
         _ => unreachable!("unknown arena arith bridge: {}", op_name),
     }
 }
+
+// =============================================================================
+// Arena-mode binary arithmetic + math ops
+// =============================================================================
+//
+// For binary forms (subtract, divide, modulo) and unary math ops, args are
+// pre-evaluated via `evaluate_arena_node` so var lookups borrow into input
+// data via `InputRef`. Numeric extraction goes through
+// `coerce_arena_to_number`. Result is `ArenaValue::Number(NumberValue)` —
+// inline (no heap alloc).
+
+use crate::arena::value::coerce_arena_to_number;
+use crate::value::NumberValue;
+
+#[cfg(feature = "ext-math")]
+use super::math::{evaluate_abs, evaluate_ceil, evaluate_floor};
+
+#[inline]
+fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a ArenaValue<'a> {
+    arena.alloc(ArenaValue::Number(n))
+}
+
+/// Evaluate a binary arithmetic op via NumberValue. Falls back to value-mode
+/// for non-numeric operands or 3+ arg forms.
+#[inline]
+fn evaluate_binary_arith_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+    op_name: &str,
+    apply: fn(&NumberValue, &NumberValue) -> Option<NumberValue>,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 2 {
+        let v = bridge_arith(op_name, args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    let a_av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let b_av = engine.evaluate_arena_node(&args[1], context, arena, root)?;
+    let af = match coerce_arena_to_number(a_av) {
+        Some(f) => f,
+        None => {
+            let v = bridge_arith(op_name, args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+    };
+    let bf = match coerce_arena_to_number(b_av) {
+        Some(f) => f,
+        None => {
+            let v = bridge_arith(op_name, args, context, engine)?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        }
+    };
+    let na = NumberValue::from_f64(af);
+    let nb = NumberValue::from_f64(bf);
+    match apply(&na, &nb) {
+        Some(r) => Ok(arena_number(arena, r)),
+        None => {
+            // Apply returned None (e.g., divide-by-zero) — defer to
+            // value-mode for config-aware handling.
+            let v = bridge_arith(op_name, args, context, engine)?;
+            Ok(arena.alloc(value_to_arena(&v, arena)))
+        }
+    }
+}
+
+#[inline]
+pub(crate) fn evaluate_subtract_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    // Unary form: negate
+    if args.len() == 1 {
+        let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+        if let Some(f) = coerce_arena_to_number(av) {
+            return Ok(arena_number(arena, NumberValue::from_f64(f).neg()));
+        }
+        let v = evaluate_subtract(args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    evaluate_binary_arith_arena(args, context, engine, arena, root, "-", |a, b| {
+        Some(a.sub(b))
+    })
+}
+
+#[inline]
+pub(crate) fn evaluate_divide_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    evaluate_binary_arith_arena(args, context, engine, arena, root, "/", |a, b| a.div(b))
+}
+
+#[inline]
+pub(crate) fn evaluate_modulo_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    evaluate_binary_arith_arena(args, context, engine, arena, root, "%", |a, b| a.rem(b))
+}
+
+#[cfg(feature = "ext-math")]
+#[inline]
+pub(crate) fn evaluate_abs_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        let v = evaluate_abs(args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    if let Some(f) = coerce_arena_to_number(av) {
+        return Ok(arena_number(arena, NumberValue::from_f64(f).abs()));
+    }
+    let v = evaluate_abs(args, context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
+}
+
+#[cfg(feature = "ext-math")]
+#[inline]
+pub(crate) fn evaluate_ceil_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        let v = evaluate_ceil(args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    if let Some(f) = coerce_arena_to_number(av) {
+        let c = f.ceil();
+        return Ok(arena_number(arena, NumberValue::from_f64(c)));
+    }
+    let v = evaluate_ceil(args, context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
+}
+
+#[cfg(feature = "ext-math")]
+#[inline]
+pub(crate) fn evaluate_floor_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 1 {
+        let v = evaluate_floor(args, context, engine)?;
+        return Ok(arena.alloc(value_to_arena(&v, arena)));
+    }
+    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    if let Some(f) = coerce_arena_to_number(av) {
+        let c = f.floor();
+        return Ok(arena_number(arena, NumberValue::from_f64(c)));
+    }
+    let v = evaluate_floor(args, context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
+}

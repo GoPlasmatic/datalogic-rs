@@ -36,3 +36,25 @@ pub fn evaluate_throw<M: Mode>(
 
     Err(Error::Thrown(error_obj))
 }
+
+// =============================================================================
+// Arena-mode throw
+// =============================================================================
+//
+// Always returns Err. Arena variant bridges to value-mode (Plain mode) so
+// the error structure is identical to the existing path.
+
+use crate::arena::ArenaValue;
+use bumpalo::Bump;
+
+#[inline]
+pub(crate) fn evaluate_throw_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    _root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    let v = evaluate_throw::<crate::eval_mode::Plain>(args, context, engine, &mut crate::eval_mode::Plain)?;
+    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+}
