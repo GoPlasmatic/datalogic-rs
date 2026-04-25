@@ -1726,7 +1726,13 @@ pub(crate) fn resolve_iter_input<'a>(
     if let CompiledNode::BuiltinOperator { opcode, .. } = arg
         && matches!(
             opcode,
-            OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Reduce
+            OpCode::Filter
+                | OpCode::Map
+                | OpCode::All
+                | OpCode::Some
+                | OpCode::None
+                | OpCode::Reduce
+                | OpCode::Merge
         )
     {
         let av = engine.evaluate_arena_node(arg, context, arena, root)?;
@@ -2174,7 +2180,9 @@ pub(crate) fn evaluate_none_arena<'a>(
 }
 
 /// Arena-mode `reduce` — folds an array into a single value via accumulator.
-/// POC: input borrow + general path. Body always uses value-mode evaluate.
+/// Arena-mode `reduce`. Phase 6.4: input via resolve_iter_input (so
+/// `reduce(filter(...), +, 0)` composes), and inline arithmetic fast paths
+/// for the dominant `current op accumulator` pattern.
 #[inline]
 pub(crate) fn evaluate_reduce_arena<'a>(
     args: &[CompiledNode],
@@ -2187,7 +2195,6 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let collection_ref = try_borrow_collection_from_root(&args[0], context, root);
     let body = &args[1];
     let initial = if args.len() == 3 {
         engine.evaluate_node(&args[2], context)?
@@ -2195,24 +2202,45 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         Value::Null
     };
 
-    let arr: &'a [Value] = match collection_ref {
-        Some(Value::Array(a)) => a.as_slice(),
-        Some(Value::Null) => return Ok(arena.alloc(value_to_arena(&initial, arena))),
-        Some(_) => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-        None => {
-            let v = engine.evaluate_node(&args[0], context)?;
-            let promoted = arena.alloc(v);
-            match promoted {
-                Value::Array(a) => a.as_slice(),
-                Value::Null => return Ok(arena.alloc(value_to_arena(&initial, arena))),
-                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-            }
+    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+        ResolvedInput::Iterable(s) => s,
+        ResolvedInput::Empty => return Ok(arena.alloc(value_to_arena(&initial, arena))),
+        ResolvedInput::Bridge => {
+            let v = crate::operators::array::evaluate_reduce::<crate::eval_mode::Plain>(
+                args,
+                context,
+                engine,
+                &mut crate::eval_mode::Plain,
+            )?;
+            return Ok(arena.alloc(value_to_arena(&v, arena)));
         }
     };
 
+    if src.is_empty() {
+        return Ok(arena.alloc(value_to_arena(&initial, arena)));
+    }
+
+    // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} for + / - / *.
+    // Mirrors try_reduce_fast_path but iterates IterSrc to support both
+    // borrowed-input and arena-Refs cases.
+    if let CompiledNode::BuiltinOperator {
+        opcode,
+        args: body_args,
+        ..
+    } = body
+        && body_args.len() == 2
+        && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
+        && let Some(result) = try_reduce_fast_path_arena(&src, &initial, body_args, *opcode)
+    {
+        return Ok(arena.alloc(value_to_arena(&result, arena)));
+    }
+
+    // GENERAL PATH: per-item context push, value-mode body evaluate.
     let mut acc = initial;
     let mut pushed = false;
-    for item in arr.iter() {
+    let len = src.len();
+    for i in 0..len {
+        let item = src.get(i);
         if !pushed {
             context.push_reduce(item.clone(), acc);
             pushed = true;
@@ -2225,4 +2253,180 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         context.pop();
     }
     Ok(arena.alloc(value_to_arena(&acc, arena)))
+}
+
+/// Arena variant of `try_reduce_fast_path` — same logic, iterates `IterSrc`.
+fn try_reduce_fast_path_arena(
+    src: &IterSrc<'_>,
+    initial: &Value,
+    body_args: &[CompiledNode],
+    opcode: OpCode,
+) -> Option<Value> {
+    // Identify which arg is current and which is accumulator.
+    let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
+        (
+            CompiledNode::CompiledVar { reduce_hint: hint0, .. },
+            CompiledNode::CompiledVar { reduce_hint: hint1, .. },
+        ) => match (hint0, hint1) {
+            (
+                ReduceHint::Current | ReduceHint::CurrentPath,
+                ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
+            ) => (&body_args[0], &body_args[1]),
+            (
+                ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
+                ReduceHint::Current | ReduceHint::CurrentPath,
+            ) => (&body_args[1], &body_args[0]),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    let current_segments = if let CompiledNode::CompiledVar { segments, reduce_hint, .. } =
+        current_arg
+    {
+        match reduce_hint {
+            ReduceHint::Current => &[][..],
+            ReduceHint::CurrentPath => {
+                if segments.len() >= 2 {
+                    &segments[1..]
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    } else {
+        return None;
+    };
+
+    let len = src.len();
+
+    // Integer fast path.
+    let mut acc_i = initial.as_i64();
+    if acc_i.is_some() {
+        let mut all_int = true;
+        for i in 0..len {
+            let item = src.get(i);
+            let current_val = if current_segments.is_empty() {
+                item
+            } else {
+                super::variable::try_traverse_segments(item, current_segments)?
+            };
+            if let Some(cur_i) = current_val.as_i64() {
+                let a = acc_i.unwrap();
+                acc_i = Some(match opcode {
+                    OpCode::Add => a.wrapping_add(cur_i),
+                    OpCode::Multiply => a.wrapping_mul(cur_i),
+                    OpCode::Subtract => a.wrapping_sub(cur_i),
+                    _ => return None,
+                });
+            } else {
+                all_int = false;
+                break;
+            }
+        }
+        if all_int {
+            return acc_i.map(Value::from);
+        }
+    }
+
+    // f64 fallback.
+    let mut acc_f = initial.as_f64()?;
+    for i in 0..len {
+        let item = src.get(i);
+        let current_val = if current_segments.is_empty() {
+            item
+        } else {
+            super::variable::try_traverse_segments(item, current_segments)?
+        };
+        let cur_f = current_val.as_f64()?;
+        acc_f = match opcode {
+            OpCode::Add => acc_f + cur_f,
+            OpCode::Multiply => acc_f * cur_f,
+            OpCode::Subtract => acc_f - cur_f,
+            _ => return None,
+        };
+    }
+    Some(Value::from(acc_f))
+}
+
+/// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
+/// op) into a single array, skipping nulls. Returns a slice of `InputRef`s
+/// pointing at the original Values — no per-element clones.
+#[inline]
+pub(crate) fn evaluate_merge_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+        bumpalo::collections::Vec::new_in(arena);
+
+    for arg in args {
+        let av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        match av {
+            // Direct arena Array (e.g. result of upstream arena filter/map).
+            ArenaValue::Array(items) => {
+                for item in items.iter() {
+                    if !item_is_null(item) {
+                        // Each item is typically already an InputRef; extract
+                        // the underlying &Value when possible to keep the
+                        // result uniformly InputRef-shaped for downstream
+                        // consumers.
+                        match item {
+                            ArenaValue::InputRef(v) => {
+                                if !v.is_null() {
+                                    results.push(ArenaValue::InputRef(v));
+                                }
+                            }
+                            _ => {
+                                // Computed arena value (Number/Bool/String).
+                                // Cheap to copy the enum reference into our
+                                // result slice.
+                                results.push(reborrow_arena(item));
+                            }
+                        }
+                    }
+                }
+            }
+            // Borrowed input array — iterate, push InputRef per non-null.
+            ArenaValue::InputRef(Value::Array(arr)) => {
+                for item in arr.iter() {
+                    if !item.is_null() {
+                        results.push(ArenaValue::InputRef(item));
+                    }
+                }
+            }
+            // Null inputs are skipped per merge semantics.
+            ArenaValue::InputRef(Value::Null) | ArenaValue::Null => {}
+            // Scalar / object — push as-is.
+            other => results.push(reborrow_arena(other)),
+        }
+    }
+
+    Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
+}
+
+/// Cheap shallow copy of an `ArenaValue` enum (clones the discriminant +
+/// inline payload bytes — no heap traffic). Used by merge to copy non-Array
+/// items into its result slice without allocating.
+#[inline]
+fn reborrow_arena<'a>(av: &ArenaValue<'a>) -> ArenaValue<'a> {
+    match av {
+        ArenaValue::Null => ArenaValue::Null,
+        ArenaValue::Bool(b) => ArenaValue::Bool(*b),
+        ArenaValue::Number(n) => ArenaValue::Number(n.clone()),
+        ArenaValue::String(s) => ArenaValue::String(s),
+        ArenaValue::Array(items) => ArenaValue::Array(items),
+        ArenaValue::Object(pairs) => ArenaValue::Object(pairs),
+        ArenaValue::InputRef(v) => ArenaValue::InputRef(v),
+    }
+}
+
+/// True iff this arena value would be `null` after conversion to `Value`.
+#[inline]
+fn item_is_null(av: &ArenaValue<'_>) -> bool {
+    matches!(av, ArenaValue::Null) || matches!(av, ArenaValue::InputRef(Value::Null))
 }

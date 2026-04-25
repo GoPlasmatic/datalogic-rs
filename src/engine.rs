@@ -9,6 +9,40 @@ use crate::config::EvaluationConfig;
 // (`root_uses_arena_pure` and helpers) and cached on `CompiledLogic` as
 // `uses_arena_dispatch`. This file just reads that bool in `evaluate()`.
 
+/// Runtime peek for iterator-shaped arena roots: returns true iff the root
+/// op's first arg resolves (via root borrow) to a `Value::Array` or `Null`.
+/// Used to avoid arena setup when the input would force a value-mode bridge.
+/// Conservatively returns true when we can't peek cheaply — the in-arena
+/// `peek_root_value` will then bridge correctly if needed.
+#[inline]
+fn iter_root_input_is_array(root: &CompiledNode, data: &Value) -> bool {
+    let CompiledNode::BuiltinOperator { args, .. } = root else {
+        return true;
+    };
+    let Some(arg0) = args.first() else {
+        return true;
+    };
+    let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: crate::node::ReduceHint::None,
+        metadata_hint: crate::node::MetadataHint::None,
+        default_value: None,
+        ..
+    } = arg0
+    else {
+        // Not a simple root var — could be a nested arena op, literal array, etc.
+        // The full arena dispatch handles those correctly; let it run.
+        return true;
+    };
+    let resolved = if segments.is_empty() {
+        Some(data)
+    } else {
+        crate::operators::variable::try_traverse_segments(data, segments)
+    };
+    matches!(resolved, Some(Value::Array(_)) | Some(Value::Null) | None)
+}
+
 /// Peek at what an iterator's first arg would resolve to *without evaluating*.
 /// Returns `Some(&Value)` only when the arg is a simple root-scope `var` — the
 /// only case we can resolve with a borrow. For anything else (computed
@@ -342,6 +376,14 @@ impl DataLogic {
         // Arena dispatch decision is precomputed at compile time and cached on
         // CompiledLogic — single bool load instead of per-call tree walk.
         if compiled.uses_arena_dispatch {
+            // For iterator-shaped roots (filter/map/reduce/etc.), the arena
+            // win evaporates if the input collection is a Value::Object — the
+            // op would bridge back to value mode after paying the arena setup
+            // cost. Cheap runtime peek avoids that wasted overhead.
+            if compiled.arena_iter_root && !iter_root_input_is_array(&compiled.root, &data) {
+                let mut context = ContextStack::new(data);
+                return self.evaluate_node(&compiled.root, &mut context);
+            }
             return self.evaluate_via_arena(compiled, data);
         }
         let mut context = ContextStack::new(data);
@@ -743,6 +785,23 @@ impl DataLogic {
                 args,
                 ..
             } => crate::operators::array::evaluate_reduce_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Merge,
+                args,
+                ..
+            } => crate::operators::array::evaluate_merge_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Missing,
+                args,
+                ..
+            } => crate::operators::missing::evaluate_missing_arena(args, context, self, arena, root),
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::MissingSome,
+                args,
+                ..
+            } => crate::operators::missing::evaluate_missing_some_arena(args, context, self, arena, root),
 
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {

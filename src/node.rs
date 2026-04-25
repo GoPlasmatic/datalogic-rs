@@ -291,6 +291,13 @@ pub struct CompiledLogic {
     /// dispatch path? Cached at compile time so the per-call check is a
     /// single bool load instead of a tree pattern-match.
     pub(crate) uses_arena_dispatch: bool,
+    /// True when the arena dispatch is for an iterator-shaped root (filter,
+    /// map, reduce, all, some, none, merge consuming a var). For these,
+    /// `evaluate()` runtime-peeks the input shape — Object inputs would
+    /// bridge back to value mode anyway, so we skip the arena setup cost
+    /// entirely in that case. False for non-iterator arena roots (missing,
+    /// max, +, etc.) where the input is always array-shaped or scalar.
+    pub(crate) arena_iter_root: bool,
 }
 
 impl CompiledLogic {
@@ -302,10 +309,12 @@ impl CompiledLogic {
     pub fn new(root: CompiledNode) -> Self {
         let arena_static_bytes = estimate_arena_static_bytes(&root);
         let uses_arena_dispatch = root_uses_arena_pure(&root);
+        let arena_iter_root = uses_arena_dispatch && root_is_arena_iter(&root);
         Self {
             root,
             arena_static_bytes,
             uses_arena_dispatch,
+            arena_iter_root,
         }
     }
 
@@ -335,6 +344,20 @@ fn root_uses_arena_pure(node: &CompiledNode) -> bool {
             args,
             ..
         } => arena_friendly_iter_input_pure(args),
+        // Reduce: arena win when input is borrowable AND body matches the
+        // arithmetic fast-path shape (current/accumulator with + / - / *).
+        // Other body shapes pay the per-item context push regardless, so the
+        // arena dispatch only adds Bump overhead — keep them on value path.
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Reduce,
+            args,
+            ..
+        } => {
+            args.len() >= 2
+                && args.len() <= 3
+                && arena_friendly_iter_input_pure(args)
+                && reduce_body_is_arith_fast(&args[1])
+        }
         // Phase 5: array-consumer ops at root. Single-arg form means the arg
         // is an array; for + and *, multi-arg is the binary form (a + b)
         // which has no arena win.
@@ -348,6 +371,37 @@ fn root_uses_arena_pure(node: &CompiledNode) -> bool {
             args,
             ..
         } => args.len() == 1 && arena_friendly_iter_input_pure(args),
+        // Missing / MissingSome: standalone ops, always go arena. The win is
+        // in the result accumulation (bumpalo Vec, no heap String per missing
+        // path during iteration).
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Missing | OpCode::MissingSome,
+            ..
+        } => true,
+        // Merge: at least one input must be arena-friendly to be worth dispatching.
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Merge,
+            args,
+            ..
+        } => args.iter().any(|a| {
+            matches!(
+                a,
+                CompiledNode::CompiledVar {
+                    scope_level: 0,
+                    reduce_hint: ReduceHint::None,
+                    metadata_hint: MetadataHint::None,
+                    default_value: None,
+                    ..
+                }
+            ) || matches!(
+                a,
+                CompiledNode::BuiltinOperator { opcode, .. }
+                    if matches!(
+                        opcode,
+                        OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Merge
+                    )
+            )
+        }),
         CompiledNode::BuiltinOperator {
             opcode: OpCode::Length,
             args,
@@ -359,7 +413,7 @@ fn root_uses_arena_pure(node: &CompiledNode) -> bool {
                     CompiledNode::BuiltinOperator { opcode, .. }
                         if matches!(
                             opcode,
-                            OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None
+                            OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Merge
                         )
                 )
         }
@@ -385,8 +439,63 @@ fn arena_friendly_iter_input_pure(args: &[CompiledNode]) -> bool {
         CompiledNode::BuiltinOperator { opcode, .. }
             if matches!(
                 opcode,
-                OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None
+                OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Merge
             )
+    )
+}
+
+/// True when the root is an iterator-style arena op (one whose first arg is
+/// expected to be a Value::Array at runtime). Used by `evaluate()` to peek
+/// the input shape and skip arena setup when input would force a bridge.
+fn root_is_arena_iter(node: &CompiledNode) -> bool {
+    matches!(
+        node,
+        CompiledNode::BuiltinOperator { opcode, .. }
+            if matches!(
+                opcode,
+                OpCode::Filter
+                    | OpCode::Map
+                    | OpCode::Reduce
+                    | OpCode::All
+                    | OpCode::Some
+                    | OpCode::None
+                    | OpCode::Merge
+            )
+    )
+}
+
+/// Detects the reduce body shape that the arena fast path can fold inline:
+/// `{op: [val("current"[+path]), val("accumulator")]}` (or reversed) for
+/// + / - / *. Mirrors the shape `try_reduce_fast_path_arena` accepts.
+fn reduce_body_is_arith_fast(body: &CompiledNode) -> bool {
+    let CompiledNode::BuiltinOperator {
+        opcode,
+        args: body_args,
+        ..
+    } = body
+    else {
+        return false;
+    };
+    if body_args.len() != 2 || !matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
+    {
+        return false;
+    }
+    let (h0, h1) = match (&body_args[0], &body_args[1]) {
+        (
+            CompiledNode::CompiledVar { reduce_hint: h0, .. },
+            CompiledNode::CompiledVar { reduce_hint: h1, .. },
+        ) => (*h0, *h1),
+        _ => return false,
+    };
+    matches!(
+        (h0, h1),
+        (
+            ReduceHint::Current | ReduceHint::CurrentPath,
+            ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
+        ) | (
+            ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
+            ReduceHint::Current | ReduceHint::CurrentPath,
+        )
     )
 }
 
