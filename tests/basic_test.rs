@@ -108,3 +108,35 @@ fn test_now_operator() {
         "Second call to now should also return a string"
     );
 }
+
+#[test]
+fn test_evaluate_ref_api() {
+    let engine = DataLogic::new();
+    let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
+    let data = json!({"a": 3, "b": 4});
+    let compiled = engine.compile(&logic).unwrap();
+
+    // evaluate_ref takes &Value (no Arc).
+    let result = engine.evaluate_ref(&compiled, &data).unwrap();
+    assert_eq!(result, json!(7));
+
+    // evaluate (Arc form) still works.
+    let result2 = engine.evaluate(&compiled, Arc::new(data.clone())).unwrap();
+    assert_eq!(result2, json!(7));
+
+    // evaluate_owned still works.
+    let result3 = engine.evaluate_owned(&compiled, data).unwrap();
+    assert_eq!(result3, json!(7));
+}
+
+#[test]
+fn test_evaluate_ref_with_arena_dispatch() {
+    let engine = DataLogic::new();
+    // A rule that triggers arena dispatch (filter + length).
+    let logic = json!({"length": {"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]}});
+    let data = json!({"items": [1, 2, 3, 4, 5]});
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.evaluate_ref(&compiled, &data).unwrap();
+    assert_eq!(result, json!(3));
+}
+

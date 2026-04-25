@@ -362,7 +362,8 @@ impl DataLogic {
     /// Evaluates compiled logic with Arc-wrapped data.
     ///
     /// Use this method when you already have data in an `Arc` to avoid re-wrapping.
-    /// For owned data, use `evaluate_owned` instead.
+    /// For owned data, use `evaluate_owned` instead. For borrowed data, use
+    /// `evaluate_ref` to skip the Arc altogether.
     ///
     /// # Arguments
     ///
@@ -385,6 +386,32 @@ impl DataLogic {
         self.evaluate_node(&compiled.root, &mut context)
     }
 
+    /// Evaluates compiled logic against borrowed data.
+    ///
+    /// This is the canonical fast path — no `Arc` is required. Use this when
+    /// you have a `&Value` (e.g., from a parsed input) and don't need to share
+    /// the data across threads. For Arc-wrapped data use [`evaluate`]; for
+    /// owned data use [`evaluate_owned`].
+    ///
+    /// # Arguments
+    ///
+    /// * `compiled` - The compiled logic to evaluate
+    /// * `data` - The data context (borrowed)
+    ///
+    /// # Returns
+    ///
+    /// The evaluation result, or an error if evaluation fails.
+    pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+        if compiled.uses_arena_dispatch {
+            return self.evaluate_arena_dispatch_ref(compiled, data);
+        }
+        // Value-mode bridge currently still needs `Arc<Value>` for `ContextStack`.
+        // Clone the value into a fresh Arc — removed in a later stage when
+        // `ContextStack` supports a borrowed root.
+        let mut context = ContextStack::new(Arc::new(data.clone()));
+        self.evaluate_node(&compiled.root, &mut context)
+    }
+
     /// Cold arena dispatch trampoline. Decides between in-arena evaluation
     /// and a value-mode bridge (used when an iterator's input collection
     /// turns out to be a `Value::Object`, which `evaluate_via_arena` would
@@ -403,6 +430,22 @@ impl DataLogic {
         self.evaluate_via_arena(compiled, data)
     }
 
+    /// Cold arena dispatch trampoline for the borrowed-data API.
+    #[cold]
+    #[inline(never)]
+    fn evaluate_arena_dispatch_ref(
+        &self,
+        compiled: &CompiledLogic,
+        data: &Value,
+    ) -> Result<Value> {
+        if compiled.arena_iter_root && !iter_root_input_is_array(&compiled.root, data) {
+            // Value-mode bridge — clone for ContextStack until it supports borrowed root.
+            let mut context = ContextStack::new(Arc::new(data.clone()));
+            return self.evaluate_node(&compiled.root, &mut context);
+        }
+        self.evaluate_via_arena_ref(compiled, data)
+    }
+
     /// Arena-mode evaluation entry. Acquires a thread-local `Bump` (from the
     /// pool, or freshly sized from the rule's compile-time hint), dispatches
     /// through `evaluate_arena_node`, and converts the result back to owned
@@ -416,12 +459,34 @@ impl DataLogic {
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
+        // Clone the Arc (refcount-only, no Value clone) so we can borrow `&Value`
+        // outside the ContextStack. Eliminates the unsafe lifetime cast that
+        // previously bridged Arc-stored Value to `&'a Value`.
+        let arc_for_borrow = Arc::clone(&data);
         let mut context = ContextStack::new(data);
-        let root_ref: &Value = unsafe {
-            // SAFETY: context owns the Arc for this function's body.
-            &*(context.root_data() as *const Value)
-        };
+        let root_ref: &Value = &arc_for_borrow;
         let result = self.evaluate_arena_node(&compiled.root, &mut context, arena, root_ref)?;
+        let owned = arena_to_value(result);
+        drop(guard);
+        drop(arc_for_borrow);
+        Ok(owned)
+    }
+
+    /// Borrowed-data variant of `evaluate_via_arena`. No Arc::clone — the
+    /// caller's `&Value` lives on the caller's stack; we synthesize an Arc
+    /// only for the legacy `ContextStack` bridge (removed in Stage E).
+    #[cold]
+    #[inline(never)]
+    fn evaluate_via_arena_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+        use crate::arena::{ArenaGuard, arena_to_value};
+        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
+        let guard = ArenaGuard::acquire(cap);
+        let arena = guard.arena();
+        // Synthetic Arc for the legacy ContextStack bridge. The clone goes
+        // away when ContextStack supports borrowed-root or is removed from
+        // the arena dispatch path.
+        let mut context = ContextStack::new(Arc::new(data.clone()));
+        let result = self.evaluate_arena_node(&compiled.root, &mut context, arena, data)?;
         let owned = arena_to_value(result);
         drop(guard);
         Ok(owned)
@@ -458,6 +523,8 @@ impl DataLogic {
     pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
         self.evaluate(compiled, Arc::new(data))
     }
+
+    // (evaluate_ref is the canonical zero-Arc path; see definition above.)
 
     /// Convenience method for evaluating JSON strings directly.
     ///
