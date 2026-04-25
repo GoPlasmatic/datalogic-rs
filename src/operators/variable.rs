@@ -926,10 +926,19 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
         return Ok(crate::arena::pool::singleton_bool(found));
     }
 
-    // Legacy `context` fallback.
-    let v = evaluate_compiled_exists(scope_level, segments, context)?;
-    let b = matches!(v, Value::Bool(true));
-    Ok(crate::arena::pool::singleton_bool(b))
+    // Legacy `context` fallback — value-mode iteration frame still on
+    // ContextStack (rare post-Stage-D). Walk segments natively against
+    // the frame data.
+    let frame = if scope_level == 0 {
+        context.current()
+    } else {
+        match context.get_at_level(scope_level as isize) {
+            Some(f) => f,
+            None => return Ok(crate::arena::pool::singleton_false()),
+        }
+    };
+    let found = segments.is_empty() || try_traverse_segments(frame.data(), segments).is_some();
+    Ok(crate::arena::pool::singleton_bool(found))
 }
 
 /// Arena variant of raw `var` operator (path resolved at runtime).
