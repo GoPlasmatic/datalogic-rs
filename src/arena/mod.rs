@@ -6,6 +6,8 @@
 //! `Arc<Value>`. See `ARENA_RFC.md` for design rationale.
 
 pub(crate) mod context;
+pub(crate) mod pool;
 pub(crate) mod value;
 
+pub(crate) use pool::ArenaGuard;
 pub(crate) use value::{ArenaValue, arena_to_value, value_to_arena};

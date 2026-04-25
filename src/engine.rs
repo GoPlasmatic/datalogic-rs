@@ -348,20 +348,26 @@ impl DataLogic {
         self.evaluate_node(&compiled.root, &mut context)
     }
 
-    /// Arena-mode evaluation entry. Allocates a `Bump` sized from the static
-    /// portion of the rule, dispatches through `evaluate_arena_node`, and
-    /// converts the result back to owned `Value` at the boundary.
+    /// Arena-mode evaluation entry. Acquires a thread-local `Bump` (from the
+    /// pool, or freshly sized from the rule's compile-time hint), dispatches
+    /// through `evaluate_arena_node`, and converts the result back to owned
+    /// `Value` at the boundary. The arena is reset and returned to the pool
+    /// when `guard` drops at end of function.
     fn evaluate_via_arena(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        use crate::arena::arena_to_value;
-        // Size the arena from the compile-time hint with 2× headroom.
+        use crate::arena::{ArenaGuard, arena_to_value};
+        // Size hint for first-time pool fills: static_bytes × 2, min 4 KiB.
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
-        let arena = bumpalo::Bump::with_capacity(cap);
+        let guard = ArenaGuard::acquire(cap);
+        let arena = guard.arena();
         let mut context = ContextStack::new(Arc::clone(&data));
         // `data` is held by `context` (as Arc) AND borrowed via `&*data` for the
         // arena lifetime. Both live for the duration of this function — safe.
         let root_ref: &Value = &data;
-        let result = self.evaluate_arena_node(&compiled.root, &mut context, &arena, root_ref)?;
-        Ok(arena_to_value(result))
+        let result = self.evaluate_arena_node(&compiled.root, &mut context, arena, root_ref)?;
+        let owned = arena_to_value(result);
+        // `guard` drops here: arena.reset() then pushed back into TLS pool.
+        drop(guard);
+        Ok(owned)
     }
 
     /// Evaluates compiled logic with owned data.
