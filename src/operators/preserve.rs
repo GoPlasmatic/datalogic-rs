@@ -65,9 +65,13 @@ pub fn evaluate_preserve(
 // Arena-mode preserve
 // =============================================================================
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{ArenaContextStack, ArenaValue, value::reborrow_arena_value};
 use bumpalo::Bump;
 
+/// Native arena-mode `preserve`.
+/// - 0 args: empty array (singleton).
+/// - 1 arg : the evaluated arg (or its literal value, fast-path).
+/// - N args: arena array of evaluated args.
 #[inline]
 pub(crate) fn evaluate_preserve_arena<'a>(
     args: &[CompiledNode],
@@ -76,6 +80,23 @@ pub(crate) fn evaluate_preserve_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let v = evaluate_preserve(args, context, engine)?;
-    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+    match args.len() {
+        0 => Ok(crate::arena::pool::singleton_empty_array()),
+        1 => {
+            // Literal fast path — skip evaluate_arena_node dispatch.
+            if let CompiledNode::Value { value, .. } = &args[0] {
+                return Ok(arena.alloc(crate::arena::value_to_arena(value, arena)));
+            }
+            engine.evaluate_arena_node(&args[0], actx, context, arena)
+        }
+        _ => {
+            let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+                bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
+            for arg in args {
+                let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+                items.push(reborrow_arena_value(av));
+            }
+            Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
+        }
+    }
 }

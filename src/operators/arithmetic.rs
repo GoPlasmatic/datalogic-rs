@@ -1396,14 +1396,20 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    // Unary form: negate
+    // Unary form: negate. coerce_arena_to_number handles all the input
+    // shapes the value-mode helper does (Number/Bool/Null/String/single-elem
+    // Array all coerce); the only remaining failure mode is non-coercible
+    // input which mirrors the value-mode NaN-handling config.
     if args.len() == 1 {
         let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
         if let Some(f) = coerce_arena_to_number(av) {
             return Ok(arena_number(arena, NumberValue::from_f64(f).neg()));
         }
-        let v = evaluate_subtract(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
+        // Non-coercible — defer to NaN handling.
+        return match handle_nan(engine)? {
+            NanAction::Skip => Ok(arena.alloc(ArenaValue::from_f64(0.0))),
+            NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+        };
     }
     evaluate_binary_arith_arena(args, actx, context, engine, arena, "-", |a, b| {
         Some(a.sub(b))
@@ -1432,6 +1438,67 @@ pub(crate) fn evaluate_modulo_arena<'a>(
     evaluate_binary_arith_arena(args, actx, context, engine, arena, "%", |a, b| a.rem(b))
 }
 
+/// `get_number_strict` for arena values — Number variants and string-as-number
+/// only (no bool/null coercion).
+#[cfg(feature = "ext-math")]
+#[inline]
+fn arena_value_strict_f64(av: &ArenaValue<'_>) -> Option<f64> {
+    match av {
+        ArenaValue::Number(n) => Some(n.as_f64()),
+        ArenaValue::String(s) => s.parse().ok(),
+        ArenaValue::InputRef(Value::Number(n)) => n.as_f64(),
+        ArenaValue::InputRef(Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
+}
+
+/// Generic native unary math op shared by abs / ceil / floor.
+/// - `args.is_empty()` → InvalidArguments
+/// - 1 arg, numeric → apply op_fn, return arena Number
+/// - 1 arg, non-numeric → InvalidArguments
+/// - >1 args → variadic, return arena Array of results (any non-numeric → error)
+#[cfg(feature = "ext-math")]
+#[inline]
+fn arena_unary_math<'a>(
+    args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    op_fn: fn(f64) -> f64,
+    always_int: bool,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let to_arena = |x: f64, arena: &'a Bump| -> &'a ArenaValue<'a> {
+        if always_int {
+            arena_number(arena, NumberValue::from_i64(x as i64))
+        } else {
+            arena_number(arena, NumberValue::from_f64(x))
+        }
+    };
+
+    if args.len() == 1 {
+        let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        let n = arena_value_strict_f64(av)
+            .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+        return Ok(to_arena(op_fn(n), arena));
+    }
+
+    let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
+    for arg in args {
+        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let n = arena_value_strict_f64(av)
+            .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+        let r = to_arena(op_fn(n), arena);
+        items.push(crate::arena::value::reborrow_arena_value(r));
+    }
+    Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
+}
+
 #[cfg(feature = "ext-math")]
 #[inline]
 pub(crate) fn evaluate_abs_arena<'a>(
@@ -1441,16 +1508,7 @@ pub(crate) fn evaluate_abs_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 1 {
-        let v = evaluate_abs(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
-    }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    if let Some(f) = coerce_arena_to_number(av) {
-        return Ok(arena_number(arena, NumberValue::from_f64(f).abs()));
-    }
-    let v = evaluate_abs(args, context, engine)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    arena_unary_math(args, actx, context, engine, arena, f64::abs, false)
 }
 
 #[cfg(feature = "ext-math")]
@@ -1462,17 +1520,7 @@ pub(crate) fn evaluate_ceil_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 1 {
-        let v = evaluate_ceil(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
-    }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    if let Some(f) = coerce_arena_to_number(av) {
-        let c = f.ceil();
-        return Ok(arena_number(arena, NumberValue::from_f64(c)));
-    }
-    let v = evaluate_ceil(args, context, engine)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    arena_unary_math(args, actx, context, engine, arena, f64::ceil, true)
 }
 
 #[cfg(feature = "ext-math")]
@@ -1484,15 +1532,5 @@ pub(crate) fn evaluate_floor_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if args.len() != 1 {
-        let v = evaluate_floor(args, context, engine)?;
-        return Ok(arena.alloc(value_to_arena(&v, arena)));
-    }
-    let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    if let Some(f) = coerce_arena_to_number(av) {
-        let c = f.floor();
-        return Ok(arena_number(arena, NumberValue::from_f64(c)));
-    }
-    let v = evaluate_floor(args, context, engine)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    arena_unary_math(args, actx, context, engine, arena, f64::floor, true)
 }

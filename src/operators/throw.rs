@@ -40,13 +40,12 @@ pub fn evaluate_throw<M: Mode>(
 // =============================================================================
 // Arena-mode throw
 // =============================================================================
-//
-// Always returns Err. Arena variant bridges to value-mode (Plain mode) so
-// the error structure is identical to the existing path.
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
 use bumpalo::Bump;
 
+/// Native arena-mode `throw`. Builds the error object directly from the
+/// argument's arena-resolved form — no value-mode round-trip.
 #[inline]
 pub(crate) fn evaluate_throw_arena<'a>(
     args: &[CompiledNode],
@@ -55,6 +54,21 @@ pub(crate) fn evaluate_throw_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let v = evaluate_throw::<crate::eval_mode::Plain>(args, context, engine, &mut crate::eval_mode::Plain)?;
-    Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
+    let error_obj: Value = if args.is_empty() {
+        Value::Null
+    } else if let CompiledNode::Value { value, .. } = &args[0] {
+        // Literal fast path — skip arena dispatch.
+        value.clone()
+    } else {
+        let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        arena_to_value(av)
+    };
+
+    let error_obj = match error_obj {
+        Value::Object(_) => error_obj,
+        Value::String(s) => serde_json::json!({"type": s}),
+        other => serde_json::json!({"type": other.to_string()}),
+    };
+
+    Err(Error::Thrown(error_obj))
 }
