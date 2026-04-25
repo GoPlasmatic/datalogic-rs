@@ -397,7 +397,7 @@ impl DataLogic {
         let arc_for_borrow = Arc::clone(&data);
         let mut context = ContextStack::new(data);
         let root_ref: &Value = &arc_for_borrow;
-        let mut actx = crate::arena::ArenaContextStack::new(arena, root_ref);
+        let mut actx = crate::arena::ArenaContextStack::new(root_ref);
         let result =
             self.evaluate_arena_node(&compiled.root, &mut actx, &mut context, arena)?;
         let owned = arena_to_value(result);
@@ -420,7 +420,7 @@ impl DataLogic {
         // a deep clone of the Value is unavoidable until ContextStack itself
         // supports a borrowed root.
         let mut context = ContextStack::new(Arc::new(data.clone()));
-        let mut actx = crate::arena::ArenaContextStack::new(arena, data);
+        let mut actx = crate::arena::ArenaContextStack::new(data);
         let result =
             self.evaluate_arena_node(&compiled.root, &mut actx, &mut context, arena)?;
         let owned = arena_to_value(result);
@@ -618,7 +618,7 @@ impl DataLogic {
                     }
                     let frame_ref = context.current();
                     let root_input = frame_ref.data();
-                    let mut actx = ArenaContextStack::new(arena, root_input);
+                    let mut actx = ArenaContextStack::new(root_input);
                     let result = arena_op.evaluate_arena(&arena_args, &mut actx, arena)?;
                     return Ok(arena_to_value(result));
                 }

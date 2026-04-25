@@ -955,7 +955,7 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_var_arena<'a>(
     args: &[CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    _actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -969,7 +969,7 @@ pub(crate) fn evaluate_var_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
     args: &[CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    _actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -983,10 +983,10 @@ pub(crate) fn evaluate_val_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_exists_arena<'a>(
     args: &[CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    _actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
-    arena: &'a Bump,
+    _arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     let v = evaluate_exists(args, context, engine)?;
     let b = matches!(v, Value::Bool(true));

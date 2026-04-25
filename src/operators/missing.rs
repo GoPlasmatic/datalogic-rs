@@ -219,7 +219,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
         bumpalo::collections::Vec::new_in(arena);
     let mut present_count: usize = 0;
 
-    let mut process_path = |path: &str,
+    let process_path = |path: &str,
                             missing: &mut bumpalo::collections::Vec<'a, ArenaValue<'a>>,
                             present_count: &mut usize|
      -> bool {

@@ -8,10 +8,12 @@
 //! (no `Value::clone`, no `BTreeMap::clone`). The win Phase 1 unlocks for
 //! Phase 5's collection-op migration.
 
-use bumpalo::Bump;
 use serde_json::Value;
 
 use super::value::ArenaValue;
+
+#[cfg(test)]
+use bumpalo::Bump;
 
 /// A single frame in the arena-mode context stack.
 #[derive(Clone, Copy)]
@@ -83,26 +85,6 @@ pub(crate) enum ArenaContextRef<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
-    /// When the current ref is the root, return the underlying `&Value` so
-    /// callers (`var` lookups) can borrow into the input tree without
-    /// constructing an `ArenaValue::InputRef` wrapper.
-    #[inline]
-    pub(crate) fn data_input_ref(&self) -> Option<&'a Value> {
-        match self {
-            Self::Root(v) => Some(*v),
-            Self::Frame(_) => None,
-        }
-    }
-
-    /// When the current ref is a frame, return its arena value pointer.
-    #[inline]
-    pub(crate) fn frame_data(&self) -> Option<&'a ArenaValue<'a>> {
-        match self {
-            Self::Frame(f) => Some(f.data()),
-            Self::Root(_) => None,
-        }
-    }
-
     #[inline]
     pub(crate) fn get_index(&self) -> Option<usize> {
         match self {
@@ -118,6 +100,24 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
             _ => None,
         }
     }
+
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn data_input_ref(&self) -> Option<&'a Value> {
+        match self {
+            Self::Root(v) => Some(*v),
+            Self::Frame(_) => None,
+        }
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn frame_data(&self) -> Option<&'a ArenaValue<'a>> {
+        match self {
+            Self::Frame(f) => Some(f.data()),
+            Self::Root(_) => None,
+        }
+    }
 }
 
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
@@ -125,8 +125,6 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 pub struct ArenaContextStack<'a> {
     root: &'a Value,
     frames: Vec<ArenaContextFrame<'a>>,
-    /// Available for arena-allocating frame-local strings (object iteration).
-    pub(crate) arena: &'a Bump,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     /// Mirrors `ContextStack::error_path`.
     error_path: Vec<u32>,
@@ -134,11 +132,10 @@ pub struct ArenaContextStack<'a> {
 
 impl<'a> ArenaContextStack<'a> {
     #[inline]
-    pub(crate) fn new(arena: &'a Bump, root: &'a Value) -> Self {
+    pub(crate) fn new(root: &'a Value) -> Self {
         Self {
             root,
             frames: Vec::new(),
-            arena,
             error_path: Vec::new(),
         }
     }
@@ -291,7 +288,7 @@ mod tests {
     fn lifecycle_indexed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&arena, &root_val);
+        let mut ctx = ArenaContextStack::new(&root_val);
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().data_input_ref().is_some(), "root at depth 0");
 
@@ -312,7 +309,7 @@ mod tests {
     fn lifecycle_keyed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&arena, &root_val);
+        let mut ctx = ArenaContextStack::new(&root_val);
 
         let a: &ArenaValue = arena.alloc(ArenaValue::Bool(true));
         ctx.push_with_key_index(a, 0, "k1");
@@ -328,7 +325,7 @@ mod tests {
     fn lifecycle_reduce() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&arena, &root_val);
+        let mut ctx = ArenaContextStack::new(&root_val);
 
         let cur: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
         let acc: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(0)));
@@ -347,7 +344,7 @@ mod tests {
     fn get_at_level_walks_up() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&arena, &root_val);
+        let mut ctx = ArenaContextStack::new(&root_val);
 
         let a: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(10)));
         let b: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(20)));
@@ -369,7 +366,7 @@ mod tests {
     fn error_path_round_trip() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&arena, &root_val);
+        let mut ctx = ArenaContextStack::new(&root_val);
 
         ctx.push_error_step(1);
         ctx.push_error_step(2);

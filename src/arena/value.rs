@@ -307,53 +307,6 @@ fn coerce_value_to_number_default(v: &Value) -> Option<f64> {
     }
 }
 
-/// Compare two `ArenaValue`s using JSON Logic ordering rules: Null < Bool
-/// < Number < String < Array < Object, with same-type comparison when
-/// applicable. Mirrors `compare_values` in `src/operators/array.rs:1456`.
-#[cfg(feature = "ext-array")]
-pub(crate) fn compare_arena_values(
-    a: &ArenaValue<'_>,
-    b: &ArenaValue<'_>,
-) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-    // Resolve InputRef once so the comparison logic can stay flat.
-    let af = arena_value_to_f64_for_compare(a);
-    let bf = arena_value_to_f64_for_compare(b);
-    match (af, bf) {
-        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
-        _ => {
-            // Fall back to lexical string comparison for non-numeric values
-            // (matches existing behavior for sort with mixed/string keys).
-            let as_str = arena_value_to_string_lossy(a);
-            let bs_str = arena_value_to_string_lossy(b);
-            as_str.cmp(&bs_str)
-        }
-    }
-}
-
-#[cfg(feature = "ext-array")]
-fn arena_value_to_f64_for_compare(v: &ArenaValue<'_>) -> Option<f64> {
-    match v {
-        ArenaValue::Number(n) => Some(n.as_f64()),
-        ArenaValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
-        ArenaValue::Null => None,
-        ArenaValue::InputRef(Value::Number(n)) => n.as_f64(),
-        ArenaValue::InputRef(Value::Bool(b)) => Some(if *b { 1.0 } else { 0.0 }),
-        ArenaValue::InputRef(Value::Null) => None,
-        _ => None,
-    }
-}
-
-#[cfg(feature = "ext-array")]
-fn arena_value_to_string_lossy(v: &ArenaValue<'_>) -> String {
-    match v {
-        ArenaValue::String(s) => (*s).to_string(),
-        ArenaValue::InputRef(Value::String(s)) => s.clone(),
-        ArenaValue::Null | ArenaValue::InputRef(Value::Null) => String::new(),
-        _ => format!("{:?}", v),
-    }
-}
-
 /// Build a fresh `ArenaValue` mirroring the source variant. Used to
 /// reborrow into an arena slice (e.g., when constructing an Object from
 /// arena-resident field values). Most variants are Copy-shaped; only
