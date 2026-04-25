@@ -96,22 +96,52 @@ pub fn evaluate_missing_some(
 use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
 use bumpalo::Bump;
 
-/// Snapshot of the lookup-target Value for `missing` / `missing_some` —
-/// the current context's data view (iter frame when iterating, root
-/// otherwise). Materialized once before any arg evaluation so the
-/// borrow doesn't conflict with subsequent mutable borrows of actx/context.
+/// Snapshot of the lookup-target for `missing` / `missing_some` — the
+/// current context's data view. Returns a borrow when possible
+/// (root or InputRef-wrapped iter frame); materializes only when the
+/// frame data lives in the arena and the borrow lifetime would conflict
+/// with subsequent mutable borrows.
+///
+/// Callers use `lookup.as_ref()` to get `&Value` for `access_path_ref`.
+enum LookupSnap<'a> {
+    Borrowed(&'a Value),
+    Owned(Value),
+}
+
+impl LookupSnap<'_> {
+    #[inline]
+    fn as_ref(&self) -> &Value {
+        match self {
+            LookupSnap::Borrowed(v) => v,
+            LookupSnap::Owned(v) => v,
+        }
+    }
+}
+
 #[inline]
-fn lookup_snapshot(actx: &ArenaContextStack<'_>, context: &ContextStack) -> Value {
+fn lookup_snapshot<'a>(
+    actx: &ArenaContextStack<'a>,
+    context: &ContextStack,
+) -> LookupSnap<'a> {
     if actx.depth() > 0 {
         use crate::arena::context::ArenaContextRef;
         if let ArenaContextRef::Frame(f) = actx.current() {
-            return arena_to_value(f.data());
+            // Frame data is `&'a ArenaValue<'a>`. Borrow when InputRef
+            // (zero-cost); materialize only for arena-resident composites.
+            return match f.data() {
+                ArenaValue::InputRef(v) => LookupSnap::Borrowed(v),
+                other => LookupSnap::Owned(arena_to_value(other)),
+            };
         }
     }
     if context.depth() > 0 {
-        return context.current().data().clone();
+        // Legacy bridge inside value-mode iteration (rare post-Stage-D).
+        // The value-mode frame holds an owned `Value`; clone is unavoidable
+        // because the frame data borrow is tied to the temporary
+        // ContextFrameRef. Stage E removes this path entirely.
+        return LookupSnap::Owned(context.current().data().clone());
     }
-    actx.root_input().clone()
+    LookupSnap::Borrowed(actx.root_input())
 }
 
 /// Native arena-mode `missing`. Accumulates missing-path strings directly
@@ -134,7 +164,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
             ArenaValue::Array(items) => {
                 for it in *items {
                     if let Some(path) = arena_value_as_str(it)
-                        && access_path_ref(&lookup, path).is_none()
+                        && access_path_ref(lookup.as_ref(), path).is_none()
                     {
                         missing.push(ArenaValue::String(arena.alloc_str(path)));
                     }
@@ -143,19 +173,19 @@ pub(crate) fn evaluate_missing_arena<'a>(
             ArenaValue::InputRef(Value::Array(arr)) => {
                 for v in arr {
                     if let Some(path) = v.as_str()
-                        && access_path_ref(&lookup, path).is_none()
+                        && access_path_ref(lookup.as_ref(), path).is_none()
                     {
                         missing.push(ArenaValue::String(arena.alloc_str(path)));
                     }
                 }
             }
             ArenaValue::String(s) => {
-                if access_path_ref(&lookup, s).is_none() {
+                if access_path_ref(lookup.as_ref(), s).is_none() {
                     missing.push(ArenaValue::String(arena.alloc_str(s)));
                 }
             }
             ArenaValue::InputRef(Value::String(s)) => {
-                if access_path_ref(&lookup, s).is_none() {
+                if access_path_ref(lookup.as_ref(), s).is_none() {
                     missing.push(ArenaValue::String(arena.alloc_str(s.as_str())));
                 }
             }
@@ -193,7 +223,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
                             missing: &mut bumpalo::collections::Vec<'a, ArenaValue<'a>>,
                             present_count: &mut usize|
      -> bool {
-        if access_path_ref(&lookup, path).is_none() {
+        if access_path_ref(lookup.as_ref(), path).is_none() {
             missing.push(ArenaValue::String(arena.alloc_str(path)));
         } else {
             *present_count += 1;

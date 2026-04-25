@@ -1136,9 +1136,11 @@ fn arena_min_max<'a>(
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-        ResolvedInput::Bridge => {
-            let v = bridge_arith(op_name, args, context, engine)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        ResolvedInput::Bridge(av) => {
+            // Composed input that arena_value_as_iter couldn't flatten as
+            // `&[&Value]` (e.g. mixed InputRef + computed Numbers from merge).
+            // Iterate the arena array directly.
+            return arena_min_max_from_av(av, init, pick_better, arena);
         }
     };
 
@@ -1169,6 +1171,61 @@ fn arena_min_max<'a>(
             // result is just an InputRef, no Number copy.
             Ok(arena.alloc(ArenaValue::InputRef(src.get(i))))
         }
+        None => Ok(arena.alloc(ArenaValue::Null)),
+    }
+}
+
+/// Iterate an `&'a ArenaValue<'a>` (Array variant) for min/max. Used when
+/// the input came from a composed arena op whose items aren't uniformly
+/// `InputRef` (e.g. `merge` mixing borrowed and inline numbers).
+#[inline]
+fn arena_min_max_from_av<'a>(
+    av: &'a ArenaValue<'a>,
+    init: f64,
+    pick_better: fn(f64, f64) -> bool,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    let items: &[ArenaValue<'a>] = match av {
+        ArenaValue::Array(items) => items,
+        ArenaValue::InputRef(Value::Array(arr)) => {
+            // Walk borrowed array directly.
+            if arr.is_empty() {
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+            }
+            let mut best_f = init;
+            let mut best: Option<&Value> = None;
+            for v in arr {
+                let f = v
+                    .as_f64()
+                    .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+                if pick_better(f, best_f) {
+                    best_f = f;
+                    best = Some(v);
+                }
+            }
+            return match best {
+                Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
+                None => Ok(arena.alloc(ArenaValue::Null)),
+            };
+        }
+        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+    };
+    if items.is_empty() {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+    let mut best_f = init;
+    let mut best_idx: Option<usize> = None;
+    for (i, it) in items.iter().enumerate() {
+        let f = it
+            .as_f64()
+            .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+        if pick_better(f, best_f) {
+            best_f = f;
+            best_idx = Some(i);
+        }
+    }
+    match best_idx {
+        Some(i) => Ok(arena.alloc(crate::arena::value::reborrow_arena_value(&items[i]))),
         None => Ok(arena.alloc(ArenaValue::Null)),
     }
 }
@@ -1263,13 +1320,10 @@ fn arena_fold<'a>(
 ) -> Result<&'a ArenaValue<'a>> {
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => {
-            // Match value-mode: empty +/* returns the identity? Existing impl
-            // varies — defer to value-mode for definitive semantics.
-            let v = bridge_arith(op_name, args, context, engine)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
-        }
-        ResolvedInput::Bridge => {
+        ResolvedInput::Empty | ResolvedInput::Bridge(_) => {
+            // arena_fold is the 1-arg-array form of +/*. For empty / non-array
+            // input, defer to the variadic value-mode evaluator which handles
+            // 0-arg, single-scalar, multi-arg, and datetime semantics.
             let v = bridge_arith(op_name, args, context, engine)?;
             return Ok(arena.alloc(value_to_arena(&v, arena)));
         }

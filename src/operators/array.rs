@@ -1838,14 +1838,14 @@ impl<'a> IterSrc<'a> {
 
 /// Outcome of resolving an iterator op's first arg in arena mode.
 pub(crate) enum ResolvedInput<'a> {
-    /// Iterable input — proceed with iteration.
+    /// Iterable input — proceed with array iteration.
     Iterable(IterSrc<'a>),
     /// Empty/null input — caller returns its empty-collection result.
     Empty,
-    /// Object or scalar input — caller bridges the entire op to value-mode
-    /// (via the `peek_root_value` check in `engine.rs`, this case usually
-    /// shouldn't reach here, but we handle it defensively).
-    Bridge,
+    /// Object or other non-array input. Carries the resolved arena value
+    /// so callers can dispatch natively (object-iteration / error / etc.)
+    /// without re-evaluating the arg.
+    Bridge(&'a ArenaValue<'a>),
 }
 
 /// Resolve `args[0]` for an arena-mode iterator op. Tries (in order):
@@ -1869,7 +1869,7 @@ pub(crate) fn resolve_iter_input<'a>(
         return Ok(match borrowed {
             Value::Array(arr) => ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice())),
             Value::Null => ResolvedInput::Empty,
-            _ => ResolvedInput::Bridge,
+            other => ResolvedInput::Bridge(arena.alloc(ArenaValue::InputRef(other))),
         });
     }
 
@@ -1890,8 +1890,11 @@ pub(crate) fn resolve_iter_input<'a>(
         return Ok(arena_value_as_iter(av, arena));
     }
 
-    // Path 3: anything else — bridge.
-    Ok(ResolvedInput::Bridge)
+    // Path 3: anything else — evaluate through arena dispatch so the caller
+    // can handle the result natively (Object iteration / single-element wrap /
+    // error per op semantics).
+    let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+    Ok(arena_value_as_iter(av, arena))
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
@@ -1905,18 +1908,18 @@ fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedI
             // Items from an arena op are typically `InputRef(&Value)`. Extract
             // them into an arena-allocated `&[&Value]`. If any item is not an
             // InputRef (e.g. a computed Number/Bool from a future arena op),
-            // we'd need value-mode bridging — for POC scope, signal Bridge.
+            // bridge with the original value so the caller can handle it.
             let mut refs: bumpalo::collections::Vec<'a, &'a Value> =
                 bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
             for item in items.iter() {
                 match item {
                     ArenaValue::InputRef(v) => refs.push(*v),
-                    _ => return ResolvedInput::Bridge,
+                    _ => return ResolvedInput::Bridge(av),
                 }
             }
             ResolvedInput::Iterable(IterSrc::Refs(refs.into_bump_slice()))
         }
-        _ => ResolvedInput::Bridge,
+        _ => ResolvedInput::Bridge(av),
     }
 }
 
@@ -1940,14 +1943,8 @@ pub(crate) fn evaluate_filter_arena<'a>(
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
-        ResolvedInput::Bridge => {
-            let v = crate::operators::array::evaluate_filter::<crate::eval_mode::Plain>(
-                args,
-                context,
-                engine,
-                &mut crate::eval_mode::Plain,
-            )?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        ResolvedInput::Bridge(av) => {
+            return filter_arena_bridge(av, &args[1], actx, context, engine, arena);
         }
     };
 
@@ -2025,6 +2022,176 @@ pub(crate) fn evaluate_filter_arena<'a>(
     Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
 }
 
+/// Filter Bridge case — input is an Object or non-array. Object inputs
+/// iterate `(key, value)` pairs and accumulate matched pairs into a
+/// new arena `Object`; non-array non-object non-null inputs error per
+/// value-mode semantics.
+#[inline]
+fn filter_arena_bridge<'a>(
+    input: &'a ArenaValue<'a>,
+    predicate: &CompiledNode,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+        let mut kept: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
+            bumpalo::collections::Vec::with_capacity_in(obj.len(), arena);
+        let mut pushed = false;
+        for (i, (k, v)) in obj.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
+            let key_arena: &'a str = arena.alloc_str(k);
+            if !pushed {
+                actx.push_with_key_index(item_av, 0, key_arena);
+                pushed = true;
+            } else {
+                actx.replace_top_key_data(item_av, i, key_arena);
+            }
+            let keep = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+            if crate::arena::is_truthy_arena(keep, engine) {
+                kept.push((key_arena, ArenaValue::InputRef(v)));
+            }
+        }
+        if pushed {
+            actx.pop();
+        }
+        return Ok(arena.alloc(ArenaValue::Object(kept.into_bump_slice())));
+    }
+    Err(Error::InvalidArguments(INVALID_ARGS.into()))
+}
+
+/// Map Bridge case — Object inputs iterate (key, value) pairs and
+/// produce an arena `Array` of mapped results. Non-array non-object
+/// non-null primitives are treated as a single-element collection.
+#[inline]
+fn map_arena_bridge<'a>(
+    input: &'a ArenaValue<'a>,
+    body: &CompiledNode,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+        let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(obj.len(), arena);
+        let mut pushed = false;
+        for (i, (k, v)) in obj.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
+            let key_arena: &'a str = arena.alloc_str(k);
+            if !pushed {
+                actx.push_with_key_index(item_av, 0, key_arena);
+                pushed = true;
+            } else {
+                actx.replace_top_key_data(item_av, i, key_arena);
+            }
+            let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+            results.push(crate::arena::value::reborrow_arena_value(av));
+        }
+        if pushed {
+            actx.pop();
+        }
+        return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
+    }
+    // Single-element collection (number, string, bool primitive input).
+    let item_av: &'a ArenaValue<'a> = input;
+    actx.push_with_index(item_av, 0);
+    let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+    let owned = crate::arena::value::reborrow_arena_value(av);
+    actx.pop();
+    let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));
+    Ok(arena.alloc(ArenaValue::Array(slice)))
+}
+
+/// Reduce Bridge case — Object inputs iterate (key, value) pairs.
+/// Non-array non-object non-null inputs return the initial value.
+#[inline]
+fn reduce_arena_bridge<'a>(
+    input: &'a ArenaValue<'a>,
+    body: &CompiledNode,
+    initial: &Value,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+        let mut acc_av: &'a ArenaValue<'a> =
+            arena.alloc(crate::arena::value_to_arena(initial, arena));
+        let mut pushed = false;
+        for (i, (k, v)) in obj.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
+            let _key = arena.alloc_str(k); // value-mode reduce frame stores
+            // current/accumulator only — key isn't exposed here.
+            if !pushed {
+                actx.push_reduce(item_av, acc_av);
+                pushed = true;
+            } else {
+                actx.replace_reduce_data(item_av, acc_av);
+            }
+            let _ = i;
+            acc_av = engine.evaluate_arena_node(body, actx, context, arena)?;
+        }
+        if pushed {
+            actx.pop();
+        }
+        return Ok(acc_av);
+    }
+    // Anything else — return initial.
+    Ok(arena.alloc(crate::arena::value_to_arena(initial, arena)))
+}
+
+/// Quantifier Bridge case — Object inputs iterate (key, value) pairs.
+#[inline]
+fn quantifier_arena_bridge<'a>(
+    input: &'a ArenaValue<'a>,
+    predicate: &CompiledNode,
+    short_circuit_on: bool,
+    invert_final: bool,
+    empty_result: bool,
+    actx: &mut ArenaContextStack<'a>,
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+) -> Result<&'a ArenaValue<'a>> {
+    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+        if obj.is_empty() {
+            return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
+        }
+        let mut pushed = false;
+        let mut found_short = false;
+        for (i, (k, v)) in obj.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
+            let key_arena: &'a str = arena.alloc_str(k);
+            if !pushed {
+                actx.push_with_key_index(item_av, 0, key_arena);
+                pushed = true;
+            } else {
+                actx.replace_top_key_data(item_av, i, key_arena);
+            }
+            let av = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+            if crate::arena::is_truthy_arena(av, engine) == short_circuit_on {
+                found_short = true;
+                break;
+            }
+        }
+        if pushed {
+            actx.pop();
+        }
+        let result = if found_short {
+            if invert_final { !short_circuit_on } else { short_circuit_on }
+        } else if invert_final {
+            short_circuit_on
+        } else {
+            !short_circuit_on
+        };
+        return Ok(arena.alloc(ArenaValue::Bool(result)));
+    }
+    // Anything else — value-mode treats as empty (returns empty_result).
+    Ok(arena.alloc(ArenaValue::Bool(empty_result)))
+}
+
 /// Arena-mode `sort`. Borrows input via `IterSrc` (no input clone), runs
 /// `slice::sort_by` over indices, and emits `ArenaValue::Array` of `InputRef`s
 /// pointing at the original items in their sorted order. The win vs the
@@ -2058,11 +2225,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Null)),
-        ResolvedInput::Bridge => {
-            // Input wasn't borrowable as &[Value] (e.g. computed expression).
-            // Evaluate once and pattern-match natively — Object inputs are
-            // an error per value-mode semantics; Array sorts in place.
-            let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        ResolvedInput::Bridge(av) => {
             return sort_arena_from_value(av, args, actx, context, engine, arena);
         }
     };
@@ -2337,14 +2500,8 @@ pub(crate) fn evaluate_map_arena<'a>(
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
-        ResolvedInput::Bridge => {
-            let v = crate::operators::array::evaluate_map::<crate::eval_mode::Plain>(
-                args,
-                context,
-                engine,
-                &mut crate::eval_mode::Plain,
-            )?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        ResolvedInput::Bridge(av) => {
+            return map_arena_bridge(av, &args[1], actx, context, engine, arena);
         }
     };
 
@@ -2431,10 +2588,18 @@ fn evaluate_quantifier_arena<'a>(
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
-        ResolvedInput::Bridge => {
-            // Bridge to the appropriate value-mode quantifier.
-            let v = bridge_quantifier_value_mode(args, context, engine, short_circuit_on, invert_final)?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        ResolvedInput::Bridge(av) => {
+            return quantifier_arena_bridge(
+                av,
+                predicate,
+                short_circuit_on,
+                invert_final,
+                empty_result,
+                actx,
+                context,
+                engine,
+                arena,
+            );
         }
     };
 
@@ -2589,14 +2754,8 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(value_to_arena(&initial, arena))),
-        ResolvedInput::Bridge => {
-            let v = crate::operators::array::evaluate_reduce::<crate::eval_mode::Plain>(
-                args,
-                context,
-                engine,
-                &mut crate::eval_mode::Plain,
-            )?;
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+        ResolvedInput::Bridge(av) => {
+            return reduce_arena_bridge(av, body, &initial, actx, context, engine, arena);
         }
     };
 
