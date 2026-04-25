@@ -1814,3 +1814,284 @@ fn try_borrow_collection_from_root<'a>(
     }
     None
 }
+
+/// Arena-mode `map`. POC scope: borrow input from root scope. Body fast path
+/// for var/field-extract emits InputRef per item with zero iteration allocs.
+/// Other body shapes fall through to value-mode evaluate then promote to arena.
+#[inline]
+pub(crate) fn evaluate_map_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    // Fast path: input borrowable from root.
+    let collection_ref = try_borrow_collection_from_root(&args[0], context, root);
+    let body = &args[1];
+
+    let arr: &'a [Value] = match collection_ref {
+        Some(Value::Array(a)) => a.as_slice(),
+        Some(Value::Null) => return Ok(arena.alloc(ArenaValue::Array(&[]))),
+        Some(_) => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        None => {
+            // Bridge: evaluate input, promote
+            let v = engine.evaluate_node(&args[0], context)?;
+            let promoted = arena.alloc(v);
+            match promoted {
+                Value::Array(a) => a.as_slice(),
+                Value::Null => return Ok(arena.alloc(ArenaValue::Array(&[]))),
+                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            }
+        }
+    };
+
+    let len = arr.len();
+    if len == 0 {
+        return Ok(arena.alloc(ArenaValue::Array(&[])));
+    }
+
+    // BODY FAST PATH 1: identity map (val [] / var "" with empty path) — borrow each item.
+    if let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        default_value: None,
+        ..
+    } = body
+    {
+        if segments.is_empty() {
+            // Identity: result is just InputRef per item.
+            let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+                bumpalo::collections::Vec::with_capacity_in(len, arena);
+            for item in arr.iter() {
+                results.push(ArenaValue::InputRef(item));
+            }
+            return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
+        }
+        // BODY FAST PATH 2: field extract — borrow inner field per item.
+        let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            bumpalo::collections::Vec::with_capacity_in(len, arena);
+        for item in arr.iter() {
+            match super::variable::try_traverse_segments(item, segments) {
+                Some(v) => results.push(ArenaValue::InputRef(v)),
+                None => results.push(ArenaValue::Null),
+            }
+        }
+        return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
+    }
+
+    // GENERAL PATH: push items to context, evaluate body via value-mode.
+    let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(len, arena);
+    let mut pushed = false;
+    for (index, item) in arr.iter().enumerate() {
+        if !pushed {
+            context.push_with_index(item.clone(), 0);
+            pushed = true;
+        } else {
+            context.replace_top_data(item.clone(), index);
+        }
+        let v = engine.evaluate_node(body, context)?;
+        results.push(value_to_arena(&v, arena));
+    }
+    if pushed {
+        context.pop();
+    }
+    Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
+}
+
+/// Internal helper: arena-mode quantifier (all / some / none).
+/// `early_truthy` controls short-circuit semantics:
+///   - `all`: early_truthy = false (false ⇒ return false immediately)
+///   - `some`: early_truthy = true (true ⇒ return true immediately)
+///   - `none`: same as `some` but invert the final result
+#[inline]
+fn evaluate_quantifier_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+    short_circuit_on: bool,
+    invert_final: bool,
+    empty_result: bool,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() != 2 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let collection_ref = try_borrow_collection_from_root(&args[0], context, root);
+    let predicate = &args[1];
+
+    let arr: &'a [Value] = match collection_ref {
+        Some(Value::Array(a)) => a.as_slice(),
+        Some(Value::Null) => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
+        Some(_) => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        None => {
+            let v = engine.evaluate_node(&args[0], context)?;
+            let promoted = arena.alloc(v);
+            match promoted {
+                Value::Array(a) => a.as_slice(),
+                Value::Null => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
+                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            }
+        }
+    };
+
+    if arr.is_empty() {
+        return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
+    }
+
+    // Fast predicate path — no context push, no clones.
+    if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+        for item in arr.iter() {
+            if fast_pred.evaluate(item) == short_circuit_on {
+                let result = if invert_final {
+                    !short_circuit_on
+                } else {
+                    short_circuit_on
+                };
+                return Ok(arena.alloc(ArenaValue::Bool(result)));
+            }
+        }
+        let result = if invert_final {
+            short_circuit_on
+        } else {
+            !short_circuit_on
+        };
+        return Ok(arena.alloc(ArenaValue::Bool(result)));
+    }
+
+    // General path.
+    let mut pushed = false;
+    let mut found_short = false;
+    for (index, item) in arr.iter().enumerate() {
+        if !pushed {
+            context.push_with_index(item.clone(), 0);
+            pushed = true;
+        } else {
+            context.replace_top_data(item.clone(), index);
+        }
+        let v = engine.evaluate_node(predicate, context)?;
+        if is_truthy(&v, engine) == short_circuit_on {
+            found_short = true;
+            break;
+        }
+    }
+    if pushed {
+        context.pop();
+    }
+
+    let result = if found_short {
+        if invert_final {
+            !short_circuit_on
+        } else {
+            short_circuit_on
+        }
+    } else if invert_final {
+        short_circuit_on
+    } else {
+        !short_circuit_on
+    };
+    Ok(arena.alloc(ArenaValue::Bool(result)))
+}
+
+/// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.
+#[inline]
+pub(crate) fn evaluate_all_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    // all: early-exit on false; empty array ⇒ false (matching existing impl,
+    // which deliberately rejects vacuous truth — see evaluate_all in this file).
+    evaluate_quantifier_arena(args, context, engine, arena, root, false, false, false)
+}
+
+/// Arena-mode `some` — true iff any item satisfies predicate. Short-circuits on true.
+#[inline]
+pub(crate) fn evaluate_some_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    // some: early-exit on true; empty array ⇒ false.
+    evaluate_quantifier_arena(args, context, engine, arena, root, true, false, false)
+}
+
+/// Arena-mode `none` — true iff no item satisfies predicate. Short-circuits on true.
+#[inline]
+pub(crate) fn evaluate_none_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    // none: early-exit on true (then return false); empty array ⇒ true.
+    evaluate_quantifier_arena(args, context, engine, arena, root, true, true, true)
+}
+
+/// Arena-mode `reduce` — folds an array into a single value via accumulator.
+/// POC: input borrow + general path. Body always uses value-mode evaluate.
+#[inline]
+pub(crate) fn evaluate_reduce_arena<'a>(
+    args: &[CompiledNode],
+    context: &mut ContextStack,
+    engine: &DataLogic,
+    arena: &'a Bump,
+    root: &'a Value,
+) -> Result<&'a ArenaValue<'a>> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+    }
+
+    let collection_ref = try_borrow_collection_from_root(&args[0], context, root);
+    let body = &args[1];
+    let initial = if args.len() == 3 {
+        engine.evaluate_node(&args[2], context)?
+    } else {
+        Value::Null
+    };
+
+    let arr: &'a [Value] = match collection_ref {
+        Some(Value::Array(a)) => a.as_slice(),
+        Some(Value::Null) => return Ok(arena.alloc(value_to_arena(&initial, arena))),
+        Some(_) => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        None => {
+            let v = engine.evaluate_node(&args[0], context)?;
+            let promoted = arena.alloc(v);
+            match promoted {
+                Value::Array(a) => a.as_slice(),
+                Value::Null => return Ok(arena.alloc(value_to_arena(&initial, arena))),
+                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            }
+        }
+    };
+
+    let mut acc = initial;
+    let mut pushed = false;
+    for item in arr.iter() {
+        if !pushed {
+            context.push_reduce(item.clone(), acc);
+            pushed = true;
+        } else {
+            context.replace_reduce_data(item.clone(), acc);
+        }
+        acc = engine.evaluate_node(body, context)?;
+    }
+    if pushed {
+        context.pop();
+    }
+    Ok(arena.alloc(value_to_arena(&acc, arena)))
+}

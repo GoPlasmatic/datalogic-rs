@@ -6,31 +6,125 @@ use std::sync::Arc;
 use crate::config::EvaluationConfig;
 
 /// Returns true when this root node should be evaluated via the arena path.
-/// POC scope: arena helps when (a) the root is filter (input borrow win) or
-/// (b) the root is length(filter(...)) (composition win). For plain length()
-/// on a string/array, the Bump setup cost outweighs any savings — use the
-/// existing value path instead.
+///
+/// Validated win-shapes (per `examples/alloc_profile.rs` measurements):
+///   - `filter` at root → arena always wins (input borrow + InputRef results)
+///   - `length(filter(...))` → composition saves intermediate materialization
+///   - `map` at root WHEN body is a simple `var` (field extract / identity) —
+///     these hit the InputRef fast path. Other map bodies fall back to the
+///     value-mode general path (slower than baseline due to Bump overhead);
+///     keep them on the existing path.
+///   - `all` / `some` / `none` at root when input is borrowable from root and
+///     predicate is FastPredicate-detectable. Returns Bool (cheap boundary).
+///
+/// Deliberately excluded for now:
+///   - `reduce` — existing impl has inline arithmetic fast paths the arena
+///     version doesn't replicate yet; arena path regresses.
+///   - `map` with non-var body — same reason; the existing arithmetic fast
+///     path beats our general arena path.
+///   - Iterator ops where args[0] is a nested operator (not a root var) —
+///     composition INTO arena is currently broken (map(filter(...), x)
+///     re-evaluates filter via value-mode).
 #[inline]
 fn root_uses_arena(node: &CompiledNode) -> bool {
     match node {
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Filter,
+            args,
             ..
-        } => true,
+        } => arena_friendly_iter_input(args),
+        CompiledNode::BuiltinOperator {
+            opcode: crate::OpCode::Map,
+            args,
+            ..
+        } => arena_friendly_iter_input(args) && map_body_is_var(args),
+        CompiledNode::BuiltinOperator {
+            opcode: crate::OpCode::All | crate::OpCode::Some | crate::OpCode::None,
+            args,
+            ..
+        } => arena_friendly_iter_input(args),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Length,
             args,
             ..
-        } => args.len() == 1
-            && matches!(
-                &args[0],
-                CompiledNode::BuiltinOperator {
-                    opcode: crate::OpCode::Filter,
-                    ..
-                }
-            ),
+        } => {
+            args.len() == 1
+                && matches!(
+                    &args[0],
+                    CompiledNode::BuiltinOperator {
+                        opcode: crate::OpCode::Filter,
+                        ..
+                    }
+                )
+        }
         _ => false,
     }
+}
+
+/// Iterator input is arena-friendly when args[0] is a simple root-scope var.
+/// Composition INTO arena (args[0] = nested op) isn't fully wired in POC.
+#[inline]
+fn arena_friendly_iter_input(args: &[CompiledNode]) -> bool {
+    !args.is_empty()
+        && matches!(
+            &args[0],
+            CompiledNode::CompiledVar {
+                scope_level: 0,
+                reduce_hint: crate::node::ReduceHint::None,
+                metadata_hint: crate::node::MetadataHint::None,
+                default_value: None,
+                ..
+            }
+        )
+}
+
+/// Map body is a simple var (field extract or identity). Other body shapes
+/// are still better served by the existing value-mode arithmetic fast paths.
+#[inline]
+fn map_body_is_var(args: &[CompiledNode]) -> bool {
+    args.len() == 2
+        && matches!(
+            &args[1],
+            CompiledNode::CompiledVar {
+                scope_level: 0,
+                reduce_hint: crate::node::ReduceHint::None,
+                metadata_hint: crate::node::MetadataHint::None,
+                default_value: None,
+                ..
+            }
+        )
+}
+
+/// Peek at what an iterator's first arg would resolve to *without evaluating*.
+/// Returns `Some(&Value)` only when the arg is a simple root-scope `var` — the
+/// only case we can resolve with a borrow. For anything else (computed
+/// collection, nested expression), returns `None` and the caller proceeds with
+/// the regular arena dispatch (which will evaluate the arg properly). The
+/// borrow lifetime is `'a` because `root` lives for the call's duration.
+#[inline]
+fn peek_root_value<'a>(
+    arg: &CompiledNode,
+    context: &ContextStack,
+    root: &'a Value,
+) -> Option<&'a Value> {
+    if context.depth() != 0 {
+        return None;
+    }
+    if let CompiledNode::CompiledVar {
+        scope_level: 0,
+        segments,
+        reduce_hint: crate::node::ReduceHint::None,
+        metadata_hint: crate::node::MetadataHint::None,
+        default_value: None,
+        ..
+    } = arg
+    {
+        if segments.is_empty() {
+            return Some(root);
+        }
+        return crate::operators::variable::try_traverse_segments(root, segments);
+    }
+    None
 }
 
 use crate::operators::variable;
@@ -651,6 +745,29 @@ impl DataLogic {
         use crate::arena::{ArenaValue, value_to_arena};
         use crate::node::{MetadataHint, ReduceHint};
 
+        // POC limitation: arena ops handle Array (and Null) inputs only. For
+        // other collection shapes — Value::Object (object iteration semantics)
+        // or scalar inputs (existing ops treat as 1-item) — bridge the entire
+        // op to the value-mode dispatcher. Cheap to detect via root borrow
+        // without re-evaluating args[0].
+        if let CompiledNode::BuiltinOperator { opcode, args, .. } = node
+            && matches!(
+                opcode,
+                crate::OpCode::Filter
+                    | crate::OpCode::Map
+                    | crate::OpCode::All
+                    | crate::OpCode::Some
+                    | crate::OpCode::None
+                    | crate::OpCode::Reduce
+            )
+            && !args.is_empty()
+            && let Some(v) = peek_root_value(&args[0], context, root)
+            && !matches!(v, Value::Array(_) | Value::Null)
+        {
+            let result = self.evaluate_node(node, context)?;
+            return Ok(arena.alloc(value_to_arena(&result, arena)));
+        }
+
         match node {
             // var fast path: borrow into root data via InputRef when the lookup
             // resolves at the root scope. This is the eliminated-clone win.
@@ -678,6 +795,36 @@ impl DataLogic {
                 args,
                 ..
             } => crate::operators::array::evaluate_filter_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Map,
+                args,
+                ..
+            } => crate::operators::array::evaluate_map_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::All,
+                args,
+                ..
+            } => crate::operators::array::evaluate_all_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Some,
+                args,
+                ..
+            } => crate::operators::array::evaluate_some_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::None,
+                args,
+                ..
+            } => crate::operators::array::evaluate_none_arena(args, context, self, arena, root),
+
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Reduce,
+                args,
+                ..
+            } => crate::operators::array::evaluate_reduce_arena(args, context, self, arena, root),
 
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {

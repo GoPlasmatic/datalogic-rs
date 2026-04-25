@@ -117,14 +117,60 @@ fn main() {
         iters,
     );
 
-    // ---- Other operators (should not regress; uses non-arena path) ----
+    // ---- Phase 3 operators ----
     measure(
-        &"map +1, 10 items",
+        &"map +1, 10 ints",
         &engine,
         serde_json::json!({"map": [{"var":"xs"}, {"+": [{"var":""}, 1]}]}),
         serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
         iters,
     );
+    measure(
+        &"map field-extract, 10 objs [ARENA]",
+        &engine,
+        serde_json::json!({"map": [{"var":"xs"}, {"var":"k"}]}),
+        serde_json::json!({"xs": (1..=10).map(|i| serde_json::json!({"k": i, "other": "noise"})).collect::<Vec<_>>()}),
+        iters,
+    );
+    measure(
+        &"all >0, 10 ints [ARENA]",
+        &engine,
+        serde_json::json!({"all": [{"var":"xs"}, {">": [{"var":""}, 0]}]}),
+        serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
+        iters,
+    );
+    measure(
+        &"some ==5, 10 ints [ARENA]",
+        &engine,
+        serde_json::json!({"some": [{"var":"xs"}, {"===": [{"var":""}, 5]}]}),
+        serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
+        iters,
+    );
+    measure(
+        &"reduce sum, 10 ints [ARENA]",
+        &engine,
+        serde_json::json!({"reduce": [{"var":"xs"}, {"+":[{"var":"current"},{"var":"accumulator"}]}, 0]}),
+        serde_json::json!({"xs":[1,2,3,4,5,6,7,8,9,10]}),
+        iters,
+    );
+
+    // ---- Phase 3 COMPOSITION ----
+    measure(
+        &"length(map(filter)), 100 [ARENA]",
+        &engine,
+        serde_json::json!({"length": {"map": [{"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}, {"var":"k"}]}}),
+        serde_json::json!({"xs": (1..=100).map(|i| serde_json::json!({"k": i % 2, "noise": "x"})).collect::<Vec<_>>()}),
+        iters,
+    );
+    measure(
+        &"all(filter()), 100 [ARENA]",
+        &engine,
+        serde_json::json!({"all": [{"filter": [{"var":"xs"}, {"===": [{"var":"k"}, 1]}]}, {">": [{"var":"k"}, 0]}]}),
+        serde_json::json!({"xs": (1..=100).map(|i| serde_json::json!({"k": i % 2})).collect::<Vec<_>>()}),
+        iters,
+    );
+
+    // ---- Sanity: should not regress ----
     measure(
         &"sort by field, 10",
         &engine,
