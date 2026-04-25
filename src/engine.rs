@@ -465,7 +465,14 @@ impl DataLogic {
         let arc_for_borrow = Arc::clone(&data);
         let mut context = ContextStack::new(data);
         let root_ref: &Value = &arc_for_borrow;
-        let result = self.evaluate_arena_node(&compiled.root, &mut context, arena, root_ref)?;
+        let mut actx = crate::arena::ArenaContextStack::new(arena, root_ref);
+        let result = self.evaluate_arena_node(
+            &compiled.root,
+            &mut actx,
+            &mut context,
+            arena,
+            root_ref,
+        )?;
         let owned = arena_to_value(result);
         drop(guard);
         drop(arc_for_borrow);
@@ -486,7 +493,14 @@ impl DataLogic {
         // away when ContextStack supports borrowed-root or is removed from
         // the arena dispatch path.
         let mut context = ContextStack::new(Arc::new(data.clone()));
-        let result = self.evaluate_arena_node(&compiled.root, &mut context, arena, data)?;
+        let mut actx = crate::arena::ArenaContextStack::new(arena, data);
+        let result = self.evaluate_arena_node(
+            &compiled.root,
+            &mut actx,
+            &mut context,
+            arena,
+            data,
+        )?;
         let owned = arena_to_value(result);
         drop(guard);
         Ok(owned)
@@ -780,6 +794,7 @@ impl DataLogic {
     pub(crate) fn evaluate_arena_node<'a>(
         &self,
         node: &CompiledNode,
+        actx: &mut crate::arena::ArenaContextStack<'a>,
         context: &mut ContextStack,
         arena: &'a bumpalo::Bump,
         root: &'a Value,
@@ -828,6 +843,7 @@ impl DataLogic {
                 *reduce_hint,
                 *metadata_hint,
                 default_value.as_deref(),
+                actx,
                 context,
                 self,
                 arena,
@@ -869,212 +885,212 @@ impl DataLogic {
                 opcode: crate::OpCode::Var,
                 args,
                 ..
-            } => crate::operators::variable::evaluate_var_arena(args, context, self, arena, root),
+            } => crate::operators::variable::evaluate_var_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-control")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Val,
                 args,
                 ..
-            } => crate::operators::variable::evaluate_val_arena(args, context, self, arena, root),
+            } => crate::operators::variable::evaluate_val_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-control")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Exists,
                 args,
                 ..
-            } => crate::operators::variable::evaluate_exists_arena(args, context, self, arena, root),
+            } => crate::operators::variable::evaluate_exists_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Filter,
                 args,
                 ..
-            } => crate::operators::array::evaluate_filter_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_filter_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Map,
                 args,
                 ..
-            } => crate::operators::array::evaluate_map_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_map_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::All,
                 args,
                 ..
-            } => crate::operators::array::evaluate_all_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_all_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Some,
                 args,
                 ..
-            } => crate::operators::array::evaluate_some_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_some_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::None,
                 args,
                 ..
-            } => crate::operators::array::evaluate_none_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_none_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Reduce,
                 args,
                 ..
-            } => crate::operators::array::evaluate_reduce_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_reduce_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Merge,
                 args,
                 ..
-            } => crate::operators::array::evaluate_merge_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_merge_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Missing,
                 args,
                 ..
-            } => crate::operators::missing::evaluate_missing_arena(args, context, self, arena, root),
+            } => crate::operators::missing::evaluate_missing_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::MissingSome,
                 args,
                 ..
-            } => crate::operators::missing::evaluate_missing_some_arena(args, context, self, arena, root),
+            } => crate::operators::missing::evaluate_missing_some_arena(args, actx, context, self, arena, root),
 
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Length,
                 args,
                 ..
-            } => crate::operators::array::evaluate_length_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_length_arena(args, actx, context, self, arena, root),
 
             #[cfg(feature = "ext-array")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Sort,
                 args,
                 ..
-            } => crate::operators::array::evaluate_sort_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_sort_arena(args, actx, context, self, arena, root),
 
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Max,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_max_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_max_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Min,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_min_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_min_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Add,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_add_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_add_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Multiply,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_multiply_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_multiply_arena(args, actx, context, self, arena, root),
 
             // Comparison
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Equals,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_equals_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_equals_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::StrictEquals,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_strict_equals_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_strict_equals_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::NotEquals,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_not_equals_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_not_equals_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::StrictNotEquals,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_strict_not_equals_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_strict_not_equals_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::GreaterThan,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_greater_than_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_greater_than_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::GreaterThanEqual,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_greater_than_equal_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_greater_than_equal_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::LessThan,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_less_than_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_less_than_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::LessThanEqual,
                 args,
                 ..
-            } => crate::operators::comparison::evaluate_less_than_equal_arena(args, context, self, arena, root),
+            } => crate::operators::comparison::evaluate_less_than_equal_arena(args, actx, context, self, arena, root),
 
             // Logical
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Not,
                 args,
                 ..
-            } => crate::operators::logical::evaluate_not_arena(args, context, self, arena, root),
+            } => crate::operators::logical::evaluate_not_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::DoubleNot,
                 args,
                 ..
-            } => crate::operators::logical::evaluate_double_not_arena(args, context, self, arena, root),
+            } => crate::operators::logical::evaluate_double_not_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::And,
                 args,
                 ..
-            } => crate::operators::logical::evaluate_and_arena(args, context, self, arena, root),
+            } => crate::operators::logical::evaluate_and_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Or,
                 args,
                 ..
-            } => crate::operators::logical::evaluate_or_arena(args, context, self, arena, root),
+            } => crate::operators::logical::evaluate_or_arena(args, actx, context, self, arena, root),
 
             // Control
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::If,
                 args,
                 ..
-            } => crate::operators::control::evaluate_if_arena(args, context, self, arena, root),
+            } => crate::operators::control::evaluate_if_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Ternary,
                 args,
                 ..
-            } => crate::operators::control::evaluate_ternary_arena(args, context, self, arena, root),
+            } => crate::operators::control::evaluate_ternary_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-control")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Coalesce,
                 args,
                 ..
-            } => crate::operators::control::evaluate_coalesce_arena(args, context, self, arena, root),
+            } => crate::operators::control::evaluate_coalesce_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-control")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Switch,
                 args,
                 ..
-            } => crate::operators::control::evaluate_switch_arena(args, context, self, arena, root),
+            } => crate::operators::control::evaluate_switch_arena(args, actx, context, self, arena, root),
 
             // Arithmetic binary forms
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Subtract,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_subtract_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_subtract_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Divide,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_divide_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_divide_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Modulo,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_modulo_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_modulo_arena(args, actx, context, self, arena, root),
 
             // Math (unary)
             #[cfg(feature = "ext-math")]
@@ -1082,72 +1098,72 @@ impl DataLogic {
                 opcode: crate::OpCode::Abs,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_abs_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_abs_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-math")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Ceil,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_ceil_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_ceil_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-math")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Floor,
                 args,
                 ..
-            } => crate::operators::arithmetic::evaluate_floor_arena(args, context, self, arena, root),
+            } => crate::operators::arithmetic::evaluate_floor_arena(args, actx, context, self, arena, root),
 
             // String
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Cat,
                 args,
                 ..
-            } => crate::operators::string::evaluate_cat_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_cat_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Substr,
                 args,
                 ..
-            } => crate::operators::string::evaluate_substr_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_substr_arena(args, actx, context, self, arena, root),
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::In,
                 args,
                 ..
-            } => crate::operators::string::evaluate_in_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_in_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::StartsWith,
                 args,
                 ..
-            } => crate::operators::string::evaluate_starts_with_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_starts_with_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::EndsWith,
                 args,
                 ..
-            } => crate::operators::string::evaluate_ends_with_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_ends_with_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Upper,
                 args,
                 ..
-            } => crate::operators::string::evaluate_upper_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_upper_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Lower,
                 args,
                 ..
-            } => crate::operators::string::evaluate_lower_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_lower_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Trim,
                 args,
                 ..
-            } => crate::operators::string::evaluate_trim_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_trim_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "ext-string")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Split,
                 args,
                 ..
-            } => crate::operators::string::evaluate_split_arena(args, context, self, arena, root),
+            } => crate::operators::string::evaluate_split_arena(args, actx, context, self, arena, root),
 
             // DateTime
             #[cfg(feature = "datetime")]
@@ -1155,37 +1171,37 @@ impl DataLogic {
                 opcode: crate::OpCode::Datetime,
                 args,
                 ..
-            } => crate::operators::datetime::evaluate_datetime_arena(args, context, self, arena, root),
+            } => crate::operators::datetime::evaluate_datetime_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "datetime")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Timestamp,
                 args,
                 ..
-            } => crate::operators::datetime::evaluate_timestamp_arena(args, context, self, arena, root),
+            } => crate::operators::datetime::evaluate_timestamp_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "datetime")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::ParseDate,
                 args,
                 ..
-            } => crate::operators::datetime::evaluate_parse_date_arena(args, context, self, arena, root),
+            } => crate::operators::datetime::evaluate_parse_date_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "datetime")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::FormatDate,
                 args,
                 ..
-            } => crate::operators::datetime::evaluate_format_date_arena(args, context, self, arena, root),
+            } => crate::operators::datetime::evaluate_format_date_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "datetime")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::DateDiff,
                 args,
                 ..
-            } => crate::operators::datetime::evaluate_date_diff_arena(args, context, self, arena, root),
+            } => crate::operators::datetime::evaluate_date_diff_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "datetime")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Now,
                 args,
                 ..
-            } => crate::operators::datetime::evaluate_now_arena(args, context, self, arena, root),
+            } => crate::operators::datetime::evaluate_now_arena(args, actx, context, self, arena, root),
 
             // Type
             #[cfg(feature = "ext-control")]
@@ -1193,7 +1209,7 @@ impl DataLogic {
                 opcode: crate::OpCode::Type,
                 args,
                 ..
-            } => crate::operators::type_op::evaluate_type_arena(args, context, self, arena, root),
+            } => crate::operators::type_op::evaluate_type_arena(args, actx, context, self, arena, root),
 
             // Throw / Try
             #[cfg(feature = "error-handling")]
@@ -1201,13 +1217,13 @@ impl DataLogic {
                 opcode: crate::OpCode::Throw,
                 args,
                 ..
-            } => crate::operators::throw::evaluate_throw_arena(args, context, self, arena, root),
+            } => crate::operators::throw::evaluate_throw_arena(args, actx, context, self, arena, root),
             #[cfg(feature = "error-handling")]
             CompiledNode::BuiltinOperator {
                 opcode: crate::OpCode::Try,
                 args,
                 ..
-            } => crate::operators::try_op::evaluate_try_arena(args, context, self, arena, root),
+            } => crate::operators::try_op::evaluate_try_arena(args, actx, context, self, arena, root),
 
             // Preserve
             #[cfg(feature = "preserve")]
@@ -1215,7 +1231,7 @@ impl DataLogic {
                 opcode: crate::OpCode::Preserve,
                 args,
                 ..
-            } => crate::operators::preserve::evaluate_preserve_arena(args, context, self, arena, root),
+            } => crate::operators::preserve::evaluate_preserve_arena(args, actx, context, self, arena, root),
 
             // Slice
             #[cfg(feature = "ext-array")]
@@ -1223,7 +1239,7 @@ impl DataLogic {
                 opcode: crate::OpCode::Slice,
                 args,
                 ..
-            } => crate::operators::array::evaluate_slice_arena(args, context, self, arena, root),
+            } => crate::operators::array::evaluate_slice_arena(args, actx, context, self, arena, root),
 
             // CompiledThrow — constant-folded error literal. Return Err
             // directly without going through value-mode dispatch.
@@ -1238,7 +1254,7 @@ impl DataLogic {
                 let mut pairs: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
                     bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
                 for (key, n) in data.fields.iter() {
-                    let val_av = self.evaluate_arena_node(n, context, arena, root)?;
+                    let val_av = self.evaluate_arena_node(n, actx, context, arena, root)?;
                     let val_owned = match val_av {
                         ArenaValue::InputRef(v) => value_to_arena(v, arena),
                         _ => crate::arena::value::reborrow_arena_value(val_av),
@@ -1256,7 +1272,7 @@ impl DataLogic {
                 let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
                     bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
                 for n in nodes.iter() {
-                    let av = self.evaluate_arena_node(n, context, arena, root)?;
+                    let av = self.evaluate_arena_node(n, actx, context, arena, root)?;
                     items.push(crate::arena::value::reborrow_arena_value(av));
                 }
                 Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
@@ -1273,7 +1289,7 @@ impl DataLogic {
                     .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
                 let mut owned_args: Vec<Value> = Vec::with_capacity(data.args.len());
                 for arg in data.args.iter() {
-                    let av = self.evaluate_arena_node(arg, context, arena, root)?;
+                    let av = self.evaluate_arena_node(arg, actx, context, arena, root)?;
                     owned_args.push(crate::arena::arena_to_value(av));
                 }
                 let evaluator = SimpleEvaluator::new(self);
@@ -1291,7 +1307,7 @@ impl DataLogic {
             CompiledNode::CompiledSplitRegex(data) => {
                 crate::operators::string::evaluate_split_with_regex_arena(
                     &data.args,
-                    context,
+                    actx, context,
                     self,
                     &data.regex,
                     &data.capture_names,

@@ -707,7 +707,7 @@ pub fn evaluate_compiled_exists(
 // during iteration still clone via `value_to_arena` until Phase 5's
 // ArenaContextStack adoption changes frames to hold `&'a ArenaValue<'a>`.
 
-use crate::arena::{ArenaValue, value_to_arena};
+use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use bumpalo::Bump;
 
 /// Arena variant of `evaluate_compiled_var`. Returns `InputRef` for root-scope
@@ -719,6 +719,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
     reduce_hint: ReduceHint,
     metadata_hint: MetadataHint,
     default_value: Option<&CompiledNode>,
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -758,7 +759,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         };
         match reduce_result {
             Some(Some(v)) => return Ok(arena.alloc(value_to_arena(v, arena))),
-            Some(None) => return default_or_null_arena(default_value, context, engine, arena, root),
+            Some(None) => return default_or_null_arena(default_value, actx, context, engine, arena, root),
             None => {} // fall through
         }
     }
@@ -772,7 +773,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         };
         return match resolved {
             Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-            None => default_or_null_arena(default_value, context, engine, arena, root),
+            None => default_or_null_arena(default_value, actx, context, engine, arena, root),
         };
     }
 
@@ -795,7 +796,7 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
 
     match data_result {
         Some(v) => Ok(arena.alloc(value_to_arena(&v, arena))),
-        None => default_or_null_arena(default_value, context, engine, arena, root),
+        None => default_or_null_arena(default_value, actx, context, engine, arena, root),
     }
 }
 
@@ -823,6 +824,7 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_var_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -837,6 +839,7 @@ pub(crate) fn evaluate_var_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -851,6 +854,7 @@ pub(crate) fn evaluate_val_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_exists_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -864,13 +868,14 @@ pub(crate) fn evaluate_exists_arena<'a>(
 #[inline]
 fn default_or_null_arena<'a>(
     default_value: Option<&CompiledNode>,
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     match default_value {
-        Some(node) => engine.evaluate_arena_node(node, context, arena, root),
+        Some(node) => engine.evaluate_arena_node(node, actx, context, arena, root),
         None => Ok(crate::arena::pool::singleton_null()),
     }
 }

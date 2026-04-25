@@ -474,12 +474,13 @@ fn split_normal(text_str: &str, delimiter_str: &str) -> Result<Value> {
 // build the result. For string-producing ops, the result is allocated as
 // `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
 
-use crate::arena::{ArenaValue, arena_to_value_cow, to_string_arena};
+use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value_cow, to_string_arena};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_cat_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -488,7 +489,7 @@ pub(crate) fn evaluate_cat_arena<'a>(
     // Build the concatenated string using a bumpalo String to avoid heap alloc.
     let mut buf = bumpalo::collections::String::new_in(arena);
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let av = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
         match av {
             // For arrays, concat each item's string form.
             ArenaValue::Array(items) => {
@@ -515,6 +516,7 @@ pub(crate) fn evaluate_cat_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_substr_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -525,7 +527,7 @@ pub(crate) fn evaluate_substr_arena<'a>(
     }
     // Pre-evaluate args into Cow<Value> and bridge to value-mode for the
     // index math. The result string lands in the arena.
-    let s_av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let s_av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let s_cow = arena_to_value_cow(s_av);
     let s_owned = serde_json::Value::String(s_cow.as_str().map(|x| x.to_string()).unwrap_or_else(|| s_cow.to_string()));
     // Easier: just bridge via existing op.
@@ -538,6 +540,7 @@ pub(crate) fn evaluate_substr_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_in_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -549,8 +552,8 @@ pub(crate) fn evaluate_in_arena<'a>(
         let v = evaluate_in(args, context, engine)?;
         return Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)));
     }
-    let _ = engine.evaluate_arena_node(&args[0], context, arena, root)?;
-    let _ = engine.evaluate_arena_node(&args[1], context, arena, root)?;
+    let _ = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let _ = engine.evaluate_arena_node(&args[1], actx, context, arena, root)?;
     let v = evaluate_in(args, context, engine)?;
     Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
 }
@@ -559,6 +562,7 @@ pub(crate) fn evaluate_in_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_starts_with_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -568,8 +572,8 @@ pub(crate) fn evaluate_starts_with_arena<'a>(
         let v = evaluate_starts_with(args, context, engine)?;
         return Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)));
     }
-    let s = engine.evaluate_arena_node(&args[0], context, arena, root)?;
-    let p = engine.evaluate_arena_node(&args[1], context, arena, root)?;
+    let s = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let p = engine.evaluate_arena_node(&args[1], actx, context, arena, root)?;
     let s_str = to_string_arena(s, arena);
     let p_str = to_string_arena(p, arena);
     Ok(crate::arena::pool::singleton_bool(s_str.starts_with(p_str)))
@@ -579,6 +583,7 @@ pub(crate) fn evaluate_starts_with_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_ends_with_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -588,8 +593,8 @@ pub(crate) fn evaluate_ends_with_arena<'a>(
         let v = evaluate_ends_with(args, context, engine)?;
         return Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)));
     }
-    let s = engine.evaluate_arena_node(&args[0], context, arena, root)?;
-    let p = engine.evaluate_arena_node(&args[1], context, arena, root)?;
+    let s = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let p = engine.evaluate_arena_node(&args[1], actx, context, arena, root)?;
     let s_str = to_string_arena(s, arena);
     let p_str = to_string_arena(p, arena);
     Ok(crate::arena::pool::singleton_bool(s_str.ends_with(p_str)))
@@ -599,6 +604,7 @@ pub(crate) fn evaluate_ends_with_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_upper_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -608,7 +614,7 @@ pub(crate) fn evaluate_upper_arena<'a>(
         let v = evaluate_upper(args, context, engine)?;
         return Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)));
     }
-    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let s = to_string_arena(av, arena);
     Ok(arena.alloc(ArenaValue::String(arena.alloc_str(&s.to_uppercase()))))
 }
@@ -617,6 +623,7 @@ pub(crate) fn evaluate_upper_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_lower_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -626,7 +633,7 @@ pub(crate) fn evaluate_lower_arena<'a>(
         let v = evaluate_lower(args, context, engine)?;
         return Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)));
     }
-    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let s = to_string_arena(av, arena);
     Ok(arena.alloc(ArenaValue::String(arena.alloc_str(&s.to_lowercase()))))
 }
@@ -635,6 +642,7 @@ pub(crate) fn evaluate_lower_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_trim_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -644,7 +652,7 @@ pub(crate) fn evaluate_trim_arena<'a>(
         let v = evaluate_trim(args, context, engine)?;
         return Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)));
     }
-    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let s = to_string_arena(av, arena);
     Ok(arena.alloc(ArenaValue::String(arena.alloc_str(s.trim()))))
 }
@@ -653,6 +661,7 @@ pub(crate) fn evaluate_trim_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_split_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -660,7 +669,7 @@ pub(crate) fn evaluate_split_arena<'a>(
 ) -> Result<&'a ArenaValue<'a>> {
     // Pre-eval args; bridge for the array result construction.
     for arg in args {
-        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let _ = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
     }
     let v = evaluate_split(args, context, engine)?;
     Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
@@ -671,6 +680,7 @@ pub(crate) fn evaluate_split_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_split_with_regex_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     regex: &Regex,
@@ -681,7 +691,7 @@ pub(crate) fn evaluate_split_with_regex_arena<'a>(
     if args.is_empty() {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let text_av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let text_av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let text_str = match text_av {
         ArenaValue::String(s) => *s,
         ArenaValue::InputRef(Value::String(s)) => s.as_str(),

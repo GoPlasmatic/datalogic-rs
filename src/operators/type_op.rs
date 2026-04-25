@@ -116,12 +116,13 @@ pub fn evaluate_type(
 // Evaluates the arg via arena dispatch and returns a `&'static str` from a
 // small set of type names. The string is allocated once into the arena.
 
-use crate::arena::ArenaValue;
+use crate::arena::{ArenaContextStack, ArenaValue};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_type_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -130,7 +131,7 @@ pub(crate) fn evaluate_type_arena<'a>(
     if args.is_empty() {
         return Ok(arena.alloc(ArenaValue::String("null")));
     }
-    let av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let type_str: &'static str = match av {
         ArenaValue::Null => "null",
         ArenaValue::Bool(_) => "boolean",

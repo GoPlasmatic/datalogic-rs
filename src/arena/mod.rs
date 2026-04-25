@@ -9,6 +9,7 @@ pub(crate) mod context;
 pub(crate) mod pool;
 pub(crate) mod value;
 
+pub(crate) use context::ArenaContextStack;
 pub(crate) use pool::ArenaGuard;
 pub(crate) use value::{
     ArenaValue, arena_to_value, arena_to_value_cow, is_truthy_arena, to_string_arena,

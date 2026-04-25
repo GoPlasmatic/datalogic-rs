@@ -9,7 +9,7 @@ use crate::constants::INVALID_ARGS;
 use crate::eval_mode::Mode;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
-use crate::arena::{ArenaValue, value_to_arena};
+use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
 use bumpalo::Bump;
 
@@ -1626,13 +1626,14 @@ fn slice_chars(
 #[inline]
 pub(crate) fn evaluate_slice_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a crate::arena::ArenaValue<'a>> {
     for arg in args {
-        let _ = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let _ = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
     }
     let v = evaluate_slice(args, context, engine)?;
     Ok(arena.alloc(crate::arena::value_to_arena(&v, arena)))
@@ -1726,6 +1727,7 @@ pub(crate) enum ResolvedInput<'a> {
 /// duration) or arena slices (allocated on the same arena).
 pub(crate) fn resolve_iter_input<'a>(
     arg: &CompiledNode,
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1753,7 +1755,7 @@ pub(crate) fn resolve_iter_input<'a>(
                 | OpCode::Merge
         )
     {
-        let av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let av = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
         return Ok(arena_value_as_iter(av, arena));
     }
 
@@ -1793,6 +1795,7 @@ fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedI
 #[inline]
 pub(crate) fn evaluate_filter_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1804,7 +1807,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
 
     // Resolve input collection. Try the borrow-from-root fast path first;
     // Phase 4: resolve input via unified helper (root borrow OR upstream arena op).
-    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
         ResolvedInput::Bridge => {
@@ -1905,6 +1908,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_sort_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1921,7 +1925,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Null)),
         ResolvedInput::Bridge => {
@@ -2005,6 +2009,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_length_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -2016,7 +2021,7 @@ pub(crate) fn evaluate_length_arena<'a>(
 
     // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
     // stay arena-resident on the intermediate.
-    let arg = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let arg = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
 
     let n: i64 = match arg {
         ArenaValue::String(s) => s.chars().count() as i64,
@@ -2068,6 +2073,7 @@ fn try_borrow_collection_from_root<'a>(
 #[inline]
 pub(crate) fn evaluate_map_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -2078,7 +2084,7 @@ pub(crate) fn evaluate_map_arena<'a>(
     }
 
     let body = &args[1];
-    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
         ResolvedInput::Bridge => {
@@ -2157,6 +2163,7 @@ pub(crate) fn evaluate_map_arena<'a>(
                                      // into a struct adds noise without simplifying the call sites.
 fn evaluate_quantifier_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -2170,7 +2177,7 @@ fn evaluate_quantifier_arena<'a>(
     }
 
     let predicate = &args[1];
-    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
         ResolvedInput::Bridge => {
@@ -2268,6 +2275,7 @@ fn bridge_quantifier_value_mode(
 #[inline]
 pub(crate) fn evaluate_all_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -2275,33 +2283,35 @@ pub(crate) fn evaluate_all_arena<'a>(
 ) -> Result<&'a ArenaValue<'a>> {
     // all: early-exit on false; empty array ⇒ false (matching existing impl,
     // which deliberately rejects vacuous truth — see evaluate_all in this file).
-    evaluate_quantifier_arena(args, context, engine, arena, root, false, false, false)
+    evaluate_quantifier_arena(args, actx, context, engine, arena, root, false, false, false)
 }
 
 /// Arena-mode `some` — true iff any item satisfies predicate. Short-circuits on true.
 #[inline]
 pub(crate) fn evaluate_some_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     // some: early-exit on true; empty array ⇒ false.
-    evaluate_quantifier_arena(args, context, engine, arena, root, true, false, false)
+    evaluate_quantifier_arena(args, actx, context, engine, arena, root, true, false, false)
 }
 
 /// Arena-mode `none` — true iff no item satisfies predicate. Short-circuits on true.
 #[inline]
 pub(crate) fn evaluate_none_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
     // none: early-exit on true (then return false); empty array ⇒ true.
-    evaluate_quantifier_arena(args, context, engine, arena, root, true, true, true)
+    evaluate_quantifier_arena(args, actx, context, engine, arena, root, true, true, true)
 }
 
 /// Arena-mode `reduce` — folds an array into a single value via accumulator.
@@ -2311,6 +2321,7 @@ pub(crate) fn evaluate_none_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_reduce_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -2327,7 +2338,7 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         Value::Null
     };
 
-    let src = match resolve_iter_input(&args[0], context, engine, arena, root)? {
+    let src = match resolve_iter_input(&args[0], actx, context, engine, arena, root)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(value_to_arena(&initial, arena))),
         ResolvedInput::Bridge => {
@@ -2481,6 +2492,7 @@ fn try_reduce_fast_path_arena(
 #[inline]
 pub(crate) fn evaluate_merge_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -2490,7 +2502,7 @@ pub(crate) fn evaluate_merge_arena<'a>(
         bumpalo::collections::Vec::new_in(arena);
 
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let av = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
         match av {
             // Direct arena Array (e.g. result of upstream arena filter/map).
             ArenaValue::Array(items) => {

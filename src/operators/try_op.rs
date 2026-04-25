@@ -140,12 +140,13 @@ pub fn evaluate_try<M: Mode>(
 // path management uses the same value-mode `ContextStack` since arena ops
 // don't yet manage their own error breadcrumb.
 
-use crate::arena::ArenaValue;
+use crate::arena::{ArenaContextStack, ArenaValue};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_try_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -157,7 +158,7 @@ pub(crate) fn evaluate_try_arena<'a>(
     let mut last_err: Option<Error> = None;
     for arg in args {
         let saved_len = context.error_path_len();
-        match engine.evaluate_arena_node(arg, context, arena, root) {
+        match engine.evaluate_arena_node(arg, actx, context, arena, root) {
             Ok(v) => return Ok(v),
             Err(e) => {
                 context.truncate_error_path(saved_len);

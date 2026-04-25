@@ -65,12 +65,13 @@ pub fn evaluate_preserve(
 // Arena-mode preserve
 // =============================================================================
 
-use crate::arena::ArenaValue;
+use crate::arena::{ArenaContextStack, ArenaValue};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_preserve_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,

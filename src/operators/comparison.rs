@@ -485,12 +485,13 @@ pub fn evaluate_less_than_equal(
 // `Cow<Value>` for the existing helpers, and returns a Bool from the
 // preallocated singleton — zero arena allocation for the result.
 
-use crate::arena::{ArenaValue, arena_to_value_cow};
+use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value_cow};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_strict_equals_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -499,10 +500,10 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let first_av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let first = arena_to_value_cow(first_av);
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let cur_av = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
         let cur = arena_to_value_cow(cur_av);
         if !compare_equals(&first, &cur, true, engine)? {
             return Ok(crate::arena::pool::singleton_false());
@@ -514,6 +515,7 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_strict_not_equals_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -522,8 +524,8 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let a = engine.evaluate_arena_node(&args[0], context, arena, root)?;
-    let b = engine.evaluate_arena_node(&args[1], context, arena, root)?;
+    let a = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let b = engine.evaluate_arena_node(&args[1], actx, context, arena, root)?;
     let eq = compare_equals(&arena_to_value_cow(a), &arena_to_value_cow(b), true, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -531,6 +533,7 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_equals_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -539,10 +542,10 @@ pub(crate) fn evaluate_equals_arena<'a>(
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let first_av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let first = arena_to_value_cow(first_av);
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let cur_av = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
         let cur = arena_to_value_cow(cur_av);
         if !compare_equals(&first, &cur, false, engine)? {
             return Ok(crate::arena::pool::singleton_false());
@@ -554,6 +557,7 @@ pub(crate) fn evaluate_equals_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_not_equals_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -562,8 +566,8 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let a = engine.evaluate_arena_node(&args[0], context, arena, root)?;
-    let b = engine.evaluate_arena_node(&args[1], context, arena, root)?;
+    let a = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
+    let b = engine.evaluate_arena_node(&args[1], actx, context, arena, root)?;
     let eq = compare_equals(&arena_to_value_cow(a), &arena_to_value_cow(b), false, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -571,6 +575,7 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
 #[inline]
 fn evaluate_ord_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -580,10 +585,10 @@ fn evaluate_ord_arena<'a>(
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let mut prev_av = engine.evaluate_arena_node(&args[0], context, arena, root)?;
+    let mut prev_av = engine.evaluate_arena_node(&args[0], actx, context, arena, root)?;
     let mut prev_cow = arena_to_value_cow(prev_av);
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, context, arena, root)?;
+        let cur_av = engine.evaluate_arena_node(arg, actx, context, arena, root)?;
         let cur_cow = arena_to_value_cow(cur_av);
         if !compare_ordered(&prev_cow, &cur_cow, op, engine)? {
             return Ok(crate::arena::pool::singleton_false());
@@ -598,43 +603,47 @@ fn evaluate_ord_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_greater_than_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, context, engine, arena, root, OrdOp::Gt)
+    evaluate_ord_arena(args, actx, context, engine, arena, root, OrdOp::Gt)
 }
 
 #[inline]
 pub(crate) fn evaluate_greater_than_equal_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, context, engine, arena, root, OrdOp::Gte)
+    evaluate_ord_arena(args, actx, context, engine, arena, root, OrdOp::Gte)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, context, engine, arena, root, OrdOp::Lt)
+    evaluate_ord_arena(args, actx, context, engine, arena, root, OrdOp::Lt)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_equal_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     root: &'a Value,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, context, engine, arena, root, OrdOp::Lte)
+    evaluate_ord_arena(args, actx, context, engine, arena, root, OrdOp::Lte)
 }

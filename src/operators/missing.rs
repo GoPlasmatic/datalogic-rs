@@ -93,12 +93,13 @@ pub fn evaluate_missing_some(
 // allocations are deferred to the boundary conversion).
 // =============================================================================
 
-use crate::arena::{ArenaValue, value_to_arena};
+use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_missing_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -136,6 +137,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_missing_some_arena<'a>(
     args: &[CompiledNode],
+    actx: &mut ArenaContextStack<'a>,
     context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
