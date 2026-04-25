@@ -1169,21 +1169,25 @@ fn arena_min_max<'a>(
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
         ResolvedInput::Bridge(av) => {
-            // Array-shaped bridges (computed arena array, e.g. from merge)
-            // iterate natively. Single-value bridges (Number/String/Bool)
-            // defer to value-mode so 1-arg semantics match exactly.
+            // Array-shaped bridges iterate natively.
             if matches!(
                 av,
                 ArenaValue::Array(_) | ArenaValue::InputRef(Value::Array(_))
             ) {
                 return arena_min_max_from_av(av, init, pick_better, arena);
             }
-            let v = if op_name == "max" {
-                evaluate_max(args, context, engine)?
-            } else {
-                evaluate_min(args, context, engine)?
-            };
-            return Ok(arena.alloc(value_to_arena(&v, arena)));
+            // Single non-array arg: value-mode `evaluate_max`/`evaluate_min`
+            // requires the operand to be a `Value::Number` and returns it
+            // unchanged; non-numeric is InvalidArguments.
+            let _ = op_name;
+            let is_number = matches!(
+                av,
+                ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
+            );
+            if !is_number {
+                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+            }
+            return Ok(av);
         }
     };
 
