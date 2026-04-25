@@ -2215,26 +2215,27 @@ fn evaluate_quantifier_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Bool(result)));
     }
 
-    // General path.
+    // General path: zero-clone via ArenaContextStack.
     let mut pushed = false;
     let mut found_short = false;
     let len = src.len();
     for i in 0..len {
         let item = src.get(i);
+        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            context.push_with_index(item.clone(), 0);
+            actx.push_with_index(item_av, 0);
             pushed = true;
         } else {
-            context.replace_top_data(item.clone(), i);
+            actx.replace_top_data(item_av, i);
         }
-        let v = engine.evaluate_node(predicate, context)?;
-        if is_truthy(&v, engine) == short_circuit_on {
+        let av = engine.evaluate_arena_node(predicate, actx, context, arena, root)?;
+        if crate::arena::is_truthy_arena(av, engine) == short_circuit_on {
             found_short = true;
             break;
         }
     }
     if pushed {
-        context.pop();
+        actx.pop();
     }
 
     let result = if found_short {
@@ -2374,24 +2375,29 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         return Ok(arena.alloc(value_to_arena(&result, arena)));
     }
 
-    // GENERAL PATH: per-item context push, value-mode body evaluate.
-    let mut acc = initial;
+    // GENERAL PATH: zero-clone via ArenaContextStack. Frame holds
+    // `&'a ArenaValue<'a>` for both the current item and the accumulator.
+    // Body dispatches through arena and the result threads as
+    // `&'a ArenaValue<'a>` between iterations.
+    let mut acc_av: &'a ArenaValue<'a> = arena.alloc(value_to_arena(&initial, arena));
     let mut pushed = false;
     let len = src.len();
     for i in 0..len {
         let item = src.get(i);
+        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            context.push_reduce(item.clone(), acc);
+            actx.push_reduce(item_av, acc_av);
             pushed = true;
         } else {
-            context.replace_reduce_data(item.clone(), acc);
+            actx.replace_reduce_data(item_av, acc_av);
         }
-        acc = engine.evaluate_node(body, context)?;
+        let _ = i; // silence unused
+        acc_av = engine.evaluate_arena_node(body, actx, context, arena, root)?;
     }
     if pushed {
-        context.pop();
+        actx.pop();
     }
-    Ok(arena.alloc(value_to_arena(&acc, arena)))
+    Ok(acc_av)
 }
 
 /// Arena variant of `try_reduce_fast_path` — same logic, iterates `IterSrc`.

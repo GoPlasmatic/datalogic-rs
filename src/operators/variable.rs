@@ -743,8 +743,53 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         MetadataHint::None => {}
     }
 
-    // 2. Reduce-context hints
+    // 2. Reduce-context hints — check actx (arena reduce frame) first,
+    //    then legacy context.
     if reduce_hint != ReduceHint::None {
+        // Try actx first.
+        if actx.depth() > 0 {
+            use crate::arena::context::ArenaContextRef;
+            if let ArenaContextRef::Frame(f) = actx.current() {
+                let arena_reduce: Option<&'a ArenaValue<'a>> = match reduce_hint {
+                    ReduceHint::Current => f.get_reduce_current(),
+                    ReduceHint::Accumulator => f.get_reduce_accumulator(),
+                    ReduceHint::CurrentPath | ReduceHint::AccumulatorPath => None,
+                    ReduceHint::None => unreachable!(),
+                };
+                if let Some(av) = arena_reduce {
+                    return Ok(av);
+                }
+                // Path variants: use arena_traverse_segments on the reduce slot.
+                let path_av: Option<&'a ArenaValue<'a>> = match reduce_hint {
+                    ReduceHint::CurrentPath => f.get_reduce_current().and_then(|cur| {
+                        crate::arena::value::arena_traverse_segments(cur, &segments[1..], arena)
+                    }),
+                    ReduceHint::AccumulatorPath => f.get_reduce_accumulator().and_then(|acc| {
+                        crate::arena::value::arena_traverse_segments(acc, &segments[1..], arena)
+                    }),
+                    _ => None,
+                };
+                match (reduce_hint, path_av) {
+                    (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, Some(av)) => {
+                        return Ok(av);
+                    }
+                    (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, None) => {
+                        // Frame existed but path didn't resolve — return default.
+                        return default_or_null_arena(
+                            default_value,
+                            actx,
+                            context,
+                            engine,
+                            arena,
+                            root,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Legacy context fallback.
         let frame = context.current();
         let reduce_result: Option<Option<&Value>> = match reduce_hint {
             ReduceHint::Current => frame.get_reduce_current().map(Some),
