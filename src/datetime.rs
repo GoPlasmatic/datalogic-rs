@@ -1,5 +1,4 @@
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-use serde_json::Value;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -301,37 +300,6 @@ impl fmt::Display for DataDuration {
 
         write!(f, "{}d:{}h:{}m:{}s", days, hours, minutes, seconds)
     }
-}
-
-// Helper to check if a Value is a datetime object
-#[allow(dead_code)]
-pub fn is_datetime_object(value: &Value) -> bool {
-    if let Value::Object(map) = value {
-        map.contains_key("datetime")
-    } else {
-        false
-    }
-}
-
-// Helper to check if a Value is a duration/timestamp object
-#[allow(dead_code)]
-pub fn is_duration_object(value: &Value) -> bool {
-    if let Value::Object(map) = value {
-        map.contains_key("timestamp")
-    } else {
-        false
-    }
-}
-
-// Extract datetime from object
-#[allow(dead_code)]
-pub fn extract_datetime(value: &Value) -> Option<DataDateTime> {
-    if let Value::Object(map) = value
-        && let Some(Value::String(s)) = map.get("datetime")
-    {
-        return DataDateTime::parse(s);
-    }
-    None
 }
 
 /// Fast formatter for `YYYY-MM-DDTHH:MM:SSZ` (20 bytes) UTC datetimes.

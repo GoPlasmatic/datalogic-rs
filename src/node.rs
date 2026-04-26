@@ -234,10 +234,14 @@ pub enum CompiledMissingMin {
     Dynamic(CompiledNode),
 }
 
+/// Pre-parsed `(raw_path, segments)` pair — the static form of a
+/// `missing_some` path argument.
+pub type StaticMissingPath = (Box<str>, Box<[PathSegment]>);
+
 #[derive(Debug, Clone)]
 pub enum CompiledMissingPaths {
     /// Literal array of strings — every entry pre-parsed.
-    Static(Box<[(Box<str>, Box<[PathSegment]>)]>),
+    Static(Box<[StaticMissingPath]>),
     /// Runtime expression returning an array.
     Dynamic(CompiledNode),
 }
@@ -569,6 +573,13 @@ impl CompiledLogic {
     /// Check if this compiled logic is static (can be evaluated without context)
     pub fn is_static(&self) -> bool {
         node_is_static(&self.root)
+    }
+
+    /// Conservative arena capacity for one evaluation of this rule:
+    /// `static_bytes × 2`, with a 4 KiB floor.
+    #[inline]
+    pub(crate) fn arena_capacity(&self) -> usize {
+        self.arena_static_bytes.saturating_mul(2).max(4096)
     }
 }
 

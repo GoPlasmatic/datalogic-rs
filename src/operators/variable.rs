@@ -27,6 +27,7 @@ fn current_data_av<'a>(actx: &ArenaContextStack<'a>, _arena: &'a Bump) -> &'a Ar
 }
 
 /// Frame data at a given level (or `None` if the level walks past the root).
+#[cfg(feature = "ext-control")]
 #[inline]
 fn frame_data_at_level<'a>(
     actx: &ArenaContextStack<'a>,
@@ -65,8 +66,20 @@ pub(crate) struct CompiledVarSpec<'n> {
     pub default_value: Option<&'n CompiledNode>,
 }
 
-/// Arena variant of `evaluate_compiled_var`. Re-borrows arena-resident input
-/// for root-scope lookups; otherwise clones into the arena.
+/// Arena variant of `evaluate_compiled_var`. Dispatches through four
+/// resolution stages in order:
+///
+/// 1. **Metadata** (`{"val": [n, "index"]}` / `"key"`) — reads the iteration
+///    frame's bookkeeping directly.
+/// 2. **Reduce** (`current` / `accumulator` and their `.path` siblings) —
+///    reads the reduce frame's slots.
+/// 3. **Root-scope fast path** (`scope_level == 0` at root depth) — arena
+///    traversal straight from the input, no frame walk. This is the dominant
+///    path in real workloads and stays inline for branch-prediction.
+/// 4. **General context-stack walk** — for non-root scopes (`{"val": [[1], …]}`).
+///
+/// Each branch falls through to `default_or_null_arena` on miss; the var's
+/// `default_value` (when present) is evaluated lazily there.
 #[inline]
 pub(crate) fn evaluate_compiled_var_arena<'a>(
     spec: CompiledVarSpec<'a>,
@@ -81,63 +94,20 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         metadata_hint,
         default_value,
     } = spec;
-    // 1. Metadata hints from the arena iteration frame.
-    match metadata_hint {
-        MetadataHint::Index => {
-            if let Some(idx) = actx.current().get_index() {
-                return Ok(
-                    arena.alloc(ArenaValue::Number(crate::value::NumberValue::Integer(
-                        idx as i64,
-                    ))),
-                );
-            }
-        }
-        MetadataHint::Key => {
-            if let Some(key) = actx.current().get_key() {
-                let s: &'a str = arena.alloc_str(key);
-                return Ok(arena.alloc(ArenaValue::String(s)));
-            }
-        }
-        MetadataHint::None => {}
+
+    if let Some(av) = resolve_metadata_hint(metadata_hint, actx, arena) {
+        return Ok(av);
     }
 
-    // 2. Reduce-context hints — read from the arena reduce frame.
-    if reduce_hint != ReduceHint::None && actx.depth() > 0 {
-        use crate::arena::context::ArenaContextRef;
-        if let ArenaContextRef::Frame(f) = actx.current() {
-            let arena_reduce: Option<&'a ArenaValue<'a>> = match reduce_hint {
-                ReduceHint::Current => f.get_reduce_current(),
-                ReduceHint::Accumulator => f.get_reduce_accumulator(),
-                ReduceHint::CurrentPath | ReduceHint::AccumulatorPath => None,
-                ReduceHint::None => unreachable!(),
-            };
-            if let Some(av) = arena_reduce {
-                return Ok(av);
-            }
-            // Path variants: traverse segments on the reduce slot.
-            let path_av: Option<&'a ArenaValue<'a>> = match reduce_hint {
-                ReduceHint::CurrentPath => f.get_reduce_current().and_then(|cur| {
-                    crate::arena::value::arena_traverse_segments(cur, &segments[1..], arena)
-                }),
-                ReduceHint::AccumulatorPath => f.get_reduce_accumulator().and_then(|acc| {
-                    crate::arena::value::arena_traverse_segments(acc, &segments[1..], arena)
-                }),
-                _ => None,
-            };
-            match (reduce_hint, path_av) {
-                (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, Some(av)) => {
-                    return Ok(av);
-                }
-                (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, None) => {
-                    // Frame existed but path didn't resolve — return default.
-                    return default_or_null_arena(default_value, actx, engine, arena);
-                }
-                _ => {}
-            }
-        }
+    if let Some(res) =
+        resolve_reduce_hint(reduce_hint, segments, actx, engine, arena, default_value)
+    {
+        return res;
     }
 
-    // 3. Root-scope fast path: arena traversal directly on the root value.
+    // Root-scope fast path: arena traversal directly on the root value. Kept
+    // inline because it dominates real workloads and branch prediction
+    // benefits from a flat call.
     if scope_level == 0 && actx.depth() == 0 {
         let root_av = actx.root_input();
         let resolved = if segments.is_empty() {
@@ -151,7 +121,89 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         };
     }
 
-    // 4. General path via the arena context stack.
+    resolve_via_context_stack(scope_level, segments, actx, engine, arena, default_value)
+}
+
+/// Stage 1 — metadata hints (`index` / `key`) read from the current iteration
+/// frame. Returns `Some(av)` only when the corresponding slot is populated;
+/// `None` lets the caller fall through to the next stage.
+#[inline]
+fn resolve_metadata_hint<'a>(
+    hint: MetadataHint,
+    actx: &ArenaContextStack<'a>,
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    match hint {
+        MetadataHint::Index => actx.current().get_index().map(|idx| {
+            &*arena.alloc(ArenaValue::Number(crate::value::NumberValue::Integer(
+                idx as i64,
+            )))
+        }),
+        MetadataHint::Key => actx.current().get_key().map(|key| {
+            let s: &'a str = arena.alloc_str(key);
+            &*arena.alloc(ArenaValue::String(s))
+        }),
+        MetadataHint::None => None,
+    }
+}
+
+/// Stage 2 — reduce-frame hints. `Current` / `Accumulator` return the slot
+/// directly; `CurrentPath` / `AccumulatorPath` traverse `segments[1..]` on
+/// the slot (segments[0] is `current`/`accumulator`). Returns:
+/// - `Some(Ok(av))` — slot resolved.
+/// - `Some(Err(...))` or `Some(Ok(default))` — frame existed but path missed.
+/// - `None` — no reduce frame at the current depth; fall through.
+#[inline]
+fn resolve_reduce_hint<'a>(
+    reduce_hint: ReduceHint,
+    segments: &[PathSegment],
+    actx: &mut ArenaContextStack<'a>,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    default_value: Option<&'a CompiledNode>,
+) -> Option<Result<&'a ArenaValue<'a>>> {
+    if reduce_hint == ReduceHint::None || actx.depth() == 0 {
+        return None;
+    }
+    use crate::arena::context::ArenaContextRef;
+    let ArenaContextRef::Frame(f) = actx.current() else {
+        return None;
+    };
+
+    match reduce_hint {
+        ReduceHint::Current => f.get_reduce_current().map(Ok),
+        ReduceHint::Accumulator => f.get_reduce_accumulator().map(Ok),
+        ReduceHint::CurrentPath | ReduceHint::AccumulatorPath => {
+            let slot = if reduce_hint == ReduceHint::CurrentPath {
+                f.get_reduce_current()
+            } else {
+                f.get_reduce_accumulator()
+            };
+            // Slot must exist for the frame to be considered a reduce frame.
+            // If the path traversal misses, return the var's `default_value`.
+            let slot = slot?;
+            let resolved =
+                crate::arena::value::arena_traverse_segments(slot, &segments[1..], arena);
+            Some(match resolved {
+                Some(av) => Ok(av),
+                None => default_or_null_arena(default_value, actx, engine, arena),
+            })
+        }
+        ReduceHint::None => unreachable!(),
+    }
+}
+
+/// Stage 4 — generic context-stack walk for non-root scopes. `scope_level`
+/// of 0 at non-root depth reads the current frame; positive levels walk up.
+#[inline]
+fn resolve_via_context_stack<'a>(
+    scope_level: u32,
+    segments: &[PathSegment],
+    actx: &mut ArenaContextStack<'a>,
+    engine: &crate::DataLogic,
+    arena: &'a Bump,
+    default_value: Option<&'a CompiledNode>,
+) -> Result<&'a ArenaValue<'a>> {
     use crate::arena::context::ArenaContextRef;
     let aref = if scope_level == 0 {
         actx.current()
@@ -538,7 +590,9 @@ pub(crate) fn evaluate_val_arena<'a>(
 #[inline]
 fn arena_object_contains(av: &ArenaValue<'_>, key: &str) -> bool {
     match av {
-        ArenaValue::Object(pairs) => crate::arena::value::arena_object_lookup_field(pairs, key).is_some(),
+        ArenaValue::Object(pairs) => {
+            crate::arena::value::arena_object_lookup_field(pairs, key).is_some()
+        }
         _ => false,
     }
 }

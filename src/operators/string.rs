@@ -1,5 +1,6 @@
 #[cfg(feature = "ext-string")]
 use regex::Regex;
+#[cfg(feature = "ext-string")]
 use serde_json::Value;
 
 use crate::{CompiledNode, DataLogic, Result};

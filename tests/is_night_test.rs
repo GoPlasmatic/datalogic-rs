@@ -3,7 +3,7 @@
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
 use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Error, Result};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Custom arena operator: checks whether a datetime argument falls in the
 /// nighttime window (hours outside 7..19 UTC). Demonstrates an `ArenaOperator`
@@ -49,21 +49,6 @@ fn parse_datetime_arena(av: &ArenaValue<'_>) -> Option<DateTime<chrono::Utc>> {
                 return Some(dt.with_timezone(&chrono::Utc));
             }
         }
-    }
-    None
-}
-
-fn parse_datetime_value(value: &Value) -> Option<DateTime<chrono::Utc>> {
-    if let Value::Object(map) = value
-        && let Some(Value::String(datetime_str)) = map.get("datetime")
-        && let Ok(dt) = DateTime::parse_from_rfc3339(datetime_str)
-    {
-        return Some(dt.with_timezone(&chrono::Utc));
-    }
-    if let Value::String(datetime_str) = value
-        && let Ok(dt) = DateTime::parse_from_rfc3339(datetime_str)
-    {
-        return Some(dt.with_timezone(&chrono::Utc));
     }
     None
 }

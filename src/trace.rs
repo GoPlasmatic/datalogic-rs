@@ -50,128 +50,115 @@ impl ExpressionNode {
 
     fn build_node(node: &CompiledNode) -> ExpressionNode {
         let id = node.id();
-
         match node {
-            CompiledNode::Value { value, .. } => ExpressionNode {
+            CompiledNode::Value { value, .. } => Self::leaf(id, value.to_string()),
+            CompiledNode::Array { nodes, .. } => ExpressionNode {
                 id,
-                expression: value.to_string(),
-                children: vec![],
+                expression: Self::node_to_json_string(node),
+                children: Self::op_children(nodes),
             },
-            CompiledNode::Array { nodes, .. } => {
-                let children: Vec<ExpressionNode> = nodes
-                    .iter()
-                    .filter(|n| Self::is_operator_node(n))
-                    .map(Self::build_node)
-                    .collect();
-                ExpressionNode {
-                    id,
-                    expression: Self::node_to_json_string(node),
-                    children,
-                }
-            }
-            CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                let children: Vec<ExpressionNode> = args
-                    .iter()
-                    .filter(|n| Self::is_operator_node(n))
-                    .map(Self::build_node)
-                    .collect();
-                ExpressionNode {
-                    id,
-                    expression: Self::builtin_to_json_string(opcode, args),
-                    children,
-                }
-            }
-            CompiledNode::CustomOperator(data) => {
-                let children: Vec<ExpressionNode> = data
-                    .args
-                    .iter()
-                    .filter(|n| Self::is_operator_node(n))
-                    .map(Self::build_node)
-                    .collect();
-                ExpressionNode {
-                    id,
-                    expression: Self::custom_to_json_string(&data.name, &data.args),
-                    children,
-                }
-            }
+            CompiledNode::BuiltinOperator { opcode, args, .. } => ExpressionNode {
+                id,
+                expression: Self::builtin_to_json_string(opcode, args),
+                children: Self::op_children(args),
+            },
+            CompiledNode::CustomOperator(data) => ExpressionNode {
+                id,
+                expression: Self::custom_to_json_string(&data.name, &data.args),
+                children: Self::op_children(&data.args),
+            },
             #[cfg(feature = "preserve")]
-            CompiledNode::StructuredObject(data) => {
-                let children: Vec<ExpressionNode> = data
-                    .fields
-                    .iter()
-                    .filter(|(_, n)| Self::is_operator_node(n))
-                    .map(|(_, n)| Self::build_node(n))
-                    .collect();
-                ExpressionNode {
-                    id,
-                    expression: Self::structured_to_json_string(&data.fields),
-                    children,
-                }
-            }
-
+            CompiledNode::StructuredObject(data) => ExpressionNode {
+                id,
+                expression: Self::structured_to_json_string(&data.fields),
+                children: Self::op_children_from_fields(&data.fields),
+            },
             CompiledNode::CompiledVar {
                 scope_level,
                 segments,
                 default_value,
                 ..
-            } => {
-                let mut children = Vec::new();
-                if let Some(def) = default_value
-                    && Self::is_operator_node(def)
-                {
-                    children.push(Self::build_node(def));
-                }
-                ExpressionNode {
-                    id,
-                    expression: Self::compiled_var_to_json_string(
-                        *scope_level,
-                        segments,
-                        default_value.as_deref(),
-                    ),
-                    children,
-                }
-            }
-
+            } => Self::build_compiled_var(id, *scope_level, segments, default_value.as_deref()),
             #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(data) => ExpressionNode {
+            CompiledNode::CompiledExists(data) => Self::leaf(
                 id,
-                expression: Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
-                children: vec![],
-            },
-
+                Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
+            ),
             #[cfg(feature = "ext-string")]
-            CompiledNode::CompiledSplitRegex(data) => {
-                let children: Vec<ExpressionNode> = data
-                    .args
-                    .iter()
-                    .filter(|n| Self::is_operator_node(n))
-                    .map(Self::build_node)
-                    .collect();
-                ExpressionNode {
-                    id,
-                    expression: format!(
-                        "{{\"split\": [{}, \"{}\"]}}",
-                        Self::node_to_json_string(&data.args[0]),
-                        data.regex.as_str()
-                    ),
-                    children,
-                }
-            }
-
-            #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(_) => ExpressionNode {
+            CompiledNode::CompiledSplitRegex(data) => ExpressionNode {
                 id,
-                expression: Self::node_to_json_string(node),
-                children: vec![],
+                expression: format!(
+                    "{{\"split\": [{}, \"{}\"]}}",
+                    Self::node_to_json_string(&data.args[0]),
+                    data.regex.as_str()
+                ),
+                children: Self::op_children(&data.args),
             },
-
-            CompiledNode::CompiledMissing(_) | CompiledNode::CompiledMissingSome(_) => {
-                ExpressionNode {
-                    id,
-                    expression: Self::node_to_json_string(node),
-                    children: vec![],
-                }
+            #[cfg(feature = "error-handling")]
+            CompiledNode::CompiledThrow(_)
+            | CompiledNode::CompiledMissing(_)
+            | CompiledNode::CompiledMissingSome(_) => {
+                Self::leaf(id, Self::node_to_json_string(node))
             }
+            #[cfg(not(feature = "error-handling"))]
+            CompiledNode::CompiledMissing(_) | CompiledNode::CompiledMissingSome(_) => {
+                Self::leaf(id, Self::node_to_json_string(node))
+            }
+        }
+    }
+
+    /// Build a leaf `ExpressionNode` (no children).
+    #[inline]
+    fn leaf(id: u32, expression: String) -> ExpressionNode {
+        ExpressionNode {
+            id,
+            expression,
+            children: vec![],
+        }
+    }
+
+    /// Recurse into a compiled-node slice, keeping only the operator nodes
+    /// (literals don't appear as flow-diagram children).
+    #[inline]
+    fn op_children(nodes: &[CompiledNode]) -> Vec<ExpressionNode> {
+        nodes
+            .iter()
+            .filter(|n| Self::is_operator_node(n))
+            .map(Self::build_node)
+            .collect()
+    }
+
+    /// `op_children` for the `(name, CompiledNode)` shape used by structured
+    /// object fields.
+    #[cfg(feature = "preserve")]
+    #[inline]
+    fn op_children_from_fields(fields: &[(String, CompiledNode)]) -> Vec<ExpressionNode> {
+        fields
+            .iter()
+            .filter(|(_, n)| Self::is_operator_node(n))
+            .map(|(_, n)| Self::build_node(n))
+            .collect()
+    }
+
+    /// `CompiledVar`'s expression node — the only operator-shaped variant
+    /// whose "child" is the optional default value rather than a fixed args
+    /// slice.
+    fn build_compiled_var(
+        id: u32,
+        scope_level: u32,
+        segments: &[crate::node::PathSegment],
+        default_value: Option<&CompiledNode>,
+    ) -> ExpressionNode {
+        let mut children = Vec::new();
+        if let Some(def) = default_value
+            && Self::is_operator_node(def)
+        {
+            children.push(Self::build_node(def));
+        }
+        ExpressionNode {
+            id,
+            expression: Self::compiled_var_to_json_string(scope_level, segments, default_value),
+            children,
         }
     }
 

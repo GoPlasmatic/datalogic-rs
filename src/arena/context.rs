@@ -348,11 +348,13 @@ impl<'a> ArenaContextStack<'a> {
         self.error_path.push(id);
     }
 
+    #[cfg(any(test, feature = "error-handling"))]
     #[inline]
     pub(crate) fn error_path_len(&self) -> usize {
         self.error_path.len()
     }
 
+    #[cfg(any(test, feature = "error-handling"))]
     #[inline]
     pub(crate) fn truncate_error_path(&mut self, len: usize) {
         self.error_path.truncate(len);
@@ -361,6 +363,85 @@ impl<'a> ArenaContextStack<'a> {
     #[inline]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IterGuard
+// ---------------------------------------------------------------------------
+
+/// RAII guard for the per-iteration push/replace/pop pattern used by array
+/// operators (filter / map / reduce / quantifiers / sort).
+///
+/// On the first `step_*` call the guard pushes a frame; subsequent `step_*`
+/// calls *replace* the top frame in place (avoiding repeated push/pop). The
+/// frame is popped automatically on drop, including on the early-return paths
+/// that previously needed a manual `if pushed { actx.pop() }` epilogue.
+///
+/// All three iteration shapes are covered: indexed (array), keyed (object),
+/// and reduce (current/accumulator).
+pub(crate) struct IterGuard<'g, 'a> {
+    actx: &'g mut ArenaContextStack<'a>,
+    pushed: bool,
+}
+
+impl<'g, 'a> IterGuard<'g, 'a> {
+    #[inline]
+    pub(crate) fn new(actx: &'g mut ArenaContextStack<'a>) -> Self {
+        Self {
+            actx,
+            pushed: false,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn step_indexed(&mut self, data: &'a ArenaValue<'a>, index: usize) {
+        if self.pushed {
+            self.actx.replace_top_data(data, index);
+        } else {
+            self.actx.push_with_index(data, index);
+            self.pushed = true;
+        }
+    }
+
+    #[inline]
+    pub(crate) fn step_keyed(&mut self, data: &'a ArenaValue<'a>, index: usize, key: &'a str) {
+        if self.pushed {
+            self.actx.replace_top_key_data(data, index, key);
+        } else {
+            self.actx.push_with_key_index(data, index, key);
+            self.pushed = true;
+        }
+    }
+
+    #[inline]
+    pub(crate) fn step_reduce(
+        &mut self,
+        current: &'a ArenaValue<'a>,
+        accumulator: &'a ArenaValue<'a>,
+    ) {
+        if self.pushed {
+            self.actx.replace_reduce_data(current, accumulator);
+        } else {
+            self.actx.push_reduce(current, accumulator);
+            self.pushed = true;
+        }
+    }
+
+    /// Mutable access to the wrapped stack — for `engine.eval_iter_body(...)`
+    /// and similar calls that take `&mut ArenaContextStack`.
+    #[inline]
+    pub(crate) fn stack(&mut self) -> &mut ArenaContextStack<'a> {
+        self.actx
+    }
+}
+
+impl Drop for IterGuard<'_, '_> {
+    #[inline]
+    fn drop(&mut self) {
+        if self.pushed {
+            self.actx.pop();
+        }
     }
 }
 
@@ -452,6 +533,76 @@ mod tests {
         assert!(ctx.get_at_level(2).and_then(|r| r.root_data()).is_some());
         // Level 5 (overflow) = root
         assert!(ctx.get_at_level(5).and_then(|r| r.root_data()).is_some());
+    }
+
+    #[test]
+    fn iter_guard_pushes_then_pops_indexed() {
+        let arena = Bump::new();
+        let root_val = Value::Null;
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        assert_eq!(ctx.depth(), 0);
+
+        let a: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
+        let b: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(2)));
+
+        {
+            let mut g = IterGuard::new(&mut ctx);
+            g.step_indexed(a, 0);
+            assert_eq!(g.stack().depth(), 1);
+            assert_eq!(g.stack().current().get_index(), Some(0));
+            g.step_indexed(b, 1);
+            assert_eq!(g.stack().depth(), 1, "replace, not push");
+            assert_eq!(g.stack().current().get_index(), Some(1));
+        }
+        assert_eq!(ctx.depth(), 0, "drop pops");
+    }
+
+    #[test]
+    fn iter_guard_no_push_no_pop() {
+        let arena = Bump::new();
+        let root_val = Value::Null;
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        assert_eq!(ctx.depth(), 0);
+        {
+            let _g = IterGuard::new(&mut ctx);
+            // empty input, no step_* calls
+        }
+        assert_eq!(ctx.depth(), 0, "drop without push is a no-op");
+    }
+
+    #[test]
+    fn iter_guard_keyed_and_reduce() {
+        let arena = Bump::new();
+        let root_val = Value::Null;
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+
+        let a: &ArenaValue = arena.alloc(ArenaValue::Bool(true));
+        let b: &ArenaValue = arena.alloc(ArenaValue::Bool(false));
+
+        {
+            let mut g = IterGuard::new(&mut ctx);
+            g.step_keyed(a, 0, "k1");
+            assert_eq!(g.stack().current().get_key(), Some("k1"));
+            g.step_keyed(b, 1, "k2");
+            assert_eq!(g.stack().current().get_key(), Some("k2"));
+            assert_eq!(g.stack().current().get_index(), Some(1));
+        }
+        assert_eq!(ctx.depth(), 0);
+
+        let cur: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
+        let acc: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(0)));
+        {
+            let mut g = IterGuard::new(&mut ctx);
+            g.step_reduce(cur, acc);
+            assert_eq!(g.stack().depth(), 1);
+            g.step_reduce(acc, cur); // replace, not push
+            assert_eq!(g.stack().depth(), 1);
+        }
+        assert_eq!(ctx.depth(), 0);
     }
 
     #[test]

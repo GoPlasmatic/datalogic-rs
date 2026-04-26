@@ -236,11 +236,9 @@ fn compare_equals_primitive(
         (Num(a), Num(b)) => Some(a == b),
         _ if strict => Some(false),
         // Loose coercion table — mirrors `loose_equals_core` for primitive cases.
-        (Num(n), Str(s)) | (Str(s), Num(n)) => match s.parse::<f64>().ok() {
-            Some(sf) => Some(sf == n),
-            // Defer to value-mode for Incompatible vs NotEqual semantics.
-            None => None,
-        },
+        // `None` from `s.parse()` defers to value-mode for Incompatible vs
+        // NotEqual semantics.
+        (Num(n), Str(s)) | (Str(s), Num(n)) => s.parse::<f64>().ok().map(|sf| sf == n),
         (Num(n), Bool(b)) | (Bool(b), Num(n)) => Some(n == if b { 1.0 } else { 0.0 }),
         (Str(s), Bool(b)) | (Bool(b), Str(s)) => Some(s == if b { "true" } else { "false" }),
         (Null, Num(n)) | (Num(n), Null) => {

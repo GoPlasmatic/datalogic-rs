@@ -1,15 +1,12 @@
-#![allow(dead_code)]
-
 use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
 use serde_json::Value;
 
-/// Checks if a value is truthy using the engine's configuration
+/// Checks if a value is truthy using the engine's configuration.
 #[inline(always)]
 pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
     match &engine.config().truthy_evaluator {
-        TruthyEvaluator::JavaScript => is_truthy_js(value),
-        TruthyEvaluator::Python => is_truthy_js(value),
+        TruthyEvaluator::JavaScript | TruthyEvaluator::Python => is_truthy_js(value),
         TruthyEvaluator::StrictBoolean => match value {
             Value::Null => false,
             Value::Bool(b) => *b,
@@ -21,7 +18,7 @@ pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
 
 /// Checks if a value is truthy according to JavaScript rules.
 #[inline(always)]
-pub fn is_truthy_js(value: &Value) -> bool {
+fn is_truthy_js(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(b) => *b,
@@ -38,42 +35,6 @@ pub fn is_truthy_js(value: &Value) -> bool {
     }
 }
 
-/// Extracts a datetime from a value (either datetime object or string).
-/// Single map lookup for objects — avoids the double lookup of is_datetime_object + extract_datetime.
-#[cfg(feature = "datetime")]
-#[inline]
-pub fn extract_datetime_value(value: &Value) -> Option<crate::datetime::DataDateTime> {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::String(s)) = map.get("datetime") {
-                crate::datetime::DataDateTime::parse(s)
-            } else {
-                None
-            }
-        }
-        Value::String(s) => crate::datetime::DataDateTime::parse(s),
-        _ => None,
-    }
-}
-
-/// Extracts a duration from a value (either duration object or string).
-/// Single map lookup for objects — avoids the double lookup of is_duration_object + extract_duration.
-#[cfg(feature = "datetime")]
-#[inline]
-pub fn extract_duration_value(value: &Value) -> Option<crate::datetime::DataDuration> {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::String(s)) = map.get("timestamp") {
-                crate::datetime::DataDuration::parse(s)
-            } else {
-                None
-            }
-        }
-        Value::String(s) => crate::datetime::DataDuration::parse(s),
-        _ => None,
-    }
-}
-
 /// Arena-native datetime extraction — walks `String` / `Object` arena values
 /// directly without `Value` materialization.
 #[cfg(feature = "datetime")]
@@ -87,10 +48,10 @@ pub(crate) fn extract_datetime_arena(
         ArenaValue::String(s) => crate::datetime::DataDateTime::parse(s),
         ArenaValue::Object(pairs) => {
             for (k, v) in *pairs {
-                if *k == "datetime" {
-                    if let ArenaValue::String(s) = v {
-                        return crate::datetime::DataDateTime::parse(s);
-                    }
+                if *k == "datetime"
+                    && let ArenaValue::String(s) = v
+                {
+                    return crate::datetime::DataDateTime::parse(s);
                 }
             }
             None
@@ -111,10 +72,10 @@ pub(crate) fn extract_duration_arena(
         ArenaValue::String(s) => crate::datetime::DataDuration::parse(s),
         ArenaValue::Object(pairs) => {
             for (k, v) in *pairs {
-                if *k == "timestamp" {
-                    if let ArenaValue::String(s) = v {
-                        return crate::datetime::DataDuration::parse(s);
-                    }
+                if *k == "timestamp"
+                    && let ArenaValue::String(s) = v
+                {
+                    return crate::datetime::DataDuration::parse(s);
                 }
             }
             None

@@ -54,6 +54,20 @@ impl Default for DataLogic {
 }
 
 impl DataLogic {
+    /// Internal constructor — single source of truth for the four public
+    /// `new`/`with_*` variants. `_preserve_structure` is parameterised here
+    /// so non-`preserve` builds can ignore it without four near-duplicate
+    /// `Self { ... }` blocks.
+    #[inline]
+    fn new_inner(config: EvaluationConfig, _preserve_structure: bool) -> Self {
+        Self {
+            custom_arena_operators: HashMap::new(),
+            #[cfg(feature = "preserve")]
+            preserve_structure: _preserve_structure,
+            config,
+        }
+    }
+
     /// Creates a new DataLogic engine with all built-in operators.
     ///
     /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
@@ -67,12 +81,7 @@ impl DataLogic {
     /// let engine = DataLogic::new();
     /// ```
     pub fn new() -> Self {
-        Self {
-            custom_arena_operators: HashMap::new(),
-            #[cfg(feature = "preserve")]
-            preserve_structure: false,
-            config: EvaluationConfig::default(),
-        }
+        Self::new_inner(EvaluationConfig::default(), false)
     }
 
     /// Creates a new DataLogic engine with structure preservation enabled.
@@ -132,11 +141,7 @@ impl DataLogic {
     /// ```
     #[cfg(feature = "preserve")]
     pub fn with_preserve_structure() -> Self {
-        Self {
-            custom_arena_operators: HashMap::new(),
-            preserve_structure: true,
-            config: EvaluationConfig::default(),
-        }
+        Self::new_inner(EvaluationConfig::default(), true)
     }
 
     /// Creates a new DataLogic engine with a custom configuration.
@@ -155,12 +160,7 @@ impl DataLogic {
     /// let engine = DataLogic::with_config(config);
     /// ```
     pub fn with_config(config: EvaluationConfig) -> Self {
-        Self {
-            custom_arena_operators: HashMap::new(),
-            #[cfg(feature = "preserve")]
-            preserve_structure: false,
-            config,
-        }
+        Self::new_inner(config, false)
     }
 
     /// Creates a new DataLogic engine with both configuration and structure preservation.
@@ -181,11 +181,7 @@ impl DataLogic {
     /// ```
     #[cfg(feature = "preserve")]
     pub fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
-        Self {
-            custom_arena_operators: HashMap::new(),
-            preserve_structure,
-            config,
-        }
+        Self::new_inner(config, preserve_structure)
     }
 
     /// Gets a reference to the current evaluation configuration.
@@ -330,9 +326,7 @@ impl DataLogic {
     #[inline]
     fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         use crate::arena::{ArenaGuard, arena_to_value};
-        // Size hint for first-time pool fills: static_bytes × 2, min 4 KiB.
-        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
-        let guard = ArenaGuard::acquire(cap);
+        let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
         let mut actx = crate::arena::ArenaContextStack::from_value(data, arena);
         let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
@@ -411,8 +405,7 @@ impl DataLogic {
     #[doc(hidden)]
     pub fn evaluate_arena_bench(&self, compiled: &CompiledLogic, data: &Value) -> Result<()> {
         use crate::arena::ArenaGuard;
-        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
-        let guard = ArenaGuard::acquire(cap);
+        let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
         let mut actx = crate::arena::ArenaContextStack::from_value(data, arena);
         let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
@@ -448,12 +441,22 @@ impl DataLogic {
     /// assert_eq!(result, serde_json::json!(true));
     /// ```
     pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
+        let (compiled, data_arc) = self.parse_and_compile(logic, data)?;
+        self.evaluate(&compiled, data_arc)
+    }
+
+    /// Parse `logic` and `data` JSON strings, compile the logic, and wrap
+    /// the data in an `Arc`. Shared boilerplate for the public `evaluate_json*`
+    /// entry points.
+    fn parse_and_compile(
+        &self,
+        logic: &str,
+        data: &str,
+    ) -> Result<(Arc<CompiledLogic>, Arc<Value>)> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
-        let data_arc = Arc::new(data_value);
-
         let compiled = self.compile(&logic_value)?;
-        self.evaluate(&compiled, data_arc)
+        Ok((compiled, Arc::new(data_value)))
     }
 
     /// Evaluates a compiled rule, returning a `StructuredError` on failure.
@@ -468,8 +471,7 @@ impl DataLogic {
         data: Arc<Value>,
     ) -> std::result::Result<Value, StructuredError> {
         use crate::arena::{ArenaGuard, arena_to_value};
-        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
-        let guard = ArenaGuard::acquire(cap);
+        let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
         let mut actx = crate::arena::ArenaContextStack::from_value(&data, arena);
         match self.evaluate_arena_node(&compiled.root, &mut actx, arena) {
@@ -623,40 +625,51 @@ impl DataLogic {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
         let data_arc = Arc::new(data_value);
+        let compiled = self.compile_for_trace(&logic_value)?;
+        Ok(self.run_trace(&compiled, data_arc))
+    }
 
-        // Use compile_for_trace to avoid static evaluation, which would collapse
-        // operators into values and eliminate trace steps
-        let compiled = Arc::new(CompiledLogic::compile_for_trace(
-            &logic_value,
+    /// Compile a value tree for traced evaluation — `compile_for_trace` skips
+    /// static evaluation so every operator stays in the tree as a step source.
+    #[cfg(feature = "trace")]
+    fn compile_for_trace(&self, logic_value: &Value) -> Result<Arc<CompiledLogic>> {
+        Ok(Arc::new(CompiledLogic::compile_for_trace(
+            logic_value,
             self.preserve_structure(),
-        )?);
+        )?))
+    }
 
+    /// Run a traced evaluation and assemble the [`TracedResult`]. Shared
+    /// between [`evaluate_json_with_trace`] and
+    /// [`evaluate_json_with_trace_structured`].
+    #[cfg(feature = "trace")]
+    fn run_trace(&self, compiled: &CompiledLogic, data_arc: Arc<Value>) -> TracedResult {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
         let (result, error_path) =
-            self.evaluate_arena_with_trace(&compiled, data_arc, &mut collector);
-
+            self.evaluate_arena_with_trace(compiled, data_arc, &mut collector);
+        let steps = collector.into_steps();
         match result {
-            Ok(value) => Ok(TracedResult {
+            Ok(value) => TracedResult {
                 result: value,
                 expression_tree,
-                steps: collector.into_steps(),
+                steps,
                 error: None,
                 error_structured: None,
-            }),
+            },
             Err(e) => {
                 let message = e.to_string();
                 let mut structured = StructuredError::from(e).with_path(error_path);
                 if let Some(name) = compiled.root.operator_name() {
                     structured = structured.with_operator(name);
                 }
-                Ok(TracedResult {
+                TracedResult {
                     result: Value::Null,
                     expression_tree,
-                    steps: collector.into_steps(),
+                    steps,
                     error: Some(message),
                     error_structured: Some(structured),
-                })
+                }
             }
         }
     }
@@ -679,40 +692,8 @@ impl DataLogic {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
         let data_arc = Arc::new(data_value);
-
-        let compiled = Arc::new(CompiledLogic::compile_for_trace(
-            &logic_value,
-            self.preserve_structure(),
-        )?);
-
-        let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
-        let mut collector = TraceCollector::new();
-        let (result, error_path) =
-            self.evaluate_arena_with_trace(&compiled, data_arc, &mut collector);
-
-        match result {
-            Ok(value) => Ok(TracedResult {
-                result: value,
-                expression_tree,
-                steps: collector.into_steps(),
-                error: None,
-                error_structured: None,
-            }),
-            Err(e) => {
-                let message = e.to_string();
-                let mut structured = StructuredError::from(e).with_path(error_path);
-                if let Some(name) = compiled.root.operator_name() {
-                    structured = structured.with_operator(name);
-                }
-                Ok(TracedResult {
-                    result: Value::Null,
-                    expression_tree,
-                    steps: collector.into_steps(),
-                    error: Some(message),
-                    error_structured: Some(structured),
-                })
-            }
-        }
+        let compiled = self.compile_for_trace(&logic_value)?;
+        Ok(self.run_trace(&compiled, data_arc))
     }
 
     /// Arena-mode traced evaluation. Acquires an arena, attaches the
@@ -728,8 +709,7 @@ impl DataLogic {
         collector: &mut TraceCollector,
     ) -> (Result<Value>, Vec<u32>) {
         use crate::arena::{ArenaGuard, arena_to_value};
-        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
-        let guard = ArenaGuard::acquire(cap);
+        let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
         let arc_for_borrow = Arc::clone(&data);
         let root_ref: &Value = &arc_for_borrow;
