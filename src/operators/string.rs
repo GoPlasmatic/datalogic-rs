@@ -2,10 +2,6 @@
 use regex::Regex;
 use serde_json::Value;
 
-#[cfg(feature = "ext-string")]
-use crate::constants::INVALID_ARGS;
-#[cfg(feature = "ext-string")]
-use crate::error::Error;
 use crate::{CompiledNode, DataLogic, Result};
 // =============================================================================
 // Arena-mode string operators
@@ -185,7 +181,7 @@ pub(crate) fn evaluate_starts_with_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let s = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let p = engine.evaluate_arena_node(&args[1], actx, arena)?;
@@ -203,7 +199,7 @@ pub(crate) fn evaluate_ends_with_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let s = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let p = engine.evaluate_arena_node(&args[1], actx, arena)?;
@@ -221,7 +217,7 @@ pub(crate) fn evaluate_upper_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let s = to_string_arena(av, arena);
@@ -237,7 +233,7 @@ pub(crate) fn evaluate_lower_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let s = to_string_arena(av, arena);
@@ -253,7 +249,7 @@ pub(crate) fn evaluate_trim_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let s = to_string_arena(av, arena);
@@ -271,7 +267,7 @@ pub(crate) fn evaluate_split_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let text_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let text_str: &'a str = match text_av {
@@ -365,7 +361,7 @@ pub(crate) fn evaluate_split_with_regex_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let text_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let text_str = match text_av {

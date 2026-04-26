@@ -11,3 +11,9 @@ pub const NAN_ERROR: &str = "NaN";
 pub fn nan_error() -> crate::Error {
     crate::Error::Thrown(serde_json::json!({"type": "NaN"}))
 }
+
+/// Returns the canonical "Invalid Arguments" error.
+#[inline]
+pub fn invalid_args() -> crate::Error {
+    crate::Error::InvalidArguments(INVALID_ARGS.into())
+}

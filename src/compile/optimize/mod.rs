@@ -16,6 +16,9 @@ pub mod dead_code;
 mod helpers;
 pub mod strength;
 
+#[cfg(test)]
+mod test_helpers;
+
 use crate::DataLogic;
 use crate::node::CompiledNode;
 

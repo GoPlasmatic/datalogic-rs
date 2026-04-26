@@ -46,7 +46,6 @@ use serde_json::Value;
 
 #[cfg(feature = "datetime")]
 use super::helpers::{extract_datetime_value, extract_duration_value};
-use crate::constants::INVALID_ARGS;
 use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
 use crate::{CompiledNode, DataLogic, Result};
 
@@ -292,7 +291,7 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first = arena_to_value_cow(first_av);
@@ -314,7 +313,7 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
@@ -330,7 +329,7 @@ pub(crate) fn evaluate_equals_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first = arena_to_value_cow(first_av);
@@ -352,7 +351,7 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
@@ -374,7 +373,7 @@ fn evaluate_ord_arena<'a>(
     op: OrdOp,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let mut prev_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let mut prev_cow = arena_to_value_cow(prev_av);

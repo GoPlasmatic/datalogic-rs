@@ -62,27 +62,8 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_helpers::{builtin, var_node};
     use super::*;
-    use crate::node::SYNTHETIC_ID;
-
-    fn var_node(name: &str) -> CompiledNode {
-        CompiledNode::CompiledVar {
-            id: SYNTHETIC_ID,
-            scope_level: 0,
-            segments: vec![crate::node::PathSegment::Field(name.into())].into_boxed_slice(),
-            reduce_hint: crate::node::ReduceHint::None,
-            metadata_hint: crate::node::MetadataHint::None,
-            default_value: None,
-        }
-    }
-
-    fn builtin(opcode: OpCode, args: Vec<CompiledNode>) -> CompiledNode {
-        CompiledNode::BuiltinOperator {
-            id: SYNTHETIC_ID,
-            opcode,
-            args: args.into_boxed_slice(),
-        }
-    }
 
     #[test]
     fn test_double_negation() {

@@ -59,9 +59,8 @@
 use serde_json::Value;
 
 use crate::config::NanHandling;
-use crate::constants::INVALID_ARGS;
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
-use crate::{CompiledNode, DataLogic, Error, Result};
+use crate::{CompiledNode, DataLogic, Result};
 
 /// Result of NaN handling check: what the caller should do with a non-numeric value.
 enum NanAction {
@@ -112,7 +111,7 @@ fn arena_min_max<'a>(
     pick_better: fn(f64, f64) -> bool,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     // Multi-arg variadic form: evaluate each arg, pick the best Number.
@@ -123,10 +122,10 @@ fn arena_min_max<'a>(
             let av = engine.evaluate_arena_node(arg, actx, arena)?;
             let f = match av {
                 ArenaValue::Number(n) => n.as_f64(),
-                ArenaValue::InputRef(Value::Number(n)) => n
-                    .as_f64()
-                    .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?,
-                _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+                ArenaValue::InputRef(Value::Number(n)) => {
+                    n.as_f64().ok_or_else(crate::constants::invalid_args)?
+                }
+                _ => return Err(crate::constants::invalid_args()),
             };
             if pick_better(f, best_f) {
                 best_f = f;
@@ -141,17 +140,17 @@ fn arena_min_max<'a>(
 
     // Reject literal-array arg shape.
     if matches!(&args[0], CompiledNode::Array { .. }) {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     if let CompiledNode::Value { value, .. } = &args[0]
         && matches!(value, Value::Array(_))
     {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        ResolvedInput::Empty => return Err(crate::constants::invalid_args()),
         ResolvedInput::Bridge(av) => {
             // Array-shaped bridges iterate natively.
             if matches!(
@@ -167,14 +166,14 @@ fn arena_min_max<'a>(
                 ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
             );
             if !is_number {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+                return Err(crate::constants::invalid_args());
             }
             return Ok(av);
         }
     };
 
     if src.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let mut best_f = init;
@@ -190,7 +189,7 @@ fn arena_min_max<'a>(
                     best_idx = Some(i);
                 }
             }
-            _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            _ => return Err(crate::constants::invalid_args()),
         }
     }
 
@@ -219,14 +218,12 @@ fn arena_min_max_from_av<'a>(
         ArenaValue::InputRef(Value::Array(arr)) => {
             // Walk borrowed array directly.
             if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+                return Err(crate::constants::invalid_args());
             }
             let mut best_f = init;
             let mut best: Option<&Value> = None;
             for v in arr {
-                let f = v
-                    .as_f64()
-                    .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+                let f = v.as_f64().ok_or_else(crate::constants::invalid_args)?;
                 if pick_better(f, best_f) {
                     best_f = f;
                     best = Some(v);
@@ -237,17 +234,15 @@ fn arena_min_max_from_av<'a>(
                 None => Ok(arena.alloc(ArenaValue::Null)),
             };
         }
-        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        _ => return Err(crate::constants::invalid_args()),
     };
     if items.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let mut best_f = init;
     let mut best_idx: Option<usize> = None;
     for (i, it) in items.iter().enumerate() {
-        let f = it
-            .as_f64()
-            .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+        let f = it.as_f64().ok_or_else(crate::constants::invalid_args)?;
         if pick_better(f, best_f) {
             best_f = f;
             best_idx = Some(i);
@@ -858,7 +853,7 @@ pub(crate) fn evaluate_subtract_arena<'a>(
         };
         if let Some(arr) = array_cow {
             if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+                return Err(crate::constants::invalid_args());
             }
             let mut result =
                 coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
@@ -935,7 +930,7 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     // Variadic subtractive fold: first - second - third - ...
     // Variadic (>2) subtract: integer fast path with overflow promotion.
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first_cow = crate::arena::arena_to_value_cow(first_av);
@@ -1018,7 +1013,7 @@ fn arena_div_or_mod<'a>(
     is_modulo: bool,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     if args.len() == 1 {
         return arena_one_arg_div_mod(&args[0], actx, engine, arena, is_modulo);
@@ -1120,7 +1115,7 @@ fn arena_one_arg_div_mod<'a>(
     if let Some(arr) = array_cow {
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
         if arr.is_empty() || (is_modulo && arr.len() < 2) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+            return Err(crate::constants::invalid_args());
         }
         let mut result =
             coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
@@ -1136,7 +1131,7 @@ fn arena_one_arg_div_mod<'a>(
 
     // Non-array single value.
     if is_modulo {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     // 1/x with integer-preserving fast path.
     if let Some(i) = av.as_i64() {
@@ -1214,7 +1209,7 @@ fn arena_unary_math<'a>(
     always_int: bool,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let to_arena = |x: f64, arena: &'a Bump| -> &'a ArenaValue<'a> {
@@ -1227,8 +1222,7 @@ fn arena_unary_math<'a>(
 
     if args.len() == 1 {
         let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-        let n = arena_value_strict_f64(av)
-            .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+        let n = arena_value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
         return Ok(to_arena(op_fn(n), arena));
     }
 
@@ -1236,8 +1230,7 @@ fn arena_unary_math<'a>(
         bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
     for arg in args {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;
-        let n = arena_value_strict_f64(av)
-            .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
+        let n = arena_value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
         let r = to_arena(op_fn(n), arena);
         items.push(crate::arena::value::reborrow_arena_value(r));
     }

@@ -1,6 +1,5 @@
 use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
-use crate::constants::INVALID_ARGS;
 use serde_json::Value;
 
 /// Checks if a value is truthy using the engine's configuration
@@ -82,7 +81,7 @@ pub fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<()> {
         && let Some(obj) = value.as_object()
         && obj.contains_key("__invalid_args__")
     {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
     Ok(())
 }

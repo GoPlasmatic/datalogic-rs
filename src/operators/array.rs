@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 
 use super::variable;
 use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
-use crate::constants::INVALID_ARGS;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
 use crate::{CompiledNode, DataLogic, Error, Result};
@@ -355,7 +354,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a crate::arena::ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let coll_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
@@ -382,7 +381,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
     let step = if args.len() > 3 {
         let s = extract_opt_i64_arena(&args[3], actx, engine, arena)?.unwrap_or(1);
         if s == 0 {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+            return Err(crate::constants::invalid_args());
         }
         s
     } else {
@@ -434,7 +433,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
         return Ok(arena.alloc(ArenaValue::String(s_arena)));
     }
 
-    Err(Error::InvalidArguments(INVALID_ARGS.into()))
+    Err(crate::constants::invalid_args())
 }
 
 #[cfg(feature = "ext-array")]
@@ -655,7 +654,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     // Resolve input via unified helper (root borrow OR upstream arena op).
@@ -800,7 +799,7 @@ fn filter_arena_bridge<'a>(
         }
         return Ok(arena.alloc(ArenaValue::Array(kept.into_bump_slice())));
     }
-    Err(Error::InvalidArguments(INVALID_ARGS.into()))
+    Err(crate::constants::invalid_args())
 }
 
 /// Map Bridge case — Object inputs iterate (key, value) pairs; inline arena
@@ -1038,14 +1037,14 @@ pub(crate) fn evaluate_sort_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     // Literal-null first arg is an error.
     if let CompiledNode::Value { value, .. } = &args[0]
         && value.is_null()
     {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
@@ -1181,7 +1180,7 @@ fn sort_arena_from_value<'a>(
         }
         ArenaValue::InputRef(Value::Array(arr)) => arr.to_vec(),
         ArenaValue::Array(items) => items.iter().map(crate::arena::arena_to_value).collect(),
-        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        _ => return Err(crate::constants::invalid_args()),
     };
     if owned.is_empty() {
         return Ok(arena.alloc(ArenaValue::Array(&[])));
@@ -1267,7 +1266,7 @@ pub(crate) fn evaluate_length_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 1 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
@@ -1280,9 +1279,9 @@ pub(crate) fn evaluate_length_arena<'a>(
         ArenaValue::InputRef(v) => match v {
             Value::String(s) => s.chars().count() as i64,
             Value::Array(arr) => arr.len() as i64,
-            _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+            _ => return Err(crate::constants::invalid_args()),
         },
-        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
+        _ => return Err(crate::constants::invalid_args()),
     };
 
     Ok(arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(n))))
@@ -1329,7 +1328,7 @@ pub(crate) fn evaluate_map_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let body = &args[1];
@@ -1413,7 +1412,7 @@ fn evaluate_quantifier_arena<'a>(
     shape: QuantifierShape,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let predicate = &args[1];
@@ -1545,7 +1544,7 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 || args.len() > 3 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
+        return Err(crate::constants::invalid_args());
     }
 
     let body = &args[1];

@@ -219,32 +219,9 @@ fn eliminate_or(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_helpers::{builtin, val, var_node};
     use super::*;
-    use crate::node::SYNTHETIC_ID;
     use serde_json::json;
-
-    fn val(v: Value) -> CompiledNode {
-        CompiledNode::synthetic_value(v)
-    }
-
-    fn var_node(name: &str) -> CompiledNode {
-        CompiledNode::CompiledVar {
-            id: SYNTHETIC_ID,
-            scope_level: 0,
-            segments: vec![crate::node::PathSegment::Field(name.into())].into_boxed_slice(),
-            reduce_hint: crate::node::ReduceHint::None,
-            metadata_hint: crate::node::MetadataHint::None,
-            default_value: None,
-        }
-    }
-
-    fn builtin(opcode: OpCode, args: Vec<CompiledNode>) -> CompiledNode {
-        CompiledNode::BuiltinOperator {
-            id: SYNTHETIC_ID,
-            opcode,
-            args: args.into_boxed_slice(),
-        }
-    }
 
     #[test]
     fn test_if_true_condition() {
