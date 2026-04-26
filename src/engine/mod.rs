@@ -523,25 +523,26 @@ impl DataLogic {
             value, arena_lit, ..
         } = node
         {
-            // Pre-built primitive (Number) — borrow into the CompiledNode.
-            // ArenaValue is covariant in its lifetime, so &'a ArenaValue<'static>
-            // satisfies &'a ArenaValue<'a> without unsafe.
+            // Compiled-tree literals always have `arena_lit` populated by
+            // `populate_arena_lits` (run during `CompiledLogic::new`), so
+            // this branch covers every literal in any finalized rule.
+            // ArenaValue is covariant in its lifetime, so
+            // `&'a ArenaValue<'static>` satisfies `&'a ArenaValue<'a>`
+            // without unsafe.
             if let Some(av) = arena_lit {
                 return Ok(av);
             }
+            // Fallback for nodes built outside the compile pipeline (test
+            // helpers in `trace.rs`, ad-hoc `synthetic_value` wrappers that
+            // never went through `CompiledLogic::new`). Mirrors the old
+            // pre-populate fast path.
             use crate::arena::value_to_arena;
             return Ok(match value {
                 Value::Null => crate::arena::pool::singleton_null(),
                 Value::Bool(b) => crate::arena::pool::singleton_bool(*b),
                 Value::String(s) if s.is_empty() => crate::arena::pool::singleton_empty_string(),
                 Value::Array(a) if a.is_empty() => crate::arena::pool::singleton_empty_array(),
-                // Borrow the str slice directly from the CompiledNode —
-                // no `arena.alloc_str`, no copy. Only safe because `node`
-                // is `&'a CompiledNode` and `s` lives at least 'a.
                 Value::String(s) => arena.alloc(crate::arena::ArenaValue::String(s.as_str())),
-                // Composite literals (Array/Object) — rare. Keep the
-                // recursive `value_to_arena` path; their alloc cost
-                // dominates over matcher work.
                 _ => arena.alloc(value_to_arena(value, arena)),
             });
         }

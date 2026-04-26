@@ -159,6 +159,7 @@ impl CompiledLogic {
                             crate::node::CompiledThrowData {
                                 id: ctx.next_id(),
                                 error: serde_json::json!({"type": s}),
+                                arena_error: None,
                             },
                         )));
                     }

@@ -7,21 +7,123 @@ use serde_json::Value;
 #[cfg(feature = "ext-string")]
 use std::sync::Arc;
 
-/// Pre-build an `ArenaValue<'static>` for primitive literals so the arena
-/// dispatch hot path can return a borrow without re-running
-/// `value_to_arena` per evaluation. Returns `None` for variants either
-/// (a) already served by a static singleton (Null/Bool/empty string and
-/// array) or (b) borrowing into bytes that aren't `'static`-friendly
-/// without additional ownership tracking (non-empty String / composite
-/// Array / Object). The composite + non-empty-string cases stay on the
-/// existing `value_to_arena` path; their literal cost is dominated by
-/// the alloc, not the matcher work, and avoiding them here keeps
-/// `CompiledNode` size bounded.
+/// Pre-build an `ArenaValue<'static>` for primitive literals that don't
+/// require additional storage (Numbers — inline `NumberValue`). Used at
+/// `CompiledNode::Value` construction time so the arena dispatch hot path
+/// can return a borrow without `value_to_arena` for the most common
+/// primitive case. Other literal shapes (Null/Bool/String/Array/Object)
+/// are populated post-compile by [`populate_arena_lits`] using the
+/// per-`CompiledLogic` static arena.
 #[inline]
 pub(crate) fn precompute_arena_lit(value: &Value) -> Option<Box<ArenaValue<'static>>> {
     match value {
         Value::Number(n) => Some(Box::new(ArenaValue::Number(NumberValue::from_serde(n)))),
         _ => None,
+    }
+}
+
+/// Build an `ArenaValue<'a>` from a `serde_json::Value` using the supplied
+/// arena, then transmute the lifetime to `'static`. Used by the post-compile
+/// populate pass: the resulting `'static` claim is upheld by the caller
+/// owning the arena alongside the references inside the same struct
+/// ([`CompiledLogic`]).
+///
+/// # Safety
+///
+/// The returned `ArenaValue<'static>` borrows into `arena`. The caller must
+/// ensure `arena` outlives every read of the returned value. In practice
+/// this is upheld by storing the arena and the result in the same owning
+/// struct (`CompiledLogic`) — the references can be accessed only through
+/// `&CompiledLogic`, which keeps the arena alive for the access.
+#[inline]
+unsafe fn build_static_arena_value(value: &Value, arena: &bumpalo::Bump) -> ArenaValue<'static> {
+    let av = crate::arena::value::value_to_arena(value, arena);
+    // SAFETY: caller guarantees `arena` lives at least as long as any read of
+    // the returned `'static` value. Layout-identical lifetime cast.
+    unsafe { core::mem::transmute::<ArenaValue<'_>, ArenaValue<'static>>(av) }
+}
+
+/// Walk the compiled tree and populate `arena_lit` for every literal whose
+/// `arena_lit` is currently `None` — this covers Null, Bool, String, Array,
+/// and Object literals that [`precompute_arena_lit`] left out at
+/// construction time. Allocations land in the supplied `arena`, which must
+/// be moved into the owning [`CompiledLogic`] alongside the modified tree.
+///
+/// Also populates `CompiledThrowData::arena_error` so the error-handling
+/// path can return arena-native values without per-throw `value_to_arena`.
+///
+/// # Safety
+///
+/// The populated `arena_lit` / `arena_error` values borrow from `arena`
+/// despite their `'static` type. The caller must keep `arena` alive at
+/// least as long as the modified tree is accessible. See
+/// [`build_static_arena_value`] for the underlying invariant.
+pub(crate) unsafe fn populate_arena_lits(node: &mut CompiledNode, arena: &bumpalo::Bump) {
+    match node {
+        CompiledNode::Value {
+            value, arena_lit, ..
+        } => {
+            if arena_lit.is_none() {
+                let av = unsafe { build_static_arena_value(value, arena) };
+                *arena_lit = Some(Box::new(av));
+            }
+        }
+        CompiledNode::Array { nodes, .. } => {
+            for n in nodes.iter_mut() {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+        }
+        CompiledNode::BuiltinOperator { args, .. } => {
+            for n in args.iter_mut() {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+        }
+        CompiledNode::CustomOperator(data) => {
+            for n in data.args.iter_mut() {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+        }
+        #[cfg(feature = "preserve")]
+        CompiledNode::StructuredObject(data) => {
+            for (_, n) in data.fields.iter_mut() {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+        }
+        CompiledNode::CompiledVar { default_value, .. } => {
+            if let Some(d) = default_value {
+                unsafe { populate_arena_lits(d, arena) };
+            }
+        }
+        #[cfg(feature = "ext-control")]
+        CompiledNode::CompiledExists(_) => {}
+        #[cfg(feature = "ext-string")]
+        CompiledNode::CompiledSplitRegex(data) => {
+            for n in data.args.iter_mut() {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+        }
+        #[cfg(feature = "error-handling")]
+        CompiledNode::CompiledThrow(data) => {
+            if data.arena_error.is_none() {
+                let av = unsafe { build_static_arena_value(&data.error, arena) };
+                data.arena_error = Some(Box::new(av));
+            }
+        }
+        CompiledNode::CompiledMissing(data) => {
+            for arg in data.args.iter_mut() {
+                if let CompiledMissingArg::Dynamic(n) = arg {
+                    unsafe { populate_arena_lits(n, arena) };
+                }
+            }
+        }
+        CompiledNode::CompiledMissingSome(data) => {
+            if let CompiledMissingMin::Dynamic(n) = &mut data.min_present {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+            if let CompiledMissingPaths::Dynamic(n) = &mut data.paths {
+                unsafe { populate_arena_lits(n, arena) };
+            }
+        }
     }
 }
 
@@ -158,6 +260,12 @@ pub struct CompiledSplitRegexData {
 pub struct CompiledThrowData {
     pub id: u32,
     pub error: Value,
+    /// Arena-resident mirror of `error` populated post-compile by
+    /// [`populate_arena_lits`]. The borrowed lifetime is `'static` only
+    /// because the backing storage lives in [`CompiledLogic::static_arena`],
+    /// which is moved into the same owning struct.
+    #[doc(hidden)]
+    pub(crate) arena_error: Option<Box<ArenaValue<'static>>>,
 }
 
 /// A compiled node representing a single operation or value in the logic tree.
@@ -382,28 +490,79 @@ impl CompileCtx {
 ///     let result = engine.evaluate_owned(&compiled_clone, data);
 /// });
 /// ```
-#[derive(Debug, Clone)]
 pub struct CompiledLogic {
-    /// The root node of the compiled logic tree
+    /// The root node of the compiled logic tree.
+    ///
+    /// Some `CompiledNode::Value` and `CompiledThrowData` nodes inside this
+    /// tree carry `'static`-typed arena references that actually borrow from
+    /// [`Self::static_arena`]. This is only sound because both fields are
+    /// owned together by the same struct; never mutate `static_arena` after
+    /// construction, and never extract `root` out of `Self`.
     pub root: CompiledNode,
     /// Conservative upper bound on the static portion of arena allocations
     /// this rule will need (literals, structured-object skeletons, etc.).
     /// Used to size the per-call `Bump` so the first chunk is large enough.
     /// `pub(crate)` — internal arena infrastructure.
     pub(crate) arena_static_bytes: usize,
+    /// Per-`CompiledLogic` arena that backs `arena_lit` storage on every
+    /// literal `CompiledNode::Value` and `CompiledThrowData::arena_error`
+    /// inside `root`. Allocated and populated once during construction; never
+    /// mutated afterward, which is what makes the [`Sync`] impl below sound
+    /// despite `bumpalo::Bump` itself being `!Sync` (its allocation methods
+    /// take `&self` and use interior mutability).
+    ///
+    /// Field is held purely to keep its allocations alive — the references
+    /// into it live inside `root`. Reads happen via those references, not
+    /// directly through this field, hence the `#[allow(dead_code)]`.
+    #[allow(dead_code)]
+    static_arena: bumpalo::Bump,
+}
+
+// SAFETY: `bumpalo::Bump` is `!Sync` because allocation methods like
+// `Bump::alloc` take `&self` and mutate internal chunk state. `CompiledLogic`
+// only ever allocates into `static_arena` during construction (see
+// [`CompiledLogic::new`]). After construction, no method on `&CompiledLogic`
+// reaches into `static_arena` — the arena is read-only via the existing
+// `&'static ArenaValue<'static>` references stored in `root`. Concurrent
+// `&CompiledLogic` readers therefore never race on `Bump`'s internal cells.
+unsafe impl Sync for CompiledLogic {}
+
+impl std::fmt::Debug for CompiledLogic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledLogic")
+            .field("root", &self.root)
+            .field("arena_static_bytes", &self.arena_static_bytes)
+            .finish_non_exhaustive()
+    }
 }
 
 impl CompiledLogic {
     /// Creates a new compiled logic from a root node.
     ///
+    /// Allocates the per-`CompiledLogic` static arena, sized to the
+    /// conservative estimate, and runs the post-compile populate pass to
+    /// fill in `arena_lit` for every literal node and `arena_error` on
+    /// throw nodes. After this call, the arena is logically frozen.
+    ///
     /// # Arguments
     ///
     /// * `root` - The root node of the compiled logic tree
-    pub fn new(root: CompiledNode) -> Self {
+    pub fn new(mut root: CompiledNode) -> Self {
         let arena_static_bytes = estimate_arena_static_bytes(&root);
+        let static_arena = bumpalo::Bump::with_capacity(arena_static_bytes);
+        // SAFETY: `static_arena` is moved into `Self` together with `root`.
+        // The `'static`-typed references that `populate_arena_lits` plants
+        // inside `root` actually borrow from `static_arena`; both are owned
+        // by the same struct, so the references stay valid for as long as
+        // `Self` is accessible. After this call, nothing else allocates into
+        // `static_arena`, satisfying the [`Sync`] invariant above.
+        unsafe {
+            populate_arena_lits(&mut root, &static_arena);
+        }
         Self {
             root,
             arena_static_bytes,
+            static_arena,
         }
     }
 

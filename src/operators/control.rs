@@ -1,5 +1,3 @@
-use serde_json::Value;
-
 use super::helpers::check_invalid_args_marker;
 use crate::{CompiledNode, DataLogic, Result};
 
@@ -109,13 +107,15 @@ pub(crate) fn evaluate_switch_arena<'a>(
                         }
                     }
                     CompiledNode::Value {
-                        value: Value::Array(pair),
+                        arena_lit: Some(av),
                         ..
-                    } if pair.len() >= 2 => {
-                        // Convert literal pair[0] into the arena for arena-native compare.
-                        let cv_wrap = crate::arena::value_to_arena(&pair[0], arena);
-                        if compare_equals_arena(disc_av, &cv_wrap, true, engine).unwrap_or(false) {
-                            return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
+                    } => {
+                        if let ArenaValue::Array(pair_av) = av.as_ref()
+                            && pair_av.len() >= 2
+                            && compare_equals_arena(disc_av, &pair_av[0], true, engine)
+                                .unwrap_or(false)
+                        {
+                            return Ok(&pair_av[1]);
                         }
                     }
                     _ => {}
@@ -123,16 +123,16 @@ pub(crate) fn evaluate_switch_arena<'a>(
             }
         }
         CompiledNode::Value {
-            value: Value::Array(cases),
+            arena_lit: Some(av),
             ..
         } => {
-            for case in cases {
-                if let Value::Array(pair) = case
-                    && pair.len() >= 2
-                {
-                    let cv_wrap = crate::arena::value_to_arena(&pair[0], arena);
-                    if compare_equals_arena(disc_av, &cv_wrap, true, engine).unwrap_or(false) {
-                        return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
+            if let ArenaValue::Array(cases_av) = av.as_ref() {
+                for case_av in cases_av.iter() {
+                    if let ArenaValue::Array(pair_av) = case_av
+                        && pair_av.len() >= 2
+                        && compare_equals_arena(disc_av, &pair_av[0], true, engine).unwrap_or(false)
+                    {
+                        return Ok(&pair_av[1]);
                     }
                 }
             }
