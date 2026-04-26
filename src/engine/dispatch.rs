@@ -280,12 +280,24 @@ pub(super) fn evaluate_arena_node_inner<'a>(
             opcode: crate::OpCode::Divide,
             args,
             ..
-        } => crate::operators::arithmetic::evaluate_divide_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::arena_div_or_mod(
+            args,
+            actx,
+            engine,
+            arena,
+            crate::operators::arithmetic::DivOp::Divide,
+        ),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Modulo,
             args,
             ..
-        } => crate::operators::arithmetic::evaluate_modulo_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::arena_div_or_mod(
+            args,
+            actx,
+            engine,
+            arena,
+            crate::operators::arithmetic::DivOp::Modulo,
+        ),
 
         // Math (unary)
         #[cfg(feature = "ext-math")]
@@ -293,19 +305,37 @@ pub(super) fn evaluate_arena_node_inner<'a>(
             opcode: crate::OpCode::Abs,
             args,
             ..
-        } => crate::operators::arithmetic::evaluate_abs_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::arena_unary_math(
+            args,
+            actx,
+            engine,
+            arena,
+            crate::operators::arithmetic::UnaryMathOp::Abs,
+        ),
         #[cfg(feature = "ext-math")]
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Ceil,
             args,
             ..
-        } => crate::operators::arithmetic::evaluate_ceil_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::arena_unary_math(
+            args,
+            actx,
+            engine,
+            arena,
+            crate::operators::arithmetic::UnaryMathOp::Ceil,
+        ),
         #[cfg(feature = "ext-math")]
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Floor,
             args,
             ..
-        } => crate::operators::arithmetic::evaluate_floor_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::arena_unary_math(
+            args,
+            actx,
+            engine,
+            arena,
+            crate::operators::arithmetic::UnaryMathOp::Floor,
+        ),
 
         // String
         CompiledNode::BuiltinOperator {

@@ -980,46 +980,55 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     }
 }
 
-/// Native arena-mode `/`. Handles 1-arg array (sequential divide), 1-arg
-/// scalar (1/x), 2-arg, and divbyzero per engine config.
-#[inline]
-pub(crate) fn evaluate_divide_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
-    engine: &DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    arena_div_or_mod(args, actx, engine, arena, |a, b| a.div(b), false)
+/// `/` vs `%` discriminant for the unified divide/modulo entry point.
+#[derive(Clone, Copy)]
+pub(crate) enum DivOp {
+    Divide,
+    Modulo,
 }
 
-/// Native arena-mode `%` (modulo).
-#[inline]
-pub(crate) fn evaluate_modulo_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
-    engine: &DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    arena_div_or_mod(args, actx, engine, arena, |a, b| a.rem(b), true)
+impl DivOp {
+    #[inline]
+    fn apply_number(self, a: &NumberValue, b: &NumberValue) -> Option<NumberValue> {
+        match self {
+            DivOp::Divide => a.div(b),
+            DivOp::Modulo => a.rem(b),
+        }
+    }
+
+    #[inline]
+    fn apply_f64(self, a: f64, b: f64) -> f64 {
+        match self {
+            DivOp::Divide => a / b,
+            DivOp::Modulo => a % b,
+        }
+    }
+
+    #[inline]
+    fn is_modulo(self) -> bool {
+        matches!(self, DivOp::Modulo)
+    }
 }
 
+/// Native arena-mode `/` and `%`. Handles 1-arg array (fold), 1-arg scalar
+/// (`/` → 1/x; `%` → invalid), 2-arg primary, variadic fold, and divbyzero
+/// per engine config.
 #[inline]
-fn arena_div_or_mod<'a>(
+pub(crate) fn arena_div_or_mod<'a>(
     args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-    op: fn(&NumberValue, &NumberValue) -> Option<NumberValue>,
-    is_modulo: bool,
+    op: DivOp,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
     if args.len() == 1 {
-        return arena_one_arg_div_mod(&args[0], actx, engine, arena, is_modulo);
+        return arena_one_arg_div_mod(&args[0], actx, engine, arena, op);
     }
     if args.len() > 2 {
-        return arena_variadic_div_mod(args, actx, engine, arena, is_modulo);
+        return arena_variadic_div_mod(args, actx, engine, arena, op);
     }
     let a_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let b_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
@@ -1027,7 +1036,9 @@ fn arena_div_or_mod<'a>(
     // Duration / Number — only for `/`, not `%` (modulo on durations
     // is not defined).
     #[cfg(feature = "datetime")]
-    if !is_modulo && let Some(r) = arena_datetime_divide(a_av, b_av, arena) {
+    if !op.is_modulo()
+        && let Some(r) = arena_datetime_divide(a_av, b_av, arena)
+    {
         return r;
     }
 
@@ -1052,7 +1063,7 @@ fn arena_div_or_mod<'a>(
         }
         return divbyzero_arena(arena, na.as_f64(), engine);
     }
-    match op(&na, &nb) {
+    match op.apply_number(&na, &nb) {
         Some(r) => Ok(arena_number(arena, r)),
         None => Err(crate::constants::nan_error()),
     }
@@ -1098,7 +1109,7 @@ fn arena_one_arg_div_mod<'a>(
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-    is_modulo: bool,
+    op: DivOp,
 ) -> Result<&'a ArenaValue<'a>> {
     let av = engine.evaluate_arena_node(arg, actx, arena)?;
 
@@ -1114,7 +1125,7 @@ fn arena_one_arg_div_mod<'a>(
     };
     if let Some(arr) = array_cow {
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
-        if arr.is_empty() || (is_modulo && arr.len() < 2) {
+        if arr.is_empty() || (op.is_modulo() && arr.len() < 2) {
             return Err(crate::constants::invalid_args());
         }
         let mut result =
@@ -1124,13 +1135,13 @@ fn arena_one_arg_div_mod<'a>(
             if n == 0.0 {
                 return Err(crate::constants::nan_error());
             }
-            result = if is_modulo { result % n } else { result / n };
+            result = op.apply_f64(result, n);
         }
         return Ok(arena_number(arena, NumberValue::from_f64(result)));
     }
 
     // Non-array single value.
-    if is_modulo {
+    if op.is_modulo() {
         return Err(crate::constants::invalid_args());
     }
     // 1/x with integer-preserving fast path.
@@ -1161,7 +1172,7 @@ fn arena_variadic_div_mod<'a>(
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-    is_modulo: bool,
+    op: DivOp,
 ) -> Result<&'a ArenaValue<'a>> {
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first_cow = crate::arena::arena_to_value_cow(first_av);
@@ -1174,7 +1185,7 @@ fn arena_variadic_div_mod<'a>(
         if n == 0.0 {
             return Err(crate::constants::nan_error());
         }
-        result = if is_modulo { result % n } else { result / n };
+        result = op.apply_f64(result, n);
     }
     Ok(arena_number(arena, NumberValue::from_f64(result)))
 }
@@ -1193,27 +1204,55 @@ fn arena_value_strict_f64(av: &ArenaValue<'_>) -> Option<f64> {
     }
 }
 
+/// `abs` / `ceil` / `floor` discriminant for the unified unary-math entry
+/// point.
+#[cfg(feature = "ext-math")]
+#[derive(Clone, Copy)]
+pub(crate) enum UnaryMathOp {
+    Abs,
+    Ceil,
+    Floor,
+}
+
+#[cfg(feature = "ext-math")]
+impl UnaryMathOp {
+    #[inline]
+    fn apply(self, x: f64) -> f64 {
+        match self {
+            UnaryMathOp::Abs => x.abs(),
+            UnaryMathOp::Ceil => x.ceil(),
+            UnaryMathOp::Floor => x.floor(),
+        }
+    }
+
+    /// True when the result should be quantized to i64 (ceil / floor) rather
+    /// than kept as f64 (abs).
+    #[inline]
+    fn returns_int(self) -> bool {
+        matches!(self, UnaryMathOp::Ceil | UnaryMathOp::Floor)
+    }
+}
+
 /// Generic native unary math op shared by abs / ceil / floor.
 /// - `args.is_empty()` → InvalidArguments
-/// - 1 arg, numeric → apply op_fn, return arena Number
+/// - 1 arg, numeric → apply op, return arena Number
 /// - 1 arg, non-numeric → InvalidArguments
 /// - >1 args → variadic, return arena Array of results (any non-numeric → error)
 #[cfg(feature = "ext-math")]
 #[inline]
-fn arena_unary_math<'a>(
+pub(crate) fn arena_unary_math<'a>(
     args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-    op_fn: fn(f64) -> f64,
-    always_int: bool,
+    op: UnaryMathOp,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
 
     let to_arena = |x: f64, arena: &'a Bump| -> &'a ArenaValue<'a> {
-        if always_int {
+        if op.returns_int() {
             arena_number(arena, NumberValue::from_i64(x as i64))
         } else {
             arena_number(arena, NumberValue::from_f64(x))
@@ -1223,7 +1262,7 @@ fn arena_unary_math<'a>(
     if args.len() == 1 {
         let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
         let n = arena_value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
-        return Ok(to_arena(op_fn(n), arena));
+        return Ok(to_arena(op.apply(n), arena));
     }
 
     let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
@@ -1231,41 +1270,8 @@ fn arena_unary_math<'a>(
     for arg in args {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;
         let n = arena_value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
-        let r = to_arena(op_fn(n), arena);
+        let r = to_arena(op.apply(n), arena);
         items.push(crate::arena::value::reborrow_arena_value(r));
     }
     Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
-}
-
-#[cfg(feature = "ext-math")]
-#[inline]
-pub(crate) fn evaluate_abs_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
-    engine: &DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    arena_unary_math(args, actx, engine, arena, f64::abs, false)
-}
-
-#[cfg(feature = "ext-math")]
-#[inline]
-pub(crate) fn evaluate_ceil_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
-    engine: &DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    arena_unary_math(args, actx, engine, arena, f64::ceil, true)
-}
-
-#[cfg(feature = "ext-math")]
-#[inline]
-pub(crate) fn evaluate_floor_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
-    engine: &DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    arena_unary_math(args, actx, engine, arena, f64::floor, true)
 }
