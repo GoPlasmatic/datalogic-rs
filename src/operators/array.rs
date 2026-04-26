@@ -877,14 +877,13 @@ fn map_arena_bridge<'a>(
 fn reduce_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
     body: &'a CompiledNode,
-    initial: &Value,
+    initial: &'a ArenaValue<'a>,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if let ArenaValue::InputRef(Value::Object(obj)) = input {
-        let mut acc_av: &'a ArenaValue<'a> =
-            arena.alloc(crate::arena::value_to_arena(initial, arena));
+        let mut acc_av: &'a ArenaValue<'a> = initial;
         let mut pushed = false;
         let total = obj.len() as u32;
         for (i, (k, v)) in obj.iter().enumerate() {
@@ -905,8 +904,7 @@ fn reduce_arena_bridge<'a>(
         return Ok(acc_av);
     }
     if let ArenaValue::Array(items) = input {
-        let mut acc_av: &'a ArenaValue<'a> =
-            arena.alloc(crate::arena::value_to_arena(initial, arena));
+        let mut acc_av: &'a ArenaValue<'a> = initial;
         let mut pushed = false;
         let total = items.len() as u32;
         for i in 0..items.len() {
@@ -925,7 +923,7 @@ fn reduce_arena_bridge<'a>(
         return Ok(acc_av);
     }
     // Anything else — return initial.
-    Ok(arena.alloc(crate::arena::value_to_arena(initial, arena)))
+    Ok(initial)
 }
 
 /// Shape of a quantifier (`all` / `some` / `none`) — the three flags
@@ -1210,7 +1208,7 @@ fn sort_arena_from_value<'a>(
         let items = arena.alloc_slice_fill_iter(
             sorted
                 .into_iter()
-                .map(|v| crate::arena::value_to_arena(&v, arena)),
+                .map(|v| value_to_arena(&v, arena)),
         );
         return Ok(arena.alloc(ArenaValue::Array(items)));
     }
@@ -1223,7 +1221,7 @@ fn sort_arena_from_value<'a>(
     // reference whose lifetime matches `'a`.
     let arena_items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::from_iter_in(
-            owned.iter().map(|v| crate::arena::value_to_arena(v, arena)),
+            owned.iter().map(|v| value_to_arena(v, arena)),
             arena,
         );
     let arena_items_slice: &'a [ArenaValue<'a>] = arena_items.into_bump_slice();
@@ -1552,23 +1550,22 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     }
 
     let body = &args[1];
-    let initial: Value = if args.len() == 3 {
-        let av = engine.evaluate_arena_node(&args[2], actx, arena)?;
-        crate::arena::arena_to_value(av)
+    let initial: &'a ArenaValue<'a> = if args.len() == 3 {
+        engine.evaluate_arena_node(&args[2], actx, arena)?
     } else {
-        Value::Null
+        crate::arena::pool::singleton_null()
     };
 
     let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(value_to_arena(&initial, arena))),
+        ResolvedInput::Empty => return Ok(initial),
         ResolvedInput::Bridge(av) => {
-            return reduce_arena_bridge(av, body, &initial, actx, engine, arena);
+            return reduce_arena_bridge(av, body, initial, actx, engine, arena);
         }
     };
 
     if src.is_empty() {
-        return Ok(arena.alloc(value_to_arena(&initial, arena)));
+        return Ok(initial);
     }
 
     // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} for + / - / *.
@@ -1581,16 +1578,16 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     } = body
         && body_args.len() == 2
         && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
-        && let Some(result) = try_reduce_fast_path_arena(&src, &initial, body_args, *opcode)
+        && let Some(result) = try_reduce_fast_path_arena(&src, initial, body_args, *opcode, arena)
     {
-        return Ok(arena.alloc(value_to_arena(&result, arena)));
+        return Ok(result);
     }
 
     // GENERAL PATH: zero-clone via ArenaContextStack. Frame holds
     // `&'a ArenaValue<'a>` for both the current item and the accumulator.
     // Body dispatches through arena and the result threads as
     // `&'a ArenaValue<'a>` between iterations.
-    let mut acc_av: &'a ArenaValue<'a> = arena.alloc(value_to_arena(&initial, arena));
+    let mut acc_av: &'a ArenaValue<'a> = initial;
     let mut pushed = false;
     let len = src.len();
     let total = len as u32;
@@ -1612,12 +1609,13 @@ pub(crate) fn evaluate_reduce_arena<'a>(
 }
 
 /// Arena variant of `try_reduce_fast_path` — same logic, iterates `IterSrc`.
-fn try_reduce_fast_path_arena(
-    src: &IterSrc<'_>,
-    initial: &Value,
+fn try_reduce_fast_path_arena<'a>(
+    src: &IterSrc<'a>,
+    initial: &'a ArenaValue<'a>,
     body_args: &[CompiledNode],
     opcode: OpCode,
-) -> Option<Value> {
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
     // Identify which arg is current and which is accumulator.
     let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
         (
@@ -1689,7 +1687,9 @@ fn try_reduce_fast_path_arena(
             }
         }
         if all_int {
-            return acc_i.map(Value::from);
+            return acc_i.map(|v| {
+                &*arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(v)))
+            });
         }
     }
 
@@ -1710,7 +1710,7 @@ fn try_reduce_fast_path_arena(
             _ => return None,
         };
     }
-    Some(Value::from(acc_f))
+    Some(arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_f64(acc_f))))
 }
 
 /// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
