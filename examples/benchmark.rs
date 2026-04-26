@@ -39,15 +39,25 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
         return None;
     }
 
+    // Pre-create one arena for the entire benchmark — skips the per-call
+    // ArenaGuard slot pop/push that the production `evaluate*` API pays.
+    // Per-iteration reset keeps the bump pointer at chunk start so chunks
+    // are reused without growth (measurably faster than letting the arena
+    // grow through the inner 100k loop, even after accounting for the
+    // reset cost).
+    let mut arena = bumpalo::Bump::with_capacity(64 * 1024);
+
     // Warm-up — pure arena dispatch, no boundary conversion.
     for (compiled_logic, data) in &test_cases {
-        let _ = engine.evaluate_arena_bench(compiled_logic, data);
+        let _ = engine.evaluate_in_arena(compiled_logic, data, &arena);
+        arena.reset();
     }
 
     let start = Instant::now();
     for (compiled_logic, data) in &test_cases {
         for _ in 0..ITERATIONS {
-            let _ = engine.evaluate_arena_bench(compiled_logic, data);
+            let _ = engine.evaluate_in_arena(compiled_logic, data, &arena);
+            arena.reset();
         }
     }
     let total_time = start.elapsed();
