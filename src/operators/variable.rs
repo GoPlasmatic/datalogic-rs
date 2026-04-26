@@ -511,13 +511,10 @@ pub(crate) fn evaluate_val_arena<'a>(
         let cur = current_data_av(actx, arena);
         // Direct object key lookup beats dot-path traversal so empty keys and
         // keys containing dots resolve correctly.
-        if let ArenaValue::Object(pairs) = cur {
-            for (k, v) in *pairs {
-                if *k == s {
-                    let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
-                    return Ok(av_ref);
-                }
-            }
+        if let ArenaValue::Object(pairs) = cur
+            && let Some(av) = crate::arena::value::arena_object_lookup_field(pairs, s)
+        {
+            return Ok(av);
         }
         return Ok(arena_access_path_str_ref(cur, s, arena)
             .unwrap_or_else(|| crate::arena::pool::singleton_null()));
@@ -541,7 +538,7 @@ pub(crate) fn evaluate_val_arena<'a>(
 #[inline]
 fn arena_object_contains(av: &ArenaValue<'_>, key: &str) -> bool {
     match av {
-        ArenaValue::Object(pairs) => pairs.iter().any(|(k, _)| *k == key),
+        ArenaValue::Object(pairs) => crate::arena::value::arena_object_lookup_field(pairs, key).is_some(),
         _ => false,
     }
 }
@@ -556,15 +553,7 @@ fn arena_object_step<'a>(
     _arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
     match av {
-        ArenaValue::Object(pairs) => {
-            for (k, v) in *pairs {
-                if *k == key {
-                    let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
-                    return Some(av_ref);
-                }
-            }
-            None
-        }
+        ArenaValue::Object(pairs) => crate::arena::value::arena_object_lookup_field(pairs, key),
         _ => None,
     }
 }
