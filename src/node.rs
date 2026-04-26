@@ -66,7 +66,7 @@ pub enum MetadataHint {
 /// Sentinel id used for synthetic nodes built outside the compile pipeline
 /// (test helpers, run-time value wrappers in `eager_apply`, etc.). Real IDs
 /// are always nonzero since `CompileCtx` starts the counter at 1.
-pub const SYNTHETIC_ID: u32 = 0;
+pub(crate) const SYNTHETIC_ID: u32 = 0;
 
 /// Data for a custom operator (boxed inside CompiledNode to reduce enum size).
 #[derive(Debug, Clone)]

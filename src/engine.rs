@@ -298,7 +298,7 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        self.evaluate_via_arena(compiled, data)
+        self.eval_to_value(compiled, &data)
     }
 
     /// Evaluates compiled logic against borrowed data.
@@ -317,7 +317,7 @@ impl DataLogic {
     ///
     /// The evaluation result, or an error if evaluation fails.
     pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        self.evaluate_via_arena_ref(compiled, data)
+        self.eval_to_value(compiled, data)
     }
 
     /// Arena-mode evaluation entry. Acquires a thread-local `Bump` (from the
@@ -326,28 +326,9 @@ impl DataLogic {
     /// `Value` at the boundary. The arena is reset and returned to the pool
     /// when `guard` drops at end of function.
     #[inline]
-    fn evaluate_via_arena(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
+    fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         use crate::arena::{ArenaGuard, arena_to_value};
         // Size hint for first-time pool fills: static_bytes × 2, min 4 KiB.
-        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
-        let guard = ArenaGuard::acquire(cap);
-        let arena = guard.arena();
-        let arc_for_borrow = Arc::clone(&data);
-        let root_ref: &Value = &arc_for_borrow;
-        let mut actx = crate::arena::ArenaContextStack::new(root_ref);
-        let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
-        let owned = arena_to_value(result);
-        drop(guard);
-        drop(arc_for_borrow);
-        drop(data);
-        Ok(owned)
-    }
-
-    /// Borrowed-data variant of `evaluate_via_arena`. No Arc::clone — the
-    /// caller's `&Value` lives on the caller's stack.
-    #[inline]
-    fn evaluate_via_arena_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        use crate::arena::{ArenaGuard, arena_to_value};
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
@@ -483,16 +464,11 @@ impl DataLogic {
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
-        let arc_for_borrow = Arc::clone(&data);
-        let root_ref: &Value = &arc_for_borrow;
-        let mut actx = crate::arena::ArenaContextStack::new(root_ref);
-        let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena);
-        match result {
+        let mut actx = crate::arena::ArenaContextStack::new(&data);
+        match self.evaluate_arena_node(&compiled.root, &mut actx, arena) {
             Ok(av) => {
                 let owned = arena_to_value(av);
                 drop(guard);
-                drop(arc_for_borrow);
-                drop(data);
                 Ok(owned)
             }
             Err(e) => {
