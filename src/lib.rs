@@ -13,8 +13,8 @@
 //! - **Compilation-based optimization**: Parse once, evaluate many times
 //! - **Thread-safe by design**: Share compiled logic across threads with `Arc`
 //! - **50+ built-in operators**: Complete JSONLogic compatibility plus extensions
-//! - **Zero-copy operations**: Minimize allocations with `Cow` types
-//! - **Extensible**: Add custom operators via the `Operator` trait
+//! - **Arena-allocated evaluation**: Results live in a `bumpalo::Bump` arena and can borrow directly into caller input for zero-copy paths
+//! - **Extensible**: Add custom operators via the [`ArenaOperator`] trait
 //! - **Structured templates**: Preserve object structure for dynamic outputs
 //!
 //! ## Quick Start
@@ -40,10 +40,13 @@
 //! The library uses a two-phase approach:
 //!
 //! 1. **Compilation**: JSON logic is parsed into `CompiledLogic` with OpCode dispatch
-//! 2. **Evaluation**: Compiled logic is evaluated against data using direct dispatch
+//! 2. **Evaluation**: Compiled logic is evaluated through arena dispatch — results
+//!    are `&'a ArenaValue<'a>` allocated in a `bumpalo::Bump` for the duration of
+//!    one evaluate call.
 //!
-//! This design enables sharing compiled logic across threads and eliminates
-//! repeated parsing overhead.
+//! This design enables sharing compiled logic across threads, eliminates
+//! repeated parsing overhead, and lets read-through operations like `var`
+//! return zero-copy borrows into the caller's input data.
 
 pub mod arena;
 mod compile;

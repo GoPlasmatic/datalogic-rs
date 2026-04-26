@@ -4,8 +4,7 @@ use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
 use crate::{CompiledNode, DataLogic, Error, Result};
 use bumpalo::Bump;
 
-/// Native arena-mode `throw`. Builds the error object directly from the
-/// argument's arena-resolved form — no value-mode round-trip.
+/// `throw`. Builds the error object directly from the argument's arena form.
 #[inline]
 pub(crate) fn evaluate_throw_arena<'a>(
     args: &'a [CompiledNode],

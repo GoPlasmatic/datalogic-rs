@@ -96,8 +96,8 @@ pub(crate) fn evaluate_type_arena<'a>(
     Ok(arena.alloc(ArenaValue::String(type_str)))
 }
 
-/// Classify a string into "datetime" / "duration" / "string" using the same
-/// heuristic as value-mode `evaluate_type`.
+/// Classify a string into "datetime" / "duration" / "string" using the
+/// `type` operator's string heuristic.
 #[inline]
 fn classify_string(s: &str) -> &'static str {
     #[cfg(feature = "datetime")]

@@ -83,18 +83,17 @@ fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
 }
 
 // =============================================================================
-// Arena-mode array-consumer ops (Phase 5: max / min / + / *)
+// Array-consumer ops: max / min / + / *
 //
 // These are "pipeline tops" — they consume an array (typically produced by an
-// upstream filter/map) and return a single Number. They benefit from arena
-// dispatch in two ways:
+// upstream filter/map) and return a single Number. Two arena wins:
 //   1. Input borrow: when args[0] is a root var, no clone of the input array.
 //   2. Composition: when args[0] is filter/map/all/some/none, the arena
-//      intermediate slice is consumed directly without value-mode bridging.
+//      intermediate slice is consumed directly.
 //
 // Each op handles the SINGLE-ARG ARRAY form (e.g. `max(items)` over an array).
-// The multi-arg form (`max(a, b, c)`) stays on the value path — it doesn't
-// involve array iteration so arena gives no win.
+// The multi-arg form (`max(a, b, c)`) is handled separately — it doesn't
+// involve array iteration.
 // =============================================================================
 
 use crate::arena::{ArenaContextStack, ArenaValue};
@@ -140,7 +139,7 @@ fn arena_min_max<'a>(
         };
     }
 
-    // Reject literal-array arg shape (matches value-mode error).
+    // Reject literal-array arg shape.
     if matches!(&args[0], CompiledNode::Array { .. }) {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
@@ -161,9 +160,8 @@ fn arena_min_max<'a>(
             ) {
                 return arena_min_max_from_av(av, init, pick_better, arena);
             }
-            // Single non-array arg: value-mode `evaluate_max`/`evaluate_min`
-            // requires the operand to be a `Value::Number` and returns it
-            // unchanged; non-numeric is InvalidArguments.
+            // Single non-array arg: must be a `Number`; returned unchanged.
+            // Non-numeric is InvalidArguments.
             let is_number = matches!(
                 av,
                 ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
@@ -345,8 +343,7 @@ pub(crate) fn evaluate_add_arena<'a>(
             }
         }
 
-        // Non-numeric, non-datetime — handle NaN per config (mirrors
-        // value-mode evaluate_add 2-arg path).
+        // Non-numeric, non-datetime — handle NaN per config.
         let mut sum = 0.0f64;
         for cow in [&a_cow, &b_cow] {
             if let Some(f) = coerce_to_number(cow, engine) {
@@ -500,9 +497,8 @@ fn arena_variadic_fold<'a>(
             }
             continue;
         }
-        // Try `as_f64` for native numbers first; fall back to value-mode
-        // coercion so `true`/`false`/`null`/numeric strings compose like
-        // they do in the legacy variadic path.
+        // Try `as_f64` for native numbers first; fall back to coercion so
+        // `true`/`false`/`null`/numeric strings compose into the variadic op.
         let f_opt = av
             .as_f64()
             .or_else(|| coerce_to_number(&crate::arena::arena_to_value_cow(av), engine));
@@ -514,9 +510,8 @@ fn arena_variadic_fold<'a>(
                 float_acc = (spec.f_combine)(float_acc, f);
             }
         } else {
-            // Non-numeric operand — value-mode `evaluate_add` / `evaluate_multiply`
-            // for the variadic (>2) case treats arrays/objects/non-coercibles as
-            // NaN per `arithmetic_nan_handling` config. Match that behavior.
+            // Non-numeric operand — variadic (>2) `+`/`*` treats
+            // arrays/objects/non-coercibles as NaN per `arithmetic_nan_handling`.
             match handle_nan(engine)? {
                 NanAction::Skip => continue,
                 NanAction::ReturnNull => {
@@ -584,8 +579,7 @@ impl ArithOp {
     }
 }
 
-/// Native arena 1-arg `+` / `*`. Mirrors value-mode `evaluate_add` / `evaluate_multiply`
-/// 1-arg semantics: literal-array reject, then either array-fold the elements
+/// 1-arg `+` / `*`: literal-array reject, then either array-fold the elements
 /// or treat as a single-value sum/product.
 fn arena_one_arg_arith<'a>(
     arg: &'a CompiledNode,
@@ -815,9 +809,8 @@ fn arena_datetime_multiply<'a>(
     None
 }
 
-/// Native arena `Duration / Number`. Mirrors the value-mode branch in
-/// `evaluate_divide` (line ~745). Returns `None` for non-duration LHS so
-/// the generic numeric path handles regular division.
+/// `Duration / Number` → scaled `Duration`. Returns `None` for non-duration
+/// LHS so the generic numeric path handles regular division.
 #[cfg(feature = "datetime")]
 #[inline]
 fn arena_datetime_divide<'a>(
@@ -940,8 +933,7 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     }
 
     // Variadic subtractive fold: first - second - third - ...
-    // Native port mirrors value-mode evaluate_subtract for the >2 case
-    // (see arithmetic.rs:430-500). Integer fast path with overflow promotion.
+    // Variadic (>2) subtract: integer fast path with overflow promotion.
     if args.is_empty() {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
@@ -1037,8 +1029,8 @@ fn arena_div_or_mod<'a>(
     let a_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let b_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
 
-    // Duration / Number — only for `/`, not `%` (modulo on durations isn't
-    // a value-mode op either).
+    // Duration / Number — only for `/`, not `%` (modulo on durations
+    // is not defined).
     #[cfg(feature = "datetime")]
     if !is_modulo && let Some(r) = arena_datetime_divide(a_av, b_av, arena) {
         return r;
@@ -1058,8 +1050,8 @@ fn arena_div_or_mod<'a>(
     let na = NumberValue::from_f64(af);
     let nb = NumberValue::from_f64(bf);
     if nb.is_zero() {
-        // Match value-mode: integer/integer with divisor=0 errors regardless
-        // of `division_by_zero` config (config only governs the float path).
+        // Integer/integer with divisor=0 errors regardless of the
+        // `division_by_zero` config (config only governs the float path).
         if a_av.as_i64().is_some() && b_av.as_i64().is_some() {
             return Err(crate::constants::nan_error());
         }
@@ -1102,11 +1094,10 @@ fn divbyzero_arena<'a>(
     }
 }
 
-/// Native arena 1-arg `/` / `%`. Mirrors value-mode evaluate_divide / evaluate_modulo
-/// 1-arg semantics:
+/// 1-arg `/` and `%`:
 ///   * `/` with array → fold (a/b/c). `/` with non-array → 1/x.
 ///   * `%` with array of ≥2 numeric elements → fold (a%b%c). `%` with single
-///     non-array argument → InvalidArguments (matches value-mode).
+///     non-array argument → InvalidArguments.
 fn arena_one_arg_div_mod<'a>(
     arg: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,

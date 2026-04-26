@@ -52,9 +52,8 @@ pub(crate) fn evaluate_cat_arena<'a>(
     Ok(arena.alloc(ArenaValue::String(buf.into_bump_str())))
 }
 
-/// Native arena-mode substr — char-indexed substring extraction. Mirrors
-/// the value-mode `evaluate_substr` semantics (negative start counts from
-/// end; negative length is treated as an end position).
+/// `substr` — char-indexed substring extraction. Negative start counts from
+/// end; negative length is treated as an end position.
 #[inline]
 pub(crate) fn evaluate_substr_arena<'a>(
     args: &'a [CompiledNode],
@@ -297,8 +296,8 @@ pub(crate) fn evaluate_split_arena<'a>(
         }
     };
 
-    // Named-capture regex path (mirrors value-mode behavior — dynamic
-    // regex delimiter with `(?P<…>)` named groups returns an object).
+    // Named-capture regex path: a dynamic regex delimiter with `(?P<…>)`
+    // named groups returns an object.
     if delim_str.contains("(?P<")
         && let Ok(re) = Regex::new(delim_str)
     {
@@ -329,7 +328,7 @@ pub(crate) fn evaluate_split_arena<'a>(
 #[inline]
 fn split_arena_normal<'a>(text: &str, delim: &str, arena: &'a Bump) -> Result<&'a ArenaValue<'a>> {
     if text.is_empty() {
-        // Mirrors value-mode: empty input → ["" ].
+        // Empty input → [""].
         let item: &'a str = "";
         let slice = bumpalo::vec![in arena; ArenaValue::String(item)].into_bump_slice();
         return Ok(arena.alloc(ArenaValue::Array(slice)));

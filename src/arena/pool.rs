@@ -1,5 +1,5 @@
 //! Thread-local Bump pool — amortizes the per-call `Bump::with_capacity` cost
-//! seen at ~6% of compatible.json CPU in Phase 5 profiling.
+//! that profiling identified at ~6% of compatible.json CPU.
 //!
 //! ## Design (matches ARENA_RFC §6.2)
 //!

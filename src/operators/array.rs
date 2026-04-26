@@ -462,8 +462,8 @@ fn extract_opt_i64_arena<'a>(
     }
 }
 
-/// Index list for a slice given start/end/step. Mirrors the value-mode
-/// `slice_sequence` selection logic without materializing values.
+/// Index list for a slice given start/end/step. Computes the index sequence
+/// without materializing values.
 #[cfg(feature = "ext-array")]
 #[inline]
 fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> Vec<i64> {
@@ -511,17 +511,13 @@ fn normalize_index(index: i64, len: i64) -> i64 {
 }
 
 // =============================================================================
-// Arena-mode operators (Phase 4: filter / map / quantifiers + composition IN).
+// Iterator operators: filter / map / quantifiers + composition IN.
 //
 // These return `&'a ArenaValue<'a>` and may borrow into the caller's input
-// `Value` tree via `ArenaValue::InputRef`. Predicate evaluation still uses the
-// existing value-mode path (`engine.evaluate_node`) — the arena win comes from
-// (a) borrowing the input collection instead of cloning it and (b) staying in
-// the arena when our output is consumed by another arena-mode operator.
-//
-// Phase 4 adds: iterator inputs can themselves be arena-mode op outputs
-// (`map(filter(...))`, `length(map(filter))`). The `IterSrc` helper unifies
-// `&[Value]` (borrowed input data) and `&[&'a Value]` (extracted from an
+// `Value` tree via `ArenaValue::InputRef`. Iterator inputs can themselves be
+// arena op outputs (`map(filter(...))`, `length(map(filter))`). The
+// `IterSrc` helper unifies `&[Value]` (borrowed input data) and
+// `&[&'a Value]` (extracted from an
 // upstream arena op's `InputRef` items) into one iteration interface, so
 // each operator's iteration body stays single-version.
 // =============================================================================
@@ -575,10 +571,10 @@ pub(crate) enum ResolvedInput<'a> {
     Bridge(&'a ArenaValue<'a>),
 }
 
-/// Resolve `args[0]` for an arena-mode iterator op. Tries (in order):
+/// Resolve `args[0]` for an iterator op. Tries (in order):
 ///   1. Borrow from root data (cheapest — no eval, no alloc)
 ///   2. Dispatch to arena (when arg is e.g. another filter — composition path)
-///   3. Bridge: caller falls back to value-mode for the whole op
+///   3. Bridge: caller handles non-borrowable inputs (objects, primitives)
 ///
 /// The returned `IterSrc` borrows from the arena (`'a`) and is safe to iterate
 /// while the caller mutates `context` for predicate evaluation, because the
@@ -649,9 +645,8 @@ fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedI
     }
 }
 
-/// Arena-mode `filter`. POC: handles only the case where the input collection
-/// resolves at root scope (the dominant pattern in real workloads). Falls back
-/// to the value-mode filter via the dispatch hub for everything else.
+/// `filter`. Fast path: input collection resolves at root scope (the dominant
+/// pattern in real workloads). Bridge path handles non-borrowable inputs.
 #[inline]
 pub(crate) fn evaluate_filter_arena<'a>(
     args: &'a [CompiledNode],
@@ -663,8 +658,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    // Resolve input collection. Try the borrow-from-root fast path first;
-    // Phase 4: resolve input via unified helper (root borrow OR upstream arena op).
+    // Resolve input via unified helper (root borrow OR upstream arena op).
     let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
@@ -750,7 +744,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
 /// Filter Bridge case — input is an Object, an inline arena Array (e.g. a
 /// literal `[1,2,3]` arg) or a non-array primitive. Object inputs iterate
 /// `(key, value)` pairs into a new arena `Object`; arena Array inputs iterate
-/// items into a new arena `Array`; other shapes error per value-mode semantics.
+/// items into a new arena `Array`; other shapes are an error.
 #[inline]
 fn filter_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
@@ -811,7 +805,7 @@ fn filter_arena_bridge<'a>(
 
 /// Map Bridge case — Object inputs iterate (key, value) pairs; inline arena
 /// Array inputs (e.g. literal `[1,2,3]` arg) iterate items; other shapes are
-/// treated as a single-element collection per value-mode semantics.
+/// treated as a single-element collection.
 #[inline]
 fn map_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
@@ -892,8 +886,8 @@ fn reduce_arena_bridge<'a>(
         let total = obj.len() as u32;
         for (i, (k, v)) in obj.iter().enumerate() {
             let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
-            let _key = arena.alloc_str(k); // value-mode reduce frame stores
-            // current/accumulator only — key isn't exposed here.
+            let _key = arena.alloc_str(k); // reduce frame stores current/
+            // accumulator only — key isn't exposed here.
             if !pushed {
                 actx.push_reduce(item_av, acc_av);
                 pushed = true;
@@ -1024,20 +1018,17 @@ fn quantifier_arena_bridge<'a>(
         }
         return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))));
     }
-    // Anything else — value-mode treats as empty (returns empty_result).
+    // Anything else — treated as empty (returns empty_result).
     Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)))
 }
 
-/// Arena-mode `sort`. Borrows input via `IterSrc` (no input clone), runs
+/// `sort`. Borrows input via `IterSrc` (no input clone), runs
 /// `slice::sort_by` over indices, and emits `ArenaValue::Array` of `InputRef`s
-/// pointing at the original items in their sorted order. The win vs the
-/// value-mode `evaluate_sort` is the eliminated initial deep-clone of the
-/// whole input array (line 1217 in the value-mode path) — for sort that's
-/// the dominant cost on object arrays.
+/// pointing at the original items in their sorted order — avoids a deep-clone
+/// of the input array, which dominates for object arrays.
 ///
 /// Fast path (extractor is a root-scope `var`): keys come from
 /// `try_traverse_segments` returning `&Value` directly, no key clones.
-/// General-extractor path bridges to value-mode `evaluate_sort`.
 #[cfg(feature = "ext-array")]
 #[inline]
 pub(crate) fn evaluate_sort_arena<'a>(
@@ -1050,7 +1041,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    // Match the existing value-mode behavior: literal-null first arg is an error.
+    // Literal-null first arg is an error.
     if let CompiledNode::Value { value, .. } = &args[0]
         && value.is_null()
     {
@@ -1070,8 +1061,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Array(&[])));
     }
 
-    // Sort direction: defaults to ascending; non-Bool means ascending too
-    // (matches the value-mode default at line 1230).
+    // Sort direction: defaults to ascending; non-Bool means ascending too.
     let ascending = if args.len() > 1 {
         let dir = engine.evaluate_arena_node(&args[1], actx, arena)?;
         match dir {
@@ -1328,9 +1318,9 @@ fn try_borrow_collection_from_root<'a>(
     None
 }
 
-/// Arena-mode `map`. POC scope: borrow input from root scope. Body fast path
-/// for var/field-extract emits InputRef per item with zero iteration allocs.
-/// Other body shapes fall through to value-mode evaluate then promote to arena.
+/// `map`. Borrows input from root scope when possible. Body fast path for
+/// var/field-extract emits InputRef per item with zero iteration allocs.
+/// Other body shapes evaluate the body via arena dispatch per item.
 #[inline]
 pub(crate) fn evaluate_map_arena<'a>(
     args: &'a [CompiledNode],
@@ -1543,10 +1533,10 @@ pub(crate) fn evaluate_none_arena<'a>(
     )
 }
 
-/// Arena-mode `reduce` — folds an array into a single value via accumulator.
-/// Arena-mode `reduce`. Phase 6.4: input via resolve_iter_input (so
-/// `reduce(filter(...), +, 0)` composes), and inline arithmetic fast paths
-/// for the dominant `current op accumulator` pattern.
+/// `reduce` — folds an array into a single value via an accumulator. Input
+/// resolves via `resolve_iter_input` (so `reduce(filter(...), +, 0)`
+/// composes), with inline arithmetic fast paths for the dominant
+/// `current op accumulator` pattern.
 #[inline]
 pub(crate) fn evaluate_reduce_arena<'a>(
     args: &'a [CompiledNode],

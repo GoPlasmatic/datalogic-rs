@@ -591,10 +591,9 @@ impl DataLogic {
 
         let result = self.evaluate_arena_node_inner(node, actx, arena);
 
-        // Accumulate the failing node's id on every Err. The legacy
-        // path gated this on `M::TRACK_PATH` for plain-mode DCE; arena
-        // dispatch always pays the (single) Vec::push since errors are
-        // rare and structured-error consumers need the path.
+        // Accumulate the failing node's id on every Err. We always pay
+        // the (single) Vec::push since errors are rare and structured-error
+        // consumers need the breadcrumb.
         if result.is_err() {
             actx.push_error_step(node.id());
         }
@@ -643,8 +642,7 @@ impl DataLogic {
         match node {
             // Compiled var: full dispatch via the arena helper. Root-scope
             // hits return `InputRef` (no allocation); frame-data lookups
-            // currently clone via `value_to_arena` until Phase 5's
-            // ArenaContextStack migration changes frame storage.
+            // clone via `value_to_arena` since frames hold `&Value`.
             CompiledNode::CompiledVar {
                 scope_level,
                 segments,
@@ -666,8 +664,8 @@ impl DataLogic {
             ),
 
             // Compiled exists: full dispatch — root scope walks the input
-            // directly, others bridge to the value-mode helper. Result is
-            // always a Bool singleton.
+            // directly, others bridge through `evaluate_node` for frame
+            // lookups. Result is always a Bool singleton.
             #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(data) => {
                 crate::operators::variable::evaluate_compiled_exists_arena(
@@ -1053,8 +1051,7 @@ impl DataLogic {
                 ..
             } => crate::operators::array::evaluate_slice_arena(args, actx, self, arena),
 
-            // CompiledThrow — constant-folded error literal. Return Err
-            // directly without going through value-mode dispatch.
+            // CompiledThrow — constant-folded error literal.
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(data) => Err(Error::Thrown(data.error.clone())),
 
@@ -1078,8 +1075,7 @@ impl DataLogic {
             }
 
             // Array literal: evaluate each element in arena and build an
-            // arena-resident Array. Avoids the value-mode round-trip for
-            // [1, {var:"x"}, ...] style nodes.
+            // arena-resident Array.
             CompiledNode::Array { nodes, .. } => {
                 let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
                     bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
@@ -1261,8 +1257,8 @@ impl DataLogic {
     /// Arena-mode traced evaluation. Acquires an arena, attaches the
     /// caller's [`TraceCollector`] to the arena context, and dispatches
     /// through [`evaluate_arena_node`]. Returns `(result, error_path)`
-    /// where `error_path` mirrors the breadcrumb that the legacy
-    /// `Structured` mode produced.
+    /// where `error_path` is the structured-error breadcrumb of node ids
+    /// leading to the failure (empty on success).
     #[cfg(feature = "trace")]
     fn evaluate_arena_with_trace(
         &self,

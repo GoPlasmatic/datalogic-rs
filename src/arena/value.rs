@@ -253,10 +253,8 @@ pub(crate) fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
 }
 
 // =============================================================================
-// Arena-aware helpers (Phase 0). These mirror the existing helpers in
-// `src/operators/helpers.rs` and `src/value_helpers.rs` but operate on
-// `&ArenaValue<'a>`, deferring to the underlying `&Value` only when the
-// variant is `InputRef`.
+// Arena-aware helpers — operate on `&ArenaValue<'a>`, deferring to the
+// underlying `&Value` only when the variant is `InputRef`.
 // =============================================================================
 
 /// Coerce an `ArenaValue` to f64 using the engine's coercion rules. Mirrors
@@ -334,15 +332,11 @@ pub(crate) fn reborrow_arena_value<'a>(av: &ArenaValue<'a>) -> ArenaValue<'a> {
     }
 }
 
-/// Render an `ArenaValue` as a `Cow<Value>` for use with existing value-mode
-/// helpers. Borrowed when the source is `InputRef` (zero-cost — most common
-/// path for var-lookups); owned otherwise. Owned conversion is cheap for
-/// primitives (Number/Bool/Null are inline) but allocates for
-/// String/Array/Object/DateTime/Duration.
-///
-/// This is the primary bridge between arena-evaluated args and value-mode
-/// operator helpers. New arena ops use it to leverage existing logic
-/// without re-implementing semantics.
+/// Render an `ArenaValue` as a `Cow<Value>` for use with `&Value`-based
+/// helpers (`coerce_to_number`, `try_traverse_segments`, etc.). Borrowed when
+/// the source is `InputRef` (zero-cost — most common path for var-lookups);
+/// owned otherwise. Owned conversion is cheap for primitives (Number/Bool/Null
+/// are inline) but allocates for String/Array/Object/DateTime/Duration.
 #[inline]
 pub(crate) fn arena_to_value_cow<'a>(v: &'a ArenaValue<'a>) -> Cow<'a, Value> {
     match v {
@@ -356,8 +350,8 @@ pub(crate) fn arena_to_value_cow<'a>(v: &'a ArenaValue<'a>) -> Cow<'a, Value> {
 /// `None` if any segment misses or the value isn't traversable.
 ///
 /// Strategy:
-/// - `InputRef(v)`: delegate to value-mode `try_traverse_segments` and wrap
-///   the leaf as a fresh `InputRef` allocated in the arena.
+/// - `InputRef(v)`: delegate to `try_traverse_segments` (which walks `&Value`)
+///   and wrap the leaf as a fresh `InputRef` allocated in the arena.
 /// - `Object((&str, ArenaValue))`: linear scan for the key.
 /// - `Array([ArenaValue])`: numeric segment.
 /// - Anything else: `None`.
@@ -372,7 +366,7 @@ pub(crate) fn arena_traverse_segments<'a>(
         return Some(av);
     }
 
-    // InputRef: defer to the value-mode walker (zero-clone) and wrap the leaf.
+    // InputRef: defer to the `&Value` walker (zero-clone) and wrap the leaf.
     if let ArenaValue::InputRef(v) = av {
         let leaf = crate::operators::variable::try_traverse_segments(v, segments)?;
         return Some(arena.alloc(ArenaValue::InputRef(leaf)));
@@ -455,7 +449,7 @@ pub(crate) fn arena_traverse_segments<'a>(
 /// when already a string). Mirrors `helpers::to_string_cow` but produces
 /// arena-resident strings so string-building operators (cat, substr) can
 /// chain without heap traffic.
-#[allow(dead_code)] // wired up in Phase 6 (string ops migration)
+#[allow(dead_code)] // retained for upcoming string-ops migration
 pub(crate) fn to_string_arena<'a>(v: &ArenaValue<'a>, arena: &'a Bump) -> &'a str {
     match v {
         ArenaValue::String(s) => s,
@@ -471,7 +465,7 @@ pub(crate) fn to_string_arena<'a>(v: &ArenaValue<'a>, arena: &'a Bump) -> &'a st
 }
 
 /// Config-aware truthiness for `ArenaValue`. Mirrors `helpers::is_truthy`.
-#[allow(dead_code)] // wired up in Phase 4 (control ops + collection bodies)
+#[allow(dead_code)] // retained for control-ops / collection-bodies migration
 pub(crate) fn is_truthy_arena(v: &ArenaValue<'_>, engine: &crate::DataLogic) -> bool {
     use crate::config::TruthyEvaluator;
     match &engine.config().truthy_evaluator {

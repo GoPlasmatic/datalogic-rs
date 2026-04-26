@@ -47,7 +47,7 @@ use crate::datetime::{
 use crate::{CompiledNode, DataLogic, Error, Result};
 
 // =============================================================================
-// Arena-mode datetime operators (native — no value-mode bridge).
+// Datetime operators.
 // =============================================================================
 
 use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};

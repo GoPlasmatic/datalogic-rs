@@ -54,7 +54,7 @@ pub(crate) fn evaluate_try_arena<'a>(
     }
 
     // Multi-arg form: try arms in sequence; final arm receives the error
-    // object as its context (mirrors value-mode `try_last_with_error_context`).
+    // object as its context.
     let last_idx = args.len() - 1;
     let mut last_err: Option<Error> = None;
     for (i, arg) in args.iter().enumerate() {

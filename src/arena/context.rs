@@ -1,12 +1,11 @@
-//! `ArenaContextStack` — arena-mode mirror of `ContextStack`.
+//! `ArenaContextStack` — context stack used during arena-mode evaluation.
 //!
-//! Frames hold `&'a ArenaValue<'a>` instead of owned `Value`. The root data
-//! is borrowed from the caller's `Arc<Value>` (held by the `evaluate()` call
-//! frame for the lifetime `'a`).
+//! Frames hold `&'a ArenaValue<'a>`. The root data is borrowed from the
+//! caller's `Arc<Value>` (held by the `evaluate()` call frame for the
+//! lifetime `'a`).
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
-//! (no `Value::clone`, no `BTreeMap::clone`). The win Phase 1 unlocks for
-//! Phase 5's collection-op migration.
+//! (no `Value::clone`, no `BTreeMap::clone`).
 
 use serde_json::Value;
 
