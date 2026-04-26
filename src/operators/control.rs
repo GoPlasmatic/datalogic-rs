@@ -95,12 +95,11 @@ pub(crate) fn evaluate_switch_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    use crate::arena::arena_to_value_cow;
+    use crate::operators::comparison::compare_equals_arena;
     if args.len() < 2 {
         return Ok(arena.alloc(ArenaValue::Null));
     }
     let disc_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let disc = arena_to_value_cow(disc_av);
 
     match &args[1] {
         CompiledNode::Array { nodes, .. } => {
@@ -108,8 +107,7 @@ pub(crate) fn evaluate_switch_arena<'a>(
                 match case_node {
                     CompiledNode::Array { nodes: pair, .. } if pair.len() >= 2 => {
                         let cv_av = engine.evaluate_arena_node(&pair[0], actx, arena)?;
-                        let cv = arena_to_value_cow(cv_av);
-                        if *disc == *cv {
+                        if compare_equals_arena(disc_av, cv_av, true, engine).unwrap_or(false) {
                             return engine.evaluate_arena_node(&pair[1], actx, arena);
                         }
                     }
@@ -117,7 +115,9 @@ pub(crate) fn evaluate_switch_arena<'a>(
                         value: Value::Array(pair),
                         ..
                     } if pair.len() >= 2 => {
-                        if *disc == pair[0] {
+                        // Wrap literal pair[0] as InputRef for arena-native compare.
+                        let cv_wrap = ArenaValue::InputRef(&pair[0]);
+                        if compare_equals_arena(disc_av, &cv_wrap, true, engine).unwrap_or(false) {
                             return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
                         }
                     }
@@ -132,9 +132,11 @@ pub(crate) fn evaluate_switch_arena<'a>(
             for case in cases {
                 if let Value::Array(pair) = case
                     && pair.len() >= 2
-                    && *disc == pair[0]
                 {
-                    return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
+                    let cv_wrap = ArenaValue::InputRef(&pair[0]);
+                    if compare_equals_arena(disc_av, &cv_wrap, true, engine).unwrap_or(false) {
+                        return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
+                    }
                 }
             }
         }

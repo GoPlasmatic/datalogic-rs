@@ -11,7 +11,7 @@ use crate::{CompiledNode, DataLogic, Result};
 // build the result. For string-producing ops, the result is allocated as
 // `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
 
-use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value_cow, to_string_arena};
+use crate::arena::{ArenaContextStack, ArenaValue, to_string_arena};
 use bumpalo::Bump;
 
 #[inline]
@@ -154,19 +154,17 @@ pub(crate) fn evaluate_in_arena<'a>(
             ArenaValue::InputRef(Value::String(n)) => h.contains(n.as_str()),
             _ => false,
         },
-        // Array haystack — element-equality check using arena_to_value_cow
-        // so InputRefs and arena-resident values compare consistently.
-        ArenaValue::Array(items) => {
-            let needle_cow = arena_to_value_cow(needle);
-            items.iter().any(|it| {
-                let it_cow = arena_to_value_cow(it);
-                it_cow.as_ref() == needle_cow.as_ref()
-            })
-        }
-        ArenaValue::InputRef(Value::Array(arr)) => {
-            let needle_cow = arena_to_value_cow(needle);
-            arr.iter().any(|v| v == needle_cow.as_ref())
-        }
+        // Array haystack — element-equality check via arena-native
+        // strict-equals (no Value materialization).
+        ArenaValue::Array(items) => items.iter().any(|it| {
+            crate::operators::comparison::compare_equals_arena(it, needle, true, engine)
+                .unwrap_or(false)
+        }),
+        ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
+            let wrap = ArenaValue::InputRef(v);
+            crate::operators::comparison::compare_equals_arena(&wrap, needle, true, engine)
+                .unwrap_or(false)
+        }),
         _ => false,
     };
     Ok(crate::arena::pool::singleton_bool(result))
