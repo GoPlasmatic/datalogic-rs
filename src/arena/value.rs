@@ -261,6 +261,59 @@ pub fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
 // underlying `&Value` only when the variant is `InputRef`.
 // =============================================================================
 
+/// Config-aware arena-native f64 coercion. Mirrors
+/// `value_helpers::coerce_to_number` exactly — same engine config gates,
+/// no `Value` round-trip. For `InputRef` operands the legacy helper is
+/// dispatched directly (zero-cost passthrough); for arena-native operands
+/// the rules are reproduced inline.
+#[inline]
+pub(crate) fn coerce_arena_to_number_cfg(
+    v: &ArenaValue<'_>,
+    engine: &crate::DataLogic,
+) -> Option<f64> {
+    match v {
+        ArenaValue::Number(n) => Some(n.as_f64()),
+        ArenaValue::String(s) => {
+            if s.is_empty() && engine.config().numeric_coercion.empty_string_to_zero {
+                Some(0.0)
+            } else {
+                s.parse().ok()
+            }
+        }
+        ArenaValue::Bool(b) if engine.config().numeric_coercion.bool_to_number => {
+            Some(if *b { 1.0 } else { 0.0 })
+        }
+        ArenaValue::Null if engine.config().numeric_coercion.null_to_zero => Some(0.0),
+        ArenaValue::InputRef(v) => crate::value_helpers::coerce_to_number(v, engine),
+        _ => None,
+    }
+}
+
+/// Config-aware arena-native i64 coercion. Mirrors
+/// `value_helpers::try_coerce_to_integer`.
+#[inline]
+pub(crate) fn try_coerce_arena_to_integer_cfg(
+    v: &ArenaValue<'_>,
+    engine: &crate::DataLogic,
+) -> Option<i64> {
+    match v {
+        ArenaValue::Number(n) => n.as_i64(),
+        ArenaValue::String(s) => {
+            if s.is_empty() && engine.config().numeric_coercion.empty_string_to_zero {
+                Some(0)
+            } else {
+                s.parse().ok()
+            }
+        }
+        ArenaValue::Bool(b) if engine.config().numeric_coercion.bool_to_number => {
+            Some(if *b { 1 } else { 0 })
+        }
+        ArenaValue::Null if engine.config().numeric_coercion.null_to_zero => Some(0),
+        ArenaValue::InputRef(v) => crate::value_helpers::try_coerce_to_integer(v, engine),
+        _ => None,
+    }
+}
+
 /// Coerce an `ArenaValue` to f64 using the engine's coercion rules. Mirrors
 /// `value_helpers::coerce_to_number` but lifts ArenaValue's native variants.
 pub(crate) fn coerce_arena_to_number(v: &ArenaValue<'_>) -> Option<f64> {

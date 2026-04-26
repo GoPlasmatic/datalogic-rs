@@ -1205,11 +1205,8 @@ fn sort_arena_from_value<'a>(
             if ascending { cmp } else { cmp.reverse() }
         });
         // Materialize into the arena.
-        let items = arena.alloc_slice_fill_iter(
-            sorted
-                .into_iter()
-                .map(|v| value_to_arena(&v, arena)),
-        );
+        let items =
+            arena.alloc_slice_fill_iter(sorted.into_iter().map(|v| value_to_arena(&v, arena)));
         return Ok(arena.alloc(ArenaValue::Array(items)));
     }
 
@@ -1710,7 +1707,11 @@ fn try_reduce_fast_path_arena<'a>(
             _ => return None,
         };
     }
-    Some(arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_f64(acc_f))))
+    Some(
+        arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_f64(
+            acc_f,
+        ))),
+    )
 }
 
 /// Arena-mode `merge`. Flattens its args (each may itself be a nested arena

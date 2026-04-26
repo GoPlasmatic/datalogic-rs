@@ -233,9 +233,7 @@ impl ExpressionNode {
                         crate::node::CompiledMissingArg::Static { path, .. } => {
                             format!("\"{}\"", path)
                         }
-                        crate::node::CompiledMissingArg::Dynamic(n) => {
-                            Self::node_to_json_string(n)
-                        }
+                        crate::node::CompiledMissingArg::Dynamic(n) => Self::node_to_json_string(n),
                     })
                     .collect();
                 format!("{{\"missing\": [{}]}}", parts.join(", "))

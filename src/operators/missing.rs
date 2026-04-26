@@ -263,12 +263,26 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
             let short = match paths_av {
                 ArenaValue::Array(items) => items.iter().any(|it| {
                     arena_value_as_str(it).is_some_and(|p| {
-                        check_path(p, lookup.as_ref(), &mut missing, &mut present, min_present, arena)
+                        check_path(
+                            p,
+                            lookup.as_ref(),
+                            &mut missing,
+                            &mut present,
+                            min_present,
+                            arena,
+                        )
                     })
                 }),
                 ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
                     v.as_str().is_some_and(|p| {
-                        check_path(p, lookup.as_ref(), &mut missing, &mut present, min_present, arena)
+                        check_path(
+                            p,
+                            lookup.as_ref(),
+                            &mut missing,
+                            &mut present,
+                            min_present,
+                            arena,
+                        )
                     })
                 }),
                 _ => false,

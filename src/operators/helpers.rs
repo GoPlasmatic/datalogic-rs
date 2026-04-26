@@ -72,6 +72,64 @@ pub fn extract_duration_value(value: &Value) -> Option<crate::datetime::DataDura
     }
 }
 
+/// Arena-native datetime extraction. For `InputRef(v)` operands, delegates
+/// to the existing `&Value`-based helper (zero-cost). Native `String`/
+/// `Object` operands are walked directly without `Value` materialization.
+#[cfg(feature = "datetime")]
+#[inline]
+pub(crate) fn extract_datetime_arena(
+    av: &crate::arena::ArenaValue<'_>,
+) -> Option<crate::datetime::DataDateTime> {
+    use crate::arena::ArenaValue;
+    match av {
+        ArenaValue::DateTime(dt) => Some(dt.clone()),
+        ArenaValue::String(s) => crate::datetime::DataDateTime::parse(s),
+        ArenaValue::Object(pairs) => {
+            for (k, v) in *pairs {
+                if *k == "datetime" {
+                    if let ArenaValue::String(s) = v {
+                        return crate::datetime::DataDateTime::parse(s);
+                    }
+                    if let ArenaValue::InputRef(Value::String(s)) = v {
+                        return crate::datetime::DataDateTime::parse(s);
+                    }
+                }
+            }
+            None
+        }
+        ArenaValue::InputRef(v) => extract_datetime_value(v),
+        _ => None,
+    }
+}
+
+/// Arena-native duration extraction. See [`extract_datetime_arena`].
+#[cfg(feature = "datetime")]
+#[inline]
+pub(crate) fn extract_duration_arena(
+    av: &crate::arena::ArenaValue<'_>,
+) -> Option<crate::datetime::DataDuration> {
+    use crate::arena::ArenaValue;
+    match av {
+        ArenaValue::Duration(d) => Some(d.clone()),
+        ArenaValue::String(s) => crate::datetime::DataDuration::parse(s),
+        ArenaValue::Object(pairs) => {
+            for (k, v) in *pairs {
+                if *k == "timestamp" {
+                    if let ArenaValue::String(s) = v {
+                        return crate::datetime::DataDuration::parse(s);
+                    }
+                    if let ArenaValue::InputRef(Value::String(s)) = v {
+                        return crate::datetime::DataDuration::parse(s);
+                    }
+                }
+            }
+            None
+        }
+        ArenaValue::InputRef(v) => extract_duration_value(v),
+        _ => None,
+    }
+}
+
 /// Checks if args contain the `__invalid_args__` sentinel marker from compilation.
 /// Returns an error if the marker is present, Ok(()) otherwise.
 #[inline]
