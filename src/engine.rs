@@ -392,11 +392,34 @@ impl DataLogic {
 
     // (evaluate_ref is the canonical zero-Arc path; see definition above.)
 
+    /// Pure arena evaluation against a caller-provided `Bump`. Returns the
+    /// arena-allocated result without converting to `serde_json::Value`, and
+    /// without touching the thread-local `ArenaGuard` slot — the caller owns
+    /// the arena's lifecycle and decides when to `reset()` it. Returned
+    /// `&'a ArenaValue<'a>` borrows from `arena`, so it must drop before the
+    /// next `arena.reset()` (the borrow checker enforces this).
+    ///
+    /// Used by `examples/benchmark.rs` to measure dispatch in isolation by
+    /// creating one arena up-front and resetting only between rules,
+    /// excluding the per-call ArenaGuard pop/push from the measurement.
+    /// Not part of the stable API.
+    #[doc(hidden)]
+    #[inline]
+    pub fn evaluate_in_arena<'a>(
+        &self,
+        compiled: &'a CompiledLogic,
+        data: &'a Value,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a crate::arena::ArenaValue<'a>> {
+        let mut actx = crate::arena::ArenaContextStack::new(data);
+        self.evaluate_arena_node(&compiled.root, &mut actx, arena)
+    }
+
     /// Pure arena evaluation for benchmarking — runs `evaluate_arena_node`
-    /// and discards the arena-resident result without converting back to
-    /// `serde_json::Value`. Lets `examples/benchmark.rs` measure dispatch
-    /// in isolation, free of the boundary `arena_to_value` cost paid by the
-    /// public `evaluate*` methods. Not part of the stable API.
+    /// against an internally-acquired `ArenaGuard`. Kept as the equivalent
+    /// of the public `evaluate*` API minus the `arena_to_value` boundary,
+    /// so callers can compare dispatch-only cost with vs. without the
+    /// thread-local arena slot. Not part of the stable API.
     #[doc(hidden)]
     pub fn evaluate_arena_bench(&self, compiled: &CompiledLogic, data: &Value) -> Result<()> {
         use crate::arena::ArenaGuard;
@@ -529,18 +552,34 @@ impl DataLogic {
     #[inline]
     pub(crate) fn evaluate_arena_node<'a>(
         &self,
-        node: &CompiledNode,
+        node: &'a CompiledNode,
         actx: &mut crate::arena::ArenaContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::ArenaValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
-        if let CompiledNode::Value { value, .. } = node {
+        if let CompiledNode::Value {
+            value, arena_lit, ..
+        } = node
+        {
+            // Pre-built primitive (Number) — borrow into the CompiledNode.
+            // ArenaValue is covariant in its lifetime, so &'a ArenaValue<'static>
+            // satisfies &'a ArenaValue<'a> without unsafe.
+            if let Some(av) = arena_lit {
+                return Ok(av);
+            }
             use crate::arena::value_to_arena;
             return Ok(match value {
                 Value::Null => crate::arena::pool::singleton_null(),
                 Value::Bool(b) => crate::arena::pool::singleton_bool(*b),
                 Value::String(s) if s.is_empty() => crate::arena::pool::singleton_empty_string(),
                 Value::Array(a) if a.is_empty() => crate::arena::pool::singleton_empty_array(),
+                // Borrow the str slice directly from the CompiledNode —
+                // no `arena.alloc_str`, no copy. Only safe because `node`
+                // is `&'a CompiledNode` and `s` lives at least 'a.
+                Value::String(s) => arena.alloc(crate::arena::ArenaValue::String(s.as_str())),
+                // Composite literals (Array/Object) — rare. Keep the
+                // recursive `value_to_arena` path; their alloc cost
+                // dominates over matcher work.
                 _ => arena.alloc(value_to_arena(value, arena)),
             });
         }
@@ -575,7 +614,7 @@ impl DataLogic {
     #[inline]
     pub(crate) fn eval_iter_body<'a>(
         &self,
-        body: &CompiledNode,
+        body: &'a CompiledNode,
         actx: &mut crate::arena::ArenaContextStack<'a>,
         arena: &'a bumpalo::Bump,
         _index: u32,
@@ -595,7 +634,7 @@ impl DataLogic {
     #[inline]
     fn evaluate_arena_node_inner<'a>(
         &self,
-        node: &CompiledNode,
+        node: &'a CompiledNode,
         actx: &mut crate::arena::ArenaContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::ArenaValue<'a>> {

@@ -286,7 +286,7 @@ use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_strict_equals_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -308,7 +308,7 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_strict_not_equals_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -324,7 +324,7 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_equals_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -346,7 +346,7 @@ pub(crate) fn evaluate_equals_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_not_equals_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -367,7 +367,7 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
 
 #[inline]
 fn evaluate_ord_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -393,7 +393,7 @@ fn evaluate_ord_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_greater_than_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -403,7 +403,7 @@ pub(crate) fn evaluate_greater_than_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_greater_than_equal_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -413,7 +413,7 @@ pub(crate) fn evaluate_greater_than_equal_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_less_than_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -423,7 +423,7 @@ pub(crate) fn evaluate_less_than_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_less_than_equal_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

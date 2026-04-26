@@ -67,7 +67,7 @@ fn arg_as_str_arena<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
 /// as a datetime (object or ISO string); errors otherwise.
 #[inline]
 pub(crate) fn evaluate_datetime_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -102,7 +102,7 @@ pub(crate) fn evaluate_datetime_arena<'a>(
 /// as a duration (object or string); errors otherwise.
 #[inline]
 pub(crate) fn evaluate_timestamp_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -147,7 +147,7 @@ fn jsonlogic_to_chrono_format(format: &str) -> String {
 /// Native arena-mode `parse_date`.
 #[inline]
 pub(crate) fn evaluate_parse_date_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -173,7 +173,7 @@ pub(crate) fn evaluate_parse_date_arena<'a>(
 /// Native arena-mode `format_date`.
 #[inline]
 pub(crate) fn evaluate_format_date_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -223,7 +223,7 @@ pub(crate) fn evaluate_format_date_arena<'a>(
 /// Native arena-mode `date_diff`.
 #[inline]
 pub(crate) fn evaluate_date_diff_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

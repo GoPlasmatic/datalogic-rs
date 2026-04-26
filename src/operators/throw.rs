@@ -8,7 +8,7 @@ use bumpalo::Bump;
 /// argument's arena-resolved form — no value-mode round-trip.
 #[inline]
 pub(crate) fn evaluate_throw_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

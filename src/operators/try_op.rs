@@ -41,7 +41,7 @@ use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_try_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -77,7 +77,7 @@ pub(crate) fn evaluate_try_arena<'a>(
 /// current frame so the catch arm's `var`/`val` lookups see error fields.
 #[inline]
 fn arena_try_last_with_error_context<'a>(
-    arg: &CompiledNode,
+    arg: &'a CompiledNode,
     last_error: &mut Option<Error>,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,

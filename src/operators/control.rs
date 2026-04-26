@@ -12,7 +12,7 @@ use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_if_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -48,7 +48,7 @@ pub(crate) fn evaluate_if_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_ternary_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -67,7 +67,7 @@ pub(crate) fn evaluate_ternary_arena<'a>(
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_coalesce_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -90,7 +90,7 @@ pub(crate) fn evaluate_coalesce_arena<'a>(
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_switch_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

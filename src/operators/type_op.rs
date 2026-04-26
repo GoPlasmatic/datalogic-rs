@@ -50,7 +50,7 @@ use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_type_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

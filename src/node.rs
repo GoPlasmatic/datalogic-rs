@@ -1,9 +1,29 @@
+use crate::arena::ArenaValue;
 use crate::opcode::OpCode;
+use crate::value::NumberValue;
 #[cfg(feature = "ext-string")]
 use regex::Regex;
 use serde_json::Value;
 #[cfg(feature = "ext-string")]
 use std::sync::Arc;
+
+/// Pre-build an `ArenaValue<'static>` for primitive literals so the arena
+/// dispatch hot path can return a borrow without re-running
+/// `value_to_arena` per evaluation. Returns `None` for variants either
+/// (a) already served by a static singleton (Null/Bool/empty string and
+/// array) or (b) borrowing into bytes that aren't `'static`-friendly
+/// without additional ownership tracking (non-empty String / composite
+/// Array / Object). The composite + non-empty-string cases stay on the
+/// existing `value_to_arena` path; their literal cost is dominated by
+/// the alloc, not the matcher work, and avoiding them here keeps
+/// `CompiledNode` size bounded.
+#[inline]
+pub(crate) fn precompute_arena_lit(value: &Value) -> Option<Box<ArenaValue<'static>>> {
+    match value {
+        Value::Number(n) => Some(Box::new(ArenaValue::Number(NumberValue::from_serde(n)))),
+        _ => None,
+    }
+}
 
 /// A pre-parsed path segment for compiled variable access.
 #[derive(Debug, Clone)]
@@ -108,7 +128,20 @@ pub enum CompiledNode {
     /// A static JSON value that requires no evaluation.
     ///
     /// Used for literals like numbers, strings, booleans, and null.
-    Value { id: u32, value: Value },
+    ///
+    /// `arena_lit` holds a pre-built `ArenaValue` for primitive literals
+    /// that don't borrow from a per-call arena (e.g. Number). The arena
+    /// dispatch hot path returns this borrow directly, skipping
+    /// `value_to_arena` and the per-call `arena.alloc`. `None` for
+    /// composite literals (Array/Object) and for primitives already
+    /// covered by static singletons (Null/Bool/empty string/empty array).
+    /// Read-only after compile — safe to share across threads via
+    /// `Arc<CompiledLogic>`.
+    Value {
+        id: u32,
+        value: Value,
+        arena_lit: Option<Box<ArenaValue<'static>>>,
+    },
 
     /// An array of compiled nodes.
     ///
@@ -197,9 +230,22 @@ impl CompiledNode {
     /// be misleading.
     #[inline]
     pub fn synthetic_value(value: Value) -> Self {
+        Self::value_with_id(SYNTHETIC_ID, value)
+    }
+
+    /// Construct a `CompiledNode::Value` with `id` and `value`, populating
+    /// the precomputed `arena_lit` for primitive literals so the arena
+    /// dispatch hot path can borrow it without a per-call `arena.alloc`.
+    /// Centralised here so every construction site stays in sync — adding
+    /// a new precomputable variant only requires editing
+    /// [`precompute_arena_lit`].
+    #[inline]
+    pub fn value_with_id(id: u32, value: Value) -> Self {
+        let arena_lit = precompute_arena_lit(&value);
         CompiledNode::Value {
-            id: SYNTHETIC_ID,
+            id,
             value,
+            arena_lit,
         }
     }
 

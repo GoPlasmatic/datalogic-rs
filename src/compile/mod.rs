@@ -85,10 +85,7 @@ impl CompiledLogic {
                             "__invalid_args__": true,
                             "value": args_value
                         });
-                        let value_node = CompiledNode::Value {
-                            id: ctx.next_id(),
-                            value: invalid_value,
-                        };
+                        let value_node = CompiledNode::value_with_id(ctx.next_id(), invalid_value);
                         let args = vec![value_node].into_boxed_slice();
                         return Ok(CompiledNode::BuiltinOperator {
                             id: ctx.next_id(),
@@ -103,16 +100,13 @@ impl CompiledLogic {
                         match args_value {
                             Value::Array(arr) => arr
                                 .iter()
-                                .map(|v| CompiledNode::Value {
-                                    id: ctx.next_id(),
-                                    value: v.clone(),
-                                })
+                                .map(|v| CompiledNode::value_with_id(ctx.next_id(), v.clone()))
                                 .collect::<Vec<_>>()
                                 .into_boxed_slice(),
-                            _ => vec![CompiledNode::Value {
-                                id: ctx.next_id(),
-                                value: args_value.clone(),
-                            }]
+                            _ => vec![CompiledNode::value_with_id(
+                                ctx.next_id(),
+                                args_value.clone(),
+                            )]
                             .into_boxed_slice(),
                         }
                     } else {
@@ -178,10 +172,7 @@ impl CompiledLogic {
                     {
                         match optimize::constant_fold::fold_static_node(&node, eng) {
                             Some(value) => {
-                                return Ok(CompiledNode::Value {
-                                    id: ctx.next_id(),
-                                    value,
-                                });
+                                return Ok(CompiledNode::value_with_id(ctx.next_id(), value));
                             }
                             None => return Ok(node),
                         }
@@ -242,18 +233,12 @@ impl CompiledLogic {
                     && node_is_static(&node)
                     && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
                 {
-                    return Ok(CompiledNode::Value {
-                        id: ctx.next_id(),
-                        value,
-                    });
+                    return Ok(CompiledNode::value_with_id(ctx.next_id(), value));
                 }
 
                 Ok(node)
             }
-            _ => Ok(CompiledNode::Value {
-                id: ctx.next_id(),
-                value: value.clone(),
-            }),
+            _ => Ok(CompiledNode::value_with_id(ctx.next_id(), value.clone())),
         }
     }
 

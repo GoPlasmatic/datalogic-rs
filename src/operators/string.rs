@@ -20,7 +20,7 @@ use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_cat_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -57,7 +57,7 @@ pub(crate) fn evaluate_cat_arena<'a>(
 /// end; negative length is treated as an end position).
 #[inline]
 pub(crate) fn evaluate_substr_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -136,7 +136,7 @@ pub(crate) fn evaluate_substr_arena<'a>(
 /// haystack (string-substring, array-element).
 #[inline]
 pub(crate) fn evaluate_in_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -180,7 +180,7 @@ pub(crate) fn evaluate_in_arena<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_starts_with_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -198,7 +198,7 @@ pub(crate) fn evaluate_starts_with_arena<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_ends_with_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -216,7 +216,7 @@ pub(crate) fn evaluate_ends_with_arena<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_upper_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -232,7 +232,7 @@ pub(crate) fn evaluate_upper_arena<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_lower_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -248,7 +248,7 @@ pub(crate) fn evaluate_lower_arena<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_trim_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -266,7 +266,7 @@ pub(crate) fn evaluate_trim_arena<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_split_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -358,7 +358,7 @@ fn split_arena_normal<'a>(text: &str, delim: &str, arena: &'a Bump) -> Result<&'
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_split_with_regex_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     regex: &Regex,

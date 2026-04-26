@@ -37,7 +37,7 @@ use bumpalo::Bump;
 /// - N args: arena array of evaluated args.
 #[inline]
 pub(crate) fn evaluate_preserve_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

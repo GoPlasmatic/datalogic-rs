@@ -39,7 +39,14 @@ use crate::datetime::{DataDateTime, DataDuration};
 ///   `{"timestamp": "..."}` matching the existing helper contract.
 /// - `InputRef` — borrow into the caller's input `&Value` without copying.
 ///   Used by `var` lookups so input data never gets cloned.
-#[derive(Debug)]
+///
+/// `Clone` is derived because compiled-time literal precomputation stores a
+/// `Box<ArenaValue<'static>>` inside `CompiledNode::Value`, and the enclosing
+/// `CompiledNode` derives `Clone`. The clone is shallow for the common
+/// primitive variants (Null/Bool/Number/InputRef are Copy-shaped); slice and
+/// string variants clone the reference, not the bytes; only DateTime/Duration
+/// pay an actual Clone cost — all rare on the hot path.
+#[derive(Debug, Clone)]
 pub enum ArenaValue<'a> {
     /// JSON null.
     Null,

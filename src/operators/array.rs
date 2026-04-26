@@ -52,7 +52,7 @@ fn try_extract_filter_field_cmp<'a>(
 /// outer context unaffected by the missing iter frame this fast path skips.
 #[inline]
 fn evaluate_invariant_no_push<'a>(
-    invariant_node: &CompiledNode,
+    invariant_node: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -349,7 +349,7 @@ fn slice_chars(
 #[cfg(feature = "ext-array")]
 #[inline]
 pub(crate) fn evaluate_slice_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -440,7 +440,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
 #[cfg(feature = "ext-array")]
 #[inline]
 fn extract_opt_i64_arena<'a>(
-    node: &CompiledNode,
+    node: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -585,7 +585,7 @@ pub(crate) enum ResolvedInput<'a> {
 /// underlying data lives in either the input `Arc` (held for the call's
 /// duration) or arena slices (allocated on the same arena).
 pub(crate) fn resolve_iter_input<'a>(
-    arg: &CompiledNode,
+    arg: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -654,7 +654,7 @@ fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedI
 /// to the value-mode filter via the dispatch hub for everything else.
 #[inline]
 pub(crate) fn evaluate_filter_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -754,7 +754,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
 #[inline]
 fn filter_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
-    predicate: &CompiledNode,
+    predicate: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -815,7 +815,7 @@ fn filter_arena_bridge<'a>(
 #[inline]
 fn map_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
-    body: &CompiledNode,
+    body: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -879,7 +879,7 @@ fn map_arena_bridge<'a>(
 #[inline]
 fn reduce_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
-    body: &CompiledNode,
+    body: &'a CompiledNode,
     initial: &Value,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
@@ -965,7 +965,7 @@ impl QuantifierShape {
 #[inline]
 fn quantifier_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
-    predicate: &CompiledNode,
+    predicate: &'a CompiledNode,
     shape: QuantifierShape,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
@@ -1041,7 +1041,7 @@ fn quantifier_arena_bridge<'a>(
 #[cfg(feature = "ext-array")]
 #[inline]
 pub(crate) fn evaluate_sort_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1178,7 +1178,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
 #[inline]
 fn sort_arena_from_value<'a>(
     av: &'a ArenaValue<'a>,
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1271,7 +1271,7 @@ fn sort_arena_from_value<'a>(
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_length_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1304,7 +1304,7 @@ pub(crate) fn evaluate_length_arena<'a>(
 /// lifetime `'a` because `root` is held alive for the call's duration.
 #[inline]
 fn try_borrow_collection_from_root<'a>(
-    arg: &CompiledNode,
+    arg: &'a CompiledNode,
     actx: &ArenaContextStack<'a>,
     root: &'a Value,
 ) -> Option<&'a Value> {
@@ -1333,7 +1333,7 @@ fn try_borrow_collection_from_root<'a>(
 /// Other body shapes fall through to value-mode evaluate then promote to arena.
 #[inline]
 pub(crate) fn evaluate_map_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1416,7 +1416,7 @@ pub(crate) fn evaluate_map_arena<'a>(
 ///   - `none`: same as `some` but invert the final result
 #[inline]
 fn evaluate_quantifier_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1479,7 +1479,7 @@ fn evaluate_quantifier_arena<'a>(
 /// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.
 #[inline]
 pub(crate) fn evaluate_all_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1502,7 +1502,7 @@ pub(crate) fn evaluate_all_arena<'a>(
 /// Arena-mode `some` — true iff any item satisfies predicate. Short-circuits on true.
 #[inline]
 pub(crate) fn evaluate_some_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1524,7 +1524,7 @@ pub(crate) fn evaluate_some_arena<'a>(
 /// Arena-mode `none` — true iff no item satisfies predicate. Short-circuits on true.
 #[inline]
 pub(crate) fn evaluate_none_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1549,7 +1549,7 @@ pub(crate) fn evaluate_none_arena<'a>(
 /// for the dominant `current op accumulator` pattern.
 #[inline]
 pub(crate) fn evaluate_reduce_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1725,13 +1725,16 @@ fn try_reduce_fast_path_arena(
 /// pointing at the original Values — no per-element clones.
 #[inline]
 pub(crate) fn evaluate_merge_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
+    // Pre-size for the scalar-arg case (one push per arg). Array args may push
+    // more and trigger growth, but profile shows scalar/single-element args
+    // dominate — saves the first reserve_internal_or_panic in the common case.
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-        bumpalo::collections::Vec::new_in(arena);
+        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
 
     for arg in args {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;

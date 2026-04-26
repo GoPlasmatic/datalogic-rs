@@ -56,14 +56,18 @@ fn lookup_snapshot<'a>(actx: &ArenaContextStack<'a>) -> LookupSnap<'a> {
 /// into the arena.
 #[inline]
 pub(crate) fn evaluate_missing_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     let lookup = lookup_snapshot(actx);
+    // Pre-size for the worst case where every direct path is missing — we'd
+    // push one entry per arg (array-shaped args may exceed but those expand).
+    // Saves the first growth allocation in the typical "few-paths-checked"
+    // call shape that dominates compatible.json.
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-        bumpalo::collections::Vec::new_in(arena);
+        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
 
     for arg in args {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;
@@ -106,7 +110,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
 /// Native arena-mode `missing_some`.
 #[inline]
 pub(crate) fn evaluate_missing_some_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

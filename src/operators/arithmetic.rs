@@ -105,7 +105,7 @@ use bumpalo::Bump;
 /// returns true when `candidate_f` should replace `best_f` (strictly better).
 #[inline]
 fn arena_min_max<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -264,7 +264,7 @@ fn arena_min_max_from_av<'a>(
 /// Arena-mode max(single_array_arg).
 #[inline]
 pub(crate) fn evaluate_max_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -275,7 +275,7 @@ pub(crate) fn evaluate_max_arena<'a>(
 /// Arena-mode min(single_array_arg).
 #[inline]
 pub(crate) fn evaluate_min_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -288,7 +288,7 @@ pub(crate) fn evaluate_min_arena<'a>(
 /// and variadic (sum all args).
 #[inline]
 pub(crate) fn evaluate_add_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -378,7 +378,7 @@ pub(crate) fn evaluate_add_arena<'a>(
 /// 2-arg (numeric or duration*scalar native), variadic.
 #[inline]
 pub(crate) fn evaluate_multiply_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -478,7 +478,7 @@ struct VariadicFoldSpec {
 /// Non-numeric args trigger NaN handling per engine config.
 #[inline]
 fn arena_variadic_fold<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -588,7 +588,7 @@ impl ArithOp {
 /// 1-arg semantics: literal-array reject, then either array-fold the elements
 /// or treat as a single-value sum/product.
 fn arena_one_arg_arith<'a>(
-    arg: &CompiledNode,
+    arg: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -842,7 +842,7 @@ fn arena_datetime_divide<'a>(
 
 #[inline]
 pub(crate) fn evaluate_subtract_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -997,7 +997,7 @@ pub(crate) fn evaluate_subtract_arena<'a>(
 /// scalar (1/x), 2-arg, and divbyzero per engine config.
 #[inline]
 pub(crate) fn evaluate_divide_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1008,7 +1008,7 @@ pub(crate) fn evaluate_divide_arena<'a>(
 /// Native arena-mode `%` (modulo).
 #[inline]
 pub(crate) fn evaluate_modulo_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1018,7 +1018,7 @@ pub(crate) fn evaluate_modulo_arena<'a>(
 
 #[inline]
 fn arena_div_or_mod<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1108,7 +1108,7 @@ fn divbyzero_arena<'a>(
 ///   * `%` with array of ≥2 numeric elements → fold (a%b%c). `%` with single
 ///     non-array argument → InvalidArguments (matches value-mode).
 fn arena_one_arg_div_mod<'a>(
-    arg: &CompiledNode,
+    arg: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1171,7 +1171,7 @@ fn arena_one_arg_div_mod<'a>(
 /// Native arena variadic (≥3 args) `/` / `%`. Folds left-associatively with
 /// per-step zero-divisor check.
 fn arena_variadic_div_mod<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1215,7 +1215,7 @@ fn arena_value_strict_f64(av: &ArenaValue<'_>) -> Option<f64> {
 #[cfg(feature = "ext-math")]
 #[inline]
 fn arena_unary_math<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1256,7 +1256,7 @@ fn arena_unary_math<'a>(
 #[cfg(feature = "ext-math")]
 #[inline]
 pub(crate) fn evaluate_abs_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1267,7 +1267,7 @@ pub(crate) fn evaluate_abs_arena<'a>(
 #[cfg(feature = "ext-math")]
 #[inline]
 pub(crate) fn evaluate_ceil_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -1278,7 +1278,7 @@ pub(crate) fn evaluate_ceil_arena<'a>(
 #[cfg(feature = "ext-math")]
 #[inline]
 pub(crate) fn evaluate_floor_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

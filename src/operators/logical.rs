@@ -5,7 +5,7 @@ use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_not_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -21,7 +21,7 @@ pub(crate) fn evaluate_not_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_double_not_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -37,7 +37,7 @@ pub(crate) fn evaluate_double_not_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_and_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -59,7 +59,7 @@ pub(crate) fn evaluate_and_arena<'a>(
 
 #[inline]
 pub(crate) fn evaluate_or_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,

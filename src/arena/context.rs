@@ -344,7 +344,8 @@ impl<'a> ArenaContextStack<'a> {
 
     // ----- error breadcrumb (mirrors ContextStack) --------------------------
 
-    #[inline]
+    #[cold]
+    #[inline(never)]
     pub(crate) fn push_error_step(&mut self, id: u32) {
         self.error_path.push(id);
     }

@@ -555,7 +555,7 @@ pub(crate) struct CompiledVarSpec<'n> {
 /// lookups that hit the input data; otherwise clones into the arena.
 #[inline]
 pub(crate) fn evaluate_compiled_var_arena<'a>(
-    spec: CompiledVarSpec<'_>,
+    spec: CompiledVarSpec<'a>,
     actx: &mut ArenaContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -731,7 +731,7 @@ fn local_context_from_actx(actx: &ArenaContextStack<'_>) -> crate::ContextStack 
 /// the value-mode helper.
 #[inline]
 pub(crate) fn evaluate_var_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -745,7 +745,7 @@ pub(crate) fn evaluate_var_arena<'a>(
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
@@ -759,7 +759,7 @@ pub(crate) fn evaluate_val_arena<'a>(
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_exists_arena<'a>(
-    args: &[CompiledNode],
+    args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &crate::DataLogic,
     _arena: &'a Bump,
@@ -774,7 +774,7 @@ pub(crate) fn evaluate_exists_arena<'a>(
 
 #[inline]
 fn default_or_null_arena<'a>(
-    default_value: Option<&CompiledNode>,
+    default_value: Option<&'a CompiledNode>,
     actx: &mut ArenaContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
