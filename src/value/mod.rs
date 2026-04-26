@@ -4,6 +4,6 @@
 //! implementing [`crate::ArenaOperator`] can construct numeric results
 //! without depending on this internal module path.
 
-pub mod number;
+mod number;
 
 pub use number::NumberValue;

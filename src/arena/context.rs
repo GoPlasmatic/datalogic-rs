@@ -99,7 +99,7 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 
     #[cfg(test)]
     #[inline]
-    pub(crate) fn root_data(&self) -> Option<&'a ArenaValue<'a>> {
+    fn root_data(&self) -> Option<&'a ArenaValue<'a>> {
         match self {
             Self::Root(av) => Some(*av),
             Self::Frame(_) => None,
@@ -108,7 +108,7 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 
     #[cfg(test)]
     #[inline]
-    pub(crate) fn frame_data(&self) -> Option<&'a ArenaValue<'a>> {
+    fn frame_data(&self) -> Option<&'a ArenaValue<'a>> {
         match self {
             Self::Frame(f) => Some(f.data()),
             Self::Root(_) => None,
@@ -280,7 +280,7 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    pub(crate) fn push_with_key_index(
+    fn push_with_key_index(
         &mut self,
         data: &'a ArenaValue<'a>,
         index: usize,
@@ -291,7 +291,7 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    pub(crate) fn push_reduce(
+    fn push_reduce(
         &mut self,
         current: &'a ArenaValue<'a>,
         accumulator: &'a ArenaValue<'a>,
@@ -303,14 +303,14 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    pub(crate) fn replace_top_data(&mut self, data: &'a ArenaValue<'a>, index: usize) {
+    fn replace_top_data(&mut self, data: &'a ArenaValue<'a>, index: usize) {
         if let Some(frame) = self.frames.last_mut() {
             *frame = ArenaContextFrame::Indexed { data, index };
         }
     }
 
     #[inline]
-    pub(crate) fn replace_top_key_data(
+    fn replace_top_key_data(
         &mut self,
         data: &'a ArenaValue<'a>,
         index: usize,
@@ -322,7 +322,7 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    pub(crate) fn replace_reduce_data(
+    fn replace_reduce_data(
         &mut self,
         current: &'a ArenaValue<'a>,
         accumulator: &'a ArenaValue<'a>,

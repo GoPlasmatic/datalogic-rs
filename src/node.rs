@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// are populated post-compile by [`populate_arena_lits`] using the
 /// per-`CompiledLogic` static arena.
 #[inline]
-pub(crate) fn precompute_arena_lit(value: &Value) -> Option<Box<ArenaValue<'static>>> {
+fn precompute_arena_lit(value: &Value) -> Option<Box<ArenaValue<'static>>> {
     match value {
         Value::Number(n) => Some(Box::new(ArenaValue::Number(NumberValue::from_serde(n)))),
         _ => None,
@@ -705,7 +705,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
 /// 5. Needs runtime disambiguation (`preserve`, `merge`, `min`, `max`)
 ///
 /// All other operators are **static** when their arguments are static.
-pub(crate) fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
+fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
     use OpCode::*;
 
     // Check if all arguments are static first (common pattern)

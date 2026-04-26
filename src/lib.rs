@@ -61,7 +61,7 @@ mod opcode;
 mod operators;
 #[cfg(feature = "trace")]
 mod trace;
-pub mod value;
+mod value;
 mod value_helpers;
 
 pub use arena::{ArenaContextStack, ArenaValue};

@@ -11,9 +11,9 @@
 //! call; the [`ArenaValue`] tree borrows from a [`bumpalo::Bump`] plus the
 //! caller's input `&Value`.
 
-pub mod context;
+pub(crate) mod context;
 pub(crate) mod pool;
-pub mod value;
+pub(crate) mod value;
 
 pub use context::ArenaContextStack;
 pub(crate) use context::IterGuard;
