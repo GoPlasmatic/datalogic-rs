@@ -14,7 +14,11 @@ struct SuiteResult {
     test_count: usize,
     total_ops: u32,
     total_time: Duration,
-    avg_op_time: Duration,
+    /// Per-op average in nanoseconds. Stored as f64 (not Duration) because
+    /// Duration's integer-ns granularity truncates the fraction at
+    /// sub-nanosecond resolution — the exact range that distinguishes
+    /// benchmark runs.
+    avg_op_ns: f64,
 }
 
 fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
@@ -68,14 +72,14 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
     std::hint::black_box((&arena_inputs, &data_arena));
     let total_time = start.elapsed();
     let total_ops = ITERATIONS * test_cases.len() as u32;
-    let avg_op_time = total_time / total_ops;
+    let avg_op_ns = total_time.as_nanos() as f64 / total_ops as f64;
 
     Some(SuiteResult {
         name: file_path.to_string(),
         test_count: test_cases.len(),
         total_ops,
         total_time,
-        avg_op_time,
+        avg_op_ns,
     })
 }
 
@@ -109,8 +113,8 @@ fn main() {
             match benchmark_suite(&engine, &path) {
                 Some(result) => {
                     println!(
-                        "{:>4} tests | avg {:>8.1?}/op | total {:>10.1?}",
-                        result.test_count, result.avg_op_time, result.total_time
+                        "{:>4} tests | avg {:>8.2} ns/op | total {:>10.1?}",
+                        result.test_count, result.avg_op_ns, result.total_time
                     );
                     grand_total_time += result.total_time;
                     grand_total_ops += result.total_ops as u64;
@@ -120,17 +124,17 @@ fn main() {
             }
         }
 
-        let grand_avg = if grand_total_ops > 0 {
-            grand_total_time / grand_total_ops as u32
+        let grand_avg_ns = if grand_total_ops > 0 {
+            grand_total_time.as_nanos() as f64 / grand_total_ops as f64
         } else {
-            Duration::ZERO
+            0.0
         };
 
         println!("\n=== Summary (v{version}) ===");
         println!("Suites:              {}", results.len());
         println!("Total time:          {grand_total_time:.2?}");
         println!("Total operations:    {grand_total_ops}");
-        println!("Average op time:     {grand_avg:.1?}");
+        println!("Average op time:     {grand_avg_ns:.2} ns");
 
         // Write report
         let timestamp = std::time::SystemTime::now()
@@ -148,7 +152,7 @@ fn main() {
                     "test_count": r.test_count,
                     "total_ops": r.total_ops,
                     "total_time_ms": r.total_time.as_secs_f64() * 1000.0,
-                    "avg_op_time_ns": r.avg_op_time.as_nanos(),
+                    "avg_op_time_ns": r.avg_op_ns,
                 })
             })
             .collect();
@@ -161,7 +165,7 @@ fn main() {
                 "suites": results.len(),
                 "total_time_ms": grand_total_time.as_secs_f64() * 1000.0,
                 "total_ops": grand_total_ops,
-                "avg_op_time_ns": grand_avg.as_nanos(),
+                "avg_op_time_ns": grand_avg_ns,
             },
             "suites": suite_entries,
         });
@@ -186,7 +190,7 @@ fn main() {
                 println!("Iterations per test: {ITERATIONS}");
                 println!("Total operations:    {}", result.total_ops);
                 println!("Total time:          {:.2?}", result.total_time);
-                println!("Average op time:     {:.1?}", result.avg_op_time);
+                println!("Average op time:     {:.2} ns", result.avg_op_ns);
             }
             None => {
                 eprintln!("No valid test cases found in {file_path}");
