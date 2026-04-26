@@ -43,10 +43,10 @@ pub(crate) fn evaluate_and_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(ArenaValue::Null));
+        return Ok(crate::arena::pool::singleton_null());
     }
     check_invalid_args_marker(args)?;
-    let mut last: &ArenaValue<'a> = arena.alloc(ArenaValue::Bool(true));
+    let mut last: &ArenaValue<'a> = crate::arena::pool::singleton_true();
     for arg in args {
         let v = engine.evaluate_arena_node(arg, actx, arena)?;
         if !is_truthy_arena(v, engine) {
@@ -65,10 +65,10 @@ pub(crate) fn evaluate_or_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(ArenaValue::Null));
+        return Ok(crate::arena::pool::singleton_null());
     }
     check_invalid_args_marker(args)?;
-    let mut last: &ArenaValue<'a> = arena.alloc(ArenaValue::Bool(false));
+    let mut last: &ArenaValue<'a> = crate::arena::pool::singleton_false();
     for arg in args {
         let v = engine.evaluate_arena_node(arg, actx, arena)?;
         if is_truthy_arena(v, engine) {

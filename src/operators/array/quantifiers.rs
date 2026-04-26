@@ -1,5 +1,6 @@
 //! Quantifier operators: `all`, `some`, `none`.
 
+use crate::arena::pool::singleton_bool;
 use crate::arena::{ArenaContextStack, ArenaValue, IterGuard};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
@@ -56,14 +57,14 @@ fn evaluate_quantifier_arena<'a>(
     let predicate = &args[1];
     let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result))),
+        ResolvedInput::Empty => return Ok(singleton_bool(shape.empty_result)),
         ResolvedInput::Bridge(av) => {
             return quantifier_arena_bridge(av, predicate, shape, actx, engine, arena);
         }
     };
 
     if src.is_empty() {
-        return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
+        return Ok(singleton_bool(shape.empty_result));
     }
 
     // Fast predicate path — no context push, no clones.
@@ -71,10 +72,10 @@ fn evaluate_quantifier_arena<'a>(
         let len = src.len();
         for i in 0..len {
             if fast_pred.evaluate(src.get(i), arena) == shape.short_circuit_on {
-                return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(true))));
+                return Ok(singleton_bool(shape.finalize(true)));
             }
         }
-        return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(false))));
+        return Ok(singleton_bool(shape.finalize(false)));
     }
 
     // General path: zero-clone via ArenaContextStack.
@@ -92,7 +93,7 @@ fn evaluate_quantifier_arena<'a>(
         }
     }
     drop(guard);
-    Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))))
+    Ok(singleton_bool(shape.finalize(found_short)))
 }
 
 /// Quantifier Bridge case — Object inputs iterate (key, value) pairs;
@@ -109,7 +110,7 @@ fn quantifier_arena_bridge<'a>(
     match input {
         ArenaValue::Object(pairs) => {
             if pairs.is_empty() {
-                return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
+                return Ok(singleton_bool(shape.empty_result));
             }
             let total = pairs.len() as u32;
             let mut found_short = false;
@@ -126,11 +127,11 @@ fn quantifier_arena_bridge<'a>(
                 }
             }
             drop(guard);
-            Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))))
+            Ok(singleton_bool(shape.finalize(found_short)))
         }
         ArenaValue::Array(items) => {
             if items.is_empty() {
-                return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
+                return Ok(singleton_bool(shape.empty_result));
             }
             let total = items.len() as u32;
             let mut found_short = false;
@@ -144,10 +145,10 @@ fn quantifier_arena_bridge<'a>(
                 }
             }
             drop(guard);
-            Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))))
+            Ok(singleton_bool(shape.finalize(found_short)))
         }
         // Anything else — treated as empty (returns empty_result).
-        _ => Ok(arena.alloc(ArenaValue::Bool(shape.empty_result))),
+        _ => Ok(singleton_bool(shape.empty_result)),
     }
 }
 
