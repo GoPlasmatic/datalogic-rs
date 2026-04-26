@@ -187,21 +187,8 @@ pub(crate) fn evaluate_format_date_arena<'a>(
     let fmt_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
 
     // Resolve the datetime — supports object form and string form.
-    let dt: Option<DataDateTime> = match dt_av {
-        ArenaValue::InputRef(v) if is_datetime_object(v) => extract_datetime(v),
-        ArenaValue::InputRef(Value::String(s)) => DataDateTime::parse(s),
-        ArenaValue::String(s) => DataDateTime::parse(s),
-        _ => {
-            // Composite arena object representing a datetime — bridge to Value
-            // for the existing helper.
-            let owned = arena_to_value(dt_av);
-            if is_datetime_object(&owned) {
-                extract_datetime(&owned)
-            } else {
-                None
-            }
-        }
-    };
+    let dt: Option<DataDateTime> =
+        crate::operators::helpers::extract_datetime_arena(dt_av);
 
     let fmt: &'a str = arg_as_str_arena(fmt_av)
         .ok_or_else(|| Error::InvalidArguments("Failed to format date".to_string()))?;
@@ -238,19 +225,7 @@ pub(crate) fn evaluate_date_diff_arena<'a>(
     let unit_av = engine.evaluate_arena_node(&args[2], actx, arena)?;
 
     let resolve_dt = |av: &'a ArenaValue<'a>| -> Option<DataDateTime> {
-        match av {
-            ArenaValue::InputRef(v) if is_datetime_object(v) => extract_datetime(v),
-            ArenaValue::InputRef(Value::String(s)) => DataDateTime::parse(s),
-            ArenaValue::String(s) => DataDateTime::parse(s),
-            _ => {
-                let owned = arena_to_value(av);
-                if is_datetime_object(&owned) {
-                    extract_datetime(&owned)
-                } else {
-                    None
-                }
-            }
-        }
+        crate::operators::helpers::extract_datetime_arena(av)
     };
     let dt1 = resolve_dt(d1_av);
     let dt2 = resolve_dt(d2_av);

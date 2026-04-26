@@ -1,46 +1,24 @@
 use serde_json::Value;
 
-use crate::value_helpers::access_path_ref;
 use crate::{CompiledNode, DataLogic, Result};
 
 // =============================================================================
 // Arena-mode missing / missing_some
 //
-// Targets the 12.2% of compatible.json CPU spent on these ops in Phase 5
-// profiling. The win comes from accumulating result paths in a bumpalo Vec
-// (no Vec growth allocs, no drop cost) and storing path strings as
-// arena-allocated &str (no String::clone during accumulation; the per-string
-// allocations are deferred to the boundary conversion).
+// Path lookups walk `&ArenaValue` natively via `arena_path_exists_*`. For
+// `InputRef(v)` operands the helper delegates to the legacy `&Value` walker
+// internally; arena-native variants walk the slice form inline. No `Value`
+// materialization for non-InputRef arena values.
 // =============================================================================
 
-use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
+use crate::arena::{ArenaContextStack, ArenaValue};
 use bumpalo::Bump;
 
-/// Snapshot of the lookup-target for `missing` / `missing_some` — the
-/// current context's data view. Returns a borrow when possible
-/// (root or InputRef-wrapped iter frame); materializes only when the
-/// frame data lives in the arena and the borrow lifetime would conflict
-/// with subsequent mutable borrows.
-///
-/// Callers use `lookup.as_ref()` to get `&Value` for `access_path_ref`.
-enum LookupSnap<'a> {
-    Borrowed(&'a Value),
-    Owned(Value),
-}
-
-impl LookupSnap<'_> {
-    #[inline]
-    fn as_ref(&self) -> &Value {
-        match self {
-            LookupSnap::Borrowed(v) => v,
-            LookupSnap::Owned(v) => v,
-        }
-    }
-}
-
+/// Resolve the lookup-target for `missing` / `missing_some` — current
+/// context's data view as `&'a ArenaValue<'a>`.
 #[inline]
-fn lookup_snapshot<'a>(actx: &ArenaContextStack<'a>) -> LookupSnap<'a> {
-    let av = if actx.depth() > 0 {
+fn lookup_av<'a>(actx: &ArenaContextStack<'a>) -> &'a ArenaValue<'a> {
+    if actx.depth() > 0 {
         use crate::arena::context::ArenaContextRef;
         match actx.current() {
             ArenaContextRef::Frame(f) => f.data(),
@@ -48,10 +26,6 @@ fn lookup_snapshot<'a>(actx: &ArenaContextStack<'a>) -> LookupSnap<'a> {
         }
     } else {
         actx.root_input()
-    };
-    match av {
-        ArenaValue::InputRef(v) => LookupSnap::Borrowed(v),
-        other => LookupSnap::Owned(arena_to_value(other)),
     }
 }
 
@@ -64,11 +38,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let lookup = lookup_snapshot(actx);
-    // Pre-size for the worst case where every direct path is missing — we'd
-    // push one entry per arg (array-shaped args may exceed but those expand).
-    // Saves the first growth allocation in the typical "few-paths-checked"
-    // call shape that dominates compatible.json.
+    let lookup = lookup_av(actx);
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
 
@@ -78,7 +48,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
             ArenaValue::Array(items) => {
                 for it in *items {
                     if let Some(path) = arena_value_as_str(it)
-                        && access_path_ref(lookup.as_ref(), path).is_none()
+                        && !crate::arena::value::arena_path_exists_str(lookup, path)
                     {
                         missing.push(ArenaValue::String(arena.alloc_str(path)));
                     }
@@ -87,19 +57,19 @@ pub(crate) fn evaluate_missing_arena<'a>(
             ArenaValue::InputRef(Value::Array(arr)) => {
                 for v in arr {
                     if let Some(path) = v.as_str()
-                        && access_path_ref(lookup.as_ref(), path).is_none()
+                        && !crate::arena::value::arena_path_exists_str(lookup, path)
                     {
                         missing.push(ArenaValue::String(arena.alloc_str(path)));
                     }
                 }
             }
             ArenaValue::String(s) => {
-                if access_path_ref(lookup.as_ref(), s).is_none() {
+                if !crate::arena::value::arena_path_exists_str(lookup, s) {
                     missing.push(ArenaValue::String(arena.alloc_str(s)));
                 }
             }
             ArenaValue::InputRef(Value::String(s)) => {
-                if access_path_ref(lookup.as_ref(), s).is_none() {
+                if !crate::arena::value::arena_path_exists_str(lookup, s) {
                     missing.push(ArenaValue::String(arena.alloc_str(s.as_str())));
                 }
             }
@@ -126,7 +96,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
     let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
 
     let paths_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
-    let lookup = lookup_snapshot(actx);
+    let lookup = lookup_av(actx);
 
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
@@ -136,7 +106,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
                         missing: &mut bumpalo::collections::Vec<'a, ArenaValue<'a>>,
                         present_count: &mut usize|
      -> bool {
-        if access_path_ref(lookup.as_ref(), path).is_none() {
+        if !crate::arena::value::arena_path_exists_str(lookup, path) {
             missing.push(ArenaValue::String(arena.alloc_str(path)));
         } else {
             *present_count += 1;
@@ -182,12 +152,10 @@ use crate::node::{
     CompiledMissingArg, CompiledMissingData, CompiledMissingMin, CompiledMissingPaths,
     CompiledMissingSomeData,
 };
-use crate::operators::variable::try_traverse_segments;
 
 /// Evaluate a `missing` op whose static literal-string paths have been
-/// pre-parsed into segments. Static paths walk the input directly via
-/// `try_traverse_segments`; dynamic args fall back to the legacy path-string
-/// resolution.
+/// pre-parsed into segments. Static paths walk via
+/// `arena_path_exists_segments`; dynamic args use the runtime path string.
 #[inline]
 pub(crate) fn evaluate_compiled_missing_arena<'a>(
     data: &'a CompiledMissingData,
@@ -195,21 +163,20 @@ pub(crate) fn evaluate_compiled_missing_arena<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let lookup = lookup_snapshot(actx);
+    let lookup = lookup_av(actx);
     let mut missing: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
 
     for arg in data.args.iter() {
         match arg {
             CompiledMissingArg::Static { path, segments } => {
-                if try_traverse_segments(lookup.as_ref(), segments).is_none() {
-                    // Reuse the compiled-node-owned path string — no arena copy.
+                if !crate::arena::value::arena_path_exists_segments(lookup, segments) {
                     missing.push(ArenaValue::String(path.as_ref()));
                 }
             }
             CompiledMissingArg::Dynamic(node) => {
                 let av = engine.evaluate_arena_node(node, actx, arena)?;
-                accumulate_dynamic_missing(av, lookup.as_ref(), &mut missing, arena);
+                accumulate_dynamic_missing(av, lookup, &mut missing, arena);
             }
         }
     }
@@ -233,7 +200,7 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
         }
     };
 
-    let lookup = lookup_snapshot(actx);
+    let lookup = lookup_av(actx);
 
     match &data.paths {
         CompiledMissingPaths::Static(paths) => {
@@ -241,7 +208,7 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
                 bumpalo::collections::Vec::with_capacity_in(paths.len(), arena);
             let mut present = 0usize;
             for (path, segments) in paths.iter() {
-                if try_traverse_segments(lookup.as_ref(), segments).is_some() {
+                if crate::arena::value::arena_path_exists_segments(lookup, segments) {
                     present += 1;
                     if present >= min_present {
                         return Ok(crate::arena::pool::singleton_empty_array());
@@ -263,26 +230,12 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
             let short = match paths_av {
                 ArenaValue::Array(items) => items.iter().any(|it| {
                     arena_value_as_str(it).is_some_and(|p| {
-                        check_path(
-                            p,
-                            lookup.as_ref(),
-                            &mut missing,
-                            &mut present,
-                            min_present,
-                            arena,
-                        )
+                        check_path(p, lookup, &mut missing, &mut present, min_present, arena)
                     })
                 }),
                 ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
                     v.as_str().is_some_and(|p| {
-                        check_path(
-                            p,
-                            lookup.as_ref(),
-                            &mut missing,
-                            &mut present,
-                            min_present,
-                            arena,
-                        )
+                        check_path(p, lookup, &mut missing, &mut present, min_present, arena)
                     })
                 }),
                 _ => false,
@@ -298,13 +251,13 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
 #[inline]
 fn check_path<'a>(
     path: &str,
-    lookup: &Value,
+    lookup: &'a ArenaValue<'a>,
     missing: &mut bumpalo::collections::Vec<'a, ArenaValue<'a>>,
     present: &mut usize,
     min_present: usize,
     arena: &'a Bump,
 ) -> bool {
-    if access_path_ref(lookup, path).is_none() {
+    if !crate::arena::value::arena_path_exists_str(lookup, path) {
         missing.push(ArenaValue::String(arena.alloc_str(path)));
     } else {
         *present += 1;
@@ -318,7 +271,7 @@ fn check_path<'a>(
 #[inline]
 fn accumulate_dynamic_missing<'a>(
     av: &'a ArenaValue<'a>,
-    lookup: &Value,
+    lookup: &'a ArenaValue<'a>,
     missing: &mut bumpalo::collections::Vec<'a, ArenaValue<'a>>,
     arena: &'a Bump,
 ) {
@@ -326,7 +279,7 @@ fn accumulate_dynamic_missing<'a>(
         ArenaValue::Array(items) => {
             for it in *items {
                 if let Some(path) = arena_value_as_str(it)
-                    && access_path_ref(lookup, path).is_none()
+                    && !crate::arena::value::arena_path_exists_str(lookup, path)
                 {
                     missing.push(ArenaValue::String(arena.alloc_str(path)));
                 }
@@ -335,19 +288,19 @@ fn accumulate_dynamic_missing<'a>(
         ArenaValue::InputRef(Value::Array(arr)) => {
             for v in arr {
                 if let Some(path) = v.as_str()
-                    && access_path_ref(lookup, path).is_none()
+                    && !crate::arena::value::arena_path_exists_str(lookup, path)
                 {
                     missing.push(ArenaValue::String(arena.alloc_str(path)));
                 }
             }
         }
         ArenaValue::String(s) => {
-            if access_path_ref(lookup, s).is_none() {
+            if !crate::arena::value::arena_path_exists_str(lookup, s) {
                 missing.push(ArenaValue::String(arena.alloc_str(s)));
             }
         }
         ArenaValue::InputRef(Value::String(s)) => {
-            if access_path_ref(lookup, s).is_none() {
+            if !crate::arena::value::arena_path_exists_str(lookup, s) {
                 missing.push(ArenaValue::String(arena.alloc_str(s.as_str())));
             }
         }

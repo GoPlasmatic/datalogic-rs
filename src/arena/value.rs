@@ -502,6 +502,92 @@ pub(crate) fn arena_traverse_segments<'a>(
     Some(cur)
 }
 
+/// Allocation-free path-exists check on `&ArenaValue`. Used by `missing` /
+/// `missing_some` where the leaf value isn't consumed.
+pub(crate) fn arena_path_exists_str(av: &ArenaValue<'_>, path: &str) -> bool {
+    if path.is_empty() {
+        return true;
+    }
+    if let ArenaValue::InputRef(v) = av {
+        return crate::value_helpers::access_path_ref(v, path).is_some();
+    }
+
+    fn step<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>> {
+        match cur {
+            ArenaValue::Object(pairs) => {
+                for (k, v) in *pairs {
+                    if *k == seg {
+                        return Some(v);
+                    }
+                }
+                None
+            }
+            ArenaValue::Array(items) => {
+                let idx = seg.parse::<usize>().ok()?;
+                items.get(idx)
+            }
+            _ => None,
+        }
+    }
+
+    if !path.contains('.') {
+        return step(av, path).is_some();
+    }
+    let mut cur = av;
+    for seg in path.split('.') {
+        match step(cur, seg) {
+            Some(next) => cur = next,
+            None => return false,
+        }
+    }
+    true
+}
+
+/// Allocation-free segments-exists check. Companion of [`arena_path_exists_str`]
+/// for compile-time-parsed paths.
+pub(crate) fn arena_path_exists_segments(
+    av: &ArenaValue<'_>,
+    segments: &[crate::node::PathSegment],
+) -> bool {
+    use crate::node::PathSegment;
+    if segments.is_empty() {
+        return true;
+    }
+    if let ArenaValue::InputRef(v) = av {
+        return crate::operators::variable::try_traverse_segments(v, segments).is_some();
+    }
+
+    let mut cur = av;
+    for seg in segments {
+        let next = match seg {
+            PathSegment::Field(key) => match cur {
+                ArenaValue::Object(pairs) => {
+                    let target: &str = key.as_ref();
+                    pairs.iter().find(|(k, _)| *k == target).map(|(_, v)| v)
+                }
+                _ => None,
+            },
+            PathSegment::Index(idx) => match cur {
+                ArenaValue::Array(items) => items.get(*idx),
+                _ => None,
+            },
+            PathSegment::FieldOrIndex(key, idx) => match cur {
+                ArenaValue::Object(pairs) => {
+                    let target: &str = key.as_ref();
+                    pairs.iter().find(|(k, _)| *k == target).map(|(_, v)| v)
+                }
+                ArenaValue::Array(items) => items.get(*idx),
+                _ => None,
+            },
+        };
+        match next {
+            Some(n) => cur = n,
+            None => return false,
+        }
+    }
+    true
+}
+
 /// Walk a dot-notation `path` on `&'a ArenaValue<'a>`. Mirrors
 /// `value_helpers::access_path_ref` for the arena value tree.
 ///
