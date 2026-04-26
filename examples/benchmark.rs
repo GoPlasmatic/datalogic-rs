@@ -66,8 +66,8 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
         for _ in 0..ITERATIONS {
             let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
+            arena.reset();
         }
-        arena.reset();
     }
     std::hint::black_box((&arena_inputs, &data_arena));
     let total_time = start.elapsed();
