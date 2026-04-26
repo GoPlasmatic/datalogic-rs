@@ -58,6 +58,7 @@
 
 use serde_json::Value;
 
+use crate::arena::{coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
 use crate::config::NanHandling;
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{CompiledNode, DataLogic, Result};
@@ -307,13 +308,10 @@ pub(crate) fn evaluate_add_arena<'a>(
             };
         }
 
-        // Cross to Value-Cow for config-aware coercion (free for InputRef
-        // operands; one Value clone for inline arena variants).
-        let a_cow = crate::arena::arena_to_value_cow(a_av);
-        let b_cow = crate::arena::arena_to_value_cow(b_av);
+        // Config-aware arena-native coercion.
         if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&a_cow, engine),
-            try_coerce_to_integer(&b_cow, engine),
+            try_coerce_arena_to_integer_cfg(a_av, engine),
+            try_coerce_arena_to_integer_cfg(b_av, engine),
         ) {
             return match i1.checked_add(i2) {
                 Some(s) => Ok(arena_number(arena, NumberValue::from_i64(s))),
@@ -324,8 +322,8 @@ pub(crate) fn evaluate_add_arena<'a>(
             };
         }
         if let (Some(f1), Some(f2)) = (
-            coerce_to_number(&a_cow, engine),
-            coerce_to_number(&b_cow, engine),
+            coerce_arena_to_number_cfg(a_av, engine),
+            coerce_arena_to_number_cfg(b_av, engine),
         ) {
             return Ok(arena_number(arena, NumberValue::from_f64(f1 + f2)));
         }
@@ -340,8 +338,8 @@ pub(crate) fn evaluate_add_arena<'a>(
 
         // Non-numeric, non-datetime — handle NaN per config.
         let mut sum = 0.0f64;
-        for cow in [&a_cow, &b_cow] {
-            if let Some(f) = coerce_to_number(cow, engine) {
+        for av in [a_av, b_av] {
+            if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
                 sum += f;
             } else {
                 match handle_nan(engine)? {
@@ -405,12 +403,10 @@ pub(crate) fn evaluate_multiply_arena<'a>(
             }
         }
 
-        // Config-aware coercion for non-Number operands.
-        let a_cow = crate::arena::arena_to_value_cow(a_av);
-        let b_cow = crate::arena::arena_to_value_cow(b_av);
+        // Config-aware arena-native coercion.
         if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&a_cow, engine),
-            try_coerce_to_integer(&b_cow, engine),
+            try_coerce_arena_to_integer_cfg(a_av, engine),
+            try_coerce_arena_to_integer_cfg(b_av, engine),
         ) {
             return match i1.checked_mul(i2) {
                 Some(p) => Ok(arena_number(arena, NumberValue::from_i64(p))),
@@ -421,16 +417,16 @@ pub(crate) fn evaluate_multiply_arena<'a>(
             };
         }
         if let (Some(f1), Some(f2)) = (
-            coerce_to_number(&a_cow, engine),
-            coerce_to_number(&b_cow, engine),
+            coerce_arena_to_number_cfg(a_av, engine),
+            coerce_arena_to_number_cfg(b_av, engine),
         ) {
             return Ok(arena_number(arena, NumberValue::from_f64(f1 * f2)));
         }
 
         // Non-numeric — handle NaN per config (multiplicative identity is 1).
         let mut product = 1.0f64;
-        for cow in [&a_cow, &b_cow] {
-            if let Some(f) = coerce_to_number(cow, engine) {
+        for av in [a_av, b_av] {
+            if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
                 product *= f;
             } else {
                 match handle_nan(engine)? {
@@ -496,7 +492,7 @@ fn arena_variadic_fold<'a>(
         // `true`/`false`/`null`/numeric strings compose into the variadic op.
         let f_opt = av
             .as_f64()
-            .or_else(|| coerce_to_number(&crate::arena::arena_to_value_cow(av), engine));
+            .or_else(|| coerce_arena_to_number_cfg(av, engine));
         if let Some(f) = f_opt {
             if all_int {
                 all_int = false;
@@ -606,19 +602,25 @@ fn arena_one_arg_arith<'a>(
     let av = engine.evaluate_arena_node(arg, actx, arena)?;
 
     // Array result (e.g. from `var "items"`): fold all elements.
-    let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
-        ArenaValue::InputRef(Value::Array(arr)) => Some(std::borrow::Cow::Borrowed(arr.as_slice())),
-        ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
-            items
-                .iter()
-                .map(crate::arena::arena_to_value)
-                .collect::<Vec<_>>(),
-        )),
-        _ => None,
+    // Two-source fold: handle InputRef array (zero-copy &[Value]) and
+    // arena-native Array (zero-copy &[ArenaValue]) without round-tripping.
+    enum ArrSrc<'b> {
+        Input(&'b [Value]),
+        Arena(&'b [ArenaValue<'b>]),
+        None,
+    }
+    let src = match av {
+        ArenaValue::InputRef(Value::Array(arr)) => ArrSrc::Input(arr.as_slice()),
+        ArenaValue::Array(items) => ArrSrc::Arena(items),
+        _ => ArrSrc::None,
     };
-    if let Some(arr) = array_cow {
-        if arr.is_empty() {
-            // 1-arg evaluating to empty array: + → 0, * → 1.
+    let arr_len = match &src {
+        ArrSrc::Input(a) => Some(a.len()),
+        ArrSrc::Arena(a) => Some(a.len()),
+        ArrSrc::None => None,
+    };
+    if let Some(n) = arr_len {
+        if n == 0 {
             return Ok(arena_number(
                 arena,
                 NumberValue::from_i64(op.identity_int()),
@@ -627,25 +629,46 @@ fn arena_one_arg_arith<'a>(
         let mut all_int = true;
         let mut int_acc: i64 = op.identity_int();
         let mut float_acc: f64 = op.identity_int() as f64;
-        for elem in arr.iter() {
-            if let Some(i) = try_coerce_to_integer(elem, engine) {
+        for i in 0..n {
+            let int_opt: Option<i64>;
+            let float_opt: Option<f64>;
+            match &src {
+                ArrSrc::Input(a) => {
+                    int_opt = try_coerce_to_integer(&a[i], engine);
+                    float_opt = if int_opt.is_none() {
+                        coerce_to_number(&a[i], engine)
+                    } else {
+                        None
+                    };
+                }
+                ArrSrc::Arena(a) => {
+                    int_opt = try_coerce_arena_to_integer_cfg(&a[i], engine);
+                    float_opt = if int_opt.is_none() {
+                        coerce_arena_to_number_cfg(&a[i], engine)
+                    } else {
+                        None
+                    };
+                }
+                ArrSrc::None => unreachable!(),
+            }
+            if let Some(iv) = int_opt {
                 if all_int {
-                    match op.combine_int(int_acc, i) {
+                    match op.combine_int(int_acc, iv) {
                         Some(r) => int_acc = r,
                         None => {
                             all_int = false;
-                            float_acc = op.combine_f(int_acc as f64, i as f64);
+                            float_acc = op.combine_f(int_acc as f64, iv as f64);
                         }
                     }
                 } else {
-                    float_acc = op.combine_f(float_acc, i as f64);
+                    float_acc = op.combine_f(float_acc, iv as f64);
                 }
-            } else if let Some(f) = coerce_to_number(elem, engine) {
+            } else if let Some(fv) = float_opt {
                 if all_int {
                     all_int = false;
-                    float_acc = op.combine_f(int_acc as f64, f);
+                    float_acc = op.combine_f(int_acc as f64, fv);
                 } else {
-                    float_acc = op.combine_f(float_acc, f);
+                    float_acc = op.combine_f(float_acc, fv);
                 }
             } else {
                 match handle_nan(engine)? {
@@ -662,8 +685,7 @@ fn arena_one_arg_arith<'a>(
     }
 
     // Non-array single value: coerce and return (op identity * coerced).
-    let cow = crate::arena::arena_to_value_cow(av);
-    if let Some(i) = try_coerce_to_integer(&cow, engine) {
+    if let Some(i) = try_coerce_arena_to_integer_cfg(av, engine) {
         return match op.combine_int(op.identity_int(), i) {
             Some(r) => Ok(arena_number(arena, NumberValue::from_i64(r))),
             None => Ok(arena_number(
@@ -672,7 +694,7 @@ fn arena_one_arg_arith<'a>(
             )),
         };
     }
-    if let Some(f) = coerce_to_number(&cow, engine) {
+    if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
         return Ok(arena_number(
             arena,
             NumberValue::from_f64(op.combine_f(op.identity_int() as f64, f)),
@@ -706,11 +728,10 @@ fn arena_extract_dt_dur(
     Option<crate::datetime::DataDateTime>,
     Option<crate::datetime::DataDuration>,
 ) {
-    use crate::operators::helpers::{extract_datetime_value, extract_duration_value};
-    let v = crate::arena::arena_to_value_cow(av);
-    let dt = extract_datetime_value(v.as_ref());
+    use crate::operators::helpers::{extract_datetime_arena, extract_duration_arena};
+    let dt = extract_datetime_arena(av);
     let dur = if dt.is_none() {
-        extract_duration_value(v.as_ref())
+        extract_duration_arena(av)
     } else {
         None
     };
@@ -811,10 +832,7 @@ fn arena_datetime_divide<'a>(
 ) -> Option<crate::Result<&'a ArenaValue<'a>>> {
     let (_, a_dur) = arena_extract_dt_dur(a_av);
     let a_dur = a_dur?;
-    let divisor = coerce_arena_to_number(b_av).or_else(|| {
-        let b = crate::arena::arena_to_value_cow(b_av);
-        b.as_f64()
-    })?;
+    let divisor = coerce_arena_to_number(b_av)?;
     if divisor == 0.0 {
         return Some(Err(crate::constants::nan_error()));
     }
@@ -868,8 +886,7 @@ pub(crate) fn evaluate_subtract_arena<'a>(
                     .unwrap_or_else(|| NumberValue::from_f64(-(i as f64))),
             ));
         }
-        let cow = crate::arena::arena_to_value_cow(av);
-        if let Some(f) = coerce_to_number(&cow, engine) {
+        if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
             return Ok(arena_number(arena, NumberValue::from_f64(-f)));
         }
         return Err(crate::constants::nan_error());
@@ -889,12 +906,10 @@ pub(crate) fn evaluate_subtract_arena<'a>(
             };
         }
 
-        // Config-aware coercion path (covers bool/null/string operands).
-        let a_cow = crate::arena::arena_to_value_cow(a_av);
-        let b_cow = crate::arena::arena_to_value_cow(b_av);
+        // Config-aware arena-native coercion (covers bool/null/string operands).
         if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&a_cow, engine),
-            try_coerce_to_integer(&b_cow, engine),
+            try_coerce_arena_to_integer_cfg(a_av, engine),
+            try_coerce_arena_to_integer_cfg(b_av, engine),
         ) {
             return match i1.checked_sub(i2) {
                 Some(d) => Ok(arena_number(arena, NumberValue::from_i64(d))),
@@ -905,8 +920,8 @@ pub(crate) fn evaluate_subtract_arena<'a>(
             };
         }
         if let (Some(f1), Some(f2)) = (
-            coerce_to_number(&a_cow, engine),
-            coerce_to_number(&b_cow, engine),
+            coerce_arena_to_number_cfg(a_av, engine),
+            coerce_arena_to_number_cfg(b_av, engine),
         ) {
             return Ok(arena_number(arena, NumberValue::from_f64(f1 - f2)));
         }
@@ -929,22 +944,24 @@ pub(crate) fn evaluate_subtract_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let first_cow = crate::arena::arena_to_value_cow(first_av);
-    let mut all_int =
-        first_av.as_i64().is_some() || try_coerce_to_integer(&first_cow, engine).is_some();
+    let mut all_int = first_av.as_i64().is_some()
+        || try_coerce_arena_to_integer_cfg(first_av, engine).is_some();
     let mut int_acc: i64 = first_av
         .as_i64()
-        .or_else(|| try_coerce_to_integer(&first_cow, engine))
+        .or_else(|| try_coerce_arena_to_integer_cfg(first_av, engine))
         .unwrap_or_default();
-    let mut float_acc: f64 = match coerce_to_number(&first_cow, engine) {
+    let mut float_acc: f64 = match coerce_arena_to_number_cfg(first_av, engine) {
         Some(f) => f,
         None => return Err(crate::constants::nan_error()),
     };
 
     for arg in args.iter().skip(1) {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;
-        let cow = crate::arena::arena_to_value_cow(av);
-        if all_int && let Some(i) = av.as_i64().or_else(|| try_coerce_to_integer(&cow, engine)) {
+        if all_int
+            && let Some(i) = av
+                .as_i64()
+                .or_else(|| try_coerce_arena_to_integer_cfg(av, engine))
+        {
             match int_acc.checked_sub(i) {
                 Some(r) => int_acc = r,
                 None => {
@@ -954,7 +971,7 @@ pub(crate) fn evaluate_subtract_arena<'a>(
             }
             continue;
         }
-        if let Some(f) = coerce_to_number(&cow, engine) {
+        if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
             if all_int {
                 all_int = false;
                 float_acc = int_acc as f64 - f;
@@ -1038,14 +1055,12 @@ pub(crate) fn arena_div_or_mod<'a>(
         return r;
     }
 
-    // Config-aware coercion via Cow (free for InputRef).
-    let a_cow = crate::arena::arena_to_value_cow(a_av);
-    let b_cow = crate::arena::arena_to_value_cow(b_av);
-    let af = match coerce_to_number(&a_cow, engine) {
+    // Config-aware arena-native coercion.
+    let af = match coerce_arena_to_number_cfg(a_av, engine) {
         Some(f) => f,
         None => return Err(crate::constants::nan_error()),
     };
-    let bf = match coerce_to_number(&b_cow, engine) {
+    let bf = match coerce_arena_to_number_cfg(b_av, engine) {
         Some(f) => f,
         None => return Err(crate::constants::nan_error()),
     };
@@ -1153,8 +1168,7 @@ fn arena_one_arg_div_mod<'a>(
         }
         return Ok(arena_number(arena, NumberValue::from_f64(1.0 / i as f64)));
     }
-    let cow = crate::arena::arena_to_value_cow(av);
-    let f = coerce_to_number(&cow, engine).ok_or_else(crate::constants::nan_error)?;
+    let f = coerce_arena_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
     if f == 0.0 {
         return Err(crate::constants::nan_error());
     }
@@ -1171,13 +1185,11 @@ fn arena_variadic_div_mod<'a>(
     op: DivOp,
 ) -> Result<&'a ArenaValue<'a>> {
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let first_cow = crate::arena::arena_to_value_cow(first_av);
     let mut result =
-        coerce_to_number(&first_cow, engine).ok_or_else(crate::constants::nan_error)?;
+        coerce_arena_to_number_cfg(first_av, engine).ok_or_else(crate::constants::nan_error)?;
     for arg in args.iter().skip(1) {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;
-        let cow = crate::arena::arena_to_value_cow(av);
-        let n = coerce_to_number(&cow, engine).ok_or_else(crate::constants::nan_error)?;
+        let n = coerce_arena_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
         if n == 0.0 {
             return Err(crate::constants::nan_error());
         }
