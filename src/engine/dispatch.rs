@@ -24,8 +24,6 @@ pub(super) fn evaluate_arena_node_inner<'a>(
     actx: &mut ArenaContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::ArenaValue<'a>> {
-    use crate::arena::ArenaValue;
-
     match node {
         // Compiled var: full dispatch via the arena helper. Root and
         // frame data are both arena-resident `ArenaValue`s, so lookups
@@ -478,49 +476,23 @@ pub(super) fn evaluate_arena_node_inner<'a>(
         #[cfg(feature = "error-handling")]
         CompiledNode::CompiledThrow(data) => Err(Error::Thrown(data.error.clone())),
 
-        // StructuredObject (preserve mode): build the object directly
-        // in the arena. Each field's value is evaluated through arena
-        // dispatch and stored as `(&'a str, ArenaValue<'a>)` pair.
+        // StructuredObject (preserve mode): out-of-line — bumpalo::Vec
+        // construction would otherwise force a large stack frame on every
+        // dispatch arm via worst-case spill sizing.
         #[cfg(feature = "preserve")]
         CompiledNode::StructuredObject(data) => {
-            let mut pairs: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
-                bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
-            for (key, n) in data.fields.iter() {
-                let val_av = engine.evaluate_arena_node(n, actx, arena)?;
-                let val_owned = crate::arena::value::reborrow_arena_value(val_av);
-                let k_arena: &'a str = arena.alloc_str(key);
-                pairs.push((k_arena, val_owned));
-            }
-            Ok(arena.alloc(ArenaValue::Object(pairs.into_bump_slice())))
+            evaluate_structured_object_arena(data, actx, engine, arena)
         }
 
-        // Array literal: evaluate each element in arena and build an
-        // arena-resident Array.
+        // Array literal: out-of-line for the same reason as StructuredObject.
         CompiledNode::Array { nodes, .. } => {
-            let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-                bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
-            for n in nodes.iter() {
-                let av = engine.evaluate_arena_node(n, actx, arena)?;
-                items.push(crate::arena::value::reborrow_arena_value(av));
-            }
-            Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
+            evaluate_array_literal_arena(nodes, actx, engine, arena)
         }
 
-        // Custom operator: pre-evaluate each arg via arena dispatch
-        // (so var lookups borrow into input data) and dispatch through
-        // `ArenaOperator`. Args reach the operator as
-        // `&'a ArenaValue<'a>` — no `serde_json::Value` round-trip.
+        // Custom operator: out-of-line — HashMap lookup + bumpalo::Vec
+        // for args; rare on the hot path.
         CompiledNode::CustomOperator(data) => {
-            let arena_op = engine
-                .custom_arena_operators
-                .get(&data.name)
-                .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
-            let mut arena_args: bumpalo::collections::Vec<'a, &'a ArenaValue<'a>> =
-                bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
-            for arg in data.args.iter() {
-                arena_args.push(engine.evaluate_arena_node(arg, actx, arena)?);
-            }
-            arena_op.evaluate_arena(&arena_args, actx, arena)
+            evaluate_custom_operator_arena(data, actx, engine, arena)
         }
 
         // CompiledSplitRegex (ext-string regex split): build the result
@@ -547,4 +519,68 @@ pub(super) fn evaluate_arena_node_inner<'a>(
             "internal: unhandled CompiledNode shape in arena dispatch".into(),
         )),
     }
+}
+
+// Heavy arms below are kept out-of-line so the dispatch fn's stack frame
+// is sized for the small/common arms only. Each builds a `bumpalo::Vec`
+// (multi-word locals + drop glue) which, when inlined, forced the
+// dispatch prologue to reserve ~464 B of stack on every recursive call.
+// `#[inline(never)]` is load-bearing — see the comment on
+// `evaluate_arena_node_inner`.
+
+#[cfg(feature = "preserve")]
+#[inline(never)]
+fn evaluate_structured_object_arena<'a>(
+    data: &'a crate::node::StructuredObjectData,
+    actx: &mut crate::arena::ArenaContextStack<'a>,
+    engine: &super::DataLogic,
+    arena: &'a bumpalo::Bump,
+) -> crate::Result<&'a crate::arena::ArenaValue<'a>> {
+    use crate::arena::ArenaValue;
+    let mut pairs: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
+        bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
+    for (key, n) in data.fields.iter() {
+        let val_av = engine.evaluate_arena_node(n, actx, arena)?;
+        let val_owned = crate::arena::value::reborrow_arena_value(val_av);
+        let k_arena: &'a str = arena.alloc_str(key);
+        pairs.push((k_arena, val_owned));
+    }
+    Ok(arena.alloc(ArenaValue::Object(pairs.into_bump_slice())))
+}
+
+#[inline(never)]
+fn evaluate_array_literal_arena<'a>(
+    nodes: &'a [crate::CompiledNode],
+    actx: &mut crate::arena::ArenaContextStack<'a>,
+    engine: &super::DataLogic,
+    arena: &'a bumpalo::Bump,
+) -> crate::Result<&'a crate::arena::ArenaValue<'a>> {
+    use crate::arena::ArenaValue;
+    let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
+    for n in nodes.iter() {
+        let av = engine.evaluate_arena_node(n, actx, arena)?;
+        items.push(crate::arena::value::reborrow_arena_value(av));
+    }
+    Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
+}
+
+#[inline(never)]
+fn evaluate_custom_operator_arena<'a>(
+    data: &'a crate::node::CustomOperatorData,
+    actx: &mut crate::arena::ArenaContextStack<'a>,
+    engine: &super::DataLogic,
+    arena: &'a bumpalo::Bump,
+) -> crate::Result<&'a crate::arena::ArenaValue<'a>> {
+    use crate::arena::ArenaValue;
+    let arena_op = engine
+        .custom_arena_operators
+        .get(&data.name)
+        .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
+    let mut arena_args: bumpalo::collections::Vec<'a, &'a ArenaValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
+    for arg in data.args.iter() {
+        arena_args.push(engine.evaluate_arena_node(arg, actx, arena)?);
+    }
+    arena_op.evaluate_arena(&arena_args, actx, arena)
 }
