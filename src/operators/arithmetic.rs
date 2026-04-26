@@ -687,6 +687,36 @@ fn arena_one_arg_arith<'a>(
     }
 }
 
+/// Wrap an owned string into an arena-resident `ArenaValue::String`. Used by
+/// every datetime/duration result builder.
+#[cfg(feature = "datetime")]
+#[inline]
+fn alloc_string_av<'a>(arena: &'a Bump, s: &str) -> &'a ArenaValue<'a> {
+    arena.alloc(ArenaValue::String(arena.alloc_str(s)))
+}
+
+/// Extract `(DateTime, Duration)` slots from an arena value. The two slots
+/// are mutually exclusive — a value parsed as `DateTime` is not also probed
+/// for `Duration`.
+#[cfg(feature = "datetime")]
+#[inline]
+fn arena_extract_dt_dur(
+    av: &ArenaValue<'_>,
+) -> (
+    Option<crate::datetime::DataDateTime>,
+    Option<crate::datetime::DataDuration>,
+) {
+    use crate::operators::helpers::{extract_datetime_value, extract_duration_value};
+    let v = crate::arena::arena_to_value_cow(av);
+    let dt = extract_datetime_value(v.as_ref());
+    let dur = if dt.is_none() {
+        extract_duration_value(v.as_ref())
+    } else {
+        None
+    };
+    (dt, dur)
+}
+
 /// Native arena datetime/duration subtract.
 /// - DateTime - DateTime → Duration string.
 /// - DateTime - Duration → DateTime ISO string.
@@ -700,35 +730,17 @@ fn arena_datetime_subtract<'a>(
     b_av: &'a ArenaValue<'a>,
     arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
-    use crate::operators::helpers::{extract_datetime_value, extract_duration_value};
-
-    let a = crate::arena::arena_to_value_cow(a_av);
-    let b = crate::arena::arena_to_value_cow(b_av);
-
-    let a_dt = extract_datetime_value(a.as_ref());
-    let a_dur = if a_dt.is_none() {
-        extract_duration_value(a.as_ref())
-    } else {
-        None
-    };
-    let b_dt = extract_datetime_value(b.as_ref());
-    let b_dur = if b_dt.is_none() {
-        extract_duration_value(b.as_ref())
-    } else {
-        None
-    };
+    let (a_dt, a_dur) = arena_extract_dt_dur(a_av);
+    let (b_dt, b_dur) = arena_extract_dt_dur(b_av);
 
     if let (Some(d1), Some(d2)) = (&a_dt, &b_dt) {
-        let s = arena.alloc_str(&d1.diff(d2).to_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(arena, &d1.diff(d2).to_string()));
     }
     if let (Some(d), Some(dur)) = (&a_dt, &b_dur) {
-        let s = arena.alloc_str(&d.sub_duration(dur).to_iso_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(arena, &d.sub_duration(dur).to_iso_string()));
     }
     if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
-        let s = arena.alloc_str(&d1.sub(d2).to_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(arena, &d1.sub(d2).to_string()));
     }
     None
 }
@@ -745,26 +757,17 @@ fn arena_datetime_add<'a>(
     b_av: &'a ArenaValue<'a>,
     arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
-    use crate::operators::helpers::{extract_datetime_value, extract_duration_value};
-
-    let a = crate::arena::arena_to_value_cow(a_av);
-    let b = crate::arena::arena_to_value_cow(b_av);
-
-    let a_dt = extract_datetime_value(a.as_ref());
-    let a_dur = if a_dt.is_none() {
-        extract_duration_value(a.as_ref())
-    } else {
-        None
-    };
-    let b_dur = extract_duration_value(b.as_ref());
+    let (a_dt, a_dur) = arena_extract_dt_dur(a_av);
+    let (_b_dt, b_dur) = arena_extract_dt_dur(b_av);
 
     if let (Some(dt), Some(dur)) = (&a_dt, &b_dur) {
-        let s = arena.alloc_str(&dt.add_duration(dur).to_iso_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(
+            arena,
+            &dt.add_duration(dur).to_iso_string(),
+        ));
     }
     if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
-        let s = arena.alloc_str(&d1.add(d2).to_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(arena, &d1.add(d2).to_string()));
     }
     None
 }
@@ -781,25 +784,18 @@ fn arena_datetime_multiply<'a>(
     b_av: &'a ArenaValue<'a>,
     arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
-    use crate::operators::helpers::extract_duration_value;
-
-    let a = crate::arena::arena_to_value_cow(a_av);
-    let b = crate::arena::arena_to_value_cow(b_av);
-
-    let a_dur = extract_duration_value(a.as_ref());
-    let b_dur = extract_duration_value(b.as_ref());
+    let (_, a_dur) = arena_extract_dt_dur(a_av);
+    let (_, b_dur) = arena_extract_dt_dur(b_av);
 
     if let (Some(dur), None) = (&a_dur, &b_dur)
         && let Some(factor) = coerce_arena_to_number(b_av)
     {
-        let s = arena.alloc_str(&dur.multiply(factor).to_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(arena, &dur.multiply(factor).to_string()));
     }
     if let (None, Some(dur)) = (&a_dur, &b_dur)
         && let Some(factor) = coerce_arena_to_number(a_av)
     {
-        let s = arena.alloc_str(&dur.multiply(factor).to_string());
-        return Some(arena.alloc(ArenaValue::String(s)));
+        return Some(alloc_string_av(arena, &dur.multiply(factor).to_string()));
     }
     None
 }
@@ -813,10 +809,8 @@ fn arena_datetime_divide<'a>(
     b_av: &'a ArenaValue<'a>,
     arena: &'a Bump,
 ) -> Option<crate::Result<&'a ArenaValue<'a>>> {
-    use crate::operators::helpers::extract_duration_value;
-
-    let a = crate::arena::arena_to_value_cow(a_av);
-    let a_dur = extract_duration_value(a.as_ref())?;
+    let (_, a_dur) = arena_extract_dt_dur(a_av);
+    let a_dur = a_dur?;
     let divisor = coerce_arena_to_number(b_av).or_else(|| {
         let b = crate::arena::arena_to_value_cow(b_av);
         b.as_f64()
@@ -824,8 +818,10 @@ fn arena_datetime_divide<'a>(
     if divisor == 0.0 {
         return Some(Err(crate::constants::nan_error()));
     }
-    let s = arena.alloc_str(&a_dur.divide(divisor).to_string());
-    Some(Ok(arena.alloc(ArenaValue::String(s))))
+    Some(Ok(alloc_string_av(
+        arena,
+        &a_dur.divide(divisor).to_string(),
+    )))
 }
 
 #[inline]
