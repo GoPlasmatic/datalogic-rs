@@ -280,22 +280,13 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    fn push_with_key_index(
-        &mut self,
-        data: &'a ArenaValue<'a>,
-        index: usize,
-        key: &'a str,
-    ) {
+    fn push_with_key_index(&mut self, data: &'a ArenaValue<'a>, index: usize, key: &'a str) {
         self.frames
             .push(ArenaContextFrame::Keyed { data, index, key });
     }
 
     #[inline]
-    fn push_reduce(
-        &mut self,
-        current: &'a ArenaValue<'a>,
-        accumulator: &'a ArenaValue<'a>,
-    ) {
+    fn push_reduce(&mut self, current: &'a ArenaValue<'a>, accumulator: &'a ArenaValue<'a>) {
         self.frames.push(ArenaContextFrame::Reduce {
             current,
             accumulator,
@@ -310,12 +301,7 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    fn replace_top_key_data(
-        &mut self,
-        data: &'a ArenaValue<'a>,
-        index: usize,
-        key: &'a str,
-    ) {
+    fn replace_top_key_data(&mut self, data: &'a ArenaValue<'a>, index: usize, key: &'a str) {
         if let Some(frame) = self.frames.last_mut() {
             *frame = ArenaContextFrame::Keyed { data, index, key };
         }
