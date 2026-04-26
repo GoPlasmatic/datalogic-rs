@@ -7,11 +7,10 @@
 //!
 //! Also pre-coerces numeric string literals in arithmetic contexts.
 
+use crate::DataLogic;
 use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
 use crate::opcode::OpCode;
-use crate::{ContextStack, DataLogic};
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Apply partial constant folding to a compiled node.
 ///
@@ -86,8 +85,7 @@ fn try_partial_fold(
         opcode,
         args: static_args.into_boxed_slice(),
     };
-    let mut context = ContextStack::new(Arc::new(Value::Null));
-    let folded_value = engine.evaluate_node(&static_node, &mut context).ok()?;
+    let folded_value = fold_static_node(&static_node, engine)?;
 
     // Reconstruct: [folded_constant, ...dynamic_args]. The folded literal
     // gets SYNTHETIC_ID (literals never emit trace steps). The outer op keeps
@@ -207,6 +205,20 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
     }
 
     None
+}
+
+/// One-shot arena evaluation for compile-time constant folding.
+///
+/// The arena lives only for this fold call — uses a fresh `Bump`, not the
+/// thread-local pool, since folding runs during `compile`, not the eval hot
+/// path. Returns `None` on any error (the caller falls back to leaving the
+/// node un-folded).
+pub(crate) fn fold_static_node(node: &CompiledNode, engine: &DataLogic) -> Option<Value> {
+    let arena = bumpalo::Bump::new();
+    let null_root = Value::Null;
+    let mut actx = crate::arena::ArenaContextStack::new(&null_root);
+    let av = engine.evaluate_arena_node(node, &mut actx, &arena).ok()?;
+    Some(crate::arena::arena_to_value(av))
 }
 
 fn is_arithmetic(opcode: &OpCode) -> bool {

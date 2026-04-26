@@ -128,6 +128,13 @@ pub struct ArenaContextStack<'a> {
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     /// Mirrors `ContextStack::error_path`.
     error_path: Vec<u32>,
+    /// Optional trace collector, set when this stack drives a traced
+    /// evaluation. Stored as a raw pointer so the stack stays free of an
+    /// extra lifetime parameter; the caller (`evaluate_*_with_trace`) keeps
+    /// a `&mut TraceCollector` live for the entire call, so dereferencing
+    /// the pointer is sound.
+    #[cfg(feature = "trace")]
+    tracer: Option<std::ptr::NonNull<crate::trace::TraceCollector>>,
 }
 
 impl<'a> ArenaContextStack<'a> {
@@ -137,6 +144,83 @@ impl<'a> ArenaContextStack<'a> {
             root,
             frames: Vec::new(),
             error_path: Vec::new(),
+            #[cfg(feature = "trace")]
+            tracer: None,
+        }
+    }
+
+    /// Attach a trace collector to this stack. Caller must keep the
+    /// `&mut TraceCollector` live for the duration of the evaluation that
+    /// uses this stack — the stack stores a raw pointer to it.
+    #[cfg(feature = "trace")]
+    #[inline]
+    pub(crate) fn set_tracer(&mut self, tracer: &mut crate::trace::TraceCollector) {
+        self.tracer = std::ptr::NonNull::new(tracer as *mut _);
+    }
+
+    /// True iff a tracer has been attached.
+    #[cfg(feature = "trace")]
+    #[inline]
+    pub(crate) fn has_tracer(&self) -> bool {
+        self.tracer.is_some()
+    }
+
+    /// Snapshot the current frame's data as an owned `Value`. Used by the
+    /// arena dispatcher before recursing into a child, so the trace step
+    /// can record the context that operator saw.
+    #[cfg(feature = "trace")]
+    pub(crate) fn current_data_as_value(&self) -> Value {
+        match self.current() {
+            ArenaContextRef::Root(v) => v.clone(),
+            ArenaContextRef::Frame(f) => crate::arena::arena_to_value(f.data()),
+        }
+    }
+
+    /// Record the result of a node into the attached tracer. No-op if no
+    /// tracer is attached. Callers gate on [`has_tracer`] first to skip the
+    /// `Value::clone()` when not tracing.
+    #[cfg(feature = "trace")]
+    pub(crate) fn record_node_result(
+        &mut self,
+        node_id: u32,
+        ctx_data: Value,
+        result: &crate::Result<&'a crate::arena::ArenaValue<'a>>,
+    ) {
+        let Some(ptr) = self.tracer else {
+            return;
+        };
+        // SAFETY: the tracer pointer was set via `set_tracer(&mut TraceCollector)`
+        // and the caller keeps that mutable borrow live for the full evaluation.
+        let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
+        match result {
+            Ok(av) => {
+                let v = crate::arena::arena_to_value(av);
+                collector.record_step(node_id, ctx_data, v);
+            }
+            Err(e) => {
+                collector.record_error(node_id, ctx_data, e.to_string());
+            }
+        }
+    }
+
+    /// Mark entry into an iteration body — drives the per-step
+    /// `iteration_index` / `iteration_total` fields on traced steps.
+    #[cfg(feature = "trace")]
+    #[inline]
+    pub(crate) fn trace_push_iteration(&mut self, index: u32, total: u32) {
+        if let Some(ptr) = self.tracer {
+            let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
+            collector.push_iteration(index, total);
+        }
+    }
+
+    /// Mark exit from an iteration body.
+    #[cfg(feature = "trace")]
+    #[inline]
+    pub(crate) fn trace_pop_iteration(&mut self) {
+        if let Some(ptr) = self.tracer {
+            let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
+            collector.pop_iteration();
         }
     }
 
@@ -204,7 +288,8 @@ impl<'a> ArenaContextStack<'a> {
         index: usize,
         key: &'a str,
     ) {
-        self.frames.push(ArenaContextFrame::Keyed { data, index, key });
+        self.frames
+            .push(ArenaContextFrame::Keyed { data, index, key });
     }
 
     #[inline]
@@ -213,8 +298,10 @@ impl<'a> ArenaContextStack<'a> {
         current: &'a ArenaValue<'a>,
         accumulator: &'a ArenaValue<'a>,
     ) {
-        self.frames
-            .push(ArenaContextFrame::Reduce { current, accumulator });
+        self.frames.push(ArenaContextFrame::Reduce {
+            current,
+            accumulator,
+        });
     }
 
     #[inline]
@@ -243,7 +330,10 @@ impl<'a> ArenaContextStack<'a> {
         accumulator: &'a ArenaValue<'a>,
     ) {
         if let Some(frame) = self.frames.last_mut() {
-            *frame = ArenaContextFrame::Reduce { current, accumulator };
+            *frame = ArenaContextFrame::Reduce {
+                current,
+                accumulator,
+            };
         }
     }
 
@@ -255,60 +345,24 @@ impl<'a> ArenaContextStack<'a> {
     // ----- error breadcrumb (mirrors ContextStack) --------------------------
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn push_error_step(&mut self, id: u32) {
         self.error_path.push(id);
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn error_path_len(&self) -> usize {
         self.error_path.len()
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn truncate_error_path(&mut self, len: usize) {
         self.error_path.truncate(len);
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
     }
-}
-
-/// Mirror the top of `actx` onto the legacy `ContextStack` as a synthetic
-/// frame, so legacy operator helpers (which read `context.current()`) see
-/// the current iteration item when an arena dispatch reaches into them.
-///
-/// Returns `true` iff a frame was pushed; the caller MUST call
-/// `context.pop()` once before returning.
-#[inline]
-pub(crate) fn sync_actx_top_to_context(
-    actx: &ArenaContextStack<'_>,
-    context: &mut crate::ContextStack,
-) -> bool {
-    if actx.depth() == 0 {
-        return false;
-    }
-    let ArenaContextRef::Frame(f) = actx.current() else {
-        return false;
-    };
-    let frame_value = crate::arena::arena_to_value(f.data());
-    match (f.get_index(), f.get_key()) {
-        (Some(idx), Some(key)) => {
-            context.push_with_key_index(frame_value, idx, key.to_string());
-        }
-        (Some(idx), None) => {
-            context.push_with_index(frame_value, idx);
-        }
-        _ => {
-            context.push(frame_value);
-        }
-    }
-    true
 }
 
 #[cfg(test)]
@@ -324,12 +378,14 @@ mod tests {
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().data_input_ref().is_some(), "root at depth 0");
 
-        let a: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
+        let a: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
         ctx.push_with_index(a, 0);
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current().get_index(), Some(0));
 
-        let b: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(2)));
+        let b: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(2)));
         ctx.replace_top_data(b, 1);
         assert_eq!(ctx.current().get_index(), Some(1));
 
@@ -359,8 +415,10 @@ mod tests {
         let root_val = Value::Null;
         let mut ctx = ArenaContextStack::new(&root_val);
 
-        let cur: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
-        let acc: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(0)));
+        let cur: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
+        let acc: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(0)));
         ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
@@ -378,8 +436,10 @@ mod tests {
         let root_val = Value::Null;
         let mut ctx = ArenaContextStack::new(&root_val);
 
-        let a: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(10)));
-        let b: &ArenaValue = arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(20)));
+        let a: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(10)));
+        let b: &ArenaValue =
+            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(20)));
         ctx.push_with_index(a, 0);
         ctx.push_with_index(b, 0);
         assert_eq!(ctx.depth(), 2);
@@ -389,14 +449,21 @@ mod tests {
         // Level 1 = parent (a)
         assert!(ctx.get_at_level(1).and_then(|r| r.frame_data()).is_some());
         // Level 2 = root
-        assert!(ctx.get_at_level(2).and_then(|r| r.data_input_ref()).is_some());
+        assert!(
+            ctx.get_at_level(2)
+                .and_then(|r| r.data_input_ref())
+                .is_some()
+        );
         // Level 5 (overflow) = root
-        assert!(ctx.get_at_level(5).and_then(|r| r.data_input_ref()).is_some());
+        assert!(
+            ctx.get_at_level(5)
+                .and_then(|r| r.data_input_ref())
+                .is_some()
+        );
     }
 
     #[test]
     fn error_path_round_trip() {
-        let arena = Bump::new();
         let root_val = Value::Null;
         let mut ctx = ArenaContextStack::new(&root_val);
 

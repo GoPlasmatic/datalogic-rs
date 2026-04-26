@@ -100,11 +100,13 @@ fn test_array_slice_overflow_protection() {
     let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
     assert_eq!(result, json!([1])); // Should only get first element due to large step
 
-    // Test with negative step and boundary conditions
+    // Test with negative step and boundary conditions. Python-style slice
+    // semantics: end clamped to "before the start" so all indices from -1
+    // down to 0 are included.
     let logic = json!({"slice": [[1, 2, 3, 4, 5], -1, i64::MIN, -1]});
     let compiled = engine.compile(&logic).unwrap();
     let result = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
-    assert_eq!(result, json!([5, 4, 3, 2]));
+    assert_eq!(result, json!([5, 4, 3, 2, 1]));
 }
 
 #[test]

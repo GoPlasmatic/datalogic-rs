@@ -58,15 +58,10 @@
 
 use serde_json::Value;
 
-use super::helpers::{
-    create_number_value, safe_add, safe_divide, safe_modulo, safe_multiply, safe_subtract,
-};
-#[cfg(feature = "datetime")]
-use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::config::NanHandling;
 use crate::constants::INVALID_ARGS;
 use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
-use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
+use crate::{CompiledNode, DataLogic, Error, Result};
 
 /// Result of NaN handling check: what the caller should do with a non-numeric value.
 enum NanAction {
@@ -85,1013 +80,6 @@ fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
         NanHandling::IgnoreValue | NanHandling::CoerceToZero => Ok(NanAction::Skip),
         NanHandling::ReturnNull => Ok(NanAction::ReturnNull),
     }
-}
-
-/// Helper to convert float to integer if it's a whole number
-#[inline]
-fn number_value(f: f64) -> Value {
-    if f.is_finite() && f.floor() == f && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-        Value::Number((f as i64).into())
-    } else {
-        create_number_value(f)
-    }
-}
-
-/// Addition operator function (+) - variadic
-#[inline]
-pub fn evaluate_add(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Ok(Value::Number(0.into()));
-    }
-
-    // Special case: single array argument - sum all elements
-    if args.len() == 1 {
-        // Check if the argument is a literal array (which is invalid for addition)
-        if matches!(&args[0], CompiledNode::Array { .. }) {
-            // Literal array as argument - this is invalid for addition
-            return Err(crate::constants::nan_error());
-        }
-
-        // Also check if it's a Value node containing an array (from compilation)
-        if let CompiledNode::Value { value, .. } = &args[0]
-            && matches!(value, Value::Array(_))
-        {
-            return Err(crate::constants::nan_error());
-        }
-
-        let value = engine.evaluate_node(&args[0], context)?;
-        if let Value::Array(arr) = value {
-            // Array from operator evaluation - sum the elements
-            if arr.is_empty() {
-                return Ok(Value::Number(0.into())); // Identity element for addition
-            }
-
-            // Fast path: every element is Number(i64). Avoids per-elem engine
-            // config checks in try_coerce_to_integer.
-            let mut int_sum: i64 = 0;
-            let mut fast_ok = true;
-            for elem in &arr {
-                if let Value::Number(n) = elem
-                    && let Some(i) = n.as_i64()
-                {
-                    match int_sum.checked_add(i) {
-                        Some(s) => int_sum = s,
-                        None => {
-                            fast_ok = false;
-                            break;
-                        }
-                    }
-                } else {
-                    fast_ok = false;
-                    break;
-                }
-            }
-            if fast_ok {
-                return Ok(Value::Number(int_sum.into()));
-            }
-
-            // Don't recursively call evaluate - that would treat the array as literal
-            // Instead, evaluate each element and sum them
-            let mut all_integers = true;
-            let mut int_sum: i64 = 0;
-            let mut float_sum = 0.0;
-
-            for elem in &arr {
-                // Array elements are already evaluated values
-                if let Some(i) = try_coerce_to_integer(elem, engine) {
-                    if all_integers {
-                        // Check for overflow before adding
-                        match int_sum.checked_add(i) {
-                            Some(sum) => int_sum = sum,
-                            None => {
-                                // Overflow detected, switch to float
-                                all_integers = false;
-                                float_sum = int_sum as f64 + i as f64;
-                            }
-                        }
-                    } else {
-                        float_sum = safe_add(float_sum, i as f64);
-                    }
-                } else if let Some(f) = coerce_to_number(elem, engine) {
-                    all_integers = false;
-                    float_sum = safe_add(float_sum, f);
-                } else {
-                    match handle_nan(engine)? {
-                        NanAction::Skip => continue,
-                        NanAction::ReturnNull => return Ok(Value::Null),
-                    }
-                }
-            }
-
-            return if all_integers {
-                Ok(Value::Number(int_sum.into()))
-            } else {
-                Ok(number_value(float_sum))
-            };
-        }
-    }
-
-    // Special case for two arguments (most common)
-    if args.len() == 2 {
-        let first = engine.evaluate_node_cow(&args[0], context)?;
-        let second = engine.evaluate_node_cow(&args[1], context)?;
-
-        // Fast path: both are numbers (most common case) — skip datetime checks
-        if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&first, engine),
-            try_coerce_to_integer(&second, engine),
-        ) {
-            return match i1.checked_add(i2) {
-                Some(sum) => Ok(Value::Number(sum.into())),
-                None => Ok(number_value(i1 as f64 + i2 as f64)),
-            };
-        }
-        if let (Some(f1), Some(f2)) = (
-            coerce_to_number(&first, engine),
-            coerce_to_number(&second, engine),
-        ) {
-            return Ok(number_value(safe_add(f1, f2)));
-        }
-
-        // Slow path: datetime/duration arithmetic
-        #[cfg(feature = "datetime")]
-        {
-            // Parse first: try datetime, then duration (mutually exclusive)
-            let first_dt = extract_datetime_value(first.as_ref());
-            let first_dur = if first_dt.is_none() {
-                extract_duration_value(first.as_ref())
-            } else {
-                None
-            };
-
-            // For addition, second is only needed as duration
-            let second_dur = extract_duration_value(second.as_ref());
-
-            // DateTime + Duration
-            if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
-                let result = dt.add_duration(dur);
-                return Ok(Value::String(result.to_iso_string()));
-            }
-
-            // Duration + Duration
-            if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
-                let result = dur1.add(dur2);
-                return Ok(Value::String(result.to_string()));
-            }
-        }
-
-        // Non-numeric, non-datetime values — handle NaN per config
-        // At least one of the two values is not coercible to number
-        let mut sum = 0.0f64;
-        for val in [first.as_ref(), second.as_ref()] {
-            if let Some(f) = coerce_to_number(val, engine) {
-                sum = safe_add(sum, f);
-            } else {
-                match handle_nan(engine)? {
-                    NanAction::Skip => {}
-                    NanAction::ReturnNull => return Ok(Value::Null),
-                }
-            }
-        }
-        return Ok(number_value(sum));
-    }
-
-    // Regular numeric addition
-    // Check if all values are integers
-    let mut all_integers = true;
-    let mut int_sum: i64 = 0;
-    let mut float_sum = 0.0;
-
-    for arg in args {
-        // Check if this argument is a literal array (invalid for addition)
-        if matches!(arg, CompiledNode::Array { .. }) {
-            match handle_nan(engine)? {
-                NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(Value::Null),
-            }
-        }
-
-        let value = engine.evaluate_node_cow(arg, context)?;
-
-        // Arrays and objects are invalid for addition
-        if matches!(value.as_ref(), Value::Array(_) | Value::Object(_)) {
-            match handle_nan(engine)? {
-                NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(Value::Null),
-            }
-        }
-
-        // Try integer coercion first
-        if let Some(i) = try_coerce_to_integer(&value, engine) {
-            if all_integers {
-                // Check for overflow before adding
-                match int_sum.checked_add(i) {
-                    Some(sum) => int_sum = sum,
-                    None => {
-                        // Overflow detected, switch to float
-                        all_integers = false;
-                        float_sum = int_sum as f64 + i as f64;
-                    }
-                }
-            } else {
-                float_sum = safe_add(float_sum, i as f64);
-            }
-        } else if let Some(f) = coerce_to_number(&value, engine) {
-            // Switch from integer to float mode
-            if all_integers {
-                all_integers = false;
-                float_sum = int_sum as f64 + f;
-            } else {
-                float_sum = safe_add(float_sum, f);
-            }
-        } else {
-            match handle_nan(engine)? {
-                NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(Value::Null),
-            }
-        }
-    }
-
-    // Return integer if all inputs were integers, otherwise float
-    if all_integers {
-        Ok(Value::Number(int_sum.into()))
-    } else {
-        Ok(number_value(float_sum))
-    }
-}
-
-/// Subtraction operator function (-) - also handles negation
-#[inline]
-pub fn evaluate_subtract(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let first = engine.evaluate_node(&args[0], context)?;
-
-    if args.len() == 1 {
-        // Check if it's an array - subtract all elements
-        if let Value::Array(arr) = first {
-            if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-            }
-            // Subtract elements: first - second - third - ...
-            let mut result =
-                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
-
-            for elem in &arr[1..] {
-                let num = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
-                result = safe_subtract(result, num);
-            }
-
-            return Ok(number_value(result));
-        }
-
-        // Negation
-        if let Value::Number(n) = &first {
-            if let Some(i) = n.as_i64() {
-                return Ok(Value::Number((-i).into()));
-            } else if let Some(f) = n.as_f64() {
-                return Ok(number_value(-f));
-            }
-        }
-        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
-        Ok(number_value(-first_num))
-    } else if args.len() == 2 {
-        let second = engine.evaluate_node_cow(&args[1], context)?;
-
-        // Fast path: both are numbers (most common case) — skip datetime checks
-        if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&first, engine),
-            try_coerce_to_integer(&second, engine),
-        ) {
-            return match i1.checked_sub(i2) {
-                Some(diff) => Ok(Value::Number(diff.into())),
-                None => Ok(number_value(i1 as f64 - i2 as f64)),
-            };
-        }
-        if let (Some(f1), Some(f2)) = (
-            coerce_to_number(&first, engine),
-            coerce_to_number(&second, engine),
-        ) {
-            return Ok(number_value(safe_subtract(f1, f2)));
-        }
-
-        // Slow path: datetime/duration arithmetic
-        #[cfg(feature = "datetime")]
-        {
-            // Parse first: try datetime, then duration (mutually exclusive)
-            let first_dt = extract_datetime_value(&first);
-            let first_dur = if first_dt.is_none() {
-                extract_duration_value(&first)
-            } else {
-                None
-            };
-
-            // Parse second: try datetime, then duration (mutually exclusive)
-            let second_dt = extract_datetime_value(second.as_ref());
-            let second_dur = if second_dt.is_none() {
-                extract_duration_value(second.as_ref())
-            } else {
-                None
-            };
-
-            // DateTime - DateTime = Duration (check this first)
-            if let (Some(dt1), Some(dt2)) = (&first_dt, &second_dt) {
-                let result = dt1.diff(dt2);
-                return Ok(Value::String(result.to_string()));
-            }
-
-            // DateTime - Duration
-            if let (Some(dt), Some(dur)) = (&first_dt, &second_dur) {
-                let result = dt.sub_duration(dur);
-                return Ok(Value::String(result.to_iso_string()));
-            }
-
-            // Duration - Duration
-            if let (Some(dur1), Some(dur2)) = (&first_dur, &second_dur) {
-                let result = dur1.sub(dur2);
-                return Ok(Value::String(result.to_string()));
-            }
-        }
-
-        // Try integer coercion first for both operands
-        if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&first, engine),
-            try_coerce_to_integer(&second, engine),
-        ) {
-            // Check for overflow in subtraction
-            match i1.checked_sub(i2) {
-                Some(result) => return Ok(Value::Number(result.into())),
-                None => {
-                    // Overflow, fall through to float calculation
-                }
-            }
-        }
-
-        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
-        let second_num =
-            coerce_to_number(&second, engine).ok_or_else(crate::constants::nan_error)?;
-
-        Ok(number_value(first_num - second_num))
-    } else {
-        // Variadic subtraction (3+ arguments)
-        // Check if all values are integers
-        let mut all_integers = true;
-        let mut int_result = if let Some(i) = try_coerce_to_integer(&first, engine) {
-            i
-        } else {
-            all_integers = false;
-            0
-        };
-        let mut float_result = if let Some(f) = coerce_to_number(&first, engine) {
-            f
-        } else {
-            return Ok(Value::Null);
-        };
-
-        // Subtract remaining arguments
-        for item in args.iter().skip(1) {
-            let value = engine.evaluate_node_cow(item, context)?;
-
-            if all_integers {
-                if let Some(i) = try_coerce_to_integer(&value, engine) {
-                    // Check for overflow in subtraction
-                    match int_result.checked_sub(i) {
-                        Some(result) => int_result = result,
-                        None => {
-                            // Overflow detected, switch to float
-                            all_integers = false;
-                            float_result = int_result as f64 - i as f64;
-                        }
-                    }
-                } else if let Some(f) = coerce_to_number(&value, engine) {
-                    all_integers = false;
-                    float_result = int_result as f64 - f;
-                } else {
-                    match handle_nan(engine)? {
-                        NanAction::Skip => continue,
-                        NanAction::ReturnNull => return Ok(Value::Null),
-                    }
-                }
-            } else if let Some(f) = coerce_to_number(&value, engine) {
-                float_result = safe_subtract(float_result, f);
-            } else {
-                match handle_nan(engine)? {
-                    NanAction::Skip => continue,
-                    NanAction::ReturnNull => return Ok(Value::Null),
-                }
-            }
-        }
-
-        if all_integers {
-            Ok(Value::Number(int_result.into()))
-        } else {
-            Ok(number_value(float_result))
-        }
-    }
-}
-
-/// Multiplication operator function (*) - variadic
-#[inline]
-pub fn evaluate_multiply(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Ok(Value::Number(1.into()));
-    }
-
-    // Special case: single array argument - multiply all elements
-    if args.len() == 1 {
-        let value = engine.evaluate_node(&args[0], context)?;
-        if let Value::Array(arr) = value {
-            // Array from operator evaluation - multiply the elements
-            if arr.is_empty() {
-                return Ok(Value::Number(1.into())); // Identity element for multiplication
-            }
-
-            // Fast path: every element is Number(i64).
-            let mut int_product: i64 = 1;
-            let mut fast_ok = true;
-            for elem in &arr {
-                if let Value::Number(n) = elem
-                    && let Some(i) = n.as_i64()
-                {
-                    match int_product.checked_mul(i) {
-                        Some(p) => int_product = p,
-                        None => {
-                            fast_ok = false;
-                            break;
-                        }
-                    }
-                } else {
-                    fast_ok = false;
-                    break;
-                }
-            }
-            if fast_ok {
-                return Ok(Value::Number(int_product.into()));
-            }
-
-            // Don't recursively call evaluate - that would treat the array as literal
-            // Instead, evaluate each element and multiply them
-            let mut all_integers = true;
-            let mut int_product: i64 = 1;
-            let mut float_product = 1.0;
-
-            for elem in &arr {
-                // Array elements are already evaluated values
-                if let Some(i) = try_coerce_to_integer(elem, engine) {
-                    if all_integers {
-                        match int_product.checked_mul(i) {
-                            Some(p) => int_product = p,
-                            None => {
-                                all_integers = false;
-                                float_product = int_product as f64 * i as f64;
-                            }
-                        }
-                    } else {
-                        float_product = safe_multiply(float_product, i as f64);
-                    }
-                } else if let Some(f) = coerce_to_number(elem, engine) {
-                    if all_integers {
-                        float_product = int_product as f64 * f;
-                    } else {
-                        float_product = safe_multiply(float_product, f);
-                    }
-                    all_integers = false;
-                } else {
-                    match handle_nan(engine)? {
-                        NanAction::Skip => continue,
-                        NanAction::ReturnNull => return Ok(Value::Null),
-                    }
-                }
-            }
-
-            return if all_integers {
-                Ok(Value::Number(int_product.into()))
-            } else {
-                Ok(number_value(float_product))
-            };
-        }
-    }
-
-    // Special case for two arguments
-    if args.len() == 2 {
-        let first = engine.evaluate_node_cow(&args[0], context)?;
-        let second = engine.evaluate_node_cow(&args[1], context)?;
-
-        // Fast path: both are numbers (most common case) — skip duration checks
-        if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&first, engine),
-            try_coerce_to_integer(&second, engine),
-        ) {
-            return match i1.checked_mul(i2) {
-                Some(product) => Ok(Value::Number(product.into())),
-                None => Ok(number_value(i1 as f64 * i2 as f64)),
-            };
-        }
-        if let (Some(f1), Some(f2)) = (
-            coerce_to_number(&first, engine),
-            coerce_to_number(&second, engine),
-        ) {
-            return Ok(number_value(safe_multiply(f1, f2)));
-        }
-
-        // Slow path: duration * number or number * duration
-        #[cfg(feature = "datetime")]
-        {
-            let first_dur = extract_duration_value(first.as_ref());
-
-            if let Some(dur) = &first_dur
-                && let Some(factor) = coerce_to_number(&second, engine)
-            {
-                let result = dur.multiply(factor);
-                return Ok(Value::String(result.to_string()));
-            }
-
-            // Number * Duration (only if first wasn't a duration)
-            if first_dur.is_none() {
-                let second_dur = extract_duration_value(second.as_ref());
-
-                if let Some(dur) = second_dur
-                    && let Some(factor) = coerce_to_number(&first, engine)
-                {
-                    let result = dur.multiply(factor);
-                    return Ok(Value::String(result.to_string()));
-                }
-            }
-        }
-    }
-
-    // Regular numeric multiplication
-    // Check if all values are integers
-    let mut all_integers = true;
-    let mut int_product: i64 = 1;
-    let mut float_product = 1.0;
-
-    for arg in args {
-        let value = engine.evaluate_node_cow(arg, context)?;
-
-        // Try integer coercion first
-        if let Some(i) = try_coerce_to_integer(&value, engine) {
-            if all_integers {
-                match int_product.checked_mul(i) {
-                    Some(p) => int_product = p,
-                    None => {
-                        all_integers = false;
-                        float_product = int_product as f64 * i as f64;
-                    }
-                }
-            } else {
-                float_product = safe_multiply(float_product, i as f64);
-            }
-        } else if let Some(f) = coerce_to_number(&value, engine) {
-            if all_integers {
-                float_product = int_product as f64 * f;
-            } else {
-                float_product = safe_multiply(float_product, f);
-            }
-            all_integers = false;
-        } else {
-            match handle_nan(engine)? {
-                NanAction::Skip => {}
-                NanAction::ReturnNull => return Ok(Value::Null),
-            }
-        }
-    }
-
-    if all_integers {
-        Ok(Value::Number(int_product.into()))
-    } else {
-        Ok(number_value(float_product))
-    }
-}
-
-/// Division operator function (/)
-#[inline]
-pub fn evaluate_divide(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Special case: single argument
-    if args.len() == 1 {
-        let value = engine.evaluate_node(&args[0], context)?;
-
-        // If it's an array, divide all elements sequentially
-        if let Value::Array(arr) = value {
-            if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-            }
-            // Divide elements: first / second / third / ...
-            let mut result =
-                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
-
-            for elem in &arr[1..] {
-                let num = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
-                if num == 0.0 {
-                    return Err(crate::constants::nan_error());
-                }
-                result = safe_divide(result, num);
-            }
-
-            return Ok(number_value(result));
-        }
-
-        // Single non-array argument: 1 / value
-        let num = coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
-
-        if num == 0.0 {
-            return Err(crate::constants::nan_error());
-        }
-
-        // Try to preserve integer type with overflow check
-        if let Some(i) = try_coerce_to_integer(&value, engine)
-            && i != 0
-        {
-            // Special case: avoid overflow when dividing by -1
-            if i == -1 {
-                return Ok(Value::Number((-1).into()));
-            }
-            if 1 % i == 0 {
-                return Ok(Value::Number((1 / i).into()));
-            }
-        }
-
-        return Ok(number_value(1.0 / num));
-    }
-
-    let first = engine.evaluate_node(&args[0], context)?;
-
-    if args.len() == 2 {
-        let second = engine.evaluate_node_cow(&args[1], context)?;
-
-        // Duration / Number
-        #[cfg(feature = "datetime")]
-        {
-            let first_dur = extract_duration_value(&first);
-
-            if let Some(dur) = first_dur
-                && let Some(divisor) = coerce_to_number(&second, engine)
-            {
-                if divisor == 0.0 {
-                    return Err(crate::constants::nan_error());
-                }
-                let result = dur.divide(divisor);
-                return Ok(Value::String(result.to_string()));
-            }
-        }
-
-        // Try integer division first if both can be coerced to integers
-        if let (Some(i1), Some(i2)) = (
-            try_coerce_to_integer(&first, engine),
-            try_coerce_to_integer(&second, engine),
-        ) {
-            if i2 == 0 {
-                return Err(crate::constants::nan_error());
-            }
-            // Special case: avoid overflow when dividing MIN by -1
-            if i1 == i64::MIN && i2 == -1 {
-                // This would overflow, use float instead
-                return Ok(number_value(-(i64::MIN as f64)));
-            }
-            // Check if division is exact (no remainder)
-            if i1 % i2 == 0 {
-                return Ok(Value::Number((i1 / i2).into()));
-            }
-        }
-
-        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
-        let second_num =
-            coerce_to_number(&second, engine).ok_or_else(crate::constants::nan_error)?;
-
-        if second_num == 0.0 {
-            return Err(crate::constants::nan_error());
-        }
-
-        Ok(number_value(first_num / second_num))
-    } else {
-        // Variadic division (3+ arguments)
-        // Try to maintain integer type if possible
-        let mut all_integers = true;
-        let mut int_result = if let Some(i) = try_coerce_to_integer(&first, engine) {
-            i
-        } else {
-            all_integers = false;
-            0
-        };
-        let mut float_result =
-            coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
-
-        for item in args.iter().skip(1) {
-            let value = engine.evaluate_node_cow(item, context)?;
-
-            if all_integers {
-                if let Some(divisor) = try_coerce_to_integer(&value, engine) {
-                    if divisor == 0 {
-                        return Err(crate::constants::nan_error());
-                    }
-                    // Special case: avoid overflow when dividing MIN by -1
-                    if int_result == i64::MIN && divisor == -1 {
-                        all_integers = false;
-                        float_result = -(i64::MIN as f64);
-                    } else if int_result % divisor == 0 {
-                        // Check if division is exact
-                        int_result /= divisor;
-                    } else {
-                        // Switch to float
-                        all_integers = false;
-                        float_result = int_result as f64 / divisor as f64;
-                    }
-                } else if let Some(divisor) = coerce_to_number(&value, engine) {
-                    if divisor == 0.0 {
-                        return Err(crate::constants::nan_error());
-                    }
-                    all_integers = false;
-                    float_result = int_result as f64 / divisor;
-                } else {
-                    return Ok(Value::Null);
-                }
-            } else {
-                let divisor =
-                    coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
-                if divisor == 0.0 {
-                    return Err(crate::constants::nan_error());
-                }
-                float_result = safe_divide(float_result, divisor);
-            }
-        }
-
-        if all_integers {
-            Ok(Value::Number(int_result.into()))
-        } else {
-            Ok(number_value(float_result))
-        }
-    }
-}
-
-/// Modulo operator function (%)
-#[inline]
-pub fn evaluate_modulo(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Special case: single array argument - modulo all elements sequentially
-    if args.len() == 1 {
-        let value = engine.evaluate_node(&args[0], context)?;
-        if let Value::Array(arr) = value {
-            if arr.is_empty() || arr.len() < 2 {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-            }
-            // Modulo elements: first % second % third % ...
-            let mut result =
-                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
-
-            for elem in &arr[1..] {
-                let num = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
-                if num == 0.0 {
-                    return Err(crate::constants::nan_error());
-                }
-                result = safe_modulo(result, num);
-            }
-
-            return Ok(number_value(result));
-        }
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    if args.len() < 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let first = engine.evaluate_node(&args[0], context)?;
-
-    if args.len() == 2 {
-        let second = engine.evaluate_node_cow(&args[1], context)?;
-
-        // Check if both are integers
-        if let (Value::Number(n1), Value::Number(n2)) = (&first, second.as_ref())
-            && let (Some(i1), Some(i2)) = (n1.as_i64(), n2.as_i64())
-        {
-            if i2 == 0 {
-                return Err(crate::constants::nan_error());
-            }
-            // Special case: i64::MIN % -1 would overflow in some contexts
-            if i1 == i64::MIN && i2 == -1 {
-                return Ok(Value::Number(0.into()));
-            }
-            return Ok(Value::Number((i1 % i2).into()));
-        }
-
-        let first_num = coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
-        let second_num =
-            coerce_to_number(&second, engine).ok_or_else(crate::constants::nan_error)?;
-
-        if second_num == 0.0 {
-            return Err(crate::constants::nan_error());
-        }
-
-        Ok(number_value(first_num % second_num))
-    } else {
-        // Variadic modulo (3+ arguments)
-        let mut result =
-            coerce_to_number(&first, engine).ok_or_else(crate::constants::nan_error)?;
-
-        for item in args.iter().skip(1) {
-            let value = engine.evaluate_node_cow(item, context)?;
-            let num = coerce_to_number(&value, engine).ok_or_else(crate::constants::nan_error)?;
-
-            if num == 0.0 {
-                return Err(crate::constants::nan_error());
-            }
-
-            result = safe_modulo(result, num);
-        }
-
-        Ok(number_value(result))
-    }
-}
-
-/// Max operator function - variadic
-#[inline]
-pub fn evaluate_max(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Special case: single argument
-    if args.len() == 1 {
-        // Check if it's a literal array (invalid for max)
-        if matches!(&args[0], CompiledNode::Array { .. }) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-        // Also check if it's a Value node containing an array
-        if let CompiledNode::Value { value, .. } = &args[0]
-            && matches!(value, Value::Array(_))
-        {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-
-        let value = engine.evaluate_node(&args[0], context)?;
-
-        // If evaluation produced an array, find max of its elements
-        if let Value::Array(arr) = value {
-            if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-            }
-
-            // Process array elements directly instead of recursing
-            let mut max_value: Option<Value> = None;
-            let mut max_num = f64::NEG_INFINITY;
-
-            for elem in arr {
-                if let Value::Number(n) = &elem {
-                    if let Some(f) = n.as_f64()
-                        && f > max_num
-                    {
-                        max_num = f;
-                        max_value = Some(elem);
-                    }
-                } else {
-                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-                }
-            }
-
-            return Ok(max_value.unwrap_or(Value::Null));
-        }
-
-        // Single non-array argument - check if it's numeric
-        if !matches!(value, Value::Number(_)) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-        return Ok(value);
-    }
-
-    let mut max_value: Option<Value> = None;
-    let mut max_num = f64::NEG_INFINITY;
-
-    for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
-
-        if let Value::Number(n) = &value {
-            if let Some(f) = n.as_f64()
-                && f > max_num
-            {
-                max_num = f;
-                max_value = Some(value);
-            }
-        } else {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-    }
-
-    // Return the actual value that was max (preserving integer type)
-    Ok(max_value.unwrap_or(Value::Null))
-}
-
-/// Min operator function - variadic
-#[inline]
-pub fn evaluate_min(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Special case: single argument
-    if args.len() == 1 {
-        // Check if it's a literal array (invalid for min)
-        if matches!(&args[0], CompiledNode::Array { .. }) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-        // Also check if it's a Value node containing an array
-        if let CompiledNode::Value { value, .. } = &args[0]
-            && matches!(value, Value::Array(_))
-        {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-
-        let value = engine.evaluate_node(&args[0], context)?;
-
-        // If evaluation produced an array, find min of its elements
-        if let Value::Array(arr) = value {
-            if arr.is_empty() {
-                return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-            }
-
-            // Process array elements directly instead of recursing
-            let mut min_value: Option<Value> = None;
-            let mut min_num = f64::INFINITY;
-
-            for elem in arr {
-                if let Value::Number(n) = &elem {
-                    if let Some(f) = n.as_f64()
-                        && f < min_num
-                    {
-                        min_num = f;
-                        min_value = Some(elem);
-                    }
-                } else {
-                    return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-                }
-            }
-
-            return Ok(min_value.unwrap_or(Value::Null));
-        }
-
-        // Single non-array argument - check if it's numeric
-        if !matches!(value, Value::Number(_)) {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-        return Ok(value);
-    }
-
-    let mut min_value: Option<Value> = None;
-    let mut min_num = f64::INFINITY;
-
-    for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
-
-        if let Value::Number(n) = &value {
-            if let Some(f) = n.as_f64()
-                && f < min_num
-            {
-                min_num = f;
-                min_value = Some(value);
-            }
-        } else {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-    }
-
-    // Return the actual value that was min (preserving integer type)
-    Ok(min_value.unwrap_or(Value::Null))
 }
 
 // =============================================================================
@@ -1116,16 +104,13 @@ use bumpalo::Bump;
 /// Generic helper for max/min over an arena-iterable input. `pick_better`
 /// returns true when `candidate_f` should replace `best_f` (strictly better).
 #[inline]
-#[allow(clippy::too_many_arguments)] // 5 contextual + init/pick_better/op_name
 fn arena_min_max<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
-    op_name: &str,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
@@ -1136,7 +121,7 @@ fn arena_min_max<'a>(
         let mut best_f = init;
         let mut best_av: Option<&'a ArenaValue<'a>> = None;
         for arg in args {
-            let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+            let av = engine.evaluate_arena_node(arg, actx, arena)?;
             let f = match av {
                 ArenaValue::Number(n) => n.as_f64(),
                 ArenaValue::InputRef(Value::Number(n)) => n
@@ -1165,7 +150,7 @@ fn arena_min_max<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
         ResolvedInput::Bridge(av) => {
@@ -1179,7 +164,6 @@ fn arena_min_max<'a>(
             // Single non-array arg: value-mode `evaluate_max`/`evaluate_min`
             // requires the operand to be a `Value::Number` and returns it
             // unchanged; non-numeric is InvalidArguments.
-            let _ = op_name;
             let is_number = matches!(
                 av,
                 ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
@@ -1282,20 +266,10 @@ fn arena_min_max_from_av<'a>(
 pub(crate) fn evaluate_max_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_min_max(
-        args,
-        actx,
-        context,
-        engine,
-        arena,
-        f64::NEG_INFINITY,
-        |c, b| c > b,
-        "max",
-    )
+    arena_min_max(args, actx, engine, arena, f64::NEG_INFINITY, |c, b| c > b)
 }
 
 /// Arena-mode min(single_array_arg).
@@ -1303,20 +277,10 @@ pub(crate) fn evaluate_max_arena<'a>(
 pub(crate) fn evaluate_min_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_min_max(
-        args,
-        actx,
-        context,
-        engine,
-        arena,
-        f64::INFINITY,
-        |c, b| c < b,
-        "min",
-    )
+    arena_min_max(args, actx, engine, arena, f64::INFINITY, |c, b| c < b)
 }
 
 /// Arena-mode `+`. Handles 0-arg (identity), 1-arg array (sum elements),
@@ -1326,7 +290,6 @@ pub(crate) fn evaluate_min_arena<'a>(
 pub(crate) fn evaluate_add_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -1334,17 +297,20 @@ pub(crate) fn evaluate_add_arena<'a>(
         return Ok(arena_number(arena, NumberValue::from_i64(0)));
     }
     if args.len() == 1 {
-        return arena_one_arg_arith(&args[0], actx, context, engine, arena, ArithOp::Add);
+        return arena_one_arg_arith(&args[0], actx, engine, arena, ArithOp::Add);
     }
     if args.len() == 2 {
-        let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-        let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+        let a_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+        let b_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
 
         // Integer-preserving fast path (both native Number with i64 values).
         if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
             return match ia.checked_add(ib) {
                 Some(s) => Ok(arena_number(arena, NumberValue::from_i64(s))),
-                None => Ok(arena_number(arena, NumberValue::from_f64(ia as f64 + ib as f64))),
+                None => Ok(arena_number(
+                    arena,
+                    NumberValue::from_f64(ia as f64 + ib as f64),
+                )),
             };
         }
 
@@ -1358,7 +324,10 @@ pub(crate) fn evaluate_add_arena<'a>(
         ) {
             return match i1.checked_add(i2) {
                 Some(s) => Ok(arena_number(arena, NumberValue::from_i64(s))),
-                None => Ok(arena_number(arena, NumberValue::from_f64(i1 as f64 + i2 as f64))),
+                None => Ok(arena_number(
+                    arena,
+                    NumberValue::from_f64(i1 as f64 + i2 as f64),
+                )),
             };
         }
         if let (Some(f1), Some(f2)) = (
@@ -1391,9 +360,18 @@ pub(crate) fn evaluate_add_arena<'a>(
         }
         return Ok(arena_number(arena, NumberValue::from_f64(sum)));
     }
-    arena_variadic_fold(args, actx, context, engine, arena, "+", 0, 0.0, |a, b| {
-        a.checked_add(b)
-    })
+    arena_variadic_fold(
+        args,
+        actx,
+        engine,
+        arena,
+        VariadicFoldSpec {
+            int_init: 0,
+            float_init: 0.0,
+            i_combine: i64::checked_add,
+            f_combine: |a, b| a + b,
+        },
+    )
 }
 
 /// Arena-mode `*`. 0-arg (1), 1-arg array (product), 1-arg scalar,
@@ -1402,7 +380,6 @@ pub(crate) fn evaluate_add_arena<'a>(
 pub(crate) fn evaluate_multiply_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -1410,17 +387,20 @@ pub(crate) fn evaluate_multiply_arena<'a>(
         return Ok(arena_number(arena, NumberValue::from_i64(1)));
     }
     if args.len() == 1 {
-        return arena_one_arg_arith(&args[0], actx, context, engine, arena, ArithOp::Multiply);
+        return arena_one_arg_arith(&args[0], actx, engine, arena, ArithOp::Multiply);
     }
     if args.len() == 2 {
-        let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-        let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+        let a_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+        let b_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
 
         // Integer-preserving fast path.
         if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
             return match ia.checked_mul(ib) {
                 Some(p) => Ok(arena_number(arena, NumberValue::from_i64(p))),
-                None => Ok(arena_number(arena, NumberValue::from_f64(ia as f64 * ib as f64))),
+                None => Ok(arena_number(
+                    arena,
+                    NumberValue::from_f64(ia as f64 * ib as f64),
+                )),
             };
         }
 
@@ -1442,7 +422,10 @@ pub(crate) fn evaluate_multiply_arena<'a>(
         ) {
             return match i1.checked_mul(i2) {
                 Some(p) => Ok(arena_number(arena, NumberValue::from_i64(p))),
-                None => Ok(arena_number(arena, NumberValue::from_f64(i1 as f64 * i2 as f64))),
+                None => Ok(arena_number(
+                    arena,
+                    NumberValue::from_f64(i1 as f64 * i2 as f64),
+                )),
             };
         }
         if let (Some(f1), Some(f2)) = (
@@ -1466,64 +449,69 @@ pub(crate) fn evaluate_multiply_arena<'a>(
         }
         return Ok(arena_number(arena, NumberValue::from_f64(product)));
     }
-    arena_variadic_fold(args, actx, context, engine, arena, "*", 1, 1.0, |a, b| {
-        a.checked_mul(b)
-    })
+    arena_variadic_fold(
+        args,
+        actx,
+        engine,
+        arena,
+        VariadicFoldSpec {
+            int_init: 1,
+            float_init: 1.0,
+            i_combine: i64::checked_mul,
+            f_combine: |a, b| a * b,
+        },
+    )
+}
+
+/// Spec for an integer-fast-path / float-fallback variadic fold:
+/// inits, the integer combine (with overflow signaling via `None`), and
+/// the float combine.
+struct VariadicFoldSpec {
+    int_init: i64,
+    float_init: f64,
+    i_combine: fn(i64, i64) -> Option<i64>,
+    f_combine: fn(f64, f64) -> f64,
 }
 
 /// Variadic fold over arena-evaluated args with integer-fast-path and
 /// overflow promotion to f64. Used by `+` and `*` for the 2+ arg form.
-/// `f_combine` produces the f64 result; `i_combine` does the checked
-/// integer op. Non-numeric args trigger NaN handling per engine config.
+/// Non-numeric args trigger NaN handling per engine config.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn arena_variadic_fold<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    op_name: &str,
-    int_init: i64,
-    float_init: f64,
-    i_combine: fn(i64, i64) -> Option<i64>,
+    spec: VariadicFoldSpec,
 ) -> Result<&'a ArenaValue<'a>> {
-    let mut int_acc: i64 = int_init;
-    let mut float_acc: f64 = float_init;
+    let mut int_acc: i64 = spec.int_init;
+    let mut float_acc: f64 = spec.float_init;
     let mut all_int = true;
 
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
-        if all_int {
-            if let Some(i) = av.as_i64() {
-                match i_combine(int_acc, i) {
-                    Some(r) => int_acc = r,
-                    None => {
-                        all_int = false;
-                        float_acc = match op_name {
-                            "+" => int_acc as f64 + i as f64,
-                            "*" => int_acc as f64 * i as f64,
-                            _ => unreachable!(),
-                        };
-                    }
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        if all_int && let Some(i) = av.as_i64() {
+            match (spec.i_combine)(int_acc, i) {
+                Some(r) => int_acc = r,
+                None => {
+                    all_int = false;
+                    float_acc = (spec.f_combine)(int_acc as f64, i as f64);
                 }
-                continue;
             }
+            continue;
         }
-        if let Some(f) = av.as_f64() {
+        // Try `as_f64` for native numbers first; fall back to value-mode
+        // coercion so `true`/`false`/`null`/numeric strings compose like
+        // they do in the legacy variadic path.
+        let f_opt = av
+            .as_f64()
+            .or_else(|| coerce_to_number(&crate::arena::arena_to_value_cow(av), engine));
+        if let Some(f) = f_opt {
             if all_int {
                 all_int = false;
-                float_acc = match op_name {
-                    "+" => int_acc as f64 + f,
-                    "*" => int_acc as f64 * f,
-                    _ => unreachable!(),
-                };
+                float_acc = (spec.f_combine)(int_acc as f64, f);
             } else {
-                float_acc = match op_name {
-                    "+" => float_acc + f,
-                    "*" => float_acc * f,
-                    _ => unreachable!(),
-                };
+                float_acc = (spec.f_combine)(float_acc, f);
             }
         } else {
             // Non-numeric operand — value-mode `evaluate_add` / `evaluate_multiply`
@@ -1602,7 +590,6 @@ impl ArithOp {
 fn arena_one_arg_arith<'a>(
     arg: &CompiledNode,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     op: ArithOp,
@@ -1610,28 +597,43 @@ fn arena_one_arg_arith<'a>(
     // Literal array argument is invalid for + / *. Apply NaN config (default
     // ThrowError → propagates the error up).
     let is_literal_array = matches!(arg, CompiledNode::Array { .. })
-        || matches!(arg, CompiledNode::Value { value: Value::Array(_), .. });
+        || matches!(
+            arg,
+            CompiledNode::Value {
+                value: Value::Array(_),
+                ..
+            }
+        );
     if is_literal_array {
         return match handle_nan(engine)? {
-            NanAction::Skip => Ok(arena_number(arena, NumberValue::from_i64(op.identity_int()))),
+            NanAction::Skip => Ok(arena_number(
+                arena,
+                NumberValue::from_i64(op.identity_int()),
+            )),
             NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
         };
     }
 
-    let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+    let av = engine.evaluate_arena_node(arg, actx, arena)?;
 
     // Array result (e.g. from `var "items"`): fold all elements.
     let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
         ArenaValue::InputRef(Value::Array(arr)) => Some(std::borrow::Cow::Borrowed(arr.as_slice())),
         ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
-            items.iter().map(crate::arena::arena_to_value).collect::<Vec<_>>(),
+            items
+                .iter()
+                .map(crate::arena::arena_to_value)
+                .collect::<Vec<_>>(),
         )),
         _ => None,
     };
     if let Some(arr) = array_cow {
         if arr.is_empty() {
             // 1-arg evaluating to empty array: + → 0, * → 1.
-            return Ok(arena_number(arena, NumberValue::from_i64(op.identity_int())));
+            return Ok(arena_number(
+                arena,
+                NumberValue::from_i64(op.identity_int()),
+            ));
         }
         let mut all_int = true;
         let mut int_acc: i64 = op.identity_int();
@@ -1688,7 +690,10 @@ fn arena_one_arg_arith<'a>(
         ));
     }
     match handle_nan(engine)? {
-        NanAction::Skip => Ok(arena_number(arena, NumberValue::from_i64(op.identity_int()))),
+        NanAction::Skip => Ok(arena_number(
+            arena,
+            NumberValue::from_i64(op.identity_int()),
+        )),
         NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
     }
 }
@@ -1810,24 +815,51 @@ fn arena_datetime_multiply<'a>(
     None
 }
 
+/// Native arena `Duration / Number`. Mirrors the value-mode branch in
+/// `evaluate_divide` (line ~745). Returns `None` for non-duration LHS so
+/// the generic numeric path handles regular division.
+#[cfg(feature = "datetime")]
+#[inline]
+fn arena_datetime_divide<'a>(
+    a_av: &'a ArenaValue<'a>,
+    b_av: &'a ArenaValue<'a>,
+    arena: &'a Bump,
+) -> Option<crate::Result<&'a ArenaValue<'a>>> {
+    use crate::operators::helpers::extract_duration_value;
+
+    let a = crate::arena::arena_to_value_cow(a_av);
+    let a_dur = extract_duration_value(a.as_ref())?;
+    let divisor = coerce_arena_to_number(b_av).or_else(|| {
+        let b = crate::arena::arena_to_value_cow(b_av);
+        b.as_f64()
+    })?;
+    if divisor == 0.0 {
+        return Some(Err(crate::constants::nan_error()));
+    }
+    let s = arena.alloc_str(&a_dur.divide(divisor).to_string());
+    Some(Ok(arena.alloc(ArenaValue::String(s))))
+}
+
 #[inline]
 pub(crate) fn evaluate_subtract_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     // 1-arg subtract: array → fold (first - second - ...); else negate.
     if args.len() == 1 {
-        let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
         // Array fold case.
         let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
             ArenaValue::InputRef(Value::Array(arr)) => {
                 Some(std::borrow::Cow::Borrowed(arr.as_slice()))
             }
             ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
-                items.iter().map(crate::arena::arena_to_value).collect::<Vec<_>>(),
+                items
+                    .iter()
+                    .map(crate::arena::arena_to_value)
+                    .collect::<Vec<_>>(),
             )),
             _ => None,
         };
@@ -1835,11 +867,10 @@ pub(crate) fn evaluate_subtract_arena<'a>(
             if arr.is_empty() {
                 return Err(Error::InvalidArguments(INVALID_ARGS.into()));
             }
-            let mut result = coerce_to_number(&arr[0], engine)
-                .ok_or_else(crate::constants::nan_error)?;
+            let mut result =
+                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
             for elem in &arr[1..] {
-                let n = coerce_to_number(elem, engine)
-                    .ok_or_else(crate::constants::nan_error)?;
+                let n = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
                 result -= n;
             }
             return Ok(arena_number(arena, NumberValue::from_f64(result)));
@@ -1860,14 +891,17 @@ pub(crate) fn evaluate_subtract_arena<'a>(
         return Err(crate::constants::nan_error());
     }
     if args.len() == 2 {
-        let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-        let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+        let a_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+        let b_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
 
         // Integer-preserving fast path.
         if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
             return match ia.checked_sub(ib) {
                 Some(d) => Ok(arena_number(arena, NumberValue::from_i64(d))),
-                None => Ok(arena_number(arena, NumberValue::from_f64(ia as f64 - ib as f64))),
+                None => Ok(arena_number(
+                    arena,
+                    NumberValue::from_f64(ia as f64 - ib as f64),
+                )),
             };
         }
 
@@ -1880,7 +914,10 @@ pub(crate) fn evaluate_subtract_arena<'a>(
         ) {
             return match i1.checked_sub(i2) {
                 Some(d) => Ok(arena_number(arena, NumberValue::from_i64(d))),
-                None => Ok(arena_number(arena, NumberValue::from_f64(i1 as f64 - i2 as f64))),
+                None => Ok(arena_number(
+                    arena,
+                    NumberValue::from_f64(i1 as f64 - i2 as f64),
+                )),
             };
         }
         if let (Some(f1), Some(f2)) = (
@@ -1908,36 +945,33 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     if args.is_empty() {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    let mut int_acc: i64 = match first_av.as_i64() {
-        Some(i) => i,
-        None => match first_av.as_f64() {
-            Some(_) => 0, // float path — int_acc unused
-            None => return Ok(crate::arena::pool::singleton_null()),
-        },
-    };
-    let mut all_int = first_av.as_i64().is_some();
-    let mut float_acc: f64 = if all_int {
-        int_acc as f64
-    } else {
-        first_av.as_f64().unwrap()
+    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let first_cow = crate::arena::arena_to_value_cow(first_av);
+    let mut all_int =
+        first_av.as_i64().is_some() || try_coerce_to_integer(&first_cow, engine).is_some();
+    let mut int_acc: i64 = first_av
+        .as_i64()
+        .or_else(|| try_coerce_to_integer(&first_cow, engine))
+        .unwrap_or_default();
+    let mut float_acc: f64 = match coerce_to_number(&first_cow, engine) {
+        Some(f) => f,
+        None => return Err(crate::constants::nan_error()),
     };
 
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
-        if all_int {
-            if let Some(i) = av.as_i64() {
-                match int_acc.checked_sub(i) {
-                    Some(r) => int_acc = r,
-                    None => {
-                        all_int = false;
-                        float_acc = int_acc as f64 - i as f64;
-                    }
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let cow = crate::arena::arena_to_value_cow(av);
+        if all_int && let Some(i) = av.as_i64().or_else(|| try_coerce_to_integer(&cow, engine)) {
+            match int_acc.checked_sub(i) {
+                Some(r) => int_acc = r,
+                None => {
+                    all_int = false;
+                    float_acc = int_acc as f64 - i as f64;
                 }
-                continue;
             }
+            continue;
         }
-        if let Some(f) = av.as_f64() {
+        if let Some(f) = coerce_to_number(&cow, engine) {
             if all_int {
                 all_int = false;
                 float_acc = int_acc as f64 - f;
@@ -1965,11 +999,10 @@ pub(crate) fn evaluate_subtract_arena<'a>(
 pub(crate) fn evaluate_divide_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_div_or_mod(args, actx, context, engine, arena, |a, b| a.div(b), false)
+    arena_div_or_mod(args, actx, engine, arena, |a, b| a.div(b), false)
 }
 
 /// Native arena-mode `%` (modulo).
@@ -1977,18 +1010,16 @@ pub(crate) fn evaluate_divide_arena<'a>(
 pub(crate) fn evaluate_modulo_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_div_or_mod(args, actx, context, engine, arena, |a, b| a.rem(b), true)
+    arena_div_or_mod(args, actx, engine, arena, |a, b| a.rem(b), true)
 }
 
 #[inline]
 fn arena_div_or_mod<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     op: fn(&NumberValue, &NumberValue) -> Option<NumberValue>,
@@ -1998,13 +1029,20 @@ fn arena_div_or_mod<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
     if args.len() == 1 {
-        return arena_one_arg_div_mod(&args[0], actx, context, engine, arena, is_modulo);
+        return arena_one_arg_div_mod(&args[0], actx, engine, arena, is_modulo);
     }
     if args.len() > 2 {
-        return arena_variadic_div_mod(args, actx, context, engine, arena, is_modulo);
+        return arena_variadic_div_mod(args, actx, engine, arena, is_modulo);
     }
-    let a_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    let b_av = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+    let a_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let b_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
+
+    // Duration / Number — only for `/`, not `%` (modulo on durations isn't
+    // a value-mode op either).
+    #[cfg(feature = "datetime")]
+    if !is_modulo && let Some(r) = arena_datetime_divide(a_av, b_av, arena) {
+        return r;
+    }
 
     // Config-aware coercion via Cow (free for InputRef).
     let a_cow = crate::arena::arena_to_value_cow(a_av);
@@ -2072,19 +1110,19 @@ fn divbyzero_arena<'a>(
 fn arena_one_arg_div_mod<'a>(
     arg: &CompiledNode,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     is_modulo: bool,
 ) -> Result<&'a ArenaValue<'a>> {
-    let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+    let av = engine.evaluate_arena_node(arg, actx, arena)?;
 
     let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
-        ArenaValue::InputRef(Value::Array(arr)) => {
-            Some(std::borrow::Cow::Borrowed(arr.as_slice()))
-        }
+        ArenaValue::InputRef(Value::Array(arr)) => Some(std::borrow::Cow::Borrowed(arr.as_slice())),
         ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
-            items.iter().map(crate::arena::arena_to_value).collect::<Vec<_>>(),
+            items
+                .iter()
+                .map(crate::arena::arena_to_value)
+                .collect::<Vec<_>>(),
         )),
         _ => None,
     };
@@ -2093,11 +1131,10 @@ fn arena_one_arg_div_mod<'a>(
         if arr.is_empty() || (is_modulo && arr.len() < 2) {
             return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
-        let mut result = coerce_to_number(&arr[0], engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let mut result =
+            coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
         for elem in &arr[1..] {
-            let n = coerce_to_number(elem, engine)
-                .ok_or_else(crate::constants::nan_error)?;
+            let n = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
             if n == 0.0 {
                 return Err(crate::constants::nan_error());
             }
@@ -2136,17 +1173,16 @@ fn arena_one_arg_div_mod<'a>(
 fn arena_variadic_div_mod<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     is_modulo: bool,
 ) -> Result<&'a ArenaValue<'a>> {
-    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first_cow = crate::arena::arena_to_value_cow(first_av);
-    let mut result = coerce_to_number(&first_cow, engine)
-        .ok_or_else(crate::constants::nan_error)?;
+    let mut result =
+        coerce_to_number(&first_cow, engine).ok_or_else(crate::constants::nan_error)?;
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
         let cow = crate::arena::arena_to_value_cow(av);
         let n = coerce_to_number(&cow, engine).ok_or_else(crate::constants::nan_error)?;
         if n == 0.0 {
@@ -2181,7 +1217,6 @@ fn arena_value_strict_f64(av: &ArenaValue<'_>) -> Option<f64> {
 fn arena_unary_math<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     op_fn: fn(f64) -> f64,
@@ -2200,7 +1235,7 @@ fn arena_unary_math<'a>(
     };
 
     if args.len() == 1 {
-        let av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+        let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
         let n = arena_value_strict_f64(av)
             .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
         return Ok(to_arena(op_fn(n), arena));
@@ -2209,7 +1244,7 @@ fn arena_unary_math<'a>(
     let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
         let n = arena_value_strict_f64(av)
             .ok_or_else(|| Error::InvalidArguments(INVALID_ARGS.into()))?;
         let r = to_arena(op_fn(n), arena);
@@ -2223,11 +1258,10 @@ fn arena_unary_math<'a>(
 pub(crate) fn evaluate_abs_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_unary_math(args, actx, context, engine, arena, f64::abs, false)
+    arena_unary_math(args, actx, engine, arena, f64::abs, false)
 }
 
 #[cfg(feature = "ext-math")]
@@ -2235,11 +1269,10 @@ pub(crate) fn evaluate_abs_arena<'a>(
 pub(crate) fn evaluate_ceil_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_unary_math(args, actx, context, engine, arena, f64::ceil, true)
+    arena_unary_math(args, actx, engine, arena, f64::ceil, true)
 }
 
 #[cfg(feature = "ext-math")]
@@ -2247,9 +1280,8 @@ pub(crate) fn evaluate_ceil_arena<'a>(
 pub(crate) fn evaluate_floor_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    arena_unary_math(args, actx, context, engine, arena, f64::floor, true)
+    arena_unary_math(args, actx, engine, arena, f64::floor, true)
 }

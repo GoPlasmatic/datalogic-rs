@@ -69,9 +69,27 @@ fn main() {
     println!("  {}", "-".repeat(90));
 
     // ---- Cases that should not regress (unchanged dispatch path) ----
-    measure("const true", &engine, serde_json::json!(true), Value::Null, iters);
-    measure("var: a", &engine, serde_json::json!({"var": "a"}), serde_json::json!({"a": 1}), iters);
-    measure("+ (2 ints)", &engine, serde_json::json!({"+": [{"var":"a"},{"var":"b"}]}), serde_json::json!({"a":1,"b":2}), iters);
+    measure(
+        "const true",
+        &engine,
+        serde_json::json!(true),
+        Value::Null,
+        iters,
+    );
+    measure(
+        "var: a",
+        &engine,
+        serde_json::json!({"var": "a"}),
+        serde_json::json!({"a": 1}),
+        iters,
+    );
+    measure(
+        "+ (2 ints)",
+        &engine,
+        serde_json::json!({"+": [{"var":"a"},{"var":"b"}]}),
+        serde_json::json!({"a":1,"b":2}),
+        iters,
+    );
     measure(
         "if/=== (true str branch)",
         &engine,

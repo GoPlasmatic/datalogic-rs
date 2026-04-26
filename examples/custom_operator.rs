@@ -1,13 +1,14 @@
 //! Example demonstrating how to create and use custom operators in DataLogic.
 //!
-//! Custom operators allow you to extend JSONLogic with domain-specific functionality.
-//! This example shows several patterns for implementing custom operators.
-//!
-//! IMPORTANT: Custom operators receive UNEVALUATED arguments (raw JSON logic).
-//! You must call `evaluator.evaluate(&arg, context)` to evaluate each argument.
+//! Custom operators are implemented via the `ArenaOperator` trait, which
+//! receives **pre-evaluated** arguments as `&ArenaValue` borrows and returns
+//! an arena-allocated `ArenaValue` result. This avoids the per-call clone of
+//! `serde_json::Value` and is required to register a custom op with the
+//! engine.
 
-use datalogic_rs::{ContextStack, DataLogic, Error, Evaluator, Operator, Result};
-use serde_json::{Value, json};
+use bumpalo::Bump;
+use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Error, Result};
+use serde_json::json;
 
 /// A simple operator that calculates the average of an array of numbers.
 ///
@@ -15,44 +16,50 @@ use serde_json::{Value, json};
 /// Or:    {"avg": {"var": "scores"}} -> average of scores array
 struct AverageOperator;
 
-impl Operator for AverageOperator {
-    fn evaluate(
+impl ArenaOperator for AverageOperator {
+    fn evaluate_arena<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
+        args: &[&'a ArenaValue<'a>],
+        _actx: &mut ArenaContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a ArenaValue<'a>> {
         if args.is_empty() {
-            return Ok(Value::Null);
+            return Ok(arena.alloc(ArenaValue::Null));
         }
 
-        // Evaluate the first argument (it could be a var reference, literal, etc.)
-        let evaluated = evaluator.evaluate(&args[0], context)?;
-
-        // Collect numbers from the evaluated result
-        let numbers: Vec<f64> = if let Some(arr) = evaluated.as_array() {
-            arr.iter().filter_map(|v| v.as_f64()).collect()
-        } else if let Some(n) = evaluated.as_f64() {
-            // Single number - evaluate all args and average them
-            let mut nums = vec![n];
-            for arg in args.iter().skip(1) {
-                let val = evaluator.evaluate(arg, context)?;
-                if let Some(n) = val.as_f64() {
-                    nums.push(n);
+        // Collect numbers from each argument. Arrays unpack into their
+        // numeric elements; primitive numbers are taken as-is.
+        let mut numbers: Vec<f64> = Vec::new();
+        for av in args {
+            match av {
+                ArenaValue::Array(items) => {
+                    for it in items.iter() {
+                        if let Some(n) = it.as_f64() {
+                            numbers.push(n);
+                        }
+                    }
+                }
+                ArenaValue::InputRef(serde_json::Value::Array(arr)) => {
+                    for v in arr {
+                        if let Some(n) = v.as_f64() {
+                            numbers.push(n);
+                        }
+                    }
+                }
+                other => {
+                    if let Some(n) = other.as_f64() {
+                        numbers.push(n);
+                    }
                 }
             }
-            nums
-        } else {
-            return Ok(Value::Null);
-        };
-
-        if numbers.is_empty() {
-            return Ok(Value::Null);
         }
 
-        let sum: f64 = numbers.iter().sum();
-        let avg = sum / numbers.len() as f64;
-        Ok(json!(avg))
+        if numbers.is_empty() {
+            return Ok(arena.alloc(ArenaValue::Null));
+        }
+
+        let avg = numbers.iter().sum::<f64>() / numbers.len() as f64;
+        Ok(arena.alloc(ArenaValue::from_f64(avg)))
     }
 }
 
@@ -61,114 +68,79 @@ impl Operator for AverageOperator {
 /// Usage: {"between": [value, min, max]} -> boolean
 struct BetweenOperator;
 
-impl Operator for BetweenOperator {
-    fn evaluate(
+impl ArenaOperator for BetweenOperator {
+    fn evaluate_arena<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
+        args: &[&'a ArenaValue<'a>],
+        _actx: &mut ArenaContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a ArenaValue<'a>> {
         if args.len() < 3 {
             return Err(Error::InvalidArguments(
                 "between requires 3 arguments: value, min, max".to_string(),
             ));
         }
-
-        // Evaluate all arguments first
-        let value_result = evaluator.evaluate(&args[0], context)?;
-        let min_result = evaluator.evaluate(&args[1], context)?;
-        let max_result = evaluator.evaluate(&args[2], context)?;
-
-        let value = value_result.as_f64().ok_or_else(|| {
-            Error::InvalidArguments("First argument must evaluate to a number".to_string())
-        })?;
-        let min = min_result.as_f64().ok_or_else(|| {
-            Error::InvalidArguments("Second argument must evaluate to a number".to_string())
-        })?;
-        let max = max_result.as_f64().ok_or_else(|| {
-            Error::InvalidArguments("Third argument must evaluate to a number".to_string())
-        })?;
-
-        Ok(json!(value >= min && value <= max))
+        let v = args[0]
+            .as_f64()
+            .ok_or_else(|| Error::InvalidArguments("value must be a number".into()))?;
+        let lo = args[1]
+            .as_f64()
+            .ok_or_else(|| Error::InvalidArguments("min must be a number".into()))?;
+        let hi = args[2]
+            .as_f64()
+            .ok_or_else(|| Error::InvalidArguments("max must be a number".into()))?;
+        Ok(arena.alloc(ArenaValue::Bool(v >= lo && v <= hi)))
     }
 }
 
 /// An operator that formats a string with placeholders.
 ///
 /// Usage: {"format": ["Hello, {}!", "World"]} -> "Hello, World!"
-/// Or:    {"format": ["Hello, {}!", {"var": "name"}]} -> "Hello, Alice!"
 struct FormatOperator;
 
-impl Operator for FormatOperator {
-    fn evaluate(
+impl ArenaOperator for FormatOperator {
+    fn evaluate_arena<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
+        args: &[&'a ArenaValue<'a>],
+        _actx: &mut ArenaContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a ArenaValue<'a>> {
         if args.is_empty() {
             return Err(Error::InvalidArguments(
                 "format requires at least a template string".to_string(),
             ));
         }
-
-        // Evaluate the template
-        let template_val = evaluator.evaluate(&args[0], context)?;
-        let template = template_val.as_str().ok_or_else(|| {
-            Error::InvalidArguments("First argument must evaluate to a string".to_string())
+        let template = args[0].as_str().ok_or_else(|| {
+            Error::InvalidArguments("first argument must be a string".to_string())
         })?;
 
         let mut result = template.to_string();
-        for arg in args.iter().skip(1) {
+        for av in args.iter().skip(1) {
             if let Some(pos) = result.find("{}") {
-                // Evaluate each replacement argument
-                let evaluated = evaluator.evaluate(arg, context)?;
-                let replacement = match &evaluated {
-                    Value::String(s) => s.clone(),
-                    Value::Number(n) => n.to_string(),
-                    Value::Bool(b) => b.to_string(),
-                    Value::Null => "null".to_string(),
-                    _ => evaluated.to_string(),
+                let replacement = match av {
+                    ArenaValue::String(s) => (*s).to_string(),
+                    ArenaValue::InputRef(serde_json::Value::String(s)) => s.clone(),
+                    ArenaValue::Bool(b) => b.to_string(),
+                    ArenaValue::Null => "null".to_string(),
+                    ArenaValue::Number(_) => av
+                        .as_f64()
+                        .map(|n| {
+                            if n.fract() == 0.0 {
+                                (n as i64).to_string()
+                            } else {
+                                n.to_string()
+                            }
+                        })
+                        .unwrap_or_default(),
+                    ArenaValue::InputRef(v) => v.to_string(),
+                    _ => "<value>".to_string(),
                 };
                 result.replace_range(pos..pos + 2, &replacement);
             }
         }
 
-        Ok(json!(result))
-    }
-}
-
-/// An operator that evaluates sub-expressions conditionally (demonstrates recursion).
-///
-/// Usage: {"when_positive": [{"var": "x"}, {"*": [{"var": "x"}, 2]}]}
-/// Returns the second expression's result only if first expression is positive, otherwise null.
-struct WhenPositiveOperator;
-
-impl Operator for WhenPositiveOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        if args.len() < 2 {
-            return Err(Error::InvalidArguments(
-                "when_positive requires 2 arguments".to_string(),
-            ));
-        }
-
-        // Evaluate the first argument to get the condition value
-        let condition = evaluator.evaluate(&args[0], context)?;
-        let value = condition.as_f64();
-
-        if let Some(v) = value
-            && v > 0.0
-        {
-            // Recursively evaluate the second argument
-            return evaluator.evaluate(&args[1], context);
-        }
-
-        Ok(Value::Null)
+        let s = arena.alloc_str(&result);
+        Ok(arena.alloc(ArenaValue::String(s)))
     }
 }
 
@@ -178,10 +150,9 @@ fn main() {
 
     // Create engine and register custom operators
     let mut engine = DataLogic::new();
-    engine.add_operator("avg".to_string(), Box::new(AverageOperator));
-    engine.add_operator("between".to_string(), Box::new(BetweenOperator));
-    engine.add_operator("format".to_string(), Box::new(FormatOperator));
-    engine.add_operator("when_positive".to_string(), Box::new(WhenPositiveOperator));
+    engine.add_arena_operator("avg".to_string(), Box::new(AverageOperator));
+    engine.add_arena_operator("between".to_string(), Box::new(BetweenOperator));
+    engine.add_arena_operator("format".to_string(), Box::new(FormatOperator));
 
     // Example 1: Average operator
     println!("1. Average Operator");
@@ -250,20 +221,6 @@ fn main() {
         let result = engine.evaluate_owned(&compiled, data).unwrap();
         println!("   Score {} -> Grade {}", score, result);
     }
-
-    println!("\n5. When Positive Operator");
-    println!("-------------------------");
-
-    let logic = json!({"when_positive": [{"var": "x"}, {"*": [{"var": "x"}, 2]}]});
-    let compiled = engine.compile(&logic).unwrap();
-
-    let data1 = json!({"x": 5});
-    let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
-    println!("   x=5 -> {}", result1);
-
-    let data2 = json!({"x": -3});
-    let result2 = engine.evaluate_owned(&compiled, data2).unwrap();
-    println!("   x=-3 -> {}", result2);
 
     println!("\nDone!");
 }

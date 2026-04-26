@@ -3,14 +3,12 @@ use serde_json::Value;
 #[cfg(feature = "ext-array")]
 use std::cmp::Ordering;
 
-use super::helpers::is_truthy;
 use super::variable;
 use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use crate::constants::INVALID_ARGS;
-use crate::eval_mode::Mode;
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
-use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
+use crate::{CompiledNode, DataLogic, Error, Result};
 use bumpalo::Bump;
 
 /// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
@@ -48,40 +46,25 @@ fn try_extract_filter_field_cmp<'a>(
     None
 }
 
-/// Evaluate a loop-invariant node without pushing a dummy frame.
-/// For CompiledVar with scope_level > 0, uses scope_level - 1 to compensate for
-/// the missing dummy frame (get_at_level(N) with D+1 frames == get_at_level(N-1) with D frames).
-/// Falls back to dummy push/pop for other node types.
-fn evaluate_invariant_no_push(
+/// Evaluate a loop-invariant predicate-side node once, before iteration.
+/// Literal values clone directly; outer-scope `CompiledVar`s resolve through
+/// arena dispatch with a synthesized null iter frame so the var sees the
+/// outer context unaffected by the missing iter frame this fast path skips.
+#[inline]
+fn evaluate_invariant_no_push<'a>(
     invariant_node: &CompiledNode,
-    context: &mut ContextStack,
+    actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
+    arena: &'a Bump,
 ) -> Result<Value> {
-    match invariant_node {
-        CompiledNode::Value { value, .. } => Ok(value.clone()),
-        CompiledNode::CompiledVar {
-            scope_level,
-            segments,
-            reduce_hint: ReduceHint::None,
-            metadata_hint: MetadataHint::None,
-            default_value,
-            ..
-        } if *scope_level > 0 => variable::evaluate_compiled_var(
-            scope_level - 1,
-            segments,
-            ReduceHint::None,
-            MetadataHint::None,
-            default_value.as_deref(),
-            context,
-            engine,
-        ),
-        _ => {
-            context.push(Value::Null);
-            let result = engine.evaluate_node(invariant_node, context)?;
-            context.pop();
-            Ok(result)
-        }
+    if let CompiledNode::Value { value, .. } = invariant_node {
+        return Ok(value.clone());
     }
+    let null_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::Null);
+    actx.push(null_av);
+    let result = engine.evaluate_arena_node(invariant_node, actx, arena);
+    actx.pop();
+    result.map(crate::arena::arena_to_value)
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter operators.
@@ -253,1204 +236,6 @@ fn inline_numeric_cmp(lhs: f64, rhs: f64, opcode: OpCode) -> bool {
     }
 }
 
-/// Try to execute a reduce fast path for simple arithmetic accumulation patterns.
-/// Detects {op: [val("current"), val("accumulator")]} or {op: [val("accumulator"), val("current")]}.
-/// Also handles field access on current: {op: [val("accumulator"), val("current", "field")]}.
-fn try_reduce_fast_path(
-    arr: &[Value],
-    initial: &Value,
-    body_args: &[CompiledNode],
-    opcode: OpCode,
-) -> Option<Value> {
-    // Identify which arg is current and which is accumulator
-    let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
-        (
-            CompiledNode::CompiledVar {
-                reduce_hint: hint0, ..
-            },
-            CompiledNode::CompiledVar {
-                reduce_hint: hint1, ..
-            },
-        ) => match (hint0, hint1) {
-            (
-                ReduceHint::Current | ReduceHint::CurrentPath,
-                ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
-            ) => (&body_args[0], &body_args[1]),
-            (
-                ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
-                ReduceHint::Current | ReduceHint::CurrentPath,
-            ) => (&body_args[1], &body_args[0]),
-            _ => return None,
-        },
-        _ => return None,
-    };
-
-    // Extract field segments if current has a path (e.g., val("current", "qty"))
-    let current_segments = if let CompiledNode::CompiledVar {
-        segments,
-        reduce_hint,
-        ..
-    } = current_arg
-    {
-        match reduce_hint {
-            ReduceHint::Current => &[][..], // Direct value access
-            ReduceHint::CurrentPath => {
-                if segments.len() >= 2 {
-                    &segments[1..]
-                } else {
-                    return None;
-                }
-            }
-            _ => return None,
-        }
-    } else {
-        return None;
-    };
-
-    // Try integer fast path first
-    let mut acc_i = initial.as_i64();
-    if acc_i.is_some() {
-        let mut all_int = true;
-        for item in arr {
-            let current_val = if current_segments.is_empty() {
-                item
-            } else {
-                super::variable::try_traverse_segments(item, current_segments)?
-            };
-            if let Some(cur_i) = current_val.as_i64() {
-                let a = acc_i.unwrap();
-                acc_i = Some(match opcode {
-                    OpCode::Add => a.wrapping_add(cur_i),
-                    OpCode::Multiply => a.wrapping_mul(cur_i),
-                    OpCode::Subtract => a.wrapping_sub(cur_i),
-                    _ => return None,
-                });
-            } else {
-                all_int = false;
-                break;
-            }
-        }
-        if all_int {
-            return acc_i.map(Value::from);
-        }
-    }
-
-    // Fall back to f64 path
-    let mut acc_f = initial.as_f64()?;
-    for item in arr {
-        let current_val = if current_segments.is_empty() {
-            item
-        } else {
-            super::variable::try_traverse_segments(item, current_segments)?
-        };
-        let cur_f = current_val.as_f64()?;
-        acc_f = match opcode {
-            OpCode::Add => acc_f + cur_f,
-            OpCode::Multiply => acc_f * cur_f,
-            OpCode::Subtract => acc_f - cur_f,
-            _ => return None,
-        };
-    }
-    Some(Value::from(acc_f))
-}
-
-/// The `merge` operator - combines multiple arrays into one.
-///
-/// # Syntax
-/// ```json
-/// {"merge": [array1, array2, ...]}
-/// ```
-///
-/// # Arguments
-/// Any number of arrays or values to merge together.
-///
-/// # Behavior
-/// - Arrays are flattened one level (elements are extracted)
-/// - Non-array values are added as-is
-/// - `null` values are filtered out from the result
-///
-/// # Example
-/// ```json
-/// {"merge": [[1, 2], [3, 4], 5]}
-/// ```
-/// Returns: `[1, 2, 3, 4, 5]`
-///
-/// # Example with nulls
-/// ```json
-/// {"merge": [[1, null, 2], [3]]}
-/// ```
-/// Returns: `[1, 2, 3]` (nulls filtered)
-#[inline]
-pub fn evaluate_merge(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    let mut result = Vec::new();
-
-    for arg in args {
-        let value = engine.evaluate_node(arg, context)?;
-        match value {
-            Value::Array(arr) => {
-                // Filter out null values when extending
-                result.extend(arr.into_iter().filter(|v| !v.is_null()))
-            }
-            Value::Null => {
-                // Skip null values entirely
-            }
-            v => result.push(v),
-        }
-    }
-
-    Ok(Value::Array(result))
-}
-
-/// The `map` operator - transforms each element in an array or object.
-///
-/// # Syntax
-/// ```json
-/// {"map": [collection, transformation]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or object to iterate over
-/// 2. A transformation logic to apply to each element
-///
-/// # Context
-/// During iteration, the current item becomes the context, and metadata is available:
-/// - `{"var": ""}` or `{"var": "."}` - current item value
-/// - `{"var": "index"}` - current index (arrays) or key (objects)
-/// - `{"var": "key"}` - current key (objects only)
-///
-/// # Example with Array
-/// ```json
-/// {
-///   "map": [
-///     [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
-///     {"var": "name"}
-///   ]
-/// }
-/// ```
-/// Returns: `["Alice", "Bob"]`
-///
-/// # Example with Object
-/// ```json
-/// {
-///   "map": [
-///     {"a": 1, "b": 2, "c": 3},
-///     {"*": [{"var": ""}, 2]}
-///   ]
-/// }
-/// ```
-/// Returns: `[2, 4, 6]`
-#[inline]
-pub fn evaluate_map<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
-    let logic = &args[1];
-
-    match collection {
-        Value::Array(arr) => {
-            // Fast path: if the map body is a simple var/val access,
-            // handle it directly without pushing items into context.
-            // Skipped under tracing so per-iteration steps are still recorded.
-            if !M::TRACED
-                && let CompiledNode::CompiledVar {
-                    scope_level: 0,
-                    segments,
-                    reduce_hint: ReduceHint::None,
-                    metadata_hint: MetadataHint::None,
-                    default_value: None,
-                    ..
-                } = logic
-            {
-                if segments.is_empty() {
-                    // Identity map: val([]) returns each item as-is
-                    return Ok(Value::Array(arr));
-                }
-                // Field extraction: val("field") extracts a field from each item
-                let mut results = Vec::with_capacity(arr.len());
-                for item in arr.iter() {
-                    let val = super::variable::try_traverse_segments(item, segments)
-                        .cloned()
-                        .unwrap_or(Value::Null);
-                    results.push(val);
-                }
-                return Ok(Value::Array(results));
-            }
-
-            // Fast path: arithmetic op on whole item with literal
-            // e.g., {"*": [{"val": []}, 2]}
-            if !M::TRACED
-                && let CompiledNode::BuiltinOperator {
-                    opcode,
-                    args: body_args,
-                    ..
-                } = logic
-                && body_args.len() == 2
-                && matches!(
-                    opcode,
-                    OpCode::Add
-                        | OpCode::Subtract
-                        | OpCode::Multiply
-                        | OpCode::Divide
-                        | OpCode::Modulo
-                )
-            {
-                for (var_idx, lit_idx) in [(0, 1), (1, 0)] {
-                    if let CompiledNode::CompiledVar {
-                        scope_level: 0,
-                        segments,
-                        reduce_hint: ReduceHint::None,
-                        metadata_hint: MetadataHint::None,
-                        default_value: None,
-                        ..
-                    } = &body_args[var_idx]
-                        && segments.is_empty()
-                        && let CompiledNode::Value { value: lit_val, .. } = &body_args[lit_idx]
-                        && let Some(lit_f) = lit_val.as_f64()
-                    {
-                        let mut results = Vec::with_capacity(arr.len());
-                        for item in &arr {
-                            if let Some(item_f) = item.as_f64() {
-                                let (lhs, rhs) = if var_idx == 0 {
-                                    (item_f, lit_f)
-                                } else {
-                                    (lit_f, item_f)
-                                };
-                                let r = match opcode {
-                                    OpCode::Add => lhs + rhs,
-                                    OpCode::Subtract => lhs - rhs,
-                                    OpCode::Multiply => lhs * rhs,
-                                    OpCode::Divide => lhs / rhs,
-                                    OpCode::Modulo => lhs % rhs,
-                                    _ => unreachable!(),
-                                };
-                                // Preserve integer type when possible
-                                if r.fract() == 0.0 && r >= i64::MIN as f64 && r <= i64::MAX as f64
-                                {
-                                    results.push(Value::from(r as i64));
-                                } else {
-                                    results.push(Value::from(r));
-                                }
-                            } else {
-                                results.push(Value::Null);
-                            }
-                        }
-                        return Ok(Value::Array(results));
-                    }
-                }
-            }
-
-            let len = arr.len();
-            let total = len as u32;
-            let mut results = Vec::with_capacity(len);
-            let mut pushed = false;
-
-            for (index, item) in arr.into_iter().enumerate() {
-                if !pushed {
-                    context.push_with_index(item, 0);
-                    pushed = true;
-                } else {
-                    context.replace_top_data(item, index);
-                }
-                mode.push_iteration(index as u32, total);
-                let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
-                mode.pop_iteration();
-                results.push(result?);
-            }
-            if len > 0 {
-                context.pop();
-            }
-
-            Ok(Value::Array(results))
-        }
-        Value::Object(obj) => {
-            let total = obj.len() as u32;
-            let len = obj.len();
-            let mut results = Vec::with_capacity(len);
-
-            for (index, (key, value)) in obj.into_iter().enumerate() {
-                if index == 0 {
-                    context.push_with_key_index(value, 0, key);
-                } else {
-                    context.replace_top_key_data(value, index, key);
-                }
-                mode.push_iteration(index as u32, total);
-                let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
-                mode.pop_iteration();
-                results.push(result?);
-            }
-            if len > 0 {
-                context.pop();
-            }
-
-            Ok(Value::Array(results))
-        }
-        Value::Null => Ok(Value::Array(vec![])),
-        // For primitive values (number, string, bool), treat as single-element collection
-        other => {
-            // Use push_with_index to avoid HashMap allocation
-            context.push_with_index(other, 0);
-            mode.push_iteration(0, 1);
-            let result = engine.evaluate_node_with_mode::<M>(logic, context, mode);
-            mode.pop_iteration();
-            context.pop();
-
-            Ok(Value::Array(vec![result?]))
-        }
-    }
-}
-
-/// The `filter` operator - selects elements that match a condition.
-///
-/// # Syntax
-/// ```json
-/// {"filter": [collection, condition]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or object to filter
-/// 2. A condition logic that returns truthy/falsy for each element
-///
-/// # Context
-/// Similar to `map`, each item becomes the context with index/key metadata.
-///
-/// # Example with Array
-/// ```json
-/// {
-///   "filter": [
-///     [{"age": 17}, {"age": 25}, {"age": 30}],
-///     {">=": [{"var": "age"}, 18]}
-///   ]
-/// }
-/// ```
-/// Returns: `[{"age": 25}, {"age": 30}]`
-///
-/// # Example with Object
-/// ```json
-/// {
-///   "filter": [
-///     {"a": 10, "b": 5, "c": 20},
-///     {">": [{"var": ""}, 8]}
-///   ]
-/// }
-/// ```
-/// Returns: `{"a": 10, "c": 20}`
-#[inline]
-pub fn evaluate_filter<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
-    let predicate = &args[1];
-
-    match collection {
-        Value::Array(arr) => {
-            // Fast path: detect simple comparison predicates to avoid per-item context push.
-            // Skipped under tracing so per-iteration steps are still recorded.
-            if !M::TRACED
-                && let CompiledNode::BuiltinOperator {
-                    opcode,
-                    args: pred_args,
-                    ..
-                } = predicate
-                && pred_args.len() == 2
-                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
-            {
-                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
-                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
-
-                if let Some((segments, invariant_node)) = fast {
-                    let invariant_val =
-                        evaluate_invariant_no_push(invariant_node, context, engine)?;
-                    let is_eq = matches!(opcode, OpCode::StrictEquals);
-                    let results: Vec<Value> = arr
-                        .into_iter()
-                        .filter(|item| {
-                            let matches = super::variable::try_traverse_segments(item, segments)
-                                == Some(&invariant_val);
-                            if is_eq { matches } else { !matches }
-                        })
-                        .collect();
-                    return Ok(Value::Array(results));
-                }
-            }
-
-            // Fast path for ordered comparisons on whole items or fields (>=, >, <, <=)
-            if !M::TRACED
-                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
-            {
-                let results: Vec<Value> = arr
-                    .into_iter()
-                    .filter(|item| fast_pred.evaluate(item))
-                    .collect();
-                return Ok(Value::Array(results));
-            }
-
-            let len = arr.len();
-            let total = len as u32;
-            let mut results = Vec::with_capacity(arr.len());
-            let mut pushed = false;
-
-            for (index, item) in arr.into_iter().enumerate() {
-                if !pushed {
-                    context.push_with_index(item, 0);
-                    pushed = true;
-                } else {
-                    context.replace_top_data(item, index);
-                }
-                mode.push_iteration(index as u32, total);
-                let keep = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
-                mode.pop_iteration();
-                let keep = keep?;
-
-                if is_truthy(&keep, engine) {
-                    // Move data out of context frame instead of cloning
-                    results.push(context.take_top_data());
-                }
-            }
-            if len > 0 {
-                context.pop();
-            }
-
-            Ok(Value::Array(results))
-        }
-        Value::Object(obj) => {
-            let total = obj.len() as u32;
-            let len = obj.len();
-            let mut result_obj = serde_json::Map::new();
-
-            for (index, (key, value)) in obj.into_iter().enumerate() {
-                if index == 0 {
-                    context.push_with_key_index(value.clone(), 0, key.clone());
-                } else {
-                    context.replace_top_key_data(value.clone(), index, key.clone());
-                }
-                mode.push_iteration(index as u32, total);
-                let keep = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
-                mode.pop_iteration();
-                let keep = keep?;
-
-                if is_truthy(&keep, engine) {
-                    result_obj.insert(key, value);
-                }
-            }
-            if len > 0 {
-                context.pop();
-            }
-
-            Ok(Value::Object(result_obj))
-        }
-        Value::Null => Ok(Value::Array(vec![])),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-/// The `reduce` operator - reduces a collection to a single value.
-///
-/// # Syntax
-/// ```json
-/// {"reduce": [collection, logic, initial_value]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or object to reduce
-/// 2. Reduction logic with access to `current` and `accumulator`
-/// 3. Initial value for the accumulator
-///
-/// # Context Variables
-/// - `{"var": "current"}` - current element value
-/// - `{"var": "accumulator"}` - accumulated value
-/// - `{"var": "index"}` - current index or key
-///
-/// # Example - Sum Array
-/// ```json
-/// {
-///   "reduce": [
-///     [1, 2, 3, 4],
-///     {"+": [{"var": "accumulator"}, {"var": "current"}]},
-///     0
-///   ]
-/// }
-/// ```
-/// Returns: `10`
-#[inline]
-pub fn evaluate_reduce<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.len() != 3 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let array = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
-    let logic = &args[1];
-    let initial = engine.evaluate_node_with_mode::<M>(&args[2], context, mode)?;
-
-    match array {
-        Value::Array(arr) => {
-            if arr.is_empty() {
-                return Ok(initial);
-            }
-
-            // Fast path: detect {op: [val("current"), val("accumulator")]} or reversed.
-            // Skipped under tracing so per-iteration steps are still recorded.
-            if !M::TRACED
-                && let CompiledNode::BuiltinOperator {
-                    opcode,
-                    args: body_args,
-                    ..
-                } = logic
-                && body_args.len() == 2
-                && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
-                && let Some(result) = try_reduce_fast_path(&arr, &initial, body_args, *opcode)
-            {
-                return Ok(result);
-            }
-
-            let len = arr.len();
-            let total = len as u32;
-            let mut accumulator = initial;
-            let mut pushed = false;
-
-            for (index, current) in arr.into_iter().enumerate() {
-                if !pushed {
-                    context.push_reduce(current, accumulator);
-                    pushed = true;
-                } else {
-                    context.replace_reduce_data(current, accumulator);
-                }
-                mode.push_iteration(index as u32, total);
-                let next = engine.evaluate_node_with_mode::<M>(logic, context, mode);
-                mode.pop_iteration();
-                accumulator = next?;
-            }
-            if len > 0 {
-                context.pop();
-            }
-
-            Ok(accumulator)
-        }
-        Value::Null => Ok(initial),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-/// The `all` operator - checks if all elements satisfy a condition.
-///
-/// # Syntax
-/// ```json
-/// {"all": [collection, condition]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or object to test
-/// 2. A condition to evaluate for each element
-///
-/// # Returns
-/// - `true` if all elements satisfy the condition
-/// - `true` if the collection is empty
-/// - `false` if any element fails the condition
-///
-/// # Example
-/// ```json
-/// {
-///   "all": [
-///     [10, 20, 30],
-///     {">": [{"var": ""}, 5]}
-///   ]
-/// }
-/// ```
-/// Returns: `true` (all are greater than 5)
-#[inline]
-pub fn evaluate_all<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
-    let predicate = &args[1];
-
-    match collection {
-        Value::Array(arr) if !arr.is_empty() => {
-            // Fast path: field-vs-invariant comparison (avoids per-item context push).
-            // Skipped under tracing so per-iteration steps are still recorded.
-            if !M::TRACED
-                && let CompiledNode::BuiltinOperator {
-                    opcode,
-                    args: pred_args,
-                    ..
-                } = predicate
-                && pred_args.len() == 2
-                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
-            {
-                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
-                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
-                if let Some((segments, invariant_node)) = fast {
-                    let invariant_val =
-                        evaluate_invariant_no_push(invariant_node, context, engine)?;
-                    let is_eq = matches!(opcode, OpCode::StrictEquals);
-                    return Ok(Value::Bool(arr.iter().all(|item| {
-                        let matches = super::variable::try_traverse_segments(item, segments)
-                            == Some(&invariant_val);
-                        if is_eq { matches } else { !matches }
-                    })));
-                }
-            }
-
-            // Fast path: detect simple comparison predicates
-            if !M::TRACED
-                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
-            {
-                return Ok(Value::Bool(arr.iter().all(|item| fast_pred.evaluate(item))));
-            }
-
-            let len = arr.len();
-            let total = len as u32;
-            let mut pushed = false;
-            for (index, item) in arr.into_iter().enumerate() {
-                if !pushed {
-                    context.push_with_index(item, 0);
-                    pushed = true;
-                } else {
-                    context.replace_top_data(item, index);
-                }
-                mode.push_iteration(index as u32, total);
-                let result = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
-                mode.pop_iteration();
-                let result = result?;
-
-                if !is_truthy(&result, engine) {
-                    context.pop();
-                    return Ok(Value::Bool(false));
-                }
-            }
-            if len > 0 {
-                context.pop();
-            }
-            Ok(Value::Bool(true))
-        }
-        Value::Array(arr) if arr.is_empty() => Ok(Value::Bool(false)),
-        Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-/// The `some` operator - checks if any element satisfies a condition.
-///
-/// # Syntax
-/// ```json
-/// {"some": [collection, condition]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or object to test
-/// 2. A condition to evaluate for each element
-///
-/// # Returns
-/// - `true` if any element satisfies the condition
-/// - `false` if no elements satisfy or collection is empty
-///
-/// # Example
-/// ```json
-/// {
-///   "some": [
-///     [{"status": "pending"}, {"status": "active"}],
-///     {"==": [{"var": "status"}, "active"]}
-///   ]
-/// }
-/// ```
-/// Returns: `true`
-#[inline]
-pub fn evaluate_some<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
-    let predicate = &args[1];
-
-    match collection {
-        Value::Array(arr) => {
-            // Fast path: field-vs-invariant comparison (avoids per-item context push).
-            // Skipped under tracing so per-iteration steps are still recorded.
-            if !M::TRACED
-                && let CompiledNode::BuiltinOperator {
-                    opcode,
-                    args: pred_args,
-                    ..
-                } = predicate
-                && pred_args.len() == 2
-                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
-            {
-                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
-                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
-                if let Some((segments, invariant_node)) = fast {
-                    let invariant_val =
-                        evaluate_invariant_no_push(invariant_node, context, engine)?;
-                    let is_eq = matches!(opcode, OpCode::StrictEquals);
-                    return Ok(Value::Bool(arr.iter().any(|item| {
-                        let matches = super::variable::try_traverse_segments(item, segments)
-                            == Some(&invariant_val);
-                        if is_eq { matches } else { !matches }
-                    })));
-                }
-            }
-
-            // Fast path: detect simple comparison predicates
-            if !M::TRACED
-                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
-            {
-                return Ok(Value::Bool(arr.iter().any(|item| fast_pred.evaluate(item))));
-            }
-
-            let len = arr.len();
-            let total = len as u32;
-            let mut pushed = false;
-            for (index, item) in arr.into_iter().enumerate() {
-                if !pushed {
-                    context.push_with_index(item, 0);
-                    pushed = true;
-                } else {
-                    context.replace_top_data(item, index);
-                }
-                mode.push_iteration(index as u32, total);
-                let result = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
-                mode.pop_iteration();
-                let result = result?;
-
-                if is_truthy(&result, engine) {
-                    context.pop();
-                    return Ok(Value::Bool(true));
-                }
-            }
-            if len > 0 {
-                context.pop();
-            }
-            Ok(Value::Bool(false))
-        }
-        Value::Null => Ok(Value::Bool(false)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-/// The `none` operator - checks if no elements satisfy a condition.
-///
-/// # Syntax
-/// ```json
-/// {"none": [collection, condition]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or object to test
-/// 2. A condition to evaluate for each element
-///
-/// # Returns
-/// - `true` if no elements satisfy the condition
-/// - `true` if the collection is empty
-/// - `false` if any element satisfies the condition
-///
-/// # Example
-/// ```json
-/// {
-///   "none": [
-///     [1, 3, 5, 7],
-///     {"==": [{"%": [{"var": ""}, 2]}, 0]}
-///   ]
-/// }
-/// ```
-/// Returns: `true` (none are even)
-#[inline]
-pub fn evaluate_none<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.len() != 2 {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let collection = engine.evaluate_node_with_mode::<M>(&args[0], context, mode)?;
-    let predicate = &args[1];
-
-    match collection {
-        Value::Array(arr) => {
-            // Fast path: field-vs-invariant comparison (avoids per-item context push).
-            // Skipped under tracing so per-iteration steps are still recorded.
-            if !M::TRACED
-                && let CompiledNode::BuiltinOperator {
-                    opcode,
-                    args: pred_args,
-                    ..
-                } = predicate
-                && pred_args.len() == 2
-                && matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals)
-            {
-                let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
-                    .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
-                if let Some((segments, invariant_node)) = fast {
-                    let invariant_val =
-                        evaluate_invariant_no_push(invariant_node, context, engine)?;
-                    let is_eq = matches!(opcode, OpCode::StrictEquals);
-                    return Ok(Value::Bool(!arr.iter().any(|item| {
-                        let matches = super::variable::try_traverse_segments(item, segments)
-                            == Some(&invariant_val);
-                        if is_eq { matches } else { !matches }
-                    })));
-                }
-            }
-
-            // Fast path: detect simple comparison predicates
-            if !M::TRACED
-                && let Some(fast_pred) = FastPredicate::try_detect(predicate)
-            {
-                return Ok(Value::Bool(
-                    !arr.iter().any(|item| fast_pred.evaluate(item)),
-                ));
-            }
-
-            let len = arr.len();
-            let total = len as u32;
-            let mut pushed = false;
-            for (index, item) in arr.into_iter().enumerate() {
-                if !pushed {
-                    context.push_with_index(item, 0);
-                    pushed = true;
-                } else {
-                    context.replace_top_data(item, index);
-                }
-                mode.push_iteration(index as u32, total);
-                let result = engine.evaluate_node_with_mode::<M>(predicate, context, mode);
-                mode.pop_iteration();
-                let result = result?;
-
-                if is_truthy(&result, engine) {
-                    context.pop();
-                    return Ok(Value::Bool(false));
-                }
-            }
-            if len > 0 {
-                context.pop();
-            }
-            Ok(Value::Bool(true))
-        }
-        Value::Null => Ok(Value::Bool(true)),
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
-/// The `sort` operator - sorts array elements.
-///
-/// # Syntax
-/// ```json
-/// {"sort": [array, accessor]}
-/// ```
-///
-/// # Arguments
-/// 1. An array to sort
-/// 2. Optional: An accessor to extract sort key from each element
-///
-/// # Behavior
-/// - Without accessor: sorts primitives directly
-/// - With accessor: sorts by the extracted value
-/// - Sorts in ascending order
-/// - Maintains stable sort order
-/// - Handles mixed types (nulls first, then bools, numbers, strings, arrays, objects)
-///
-/// # Example
-/// ```json
-/// {
-///   "sort": [
-///     [{"name": "Charlie", "age": 30}, {"name": "Alice", "age": 25}],
-///     {"var": "name"}
-///   ]
-/// }
-/// ```
-/// Returns: Sorted by name alphabetically
-#[cfg(feature = "ext-array")]
-#[inline]
-pub fn evaluate_sort(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Check if the first argument is a Value node containing null
-    if let CompiledNode::Value { value, .. } = &args[0]
-        && value.is_null()
-    {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Evaluate the array
-    let array_value = engine.evaluate_node(&args[0], context)?;
-
-    let mut array = match array_value {
-        Value::Array(arr) => arr,
-        Value::Null => return Ok(Value::Null), // Missing variable returns null
-        _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    };
-
-    // Get sort direction (default ascending)
-    let ascending = if args.len() > 1 {
-        let dir = engine.evaluate_node(&args[1], context)?;
-        match dir {
-            Value::Bool(b) => b,
-            _ => true, // Default to ascending for invalid direction
-        }
-    } else {
-        true
-    };
-
-    // Check if we have a field extractor (for sorting objects)
-    let has_extractor = args.len() > 2;
-
-    if has_extractor {
-        // Sort objects by extracted field
-        let extractor = &args[2];
-
-        // Fast path: if extractor is a simple var/val field access,
-        // extract keys directly from items without cloning into context.
-        // This avoids expensive object cloning (N × ~100ns for complex objects).
-        let keys = if let CompiledNode::CompiledVar {
-            scope_level: 0,
-            segments,
-            reduce_hint: ReduceHint::None,
-            metadata_hint: MetadataHint::None,
-            default_value: None,
-            ..
-        } = extractor
-        {
-            if !segments.is_empty() {
-                let mut keys: Vec<Value> = Vec::with_capacity(array.len());
-                for item in array.iter() {
-                    let key = super::variable::try_traverse_segments(item, segments)
-                        .cloned()
-                        .unwrap_or(Value::Null);
-                    keys.push(key);
-                }
-                Some(keys)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let keys = if let Some(k) = keys {
-            k
-        } else {
-            // General path: move each item into context (no clone), evaluate
-            // the extractor, then restore the item back into its array slot
-            // so the sort-by-indices reorder below still sees the original
-            // values.
-            let n = array.len();
-            let mut keys: Vec<Value> = Vec::with_capacity(n);
-            let mut pushed = false;
-
-            for index in 0..n {
-                let item = std::mem::replace(&mut array[index], Value::Null);
-                if !pushed {
-                    context.push_with_index(item, 0);
-                    pushed = true;
-                } else {
-                    let prev = context.take_top_data();
-                    array[index - 1] = prev;
-                    context.replace_top_data(item, index);
-                }
-                keys.push(engine.evaluate_node(extractor, context)?);
-            }
-            if pushed {
-                let last = context.take_top_data();
-                array[n - 1] = last;
-                context.pop();
-            }
-            keys
-        };
-
-        // Build index array and sort by extracted keys
-        let mut indices: Vec<usize> = (0..array.len()).collect();
-        indices.sort_by(|&a, &b| {
-            let cmp = compare_values(&keys[a], &keys[b]);
-            if ascending { cmp } else { cmp.reverse() }
-        });
-
-        // Reorder array by sorted indices
-        let mut sorted = Vec::with_capacity(array.len());
-        for i in indices {
-            sorted.push(std::mem::replace(&mut array[i], Value::Null));
-        }
-        array = sorted;
-    } else {
-        // Sort primitive values directly
-        array.sort_by(|a, b| {
-            let cmp = compare_values(a, b);
-            if ascending { cmp } else { cmp.reverse() }
-        });
-    }
-
-    Ok(Value::Array(array))
-}
-
-#[cfg(feature = "ext-array")]
-/// Extract an optional i64 from a CompiledNode, skipping evaluate_node dispatch for literals.
-#[inline]
-fn extract_opt_i64(
-    node: &CompiledNode,
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Option<i64>> {
-    match node {
-        CompiledNode::Value {
-            value: Value::Number(n),
-            ..
-        } => Ok(n.as_i64()),
-        CompiledNode::Value {
-            value: Value::Null, ..
-        } => Ok(None),
-        _ => {
-            let val = engine.evaluate_node(node, context)?;
-            match val {
-                Value::Number(n) => Ok(n.as_i64()),
-                Value::Null => Ok(None),
-                _ => Err(Error::InvalidArguments("NaN".to_string())),
-            }
-        }
-    }
-}
-
-#[cfg(feature = "ext-array")]
-/// The `slice` operator - extracts a portion of an array or string.
-///
-/// # Syntax
-/// ```json
-/// {"slice": [sequence, start, end]}
-/// ```
-///
-/// # Arguments
-/// 1. An array or string to slice
-/// 2. Start index (inclusive)
-/// 3. Optional: End index (exclusive)
-///
-/// # Behavior
-/// - Negative indices count from the end (-1 is last element)
-/// - If end is omitted, slices to the end
-/// - Returns empty result if indices are out of bounds
-/// - Works with both arrays and strings
-///
-/// # Example with Array
-/// ```json
-/// {
-///   "slice": [
-///     ["a", "b", "c", "d", "e"],
-///     1,
-///     3
-///   ]
-/// }
-/// ```
-/// Returns: `["b", "c"]`
-///
-/// # Example with String
-/// ```json
-/// {
-///   "slice": [
-///     "hello world",
-///     0,
-///     5
-///   ]
-/// }
-/// ```
-/// Returns: `"hello"`
-#[inline]
-pub fn evaluate_slice(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // Evaluate the collection
-    let collection = engine.evaluate_node(&args[0], context)?;
-
-    // Handle null/missing values
-    if collection == Value::Null {
-        return Ok(Value::Null);
-    }
-
-    // Get start index (default to 0 or end for negative step)
-    let start = if args.len() > 1 {
-        extract_opt_i64(&args[1], context, engine)?
-    } else {
-        None
-    };
-
-    // Get end index (default to length)
-    let end = if args.len() > 2 {
-        extract_opt_i64(&args[2], context, engine)?
-    } else {
-        None
-    };
-
-    // Get step (default to 1)
-    let step = if args.len() > 3 {
-        let s = extract_opt_i64(&args[3], context, engine)?.unwrap_or(1);
-        if s == 0 {
-            return Err(Error::InvalidArguments(INVALID_ARGS.into()));
-        }
-        s
-    } else {
-        1
-    };
-
-    match collection {
-        Value::Array(arr) => {
-            let len = arr.len() as i64;
-            let result = slice_sequence(&arr, len, start, end, step);
-            Ok(Value::Array(result))
-        }
-        Value::String(s) => {
-            let chars: Vec<char> = s.chars().collect();
-            let len = chars.len() as i64;
-            let result_string = slice_chars(&chars, len, start, end, step);
-            Ok(Value::String(result_string))
-        }
-        _ => Err(Error::InvalidArguments(INVALID_ARGS.into())),
-    }
-}
-
 #[cfg(feature = "ext-array")]
 // Helper function to compare JSON values for sorting
 fn compare_values(a: &Value, b: &Value) -> Ordering {
@@ -1502,68 +287,6 @@ fn compare_values(a: &Value, b: &Value) -> Ordering {
         (Value::Object(_), Value::Object(_)) => Ordering::Equal,
         (Value::Object(_), _) => Ordering::Greater,
     }
-}
-
-#[cfg(feature = "ext-array")]
-// Helper function to slice a sequence with start, end, and step
-fn slice_sequence(
-    arr: &[Value],
-    len: i64,
-    start: Option<i64>,
-    end: Option<i64>,
-    step: i64,
-) -> Vec<Value> {
-    let mut result = Vec::new();
-
-    // Normalize indices with overflow protection
-    let (actual_start, actual_end) = if step > 0 {
-        let s = normalize_index(start.unwrap_or(0), len);
-        let e = normalize_index(end.unwrap_or(len), len);
-        (s, e)
-    } else {
-        // For negative step, defaults are reversed
-        // Use saturating_sub to prevent underflow
-        let default_start = len.saturating_sub(1);
-        let s = normalize_index(start.unwrap_or(default_start), len);
-        let e = if let Some(e) = end {
-            normalize_index(e, len)
-        } else {
-            -1 // Go all the way to the beginning
-        };
-        (s, e)
-    };
-
-    // Collect elements with overflow-safe iteration
-    if step > 0 {
-        let mut i = actual_start;
-        while i < actual_end && i < len {
-            if i >= 0 && (i as usize) < arr.len() {
-                result.push(arr[i as usize].clone());
-            }
-            // Use saturating_add to prevent overflow
-            i = i.saturating_add(step);
-            // Break if we've wrapped around
-            if step > 0 && i < actual_start {
-                break;
-            }
-        }
-    } else {
-        let mut i = actual_start;
-        while i > actual_end && i >= 0 && i < len {
-            if (i as usize) < arr.len() {
-                result.push(arr[i as usize].clone());
-            }
-            // Use saturating_add for negative step (step is negative)
-            let next_i = i.saturating_add(step);
-            // Break if we've wrapped around
-            if step < 0 && next_i > i {
-                break;
-            }
-            i = next_i;
-        }
-    }
-
-    result
 }
 
 #[cfg(feature = "ext-array")]
@@ -1628,7 +351,6 @@ fn slice_chars(
 pub(crate) fn evaluate_slice_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a crate::arena::ArenaValue<'a>> {
@@ -1636,7 +358,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let coll_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let coll_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
 
     // Null passthrough.
     if matches!(
@@ -1648,17 +370,17 @@ pub(crate) fn evaluate_slice_arena<'a>(
 
     // Resolve start/end/step.
     let start = if args.len() > 1 {
-        extract_opt_i64_arena(&args[1], actx, context, engine, arena)?
+        extract_opt_i64_arena(&args[1], actx, engine, arena)?
     } else {
         None
     };
     let end = if args.len() > 2 {
-        extract_opt_i64_arena(&args[2], actx, context, engine, arena)?
+        extract_opt_i64_arena(&args[2], actx, engine, arena)?
     } else {
         None
     };
     let step = if args.len() > 3 {
-        let s = extract_opt_i64_arena(&args[3], actx, context, engine, arena)?.unwrap_or(1);
+        let s = extract_opt_i64_arena(&args[3], actx, engine, arena)?.unwrap_or(1);
         if s == 0 {
             return Err(Error::InvalidArguments(INVALID_ARGS.into()));
         }
@@ -1720,7 +442,6 @@ pub(crate) fn evaluate_slice_arena<'a>(
 fn extract_opt_i64_arena<'a>(
     node: &CompiledNode,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<Option<i64>> {
@@ -1731,7 +452,7 @@ fn extract_opt_i64_arena<'a>(
             _ => Err(Error::InvalidArguments("NaN".to_string())),
         };
     }
-    let av = engine.evaluate_arena_node(node, actx, context, arena)?;
+    let av = engine.evaluate_arena_node(node, actx, arena)?;
     match av {
         ArenaValue::Null | ArenaValue::InputRef(Value::Null) => Ok(None),
         _ => match av.as_i64() {
@@ -1866,12 +587,11 @@ pub(crate) enum ResolvedInput<'a> {
 pub(crate) fn resolve_iter_input<'a>(
     arg: &CompiledNode,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
     // Path 1: root borrow.
-    if let Some(borrowed) = try_borrow_collection_from_root(arg, context, actx.root_input()) {
+    if let Some(borrowed) = try_borrow_collection_from_root(arg, actx, actx.root_input()) {
         return Ok(match borrowed {
             Value::Array(arr) => ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice())),
             Value::Null => ResolvedInput::Empty,
@@ -1892,14 +612,14 @@ pub(crate) fn resolve_iter_input<'a>(
                 | OpCode::Merge
         )
     {
-        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
         return Ok(arena_value_as_iter(av, arena));
     }
 
     // Path 3: anything else — evaluate through arena dispatch so the caller
     // can handle the result natively (Object iteration / single-element wrap /
     // error per op semantics).
-    let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+    let av = engine.evaluate_arena_node(arg, actx, arena)?;
     Ok(arena_value_as_iter(av, arena))
 }
 
@@ -1936,7 +656,6 @@ fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedI
 pub(crate) fn evaluate_filter_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -1946,11 +665,11 @@ pub(crate) fn evaluate_filter_arena<'a>(
 
     // Resolve input collection. Try the borrow-from-root fast path first;
     // Phase 4: resolve input via unified helper (root borrow OR upstream arena op).
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
         ResolvedInput::Bridge(av) => {
-            return filter_arena_bridge(av, &args[1], actx, context, engine, arena);
+            return filter_arena_bridge(av, &args[1], actx, engine, arena);
         }
     };
 
@@ -1974,7 +693,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
         let fast = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
             .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]));
         if let Some((segments, invariant_node)) = fast {
-            let invariant_val = evaluate_invariant_no_push(invariant_node, context, engine)?;
+            let invariant_val = evaluate_invariant_no_push(invariant_node, actx, engine, arena)?;
             let is_eq = matches!(opcode, OpCode::StrictEquals);
             let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
                 bumpalo::collections::Vec::with_capacity_in(len, arena);
@@ -2017,7 +736,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
         } else {
             actx.replace_top_data(item_av, i);
         }
-        let keep = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+        let keep = engine.eval_iter_body(predicate, actx, arena, i as u32, len as u32)?;
         if crate::arena::is_truthy_arena(keep, engine) {
             results.push(ArenaValue::InputRef(item));
         }
@@ -2037,7 +756,6 @@ fn filter_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
     predicate: &CompiledNode,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2045,6 +763,7 @@ fn filter_arena_bridge<'a>(
         let mut kept: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
             bumpalo::collections::Vec::with_capacity_in(obj.len(), arena);
         let mut pushed = false;
+        let total = obj.len() as u32;
         for (i, (k, v)) in obj.iter().enumerate() {
             let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
             let key_arena: &'a str = arena.alloc_str(k);
@@ -2054,7 +773,7 @@ fn filter_arena_bridge<'a>(
             } else {
                 actx.replace_top_key_data(item_av, i, key_arena);
             }
-            let keep = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+            let keep = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
             if crate::arena::is_truthy_arena(keep, engine) {
                 kept.push((key_arena, ArenaValue::InputRef(v)));
             }
@@ -2068,6 +787,7 @@ fn filter_arena_bridge<'a>(
         let mut kept: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
         let mut pushed = false;
+        let total = items.len() as u32;
         for i in 0..items.len() {
             let item_av: &'a ArenaValue<'a> = &items[i];
             if !pushed {
@@ -2076,7 +796,7 @@ fn filter_arena_bridge<'a>(
             } else {
                 actx.replace_top_data(item_av, i);
             }
-            let keep = engine.evaluate_arena_node(predicate, actx, context, arena)?;
+            let keep = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
             if crate::arena::is_truthy_arena(keep, engine) {
                 kept.push(crate::arena::value::reborrow_arena_value(item_av));
             }
@@ -2097,7 +817,6 @@ fn map_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
     body: &CompiledNode,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2105,6 +824,7 @@ fn map_arena_bridge<'a>(
         let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(obj.len(), arena);
         let mut pushed = false;
+        let total = obj.len() as u32;
         for (i, (k, v)) in obj.iter().enumerate() {
             let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
             let key_arena: &'a str = arena.alloc_str(k);
@@ -2114,7 +834,7 @@ fn map_arena_bridge<'a>(
             } else {
                 actx.replace_top_key_data(item_av, i, key_arena);
             }
-            let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+            let av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
             results.push(crate::arena::value::reborrow_arena_value(av));
         }
         if pushed {
@@ -2126,6 +846,7 @@ fn map_arena_bridge<'a>(
         let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
         let mut pushed = false;
+        let total = items.len() as u32;
         for i in 0..items.len() {
             let item_av: &'a ArenaValue<'a> = &items[i];
             if !pushed {
@@ -2134,7 +855,7 @@ fn map_arena_bridge<'a>(
             } else {
                 actx.replace_top_data(item_av, i);
             }
-            let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+            let av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
             results.push(crate::arena::value::reborrow_arena_value(av));
         }
         if pushed {
@@ -2145,7 +866,7 @@ fn map_arena_bridge<'a>(
     // Single-element collection (number, string, bool primitive input).
     let item_av: &'a ArenaValue<'a> = input;
     actx.push_with_index(item_av, 0);
-    let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+    let av = engine.eval_iter_body(body, actx, arena, 0, 1)?;
     let owned = crate::arena::value::reborrow_arena_value(av);
     actx.pop();
     let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));
@@ -2161,7 +882,6 @@ fn reduce_arena_bridge<'a>(
     body: &CompiledNode,
     initial: &Value,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2169,6 +889,7 @@ fn reduce_arena_bridge<'a>(
         let mut acc_av: &'a ArenaValue<'a> =
             arena.alloc(crate::arena::value_to_arena(initial, arena));
         let mut pushed = false;
+        let total = obj.len() as u32;
         for (i, (k, v)) in obj.iter().enumerate() {
             let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
             let _key = arena.alloc_str(k); // value-mode reduce frame stores
@@ -2179,8 +900,7 @@ fn reduce_arena_bridge<'a>(
             } else {
                 actx.replace_reduce_data(item_av, acc_av);
             }
-            let _ = i;
-            acc_av = engine.evaluate_arena_node(body, actx, context, arena)?;
+            acc_av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
         }
         if pushed {
             actx.pop();
@@ -2191,6 +911,7 @@ fn reduce_arena_bridge<'a>(
         let mut acc_av: &'a ArenaValue<'a> =
             arena.alloc(crate::arena::value_to_arena(initial, arena));
         let mut pushed = false;
+        let total = items.len() as u32;
         for i in 0..items.len() {
             let item_av: &'a ArenaValue<'a> = &items[i];
             if !pushed {
@@ -2199,7 +920,7 @@ fn reduce_arena_bridge<'a>(
             } else {
                 actx.replace_reduce_data(item_av, acc_av);
             }
-            acc_av = engine.evaluate_arena_node(body, actx, context, arena)?;
+            acc_av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
         }
         if pushed {
             actx.pop();
@@ -2210,25 +931,53 @@ fn reduce_arena_bridge<'a>(
     Ok(arena.alloc(crate::arena::value_to_arena(initial, arena)))
 }
 
+/// Shape of a quantifier (`all` / `some` / `none`) — the three flags
+/// distinguishing them are bundled here so callers and helpers don't carry
+/// three loose `bool` parameters.
+#[derive(Clone, Copy)]
+struct QuantifierShape {
+    /// Predicate result that triggers early exit.
+    short_circuit_on: bool,
+    /// If `true`, invert `short_circuit_on` when assembling the final result.
+    invert_final: bool,
+    /// Result for an empty input collection.
+    empty_result: bool,
+}
+
+impl QuantifierShape {
+    #[inline]
+    fn finalize(self, found_short: bool) -> bool {
+        if found_short {
+            if self.invert_final {
+                !self.short_circuit_on
+            } else {
+                self.short_circuit_on
+            }
+        } else if self.invert_final {
+            self.short_circuit_on
+        } else {
+            !self.short_circuit_on
+        }
+    }
+}
+
 /// Quantifier Bridge case — Object inputs iterate (key, value) pairs.
 #[inline]
 fn quantifier_arena_bridge<'a>(
     input: &'a ArenaValue<'a>,
     predicate: &CompiledNode,
-    short_circuit_on: bool,
-    invert_final: bool,
-    empty_result: bool,
+    shape: QuantifierShape,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if let ArenaValue::InputRef(Value::Object(obj)) = input {
         if obj.is_empty() {
-            return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
+            return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
         }
         let mut pushed = false;
         let mut found_short = false;
+        let total = obj.len() as u32;
         for (i, (k, v)) in obj.iter().enumerate() {
             let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
             let key_arena: &'a str = arena.alloc_str(k);
@@ -2238,8 +987,8 @@ fn quantifier_arena_bridge<'a>(
             } else {
                 actx.replace_top_key_data(item_av, i, key_arena);
             }
-            let av = engine.evaluate_arena_node(predicate, actx, context, arena)?;
-            if crate::arena::is_truthy_arena(av, engine) == short_circuit_on {
+            let av = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
+            if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
                 found_short = true;
                 break;
             }
@@ -2247,25 +996,15 @@ fn quantifier_arena_bridge<'a>(
         if pushed {
             actx.pop();
         }
-        let result = if found_short {
-            if invert_final {
-                !short_circuit_on
-            } else {
-                short_circuit_on
-            }
-        } else if invert_final {
-            short_circuit_on
-        } else {
-            !short_circuit_on
-        };
-        return Ok(arena.alloc(ArenaValue::Bool(result)));
+        return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))));
     }
     if let ArenaValue::Array(items) = input {
         if items.is_empty() {
-            return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
+            return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
         }
         let mut pushed = false;
         let mut found_short = false;
+        let total = items.len() as u32;
         for i in 0..items.len() {
             let item_av: &'a ArenaValue<'a> = &items[i];
             if !pushed {
@@ -2274,8 +1013,8 @@ fn quantifier_arena_bridge<'a>(
             } else {
                 actx.replace_top_data(item_av, i);
             }
-            let av = engine.evaluate_arena_node(predicate, actx, context, arena)?;
-            if crate::arena::is_truthy_arena(av, engine) == short_circuit_on {
+            let av = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
+            if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
                 found_short = true;
                 break;
             }
@@ -2283,21 +1022,10 @@ fn quantifier_arena_bridge<'a>(
         if pushed {
             actx.pop();
         }
-        let result = if found_short {
-            if invert_final {
-                !short_circuit_on
-            } else {
-                short_circuit_on
-            }
-        } else if invert_final {
-            short_circuit_on
-        } else {
-            !short_circuit_on
-        };
-        return Ok(arena.alloc(ArenaValue::Bool(result)));
+        return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))));
     }
     // Anything else — value-mode treats as empty (returns empty_result).
-    Ok(arena.alloc(ArenaValue::Bool(empty_result)))
+    Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)))
 }
 
 /// Arena-mode `sort`. Borrows input via `IterSrc` (no input clone), runs
@@ -2315,7 +1043,6 @@ fn quantifier_arena_bridge<'a>(
 pub(crate) fn evaluate_sort_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2330,11 +1057,11 @@ pub(crate) fn evaluate_sort_arena<'a>(
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Null)),
         ResolvedInput::Bridge(av) => {
-            return sort_arena_from_value(av, args, actx, context, engine, arena);
+            return sort_arena_from_value(av, args, actx, engine, arena);
         }
     };
 
@@ -2346,7 +1073,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
     // Sort direction: defaults to ascending; non-Bool means ascending too
     // (matches the value-mode default at line 1230).
     let ascending = if args.len() > 1 {
-        let dir = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+        let dir = engine.evaluate_arena_node(&args[1], actx, arena)?;
         match dir {
             ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => *b,
             _ => true,
@@ -2423,7 +1150,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
         } else {
             actx.replace_top_data(item_av, i);
         }
-        let key_av = engine.evaluate_arena_node(extractor, actx, context, arena)?;
+        let key_av = engine.evaluate_arena_node(extractor, actx, arena)?;
         keys.push(crate::arena::arena_to_value(key_av));
     }
     if pushed {
@@ -2453,7 +1180,6 @@ fn sort_arena_from_value<'a>(
     av: &'a ArenaValue<'a>,
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2463,7 +1189,7 @@ fn sort_arena_from_value<'a>(
         ArenaValue::Null | ArenaValue::InputRef(Value::Null) => {
             return Ok(crate::arena::pool::singleton_null());
         }
-        ArenaValue::InputRef(Value::Array(arr)) => arr.iter().cloned().collect(),
+        ArenaValue::InputRef(Value::Array(arr)) => arr.to_vec(),
         ArenaValue::Array(items) => items.iter().map(crate::arena::arena_to_value).collect(),
         _ => return Err(Error::InvalidArguments(INVALID_ARGS.into())),
     };
@@ -2472,7 +1198,7 @@ fn sort_arena_from_value<'a>(
     }
 
     let ascending = if args.len() > 1 {
-        let dir = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+        let dir = engine.evaluate_arena_node(&args[1], actx, arena)?;
         match dir {
             ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => *b,
             _ => true,
@@ -2518,7 +1244,7 @@ fn sort_arena_from_value<'a>(
         } else {
             actx.replace_top_data(item_av, i);
         }
-        let key_av = engine.evaluate_arena_node(extractor, actx, context, arena)?;
+        let key_av = engine.evaluate_arena_node(extractor, actx, arena)?;
         keys.push(crate::arena::arena_to_value(key_av));
     }
     if pushed {
@@ -2547,7 +1273,6 @@ fn sort_arena_from_value<'a>(
 pub(crate) fn evaluate_length_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2557,7 +1282,7 @@ pub(crate) fn evaluate_length_arena<'a>(
 
     // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
     // stay arena-resident on the intermediate.
-    let arg = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let arg = engine.evaluate_arena_node(&args[0], actx, arena)?;
 
     let n: i64 = match arg {
         ArenaValue::String(s) => s.chars().count() as i64,
@@ -2580,11 +1305,11 @@ pub(crate) fn evaluate_length_arena<'a>(
 #[inline]
 fn try_borrow_collection_from_root<'a>(
     arg: &CompiledNode,
-    context: &ContextStack,
+    actx: &ArenaContextStack<'a>,
     root: &'a Value,
 ) -> Option<&'a Value> {
-    if context.depth() != 0 {
-        return None; // POC: only root-scope borrows
+    if actx.depth() != 0 {
+        return None; // only root-scope borrows
     }
     if let CompiledNode::CompiledVar {
         scope_level: 0,
@@ -2610,7 +1335,6 @@ fn try_borrow_collection_from_root<'a>(
 pub(crate) fn evaluate_map_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2619,11 +1343,11 @@ pub(crate) fn evaluate_map_arena<'a>(
     }
 
     let body = &args[1];
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Array(&[]))),
         ResolvedInput::Bridge(av) => {
-            return map_arena_bridge(av, &args[1], actx, context, engine, arena);
+            return map_arena_bridge(av, &args[1], actx, engine, arena);
         }
     };
 
@@ -2666,6 +1390,7 @@ pub(crate) fn evaluate_map_arena<'a>(
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
+    let total = len as u32;
     for i in 0..len {
         let item = src.get(i);
         let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
@@ -2675,7 +1400,7 @@ pub(crate) fn evaluate_map_arena<'a>(
         } else {
             actx.replace_top_data(item_av, i);
         }
-        let av = engine.evaluate_arena_node(body, actx, context, arena)?;
+        let av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
         results.push(crate::arena::value::reborrow_arena_value(av));
     }
     if pushed {
@@ -2690,70 +1415,46 @@ pub(crate) fn evaluate_map_arena<'a>(
 ///   - `some`: early_truthy = true (true ⇒ return true immediately)
 ///   - `none`: same as `some` but invert the final result
 #[inline]
-#[allow(clippy::too_many_arguments)] // 5 contextual + 3 quantifier-shape flags; bundling the flags
-// into a struct adds noise without simplifying the call sites.
 fn evaluate_quantifier_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
-    short_circuit_on: bool,
-    invert_final: bool,
-    empty_result: bool,
+    shape: QuantifierShape,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() != 2 {
         return Err(Error::InvalidArguments(INVALID_ARGS.into()));
     }
 
     let predicate = &args[1];
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Bool(empty_result))),
+        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result))),
         ResolvedInput::Bridge(av) => {
-            return quantifier_arena_bridge(
-                av,
-                predicate,
-                short_circuit_on,
-                invert_final,
-                empty_result,
-                actx,
-                context,
-                engine,
-                arena,
-            );
+            return quantifier_arena_bridge(av, predicate, shape, actx, engine, arena);
         }
     };
 
     if src.is_empty() {
-        return Ok(arena.alloc(ArenaValue::Bool(empty_result)));
+        return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
     }
 
     // Fast predicate path — no context push, no clones.
     if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
         let len = src.len();
         for i in 0..len {
-            if fast_pred.evaluate(src.get(i)) == short_circuit_on {
-                let result = if invert_final {
-                    !short_circuit_on
-                } else {
-                    short_circuit_on
-                };
-                return Ok(arena.alloc(ArenaValue::Bool(result)));
+            if fast_pred.evaluate(src.get(i)) == shape.short_circuit_on {
+                return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(true))));
             }
         }
-        let result = if invert_final {
-            short_circuit_on
-        } else {
-            !short_circuit_on
-        };
-        return Ok(arena.alloc(ArenaValue::Bool(result)));
+        return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(false))));
     }
 
     // General path: zero-clone via ArenaContextStack.
     let mut pushed = false;
     let mut found_short = false;
     let len = src.len();
+    let total = len as u32;
     for i in 0..len {
         let item = src.get(i);
         let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
@@ -2763,8 +1464,8 @@ fn evaluate_quantifier_arena<'a>(
         } else {
             actx.replace_top_data(item_av, i);
         }
-        let av = engine.evaluate_arena_node(predicate, actx, context, arena)?;
-        if crate::arena::is_truthy_arena(av, engine) == short_circuit_on {
+        let av = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
+        if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
             found_short = true;
             break;
         }
@@ -2772,19 +1473,7 @@ fn evaluate_quantifier_arena<'a>(
     if pushed {
         actx.pop();
     }
-
-    let result = if found_short {
-        if invert_final {
-            !short_circuit_on
-        } else {
-            short_circuit_on
-        }
-    } else if invert_final {
-        short_circuit_on
-    } else {
-        !short_circuit_on
-    };
-    Ok(arena.alloc(ArenaValue::Bool(result)))
+    Ok(arena.alloc(ArenaValue::Bool(shape.finalize(found_short))))
 }
 
 /// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.
@@ -2792,13 +1481,22 @@ fn evaluate_quantifier_arena<'a>(
 pub(crate) fn evaluate_all_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     // all: early-exit on false; empty array ⇒ false (matching existing impl,
     // which deliberately rejects vacuous truth — see evaluate_all in this file).
-    evaluate_quantifier_arena(args, actx, context, engine, arena, false, false, false)
+    evaluate_quantifier_arena(
+        args,
+        actx,
+        engine,
+        arena,
+        QuantifierShape {
+            short_circuit_on: false,
+            invert_final: false,
+            empty_result: false,
+        },
+    )
 }
 
 /// Arena-mode `some` — true iff any item satisfies predicate. Short-circuits on true.
@@ -2806,12 +1504,21 @@ pub(crate) fn evaluate_all_arena<'a>(
 pub(crate) fn evaluate_some_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     // some: early-exit on true; empty array ⇒ false.
-    evaluate_quantifier_arena(args, actx, context, engine, arena, true, false, false)
+    evaluate_quantifier_arena(
+        args,
+        actx,
+        engine,
+        arena,
+        QuantifierShape {
+            short_circuit_on: true,
+            invert_final: false,
+            empty_result: false,
+        },
+    )
 }
 
 /// Arena-mode `none` — true iff no item satisfies predicate. Short-circuits on true.
@@ -2819,12 +1526,21 @@ pub(crate) fn evaluate_some_arena<'a>(
 pub(crate) fn evaluate_none_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     // none: early-exit on true (then return false); empty array ⇒ true.
-    evaluate_quantifier_arena(args, actx, context, engine, arena, true, true, true)
+    evaluate_quantifier_arena(
+        args,
+        actx,
+        engine,
+        arena,
+        QuantifierShape {
+            short_circuit_on: true,
+            invert_final: true,
+            empty_result: true,
+        },
+    )
 }
 
 /// Arena-mode `reduce` — folds an array into a single value via accumulator.
@@ -2835,7 +1551,6 @@ pub(crate) fn evaluate_none_arena<'a>(
 pub(crate) fn evaluate_reduce_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -2845,17 +1560,17 @@ pub(crate) fn evaluate_reduce_arena<'a>(
 
     let body = &args[1];
     let initial: Value = if args.len() == 3 {
-        let av = engine.evaluate_arena_node(&args[2], actx, context, arena)?;
+        let av = engine.evaluate_arena_node(&args[2], actx, arena)?;
         crate::arena::arena_to_value(av)
     } else {
         Value::Null
     };
 
-    let src = match resolve_iter_input(&args[0], actx, context, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(value_to_arena(&initial, arena))),
         ResolvedInput::Bridge(av) => {
-            return reduce_arena_bridge(av, body, &initial, actx, context, engine, arena);
+            return reduce_arena_bridge(av, body, &initial, actx, engine, arena);
         }
     };
 
@@ -2885,6 +1600,7 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     let mut acc_av: &'a ArenaValue<'a> = arena.alloc(value_to_arena(&initial, arena));
     let mut pushed = false;
     let len = src.len();
+    let total = len as u32;
     for i in 0..len {
         let item = src.get(i);
         let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
@@ -2894,8 +1610,7 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         } else {
             actx.replace_reduce_data(item_av, acc_av);
         }
-        let _ = i; // silence unused
-        acc_av = engine.evaluate_arena_node(body, actx, context, arena)?;
+        acc_av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
     }
     if pushed {
         actx.pop();
@@ -3012,7 +1727,6 @@ fn try_reduce_fast_path_arena(
 pub(crate) fn evaluate_merge_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -3020,7 +1734,7 @@ pub(crate) fn evaluate_merge_arena<'a>(
         bumpalo::collections::Vec::new_in(arena);
 
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
         match av {
             // Direct arena Array (e.g. result of upstream arena filter/map).
             ArenaValue::Array(items) => {

@@ -35,119 +35,14 @@
 //!
 //! - [`throw`](super::throw) - Throw an error to be caught by `try`
 
-use serde_json::Value;
-
-use crate::eval_mode::Mode;
-use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
-
-/// Evaluate the last argument of try with error context if applicable.
-/// Uses `take()` to move the error object instead of cloning.
-#[inline]
-fn try_last_with_error_context<M: Mode>(
-    arg: &CompiledNode,
-    last_error: &mut Option<Error>,
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if let Some(Error::Thrown(error_obj)) = last_error.take() {
-        context.push(error_obj);
-        let result = engine.evaluate_node_with_mode::<M>(arg, context, mode);
-        context.pop();
-        result
-    } else {
-        engine.evaluate_node_with_mode::<M>(arg, context, mode)
-    }
-}
-
-/// Try operator — catches errors and falls back through alternative arguments.
-///
-/// Generic over [`Mode`] so plain and traced dispatch share the same body.
-/// Snapshots the error breadcrumb length on entry and truncates back to it
-/// whenever a catch succeeds, so the final breadcrumb only reflects the
-/// error that escapes `try` (if any) — not every arm that was tried and
-/// swallowed along the way.
-#[inline]
-pub fn evaluate_try<M: Mode>(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    mode: &mut M,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Err(Error::InvalidArguments(
-            "try requires at least one argument".to_string(),
-        ));
-    }
-
-    // Fast path: single argument — just evaluate it
-    if args.len() == 1 {
-        return engine.evaluate_node_with_mode::<M>(&args[0], context, mode);
-    }
-
-    // Fast path: two arguments (most common pattern)
-    if args.len() == 2 {
-        let checkpoint = context.error_path_len();
-        match engine.evaluate_node_with_mode::<M>(&args[0], context, mode) {
-            Ok(result) => return Ok(result),
-            Err(err) => {
-                // Swallowed error — drop any breadcrumb it accumulated.
-                context.truncate_error_path(checkpoint);
-                let mut last_error = Some(err);
-                return try_last_with_error_context::<M>(
-                    &args[1],
-                    &mut last_error,
-                    context,
-                    engine,
-                    mode,
-                );
-            }
-        }
-    }
-
-    // General path: 3+ arguments
-    let mut last_error: Option<Error> = None;
-    let last_idx = args.len() - 1;
-
-    for (i, arg) in args.iter().enumerate() {
-        if i == last_idx {
-            return try_last_with_error_context::<M>(arg, &mut last_error, context, engine, mode);
-        }
-        let checkpoint = context.error_path_len();
-        match engine.evaluate_node_with_mode::<M>(arg, context, mode) {
-            Ok(result) => return Ok(result),
-            Err(err) => {
-                context.truncate_error_path(checkpoint);
-                last_error = Some(err);
-            }
-        }
-    }
-
-    match last_error {
-        Some(err) => Err(err),
-        None => Err(Error::InvalidArguments(
-            "try: no arguments provided".to_string(),
-        )),
-    }
-}
-
-// =============================================================================
-// Arena-mode try
-// =============================================================================
-//
-// Try evaluates arms in sequence until one succeeds. Each arm is dispatched
-// through `evaluate_arena_node` so successful arms stay in arena. The error
-// path management uses the same value-mode `ContextStack` since arena ops
-// don't yet manage their own error breadcrumb.
-
 use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::{CompiledNode, DataLogic, Error, Result};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_try_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
@@ -155,7 +50,7 @@ pub(crate) fn evaluate_try_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Null));
     }
     if args.len() == 1 {
-        return engine.evaluate_arena_node(&args[0], actx, context, arena);
+        return engine.evaluate_arena_node(&args[0], actx, arena);
     }
 
     // Multi-arg form: try arms in sequence; final arm receives the error
@@ -164,15 +59,13 @@ pub(crate) fn evaluate_try_arena<'a>(
     let mut last_err: Option<Error> = None;
     for (i, arg) in args.iter().enumerate() {
         if i == last_idx {
-            return arena_try_last_with_error_context(
-                arg, &mut last_err, actx, context, engine, arena,
-            );
+            return arena_try_last_with_error_context(arg, &mut last_err, actx, engine, arena);
         }
-        let saved_len = context.error_path_len();
-        match engine.evaluate_arena_node(arg, actx, context, arena) {
+        let saved_len = actx.error_path_len();
+        match engine.evaluate_arena_node(arg, actx, arena) {
             Ok(v) => return Ok(v),
             Err(e) => {
-                context.truncate_error_path(saved_len);
+                actx.truncate_error_path(saved_len);
                 last_err = Some(e);
             }
         }
@@ -180,28 +73,23 @@ pub(crate) fn evaluate_try_arena<'a>(
     Err(last_err.unwrap_or_else(|| Error::InvalidArguments(crate::constants::INVALID_ARGS.into())))
 }
 
-/// Arena variant of [`try_last_with_error_context`]. Pushes the thrown error
-/// object onto both the arena context stack (so arena `var`/`val` lookups see
-/// it) and the legacy context stack (so any legacy fallback path sees it too).
+/// Pushes the thrown error object onto the arena context stack as the
+/// current frame so the catch arm's `var`/`val` lookups see error fields.
 #[inline]
 fn arena_try_last_with_error_context<'a>(
     arg: &CompiledNode,
     last_error: &mut Option<Error>,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if let Some(Error::Thrown(error_obj)) = last_error.take() {
-        let av: &'a ArenaValue<'a> =
-            arena.alloc(crate::arena::value_to_arena(&error_obj, arena));
+        let av: &'a ArenaValue<'a> = arena.alloc(crate::arena::value_to_arena(&error_obj, arena));
         actx.push(av);
-        context.push(error_obj);
-        let result = engine.evaluate_arena_node(arg, actx, context, arena);
+        let result = engine.evaluate_arena_node(arg, actx, arena);
         actx.pop();
-        context.pop();
         result
     } else {
-        engine.evaluate_arena_node(arg, actx, context, arena)
+        engine.evaluate_arena_node(arg, actx, arena)
     }
 }

@@ -139,4 +139,3 @@ fn test_evaluate_ref_with_arena_dispatch() {
     let result = engine.evaluate_ref(&compiled, &data).unwrap();
     assert_eq!(result, json!(3));
 }
-

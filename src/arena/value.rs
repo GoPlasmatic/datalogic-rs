@@ -102,10 +102,7 @@ impl<'a> ArenaValue<'a> {
     /// Returns true if this value is `Null` or wraps `Value::Null`.
     #[inline]
     pub fn is_null(&self) -> bool {
-        matches!(
-            self,
-            ArenaValue::Null | ArenaValue::InputRef(Value::Null)
-        )
+        matches!(self, ArenaValue::Null | ArenaValue::InputRef(Value::Null))
     }
 
     /// Extract a boolean if this value is a `Bool` (or wraps one).
@@ -237,10 +234,12 @@ pub(crate) fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
             // Build sorted (key, value) pairs in the arena. JSON objects from
             // serde_json (without `preserve_order`) are already sorted by key
             // because the underlying `Map` is `BTreeMap`. We rely on that here.
-            let pairs = arena.alloc_slice_fill_iter(
-                obj.iter()
-                    .map(|(k, v)| (arena.alloc_str(k.as_str()) as &str, value_to_arena(v, arena))),
-            );
+            let pairs = arena.alloc_slice_fill_iter(obj.iter().map(|(k, v)| {
+                (
+                    arena.alloc_str(k.as_str()) as &str,
+                    value_to_arena(v, arena),
+                )
+            }));
             ArenaValue::Object(pairs)
         }
     }
@@ -402,8 +401,7 @@ pub(crate) fn arena_traverse_segments<'a>(
             PathSegment::Index(idx) => match cur {
                 ArenaValue::Array(items) => {
                     let entry = items.get(*idx)?;
-                    let av_ref: &'a ArenaValue<'a> =
-                        unsafe { &*(entry as *const ArenaValue<'a>) };
+                    let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
                     cur = av_ref;
                 }
                 ArenaValue::InputRef(Value::Array(arr)) => {
@@ -428,8 +426,7 @@ pub(crate) fn arena_traverse_segments<'a>(
                 }
                 ArenaValue::Array(items) => {
                     let entry = items.get(*idx)?;
-                    let av_ref: &'a ArenaValue<'a> =
-                        unsafe { &*(entry as *const ArenaValue<'a>) };
+                    let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
                     cur = av_ref;
                 }
                 ArenaValue::InputRef(Value::Object(obj)) => {
@@ -454,7 +451,7 @@ pub(crate) fn arena_traverse_segments<'a>(
 #[allow(dead_code)] // wired up in Phase 6 (string ops migration)
 pub(crate) fn to_string_arena<'a>(v: &ArenaValue<'a>, arena: &'a Bump) -> &'a str {
     match v {
-        ArenaValue::String(s) => *s,
+        ArenaValue::String(s) => s,
         ArenaValue::InputRef(Value::String(s)) => arena.alloc_str(s),
         ArenaValue::Null | ArenaValue::InputRef(Value::Null) => "",
         ArenaValue::Bool(true) | ArenaValue::InputRef(Value::Bool(true)) => "true",
@@ -588,7 +585,10 @@ mod tests {
         let map = back.as_object().expect("object");
         assert!(map.contains_key("datetime"));
         // And re-parse from the boundary form gives the same DateTime back.
-        let s = map.get("datetime").and_then(|v| v.as_str()).expect("string");
+        let s = map
+            .get("datetime")
+            .and_then(|v| v.as_str())
+            .expect("string");
         let dt2 = DataDateTime::parse(s).expect("re-parse");
         assert_eq!(dt, dt2);
     }
@@ -596,13 +596,39 @@ mod tests {
     #[test]
     fn coerce_arena_to_number_basics() {
         let arena = Bump::new();
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!(42), &arena)), Some(42.0));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!(true), &arena)), Some(1.0));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!(false), &arena)), Some(0.0));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!(null), &arena)), Some(0.0));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!("3.14"), &arena)), Some(3.14));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!(""), &arena)), Some(0.0));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!([5]), &arena)), Some(5.0));
-        assert_eq!(coerce_arena_to_number(&value_to_arena(&json!([1, 2]), &arena)), None);
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!(42), &arena)),
+            Some(42.0)
+        );
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!(true), &arena)),
+            Some(1.0)
+        );
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!(false), &arena)),
+            Some(0.0)
+        );
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!(null), &arena)),
+            Some(0.0)
+        );
+        // Numeric string parses; "3.14" round-trips through `coerce_arena_to_number`.
+        let parsed: f64 = "3.14".parse().unwrap();
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!("3.14"), &arena)),
+            Some(parsed)
+        );
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!(""), &arena)),
+            Some(0.0)
+        );
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!([5]), &arena)),
+            Some(5.0)
+        );
+        assert_eq!(
+            coerce_arena_to_number(&value_to_arena(&json!([1, 2]), &arena)),
+            None
+        );
     }
 }

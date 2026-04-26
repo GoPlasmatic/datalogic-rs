@@ -40,8 +40,6 @@ pub mod variable;
 // Feature-gated extended operators
 #[cfg(feature = "datetime")]
 pub mod datetime;
-#[cfg(feature = "ext-math")]
-pub mod math;
 #[cfg(feature = "preserve")]
 pub mod preserve;
 #[cfg(feature = "error-handling")]

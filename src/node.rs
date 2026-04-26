@@ -369,7 +369,12 @@ fn estimate_value_bytes(v: &Value) -> usize {
     match v {
         Value::String(s) => s.len() + 16,
         Value::Array(arr) => 16 + arr.iter().map(estimate_value_bytes).sum::<usize>(),
-        Value::Object(obj) => 16 + obj.iter().map(|(k, v)| k.len() + estimate_value_bytes(v)).sum::<usize>(),
+        Value::Object(obj) => {
+            16 + obj
+                .iter()
+                .map(|(k, v)| k.len() + estimate_value_bytes(v))
+                .sum::<usize>()
+        }
         _ => 0,
     }
 }
@@ -448,129 +453,5 @@ pub(crate) fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         // Pure operators: Static when all arguments are static. These perform
         // deterministic transformations without side effects or context access.
         _ => args_static(),
-    }
-}
-
-/// Convert path segments back to a dot-separated path string.
-pub(crate) fn segments_to_dot_path(segments: &[PathSegment]) -> String {
-    segments
-        .iter()
-        .map(|seg| match seg {
-            PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s.to_string(),
-            PathSegment::Index(i) => i.to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join(".")
-}
-
-/// Convert a path segment to a JSON value.
-pub(crate) fn segment_to_value(seg: &PathSegment) -> Value {
-    match seg {
-        PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => Value::String(s.to_string()),
-        PathSegment::Index(i) => Value::Number((*i as u64).into()),
-    }
-}
-
-/// Convert a compiled node back to a JSON value (for custom operators).
-pub(crate) fn node_to_value(node: &CompiledNode) -> Value {
-    match node {
-        CompiledNode::Value { value, .. } => value.clone(),
-        CompiledNode::Array { nodes, .. } => {
-            Value::Array(nodes.iter().map(node_to_value).collect())
-        }
-        CompiledNode::BuiltinOperator { opcode, args, .. } => {
-            let mut obj = serde_json::Map::new();
-            let args_value = if args.len() == 1 {
-                node_to_value(&args[0])
-            } else {
-                Value::Array(args.iter().map(node_to_value).collect())
-            };
-            obj.insert(opcode.as_str().into(), args_value);
-            Value::Object(obj)
-        }
-        CompiledNode::CustomOperator(data) => {
-            let mut obj = serde_json::Map::new();
-            let args_value = if data.args.len() == 1 {
-                node_to_value(&data.args[0])
-            } else {
-                Value::Array(data.args.iter().map(node_to_value).collect())
-            };
-            obj.insert(data.name.clone(), args_value);
-            Value::Object(obj)
-        }
-        #[cfg(feature = "preserve")]
-        CompiledNode::StructuredObject(data) => {
-            let mut obj = serde_json::Map::new();
-            for (key, node) in data.fields.iter() {
-                obj.insert(key.clone(), node_to_value(node));
-            }
-            Value::Object(obj)
-        }
-        CompiledNode::CompiledVar {
-            scope_level,
-            segments,
-            default_value,
-            ..
-        } => {
-            let mut obj = serde_json::Map::new();
-            if *scope_level == 0 {
-                // Reconstruct as var
-                let path = segments_to_dot_path(segments);
-                match default_value {
-                    Some(def) => {
-                        obj.insert(
-                            "var".into(),
-                            Value::Array(vec![Value::String(path), node_to_value(def)]),
-                        );
-                    }
-                    None => {
-                        obj.insert("var".into(), Value::String(path));
-                    }
-                }
-            } else {
-                // Reconstruct as val with level
-                let mut arr: Vec<Value> = vec![Value::Array(vec![Value::Number(
-                    (*scope_level as u64).into(),
-                )])];
-                for seg in segments.iter() {
-                    arr.push(segment_to_value(seg));
-                }
-                obj.insert("val".into(), Value::Array(arr));
-            }
-            Value::Object(obj)
-        }
-        #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(data) => {
-            let mut obj = serde_json::Map::new();
-            if data.segments.len() == 1 {
-                obj.insert("exists".into(), segment_to_value(&data.segments[0]));
-            } else {
-                let arr: Vec<Value> = data.segments.iter().map(segment_to_value).collect();
-                obj.insert("exists".into(), Value::Array(arr));
-            }
-            Value::Object(obj)
-        }
-        #[cfg(feature = "ext-string")]
-        CompiledNode::CompiledSplitRegex(data) => {
-            let mut obj = serde_json::Map::new();
-            let mut arr = vec![node_to_value(&data.args[0])];
-            arr.push(Value::String(data.regex.as_str().to_string()));
-            obj.insert("split".into(), Value::Array(arr));
-            Value::Object(obj)
-        }
-        #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(data) => {
-            let mut obj = serde_json::Map::new();
-            if let Value::Object(err_map) = &data.error {
-                if let Some(Value::String(s)) = err_map.get("type") {
-                    obj.insert("throw".into(), Value::String(s.clone()));
-                } else {
-                    obj.insert("throw".into(), data.error.clone());
-                }
-            } else {
-                obj.insert("throw".into(), data.error.clone());
-            }
-            Value::Object(obj)
-        }
     }
 }

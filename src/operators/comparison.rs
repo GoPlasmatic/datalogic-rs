@@ -48,65 +48,7 @@ use serde_json::Value;
 use super::helpers::{extract_datetime_value, extract_duration_value};
 use crate::constants::INVALID_ARGS;
 use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
-use crate::{CompiledNode, ContextStack, DataLogic, Result};
-
-/// Equals operator function (== for loose equality)
-#[inline]
-pub fn evaluate_equals(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // For chained equality (3+ arguments), check if all are equal
-    let first = engine.evaluate_node_cow(&args[0], context)?;
-
-    for item in args.iter().skip(1) {
-        let current = engine.evaluate_node_cow(item, context)?;
-
-        // Compare first == current (loose equality)
-        let result = compare_equals(&first, &current, false, engine)?;
-
-        if !result {
-            // Short-circuit on first inequality
-            return Ok(Value::Bool(false));
-        }
-    }
-
-    Ok(Value::Bool(true))
-}
-
-/// Strict equals operator function (=== for strict equality)
-#[inline]
-pub fn evaluate_strict_equals(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // For chained equality (3+ arguments), check if all are equal
-    let first = engine.evaluate_node_cow(&args[0], context)?;
-
-    for item in args.iter().skip(1) {
-        let current = engine.evaluate_node_cow(item, context)?;
-
-        // Compare first === current (strict equality)
-        let result = compare_equals(&first, &current, true, engine)?;
-
-        if !result {
-            // Short-circuit on first inequality
-            return Ok(Value::Bool(false));
-        }
-    }
-
-    Ok(Value::Bool(true))
-}
+use crate::{CompiledNode, DataLogic, Result};
 
 /// Returns true if a string could plausibly be a datetime or duration.
 /// Filters out pure numeric strings and short strings that can't be either format.
@@ -194,84 +136,6 @@ fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic)
     }
 }
 
-/// Not equals operator function (!= for loose inequality)
-#[inline]
-pub fn evaluate_not_equals(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // != returns true if arguments are not all equal
-    // It's the logical negation of ==
-    // But we need to handle lazy evaluation differently
-
-    // Evaluate first two arguments
-    let first = engine.evaluate_node_cow(&args[0], context)?;
-    let second = engine.evaluate_node_cow(&args[1], context)?;
-
-    // Compare them (loose equality)
-    let equals = compare_equals(&first, &second, false, engine)?;
-
-    if !equals {
-        // Found inequality, return true immediately (lazy)
-        return Ok(Value::Bool(true));
-    }
-
-    // If we only have 2 args and they're equal, return false
-    if args.len() == 2 {
-        return Ok(Value::Bool(false));
-    }
-
-    // For 3+ args, since first two are equal, the result depends on whether
-    // all remaining args also equal the first. But JSONLogic != seems to only
-    // check the first two operands when they're equal (based on test case)
-    // This achieves lazy evaluation.
-    Ok(Value::Bool(false))
-}
-/// Strict not equals operator function (!== for strict inequality)
-#[inline]
-pub fn evaluate_strict_not_equals(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    // !== returns true if arguments are not all equal
-    // It's the logical negation of ===
-    // But we need to handle lazy evaluation differently
-
-    // Evaluate first two arguments
-    let first = engine.evaluate_node_cow(&args[0], context)?;
-    let second = engine.evaluate_node_cow(&args[1], context)?;
-
-    // Compare them (strict equality)
-    let equals = compare_equals(&first, &second, true, engine)?;
-
-    if !equals {
-        // Found inequality, return true immediately (lazy)
-        return Ok(Value::Bool(true));
-    }
-
-    // If we only have 2 args and they're equal, return false
-    if args.len() == 2 {
-        return Ok(Value::Bool(false));
-    }
-
-    // For 3+ args, since first two are equal, the result depends on whether
-    // all remaining args also equal the first. But JSONLogic !== seems to only
-    // check the first two operands when they're equal (based on test case)
-    // This achieves lazy evaluation.
-    Ok(Value::Bool(false))
-}
-
-/// Ordering comparison operation type
 #[derive(Clone, Copy)]
 enum OrdOp {
     Gt,
@@ -330,34 +194,6 @@ impl OrdOp {
             OrdOp::Lte => l <= r,
         }
     }
-}
-
-/// Generic chained comparison for ordering operators (>, >=, <, <=).
-/// Evaluates args pairwise with short-circuit on first false.
-#[inline]
-fn evaluate_chained_comparison(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    op: OrdOp,
-) -> Result<Value> {
-    if args.len() < 2 {
-        return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
-    }
-
-    let mut prev = engine.evaluate_node_cow(&args[0], context)?;
-
-    for item in args.iter().skip(1) {
-        let curr = engine.evaluate_node_cow(item, context)?;
-
-        if !compare_ordered(&prev, &curr, op, engine)? {
-            return Ok(Value::Bool(false));
-        }
-
-        prev = curr;
-    }
-
-    Ok(Value::Bool(true))
 }
 
 /// Generic ordered comparison helper handling numbers, strings, datetimes, and durations.
@@ -436,46 +272,6 @@ fn compare_ordered(left: &Value, right: &Value, op: OrdOp, engine: &DataLogic) -
     Ok(false)
 }
 
-/// Greater than operator function (>)
-#[inline]
-pub fn evaluate_greater_than(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    evaluate_chained_comparison(args, context, engine, OrdOp::Gt)
-}
-
-/// Greater than or equal operator function (>=)
-#[inline]
-pub fn evaluate_greater_than_equal(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    evaluate_chained_comparison(args, context, engine, OrdOp::Gte)
-}
-
-/// Less than operator function (<) - supports variadic arguments
-#[inline]
-pub fn evaluate_less_than(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    evaluate_chained_comparison(args, context, engine, OrdOp::Lt)
-}
-
-/// Less than or equal operator function (<=) - supports variadic arguments
-#[inline]
-pub fn evaluate_less_than_equal(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    evaluate_chained_comparison(args, context, engine, OrdOp::Lte)
-}
-
 // =============================================================================
 // Arena-mode comparison operators
 // =============================================================================
@@ -492,17 +288,16 @@ use bumpalo::Bump;
 pub(crate) fn evaluate_strict_equals_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first = arena_to_value_cow(first_av);
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
         let cur = arena_to_value_cow(cur_av);
         if !compare_equals(&first, &cur, true, engine)? {
             return Ok(crate::arena::pool::singleton_false());
@@ -515,15 +310,14 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
 pub(crate) fn evaluate_strict_not_equals_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let a = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    let b = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
+    let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
     let eq = compare_equals(&arena_to_value_cow(a), &arena_to_value_cow(b), true, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -532,17 +326,16 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
 pub(crate) fn evaluate_equals_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let first_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let first = arena_to_value_cow(first_av);
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
         let cur = arena_to_value_cow(cur_av);
         if !compare_equals(&first, &cur, false, engine)? {
             return Ok(crate::arena::pool::singleton_false());
@@ -555,16 +348,20 @@ pub(crate) fn evaluate_equals_arena<'a>(
 pub(crate) fn evaluate_not_equals_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let a = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
-    let b = engine.evaluate_arena_node(&args[1], actx, context, arena)?;
-    let eq = compare_equals(&arena_to_value_cow(a), &arena_to_value_cow(b), false, engine)?;
+    let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
+    let eq = compare_equals(
+        &arena_to_value_cow(a),
+        &arena_to_value_cow(b),
+        false,
+        engine,
+    )?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
 
@@ -572,7 +369,6 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
 fn evaluate_ord_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
     op: OrdOp,
@@ -580,10 +376,10 @@ fn evaluate_ord_arena<'a>(
     if args.len() < 2 {
         return Err(crate::Error::InvalidArguments(INVALID_ARGS.into()));
     }
-    let mut prev_av = engine.evaluate_arena_node(&args[0], actx, context, arena)?;
+    let mut prev_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let mut prev_cow = arena_to_value_cow(prev_av);
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, actx, context, arena)?;
+        let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
         let cur_cow = arena_to_value_cow(cur_av);
         if !compare_ordered(&prev_cow, &cur_cow, op, engine)? {
             return Ok(crate::arena::pool::singleton_false());
@@ -599,42 +395,38 @@ fn evaluate_ord_arena<'a>(
 pub(crate) fn evaluate_greater_than_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, actx, context, engine, arena, OrdOp::Gt)
+    evaluate_ord_arena(args, actx, engine, arena, OrdOp::Gt)
 }
 
 #[inline]
 pub(crate) fn evaluate_greater_than_equal_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, actx, context, engine, arena, OrdOp::Gte)
+    evaluate_ord_arena(args, actx, engine, arena, OrdOp::Gte)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, actx, context, engine, arena, OrdOp::Lt)
+    evaluate_ord_arena(args, actx, engine, arena, OrdOp::Lt)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_equal_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    evaluate_ord_arena(args, actx, context, engine, arena, OrdOp::Lte)
+    evaluate_ord_arena(args, actx, engine, arena, OrdOp::Lte)
 }

@@ -158,6 +158,10 @@ impl NumberValue {
         }
         match (*self, *other) {
             (NumberValue::Integer(a), NumberValue::Integer(b)) => {
+                // i64::MIN / -1 overflows; fall through to float.
+                if a == i64::MIN && b == -1 {
+                    return Some(NumberValue::Float(-(i64::MIN as f64)));
+                }
                 if a % b == 0 {
                     Some(NumberValue::Integer(a / b))
                 } else {
@@ -174,7 +178,13 @@ impl NumberValue {
             return None;
         }
         match (*self, *other) {
-            (NumberValue::Integer(a), NumberValue::Integer(b)) => Some(NumberValue::Integer(a % b)),
+            (NumberValue::Integer(a), NumberValue::Integer(b)) => {
+                // i64::MIN % -1 overflows; the mathematical result is 0.
+                if a == i64::MIN && b == -1 {
+                    return Some(NumberValue::Integer(0));
+                }
+                Some(NumberValue::Integer(a % b))
+            }
             _ => Some(NumberValue::from_f64(self.as_f64() % other.as_f64())),
         }
     }
@@ -246,15 +256,27 @@ mod tests {
 
     #[test]
     fn from_f64_collapses_whole() {
-        assert!(matches!(NumberValue::from_f64(42.0), NumberValue::Integer(42)));
-        assert!(matches!(NumberValue::from_f64(-3.0), NumberValue::Integer(-3)));
+        assert!(matches!(
+            NumberValue::from_f64(42.0),
+            NumberValue::Integer(42)
+        ));
+        assert!(matches!(
+            NumberValue::from_f64(-3.0),
+            NumberValue::Integer(-3)
+        ));
         assert!(matches!(NumberValue::from_f64(1.5), NumberValue::Float(_)));
     }
 
     #[test]
     fn from_f64_rejects_nan_inf_for_int_path() {
-        assert!(matches!(NumberValue::from_f64(f64::NAN), NumberValue::Float(_)));
-        assert!(matches!(NumberValue::from_f64(f64::INFINITY), NumberValue::Float(_)));
+        assert!(matches!(
+            NumberValue::from_f64(f64::NAN),
+            NumberValue::Float(_)
+        ));
+        assert!(matches!(
+            NumberValue::from_f64(f64::INFINITY),
+            NumberValue::Float(_)
+        ));
     }
 
     #[test]

@@ -527,176 +527,6 @@ pub(crate) fn try_traverse_segments<'a>(
     Some(current)
 }
 
-/// Return the default value if provided, otherwise null.
-#[inline]
-fn default_or_null(
-    default_value: Option<&CompiledNode>,
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    match default_value {
-        Some(node) => engine.evaluate_node(node, context),
-        None => Ok(Value::Null),
-    }
-}
-
-/// Evaluate a pre-compiled variable access (unified var/val).
-///
-/// This function handles both var (scope_level=0) and val (scope_level=N) access
-/// with pre-parsed path segments, avoiding runtime string splitting and parsing.
-#[inline]
-pub fn evaluate_compiled_var(
-    scope_level: u32,
-    segments: &[PathSegment],
-    reduce_hint: ReduceHint,
-    metadata_hint: MetadataHint,
-    default_value: Option<&CompiledNode>,
-    context: &mut ContextStack,
-    engine: &DataLogic,
-) -> Result<Value> {
-    // 1. Metadata fast path (index/key)
-    match metadata_hint {
-        MetadataHint::Index => {
-            if let Some(idx) = context.current().get_index() {
-                return Ok(Value::Number(serde_json::Number::from(idx as u64)));
-            }
-        }
-        MetadataHint::Key => {
-            if let Some(key) = context.current().get_key() {
-                return Ok(Value::String(key.to_string()));
-            }
-        }
-        MetadataHint::None => {}
-    }
-
-    // 2. Reduce context fast path — only enter the frame if the compile-time
-    // hint says we might hit one. Most vars in compat have `ReduceHint::None`
-    // and skipping the whole block avoids a redundant `context.current()`
-    // call plus a match on the common path.
-    if reduce_hint != ReduceHint::None {
-        // Use Option<Option<Value>>: None = no reduce, Some(Some(v)) = found, Some(None) = not found
-        let reduce_result = {
-            let frame = context.current();
-            match reduce_hint {
-                ReduceHint::Current => frame.get_reduce_current().map(|v| Some(v.clone())),
-                ReduceHint::Accumulator => frame.get_reduce_accumulator().map(|v| Some(v.clone())),
-                ReduceHint::CurrentPath => frame
-                    .get_reduce_current()
-                    .map(|current| try_traverse_segments(current, &segments[1..]).cloned()),
-                ReduceHint::AccumulatorPath => frame
-                    .get_reduce_accumulator()
-                    .map(|acc| try_traverse_segments(acc, &segments[1..]).cloned()),
-                ReduceHint::None => unreachable!(),
-            }
-        }; // frame borrow ends here
-
-        match reduce_result {
-            Some(Some(v)) => return Ok(v),
-            Some(None) => return default_or_null(default_value, context, engine),
-            None => {} // fall through to normal access
-        }
-    }
-
-    // 3. Get data at scope level and traverse
-    let data_result = {
-        let frame = if scope_level == 0 {
-            context.current()
-        } else {
-            context
-                .get_at_level(scope_level as isize)
-                .ok_or(Error::InvalidContextLevel(scope_level as isize))?
-        };
-
-        if segments.is_empty() {
-            Some(frame.data().clone())
-        } else {
-            try_traverse_segments(frame.data(), segments).cloned()
-        }
-    }; // frame borrow ends here
-
-    match data_result {
-        Some(v) => Ok(v),
-        None => default_or_null(default_value, context, engine),
-    }
-}
-
-/// Evaluate a pre-compiled exists check.
-#[cfg(feature = "ext-control")]
-#[inline]
-pub fn evaluate_compiled_exists(
-    scope_level: u32,
-    segments: &[PathSegment],
-    context: &mut ContextStack,
-) -> Result<Value> {
-    let frame = if scope_level == 0 {
-        context.current()
-    } else {
-        match context.get_at_level(scope_level as isize) {
-            Some(f) => f,
-            None => return Ok(Value::Bool(false)),
-        }
-    };
-
-    if segments.is_empty() {
-        return Ok(Value::Bool(true));
-    }
-
-    let mut current = frame.data();
-    let last = segments.len() - 1;
-    for (i, seg) in segments.iter().enumerate() {
-        match seg {
-            PathSegment::Field(key) => {
-                if let Value::Object(obj) = current {
-                    if i == last {
-                        return Ok(Value::Bool(obj.contains_key(key.as_ref())));
-                    }
-                    match obj.get(key.as_ref()) {
-                        Some(v) => current = v,
-                        None => return Ok(Value::Bool(false)),
-                    }
-                } else {
-                    return Ok(Value::Bool(false));
-                }
-            }
-            PathSegment::Index(idx) => {
-                if let Value::Array(arr) = current {
-                    if i == last {
-                        return Ok(Value::Bool(arr.get(*idx).is_some()));
-                    }
-                    match arr.get(*idx) {
-                        Some(v) => current = v,
-                        None => return Ok(Value::Bool(false)),
-                    }
-                } else {
-                    return Ok(Value::Bool(false));
-                }
-            }
-            PathSegment::FieldOrIndex(key, idx) => match current {
-                Value::Object(obj) => {
-                    if i == last {
-                        return Ok(Value::Bool(obj.contains_key(key.as_ref())));
-                    }
-                    match obj.get(key.as_ref()) {
-                        Some(v) => current = v,
-                        None => return Ok(Value::Bool(false)),
-                    }
-                }
-                Value::Array(arr) => {
-                    if i == last {
-                        return Ok(Value::Bool(arr.get(*idx).is_some()));
-                    }
-                    match arr.get(*idx) {
-                        Some(v) => current = v,
-                        None => return Ok(Value::Bool(false)),
-                    }
-                }
-                _ => return Ok(Value::Bool(false)),
-            },
-        }
-    }
-    Ok(Value::Bool(true))
-}
-
 // =============================================================================
 // Arena-mode variable access
 // =============================================================================
@@ -710,33 +540,42 @@ pub fn evaluate_compiled_exists(
 use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use bumpalo::Bump;
 
+/// Pre-compiled `var`/`val` lookup spec — the five fields stored on
+/// [`CompiledNode::CompiledVar`], bundled so the arena evaluator takes one
+/// borrow instead of five loose params.
+pub(crate) struct CompiledVarSpec<'n> {
+    pub scope_level: u32,
+    pub segments: &'n [PathSegment],
+    pub reduce_hint: ReduceHint,
+    pub metadata_hint: MetadataHint,
+    pub default_value: Option<&'n CompiledNode>,
+}
+
 /// Arena variant of `evaluate_compiled_var`. Returns `InputRef` for root-scope
 /// lookups that hit the input data; otherwise clones into the arena.
 #[inline]
 pub(crate) fn evaluate_compiled_var_arena<'a>(
-    scope_level: u32,
-    segments: &[PathSegment],
-    reduce_hint: ReduceHint,
-    metadata_hint: MetadataHint,
-    default_value: Option<&CompiledNode>,
+    spec: CompiledVarSpec<'_>,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    // 1. Metadata hints — prefer actx (arena iteration frames push here),
-    //    fall back to legacy context (custom-op shim or value-mode pushes here).
+    let CompiledVarSpec {
+        scope_level,
+        segments,
+        reduce_hint,
+        metadata_hint,
+        default_value,
+    } = spec;
+    // 1. Metadata hints from the arena iteration frame.
     match metadata_hint {
         MetadataHint::Index => {
             if let Some(idx) = actx.current().get_index() {
-                return Ok(arena.alloc(ArenaValue::Number(
-                    crate::value::NumberValue::Integer(idx as i64),
-                )));
-            }
-            if let Some(idx) = context.current().get_index() {
-                return Ok(arena.alloc(ArenaValue::Number(
-                    crate::value::NumberValue::Integer(idx as i64),
-                )));
+                return Ok(
+                    arena.alloc(ArenaValue::Number(crate::value::NumberValue::Integer(
+                        idx as i64,
+                    ))),
+                );
             }
         }
         MetadataHint::Key => {
@@ -744,83 +583,48 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
                 let s: &'a str = arena.alloc_str(key);
                 return Ok(arena.alloc(ArenaValue::String(s)));
             }
-            if let Some(key) = context.current().get_key() {
-                let s: &'a str = arena.alloc_str(key);
-                return Ok(arena.alloc(ArenaValue::String(s)));
-            }
         }
         MetadataHint::None => {}
     }
 
-    // 2. Reduce-context hints — check actx (arena reduce frame) first,
-    //    then legacy context.
-    if reduce_hint != ReduceHint::None {
-        // Try actx first.
-        if actx.depth() > 0 {
-            use crate::arena::context::ArenaContextRef;
-            if let ArenaContextRef::Frame(f) = actx.current() {
-                let arena_reduce: Option<&'a ArenaValue<'a>> = match reduce_hint {
-                    ReduceHint::Current => f.get_reduce_current(),
-                    ReduceHint::Accumulator => f.get_reduce_accumulator(),
-                    ReduceHint::CurrentPath | ReduceHint::AccumulatorPath => None,
-                    ReduceHint::None => unreachable!(),
-                };
-                if let Some(av) = arena_reduce {
+    // 2. Reduce-context hints — read from the arena reduce frame.
+    if reduce_hint != ReduceHint::None && actx.depth() > 0 {
+        use crate::arena::context::ArenaContextRef;
+        if let ArenaContextRef::Frame(f) = actx.current() {
+            let arena_reduce: Option<&'a ArenaValue<'a>> = match reduce_hint {
+                ReduceHint::Current => f.get_reduce_current(),
+                ReduceHint::Accumulator => f.get_reduce_accumulator(),
+                ReduceHint::CurrentPath | ReduceHint::AccumulatorPath => None,
+                ReduceHint::None => unreachable!(),
+            };
+            if let Some(av) = arena_reduce {
+                return Ok(av);
+            }
+            // Path variants: traverse segments on the reduce slot.
+            let path_av: Option<&'a ArenaValue<'a>> = match reduce_hint {
+                ReduceHint::CurrentPath => f.get_reduce_current().and_then(|cur| {
+                    crate::arena::value::arena_traverse_segments(cur, &segments[1..], arena)
+                }),
+                ReduceHint::AccumulatorPath => f.get_reduce_accumulator().and_then(|acc| {
+                    crate::arena::value::arena_traverse_segments(acc, &segments[1..], arena)
+                }),
+                _ => None,
+            };
+            match (reduce_hint, path_av) {
+                (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, Some(av)) => {
                     return Ok(av);
                 }
-                // Path variants: use arena_traverse_segments on the reduce slot.
-                let path_av: Option<&'a ArenaValue<'a>> = match reduce_hint {
-                    ReduceHint::CurrentPath => f.get_reduce_current().and_then(|cur| {
-                        crate::arena::value::arena_traverse_segments(cur, &segments[1..], arena)
-                    }),
-                    ReduceHint::AccumulatorPath => f.get_reduce_accumulator().and_then(|acc| {
-                        crate::arena::value::arena_traverse_segments(acc, &segments[1..], arena)
-                    }),
-                    _ => None,
-                };
-                match (reduce_hint, path_av) {
-                    (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, Some(av)) => {
-                        return Ok(av);
-                    }
-                    (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, None) => {
-                        // Frame existed but path didn't resolve — return default.
-                        return default_or_null_arena(
-                            default_value,
-                            actx,
-                            context,
-                            engine,
-                            arena,
-                        );
-                    }
-                    _ => {}
+                (ReduceHint::CurrentPath | ReduceHint::AccumulatorPath, None) => {
+                    // Frame existed but path didn't resolve — return default.
+                    return default_or_null_arena(default_value, actx, engine, arena);
                 }
+                _ => {}
             }
-        }
-
-        // Legacy context fallback.
-        let frame = context.current();
-        let reduce_result: Option<Option<&Value>> = match reduce_hint {
-            ReduceHint::Current => frame.get_reduce_current().map(Some),
-            ReduceHint::Accumulator => frame.get_reduce_accumulator().map(Some),
-            ReduceHint::CurrentPath => frame
-                .get_reduce_current()
-                .map(|cur| try_traverse_segments(cur, &segments[1..])),
-            ReduceHint::AccumulatorPath => frame
-                .get_reduce_accumulator()
-                .map(|acc| try_traverse_segments(acc, &segments[1..])),
-            ReduceHint::None => unreachable!(),
-        };
-        match reduce_result {
-            Some(Some(v)) => return Ok(arena.alloc(value_to_arena(v, arena))),
-            Some(None) => return default_or_null_arena(default_value, actx, context, engine, arena),
-            None => {} // fall through
         }
     }
 
     // 3. Root-scope fast path: borrow into input via InputRef.
-    // Only when BOTH stacks are at depth 0 — otherwise an iteration frame
-    // is on one of them and we must walk it instead.
-    if scope_level == 0 && actx.depth() == 0 && context.depth() == 0 {
+    if scope_level == 0 && actx.depth() == 0 {
         let root_input = actx.root_input();
         let resolved: Option<&'a Value> = if segments.is_empty() {
             Some(root_input)
@@ -829,66 +633,42 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         };
         return match resolved {
             Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-            None => default_or_null_arena(default_value, actx, context, engine, arena),
+            None => default_or_null_arena(default_value, actx, engine, arena),
         };
     }
 
-    // 4. General path: prefer `actx` (zero-clone — frames hold &'a ArenaValue)
-    //    over `context` (legacy — frames hold owned Value).
-    if actx.depth() > 0 {
-        use crate::arena::context::ArenaContextRef;
-        let aref = if scope_level == 0 {
-            actx.current()
-        } else {
-            actx.get_at_level(scope_level as isize)
-                .ok_or(Error::InvalidContextLevel(scope_level as isize))?
-        };
-        match aref {
-            ArenaContextRef::Frame(f) => {
-                let av: &'a ArenaValue<'a> = f.data();
-                if segments.is_empty() {
-                    return Ok(av);
-                }
-                return match crate::arena::value::arena_traverse_segments(av, segments, arena) {
-                    Some(child) => Ok(child),
-                    None => default_or_null_arena(default_value, actx, context, engine, arena),
-                };
-            }
-            ArenaContextRef::Root(v) => {
-                // scope_level walks past the bottom of the frame stack into the
-                // root data. Same as the root-scope fast path above.
-                let resolved = if segments.is_empty() {
-                    Some(v)
-                } else {
-                    try_traverse_segments(v, segments)
-                };
-                return match resolved {
-                    Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-                    None => default_or_null_arena(default_value, actx, context, engine, arena),
-                };
-            }
-        }
-    }
-
-    // Legacy `context` fallback — frame data is owned `Value`, must clone.
-    let data_result: Option<Value> = {
-        let frame = if scope_level == 0 {
-            context.current()
-        } else {
-            context
-                .get_at_level(scope_level as isize)
-                .ok_or(Error::InvalidContextLevel(scope_level as isize))?
-        };
-        if segments.is_empty() {
-            Some(frame.data().clone())
-        } else {
-            try_traverse_segments(frame.data(), segments).cloned()
-        }
+    // 4. General path via the arena context stack.
+    use crate::arena::context::ArenaContextRef;
+    let aref = if scope_level == 0 {
+        actx.current()
+    } else {
+        actx.get_at_level(scope_level as isize)
+            .ok_or(Error::InvalidContextLevel(scope_level as isize))?
     };
-
-    match data_result {
-        Some(v) => Ok(arena.alloc(value_to_arena(&v, arena))),
-        None => default_or_null_arena(default_value, actx, context, engine, arena),
+    match aref {
+        ArenaContextRef::Frame(f) => {
+            let av: &'a ArenaValue<'a> = f.data();
+            if segments.is_empty() {
+                return Ok(av);
+            }
+            match crate::arena::value::arena_traverse_segments(av, segments, arena) {
+                Some(child) => Ok(child),
+                None => default_or_null_arena(default_value, actx, engine, arena),
+            }
+        }
+        ArenaContextRef::Root(v) => {
+            // scope_level walks past the bottom of the frame stack into the
+            // root data. Same as the root-scope fast path above.
+            let resolved = if segments.is_empty() {
+                Some(v)
+            } else {
+                try_traverse_segments(v, segments)
+            };
+            match resolved {
+                Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
+                None => default_or_null_arena(default_value, actx, engine, arena),
+            }
+        }
     }
 }
 
@@ -899,98 +679,80 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
     scope_level: u32,
     segments: &[PathSegment],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    // Root scope: walk input directly (no clone, no frame access).
-    if scope_level == 0 && actx.depth() == 0 && context.depth() == 0 {
+    // Root scope at depth 0: walk input directly (no clone, no frame access).
+    if scope_level == 0 && actx.depth() == 0 {
         let found =
             segments.is_empty() || try_traverse_segments(actx.root_input(), segments).is_some();
         return Ok(crate::arena::pool::singleton_bool(found));
     }
 
-    // Prefer `actx` when it has frames; falls through to context otherwise.
-    if actx.depth() > 0 {
-        use crate::arena::context::ArenaContextRef;
-        let aref = if scope_level == 0 {
-            actx.current()
-        } else {
-            match actx.get_at_level(scope_level as isize) {
-                Some(f) => f,
-                None => return Ok(crate::arena::pool::singleton_false()),
-            }
-        };
-        let found = match aref {
-            ArenaContextRef::Frame(f) => {
-                if segments.is_empty() {
-                    true
-                } else {
-                    crate::arena::value::arena_traverse_segments(f.data(), segments, arena)
-                        .is_some()
-                }
-            }
-            ArenaContextRef::Root(v) => {
-                segments.is_empty() || try_traverse_segments(v, segments).is_some()
-            }
-        };
-        return Ok(crate::arena::pool::singleton_bool(found));
-    }
-
-    // Legacy `context` fallback — value-mode iteration frame still on
-    // ContextStack (rare post-Stage-D). Walk segments natively against
-    // the frame data.
-    let frame = if scope_level == 0 {
-        context.current()
+    use crate::arena::context::ArenaContextRef;
+    let aref = if scope_level == 0 {
+        actx.current()
     } else {
-        match context.get_at_level(scope_level as isize) {
+        match actx.get_at_level(scope_level as isize) {
             Some(f) => f,
             None => return Ok(crate::arena::pool::singleton_false()),
         }
     };
-    let found = segments.is_empty() || try_traverse_segments(frame.data(), segments).is_some();
+    let found = match aref {
+        ArenaContextRef::Frame(f) => {
+            segments.is_empty()
+                || crate::arena::value::arena_traverse_segments(f.data(), segments, arena).is_some()
+        }
+        ArenaContextRef::Root(v) => {
+            segments.is_empty() || try_traverse_segments(v, segments).is_some()
+        }
+    };
     Ok(crate::arena::pool::singleton_bool(found))
+}
+
+/// Build a transient `ContextStack` reflecting the current arena frame as root.
+/// Used by raw `var`/`val`/`exists` (rare dynamic-path forms) which still
+/// dispatch through the value-mode helpers; the local stack ensures those
+/// helpers see the right iter item via `context.current()`.
+#[inline]
+fn local_context_from_actx(actx: &ArenaContextStack<'_>) -> crate::ContextStack {
+    use std::sync::Arc;
+    let root: Value = match actx.current() {
+        crate::arena::context::ArenaContextRef::Root(v) => v.clone(),
+        crate::arena::context::ArenaContextRef::Frame(f) => crate::arena::arena_to_value(f.data()),
+    };
+    crate::ContextStack::new(Arc::new(root))
 }
 
 /// Arena variant of raw `var` operator (path resolved at runtime).
 ///
-/// Raw `var` (i.e. not statically compiled to `CompiledVar`) is rare —
-/// hit only for dynamic paths like `{"var": [{"if": ...}, "x"]}`. We delegate
-/// to the value-mode helper but first mirror the arena iteration frame onto
-/// the legacy `ContextStack`, so the helper's `context.current()` read sees
-/// the current iter item rather than the engine root.
+/// Raw `var` (not statically compiled to `CompiledVar`) is rare — hit only
+/// for dynamic paths like `{"var": [{"if": ...}, "x"]}`. Synthesizes a
+/// one-shot `ContextStack` from the current actx frame and dispatches to
+/// the value-mode helper.
 #[inline]
 pub(crate) fn evaluate_var_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let pushed = crate::arena::context::sync_actx_top_to_context(actx, context);
-    let v = evaluate_var(args, context, engine);
-    if pushed {
-        context.pop();
-    }
-    Ok(arena.alloc(value_to_arena(&v?, arena)))
+    let mut context = local_context_from_actx(actx);
+    let v = evaluate_var(args, &mut context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
 }
 
-/// Arena variant of raw `val` operator. See [`evaluate_var_arena`] for the
-/// iter-frame mirroring rationale.
+/// Arena variant of raw `val` operator. See [`evaluate_var_arena`].
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let pushed = crate::arena::context::sync_actx_top_to_context(actx, context);
-    let v = evaluate_val(args, context, engine);
-    if pushed {
-        context.pop();
-    }
-    Ok(arena.alloc(value_to_arena(&v?, arena)))
+    let mut context = local_context_from_actx(actx);
+    let v = evaluate_val(args, &mut context, engine)?;
+    Ok(arena.alloc(value_to_arena(&v, arena)))
 }
 
 /// Arena variant of raw `exists` operator. See [`evaluate_var_arena`].
@@ -999,29 +761,26 @@ pub(crate) fn evaluate_val_arena<'a>(
 pub(crate) fn evaluate_exists_arena<'a>(
     args: &[CompiledNode],
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &crate::DataLogic,
     _arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let pushed = crate::arena::context::sync_actx_top_to_context(actx, context);
-    let v = evaluate_exists(args, context, engine);
-    if pushed {
-        context.pop();
-    }
-    let b = matches!(v?, Value::Bool(true));
-    Ok(crate::arena::pool::singleton_bool(b))
+    let mut context = local_context_from_actx(actx);
+    let v = evaluate_exists(args, &mut context, engine)?;
+    Ok(crate::arena::pool::singleton_bool(matches!(
+        v,
+        Value::Bool(true)
+    )))
 }
 
 #[inline]
 fn default_or_null_arena<'a>(
     default_value: Option<&CompiledNode>,
     actx: &mut ArenaContextStack<'a>,
-    context: &mut ContextStack,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     match default_value {
-        Some(node) => engine.evaluate_arena_node(node, actx, context, arena),
+        Some(node) => engine.evaluate_arena_node(node, actx, arena),
         None => Ok(crate::arena::pool::singleton_null()),
     }
 }

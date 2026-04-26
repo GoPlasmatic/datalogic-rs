@@ -73,51 +73,6 @@ fn arena_operator_string_result() {
 }
 
 #[test]
-fn arena_operator_takes_precedence_over_legacy() {
-    use datalogic_rs::{ContextStack, Evaluator, Operator};
-    use serde_json::Value;
-
-    struct LegacyDouble;
-    impl Operator for LegacyDouble {
-        fn evaluate(
-            &self,
-            args: &[Value],
-            _context: &mut ContextStack,
-            _evaluator: &dyn Evaluator,
-        ) -> Result<Value> {
-            // Wrong intentionally — to prove the arena form runs instead.
-            let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
-            Ok(json!(n * 99.0))
-        }
-    }
-
-    let mut engine = DataLogic::new();
-    engine.add_operator("double".into(), Box::new(LegacyDouble));
-    engine.add_arena_operator("double".into(), Box::new(DoubleArena));
-
-    let compiled = engine.compile(&json!({"double": 21})).unwrap();
-    let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
-    assert_eq!(result, json!(42), "arena form should win, not legacy");
-}
-
-#[test]
-fn arena_only_operator_works_in_value_mode_too() {
-    // Even when value-mode dispatch is taken (e.g., trivial rule that
-    // never enters arena dispatch), an arena-only operator must still
-    // work via the synthesis bridge.
-    let mut engine = DataLogic::new();
-    engine.add_arena_operator("double".into(), Box::new(DoubleArena));
-
-    // Plain `evaluate` form — Arc input.
-    use std::sync::Arc;
-    let compiled = engine.compile(&json!({"double": 7})).unwrap();
-    let result = engine
-        .evaluate(&compiled, Arc::new(json!({})))
-        .unwrap();
-    assert_eq!(result, json!(14));
-}
-
-#[test]
 fn evaluate_ref_var_inside_filter_bridge_object_input() {
     // Object input forces filter to bridge to value-mode (ResolvedInput::Bridge).
     // Inside that bridge, var lookups need to see the input — exercises that
@@ -132,73 +87,45 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
 }
 
 #[test]
-fn evaluate_ref_legacy_custom_op_inside_arena_iter() {
-    // Legacy custom op invoked INSIDE map (arena dispatch). The op reads
-    // context.current().data() — must see the iter item, not the engine
-    // placeholder.
-    use datalogic_rs::{ContextStack, Evaluator, Operator};
-    use serde_json::Value;
-
-    struct DoubleLegacy;
-    impl Operator for DoubleLegacy {
-        fn evaluate(
-            &self,
-            args: &[Value],
-            context: &mut ContextStack,
-            evaluator: &dyn Evaluator,
-        ) -> Result<Value> {
-            // Legacy contract: args are unevaluated; call evaluator to resolve.
-            let v = evaluator.evaluate(&args[0], context)?;
-            let n = v.as_i64().unwrap_or(0);
-            Ok(serde_json::json!(n * 2))
-        }
-    }
-
+fn arena_operator_with_input_ref() {
+    // Custom op consumes an InputRef arg (var lookup against root).
     let mut engine = DataLogic::new();
-    engine.add_operator("double_legacy".into(), Box::new(DoubleLegacy));
+    engine.add_arena_operator("double".into(), Box::new(DoubleArena));
 
-    let compiled = engine
-        .compile(&serde_json::json!({
-            "map": [{"var": "xs"}, {"double_legacy": {"var": ""}}]
-        }))
-        .unwrap();
-    let result = engine
-        .evaluate_ref(&compiled, &serde_json::json!({"xs": [1, 2, 3]}))
-        .unwrap();
-    assert_eq!(result, serde_json::json!([2, 4, 6]));
+    let compiled = engine.compile(&json!({"double": {"var": "n"}})).unwrap();
+    let result = engine.evaluate_ref(&compiled, &json!({"n": 5})).unwrap();
+    assert_eq!(result, json!(10));
+}
+
+/// Custom op that reads an InputRef directly via context-aware var lookup.
+/// Equivalent to the legacy "read_field" / "read_root" helpers; here it just
+/// inspects its first arg, which the dispatcher already evaluated for us.
+struct ReadField;
+impl ArenaOperator for ReadField {
+    fn evaluate_arena<'a>(
+        &self,
+        args: &[&'a ArenaValue<'a>],
+        _actx: &mut ArenaContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a ArenaValue<'a>> {
+        // The arg has already been evaluated through the var lookup;
+        // we just hand it back. This proves InputRef args reach the op
+        // without round-trips through `serde_json::Value`.
+        let av = args
+            .first()
+            .copied()
+            .unwrap_or_else(|| arena.alloc(ArenaValue::Null));
+        Ok(av)
+    }
 }
 
 #[test]
-fn evaluate_ref_legacy_custom_op() {
-    // Legacy `Operator` trait dispatch from evaluate_ref. The legacy op needs
-    // a real ContextStack with the input data.
-    use datalogic_rs::{ContextStack, Evaluator, Operator};
-    use serde_json::Value;
-
-    struct ReadField;
-    impl Operator for ReadField {
-        fn evaluate(
-            &self,
-            args: &[Value],
-            context: &mut ContextStack,
-            _evaluator: &dyn Evaluator,
-        ) -> Result<Value> {
-            let key = args.first().and_then(|v| v.as_str()).unwrap_or("");
-            // Read from context's root data — must reflect the caller's input.
-            let frame = context.current();
-            let data = frame.data();
-            Ok(data
-                .get(key)
-                .cloned()
-                .unwrap_or(Value::Null))
-        }
-    }
-
+fn arena_operator_passthrough_input_ref() {
     let mut engine = DataLogic::new();
-    engine.add_operator("read_field".into(), Box::new(ReadField));
+    engine.add_arena_operator("read_field".into(), Box::new(ReadField));
 
     let compiled = engine
-        .compile(&serde_json::json!({"read_field": "name"}))
+        .compile(&serde_json::json!({"read_field": {"var": "name"}}))
         .unwrap();
     let result = engine
         .evaluate_ref(&compiled, &serde_json::json!({"name": "Alice"}))
@@ -206,42 +133,36 @@ fn evaluate_ref_legacy_custom_op() {
     assert_eq!(result, serde_json::json!("Alice"));
 }
 
-#[test]
-fn evaluate_ref_legacy_op_reading_context_in_arena_dispatch() {
-    // A legacy op reads context.current().data() — verifies the placeholder
-    // ContextStack in evaluate_via_arena_ref is properly substituted at the
-    // bridge boundary so the op sees the caller's input.
-    use datalogic_rs::{ContextStack, Evaluator, Operator};
-    use serde_json::Value;
-
-    struct ReadRoot;
-    impl Operator for ReadRoot {
-        fn evaluate(
-            &self,
-            args: &[Value],
-            context: &mut ContextStack,
-            _evaluator: &dyn Evaluator,
-        ) -> Result<Value> {
-            let key = args.first().and_then(|v| v.as_str()).unwrap_or("");
-            // Read the FIELD from the current context. In a filter body the
-            // "current" frame is the iter item — but the args here are the
-            // root path string, not the iter item.
-            let frame = context.current();
-            let data = frame.data();
-            Ok(data.get(key).cloned().unwrap_or(Value::Null))
-        }
+/// Op that returns the iter item's "active" field — exercises that arena
+/// custom ops invoked inside `filter` see the iter frame's data via their
+/// pre-evaluated args.
+struct ReadActiveField;
+impl ArenaOperator for ReadActiveField {
+    fn evaluate_arena<'a>(
+        &self,
+        args: &[&'a ArenaValue<'a>],
+        _actx: &mut ArenaContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a ArenaValue<'a>> {
+        let av = args
+            .first()
+            .copied()
+            .unwrap_or_else(|| arena.alloc(ArenaValue::Null));
+        Ok(av)
     }
+}
 
+#[test]
+fn arena_operator_inside_filter_reads_iter_item_field() {
     let mut engine = DataLogic::new();
-    engine.add_operator("read_root".into(), Box::new(ReadRoot));
+    engine.add_arena_operator("identity".into(), Box::new(ReadActiveField));
 
-    // Rule that triggers arena dispatch: filter with simple var input.
-    // The body uses a legacy custom op that reads context.current().data().
-    // Inside filter iteration, current() is the iter item — so args[0] read
-    // against it should find the 'tag' field of each item.
+    // Filter passes each item to the predicate; the predicate calls
+    // `identity` on `{"var": "active"}`, which the dispatcher resolves
+    // against the iter frame.
     let compiled = engine
         .compile(&serde_json::json!({
-            "filter": [{"var": "items"}, {"read_root": "active"}]
+            "filter": [{"var": "items"}, {"identity": {"var": "active"}}]
         }))
         .unwrap();
     let result = engine
@@ -254,7 +175,6 @@ fn evaluate_ref_legacy_op_reading_context_in_arena_dispatch() {
             ]}),
         )
         .unwrap();
-    // Filter keeps items where {"read_root": "active"} is truthy.
     assert_eq!(
         result,
         serde_json::json!([
@@ -262,17 +182,4 @@ fn evaluate_ref_legacy_op_reading_context_in_arena_dispatch() {
             {"id": 3, "active": true}
         ])
     );
-}
-
-#[test]
-fn arena_operator_with_input_ref() {
-    // Custom op consumes an InputRef arg (var lookup against root).
-    let mut engine = DataLogic::new();
-    engine.add_arena_operator("double".into(), Box::new(DoubleArena));
-
-    let compiled = engine.compile(&json!({"double": {"var": "n"}})).unwrap();
-    let result = engine
-        .evaluate_ref(&compiled, &json!({"n": 5}))
-        .unwrap();
-    assert_eq!(result, json!(10));
 }

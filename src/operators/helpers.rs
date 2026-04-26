@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
 use crate::constants::INVALID_ARGS;
@@ -11,19 +9,16 @@ pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript => is_truthy_js(value),
         TruthyEvaluator::Python => is_truthy_js(value),
-        TruthyEvaluator::StrictBoolean => {
-            // Strict boolean truthiness
-            match value {
-                Value::Null => false,
-                Value::Bool(b) => *b,
-                _ => true,
-            }
-        }
+        TruthyEvaluator::StrictBoolean => match value {
+            Value::Null => false,
+            Value::Bool(b) => *b,
+            _ => true,
+        },
         TruthyEvaluator::Custom(f) => f(value),
     }
 }
 
-/// Checks if a value is truthy according to JavaScript rules (for backward compatibility)
+/// Checks if a value is truthy according to JavaScript rules.
 #[inline(always)]
 pub fn is_truthy_js(value: &Value) -> bool {
     match value {
@@ -39,112 +34,6 @@ pub fn is_truthy_js(value: &Value) -> bool {
         Value::String(s) => !s.is_empty(),
         Value::Array(arr) => !arr.is_empty(),
         Value::Object(obj) => !obj.is_empty(),
-    }
-}
-
-/// Converts a value to a string, borrowing when possible to avoid allocation
-#[inline]
-pub fn to_string_cow(value: &Value) -> Cow<'_, str> {
-    match value {
-        Value::String(s) => Cow::Borrowed(s.as_str()),
-        Value::Null => Cow::Borrowed(""),
-        _ => Cow::Owned(value.to_string()),
-    }
-}
-
-/// Clamps an arithmetic result: infinite -> MAX/MIN, NaN -> 0.0
-#[inline(always)]
-fn clamp_result(result: f64) -> f64 {
-    if result.is_infinite() {
-        if result.is_sign_positive() {
-            f64::MAX
-        } else {
-            f64::MIN
-        }
-    } else if result.is_nan() {
-        0.0
-    } else {
-        result
-    }
-}
-
-/// Safe arithmetic operations with overflow protection
-pub fn safe_add(a: f64, b: f64) -> f64 {
-    clamp_result(a + b)
-}
-
-pub fn safe_subtract(a: f64, b: f64) -> f64 {
-    clamp_result(a - b)
-}
-
-pub fn safe_multiply(a: f64, b: f64) -> f64 {
-    let result = a * b;
-    if result.is_infinite() {
-        if (a > 0.0 && b > 0.0) || (a < 0.0 && b < 0.0) {
-            f64::MAX
-        } else {
-            f64::MIN
-        }
-    } else if result.is_nan() {
-        0.0
-    } else {
-        result
-    }
-}
-
-pub fn safe_divide(a: f64, b: f64) -> f64 {
-    if b == 0.0 {
-        if a > 0.0 {
-            f64::MAX
-        } else if a < 0.0 {
-            f64::MIN
-        } else {
-            0.0
-        }
-    } else {
-        clamp_result(a / b)
-    }
-}
-
-pub fn safe_modulo(a: f64, b: f64) -> f64 {
-    if b == 0.0 {
-        0.0
-    } else {
-        let result = a % b;
-        if result.is_nan() { 0.0 } else { result }
-    }
-}
-
-/// Strict number extraction - only accepts actual numbers or numeric strings.
-/// Used by abs, floor, ceil operators.
-#[cfg(feature = "ext-math")]
-#[inline]
-pub fn get_number_strict(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.parse().ok(),
-        _ => None,
-    }
-}
-
-/// Creates a JSON number value with proper overflow handling
-pub fn create_number_value(n: f64) -> Value {
-    if n.is_finite() {
-        serde_json::Number::from_f64(n)
-            .map(Value::Number)
-            .unwrap_or(Value::Null)
-    } else if n.is_infinite() {
-        if n.is_sign_positive() {
-            serde_json::Number::from_f64(f64::MAX)
-                .map(Value::Number)
-                .unwrap_or(Value::Null)
-        } else {
-            serde_json::Number::from_f64(f64::MIN)
-                .map(Value::Number)
-                .unwrap_or(Value::Null)
-        }
-    } else {
-        Value::Null
     }
 }
 

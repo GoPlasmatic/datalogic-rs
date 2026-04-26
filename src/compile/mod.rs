@@ -5,7 +5,7 @@ use crate::node::{
     node_is_static,
 };
 use crate::opcode::OpCode;
-use crate::{ContextStack, DataLogic, Result};
+use crate::{DataLogic, Result};
 #[cfg(feature = "ext-string")]
 use regex::Regex;
 use serde_json::{Value, json};
@@ -176,15 +176,14 @@ impl CompiledLogic {
                     if let std::option::Option::Some(eng) = engine
                         && node_is_static(&node)
                     {
-                        let mut context = ContextStack::new(Arc::new(Value::Null));
-                        match eng.evaluate_node(&node, &mut context) {
-                            Ok(value) => {
+                        match optimize::constant_fold::fold_static_node(&node, eng) {
+                            Some(value) => {
                                 return Ok(CompiledNode::Value {
                                     id: ctx.next_id(),
                                     value,
                                 });
                             }
-                            Err(_) => return Ok(node),
+                            None => return Ok(node),
                         }
                     }
 
@@ -241,14 +240,12 @@ impl CompiledLogic {
 
                 if let std::option::Option::Some(eng) = engine
                     && node_is_static(&node)
+                    && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
                 {
-                    let mut context = ContextStack::new(Arc::new(Value::Null));
-                    if let Ok(value) = eng.evaluate_node(&node, &mut context) {
-                        return Ok(CompiledNode::Value {
-                            id: ctx.next_id(),
-                            value,
-                        });
-                    }
+                    return Ok(CompiledNode::Value {
+                        id: ctx.next_id(),
+                        value,
+                    });
                 }
 
                 Ok(node)
