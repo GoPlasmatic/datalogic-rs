@@ -245,13 +245,6 @@ impl<'a> ArenaContextStack<'a> {
         }
     }
 
-    /// Get the root context.
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn root(&self) -> ArenaContextRef<'a, '_> {
-        ArenaContextRef::Root(self.root)
-    }
-
     /// Walk `level` frames up from the current context. Negative/positive
     /// magnitudes treated as absolute (matches `ContextStack::get_at_level`).
     pub(crate) fn get_at_level(&self, level: isize) -> Option<ArenaContextRef<'a, '_>> {
@@ -270,7 +263,6 @@ impl<'a> ArenaContextStack<'a> {
     // ----- frame mutation ---------------------------------------------------
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn push(&mut self, data: &'a ArenaValue<'a>) {
         self.frames.push(ArenaContextFrame::Data(data));
     }

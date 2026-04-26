@@ -1,8 +1,7 @@
 pub mod optimize;
 
 use crate::node::{
-    CompileCtx, CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint, SYNTHETIC_ID,
-    node_is_static,
+    CompileCtx, CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint, node_is_static,
 };
 use crate::opcode::OpCode;
 use crate::{DataLogic, Result};
@@ -603,8 +602,3 @@ impl CompiledLogic {
         )))
     }
 }
-
-// Re-export SYNTHETIC_ID so `Self::...` usages in this file don't break if a
-// future refactor wants to construct synthetic nodes here.
-#[allow(dead_code)]
-pub(crate) const _SYNTHETIC_REXP: u32 = SYNTHETIC_ID;

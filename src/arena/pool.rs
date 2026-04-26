@@ -30,11 +30,9 @@ use std::mem::ManuallyDrop;
 use crate::arena::value::ArenaValue;
 
 // =============================================================================
-// Preallocated singletons. Mirrors v3's `null_value` / `true_value` /
-// `false_value` / `empty_string_value` / `empty_array_value` (v3.0.6
-// `src/arena/bump.rs:106-120`). Returning these from operators avoids a
-// per-call `arena.alloc(ArenaValue::Bool(true))` for every comparison /
-// truthiness branch.
+// Preallocated singletons. Returning these from operators avoids a per-call
+// `arena.alloc(ArenaValue::Bool(true))` for every comparison / truthiness
+// branch.
 //
 // Soundness: the values are `'static` and contain no arena-borrowed data,
 // so a `&'static ArenaValue<'static>` is safely castable to `&'a ArenaValue<'a>`
@@ -50,42 +48,36 @@ static SINGLETON_EMPTY_ARRAY: ArenaValue<'static> = ArenaValue::Array(&[]);
 
 /// Borrow the static `Null` singleton at any caller lifetime.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn singleton_null<'a>() -> &'a ArenaValue<'a> {
     &SINGLETON_NULL
 }
 
 /// Borrow the static `Bool(true)` singleton.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn singleton_true<'a>() -> &'a ArenaValue<'a> {
     &SINGLETON_TRUE
 }
 
 /// Borrow the static `Bool(false)` singleton.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn singleton_false<'a>() -> &'a ArenaValue<'a> {
     &SINGLETON_FALSE
 }
 
 /// Borrow the static `Bool(b)` singleton without branching on the caller side.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn singleton_bool<'a>(b: bool) -> &'a ArenaValue<'a> {
     if b { &SINGLETON_TRUE } else { &SINGLETON_FALSE }
 }
 
 /// Borrow the static empty-string singleton.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn singleton_empty_string<'a>() -> &'a ArenaValue<'a> {
     &SINGLETON_EMPTY_STRING
 }
 
 /// Borrow the static empty-array singleton.
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn singleton_empty_array<'a>() -> &'a ArenaValue<'a> {
     &SINGLETON_EMPTY_ARRAY
 }

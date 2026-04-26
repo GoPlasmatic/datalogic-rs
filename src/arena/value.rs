@@ -154,7 +154,6 @@ impl<'a> ArenaValue<'a> {
     /// Truthiness check matching JavaScript-default semantics. For
     /// config-aware truthiness use [`is_truthy_arena`] from the crate root.
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn is_truthy_default(&self) -> bool {
         match self {
             ArenaValue::Null => false,
@@ -449,7 +448,6 @@ pub(crate) fn arena_traverse_segments<'a>(
 /// when already a string). Mirrors `helpers::to_string_cow` but produces
 /// arena-resident strings so string-building operators (cat, substr) can
 /// chain without heap traffic.
-#[allow(dead_code)] // retained for upcoming string-ops migration
 pub(crate) fn to_string_arena<'a>(v: &ArenaValue<'a>, arena: &'a Bump) -> &'a str {
     match v {
         ArenaValue::String(s) => s,
@@ -465,7 +463,6 @@ pub(crate) fn to_string_arena<'a>(v: &ArenaValue<'a>, arena: &'a Bump) -> &'a st
 }
 
 /// Config-aware truthiness for `ArenaValue`. Mirrors `helpers::is_truthy`.
-#[allow(dead_code)] // retained for control-ops / collection-bodies migration
 pub(crate) fn is_truthy_arena(v: &ArenaValue<'_>, engine: &crate::DataLogic) -> bool {
     use crate::config::TruthyEvaluator;
     match &engine.config().truthy_evaluator {
