@@ -65,10 +65,10 @@ fn test_jsonlogic() {
 fn run_test_file(test_file: &str) -> (usize, usize) {
     // Read and parse test file
     let contents = fs::read_to_string(test_file)
-        .unwrap_or_else(|_| panic!("Failed to read test file: {}", test_file));
+        .unwrap_or_else(|e| panic!("Failed to read test file {test_file}: {e}"));
 
     let test_cases: Value = serde_json::from_str(&contents)
-        .unwrap_or_else(|_| panic!("Failed to parse JSON from: {}", test_file));
+        .unwrap_or_else(|e| panic!("Failed to parse JSON from {test_file}: {e}"));
 
     let test_array = test_cases
         .as_array()
