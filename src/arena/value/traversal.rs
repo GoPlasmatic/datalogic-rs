@@ -21,9 +21,9 @@ unsafe fn reborrow_slice_entry<'a>(entry: &ArenaValue<'a>) -> &'a ArenaValue<'a>
     unsafe { &*(entry as *const ArenaValue<'a>) }
 }
 
-/// Take one traversal step by `PathSegment`. Inlined into both segment-walking
-/// helpers below.
-#[inline]
+/// Take one traversal step by `PathSegment`. Tight loop body — must always
+/// inline so the cross-module callers in `variable.rs` see a flat walk.
+#[inline(always)]
 fn step_segment<'a>(cur: &'a ArenaValue<'a>, seg: &PathSegment) -> Option<&'a ArenaValue<'a>> {
     match (cur, seg) {
         (ArenaValue::Object(pairs), PathSegment::Field(key)) => {
@@ -43,8 +43,9 @@ fn step_segment<'a>(cur: &'a ArenaValue<'a>, seg: &PathSegment) -> Option<&'a Ar
 }
 
 /// Take one traversal step by string segment (parses numeric segments as
-/// array indices on the fly).
-#[inline]
+/// array indices on the fly). Tight loop body — `inline(always)` for the
+/// same reason as `step_segment`.
+#[inline(always)]
 fn step_str<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>> {
     match cur {
         ArenaValue::Object(pairs) => arena_object_lookup_field(pairs, seg),
@@ -59,6 +60,7 @@ fn step_str<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>
 /// Walk path segments on an `&'a ArenaValue<'a>`. Used by variable-arena
 /// lookups. Returns `None` if any segment misses or the value isn't
 /// traversable.
+#[inline]
 pub(crate) fn arena_traverse_segments<'a>(
     av: &'a ArenaValue<'a>,
     segments: &[PathSegment],
@@ -76,6 +78,7 @@ pub(crate) fn arena_traverse_segments<'a>(
 
 /// Allocation-free segments-exists check. Companion of [`arena_traverse_segments`]
 /// for compile-time-parsed paths where the leaf value isn't consumed.
+#[inline]
 pub(crate) fn arena_path_exists_segments(av: &ArenaValue<'_>, segments: &[PathSegment]) -> bool {
     if segments.is_empty() {
         return true;
@@ -99,6 +102,7 @@ pub(crate) fn arena_path_exists_segments(av: &ArenaValue<'_>, segments: &[PathSe
 }
 
 /// Walk a dot-notation `path` on `&'a ArenaValue<'a>`.
+#[inline]
 pub(crate) fn arena_access_path_str_ref<'a>(
     av: &'a ArenaValue<'a>,
     path: &str,
@@ -119,6 +123,7 @@ pub(crate) fn arena_access_path_str_ref<'a>(
 
 /// Allocation-free path-exists check on `&ArenaValue`. Used by `missing` /
 /// `missing_some` where the leaf value isn't consumed.
+#[inline]
 pub(crate) fn arena_path_exists_str(av: &ArenaValue<'_>, path: &str) -> bool {
     if path.is_empty() {
         return true;
