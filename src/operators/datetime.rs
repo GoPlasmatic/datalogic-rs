@@ -191,8 +191,7 @@ pub(crate) fn evaluate_format_date_arena<'a>(
     let fmt_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
 
     // Resolve the datetime — supports object form and string form.
-    let dt: Option<DataDateTime> =
-        crate::operators::helpers::extract_datetime_arena(dt_av);
+    let dt: Option<DataDateTime> = crate::operators::helpers::extract_datetime_arena(dt_av);
 
     let fmt: &'a str = arg_as_str_arena(fmt_av)
         .ok_or_else(|| Error::InvalidArguments("Failed to format date".to_string()))?;

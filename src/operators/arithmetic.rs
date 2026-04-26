@@ -869,8 +869,8 @@ pub(crate) fn evaluate_subtract_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let mut all_int = first_av.as_i64().is_some()
-        || try_coerce_arena_to_integer_cfg(first_av, engine).is_some();
+    let mut all_int =
+        first_av.as_i64().is_some() || try_coerce_arena_to_integer_cfg(first_av, engine).is_some();
     let mut int_acc: i64 = first_av
         .as_i64()
         .or_else(|| try_coerce_arena_to_integer_cfg(first_av, engine))

@@ -698,12 +698,11 @@ pub(crate) fn evaluate_filter_arena<'a>(
                 bumpalo::collections::Vec::with_capacity_in(len, arena);
             for i in 0..len {
                 let item = src.get(i);
-                let matches = match crate::arena::value::arena_traverse_segments(
-                    item, segments, arena,
-                ) {
-                    Some(av) => arena_value_equals_arena(av, invariant_val),
-                    None => false,
-                };
+                let matches =
+                    match crate::arena::value::arena_traverse_segments(item, segments, arena) {
+                        Some(av) => arena_value_equals_arena(av, invariant_val),
+                        None => false,
+                    };
                 if matches == is_eq {
                     results.push(crate::arena::value::reborrow_arena_value(item));
                 }
@@ -778,7 +777,10 @@ fn filter_arena_bridge<'a>(
             }
             let keep = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
             if crate::arena::is_truthy_arena(keep, engine) {
-                kept.push((key_arena, crate::arena::value::reborrow_arena_value(item_av)));
+                kept.push((
+                    key_arena,
+                    crate::arena::value::reborrow_arena_value(item_av),
+                ));
             }
         }
         if pushed {

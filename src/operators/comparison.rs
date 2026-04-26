@@ -176,14 +176,8 @@ pub(crate) fn compare_equals_arena(
     {
         use crate::operators::helpers::{extract_datetime_arena, extract_duration_arena};
         let probe_dt = match (left, right) {
-            (
-                ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null,
-                _,
-            )
-            | (
-                _,
-                ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null,
-            ) => false,
+            (ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null, _)
+            | (_, ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null) => false,
             (ArenaValue::String(s), _) | (_, ArenaValue::String(s))
                 if !could_be_datetime_or_duration(s) =>
             {
@@ -326,9 +320,8 @@ fn compare_ordered_arena(
     }
 
     // Arrays / Objects can't be ordered.
-    let is_collection = |av: &ArenaValue<'_>| {
-        matches!(av, ArenaValue::Array(_) | ArenaValue::Object(_))
-    };
+    let is_collection =
+        |av: &ArenaValue<'_>| matches!(av, ArenaValue::Array(_) | ArenaValue::Object(_));
     if is_collection(left) || is_collection(right) {
         return Err(crate::constants::nan_error());
     }
