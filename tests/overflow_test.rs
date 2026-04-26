@@ -78,6 +78,7 @@ fn test_arithmetic_overflow_protection() {
     assert_eq!(result, json!(0));
 }
 
+#[cfg(feature = "ext-array")]
 #[test]
 fn test_array_slice_overflow_protection() {
     let engine = DataLogic::new();
@@ -109,6 +110,7 @@ fn test_array_slice_overflow_protection() {
     assert_eq!(result, json!([5, 4, 3, 2, 1]));
 }
 
+#[cfg(feature = "ext-array")]
 #[test]
 fn test_string_slice_overflow() {
     let engine = DataLogic::new();
@@ -180,6 +182,9 @@ fn test_chained_arithmetic_overflow() {
     assert_eq!(result.as_f64().unwrap(), 1e18);
 }
 
+// Mixes div/mod (built-in) with slice (ext-array). Gating on ext-array so the
+// slice asserts compile; the non-slice asserts are covered redundantly elsewhere.
+#[cfg(feature = "ext-array")]
 #[test]
 fn test_edge_cases() {
     let engine = DataLogic::new();
@@ -209,6 +214,7 @@ fn test_edge_cases() {
     assert_eq!(result, json!([]));
 }
 
+#[cfg(feature = "datetime")]
 #[test]
 fn test_datetime_duration_overflow() {
     let engine = DataLogic::new();
@@ -262,6 +268,7 @@ fn test_datetime_duration_overflow() {
     assert!(result.is_string());
 }
 
+#[cfg(feature = "datetime")]
 #[test]
 fn test_datetime_arithmetic_overflow() {
     let engine = DataLogic::new();

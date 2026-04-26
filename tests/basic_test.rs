@@ -1,4 +1,3 @@
-use chrono::DateTime;
 use datalogic_rs::DataLogic;
 use serde_json::json;
 use std::sync::Arc;
@@ -54,6 +53,8 @@ fn test_if_then_else() {
     assert_eq!(result2, json!("cold"));
 }
 
+// `val` and the metadata-hint `index` form are part of the ext-control extension.
+#[cfg(feature = "ext-control")]
 #[test]
 fn test_map_with_context() {
     let engine = DataLogic::new();
@@ -74,8 +75,10 @@ fn test_map_with_context() {
     assert_eq!(result, json!([1, 3, 5]));
 }
 
+#[cfg(feature = "datetime")]
 #[test]
 fn test_now_operator() {
+    use chrono::DateTime;
     let engine = DataLogic::new();
 
     // Test the now operator
@@ -129,6 +132,7 @@ fn test_evaluate_ref_api() {
     assert_eq!(result3, json!(7));
 }
 
+#[cfg(feature = "ext-string")]
 #[test]
 fn test_evaluate_ref_with_arena_dispatch() {
     let engine = DataLogic::new();

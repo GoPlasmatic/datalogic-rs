@@ -1,5 +1,7 @@
 //! Tests for arena custom operators against datetime / structured-object inputs.
 
+#![cfg(all(feature = "datetime", feature = "preserve"))]
+
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
 use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Error, Result};

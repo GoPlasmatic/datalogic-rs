@@ -173,6 +173,7 @@ fn structured_error_flattens_variant_extras() {
     );
 }
 
+#[cfg(feature = "error-handling")]
 #[test]
 fn evaluate_json_structured_reports_outer_operator() {
     let engine = DataLogic::new();
@@ -338,6 +339,7 @@ fn structured_error_empty_path_on_success() {
     assert!(result.is_ok());
 }
 
+#[cfg(feature = "error-handling")]
 #[test]
 fn try_catches_and_discards_inner_path() {
     let engine = DataLogic::new();

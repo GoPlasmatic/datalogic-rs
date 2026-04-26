@@ -1,3 +1,11 @@
+// The full JSONLogic suite runner exercises every operator in `tests/suites/`
+// — including the gated ones (preserve / datetime / try-throw / ext-*). Gate
+// behind `preserve` because the runner unconditionally calls
+// `DataLogic::with_preserve_structure()` when a test case requests it; in
+// practice users running this runner will want `--all-features` to actually
+// exercise every suite.
+#![cfg(feature = "preserve")]
+
 use datalogic_rs::DataLogic;
 use serde_json::{Value, json};
 

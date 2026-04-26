@@ -13,7 +13,14 @@ keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 
 [features]
-default = ["preserve", "datetime", "ext-string", "ext-array", "ext-control", "error-handling", "ext-math"]
+# Default is the minimal feature set needed to run `tests/suites/compatible.json`
+# (the JSONLogic compatibility suite). Every other capability — datetime ops,
+# error handling (try/throw), preserve_structure templating, and the ext-* op
+# extensions (length/sort/slice/coalesce/switch/type/val/exists/abs/ceil/floor/
+# starts_with/ends_with/upper/lower/trim/split) — is opt-in. This keeps the
+# default arena-dispatch table small and the build cheap; users opt in via
+# `features = ["..."]` (or `--all-features` for the full set).
+default = []
 preserve = []
 datetime = ["dep:chrono"]
 trace = []
@@ -34,3 +41,9 @@ bumpalo = { version = "3", features = ["collections"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+
+# Examples that depend on opt-in features. With `default = []`, these only
+# build when the user passes the matching `--features` (or `--all-features`).
+[[example]]
+name = "structured_objects"
+required-features = ["preserve"]
