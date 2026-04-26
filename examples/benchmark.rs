@@ -1,4 +1,5 @@
 use datalogic_rs::DataLogic;
+use datalogic_rs::arena::ArenaValue;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -39,27 +40,32 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
         return None;
     }
 
-    // Pre-create one arena for the entire benchmark — skips the per-call
-    // ArenaGuard slot pop/push that the production `evaluate*` API pays.
-    // Per-iteration reset keeps the bump pointer at chunk start so chunks
-    // are reused without growth (measurably faster than letting the arena
-    // grow through the inner 100k loop, even after accounting for the
-    // reset cost).
+    // Pre-wrap each input as `InputRef` once — zero-copy borrow into the
+    // owned `Value`s held by `test_cases`. The wrappers live in `arena_inputs`
+    // and outlive the per-iteration eval-arena resets.
+    let arena_inputs: Vec<ArenaValue<'_>> = test_cases
+        .iter()
+        .map(|(_, data)| ArenaValue::InputRef(data))
+        .collect();
+
+    // Eval arena: reset between iterations so the bump pointer stays at
+    // chunk start. Sized for typical per-call growth.
     let mut arena = bumpalo::Bump::with_capacity(64 * 1024);
 
     // Warm-up — pure arena dispatch, no boundary conversion.
-    for (compiled_logic, data) in &test_cases {
-        let _ = engine.evaluate_in_arena(compiled_logic, data, &arena);
+    for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
+        let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
         arena.reset();
     }
 
     let start = Instant::now();
-    for (compiled_logic, data) in &test_cases {
+    for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
         for _ in 0..ITERATIONS {
-            let _ = engine.evaluate_in_arena(compiled_logic, data, &arena);
+            let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
             arena.reset();
         }
     }
+    std::hint::black_box(&arena_inputs);
     let total_time = start.elapsed();
     let total_ops = ITERATIONS * test_cases.len() as u32;
     let avg_op_time = total_time / total_ops;

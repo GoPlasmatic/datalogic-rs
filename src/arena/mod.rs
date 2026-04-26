@@ -17,7 +17,5 @@ pub mod value;
 
 pub use context::ArenaContextStack;
 pub(crate) use pool::ArenaGuard;
-pub use value::ArenaValue;
-pub(crate) use value::{
-    arena_to_value, arena_to_value_cow, is_truthy_arena, to_string_arena, value_to_arena,
-};
+pub use value::{ArenaValue, value_to_arena};
+pub(crate) use value::{arena_to_value, arena_to_value_cow, is_truthy_arena, to_string_arena};

@@ -226,7 +226,12 @@ pub(crate) fn arena_to_value(v: &ArenaValue<'_>) -> Value {
 /// recursively converted. Datetime/Duration objects are NOT eagerly parsed
 /// here — callers that need temporal semantics extract on demand (matches
 /// the existing `extract_datetime_value` contract).
-pub(crate) fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
+/// Deep-convert a `&Value` into an arena-resident `ArenaValue`. Allocates
+/// strings, arrays and objects in `arena`; primitives are inline. Useful for
+/// callers that want to pass arena-native input to
+/// [`crate::DataLogic::evaluate_in_arena`] without paying the per-call
+/// `InputRef` traversal cost.
+pub fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
     match v {
         Value::Null => ArenaValue::Null,
         Value::Bool(b) => ArenaValue::Bool(*b),

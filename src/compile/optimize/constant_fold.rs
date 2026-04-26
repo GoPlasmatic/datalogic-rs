@@ -216,7 +216,7 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
 pub(crate) fn fold_static_node(node: &CompiledNode, engine: &DataLogic) -> Option<Value> {
     let arena = bumpalo::Bump::new();
     let null_root = Value::Null;
-    let mut actx = crate::arena::ArenaContextStack::new(&null_root);
+    let mut actx = crate::arena::ArenaContextStack::from_value(&null_root, &arena);
     let av = engine.evaluate_arena_node(node, &mut actx, &arena).ok()?;
     Some(crate::arena::arena_to_value(av))
 }

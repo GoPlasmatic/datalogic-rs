@@ -1,17 +1,13 @@
 //! `ArenaContextStack` — context stack used during arena-mode evaluation.
 //!
-//! Frames hold `&'a ArenaValue<'a>`. The root data is borrowed from the
-//! caller's `Arc<Value>` (held by the `evaluate()` call frame for the
-//! lifetime `'a`).
+//! Frames hold `&'a ArenaValue<'a>`, and so does the root: callers either
+//! pass an arena-resident value directly (e.g. `evaluate_in_arena`) or use
+//! `from_value` to wrap a borrowed `&Value` as `InputRef` in the arena.
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
 //! (no `Value::clone`, no `BTreeMap::clone`).
 
-use serde_json::Value;
-
 use super::value::ArenaValue;
-
-#[cfg(test)]
 use bumpalo::Bump;
 
 /// A single frame in the arena-mode context stack.
@@ -78,9 +74,10 @@ impl<'a> ArenaContextFrame<'a> {
 /// Reference to an arena context frame (either a stack frame or the root).
 pub(crate) enum ArenaContextRef<'a, 'ctx> {
     Frame(&'ctx ArenaContextFrame<'a>),
-    /// Root carries the original input as `&Value` so `var` lookups can return
-    /// `InputRef` without wrapping in arena allocation.
-    Root(&'a Value),
+    /// Root carries the original input as `&'a ArenaValue<'a>`. Typically the
+    /// caller wraps a `&Value` as `InputRef` (zero-copy borrow); benchmarks
+    /// and other arena-native callers may pass a fully arena-resident value.
+    Root(&'a ArenaValue<'a>),
 }
 
 impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
@@ -102,9 +99,9 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 
     #[cfg(test)]
     #[inline]
-    pub(crate) fn data_input_ref(&self) -> Option<&'a Value> {
+    pub(crate) fn root_data(&self) -> Option<&'a ArenaValue<'a>> {
         match self {
-            Self::Root(v) => Some(*v),
+            Self::Root(av) => Some(*av),
             Self::Frame(_) => None,
         }
     }
@@ -120,9 +117,10 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 }
 
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
-/// root borrows from the caller's `Arc<Value>` for the same `'a`.
+/// root is `&'a ArenaValue<'a>` (an `InputRef` wrapper for `&Value` callers,
+/// or a fully arena-resident value for arena-native callers).
 pub struct ArenaContextStack<'a> {
-    root: &'a Value,
+    root: &'a ArenaValue<'a>,
     frames: Vec<ArenaContextFrame<'a>>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     /// Mirrors `ContextStack::error_path`.
@@ -138,7 +136,7 @@ pub struct ArenaContextStack<'a> {
 
 impl<'a> ArenaContextStack<'a> {
     #[inline]
-    pub(crate) fn new(root: &'a Value) -> Self {
+    pub(crate) fn new(root: &'a ArenaValue<'a>) -> Self {
         Self {
             root,
             frames: Vec::new(),
@@ -146,6 +144,15 @@ impl<'a> ArenaContextStack<'a> {
             #[cfg(feature = "trace")]
             tracer: None,
         }
+    }
+
+    /// Build a context stack from a borrowed `&Value`, wrapping it as an
+    /// arena-allocated `InputRef`. The wrapper is one allocation — no deep
+    /// copy of the input — so this is the canonical entry point for the
+    /// `&Value`-based public APIs.
+    #[inline]
+    pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
+        Self::new(arena.alloc(ArenaValue::InputRef(root)))
     }
 
     /// Attach a trace collector to this stack. Caller must keep the
@@ -168,9 +175,9 @@ impl<'a> ArenaContextStack<'a> {
     /// arena dispatcher before recursing into a child, so the trace step
     /// can record the context that operator saw.
     #[cfg(feature = "trace")]
-    pub(crate) fn current_data_as_value(&self) -> Value {
+    pub(crate) fn current_data_as_value(&self) -> serde_json::Value {
         match self.current() {
-            ArenaContextRef::Root(v) => v.clone(),
+            ArenaContextRef::Root(av) => crate::arena::arena_to_value(av),
             ArenaContextRef::Frame(f) => crate::arena::arena_to_value(f.data()),
         }
     }
@@ -182,7 +189,7 @@ impl<'a> ArenaContextStack<'a> {
     pub(crate) fn record_node_result(
         &mut self,
         node_id: u32,
-        ctx_data: Value,
+        ctx_data: serde_json::Value,
         result: &crate::Result<&'a crate::arena::ArenaValue<'a>>,
     ) {
         let Some(ptr) = self.tracer else {
@@ -225,7 +232,7 @@ impl<'a> ArenaContextStack<'a> {
 
     /// Get the root input data (borrowed for the call's duration).
     #[inline]
-    pub fn root_input(&self) -> &'a Value {
+    pub fn root_input(&self) -> &'a ArenaValue<'a> {
         self.root
     }
 
@@ -361,14 +368,15 @@ impl<'a> ArenaContextStack<'a> {
 mod tests {
     use super::*;
     use crate::arena::value::ArenaValue;
+    use serde_json::Value;
 
     #[test]
     fn lifecycle_indexed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&root_val);
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
-        assert!(ctx.current().data_input_ref().is_some(), "root at depth 0");
+        assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
         let a: &ArenaValue =
             arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
@@ -389,7 +397,7 @@ mod tests {
     fn lifecycle_keyed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&root_val);
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
 
         let a: &ArenaValue = arena.alloc(ArenaValue::Bool(true));
         ctx.push_with_key_index(a, 0, "k1");
@@ -405,7 +413,7 @@ mod tests {
     fn lifecycle_reduce() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&root_val);
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
 
         let cur: &ArenaValue =
             arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
@@ -426,7 +434,7 @@ mod tests {
     fn get_at_level_walks_up() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&root_val);
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
 
         let a: &ArenaValue =
             arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(10)));
@@ -441,23 +449,16 @@ mod tests {
         // Level 1 = parent (a)
         assert!(ctx.get_at_level(1).and_then(|r| r.frame_data()).is_some());
         // Level 2 = root
-        assert!(
-            ctx.get_at_level(2)
-                .and_then(|r| r.data_input_ref())
-                .is_some()
-        );
+        assert!(ctx.get_at_level(2).and_then(|r| r.root_data()).is_some());
         // Level 5 (overflow) = root
-        assert!(
-            ctx.get_at_level(5)
-                .and_then(|r| r.data_input_ref())
-                .is_some()
-        );
+        assert!(ctx.get_at_level(5).and_then(|r| r.root_data()).is_some());
     }
 
     #[test]
     fn error_path_round_trip() {
+        let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::new(&root_val);
+        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
 
         ctx.push_error_step(1);
         ctx.push_error_step(2);

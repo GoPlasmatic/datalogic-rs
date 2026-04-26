@@ -585,8 +585,12 @@ pub(crate) fn resolve_iter_input<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
-    // Path 1: root borrow.
-    if let Some(borrowed) = try_borrow_collection_from_root(arg, actx, actx.root_input()) {
+    // Path 1: root borrow. Only the InputRef root preserves the zero-copy
+    // `&Value` slice borrow; arena-resident roots fall through to the
+    // generic dispatch path so the iterator is built from arena data.
+    if let ArenaValue::InputRef(root) = actx.root_input()
+        && let Some(borrowed) = try_borrow_collection_from_root(arg, actx, root)
+    {
         return Ok(match borrowed {
             Value::Array(arr) => ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice())),
             Value::Null => ResolvedInput::Empty,

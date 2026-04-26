@@ -334,7 +334,7 @@ impl DataLogic {
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
-        let mut actx = crate::arena::ArenaContextStack::new(data);
+        let mut actx = crate::arena::ArenaContextStack::from_value(data, arena);
         let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
         let owned = arena_to_value(result);
         drop(guard);
@@ -382,6 +382,12 @@ impl DataLogic {
     /// `&'a ArenaValue<'a>` borrows from `arena`, so it must drop before the
     /// next `arena.reset()` (the borrow checker enforces this).
     ///
+    /// `data` is `&'a ArenaValue<'a>` so callers operate consistently in
+    /// arena terms. Wrap an existing `&Value` zero-copy via
+    /// `ArenaValue::InputRef(value)` (stack-allocated is fine), or
+    /// `arena.alloc(value_to_arena(value, arena))` for a deep copy that
+    /// outlives `arena.reset()` only when allocated outside the reset cycle.
+    ///
     /// Used by `examples/benchmark.rs` to measure dispatch in isolation by
     /// creating one arena up-front and resetting only between rules,
     /// excluding the per-call ArenaGuard pop/push from the measurement.
@@ -391,7 +397,7 @@ impl DataLogic {
     pub fn evaluate_in_arena<'a>(
         &self,
         compiled: &'a CompiledLogic,
-        data: &'a Value,
+        data: &'a crate::arena::ArenaValue<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::ArenaValue<'a>> {
         let mut actx = crate::arena::ArenaContextStack::new(data);
@@ -409,7 +415,7 @@ impl DataLogic {
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
-        let mut actx = crate::arena::ArenaContextStack::new(data);
+        let mut actx = crate::arena::ArenaContextStack::from_value(data, arena);
         let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
         std::hint::black_box(result);
         drop(guard);
@@ -466,7 +472,7 @@ impl DataLogic {
         let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
         let guard = ArenaGuard::acquire(cap);
         let arena = guard.arena();
-        let mut actx = crate::arena::ArenaContextStack::new(&data);
+        let mut actx = crate::arena::ArenaContextStack::from_value(&data, arena);
         match self.evaluate_arena_node(&compiled.root, &mut actx, arena) {
             Ok(av) => {
                 let owned = arena_to_value(av);
@@ -727,7 +733,7 @@ impl DataLogic {
         let arena = guard.arena();
         let arc_for_borrow = Arc::clone(&data);
         let root_ref: &Value = &arc_for_borrow;
-        let mut actx = crate::arena::ArenaContextStack::new(root_ref);
+        let mut actx = crate::arena::ArenaContextStack::from_value(root_ref, arena);
         actx.set_tracer(collector);
         let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena);
         match result {

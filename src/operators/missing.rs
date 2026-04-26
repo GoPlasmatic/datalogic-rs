@@ -40,16 +40,19 @@ impl LookupSnap<'_> {
 
 #[inline]
 fn lookup_snapshot<'a>(actx: &ArenaContextStack<'a>) -> LookupSnap<'a> {
-    if actx.depth() > 0 {
+    let av = if actx.depth() > 0 {
         use crate::arena::context::ArenaContextRef;
-        if let ArenaContextRef::Frame(f) = actx.current() {
-            return match f.data() {
-                ArenaValue::InputRef(v) => LookupSnap::Borrowed(v),
-                other => LookupSnap::Owned(arena_to_value(other)),
-            };
+        match actx.current() {
+            ArenaContextRef::Frame(f) => f.data(),
+            ArenaContextRef::Root(av) => av,
         }
+    } else {
+        actx.root_input()
+    };
+    match av {
+        ArenaValue::InputRef(v) => LookupSnap::Borrowed(v),
+        other => LookupSnap::Owned(arena_to_value(other)),
     }
-    LookupSnap::Borrowed(actx.root_input())
 }
 
 /// Native arena-mode `missing`. Accumulates missing-path strings directly
