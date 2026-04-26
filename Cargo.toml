@@ -13,7 +13,7 @@ keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 
 [features]
-default = ["preserve", "datetime", "ext-string", "ext-array", "ext-control", "error-handling", "ext-math", "trace"]
+default = ["preserve", "datetime", "ext-string", "ext-array", "ext-control", "error-handling", "ext-math"]
 preserve = []
 datetime = ["dep:chrono"]
 trace = []
