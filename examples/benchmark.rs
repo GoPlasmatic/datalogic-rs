@@ -55,15 +55,15 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
     // Warm-up — pure arena dispatch, no boundary conversion.
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
         let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
-        arena.reset();
     }
+    arena.reset();
 
     let start = Instant::now();
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
         for _ in 0..ITERATIONS {
             let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
-            arena.reset();
         }
+        arena.reset();
     }
     std::hint::black_box((&arena_inputs, &data_arena));
     let total_time = start.elapsed();
@@ -109,7 +109,7 @@ fn main() {
             match benchmark_suite(&engine, &path) {
                 Some(result) => {
                     println!(
-                        "{:>4} tests | avg {:>8.0?}/op | total {:>10.0?}",
+                        "{:>4} tests | avg {:>8.1?}/op | total {:>10.1?}",
                         result.test_count, result.avg_op_time, result.total_time
                     );
                     grand_total_time += result.total_time;
@@ -130,7 +130,7 @@ fn main() {
         println!("Suites:              {}", results.len());
         println!("Total time:          {grand_total_time:.2?}");
         println!("Total operations:    {grand_total_ops}");
-        println!("Average op time:     {grand_avg:.0?}");
+        println!("Average op time:     {grand_avg:.1?}");
 
         // Write report
         let timestamp = std::time::SystemTime::now()
@@ -186,7 +186,7 @@ fn main() {
                 println!("Iterations per test: {ITERATIONS}");
                 println!("Total operations:    {}", result.total_ops);
                 println!("Total time:          {:.2?}", result.total_time);
-                println!("Average op time:     {:.0?}", result.avg_op_time);
+                println!("Average op time:     {:.1?}", result.avg_op_time);
             }
             None => {
                 eprintln!("No valid test cases found in {file_path}");

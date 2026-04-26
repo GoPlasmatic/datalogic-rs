@@ -392,7 +392,7 @@ impl DataLogic {
     /// excluding the per-call ArenaGuard pop/push from the measurement.
     /// Not part of the stable API.
     #[doc(hidden)]
-    #[inline]
+    #[inline(always)]
     pub fn evaluate_in_arena<'a>(
         &self,
         compiled: &'a CompiledLogic,
@@ -511,7 +511,7 @@ impl DataLogic {
     /// breadcrumb so [`StructuredError`] consumers can surface the failing
     /// path. When a tracer is attached to `actx`, records a step per
     /// non-literal node (entry context + result/error).
-    #[inline]
+    #[inline(always)]
     pub(crate) fn evaluate_arena_node<'a>(
         &self,
         node: &'a CompiledNode,
