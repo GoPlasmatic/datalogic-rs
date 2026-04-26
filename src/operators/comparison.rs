@@ -44,9 +44,7 @@
 
 use serde_json::Value;
 
-#[cfg(feature = "datetime")]
-use super::helpers::{extract_datetime_value, extract_duration_value};
-use crate::value_helpers::{coerce_to_number, loose_equals, strict_equals};
+use crate::value_helpers::{loose_equals, strict_equals};
 use crate::{CompiledNode, DataLogic, Result};
 
 /// Returns true if a string could plausibly be a datetime or duration.
@@ -64,75 +62,6 @@ fn could_be_datetime_or_duration(s: &str) -> bool {
     }
     // Duration: must contain a time-unit letter suffix (d/h/m/s)
     b.iter().any(|&c| matches!(c, b'd' | b'h' | b'm' | b's'))
-}
-
-// Helper function for == and === comparison
-#[inline]
-fn compare_equals(left: &Value, right: &Value, strict: bool, engine: &DataLogic) -> Result<bool> {
-    // Fast path: same-type simple comparisons — skip datetime/duration entirely
-    match (left, right) {
-        (Value::Number(_), Value::Number(_))
-        | (Value::Bool(_), Value::Bool(_))
-        | (Value::Null, Value::Null) => {
-            return if strict {
-                Ok(strict_equals(left, right))
-            } else {
-                loose_equals(left, right, engine)
-            };
-        }
-        // Two strings that can't be datetimes — skip extraction
-        #[cfg(feature = "datetime")]
-        (Value::String(l), Value::String(r))
-            if !could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r) =>
-        {
-            return if strict {
-                Ok(strict_equals(left, right))
-            } else {
-                loose_equals(left, right, engine)
-            };
-        }
-        // Non-string primitives vs anything (except objects) — skip datetime extraction
-        (Value::Number(_), _)
-        | (_, Value::Number(_))
-        | (Value::Bool(_), _)
-        | (_, Value::Bool(_))
-        | (Value::Null, _)
-        | (_, Value::Null)
-            if !matches!(left, Value::Object(_)) && !matches!(right, Value::Object(_)) =>
-        {
-            return if strict {
-                Ok(strict_equals(left, right))
-            } else {
-                loose_equals(left, right, engine)
-            };
-        }
-        _ => {}
-    }
-
-    #[cfg(feature = "datetime")]
-    {
-        // Handle datetime comparisons - both objects and strings
-        let left_dt = extract_datetime_value(left);
-        let right_dt = extract_datetime_value(right);
-
-        if let (Some(dt1), Some(dt2)) = (left_dt, right_dt) {
-            return Ok(dt1 == dt2);
-        }
-
-        // Handle duration comparisons - both objects and strings
-        let left_dur = extract_duration_value(left);
-        let right_dur = extract_duration_value(right);
-
-        if let (Some(dur1), Some(dur2)) = (left_dur, right_dur) {
-            return Ok(dur1 == dur2);
-        }
-    }
-
-    if strict {
-        Ok(strict_equals(left, right))
-    } else {
-        loose_equals(left, right, engine)
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -195,93 +124,265 @@ impl OrdOp {
     }
 }
 
-/// Generic ordered comparison helper handling numbers, strings, datetimes, and durations.
+// =============================================================================
+// Arena-mode comparison operators
+// =============================================================================
+//
+// Equality and ordering are dispatched on `&ArenaValue` directly. Primitive
+// operands take an arena-native fast path; only collection-vs-collection
+// equality (rare) materializes once via `arena_to_value_cow`.
+
+use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value_cow, coerce_arena_to_number_cfg};
+use bumpalo::Bump;
+
+/// View an arena value as `&str` if it's a string variant.
 #[inline]
-fn compare_ordered(left: &Value, right: &Value, op: OrdOp, engine: &DataLogic) -> Result<bool> {
-    // Fast path: both numbers — most common case
-    if let (Value::Number(l), Value::Number(r)) = (left, right) {
-        return Ok(op.apply_f64(
-            l.as_f64().unwrap_or(f64::NAN),
-            r.as_f64().unwrap_or(f64::NAN),
-        ));
+fn arena_as_str<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
+    match av {
+        ArenaValue::String(s) => Some(*s),
+        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+/// Tagged primitive view of an `ArenaValue`. Returns `None` for collections
+/// (Array/Object) and DateTime/Duration which need the slow path.
+enum ArenaKind<'a> {
+    Null,
+    Bool(bool),
+    Num(f64),
+    Str(&'a str),
+}
+
+#[inline]
+fn arena_kind<'a>(av: &'a ArenaValue<'a>) -> Option<ArenaKind<'a>> {
+    match av {
+        ArenaValue::Null => Some(ArenaKind::Null),
+        ArenaValue::Bool(b) => Some(ArenaKind::Bool(*b)),
+        ArenaValue::Number(n) => Some(ArenaKind::Num(n.as_f64())),
+        ArenaValue::String(s) => Some(ArenaKind::Str(s)),
+        ArenaValue::InputRef(Value::Null) => Some(ArenaKind::Null),
+        ArenaValue::InputRef(Value::Bool(b)) => Some(ArenaKind::Bool(*b)),
+        ArenaValue::InputRef(Value::Number(n)) => n.as_f64().map(ArenaKind::Num),
+        ArenaValue::InputRef(Value::String(s)) => Some(ArenaKind::Str(s.as_str())),
+        _ => None,
+    }
+}
+
+/// Arena-native equality. Mirrors `compare_equals` for primitive operands;
+/// collections fall back to the legacy `Value`-based helper.
+#[inline]
+pub(crate) fn compare_equals_arena(
+    left: &ArenaValue<'_>,
+    right: &ArenaValue<'_>,
+    strict: bool,
+    engine: &DataLogic,
+) -> Result<bool> {
+    // Datetime / duration takes precedence on string/object operands.
+    #[cfg(feature = "datetime")]
+    {
+        use crate::operators::helpers::{extract_datetime_arena, extract_duration_arena};
+        let probe_dt = match (left, right) {
+            (
+                ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null,
+                _,
+            )
+            | (
+                _,
+                ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null,
+            ) => false,
+            (ArenaValue::String(s), _) | (_, ArenaValue::String(s))
+                if !could_be_datetime_or_duration(s) =>
+            {
+                false
+            }
+            (ArenaValue::InputRef(Value::String(s)), _)
+            | (_, ArenaValue::InputRef(Value::String(s)))
+                if !could_be_datetime_or_duration(s) =>
+            {
+                false
+            }
+            _ => true,
+        };
+        if probe_dt {
+            let left_dt = extract_datetime_arena(left);
+            let right_dt = extract_datetime_arena(right);
+            if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
+                return Ok(dt1 == dt2);
+            }
+            let left_dur = extract_duration_arena(left);
+            let right_dur = extract_duration_arena(right);
+            if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
+                return Ok(dur1 == dur2);
+            }
+        }
     }
 
-    // Fast path: both strings that can't be datetimes — skip datetime parsing
+    // Primitive arena-native fast path. Returns `None` only when one side is
+    // a collection or both can't be compared without value-mode coercion.
+    if let Some(eq) = compare_equals_primitive(left, right, strict, engine) {
+        return Ok(eq);
+    }
+
+    // Collection-vs-collection (or other unhandled combo) — fall back to
+    // value-mode helper. Cow::Borrowed for InputRef, Cow::Owned otherwise.
+    let l = arena_to_value_cow(left);
+    let r = arena_to_value_cow(right);
+    if strict {
+        Ok(strict_equals(&l, &r))
+    } else {
+        loose_equals(&l, &r, engine)
+    }
+}
+
+/// Arena-native primitive equality. `Some(eq)` when both operands are
+/// non-collection (Number/Bool/String/Null variants); `None` when either
+/// side is a collection or when loose-coercion needs the value-mode path.
+#[inline]
+fn compare_equals_primitive(
+    left: &ArenaValue<'_>,
+    right: &ArenaValue<'_>,
+    strict: bool,
+    engine: &DataLogic,
+) -> Option<bool> {
+    let lk = arena_kind(left)?;
+    let rk = arena_kind(right)?;
+    use ArenaKind::*;
+    match (lk, rk) {
+        (Null, Null) => Some(true),
+        (Bool(a), Bool(b)) => Some(a == b),
+        (Str(a), Str(b)) => Some(a == b),
+        (Num(a), Num(b)) => Some(a == b),
+        _ if strict => Some(false),
+        // Loose coercion table — mirrors `loose_equals_core` for primitive cases.
+        (Num(n), Str(s)) | (Str(s), Num(n)) => match s.parse::<f64>().ok() {
+            Some(sf) => Some(sf == n),
+            // Defer to value-mode for Incompatible vs NotEqual semantics.
+            None => None,
+        },
+        (Num(n), Bool(b)) | (Bool(b), Num(n)) => Some(n == if b { 1.0 } else { 0.0 }),
+        (Str(s), Bool(b)) | (Bool(b), Str(s)) => Some(s == if b { "true" } else { "false" }),
+        (Null, Num(n)) | (Num(n), Null) => {
+            if engine.config().loose_equality_errors {
+                None
+            } else {
+                Some(n == 0.0)
+            }
+        }
+        (Null, Bool(b)) | (Bool(b), Null) => {
+            if engine.config().loose_equality_errors {
+                None
+            } else {
+                Some(!b)
+            }
+        }
+        (Null, Str(s)) | (Str(s), Null) => {
+            if engine.config().loose_equality_errors {
+                None
+            } else {
+                Some(s.is_empty())
+            }
+        }
+    }
+}
+
+/// Arena-native ordered comparison. Mirrors `compare_ordered` exactly.
+#[inline]
+fn compare_ordered_arena(
+    left: &ArenaValue<'_>,
+    right: &ArenaValue<'_>,
+    op: OrdOp,
+    engine: &DataLogic,
+) -> Result<bool> {
+    // Number vs Number — most common case.
+    let l_is_num = matches!(
+        left,
+        ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
+    );
+    let r_is_num = matches!(
+        right,
+        ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
+    );
+    if l_is_num && r_is_num {
+        let lf = left.as_f64().unwrap_or(f64::NAN);
+        let rf = right.as_f64().unwrap_or(f64::NAN);
+        return Ok(op.apply_f64(lf, rf));
+    }
+
+    // String vs String (non-datetime fast path).
     #[cfg(feature = "datetime")]
-    if let (Value::String(l), Value::String(r)) = (left, right)
+    if let (Some(l), Some(r)) = (arena_as_str(left), arena_as_str(right))
         && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
     {
+        return Ok(op.apply_str(l, r));
+    }
+    #[cfg(not(feature = "datetime"))]
+    if let (Some(l), Some(r)) = (arena_as_str(left), arena_as_str(right)) {
         return Ok(op.apply_str(l, r));
     }
 
     #[cfg(feature = "datetime")]
     {
-        // Handle datetime comparisons first - both objects and strings
-        let left_dt = extract_datetime_value(left);
-        let right_dt = extract_datetime_value(right);
-
+        use crate::operators::helpers::{extract_datetime_arena, extract_duration_arena};
+        let left_dt = extract_datetime_arena(left);
+        let right_dt = extract_datetime_arena(right);
         if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
             return Ok(op.apply_datetime(dt1, dt2));
         }
-
-        // Handle duration comparisons - skip if already parsed as datetime (mutually exclusive)
         let left_dur = if left_dt.is_none() {
-            extract_duration_value(left)
+            extract_duration_arena(left)
         } else {
             None
         };
         let right_dur = if right_dt.is_none() {
-            extract_duration_value(right)
+            extract_duration_arena(right)
         } else {
             None
         };
-
         if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
             return Ok(op.apply_duration(dur1, dur2));
         }
     }
 
-    // Arrays and objects cannot be compared (after checking for special objects)
-    if matches!(left, Value::Array(_) | Value::Object(_))
-        || matches!(right, Value::Array(_) | Value::Object(_))
-    {
+    // Arrays / Objects can't be ordered.
+    let is_collection = |av: &ArenaValue<'_>| {
+        matches!(
+            av,
+            ArenaValue::Array(_)
+                | ArenaValue::Object(_)
+                | ArenaValue::InputRef(Value::Array(_))
+                | ArenaValue::InputRef(Value::Object(_))
+        )
+    };
+    if is_collection(left) || is_collection(right) {
         return Err(crate::constants::nan_error());
     }
 
-    // If both are strings, do string comparison
-    if let (Value::String(l), Value::String(r)) = (left, right) {
+    // String vs String — datetime-shaped that fell through.
+    if let (Some(l), Some(r)) = (arena_as_str(left), arena_as_str(right)) {
         return Ok(op.apply_str(l, r));
     }
 
-    // Check if both can be coerced to numbers
-    let left_num = coerce_to_number(left, engine);
-    let right_num = coerce_to_number(right, engine);
-
-    if let (Some(l), Some(r)) = (left_num, right_num) {
+    // Numeric coercion fallback.
+    let l_num = coerce_arena_to_number_cfg(left, engine);
+    let r_num = coerce_arena_to_number_cfg(right, engine);
+    if let (Some(l), Some(r)) = (l_num, r_num) {
         return Ok(op.apply_f64(l, r));
     }
 
-    // If one is a number and the other is a string that can't be coerced, throw NaN
-    if (matches!(left, Value::Number(_)) && matches!(right, Value::String(_)))
-        || (matches!(right, Value::Number(_)) && matches!(left, Value::String(_)))
-    {
+    // Number-String mismatch — NaN error.
+    let is_str = |av: &ArenaValue<'_>| {
+        matches!(
+            av,
+            ArenaValue::String(_) | ArenaValue::InputRef(Value::String(_))
+        )
+    };
+    if (l_is_num && is_str(right)) || (r_is_num && is_str(left)) {
         return Err(crate::constants::nan_error());
     }
 
     Ok(false)
 }
-
-// =============================================================================
-// Arena-mode comparison operators
-// =============================================================================
-//
-// Each pre-evaluates args via `evaluate_arena_node` (so var-lookups borrow
-// into input data via `InputRef` without cloning), materializes a
-// `Cow<Value>` for the existing helpers, and returns a Bool from the
-// preallocated singleton — zero arena allocation for the result.
-
-use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value_cow};
-use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_strict_equals_arena<'a>(
@@ -294,11 +395,9 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let first = arena_to_value_cow(first_av);
     for arg in &args[1..] {
         let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
-        let cur = arena_to_value_cow(cur_av);
-        if !compare_equals(&first, &cur, true, engine)? {
+        if !compare_equals_arena(first_av, cur_av, true, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
     }
@@ -317,7 +416,7 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
     }
     let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
-    let eq = compare_equals(&arena_to_value_cow(a), &arena_to_value_cow(b), true, engine)?;
+    let eq = compare_equals_arena(a, b, true, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
 
@@ -332,11 +431,9 @@ pub(crate) fn evaluate_equals_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let first = arena_to_value_cow(first_av);
     for arg in &args[1..] {
         let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
-        let cur = arena_to_value_cow(cur_av);
-        if !compare_equals(&first, &cur, false, engine)? {
+        if !compare_equals_arena(first_av, cur_av, false, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
     }
@@ -355,12 +452,7 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
     }
     let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
-    let eq = compare_equals(
-        &arena_to_value_cow(a),
-        &arena_to_value_cow(b),
-        false,
-        engine,
-    )?;
+    let eq = compare_equals_arena(a, b, false, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
 
@@ -376,16 +468,12 @@ fn evaluate_ord_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let mut prev_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let mut prev_cow = arena_to_value_cow(prev_av);
     for arg in &args[1..] {
         let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
-        let cur_cow = arena_to_value_cow(cur_av);
-        if !compare_ordered(&prev_cow, &cur_cow, op, engine)? {
+        if !compare_ordered_arena(prev_av, cur_av, op, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
-        let _ = prev_av;
         prev_av = cur_av;
-        prev_cow = cur_cow;
     }
     Ok(crate::arena::pool::singleton_true())
 }
