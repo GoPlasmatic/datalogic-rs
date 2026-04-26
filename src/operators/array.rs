@@ -2844,8 +2844,9 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     }
 
     let body = &args[1];
-    let initial = if args.len() == 3 {
-        engine.evaluate_node(&args[2], context)?
+    let initial: Value = if args.len() == 3 {
+        let av = engine.evaluate_arena_node(&args[2], actx, context, arena)?;
+        crate::arena::arena_to_value(av)
     } else {
         Value::Null
     };
