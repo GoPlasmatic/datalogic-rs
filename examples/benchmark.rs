@@ -3,7 +3,6 @@ use serde_json::Value;
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const ITERATIONS: u32 = 100_000;
@@ -30,9 +29,8 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
             && let Some(logic) = test_case.get("rule")
         {
             let data = test_case.get("data").cloned().unwrap_or(Value::Null);
-            let data_arc = Arc::new(data);
             if let Ok(compiled) = engine.compile(logic) {
-                test_cases.push((compiled, data_arc));
+                test_cases.push((compiled, data));
             }
         }
     }
@@ -41,15 +39,15 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
         return None;
     }
 
-    // Warm-up
+    // Warm-up — pure arena dispatch, no boundary conversion.
     for (compiled_logic, data) in &test_cases {
-        let _ = engine.evaluate(compiled_logic, data.clone());
+        let _ = engine.evaluate_arena_bench(compiled_logic, data);
     }
 
     let start = Instant::now();
     for (compiled_logic, data) in &test_cases {
         for _ in 0..ITERATIONS {
-            let _ = engine.evaluate(compiled_logic, data.clone());
+            let _ = engine.evaluate_arena_bench(compiled_logic, data);
         }
     }
     let total_time = start.elapsed();

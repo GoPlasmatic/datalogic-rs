@@ -392,6 +392,24 @@ impl DataLogic {
 
     // (evaluate_ref is the canonical zero-Arc path; see definition above.)
 
+    /// Pure arena evaluation for benchmarking — runs `evaluate_arena_node`
+    /// and discards the arena-resident result without converting back to
+    /// `serde_json::Value`. Lets `examples/benchmark.rs` measure dispatch
+    /// in isolation, free of the boundary `arena_to_value` cost paid by the
+    /// public `evaluate*` methods. Not part of the stable API.
+    #[doc(hidden)]
+    pub fn evaluate_arena_bench(&self, compiled: &CompiledLogic, data: &Value) -> Result<()> {
+        use crate::arena::ArenaGuard;
+        let cap = compiled.arena_static_bytes.saturating_mul(2).max(4096);
+        let guard = ArenaGuard::acquire(cap);
+        let arena = guard.arena();
+        let mut actx = crate::arena::ArenaContextStack::new(data);
+        let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
+        std::hint::black_box(result);
+        drop(guard);
+        Ok(())
+    }
+
     /// Convenience method for evaluating JSON strings directly.
     ///
     /// This method combines compilation and evaluation in a single call.
