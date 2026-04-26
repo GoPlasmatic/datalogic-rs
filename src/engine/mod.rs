@@ -505,18 +505,24 @@ impl DataLogic {
     /// helpers that are still reachable from arena raw `var`/`val`/`exists`
     /// forms (rare dynamic-path expressions). The actx is seeded with the
     /// caller's current frame as root so `var` lookups inside the dispatch
-    /// see what the calling op sees. A follow-up will port those raw forms
-    /// to native arena impls and let us drop this shim.
+    /// see what the calling op sees.
+    ///
+    /// The caller's `arena` is reused — these calls always originate from
+    /// an outer `evaluate_arena_node` frame that owns one, so allocating a
+    /// fresh `Bump` per call would be wasted work.
+    ///
+    /// A follow-up will port those raw forms to native arena impls and let
+    /// us drop this shim.
     #[inline]
     pub(crate) fn evaluate_node(
         &self,
         node: &CompiledNode,
         context: &mut ContextStack,
+        arena: &bumpalo::Bump,
     ) -> Result<Value> {
-        let arena = bumpalo::Bump::new();
         let root_owned: Value = context.current().data().clone();
         let mut actx = crate::arena::ArenaContextStack::new(&root_owned);
-        let av = self.evaluate_arena_node(node, &mut actx, &arena)?;
+        let av = self.evaluate_arena_node(node, &mut actx, arena)?;
         Ok(crate::arena::arena_to_value(av))
     }
 

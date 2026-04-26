@@ -42,6 +42,7 @@ pub fn evaluate_var(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    arena: &bumpalo::Bump,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(context.current().data().clone());
@@ -65,7 +66,7 @@ pub fn evaluate_var(
         }
         // Dynamic path: must evaluate to get the value
         other => {
-            path_arg = engine.evaluate_node(other, context)?;
+            path_arg = engine.evaluate_node(other, context, arena)?;
             match &path_arg {
                 Value::String(s) => s.as_str(),
                 Value::Number(n) => {
@@ -107,7 +108,7 @@ pub fn evaluate_var(
         None => {
             // If not found and there's a default value, use it
             if args.len() > 1 {
-                engine.evaluate_node(&args[1], context)
+                engine.evaluate_node(&args[1], context, arena)
             } else {
                 Ok(Value::Null)
             }
@@ -121,6 +122,7 @@ pub fn evaluate_val(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    arena: &bumpalo::Bump,
 ) -> Result<Value> {
     if args.is_empty() {
         // No args means current context
@@ -131,14 +133,14 @@ pub fn evaluate_val(
     // This handles both {"val": [[1], "index"]} and {"val": [[2], "", "", "/"]}
     if args.len() >= 2 {
         // First check if it's level access - evaluate first arg to check
-        let first_arg = engine.evaluate_node(&args[0], context)?;
+        let first_arg = engine.evaluate_node(&args[0], context, arena)?;
         if let Value::Array(level_arr) = &first_arg
             && let Some(Value::Number(level_num)) = level_arr.first()
             && let Some(level) = level_num.as_i64()
         {
             // For metadata keys, only check if we have exactly 2 args
             if args.len() == 2 {
-                let path_val = engine.evaluate_node(&args[1], context)?;
+                let path_val = engine.evaluate_node(&args[1], context, arena)?;
                 let path = path_val.as_str().unwrap_or("");
 
                 // Special handling for metadata keys like "index" and "key"
@@ -156,7 +158,7 @@ pub fn evaluate_val(
 
             // For simple two-arg case [[level], path], just access the path
             if args.len() == 2 {
-                let path_val = engine.evaluate_node(&args[1], context)?;
+                let path_val = engine.evaluate_node(&args[1], context, arena)?;
                 let path = match &path_val {
                     Value::String(s) => s.clone(),
                     Value::Number(n) if n.is_i64() => n.as_i64().unwrap().to_string(),
@@ -178,7 +180,7 @@ pub fn evaluate_val(
             // First evaluate all path arguments
             let mut paths = Vec::new();
             for item in args.iter().skip(1) {
-                let path_val = engine.evaluate_node(item, context)?;
+                let path_val = engine.evaluate_node(item, context, arena)?;
                 let path = match &path_val {
                     Value::String(s) => s.clone(),
                     Value::Number(n) if n.is_i64() => n.as_i64().unwrap().to_string(),
@@ -218,7 +220,7 @@ pub fn evaluate_val(
             // Pre-evaluate args, then use reference-based traversal, clone only at the end
             let evaluated_args: Vec<Value> = args
                 .iter()
-                .map(|arg| engine.evaluate_node(arg, context))
+                .map(|arg| engine.evaluate_node(arg, context, arena))
                 .collect::<Result<Vec<_>>>()?;
             let current_frame = context.current();
 
@@ -258,7 +260,7 @@ pub fn evaluate_val(
     }
 
     // Single argument - evaluate it
-    let path_value = engine.evaluate_node(&args[0], context)?;
+    let path_value = engine.evaluate_node(&args[0], context, arena)?;
 
     // Handle array notation for context levels: [[level], "path", ...]
     // Level indicates how many levels to go up from current
@@ -389,6 +391,7 @@ pub fn evaluate_exists(
     args: &[CompiledNode],
     context: &mut ContextStack,
     engine: &DataLogic,
+    arena: &bumpalo::Bump,
 ) -> Result<Value> {
     if args.is_empty() {
         return Ok(Value::Bool(false));
@@ -396,7 +399,7 @@ pub fn evaluate_exists(
 
     // If we have a single argument, evaluate it
     if args.len() == 1 {
-        let path_arg = engine.evaluate_node(&args[0], context)?;
+        let path_arg = engine.evaluate_node(&args[0], context, arena)?;
 
         // Handle different path formats
         match path_arg {
@@ -444,7 +447,7 @@ pub fn evaluate_exists(
         // First evaluate all args to get the path segments
         let mut paths = Vec::new();
         for arg in args {
-            let path_val = engine.evaluate_node(arg, context)?;
+            let path_val = engine.evaluate_node(arg, context, arena)?;
             if let Value::String(path) = path_val {
                 paths.push(path);
             } else {
@@ -737,7 +740,7 @@ pub(crate) fn evaluate_var_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     let mut context = local_context_from_actx(actx);
-    let v = evaluate_var(args, &mut context, engine)?;
+    let v = evaluate_var(args, &mut context, engine, arena)?;
     Ok(arena.alloc(value_to_arena(&v, arena)))
 }
 
@@ -751,7 +754,7 @@ pub(crate) fn evaluate_val_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     let mut context = local_context_from_actx(actx);
-    let v = evaluate_val(args, &mut context, engine)?;
+    let v = evaluate_val(args, &mut context, engine, arena)?;
     Ok(arena.alloc(value_to_arena(&v, arena)))
 }
 
@@ -762,10 +765,10 @@ pub(crate) fn evaluate_exists_arena<'a>(
     args: &'a [CompiledNode],
     actx: &mut ArenaContextStack<'a>,
     engine: &crate::DataLogic,
-    _arena: &'a Bump,
+    arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
     let mut context = local_context_from_actx(actx);
-    let v = evaluate_exists(args, &mut context, engine)?;
+    let v = evaluate_exists(args, &mut context, engine, arena)?;
     Ok(crate::arena::pool::singleton_bool(matches!(
         v,
         Value::Bool(true)
