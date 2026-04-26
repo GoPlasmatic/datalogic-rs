@@ -42,8 +42,6 @@
 //! - Comparing arrays or objects (except datetime/duration objects)
 //! - Comparing a number with a non-numeric string
 
-use serde_json::Value;
-
 use crate::value_helpers::{loose_equals, strict_equals};
 use crate::{CompiledNode, DataLogic, Result};
 
@@ -140,7 +138,6 @@ use bumpalo::Bump;
 fn arena_as_str<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
     match av {
         ArenaValue::String(s) => Some(*s),
-        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
         _ => None,
     }
 }
@@ -161,10 +158,6 @@ fn arena_kind<'a>(av: &'a ArenaValue<'a>) -> Option<ArenaKind<'a>> {
         ArenaValue::Bool(b) => Some(ArenaKind::Bool(*b)),
         ArenaValue::Number(n) => Some(ArenaKind::Num(n.as_f64())),
         ArenaValue::String(s) => Some(ArenaKind::Str(s)),
-        ArenaValue::InputRef(Value::Null) => Some(ArenaKind::Null),
-        ArenaValue::InputRef(Value::Bool(b)) => Some(ArenaKind::Bool(*b)),
-        ArenaValue::InputRef(Value::Number(n)) => n.as_f64().map(ArenaKind::Num),
-        ArenaValue::InputRef(Value::String(s)) => Some(ArenaKind::Str(s.as_str())),
         _ => None,
     }
 }
@@ -196,12 +189,6 @@ pub(crate) fn compare_equals_arena(
             {
                 false
             }
-            (ArenaValue::InputRef(Value::String(s)), _)
-            | (_, ArenaValue::InputRef(Value::String(s)))
-                if !could_be_datetime_or_duration(s) =>
-            {
-                false
-            }
             _ => true,
         };
         if probe_dt {
@@ -225,7 +212,7 @@ pub(crate) fn compare_equals_arena(
     }
 
     // Collection-vs-collection (or other unhandled combo) — fall back to
-    // value-mode helper. Cow::Borrowed for InputRef, Cow::Owned otherwise.
+    // value-mode helper via a `Cow` materialization.
     let l = arena_to_value_cow(left);
     let r = arena_to_value_cow(right);
     if strict {
@@ -295,14 +282,8 @@ fn compare_ordered_arena(
     engine: &DataLogic,
 ) -> Result<bool> {
     // Number vs Number — most common case.
-    let l_is_num = matches!(
-        left,
-        ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
-    );
-    let r_is_num = matches!(
-        right,
-        ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
-    );
+    let l_is_num = matches!(left, ArenaValue::Number(_));
+    let r_is_num = matches!(right, ArenaValue::Number(_));
     if l_is_num && r_is_num {
         let lf = left.as_f64().unwrap_or(f64::NAN);
         let rf = right.as_f64().unwrap_or(f64::NAN);
@@ -346,13 +327,7 @@ fn compare_ordered_arena(
 
     // Arrays / Objects can't be ordered.
     let is_collection = |av: &ArenaValue<'_>| {
-        matches!(
-            av,
-            ArenaValue::Array(_)
-                | ArenaValue::Object(_)
-                | ArenaValue::InputRef(Value::Array(_))
-                | ArenaValue::InputRef(Value::Object(_))
-        )
+        matches!(av, ArenaValue::Array(_) | ArenaValue::Object(_))
     };
     if is_collection(left) || is_collection(right) {
         return Err(crate::constants::nan_error());
@@ -371,12 +346,7 @@ fn compare_ordered_arena(
     }
 
     // Number-String mismatch — NaN error.
-    let is_str = |av: &ArenaValue<'_>| {
-        matches!(
-            av,
-            ArenaValue::String(_) | ArenaValue::InputRef(Value::String(_))
-        )
-    };
+    let is_str = |av: &ArenaValue<'_>| matches!(av, ArenaValue::String(_));
     if (l_is_num && is_str(right)) || (r_is_num && is_str(left)) {
         return Err(crate::constants::nan_error());
     }

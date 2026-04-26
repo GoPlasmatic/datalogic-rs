@@ -304,6 +304,7 @@ impl fmt::Display for DataDuration {
 }
 
 // Helper to check if a Value is a datetime object
+#[allow(dead_code)]
 pub fn is_datetime_object(value: &Value) -> bool {
     if let Value::Object(map) = value {
         map.contains_key("datetime")
@@ -313,6 +314,7 @@ pub fn is_datetime_object(value: &Value) -> bool {
 }
 
 // Helper to check if a Value is a duration/timestamp object
+#[allow(dead_code)]
 pub fn is_duration_object(value: &Value) -> bool {
     if let Value::Object(map) = value {
         map.contains_key("timestamp")
@@ -322,6 +324,7 @@ pub fn is_duration_object(value: &Value) -> bool {
 }
 
 // Extract datetime from object
+#[allow(dead_code)]
 pub fn extract_datetime(value: &Value) -> Option<DataDateTime> {
     if let Value::Object(map) = value
         && let Some(Value::String(s)) = map.get("datetime")

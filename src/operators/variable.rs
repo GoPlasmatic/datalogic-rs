@@ -3,52 +3,11 @@ use serde_json::Value;
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
 use crate::{CompiledNode, Error, Result};
 
-/// Traverse pre-parsed path segments on a value (reference only, no context needed).
-#[inline(always)]
-pub(crate) fn try_traverse_segments<'a>(
-    data: &'a Value,
-    segments: &[PathSegment],
-) -> Option<&'a Value> {
-    let mut current = data;
-    for seg in segments {
-        match seg {
-            PathSegment::Field(key) => match current {
-                Value::Object(obj) => match obj.get(key.as_ref()) {
-                    Some(v) => current = v,
-                    None => return None,
-                },
-                _ => return None,
-            },
-            PathSegment::Index(idx) => match current {
-                Value::Array(arr) => match arr.get(*idx) {
-                    Some(v) => current = v,
-                    None => return None,
-                },
-                _ => return None,
-            },
-            PathSegment::FieldOrIndex(key, idx) => match current {
-                Value::Object(obj) => match obj.get(key.as_ref()) {
-                    Some(v) => current = v,
-                    None => return None,
-                },
-                Value::Array(arr) => match arr.get(*idx) {
-                    Some(v) => current = v,
-                    None => return None,
-                },
-                _ => return None,
-            },
-        }
-    }
-    Some(current)
-}
-
 // =============================================================================
 // Arena-mode variable access
 // =============================================================================
 //
-// Arena variants for var / val / exists. The compiled forms (CompiledVar /
-// CompiledExists) get the fast path: when the lookup resolves into the input
-// `Arc<Value>` we return `InputRef` with zero allocation. The raw forms
+// Arena variants for var / val / exists. The raw forms
 // (`evaluate_var_arena` / `_val_arena` / `_exists_arena`) handle dynamic-path
 // expressions natively against the arena context stack.
 
@@ -92,9 +51,6 @@ fn path_string_from_arena(av: &ArenaValue<'_>) -> String {
     if let ArenaValue::Number(n) = av {
         return n.to_string();
     }
-    if let ArenaValue::InputRef(Value::Number(n)) = av {
-        return n.to_string();
-    }
     String::new()
 }
 
@@ -109,8 +65,8 @@ pub(crate) struct CompiledVarSpec<'n> {
     pub default_value: Option<&'n CompiledNode>,
 }
 
-/// Arena variant of `evaluate_compiled_var`. Returns `InputRef` for root-scope
-/// lookups that hit the input data; otherwise clones into the arena.
+/// Arena variant of `evaluate_compiled_var`. Re-borrows arena-resident input
+/// for root-scope lookups; otherwise clones into the arena.
 #[inline]
 pub(crate) fn evaluate_compiled_var_arena<'a>(
     spec: CompiledVarSpec<'a>,
@@ -337,19 +293,16 @@ pub(crate) fn evaluate_var_arena<'a>(
 fn level_marker_from_array(av: &ArenaValue<'_>) -> Option<i64> {
     match av {
         ArenaValue::Array(items) if !items.is_empty() => items[0].as_i64(),
-        ArenaValue::InputRef(Value::Array(arr)) if !arr.is_empty() => arr[0].as_i64(),
         _ => None,
     }
 }
 
-/// Iterate the elements of an arena array, abstracting over `Array` vs
-/// `InputRef(Value::Array)`. Returns `None` if `av` is not array-shaped.
+/// Length of an arena array, or `None` if not array-shaped.
 #[cfg(feature = "ext-control")]
 #[inline]
 fn arena_array_len(av: &ArenaValue<'_>) -> Option<usize> {
     match av {
         ArenaValue::Array(items) => Some(items.len()),
-        ArenaValue::InputRef(Value::Array(arr)) => Some(arr.len()),
         _ => None,
     }
 }
@@ -360,16 +313,13 @@ fn arena_array_len(av: &ArenaValue<'_>) -> Option<usize> {
 fn arena_array_get<'a>(
     av: &'a ArenaValue<'a>,
     i: usize,
-    arena: &'a Bump,
+    _arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
     match av {
         ArenaValue::Array(items) => items.get(i).map(|entry| {
             let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
             av_ref
         }),
-        ArenaValue::InputRef(Value::Array(arr)) => arr
-            .get(i)
-            .map(|leaf| &*arena.alloc(ArenaValue::InputRef(leaf))),
         _ => None,
     }
 }
@@ -481,9 +431,6 @@ pub(crate) fn evaluate_val_arena<'a>(
             let first_elem = arena_array_get(path_av, 0, arena);
             let level_opt = first_elem.and_then(|e| match e {
                 ArenaValue::Array(level_arr) if !level_arr.is_empty() => level_arr[0].as_i64(),
-                ArenaValue::InputRef(Value::Array(level_arr)) if !level_arr.is_empty() => {
-                    level_arr[0].as_i64()
-                }
                 _ => None,
             });
             if let Some(level) = level_opt {
@@ -564,21 +511,13 @@ pub(crate) fn evaluate_val_arena<'a>(
         let cur = current_data_av(actx, arena);
         // Direct object key lookup beats dot-path traversal so empty keys and
         // keys containing dots resolve correctly.
-        match cur {
-            ArenaValue::Object(pairs) => {
-                for (k, v) in *pairs {
-                    if *k == s {
-                        let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
-                        return Ok(av_ref);
-                    }
+        if let ArenaValue::Object(pairs) = cur {
+            for (k, v) in *pairs {
+                if *k == s {
+                    let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                    return Ok(av_ref);
                 }
             }
-            ArenaValue::InputRef(Value::Object(obj)) => {
-                if let Some(leaf) = obj.get(s) {
-                    return Ok(arena.alloc(ArenaValue::InputRef(leaf)));
-                }
-            }
-            _ => {}
         }
         return Ok(arena_access_path_str_ref(cur, s, arena)
             .unwrap_or_else(|| crate::arena::pool::singleton_null()));
@@ -603,7 +542,6 @@ pub(crate) fn evaluate_val_arena<'a>(
 fn arena_object_contains(av: &ArenaValue<'_>, key: &str) -> bool {
     match av {
         ArenaValue::Object(pairs) => pairs.iter().any(|(k, _)| *k == key),
-        ArenaValue::InputRef(Value::Object(obj)) => obj.contains_key(key),
         _ => false,
     }
 }
@@ -615,7 +553,7 @@ fn arena_object_contains(av: &ArenaValue<'_>, key: &str) -> bool {
 fn arena_object_step<'a>(
     av: &'a ArenaValue<'a>,
     key: &str,
-    arena: &'a Bump,
+    _arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
     match av {
         ArenaValue::Object(pairs) => {
@@ -627,9 +565,6 @@ fn arena_object_step<'a>(
             }
             None
         }
-        ArenaValue::InputRef(Value::Object(obj)) => obj
-            .get(key)
-            .map(|leaf| &*arena.alloc(ArenaValue::InputRef(leaf))),
         _ => None,
     }
 }

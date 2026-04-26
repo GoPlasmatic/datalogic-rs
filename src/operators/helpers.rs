@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
 use serde_json::Value;
@@ -72,9 +74,8 @@ pub fn extract_duration_value(value: &Value) -> Option<crate::datetime::DataDura
     }
 }
 
-/// Arena-native datetime extraction. For `InputRef(v)` operands, delegates
-/// to the existing `&Value`-based helper (zero-cost). Native `String`/
-/// `Object` operands are walked directly without `Value` materialization.
+/// Arena-native datetime extraction — walks `String` / `Object` arena values
+/// directly without `Value` materialization.
 #[cfg(feature = "datetime")]
 #[inline]
 pub(crate) fn extract_datetime_arena(
@@ -90,14 +91,10 @@ pub(crate) fn extract_datetime_arena(
                     if let ArenaValue::String(s) = v {
                         return crate::datetime::DataDateTime::parse(s);
                     }
-                    if let ArenaValue::InputRef(Value::String(s)) = v {
-                        return crate::datetime::DataDateTime::parse(s);
-                    }
                 }
             }
             None
         }
-        ArenaValue::InputRef(v) => extract_datetime_value(v),
         _ => None,
     }
 }
@@ -118,14 +115,10 @@ pub(crate) fn extract_duration_arena(
                     if let ArenaValue::String(s) = v {
                         return crate::datetime::DataDuration::parse(s);
                     }
-                    if let ArenaValue::InputRef(Value::String(s)) = v {
-                        return crate::datetime::DataDuration::parse(s);
-                    }
                 }
             }
             None
         }
-        ArenaValue::InputRef(v) => extract_duration_value(v),
         _ => None,
     }
 }

@@ -33,11 +33,7 @@ impl ArenaOperator for IsNightOperator {
 }
 
 fn parse_datetime_arena(av: &ArenaValue<'_>) -> Option<DateTime<chrono::Utc>> {
-    // Direct InputRef into a `Value` — handle both string and {"datetime": ...}.
-    if let ArenaValue::InputRef(v) = av {
-        return parse_datetime_value(v);
-    }
-    // Arena-resident string (e.g., from a custom op chain).
+    // Arena-resident string (e.g., from a custom op chain or input).
     if let Some(s) = av.as_str()
         && let Ok(dt) = DateTime::parse_from_rfc3339(s)
     {

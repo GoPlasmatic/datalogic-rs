@@ -3,7 +3,6 @@ use serde_json::Value;
 #[cfg(feature = "ext-array")]
 use std::cmp::Ordering;
 
-use super::variable;
 use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
@@ -46,24 +45,25 @@ fn try_extract_filter_field_cmp<'a>(
 }
 
 /// Evaluate a loop-invariant predicate-side node once, before iteration.
-/// Literal values clone directly; outer-scope `CompiledVar`s resolve through
-/// arena dispatch with a synthesized null iter frame so the var sees the
-/// outer context unaffected by the missing iter frame this fast path skips.
+/// Literal values are deep-converted into the arena; outer-scope
+/// `CompiledVar`s resolve through arena dispatch with a synthesized null iter
+/// frame so the var sees the outer context unaffected by the missing iter
+/// frame this fast path skips.
 #[inline]
 fn evaluate_invariant_no_push<'a>(
     invariant_node: &'a CompiledNode,
     actx: &mut ArenaContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<Value> {
+) -> Result<&'a ArenaValue<'a>> {
     if let CompiledNode::Value { value, .. } = invariant_node {
-        return Ok(value.clone());
+        return Ok(arena.alloc(value_to_arena(value, arena)));
     }
     let null_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::Null);
     actx.push(null_av);
     let result = engine.evaluate_arena_node(invariant_node, actx, arena);
     actx.pop();
-    result.map(crate::arena::arena_to_value)
+    result
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter operators.
@@ -164,26 +164,30 @@ impl<'a> FastPredicate<'a> {
 
     /// Resolve the value to compare: either the whole item or a field within it.
     #[inline]
-    fn resolve_value<'v>(
+    fn resolve_value<'b>(
         segments: Option<&[crate::node::PathSegment]>,
-        item: &'v Value,
-    ) -> Option<&'v Value> {
+        item: &'b ArenaValue<'b>,
+        arena: &'b Bump,
+    ) -> Option<&'b ArenaValue<'b>> {
         match segments {
             None => Some(item),
-            Some(segs) => super::variable::try_traverse_segments(item, segs),
+            Some(segs) => crate::arena::value::arena_traverse_segments(item, segs, arena),
         }
     }
 
     /// Evaluate this predicate against a single item.
     #[inline]
-    fn evaluate(&self, item: &Value) -> bool {
+    fn evaluate<'b>(&self, item: &'b ArenaValue<'b>, arena: &'b Bump) -> bool {
         match self {
             FastPredicate::StrictEq {
                 segments,
                 literal,
                 negate,
             } => {
-                let matches = Self::resolve_value(*segments, item) == Some(*literal);
+                let matches = match Self::resolve_value(*segments, item, arena) {
+                    Some(av) => arena_value_equals_value(av, literal),
+                    None => false,
+                };
                 if *negate { !matches } else { matches }
             }
             FastPredicate::NumericCmp {
@@ -192,7 +196,7 @@ impl<'a> FastPredicate<'a> {
                 opcode,
                 var_is_lhs,
             } => {
-                if let Some(val) = Self::resolve_value(*segments, item)
+                if let Some(val) = Self::resolve_value(*segments, item, arena)
                     && let Some(val_f) = val.as_f64()
                 {
                     let (lhs, rhs) = if *var_is_lhs {
@@ -210,7 +214,7 @@ impl<'a> FastPredicate<'a> {
                 literal_f,
                 negate,
             } => {
-                let matches = if let Some(val) = Self::resolve_value(*segments, item)
+                let matches = if let Some(val) = Self::resolve_value(*segments, item, arena)
                     && let Some(val_f) = val.as_f64()
                 {
                     val_f == *literal_f
@@ -220,6 +224,87 @@ impl<'a> FastPredicate<'a> {
                 if *negate { !matches } else { matches }
             }
         }
+    }
+}
+
+/// Strict equality between two `ArenaValue`s.
+#[inline]
+fn arena_value_equals_arena(a: &ArenaValue<'_>, b: &ArenaValue<'_>) -> bool {
+    match (a, b) {
+        (ArenaValue::Null, ArenaValue::Null) => true,
+        (ArenaValue::Bool(x), ArenaValue::Bool(y)) => x == y,
+        (ArenaValue::Number(x), ArenaValue::Number(y)) => match (x.as_i64(), y.as_i64()) {
+            (Some(a), Some(b)) => a == b,
+            _ => x.as_f64() == y.as_f64(),
+        },
+        (ArenaValue::String(x), ArenaValue::String(y)) => *x == *y,
+        (ArenaValue::Array(x), ArenaValue::Array(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y.iter())
+                    .all(|(a, b)| arena_value_equals_arena(a, b))
+        }
+        (ArenaValue::Object(x), ArenaValue::Object(y)) => {
+            if x.len() != y.len() {
+                return false;
+            }
+            for (k, v) in *x {
+                let found = y.iter().find(|(yk, _)| *yk == *k).map(|(_, yv)| yv);
+                match found {
+                    Some(yv) => {
+                        if !arena_value_equals_arena(v, yv) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Strict equality between an `ArenaValue` and a `serde_json::Value` literal —
+/// used by `FastPredicate::StrictEq` to compare an arena-resident item against
+/// a compile-time literal without allocating.
+#[inline]
+fn arena_value_equals_value(av: &ArenaValue<'_>, v: &Value) -> bool {
+    match (av, v) {
+        (ArenaValue::Null, Value::Null) => true,
+        (ArenaValue::Bool(a), Value::Bool(b)) => a == b,
+        (ArenaValue::Number(a), Value::Number(b)) => match (a.as_i64(), b.as_i64()) {
+            (Some(x), Some(y)) => x == y,
+            _ => match (a.as_f64(), b.as_f64()) {
+                (x, Some(y)) => x == y,
+                _ => false,
+            },
+        },
+        (ArenaValue::String(s), Value::String(b)) => *s == b.as_str(),
+        (ArenaValue::Array(items), Value::Array(b)) => {
+            items.len() == b.len()
+                && items
+                    .iter()
+                    .zip(b.iter())
+                    .all(|(x, y)| arena_value_equals_value(x, y))
+        }
+        (ArenaValue::Object(pairs), Value::Object(b)) => {
+            if pairs.len() != b.len() {
+                return false;
+            }
+            for (k, av) in *pairs {
+                match b.get(*k) {
+                    Some(bv) => {
+                        if !arena_value_equals_value(av, bv) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+            true
+        }
+        _ => false,
     }
 }
 
@@ -236,21 +321,29 @@ fn inline_numeric_cmp(lhs: f64, rhs: f64, opcode: OpCode) -> bool {
 }
 
 #[cfg(feature = "ext-array")]
-// Helper function to compare JSON values for sorting
-fn compare_values(a: &Value, b: &Value) -> Ordering {
+// Helper function to compare arena values for sorting.
+// Type order: null < bool < number < string < array < object.
+fn compare_values(a: &ArenaValue<'_>, b: &ArenaValue<'_>) -> Ordering {
+    #[inline]
+    fn type_rank(v: &ArenaValue<'_>) -> u8 {
+        match v {
+            ArenaValue::Null => 0,
+            ArenaValue::Bool(_) => 1,
+            ArenaValue::Number(_) => 2,
+            ArenaValue::String(_) => 3,
+            ArenaValue::Array(_) => 4,
+            ArenaValue::Object(_) => 5,
+            #[cfg(feature = "datetime")]
+            ArenaValue::DateTime(_) | ArenaValue::Duration(_) => 3,
+        }
+    }
+
     match (a, b) {
-        // Null is less than everything
-        (Value::Null, Value::Null) => Ordering::Equal,
-        (Value::Null, _) => Ordering::Less,
-        (_, Value::Null) => Ordering::Greater,
-
-        // Booleans
-        (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-
-        // Numbers
-        (Value::Number(a), Value::Number(b)) => {
-            let a_f = a.as_f64().unwrap_or(0.0);
-            let b_f = b.as_f64().unwrap_or(0.0);
+        (ArenaValue::Null, ArenaValue::Null) => Ordering::Equal,
+        (ArenaValue::Bool(a), ArenaValue::Bool(b)) => a.cmp(b),
+        (ArenaValue::Number(a), ArenaValue::Number(b)) => {
+            let a_f = a.as_f64();
+            let b_f = b.as_f64();
             if a_f < b_f {
                 Ordering::Less
             } else if a_f > b_f {
@@ -259,32 +352,10 @@ fn compare_values(a: &Value, b: &Value) -> Ordering {
                 Ordering::Equal
             }
         }
-
-        // Strings
-        (Value::String(a), Value::String(b)) => a.cmp(b),
-
-        // Mixed types - use type order: null < bool < number < string < array < object
-        (Value::Bool(_), Value::Number(_)) => Ordering::Less,
-        (Value::Bool(_), Value::String(_)) => Ordering::Less,
-        (Value::Bool(_), Value::Array(_)) => Ordering::Less,
-        (Value::Bool(_), Value::Object(_)) => Ordering::Less,
-
-        (Value::Number(_), Value::Bool(_)) => Ordering::Greater,
-        (Value::Number(_), Value::String(_)) => Ordering::Less,
-        (Value::Number(_), Value::Array(_)) => Ordering::Less,
-        (Value::Number(_), Value::Object(_)) => Ordering::Less,
-
-        (Value::String(_), Value::Bool(_)) => Ordering::Greater,
-        (Value::String(_), Value::Number(_)) => Ordering::Greater,
-        (Value::String(_), Value::Array(_)) => Ordering::Less,
-        (Value::String(_), Value::Object(_)) => Ordering::Less,
-
-        (Value::Array(_), _) => Ordering::Greater,
-        (_, Value::Array(_)) => Ordering::Less,
-
-        // Objects are greater than everything else (except other objects)
-        (Value::Object(_), Value::Object(_)) => Ordering::Equal,
-        (Value::Object(_), _) => Ordering::Greater,
+        (ArenaValue::String(a), ArenaValue::String(b)) => a.cmp(b),
+        (ArenaValue::Array(_), ArenaValue::Array(_)) => Ordering::Equal,
+        (ArenaValue::Object(_), ArenaValue::Object(_)) => Ordering::Equal,
+        _ => type_rank(a).cmp(&type_rank(b)),
     }
 }
 
@@ -342,9 +413,8 @@ fn slice_chars(
     result
 }
 
-/// Native arena-mode `slice`. Returns array slices as `InputRef` slices
-/// (zero-copy borrow into the input) when possible; string slices are
-/// allocated in the arena.
+/// Native arena-mode `slice`. Returns array slices as views over arena items;
+/// string slices are allocated in the arena.
 #[cfg(feature = "ext-array")]
 #[inline]
 pub(crate) fn evaluate_slice_arena<'a>(
@@ -360,10 +430,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
     let coll_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
 
     // Null passthrough.
-    if matches!(
-        coll_av,
-        ArenaValue::Null | ArenaValue::InputRef(Value::Null)
-    ) {
+    if matches!(coll_av, ArenaValue::Null) {
         return Ok(crate::arena::pool::singleton_null());
     }
 
@@ -388,24 +455,6 @@ pub(crate) fn evaluate_slice_arena<'a>(
         1
     };
 
-    // Resolve the input collection. Borrow the source slice when possible
-    // so the result can be a view of arena InputRefs.
-    let arr_borrow: Option<&'a [Value]> = match coll_av {
-        ArenaValue::InputRef(Value::Array(arr)) => Some(arr.as_slice()),
-        _ => None,
-    };
-
-    if let Some(arr) = arr_borrow {
-        let len = arr.len() as i64;
-        let indices = slice_indices(len, start, end, step);
-        let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-            bumpalo::collections::Vec::with_capacity_in(indices.len(), arena);
-        for i in indices {
-            items.push(ArenaValue::InputRef(&arr[i as usize]));
-        }
-        return Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())));
-    }
-
     // Composite arena array — slice through the arena items.
     if let ArenaValue::Array(items) = coll_av {
         let len = items.len() as i64;
@@ -421,12 +470,7 @@ pub(crate) fn evaluate_slice_arena<'a>(
     }
 
     // String slice — allocate result in the arena.
-    let s_str: Option<&str> = match coll_av {
-        ArenaValue::String(s) => Some(*s),
-        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
-        _ => None,
-    };
-    if let Some(s) = s_str {
+    if let ArenaValue::String(s) = coll_av {
         let chars: Vec<char> = s.chars().collect();
         let result_string = slice_chars(&chars, chars.len() as i64, start, end, step);
         let s_arena: &'a str = arena.alloc_str(&result_string);
@@ -453,7 +497,7 @@ fn extract_opt_i64_arena<'a>(
     }
     let av = engine.evaluate_arena_node(node, actx, arena)?;
     match av {
-        ArenaValue::Null | ArenaValue::InputRef(Value::Null) => Ok(None),
+        ArenaValue::Null => Ok(None),
         _ => match av.as_i64() {
             Some(i) => Ok(Some(i)),
             None => Err(Error::InvalidArguments("NaN".to_string())),
@@ -512,49 +556,31 @@ fn normalize_index(index: i64, len: i64) -> i64 {
 // =============================================================================
 // Iterator operators: filter / map / quantifiers + composition IN.
 //
-// These return `&'a ArenaValue<'a>` and may borrow into the caller's input
-// `Value` tree via `ArenaValue::InputRef`. Iterator inputs can themselves be
-// arena op outputs (`map(filter(...))`, `length(map(filter))`). The
-// `IterSrc` helper unifies `&[Value]` (borrowed input data) and
-// `&[&'a Value]` (extracted from an
-// upstream arena op's `InputRef` items) into one iteration interface, so
-// each operator's iteration body stays single-version.
+// All inputs are arena-resident. `IterSrc` is a thin wrapper over
+// `&[ArenaValue]` so iterator-op bodies have a stable interface even if we
+// later add multi-source iteration shapes.
 // =============================================================================
 
-/// Unified view over an iterator op's input collection. Either points at the
-/// caller's input data (`&[Value]`) or at an arena slice of `&Value`s
-/// extracted from an upstream arena op's `InputRef` items.
-pub(crate) enum IterSrc<'a> {
-    /// Direct slice from caller's input data (zero allocs).
-    Direct(&'a [Value]),
-    /// Arena-allocated slice of references gathered from `ArenaValue::InputRef`
-    /// items produced by an upstream arena op.
-    Refs(&'a [&'a Value]),
-}
+/// Unified view over an iterator op's input collection. Single shape:
+/// arena slice of `ArenaValue`. Wrapper kept for API stability.
+#[derive(Clone, Copy)]
+pub(crate) struct IterSrc<'a>(pub(crate) &'a [ArenaValue<'a>]);
 
 impl<'a> IterSrc<'a> {
     #[inline]
     pub(crate) fn len(&self) -> usize {
-        match self {
-            Self::Direct(s) => s.len(),
-            Self::Refs(s) => s.len(),
-        }
+        self.0.len()
     }
 
     #[inline]
     pub(crate) fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.0.is_empty()
     }
 
-    /// Get item by index. The returned `&'a Value` lives for the arena
-    /// lifetime (either through the caller's `Arc<Value>` or via the upstream
-    /// op's `InputRef`).
+    /// Get item by index.
     #[inline]
-    pub(crate) fn get(&self, i: usize) -> &'a Value {
-        match self {
-            Self::Direct(s) => &s[i],
-            Self::Refs(s) => s[i],
-        }
+    pub(crate) fn get(&self, i: usize) -> &'a ArenaValue<'a> {
+        &self.0[i]
     }
 }
 
@@ -585,17 +611,10 @@ pub(crate) fn resolve_iter_input<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
-    // Path 1: root borrow. Only the InputRef root preserves the zero-copy
-    // `&Value` slice borrow; arena-resident roots fall through to the
-    // generic dispatch path so the iterator is built from arena data.
-    if let ArenaValue::InputRef(root) = actx.root_input()
-        && let Some(borrowed) = try_borrow_collection_from_root(arg, actx, root)
-    {
-        return Ok(match borrowed {
-            Value::Array(arr) => ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice())),
-            Value::Null => ResolvedInput::Empty,
-            other => ResolvedInput::Bridge(arena.alloc(ArenaValue::InputRef(other))),
-        });
+    // Path 1: root borrow — args[0] is a simple var that resolves into the
+    // input root data.
+    if let Some(av) = try_borrow_collection_from_root(arg, actx, arena) {
+        return Ok(arena_value_as_iter(av));
     }
 
     // Path 2: composition — arg is another arena-aware op. Dispatch and inspect.
@@ -612,38 +631,21 @@ pub(crate) fn resolve_iter_input<'a>(
         )
     {
         let av = engine.evaluate_arena_node(arg, actx, arena)?;
-        return Ok(arena_value_as_iter(av, arena));
+        return Ok(arena_value_as_iter(av));
     }
 
     // Path 3: anything else — evaluate through arena dispatch so the caller
     // can handle the result natively (Object iteration / single-element wrap /
     // error per op semantics).
     let av = engine.evaluate_arena_node(arg, actx, arena)?;
-    Ok(arena_value_as_iter(av, arena))
+    Ok(arena_value_as_iter(av))
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
-fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>, arena: &'a Bump) -> ResolvedInput<'a> {
+fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>) -> ResolvedInput<'a> {
     match av {
-        ArenaValue::InputRef(Value::Array(arr)) => {
-            ResolvedInput::Iterable(IterSrc::Direct(arr.as_slice()))
-        }
-        ArenaValue::InputRef(Value::Null) | ArenaValue::Null => ResolvedInput::Empty,
-        ArenaValue::Array(items) => {
-            // Items from an arena op are typically `InputRef(&Value)`. Extract
-            // them into an arena-allocated `&[&Value]`. If any item is not an
-            // InputRef (e.g. a computed Number/Bool from a future arena op),
-            // bridge with the original value so the caller can handle it.
-            let mut refs: bumpalo::collections::Vec<'a, &'a Value> =
-                bumpalo::collections::Vec::with_capacity_in(items.len(), arena);
-            for item in items.iter() {
-                match item {
-                    ArenaValue::InputRef(v) => refs.push(*v),
-                    _ => return ResolvedInput::Bridge(av),
-                }
-            }
-            ResolvedInput::Iterable(IterSrc::Refs(refs.into_bump_slice()))
-        }
+        ArenaValue::Null => ResolvedInput::Empty,
+        ArenaValue::Array(items) => ResolvedInput::Iterable(IterSrc(items)),
         _ => ResolvedInput::Bridge(av),
     }
 }
@@ -696,10 +698,14 @@ pub(crate) fn evaluate_filter_arena<'a>(
                 bumpalo::collections::Vec::with_capacity_in(len, arena);
             for i in 0..len {
                 let item = src.get(i);
-                let matches =
-                    super::variable::try_traverse_segments(item, segments) == Some(&invariant_val);
+                let matches = match crate::arena::value::arena_traverse_segments(
+                    item, segments, arena,
+                ) {
+                    Some(av) => arena_value_equals_arena(av, invariant_val),
+                    None => false,
+                };
                 if matches == is_eq {
-                    results.push(ArenaValue::InputRef(item));
+                    results.push(crate::arena::value::reborrow_arena_value(item));
                 }
             }
             return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
@@ -711,31 +717,31 @@ pub(crate) fn evaluate_filter_arena<'a>(
             bumpalo::collections::Vec::with_capacity_in(len, arena);
         for i in 0..len {
             let item = src.get(i);
-            if fast_pred.evaluate(item) {
-                results.push(ArenaValue::InputRef(item));
+            if fast_pred.evaluate(item, arena) {
+                results.push(crate::arena::value::reborrow_arena_value(item));
             }
         }
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
     }
 
     // GENERAL PATH: zero-clone via ArenaContextStack. Frame data is
-    // `&'a ArenaValue<'a>` pointing at `InputRef(item)`; predicate body
-    // dispatches through arena and the var-arena reads the frame directly.
+    // `&'a ArenaValue<'a>` pointing at the arena-resident item; predicate
+    // body dispatches through arena and the var-arena reads the frame
+    // directly.
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
     for i in 0..len {
         let item = src.get(i);
-        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            actx.push_with_index(item_av, 0);
+            actx.push_with_index(item, 0);
             pushed = true;
         } else {
-            actx.replace_top_data(item_av, i);
+            actx.replace_top_data(item, i);
         }
         let keep = engine.eval_iter_body(predicate, actx, arena, i as u32, len as u32)?;
         if crate::arena::is_truthy_arena(keep, engine) {
-            results.push(ArenaValue::InputRef(item));
+            results.push(crate::arena::value::reborrow_arena_value(item));
         }
     }
     if pushed {
@@ -756,14 +762,14 @@ fn filter_arena_bridge<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+    if let ArenaValue::Object(pairs) = input {
         let mut kept: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
-            bumpalo::collections::Vec::with_capacity_in(obj.len(), arena);
+            bumpalo::collections::Vec::with_capacity_in(pairs.len(), arena);
         let mut pushed = false;
-        let total = obj.len() as u32;
-        for (i, (k, v)) in obj.iter().enumerate() {
-            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
-            let key_arena: &'a str = arena.alloc_str(k);
+        let total = pairs.len() as u32;
+        for (i, (k, v)) in pairs.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+            let key_arena: &'a str = k;
             if !pushed {
                 actx.push_with_key_index(item_av, 0, key_arena);
                 pushed = true;
@@ -772,7 +778,7 @@ fn filter_arena_bridge<'a>(
             }
             let keep = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
             if crate::arena::is_truthy_arena(keep, engine) {
-                kept.push((key_arena, ArenaValue::InputRef(v)));
+                kept.push((key_arena, crate::arena::value::reborrow_arena_value(item_av)));
             }
         }
         if pushed {
@@ -817,14 +823,14 @@ fn map_arena_bridge<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+    if let ArenaValue::Object(pairs) = input {
         let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-            bumpalo::collections::Vec::with_capacity_in(obj.len(), arena);
+            bumpalo::collections::Vec::with_capacity_in(pairs.len(), arena);
         let mut pushed = false;
-        let total = obj.len() as u32;
-        for (i, (k, v)) in obj.iter().enumerate() {
-            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
-            let key_arena: &'a str = arena.alloc_str(k);
+        let total = pairs.len() as u32;
+        for (i, (k, v)) in pairs.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+            let key_arena: &'a str = k;
             if !pushed {
                 actx.push_with_key_index(item_av, 0, key_arena);
                 pushed = true;
@@ -882,14 +888,13 @@ fn reduce_arena_bridge<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if let ArenaValue::InputRef(Value::Object(obj)) = input {
+    if let ArenaValue::Object(pairs) = input {
         let mut acc_av: &'a ArenaValue<'a> = initial;
         let mut pushed = false;
-        let total = obj.len() as u32;
-        for (i, (k, v)) in obj.iter().enumerate() {
-            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
-            let _key = arena.alloc_str(k); // reduce frame stores current/
-            // accumulator only — key isn't exposed here.
+        let total = pairs.len() as u32;
+        for (i, (_k, v)) in pairs.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+            // reduce frame stores current/accumulator only — key isn't exposed here.
             if !pushed {
                 actx.push_reduce(item_av, acc_av);
                 pushed = true;
@@ -966,16 +971,16 @@ fn quantifier_arena_bridge<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    if let ArenaValue::InputRef(Value::Object(obj)) = input {
-        if obj.is_empty() {
+    if let ArenaValue::Object(pairs) = input {
+        if pairs.is_empty() {
             return Ok(arena.alloc(ArenaValue::Bool(shape.empty_result)));
         }
         let mut pushed = false;
         let mut found_short = false;
-        let total = obj.len() as u32;
-        for (i, (k, v)) in obj.iter().enumerate() {
-            let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(v));
-            let key_arena: &'a str = arena.alloc_str(k);
+        let total = pairs.len() as u32;
+        for (i, (k, v)) in pairs.iter().enumerate() {
+            let item_av: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+            let key_arena: &'a str = k;
             if !pushed {
                 actx.push_with_key_index(item_av, 0, key_arena);
                 pushed = true;
@@ -1024,12 +1029,12 @@ fn quantifier_arena_bridge<'a>(
 }
 
 /// `sort`. Borrows input via `IterSrc` (no input clone), runs
-/// `slice::sort_by` over indices, and emits `ArenaValue::Array` of `InputRef`s
-/// pointing at the original items in their sorted order — avoids a deep-clone
-/// of the input array, which dominates for object arrays.
+/// `slice::sort_by` over indices, and emits `ArenaValue::Array` re-borrowing
+/// the original arena items in their sorted order — avoids a deep-clone of
+/// the input array, which dominates for object arrays.
 ///
 /// Fast path (extractor is a root-scope `var`): keys come from
-/// `try_traverse_segments` returning `&Value` directly, no key clones.
+/// `arena_traverse_segments` returning `&ArenaValue` directly, no key clones.
 #[cfg(feature = "ext-array")]
 #[inline]
 pub(crate) fn evaluate_sort_arena<'a>(
@@ -1066,7 +1071,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
     let ascending = if args.len() > 1 {
         let dir = engine.evaluate_arena_node(&args[1], actx, arena)?;
         match dir {
-            ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => *b,
+            ArenaValue::Bool(b) => *b,
             _ => true,
         }
     } else {
@@ -1076,7 +1081,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
     let has_extractor = args.len() > 2;
 
     if !has_extractor {
-        // No extractor — sort items directly by Value order.
+        // No extractor — sort items directly by ArenaValue order.
         let mut indices: Vec<usize> = (0..len).collect();
         indices.sort_by(|&a, &b| {
             let cmp = compare_values(src.get(a), src.get(b));
@@ -1085,7 +1090,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
         let slice = arena.alloc_slice_fill_iter(
             indices
                 .into_iter()
-                .map(|i| ArenaValue::InputRef(src.get(i))),
+                .map(|i| crate::arena::value::reborrow_arena_value(src.get(i))),
         );
         return Ok(arena.alloc(ArenaValue::Array(slice)));
     }
@@ -1102,11 +1107,11 @@ pub(crate) fn evaluate_sort_arena<'a>(
     } = extractor
         && !segments.is_empty()
     {
-        let mut keyed: Vec<(usize, Option<&Value>)> = (0..len)
+        let mut keyed: Vec<(usize, Option<&ArenaValue<'a>>)> = (0..len)
             .map(|i| {
                 (
                     i,
-                    super::variable::try_traverse_segments(src.get(i), segments),
+                    crate::arena::value::arena_traverse_segments(src.get(i), segments, arena),
                 )
             })
             .collect();
@@ -1122,27 +1127,26 @@ pub(crate) fn evaluate_sort_arena<'a>(
         let slice = arena.alloc_slice_fill_iter(
             keyed
                 .into_iter()
-                .map(|(i, _)| ArenaValue::InputRef(src.get(i))),
+                .map(|(i, _)| crate::arena::value::reborrow_arena_value(src.get(i))),
         );
         return Ok(arena.alloc(ArenaValue::Array(slice)));
     }
 
     // General extractor — push each item into the arena context, evaluate
-    // the extractor, collect keys, then sort indices by key. Result emits
-    // `InputRef` views into the original input data.
-    let mut keys: Vec<Value> = Vec::with_capacity(len);
+    // the extractor, collect keys, then sort indices by key. Result re-borrows
+    // arena items into the sorted output.
+    let mut keys: Vec<ArenaValue<'a>> = Vec::with_capacity(len);
     let mut pushed = false;
     for i in 0..len {
         let item = src.get(i);
-        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            actx.push_with_index(item_av, 0);
+            actx.push_with_index(item, 0);
             pushed = true;
         } else {
-            actx.replace_top_data(item_av, i);
+            actx.replace_top_data(item, i);
         }
         let key_av = engine.evaluate_arena_node(extractor, actx, arena)?;
-        keys.push(crate::arena::arena_to_value(key_av));
+        keys.push(crate::arena::value::reborrow_arena_value(key_av));
     }
     if pushed {
         actx.pop();
@@ -1156,7 +1160,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
     let slice = arena.alloc_slice_fill_iter(
         indices
             .into_iter()
-            .map(|i| ArenaValue::InputRef(src.get(i))),
+            .map(|i| crate::arena::value::reborrow_arena_value(src.get(i))),
     );
     Ok(arena.alloc(ArenaValue::Array(slice)))
 }
@@ -1174,24 +1178,21 @@ fn sort_arena_from_value<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    // Convert to a flat `Vec<Value>` we can sort. Borrowed cases go
-    // straight through; arena cases materialize once.
-    let owned: Vec<Value> = match av {
-        ArenaValue::Null | ArenaValue::InputRef(Value::Null) => {
+    let arena_items_slice: &'a [ArenaValue<'a>] = match av {
+        ArenaValue::Null => {
             return Ok(crate::arena::pool::singleton_null());
         }
-        ArenaValue::InputRef(Value::Array(arr)) => arr.to_vec(),
-        ArenaValue::Array(items) => items.iter().map(crate::arena::arena_to_value).collect(),
+        ArenaValue::Array(items) => *items,
         _ => return Err(crate::constants::invalid_args()),
     };
-    if owned.is_empty() {
+    if arena_items_slice.is_empty() {
         return Ok(arena.alloc(ArenaValue::Array(&[])));
     }
 
     let ascending = if args.len() > 1 {
         let dir = engine.evaluate_arena_node(&args[1], actx, arena)?;
         match dir {
-            ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => *b,
+            ArenaValue::Bool(b) => *b,
             _ => true,
         }
     } else {
@@ -1199,31 +1200,26 @@ fn sort_arena_from_value<'a>(
     };
 
     if args.len() <= 2 {
-        let mut sorted = owned;
-        sorted.sort_by(|a, b| {
-            let cmp = compare_values(a, b);
+        let n = arena_items_slice.len();
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.sort_by(|&a, &b| {
+            let cmp = compare_values(&arena_items_slice[a], &arena_items_slice[b]);
             if ascending { cmp } else { cmp.reverse() }
         });
-        // Materialize into the arena.
-        let items =
-            arena.alloc_slice_fill_iter(sorted.into_iter().map(|v| value_to_arena(&v, arena)));
+        let items = arena.alloc_slice_fill_iter(
+            indices
+                .into_iter()
+                .map(|i| crate::arena::value::reborrow_arena_value(&arena_items_slice[i])),
+        );
         return Ok(arena.alloc(ArenaValue::Array(items)));
     }
 
     // Extractor present — push items into arena context, evaluate,
     // collect keys, sort indices.
     let extractor = &args[2];
-    let n = owned.len();
-    // Promote each item into the arena once so push_with_index can take a
-    // reference whose lifetime matches `'a`.
-    let arena_items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
-        bumpalo::collections::Vec::from_iter_in(
-            owned.iter().map(|v| value_to_arena(v, arena)),
-            arena,
-        );
-    let arena_items_slice: &'a [ArenaValue<'a>] = arena_items.into_bump_slice();
+    let n = arena_items_slice.len();
 
-    let mut keys: Vec<Value> = Vec::with_capacity(n);
+    let mut keys: Vec<ArenaValue<'a>> = Vec::with_capacity(n);
     let mut pushed = false;
     for (i, item_av) in arena_items_slice.iter().enumerate() {
         if !pushed {
@@ -1233,7 +1229,7 @@ fn sort_arena_from_value<'a>(
             actx.replace_top_data(item_av, i);
         }
         let key_av = engine.evaluate_arena_node(extractor, actx, arena)?;
-        keys.push(crate::arena::arena_to_value(key_av));
+        keys.push(crate::arena::value::reborrow_arena_value(key_av));
     }
     if pushed {
         actx.pop();
@@ -1275,11 +1271,6 @@ pub(crate) fn evaluate_length_arena<'a>(
     let n: i64 = match arg {
         ArenaValue::String(s) => s.chars().count() as i64,
         ArenaValue::Array(items) => items.len() as i64,
-        ArenaValue::InputRef(v) => match v {
-            Value::String(s) => s.chars().count() as i64,
-            Value::Array(arr) => arr.len() as i64,
-            _ => return Err(crate::constants::invalid_args()),
-        },
         _ => return Err(crate::constants::invalid_args()),
     };
 
@@ -1287,15 +1278,15 @@ pub(crate) fn evaluate_length_arena<'a>(
 }
 
 /// Try to obtain the input collection by borrowing from the caller's root data.
-/// Returns `Some(&Value)` when args[0] is a simple root-scope `var` that
+/// Returns `Some(&ArenaValue)` when args[0] is a simple root-scope `var` that
 /// resolves into the input data. The returned reference lives for the arena
-/// lifetime `'a` because `root` is held alive for the call's duration.
+/// lifetime `'a`.
 #[inline]
 fn try_borrow_collection_from_root<'a>(
     arg: &'a CompiledNode,
     actx: &ArenaContextStack<'a>,
-    root: &'a Value,
-) -> Option<&'a Value> {
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
     if actx.depth() != 0 {
         return None; // only root-scope borrows
     }
@@ -1308,17 +1299,19 @@ fn try_borrow_collection_from_root<'a>(
         ..
     } = arg
     {
+        let root = actx.root_input();
         if segments.is_empty() {
             return Some(root);
         }
-        return variable::try_traverse_segments(root, segments);
+        return crate::arena::value::arena_traverse_segments(root, segments, arena);
     }
     None
 }
 
 /// `map`. Borrows input from root scope when possible. Body fast path for
-/// var/field-extract emits InputRef per item with zero iteration allocs.
-/// Other body shapes evaluate the body via arena dispatch per item.
+/// var/field-extract re-borrows the arena item per output entry with zero
+/// iteration allocs. Other body shapes evaluate the body via arena dispatch
+/// per item.
 #[inline]
 pub(crate) fn evaluate_map_arena<'a>(
     args: &'a [CompiledNode],
@@ -1345,7 +1338,7 @@ pub(crate) fn evaluate_map_arena<'a>(
     }
 
     // BODY FAST PATH: var with simple shape — identity (empty segments) or
-    // field extract. Both emit InputRef per item with zero per-iteration allocs.
+    // field extract. Both re-borrow arena items with zero per-iteration allocs.
     if let CompiledNode::CompiledVar {
         scope_level: 0,
         segments,
@@ -1359,13 +1352,13 @@ pub(crate) fn evaluate_map_arena<'a>(
             bumpalo::collections::Vec::with_capacity_in(len, arena);
         if segments.is_empty() {
             for i in 0..len {
-                results.push(ArenaValue::InputRef(src.get(i)));
+                results.push(crate::arena::value::reborrow_arena_value(src.get(i)));
             }
         } else {
             for i in 0..len {
                 let item = src.get(i);
-                match super::variable::try_traverse_segments(item, segments) {
-                    Some(v) => results.push(ArenaValue::InputRef(v)),
+                match crate::arena::value::arena_traverse_segments(item, segments, arena) {
+                    Some(v) => results.push(crate::arena::value::reborrow_arena_value(v)),
                     None => results.push(ArenaValue::Null),
                 }
             }
@@ -1373,20 +1366,19 @@ pub(crate) fn evaluate_map_arena<'a>(
         return Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())));
     }
 
-    // GENERAL PATH: zero-clone via ArenaContextStack — frame data is
-    // `InputRef(item)`; body dispatches through arena.
+    // GENERAL PATH: zero-clone via ArenaContextStack — frame data is the
+    // arena-resident item; body dispatches through arena.
     let mut results: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(len, arena);
     let mut pushed = false;
     let total = len as u32;
     for i in 0..len {
         let item = src.get(i);
-        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            actx.push_with_index(item_av, 0);
+            actx.push_with_index(item, 0);
             pushed = true;
         } else {
-            actx.replace_top_data(item_av, i);
+            actx.replace_top_data(item, i);
         }
         let av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
         results.push(crate::arena::value::reborrow_arena_value(av));
@@ -1431,7 +1423,7 @@ fn evaluate_quantifier_arena<'a>(
     if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
         let len = src.len();
         for i in 0..len {
-            if fast_pred.evaluate(src.get(i)) == shape.short_circuit_on {
+            if fast_pred.evaluate(src.get(i), arena) == shape.short_circuit_on {
                 return Ok(arena.alloc(ArenaValue::Bool(shape.finalize(true))));
             }
         }
@@ -1445,12 +1437,11 @@ fn evaluate_quantifier_arena<'a>(
     let total = len as u32;
     for i in 0..len {
         let item = src.get(i);
-        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            actx.push_with_index(item_av, 0);
+            actx.push_with_index(item, 0);
             pushed = true;
         } else {
-            actx.replace_top_data(item_av, i);
+            actx.replace_top_data(item, i);
         }
         let av = engine.eval_iter_body(predicate, actx, arena, i as u32, total)?;
         if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
@@ -1590,12 +1581,11 @@ pub(crate) fn evaluate_reduce_arena<'a>(
     let total = len as u32;
     for i in 0..len {
         let item = src.get(i);
-        let item_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::InputRef(item));
         if !pushed {
-            actx.push_reduce(item_av, acc_av);
+            actx.push_reduce(item, acc_av);
             pushed = true;
         } else {
-            actx.replace_reduce_data(item_av, acc_av);
+            actx.replace_reduce_data(item, acc_av);
         }
         acc_av = engine.eval_iter_body(body, actx, arena, i as u32, total)?;
     }
@@ -1668,7 +1658,7 @@ fn try_reduce_fast_path_arena<'a>(
             let current_val = if current_segments.is_empty() {
                 item
             } else {
-                super::variable::try_traverse_segments(item, current_segments)?
+                crate::arena::value::arena_traverse_segments(item, current_segments, arena)?
             };
             if let Some(cur_i) = current_val.as_i64() {
                 let a = acc_i.unwrap();
@@ -1697,7 +1687,7 @@ fn try_reduce_fast_path_arena<'a>(
         let current_val = if current_segments.is_empty() {
             item
         } else {
-            super::variable::try_traverse_segments(item, current_segments)?
+            crate::arena::value::arena_traverse_segments(item, current_segments, arena)?
         };
         let cur_f = current_val.as_f64()?;
         acc_f = match opcode {
@@ -1715,8 +1705,7 @@ fn try_reduce_fast_path_arena<'a>(
 }
 
 /// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
-/// op) into a single array, skipping nulls. Returns a slice of `InputRef`s
-/// pointing at the original Values — no per-element clones.
+/// op) into a single array, skipping nulls.
 #[inline]
 pub(crate) fn evaluate_merge_arena<'a>(
     args: &'a [CompiledNode],
@@ -1737,66 +1726,22 @@ pub(crate) fn evaluate_merge_arena<'a>(
             ArenaValue::Array(items) => {
                 for item in items.iter() {
                     if !item_is_null(item) {
-                        // Each item is typically already an InputRef; extract
-                        // the underlying &Value when possible to keep the
-                        // result uniformly InputRef-shaped for downstream
-                        // consumers.
-                        match item {
-                            ArenaValue::InputRef(v) => {
-                                if !v.is_null() {
-                                    results.push(ArenaValue::InputRef(v));
-                                }
-                            }
-                            _ => {
-                                // Computed arena value (Number/Bool/String).
-                                // Cheap to copy the enum reference into our
-                                // result slice.
-                                results.push(reborrow_arena(item));
-                            }
-                        }
-                    }
-                }
-            }
-            // Borrowed input array — iterate, push InputRef per non-null.
-            ArenaValue::InputRef(Value::Array(arr)) => {
-                for item in arr.iter() {
-                    if !item.is_null() {
-                        results.push(ArenaValue::InputRef(item));
+                        results.push(crate::arena::value::reborrow_arena_value(item));
                     }
                 }
             }
             // Null inputs are skipped per merge semantics.
-            ArenaValue::InputRef(Value::Null) | ArenaValue::Null => {}
+            ArenaValue::Null => {}
             // Scalar / object — push as-is.
-            other => results.push(reborrow_arena(other)),
+            other => results.push(crate::arena::value::reborrow_arena_value(other)),
         }
     }
 
     Ok(arena.alloc(ArenaValue::Array(results.into_bump_slice())))
 }
 
-/// Cheap shallow copy of an `ArenaValue` enum (clones the discriminant +
-/// inline payload bytes — no heap traffic). Used by merge to copy non-Array
-/// items into its result slice without allocating.
-#[inline]
-fn reborrow_arena<'a>(av: &ArenaValue<'a>) -> ArenaValue<'a> {
-    match av {
-        ArenaValue::Null => ArenaValue::Null,
-        ArenaValue::Bool(b) => ArenaValue::Bool(*b),
-        ArenaValue::Number(n) => ArenaValue::Number(*n),
-        ArenaValue::String(s) => ArenaValue::String(s),
-        ArenaValue::Array(items) => ArenaValue::Array(items),
-        ArenaValue::Object(pairs) => ArenaValue::Object(pairs),
-        #[cfg(feature = "datetime")]
-        ArenaValue::DateTime(dt) => ArenaValue::DateTime(dt.clone()),
-        #[cfg(feature = "datetime")]
-        ArenaValue::Duration(d) => ArenaValue::Duration(d.clone()),
-        ArenaValue::InputRef(v) => ArenaValue::InputRef(v),
-    }
-}
-
-/// True iff this arena value would be `null` after conversion to `Value`.
+/// True iff this arena value is `null`.
 #[inline]
 fn item_is_null(av: &ArenaValue<'_>) -> bool {
-    matches!(av, ArenaValue::Null) || matches!(av, ArenaValue::InputRef(Value::Null))
+    matches!(av, ArenaValue::Null)
 }

@@ -37,13 +37,11 @@ use crate::datetime::{DataDateTime, DataDuration};
 /// - `DateTime` / `Duration` — chrono-backed values, inline. Boundary
 ///   representation in `serde_json::Value` is `{"datetime": "..."}` /
 ///   `{"timestamp": "..."}` matching the existing helper contract.
-/// - `InputRef` — borrow into the caller's input `&Value` without copying.
-///   Used by `var` lookups so input data never gets cloned.
 ///
 /// `Clone` is derived because compiled-time literal precomputation stores a
 /// `Box<ArenaValue<'static>>` inside `CompiledNode::Value`, and the enclosing
 /// `CompiledNode` derives `Clone`. The clone is shallow for the common
-/// primitive variants (Null/Bool/Number/InputRef are Copy-shaped); slice and
+/// primitive variants (Null/Bool/Number are Copy-shaped); slice and
 /// string variants clone the reference, not the bytes; only DateTime/Duration
 /// pay an actual Clone cost — all rare on the hot path.
 #[derive(Debug, Clone)]
@@ -66,8 +64,6 @@ pub enum ArenaValue<'a> {
     /// Chrono-backed duration (feature `datetime`).
     #[cfg(feature = "datetime")]
     Duration(DataDuration),
-    /// Zero-clone borrow into the caller's input `&Value`.
-    InputRef(&'a Value),
 }
 
 impl<'a> ArenaValue<'a> {
@@ -106,17 +102,17 @@ impl<'a> ArenaValue<'a> {
 
     // ---- Accessors ----
 
-    /// Returns true if this value is `Null` or wraps `Value::Null`.
+    /// Returns true if this value is `Null`.
     #[inline]
     pub fn is_null(&self) -> bool {
-        matches!(self, ArenaValue::Null | ArenaValue::InputRef(Value::Null))
+        matches!(self, ArenaValue::Null)
     }
 
-    /// Extract a boolean if this value is a `Bool` (or wraps one).
+    /// Extract a boolean if this value is a `Bool`.
     #[inline]
     pub fn as_bool(&self) -> Option<bool> {
         match self {
-            ArenaValue::Bool(b) | ArenaValue::InputRef(Value::Bool(b)) => Some(*b),
+            ArenaValue::Bool(b) => Some(*b),
             _ => None,
         }
     }
@@ -126,7 +122,6 @@ impl<'a> ArenaValue<'a> {
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             ArenaValue::Number(n) => n.as_i64(),
-            ArenaValue::InputRef(Value::Number(n)) => n.as_i64(),
             _ => None,
         }
     }
@@ -136,7 +131,6 @@ impl<'a> ArenaValue<'a> {
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             ArenaValue::Number(n) => Some(n.as_f64()),
-            ArenaValue::InputRef(Value::Number(n)) => n.as_f64(),
             _ => None,
         }
     }
@@ -146,7 +140,6 @@ impl<'a> ArenaValue<'a> {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             ArenaValue::String(s) => Some(s),
-            ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -164,14 +157,6 @@ impl<'a> ArenaValue<'a> {
             ArenaValue::Object(pairs) => !pairs.is_empty(),
             #[cfg(feature = "datetime")]
             ArenaValue::DateTime(_) | ArenaValue::Duration(_) => true,
-            ArenaValue::InputRef(v) => match v {
-                Value::Null => false,
-                Value::Bool(b) => *b,
-                Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
-                Value::String(s) => !s.is_empty(),
-                Value::Array(arr) => !arr.is_empty(),
-                Value::Object(obj) => !obj.is_empty(),
-            },
         }
     }
 }
@@ -213,7 +198,6 @@ pub(crate) fn arena_to_value(v: &ArenaValue<'_>) -> Value {
             map.insert("timestamp".to_string(), Value::String(d.to_string()));
             Value::Object(map)
         }
-        ArenaValue::InputRef(v) => (*v).clone(),
     }
 }
 
@@ -227,10 +211,8 @@ pub(crate) fn arena_to_value(v: &ArenaValue<'_>) -> Value {
 /// here — callers that need temporal semantics extract on demand (matches
 /// the existing `extract_datetime_value` contract).
 /// Deep-convert a `&Value` into an arena-resident `ArenaValue`. Allocates
-/// strings, arrays and objects in `arena`; primitives are inline. Useful for
-/// callers that want to pass arena-native input to
-/// [`crate::DataLogic::evaluate_in_arena`] without paying the per-call
-/// `InputRef` traversal cost.
+/// strings, arrays and objects in `arena`; primitives are inline. Used at the
+/// API boundary by `evaluate_*` and at the input edge of arena-native helpers.
 pub fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
     match v {
         Value::Null => ArenaValue::Null,
@@ -257,15 +239,11 @@ pub fn value_to_arena<'a>(v: &Value, arena: &'a Bump) -> ArenaValue<'a> {
 }
 
 // =============================================================================
-// Arena-aware helpers — operate on `&ArenaValue<'a>`, deferring to the
-// underlying `&Value` only when the variant is `InputRef`.
+// Arena-aware helpers — operate on `&ArenaValue<'a>` natively.
 // =============================================================================
 
 /// Config-aware arena-native f64 coercion. Mirrors
-/// `value_helpers::coerce_to_number` exactly — same engine config gates,
-/// no `Value` round-trip. For `InputRef` operands the legacy helper is
-/// dispatched directly (zero-cost passthrough); for arena-native operands
-/// the rules are reproduced inline.
+/// `value_helpers::coerce_to_number` exactly — same engine config gates.
 #[inline]
 pub(crate) fn coerce_arena_to_number_cfg(
     v: &ArenaValue<'_>,
@@ -284,7 +262,6 @@ pub(crate) fn coerce_arena_to_number_cfg(
             Some(if *b { 1.0 } else { 0.0 })
         }
         ArenaValue::Null if engine.config().numeric_coercion.null_to_zero => Some(0.0),
-        ArenaValue::InputRef(v) => crate::value_helpers::coerce_to_number(v, engine),
         _ => None,
     }
 }
@@ -309,13 +286,11 @@ pub(crate) fn try_coerce_arena_to_integer_cfg(
             Some(if *b { 1 } else { 0 })
         }
         ArenaValue::Null if engine.config().numeric_coercion.null_to_zero => Some(0),
-        ArenaValue::InputRef(v) => crate::value_helpers::try_coerce_to_integer(v, engine),
         _ => None,
     }
 }
 
-/// Coerce an `ArenaValue` to f64 using the engine's coercion rules. Mirrors
-/// `value_helpers::coerce_to_number` but lifts ArenaValue's native variants.
+/// Coerce an `ArenaValue` to f64 using default JSON Logic coercion rules.
 pub(crate) fn coerce_arena_to_number(v: &ArenaValue<'_>) -> Option<f64> {
     match v {
         ArenaValue::Number(n) => Some(n.as_f64()),
@@ -338,14 +313,10 @@ pub(crate) fn coerce_arena_to_number(v: &ArenaValue<'_>) -> Option<f64> {
         ArenaValue::Object(_) => None,
         #[cfg(feature = "datetime")]
         ArenaValue::DateTime(_) | ArenaValue::Duration(_) => None,
-        ArenaValue::InputRef(v) => coerce_value_to_number_default(v),
     }
 }
 
-/// Default JSON Logic numeric coercion against `&serde_json::Value`. Mirrors
-/// `value_helpers::coerce_to_number` for the default config (bool→number,
-/// null→0, empty string→0). Used when the arena value still holds an
-/// `InputRef` to an input-side `Value`.
+#[allow(dead_code)]
 fn coerce_value_to_number_default(v: &Value) -> Option<f64> {
     match v {
         Value::Number(n) => n.as_f64(),
@@ -385,48 +356,31 @@ pub(crate) fn reborrow_arena_value<'a>(av: &ArenaValue<'a>) -> ArenaValue<'a> {
         ArenaValue::DateTime(dt) => ArenaValue::DateTime(dt.clone()),
         #[cfg(feature = "datetime")]
         ArenaValue::Duration(d) => ArenaValue::Duration(d.clone()),
-        ArenaValue::InputRef(v) => ArenaValue::InputRef(v),
     }
 }
 
 /// Render an `ArenaValue` as a `Cow<Value>` for use with `&Value`-based
-/// helpers (`coerce_to_number`, `try_traverse_segments`, etc.). Borrowed when
-/// the source is `InputRef` (zero-cost — most common path for var-lookups);
-/// owned otherwise. Owned conversion is cheap for primitives (Number/Bool/Null
-/// are inline) but allocates for String/Array/Object/DateTime/Duration.
+/// boundary helpers. Always owned (allocates a fresh `Value`) since arena
+/// values are not borrow-compatible with `serde_json::Value`. Used only at
+/// the API boundary (input/output conversion); no in-loop callers.
+#[allow(dead_code)]
 #[inline]
 pub(crate) fn arena_to_value_cow<'a>(v: &'a ArenaValue<'a>) -> Cow<'a, Value> {
-    match v {
-        ArenaValue::InputRef(vr) => Cow::Borrowed(*vr),
-        _ => Cow::Owned(arena_to_value(v)),
-    }
+    Cow::Owned(arena_to_value(v))
 }
 
 /// Walk path segments on an `&'a ArenaValue<'a>`. Used by variable-arena
-/// non-root lookups when frame data lives in `ArenaContextStack`. Returns
-/// `None` if any segment misses or the value isn't traversable.
-///
-/// Strategy:
-/// - `InputRef(v)`: delegate to `try_traverse_segments` (which walks `&Value`)
-///   and wrap the leaf as a fresh `InputRef` allocated in the arena.
-/// - `Object((&str, ArenaValue))`: linear scan for the key.
-/// - `Array([ArenaValue])`: numeric segment.
-/// - Anything else: `None`.
+/// lookups. Returns `None` if any segment misses or the value isn't
+/// traversable.
 pub(crate) fn arena_traverse_segments<'a>(
     av: &'a ArenaValue<'a>,
     segments: &[crate::node::PathSegment],
-    arena: &'a Bump,
+    _arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
     use crate::node::PathSegment;
 
     if segments.is_empty() {
         return Some(av);
-    }
-
-    // InputRef: defer to the `&Value` walker (zero-clone) and wrap the leaf.
-    if let ArenaValue::InputRef(v) = av {
-        let leaf = crate::operators::variable::try_traverse_segments(v, segments)?;
-        return Some(arena.alloc(ArenaValue::InputRef(leaf)));
     }
 
     let mut cur: &'a ArenaValue<'a> = av;
@@ -438,10 +392,11 @@ pub(crate) fn arena_traverse_segments<'a>(
                     let mut found: Option<&'a ArenaValue<'a>> = None;
                     for (k, v) in *pairs {
                         if *k == target {
-                            // SAFETY: pairs has lifetime 'a, but the entry value
-                            // is stored by value. We need an &'a reference to it,
-                            // which requires re-allocating in the arena.
-                            // Cheap: re-borrow the entry's value reference.
+                            // SAFETY: pairs is `&'a [(&'a str, ArenaValue<'a>)]`.
+                            // Re-borrowing by raw-pointer cast preserves the 'a
+                            // lifetime; pairs.iter() yields `&(&str, ArenaValue)`
+                            // which would tie the inner ref to the iter's
+                            // shorter lifetime — the cast restores 'a.
                             let av_ref: &'a ArenaValue<'a> =
                                 unsafe { &*(v as *const ArenaValue<'a>) };
                             found = Some(av_ref);
@@ -450,10 +405,6 @@ pub(crate) fn arena_traverse_segments<'a>(
                     }
                     cur = found?;
                 }
-                ArenaValue::InputRef(Value::Object(obj)) => {
-                    let leaf = obj.get(key.as_ref())?;
-                    cur = arena.alloc(ArenaValue::InputRef(leaf));
-                }
                 _ => return None,
             },
             PathSegment::Index(idx) => match cur {
@@ -461,10 +412,6 @@ pub(crate) fn arena_traverse_segments<'a>(
                     let entry = items.get(*idx)?;
                     let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
                     cur = av_ref;
-                }
-                ArenaValue::InputRef(Value::Array(arr)) => {
-                    let leaf = arr.get(*idx)?;
-                    cur = arena.alloc(ArenaValue::InputRef(leaf));
                 }
                 _ => return None,
             },
@@ -487,14 +434,6 @@ pub(crate) fn arena_traverse_segments<'a>(
                     let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
                     cur = av_ref;
                 }
-                ArenaValue::InputRef(Value::Object(obj)) => {
-                    let leaf = obj.get(key.as_ref())?;
-                    cur = arena.alloc(ArenaValue::InputRef(leaf));
-                }
-                ArenaValue::InputRef(Value::Array(arr)) => {
-                    let leaf = arr.get(*idx)?;
-                    cur = arena.alloc(ArenaValue::InputRef(leaf));
-                }
                 _ => return None,
             },
         }
@@ -508,10 +447,6 @@ pub(crate) fn arena_path_exists_str(av: &ArenaValue<'_>, path: &str) -> bool {
     if path.is_empty() {
         return true;
     }
-    if let ArenaValue::InputRef(v) = av {
-        return crate::value_helpers::access_path_ref(v, path).is_some();
-    }
-
     fn step<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>> {
         match cur {
             ArenaValue::Object(pairs) => {
@@ -553,10 +488,6 @@ pub(crate) fn arena_path_exists_segments(
     if segments.is_empty() {
         return true;
     }
-    if let ArenaValue::InputRef(v) = av {
-        return crate::operators::variable::try_traverse_segments(v, segments).is_some();
-    }
-
     let mut cur = av;
     for seg in segments {
         let next = match seg {
@@ -588,29 +519,17 @@ pub(crate) fn arena_path_exists_segments(
     true
 }
 
-/// Walk a dot-notation `path` on `&'a ArenaValue<'a>`. Mirrors
-/// `value_helpers::access_path_ref` for the arena value tree.
-///
-/// - `InputRef(v)` defers to the existing `&Value` walker and re-wraps the
-///   leaf in `InputRef` — zero clone for input-rooted lookups.
-/// - `Object(pairs)` does a linear key scan per segment.
-/// - `Array(items)` parses the segment as an index.
-/// - Anything else (or a missing segment) returns `None`.
+/// Walk a dot-notation `path` on `&'a ArenaValue<'a>`.
 pub(crate) fn arena_access_path_str_ref<'a>(
     av: &'a ArenaValue<'a>,
     path: &str,
-    arena: &'a Bump,
+    _arena: &'a Bump,
 ) -> Option<&'a ArenaValue<'a>> {
     if path.is_empty() {
         return Some(av);
     }
 
-    if let ArenaValue::InputRef(v) = av {
-        let leaf = crate::value_helpers::access_path_ref(v, path)?;
-        return Some(arena.alloc(ArenaValue::InputRef(leaf)));
-    }
-
-    fn step<'a>(cur: &'a ArenaValue<'a>, seg: &str, arena: &'a Bump) -> Option<&'a ArenaValue<'a>> {
+    fn step<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>> {
         match cur {
             ArenaValue::Object(pairs) => {
                 for (k, v) in *pairs {
@@ -627,26 +546,17 @@ pub(crate) fn arena_access_path_str_ref<'a>(
                 let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
                 Some(av_ref)
             }
-            ArenaValue::InputRef(Value::Object(obj)) => {
-                let leaf = obj.get(seg)?;
-                Some(arena.alloc(ArenaValue::InputRef(leaf)))
-            }
-            ArenaValue::InputRef(Value::Array(arr)) => {
-                let idx = seg.parse::<usize>().ok()?;
-                let leaf = arr.get(idx)?;
-                Some(arena.alloc(ArenaValue::InputRef(leaf)))
-            }
             _ => None,
         }
     }
 
     if !path.contains('.') {
-        return step(av, path, arena);
+        return step(av, path);
     }
 
     let mut cur = av;
     for seg in path.split('.') {
-        cur = step(cur, seg, arena)?;
+        cur = step(cur, seg)?;
     }
     Some(cur)
 }
@@ -671,12 +581,7 @@ pub(crate) fn arena_apply_path_element<'a>(
                 let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
                 av_ref
             }),
-            ArenaValue::InputRef(Value::Array(arr)) => arr
-                .get(idx)
-                .map(|leaf| &*arena.alloc(ArenaValue::InputRef(leaf))),
-            ArenaValue::Object(_) | ArenaValue::InputRef(Value::Object(_)) => {
-                arena_access_path_str_ref(cur, &i.to_string(), arena)
-            }
+            ArenaValue::Object(_) => arena_access_path_str_ref(cur, &i.to_string(), arena),
             _ => None,
         };
     }
@@ -690,12 +595,10 @@ pub(crate) fn arena_apply_path_element<'a>(
 pub(crate) fn to_string_arena<'a>(v: &ArenaValue<'a>, arena: &'a Bump) -> &'a str {
     match v {
         ArenaValue::String(s) => s,
-        ArenaValue::InputRef(Value::String(s)) => arena.alloc_str(s),
-        ArenaValue::Null | ArenaValue::InputRef(Value::Null) => "",
-        ArenaValue::Bool(true) | ArenaValue::InputRef(Value::Bool(true)) => "true",
-        ArenaValue::Bool(false) | ArenaValue::InputRef(Value::Bool(false)) => "false",
+        ArenaValue::Null => "",
+        ArenaValue::Bool(true) => "true",
+        ArenaValue::Bool(false) => "false",
         ArenaValue::Number(n) => arena.alloc_str(&n.to_string()),
-        ArenaValue::InputRef(Value::Number(n)) => arena.alloc_str(&n.to_string()),
         // Composite types: serialize as JSON. Rare path; cost acceptable.
         other => arena.alloc_str(&arena_to_value(other).to_string()),
     }
@@ -709,8 +612,6 @@ pub(crate) fn is_truthy_arena(v: &ArenaValue<'_>, engine: &crate::DataLogic) -> 
         TruthyEvaluator::StrictBoolean => match v {
             ArenaValue::Null => false,
             ArenaValue::Bool(b) => *b,
-            ArenaValue::InputRef(Value::Null) => false,
-            ArenaValue::InputRef(Value::Bool(b)) => *b,
             _ => true,
         },
         TruthyEvaluator::Custom(f) => f(&arena_to_value(v)),
@@ -767,14 +668,6 @@ mod tests {
             "count": 2,
             "metadata": null
         }));
-    }
-
-    #[test]
-    fn input_ref_round_trip() {
-        let original = json!({"a": [1, 2, 3], "b": "x"});
-        let av = ArenaValue::InputRef(&original);
-        let back = arena_to_value(&av);
-        assert_eq!(original, back);
     }
 
     #[test]

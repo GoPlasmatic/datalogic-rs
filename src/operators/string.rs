@@ -32,16 +32,6 @@ pub(crate) fn evaluate_cat_arena<'a>(
                     buf.push_str(to_string_arena(it, arena));
                 }
             }
-            ArenaValue::InputRef(Value::Array(arr)) => {
-                for it in arr {
-                    let part = match it {
-                        Value::String(s) => s.as_str(),
-                        Value::Null => "",
-                        _ => arena.alloc_str(&it.to_string()),
-                    };
-                    buf.push_str(part);
-                }
-            }
             _ => buf.push_str(to_string_arena(av, arena)),
         }
     }
@@ -146,23 +136,12 @@ pub(crate) fn evaluate_in_arena<'a>(
         // String haystack — substring check (needle must be a string).
         ArenaValue::String(h) => match needle {
             ArenaValue::String(n) => h.contains(*n),
-            ArenaValue::InputRef(Value::String(n)) => h.contains(n.as_str()),
-            _ => false,
-        },
-        ArenaValue::InputRef(Value::String(h)) => match needle {
-            ArenaValue::String(n) => h.contains(*n),
-            ArenaValue::InputRef(Value::String(n)) => h.contains(n.as_str()),
             _ => false,
         },
         // Array haystack — element-equality check via arena-native
-        // strict-equals (no Value materialization).
+        // strict-equals.
         ArenaValue::Array(items) => items.iter().any(|it| {
             crate::operators::comparison::compare_equals_arena(it, needle, true, engine)
-                .unwrap_or(false)
-        }),
-        ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
-            let wrap = ArenaValue::InputRef(v);
-            crate::operators::comparison::compare_equals_arena(&wrap, needle, true, engine)
                 .unwrap_or(false)
         }),
         _ => false,
@@ -270,7 +249,6 @@ pub(crate) fn evaluate_split_arena<'a>(
     let text_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let text_str: &'a str = match text_av {
         ArenaValue::String(s) => s,
-        ArenaValue::InputRef(Value::String(s)) => arena.alloc_str(s.as_str()),
         _ => to_string_arena(text_av, arena),
     };
 
@@ -285,7 +263,6 @@ pub(crate) fn evaluate_split_arena<'a>(
         let av = engine.evaluate_arena_node(&args[1], actx, arena)?;
         match av {
             ArenaValue::String(s) => s,
-            ArenaValue::InputRef(Value::String(s)) => arena.alloc_str(s.as_str()),
             _ => to_string_arena(av, arena),
         }
     };
@@ -364,7 +341,6 @@ pub(crate) fn evaluate_split_with_regex_arena<'a>(
     let text_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
     let text_str = match text_av {
         ArenaValue::String(s) => *s,
-        ArenaValue::InputRef(Value::String(s)) => s.as_str(),
         _ => to_string_arena(text_av, arena),
     };
 

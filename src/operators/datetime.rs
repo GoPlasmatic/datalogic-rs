@@ -39,18 +39,15 @@
 //! ```
 
 use chrono::Utc;
-use serde_json::Value;
 
-use crate::datetime::{
-    DataDateTime, DataDuration, extract_datetime, is_datetime_object, is_duration_object,
-};
+use crate::datetime::{DataDateTime, DataDuration};
 use crate::{CompiledNode, DataLogic, Error, Result};
 
 // =============================================================================
 // Datetime operators.
 // =============================================================================
 
-use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
+use crate::arena::{ArenaContextStack, ArenaValue};
 use bumpalo::Bump;
 
 /// Resolve an arg as an arena string. Returns `None` if not string-like.
@@ -58,9 +55,20 @@ use bumpalo::Bump;
 fn arg_as_str_arena<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
     match av {
         ArenaValue::String(s) => Some(*s),
-        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
         _ => None,
     }
+}
+
+/// True iff this arena Object has a `datetime` key (boundary form).
+#[inline]
+fn is_datetime_object_arena(av: &ArenaValue<'_>) -> bool {
+    matches!(av, ArenaValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "datetime"))
+}
+
+/// True iff this arena Object has a `timestamp` key (boundary form).
+#[inline]
+fn is_duration_object_arena(av: &ArenaValue<'_>) -> bool {
+    matches!(av, ArenaValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "timestamp"))
 }
 
 /// Native arena-mode `datetime`. Returns the input unchanged if it parses
@@ -80,9 +88,7 @@ pub(crate) fn evaluate_datetime_arena<'a>(
     let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
 
     // Datetime object passthrough.
-    if let ArenaValue::InputRef(v) = av
-        && is_datetime_object(v)
-    {
+    if is_datetime_object_arena(av) {
         return Ok(av);
     }
 
@@ -114,9 +120,7 @@ pub(crate) fn evaluate_timestamp_arena<'a>(
     }
     let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
 
-    if let ArenaValue::InputRef(v) = av
-        && is_duration_object(v)
-    {
+    if is_duration_object_arena(av) {
         return Ok(av);
     }
 

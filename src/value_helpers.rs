@@ -38,6 +38,14 @@
 //! - Boolean to number (`true` → `1`, `false` → `0`)
 //! - Null to zero (optional)
 
+#![allow(dead_code)]
+//! Note: with all operators migrated to arena-native dispatch,
+//! `access_path_ref`, `coerce_to_number`, `try_coerce_to_integer` are no
+//! longer called from the evaluation hot path. They remain for boundary
+//! helpers (input parsing tests, doc examples). The `loose_equals` /
+//! `strict_equals` family is still used by the comparison-arena
+//! collection-fallback path.
+
 use crate::constants::NAN_ERROR;
 use serde_json::Value;
 

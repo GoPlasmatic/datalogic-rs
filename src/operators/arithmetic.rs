@@ -60,7 +60,6 @@ use serde_json::Value;
 
 use crate::arena::{coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
 use crate::config::NanHandling;
-use crate::value_helpers::{coerce_to_number, try_coerce_to_integer};
 use crate::{CompiledNode, DataLogic, Result};
 
 /// Result of NaN handling check: what the caller should do with a non-numeric value.
@@ -123,9 +122,6 @@ fn arena_min_max<'a>(
             let av = engine.evaluate_arena_node(arg, actx, arena)?;
             let f = match av {
                 ArenaValue::Number(n) => n.as_f64(),
-                ArenaValue::InputRef(Value::Number(n)) => {
-                    n.as_f64().ok_or_else(crate::constants::invalid_args)?
-                }
                 _ => return Err(crate::constants::invalid_args()),
             };
             if pick_better(f, best_f) {
@@ -154,18 +150,11 @@ fn arena_min_max<'a>(
         ResolvedInput::Empty => return Err(crate::constants::invalid_args()),
         ResolvedInput::Bridge(av) => {
             // Array-shaped bridges iterate natively.
-            if matches!(
-                av,
-                ArenaValue::Array(_) | ArenaValue::InputRef(Value::Array(_))
-            ) {
+            if matches!(av, ArenaValue::Array(_)) {
                 return arena_min_max_from_av(av, init, pick_better, arena);
             }
             // Single non-array arg: must be a `Number`; returned unchanged.
-            // Non-numeric is InvalidArguments.
-            let is_number = matches!(
-                av,
-                ArenaValue::Number(_) | ArenaValue::InputRef(Value::Number(_))
-            );
+            let is_number = matches!(av, ArenaValue::Number(_));
             if !is_number {
                 return Err(crate::constants::invalid_args());
             }
@@ -182,10 +171,9 @@ fn arena_min_max<'a>(
     let len = src.len();
     for i in 0..len {
         match src.get(i) {
-            Value::Number(n) => {
-                if let Some(f) = n.as_f64()
-                    && pick_better(f, best_f)
-                {
+            ArenaValue::Number(n) => {
+                let f = n.as_f64();
+                if pick_better(f, best_f) {
                     best_f = f;
                     best_idx = Some(i);
                 }
@@ -196,17 +184,16 @@ fn arena_min_max<'a>(
 
     match best_idx {
         Some(i) => {
-            // Borrow the original Number to preserve integer typing — the arena
-            // result is just an InputRef, no Number copy.
-            Ok(arena.alloc(ArenaValue::InputRef(src.get(i))))
+            // Re-borrow the arena value to preserve the original Number variant
+            // (integer typing).
+            Ok(src.get(i))
         }
         None => Ok(arena.alloc(ArenaValue::Null)),
     }
 }
 
 /// Iterate an `&'a ArenaValue<'a>` (Array variant) for min/max. Used when
-/// the input came from a composed arena op whose items aren't uniformly
-/// `InputRef` (e.g. `merge` mixing borrowed and inline numbers).
+/// the input came from a composed arena op (e.g. `merge`).
 #[inline]
 fn arena_min_max_from_av<'a>(
     av: &'a ArenaValue<'a>,
@@ -216,25 +203,6 @@ fn arena_min_max_from_av<'a>(
 ) -> Result<&'a ArenaValue<'a>> {
     let items: &[ArenaValue<'a>] = match av {
         ArenaValue::Array(items) => items,
-        ArenaValue::InputRef(Value::Array(arr)) => {
-            // Walk borrowed array directly.
-            if arr.is_empty() {
-                return Err(crate::constants::invalid_args());
-            }
-            let mut best_f = init;
-            let mut best: Option<&Value> = None;
-            for v in arr {
-                let f = v.as_f64().ok_or_else(crate::constants::invalid_args)?;
-                if pick_better(f, best_f) {
-                    best_f = f;
-                    best = Some(v);
-                }
-            }
-            return match best {
-                Some(v) => Ok(arena.alloc(ArenaValue::InputRef(v))),
-                None => Ok(arena.alloc(ArenaValue::Null)),
-            };
-        }
         _ => return Err(crate::constants::invalid_args()),
     };
     if items.is_empty() {
@@ -524,10 +492,9 @@ fn arena_variadic_fold<'a>(
 // =============================================================================
 //
 // For binary forms (subtract, divide, modulo) and unary math ops, args are
-// pre-evaluated via `evaluate_arena_node` so var lookups borrow into input
-// data via `InputRef`. Numeric extraction goes through
-// `coerce_arena_to_number`. Result is `ArenaValue::Number(NumberValue)` —
-// inline (no heap alloc).
+// pre-evaluated via `evaluate_arena_node` so var lookups re-borrow arena
+// data. Numeric extraction goes through `coerce_arena_to_number`. Result is
+// `ArenaValue::Number(NumberValue)` — inline (no heap alloc).
 
 use crate::arena::value::coerce_arena_to_number;
 use crate::value::NumberValue;
@@ -602,24 +569,8 @@ fn arena_one_arg_arith<'a>(
     let av = engine.evaluate_arena_node(arg, actx, arena)?;
 
     // Array result (e.g. from `var "items"`): fold all elements.
-    // Two-source fold: handle InputRef array (zero-copy &[Value]) and
-    // arena-native Array (zero-copy &[ArenaValue]) without round-tripping.
-    enum ArrSrc<'b> {
-        Input(&'b [Value]),
-        Arena(&'b [ArenaValue<'b>]),
-        None,
-    }
-    let src = match av {
-        ArenaValue::InputRef(Value::Array(arr)) => ArrSrc::Input(arr.as_slice()),
-        ArenaValue::Array(items) => ArrSrc::Arena(items),
-        _ => ArrSrc::None,
-    };
-    let arr_len = match &src {
-        ArrSrc::Input(a) => Some(a.len()),
-        ArrSrc::Arena(a) => Some(a.len()),
-        ArrSrc::None => None,
-    };
-    if let Some(n) = arr_len {
+    if let ArenaValue::Array(items) = av {
+        let n = items.len();
         if n == 0 {
             return Ok(arena_number(
                 arena,
@@ -629,28 +580,13 @@ fn arena_one_arg_arith<'a>(
         let mut all_int = true;
         let mut int_acc: i64 = op.identity_int();
         let mut float_acc: f64 = op.identity_int() as f64;
-        for i in 0..n {
-            let int_opt: Option<i64>;
-            let float_opt: Option<f64>;
-            match &src {
-                ArrSrc::Input(a) => {
-                    int_opt = try_coerce_to_integer(&a[i], engine);
-                    float_opt = if int_opt.is_none() {
-                        coerce_to_number(&a[i], engine)
-                    } else {
-                        None
-                    };
-                }
-                ArrSrc::Arena(a) => {
-                    int_opt = try_coerce_arena_to_integer_cfg(&a[i], engine);
-                    float_opt = if int_opt.is_none() {
-                        coerce_arena_to_number_cfg(&a[i], engine)
-                    } else {
-                        None
-                    };
-                }
-                ArrSrc::None => unreachable!(),
-            }
+        for item in items.iter() {
+            let int_opt = try_coerce_arena_to_integer_cfg(item, engine);
+            let float_opt = if int_opt.is_none() {
+                coerce_arena_to_number_cfg(item, engine)
+            } else {
+                None
+            };
             if let Some(iv) = int_opt {
                 if all_int {
                     match op.combine_int(int_acc, iv) {
@@ -853,26 +789,15 @@ pub(crate) fn evaluate_subtract_arena<'a>(
     if args.len() == 1 {
         let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
         // Array fold case.
-        let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
-            ArenaValue::InputRef(Value::Array(arr)) => {
-                Some(std::borrow::Cow::Borrowed(arr.as_slice()))
-            }
-            ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
-                items
-                    .iter()
-                    .map(crate::arena::arena_to_value)
-                    .collect::<Vec<_>>(),
-            )),
-            _ => None,
-        };
-        if let Some(arr) = array_cow {
-            if arr.is_empty() {
+        if let ArenaValue::Array(items) = av {
+            if items.is_empty() {
                 return Err(crate::constants::invalid_args());
             }
-            let mut result =
-                coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
-            for elem in &arr[1..] {
-                let n = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
+            let mut result = coerce_arena_to_number_cfg(&items[0], engine)
+                .ok_or_else(crate::constants::nan_error)?;
+            for elem in &items[1..] {
+                let n = coerce_arena_to_number_cfg(elem, engine)
+                    .ok_or_else(crate::constants::nan_error)?;
                 result -= n;
             }
             return Ok(arena_number(arena, NumberValue::from_f64(result)));
@@ -1124,25 +1049,16 @@ fn arena_one_arg_div_mod<'a>(
 ) -> Result<&'a ArenaValue<'a>> {
     let av = engine.evaluate_arena_node(arg, actx, arena)?;
 
-    let array_cow: Option<std::borrow::Cow<'_, [Value]>> = match av {
-        ArenaValue::InputRef(Value::Array(arr)) => Some(std::borrow::Cow::Borrowed(arr.as_slice())),
-        ArenaValue::Array(items) => Some(std::borrow::Cow::Owned(
-            items
-                .iter()
-                .map(crate::arena::arena_to_value)
-                .collect::<Vec<_>>(),
-        )),
-        _ => None,
-    };
-    if let Some(arr) = array_cow {
+    if let ArenaValue::Array(items) = av {
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
-        if arr.is_empty() || (op.is_modulo() && arr.len() < 2) {
+        if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::constants::invalid_args());
         }
-        let mut result =
-            coerce_to_number(&arr[0], engine).ok_or_else(crate::constants::nan_error)?;
-        for elem in &arr[1..] {
-            let n = coerce_to_number(elem, engine).ok_or_else(crate::constants::nan_error)?;
+        let mut result = coerce_arena_to_number_cfg(&items[0], engine)
+            .ok_or_else(crate::constants::nan_error)?;
+        for elem in &items[1..] {
+            let n =
+                coerce_arena_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
             if n == 0.0 {
                 return Err(crate::constants::nan_error());
             }
@@ -1206,8 +1122,6 @@ fn arena_value_strict_f64(av: &ArenaValue<'_>) -> Option<f64> {
     match av {
         ArenaValue::Number(n) => Some(n.as_f64()),
         ArenaValue::String(s) => s.parse().ok(),
-        ArenaValue::InputRef(Value::Number(n)) => n.as_f64(),
-        ArenaValue::InputRef(Value::String(s)) => s.parse().ok(),
         _ => None,
     }
 }

@@ -77,10 +77,7 @@ pub(crate) fn evaluate_coalesce_arena<'a>(
     }
     for arg in args {
         let v = engine.evaluate_arena_node(arg, actx, arena)?;
-        // Non-null check on ArenaValue
-        let is_null =
-            matches!(v, ArenaValue::Null) || matches!(v, ArenaValue::InputRef(Value::Null));
-        if !is_null {
+        if !matches!(v, ArenaValue::Null) {
             return Ok(v);
         }
     }
@@ -115,8 +112,8 @@ pub(crate) fn evaluate_switch_arena<'a>(
                         value: Value::Array(pair),
                         ..
                     } if pair.len() >= 2 => {
-                        // Wrap literal pair[0] as InputRef for arena-native compare.
-                        let cv_wrap = ArenaValue::InputRef(&pair[0]);
+                        // Convert literal pair[0] into the arena for arena-native compare.
+                        let cv_wrap = crate::arena::value_to_arena(&pair[0], arena);
                         if compare_equals_arena(disc_av, &cv_wrap, true, engine).unwrap_or(false) {
                             return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
                         }
@@ -133,7 +130,7 @@ pub(crate) fn evaluate_switch_arena<'a>(
                 if let Value::Array(pair) = case
                     && pair.len() >= 2
                 {
-                    let cv_wrap = ArenaValue::InputRef(&pair[0]);
+                    let cv_wrap = crate::arena::value_to_arena(&pair[0], arena);
                     if compare_equals_arena(disc_av, &cv_wrap, true, engine).unwrap_or(false) {
                         return Ok(arena.alloc(crate::arena::value_to_arena(&pair[1], arena)));
                     }

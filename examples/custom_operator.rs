@@ -39,13 +39,6 @@ impl ArenaOperator for AverageOperator {
                         }
                     }
                 }
-                ArenaValue::InputRef(serde_json::Value::Array(arr)) => {
-                    for v in arr {
-                        if let Some(n) = v.as_f64() {
-                            numbers.push(n);
-                        }
-                    }
-                }
                 other => {
                     if let Some(n) = other.as_f64() {
                         numbers.push(n);
@@ -119,7 +112,6 @@ impl ArenaOperator for FormatOperator {
             if let Some(pos) = result.find("{}") {
                 let replacement = match av {
                     ArenaValue::String(s) => (*s).to_string(),
-                    ArenaValue::InputRef(serde_json::Value::String(s)) => s.clone(),
                     ArenaValue::Bool(b) => b.to_string(),
                     ArenaValue::Null => "null".to_string(),
                     ArenaValue::Number(_) => av
@@ -132,7 +124,6 @@ impl ArenaOperator for FormatOperator {
                             }
                         })
                         .unwrap_or_default(),
-                    ArenaValue::InputRef(v) => v.to_string(),
                     _ => "<value>".to_string(),
                 };
                 result.replace_range(pos..pos + 2, &replacement);

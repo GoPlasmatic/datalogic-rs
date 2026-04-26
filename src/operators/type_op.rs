@@ -32,10 +32,6 @@
 //! {"type": "2h30m"}                     // Returns: "duration"
 //! ```
 
-use serde_json::Value;
-
-#[cfg(feature = "datetime")]
-use crate::datetime::{is_datetime_object, is_duration_object};
 use crate::{CompiledNode, DataLogic, Result};
 
 // =============================================================================
@@ -63,11 +59,11 @@ pub(crate) fn evaluate_type_arena<'a>(
     // Datetime/duration object detection (e.g. {"datetime": "..."}).
     #[cfg(feature = "datetime")]
     {
-        if let ArenaValue::InputRef(v) = av {
-            if is_datetime_object(v) {
+        if let ArenaValue::Object(pairs) = av {
+            if pairs.iter().any(|(k, _)| *k == "datetime") {
                 return Ok(arena.alloc(ArenaValue::String("datetime")));
             }
-            if is_duration_object(v) {
+            if pairs.iter().any(|(k, _)| *k == "timestamp") {
                 return Ok(arena.alloc(ArenaValue::String("duration")));
             }
         }
@@ -84,14 +80,6 @@ pub(crate) fn evaluate_type_arena<'a>(
         ArenaValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
         ArenaValue::Duration(_) => "duration",
-        ArenaValue::InputRef(v) => match v {
-            Value::Null => "null",
-            Value::Bool(_) => "boolean",
-            Value::Number(_) => "number",
-            Value::String(s) => classify_string(s),
-            Value::Array(_) => "array",
-            Value::Object(_) => "object",
-        },
     };
     Ok(arena.alloc(ArenaValue::String(type_str)))
 }

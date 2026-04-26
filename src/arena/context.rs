@@ -2,7 +2,7 @@
 //!
 //! Frames hold `&'a ArenaValue<'a>`, and so does the root: callers either
 //! pass an arena-resident value directly (e.g. `evaluate_in_arena`) or use
-//! `from_value` to wrap a borrowed `&Value` as `InputRef` in the arena.
+//! `from_value` to deep-convert a borrowed `&Value` into the arena.
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
 //! (no `Value::clone`, no `BTreeMap::clone`).
@@ -74,9 +74,9 @@ impl<'a> ArenaContextFrame<'a> {
 /// Reference to an arena context frame (either a stack frame or the root).
 pub(crate) enum ArenaContextRef<'a, 'ctx> {
     Frame(&'ctx ArenaContextFrame<'a>),
-    /// Root carries the original input as `&'a ArenaValue<'a>`. Typically the
-    /// caller wraps a `&Value` as `InputRef` (zero-copy borrow); benchmarks
-    /// and other arena-native callers may pass a fully arena-resident value.
+    /// Root carries the original input as `&'a ArenaValue<'a>`, deep-converted
+    /// from a `&Value` at API entry or supplied directly by arena-native
+    /// callers.
     Root(&'a ArenaValue<'a>),
 }
 
@@ -117,8 +117,8 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 }
 
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
-/// root is `&'a ArenaValue<'a>` (an `InputRef` wrapper for `&Value` callers,
-/// or a fully arena-resident value for arena-native callers).
+/// root is `&'a ArenaValue<'a>` (deep-converted from `&Value` for the public
+/// API, or supplied directly by arena-native callers).
 pub struct ArenaContextStack<'a> {
     root: &'a ArenaValue<'a>,
     frames: Vec<ArenaContextFrame<'a>>,
@@ -146,13 +146,13 @@ impl<'a> ArenaContextStack<'a> {
         }
     }
 
-    /// Build a context stack from a borrowed `&Value`, wrapping it as an
-    /// arena-allocated `InputRef`. The wrapper is one allocation — no deep
-    /// copy of the input — so this is the canonical entry point for the
-    /// `&Value`-based public APIs.
+    /// Build a context stack from a borrowed `&Value` by deep-converting it
+    /// into an arena-resident `ArenaValue`. This is the canonical entry point
+    /// for the `&Value`-based public APIs.
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
-        Self::new(arena.alloc(ArenaValue::InputRef(root)))
+        let av = crate::arena::value::value_to_arena(root, arena);
+        Self::new(arena.alloc(av))
     }
 
     /// Attach a trace collector to this stack. Caller must keep the

@@ -1,14 +1,9 @@
-use serde_json::Value;
-
 use crate::{CompiledNode, DataLogic, Result};
 
 // =============================================================================
 // Arena-mode missing / missing_some
 //
-// Path lookups walk `&ArenaValue` natively via `arena_path_exists_*`. For
-// `InputRef(v)` operands the helper delegates to the legacy `&Value` walker
-// internally; arena-native variants walk the slice form inline. No `Value`
-// materialization for non-InputRef arena values.
+// Path lookups walk `&ArenaValue` natively via `arena_path_exists_*`.
 // =============================================================================
 
 use crate::arena::{ArenaContextStack, ArenaValue};
@@ -54,23 +49,9 @@ pub(crate) fn evaluate_missing_arena<'a>(
                     }
                 }
             }
-            ArenaValue::InputRef(Value::Array(arr)) => {
-                for v in arr {
-                    if let Some(path) = v.as_str()
-                        && !crate::arena::value::arena_path_exists_str(lookup, path)
-                    {
-                        missing.push(ArenaValue::String(arena.alloc_str(path)));
-                    }
-                }
-            }
             ArenaValue::String(s) => {
                 if !crate::arena::value::arena_path_exists_str(lookup, s) {
                     missing.push(ArenaValue::String(arena.alloc_str(s)));
-                }
-            }
-            ArenaValue::InputRef(Value::String(s)) => {
-                if !crate::arena::value::arena_path_exists_str(lookup, s) {
-                    missing.push(ArenaValue::String(arena.alloc_str(s.as_str())));
                 }
             }
             _ => {}
@@ -122,10 +103,6 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
             arena_value_as_str(it)
                 .is_some_and(|p| process_path(p, &mut missing, &mut present_count))
         }),
-        ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
-            v.as_str()
-                .is_some_and(|p| process_path(p, &mut missing, &mut present_count))
-        }),
         _ => false,
     };
 
@@ -139,7 +116,6 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
 fn arena_value_as_str<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
     match av {
         ArenaValue::String(s) => Some(*s),
-        ArenaValue::InputRef(Value::String(s)) => Some(s.as_str()),
         _ => None,
     }
 }
@@ -233,11 +209,6 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
                         check_path(p, lookup, &mut missing, &mut present, min_present, arena)
                     })
                 }),
-                ArenaValue::InputRef(Value::Array(arr)) => arr.iter().any(|v| {
-                    v.as_str().is_some_and(|p| {
-                        check_path(p, lookup, &mut missing, &mut present, min_present, arena)
-                    })
-                }),
                 _ => false,
             };
             if short || present >= min_present {
@@ -285,23 +256,9 @@ fn accumulate_dynamic_missing<'a>(
                 }
             }
         }
-        ArenaValue::InputRef(Value::Array(arr)) => {
-            for v in arr {
-                if let Some(path) = v.as_str()
-                    && !crate::arena::value::arena_path_exists_str(lookup, path)
-                {
-                    missing.push(ArenaValue::String(arena.alloc_str(path)));
-                }
-            }
-        }
         ArenaValue::String(s) => {
             if !crate::arena::value::arena_path_exists_str(lookup, s) {
                 missing.push(ArenaValue::String(arena.alloc_str(s)));
-            }
-        }
-        ArenaValue::InputRef(Value::String(s)) => {
-            if !crate::arena::value::arena_path_exists_str(lookup, s) {
-                missing.push(ArenaValue::String(arena.alloc_str(s.as_str())));
             }
         }
         _ => {}

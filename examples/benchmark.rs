@@ -40,12 +40,14 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
         return None;
     }
 
-    // Pre-wrap each input as `InputRef` once — zero-copy borrow into the
-    // owned `Value`s held by `test_cases`. The wrappers live in `arena_inputs`
-    // and outlive the per-iteration eval-arena resets.
-    let arena_inputs: Vec<ArenaValue<'_>> = test_cases
+    // Persistent arena holding the deep-converted input data. Never reset,
+    // so the &ArenaValue handles outlive every per-iteration eval-arena reset.
+    let data_arena = bumpalo::Bump::new();
+    let arena_inputs: Vec<&ArenaValue<'_>> = test_cases
         .iter()
-        .map(|(_, data)| ArenaValue::InputRef(data))
+        .map(|(_, data)| {
+            &*data_arena.alloc(datalogic_rs::arena::value_to_arena(data, &data_arena))
+        })
         .collect();
 
     // Eval arena: reset between iterations so the bump pointer stays at
@@ -65,7 +67,7 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
             arena.reset();
         }
     }
-    std::hint::black_box(&arena_inputs);
+    std::hint::black_box((&arena_inputs, &data_arena));
     let total_time = start.elapsed();
     let total_ops = ITERATIONS * test_cases.len() as u32;
     let avg_op_time = total_time / total_ops;

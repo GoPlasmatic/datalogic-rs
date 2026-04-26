@@ -383,10 +383,9 @@ impl DataLogic {
     /// next `arena.reset()` (the borrow checker enforces this).
     ///
     /// `data` is `&'a ArenaValue<'a>` so callers operate consistently in
-    /// arena terms. Wrap an existing `&Value` zero-copy via
-    /// `ArenaValue::InputRef(value)` (stack-allocated is fine), or
-    /// `arena.alloc(value_to_arena(value, arena))` for a deep copy that
-    /// outlives `arena.reset()` only when allocated outside the reset cycle.
+    /// arena terms. Deep-convert an existing `&Value` via
+    /// `arena.alloc(value_to_arena(value, arena))` — primitives stay inline,
+    /// composites are allocated in the arena.
     ///
     /// Used by `examples/benchmark.rs` to measure dispatch in isolation by
     /// creating one arena up-front and resetting only between rules,

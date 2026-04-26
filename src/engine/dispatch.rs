@@ -24,12 +24,12 @@ pub(super) fn evaluate_arena_node_inner<'a>(
     actx: &mut ArenaContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::ArenaValue<'a>> {
-    use crate::arena::{ArenaValue, value_to_arena};
+    use crate::arena::ArenaValue;
 
     match node {
-        // Compiled var: full dispatch via the arena helper. Root-scope
-        // hits return `InputRef` (no allocation); frame-data lookups
-        // clone via `value_to_arena` since frames hold `&Value`.
+        // Compiled var: full dispatch via the arena helper. Root and
+        // frame data are both arena-resident `ArenaValue`s, so lookups
+        // are zero-copy borrows.
         CompiledNode::CompiledVar {
             scope_level,
             segments,
@@ -487,10 +487,7 @@ pub(super) fn evaluate_arena_node_inner<'a>(
                 bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
             for (key, n) in data.fields.iter() {
                 let val_av = engine.evaluate_arena_node(n, actx, arena)?;
-                let val_owned = match val_av {
-                    ArenaValue::InputRef(v) => value_to_arena(v, arena),
-                    _ => crate::arena::value::reborrow_arena_value(val_av),
-                };
+                let val_owned = crate::arena::value::reborrow_arena_value(val_av);
                 let k_arena: &'a str = arena.alloc_str(key);
                 pairs.push((k_arena, val_owned));
             }
