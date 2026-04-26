@@ -164,6 +164,14 @@ impl ExpressionNode {
                 expression: Self::node_to_json_string(node),
                 children: vec![],
             },
+
+            CompiledNode::CompiledMissing(_) | CompiledNode::CompiledMissingSome(_) => {
+                ExpressionNode {
+                    id,
+                    expression: Self::node_to_json_string(node),
+                    children: vec![],
+                }
+            }
         }
     }
 
@@ -216,6 +224,36 @@ impl ExpressionNode {
                     return format!("{{\"throw\": \"{}\"}}", s);
                 }
                 format!("{{\"throw\": {}}}", data.error)
+            }
+            CompiledNode::CompiledMissing(data) => {
+                let parts: Vec<String> = data
+                    .args
+                    .iter()
+                    .map(|a| match a {
+                        crate::node::CompiledMissingArg::Static { path, .. } => {
+                            format!("\"{}\"", path)
+                        }
+                        crate::node::CompiledMissingArg::Dynamic(n) => {
+                            Self::node_to_json_string(n)
+                        }
+                    })
+                    .collect();
+                format!("{{\"missing\": [{}]}}", parts.join(", "))
+            }
+            CompiledNode::CompiledMissingSome(data) => {
+                let min_str = match &data.min_present {
+                    crate::node::CompiledMissingMin::Static(n) => n.to_string(),
+                    crate::node::CompiledMissingMin::Dynamic(n) => Self::node_to_json_string(n),
+                };
+                let paths_str = match &data.paths {
+                    crate::node::CompiledMissingPaths::Static(paths) => {
+                        let items: Vec<String> =
+                            paths.iter().map(|(p, _)| format!("\"{}\"", p)).collect();
+                        format!("[{}]", items.join(", "))
+                    }
+                    crate::node::CompiledMissingPaths::Dynamic(n) => Self::node_to_json_string(n),
+                };
+                format!("{{\"missing_some\": [{}, {}]}}", min_str, paths_str)
             }
         }
     }

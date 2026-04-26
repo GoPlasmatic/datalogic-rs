@@ -140,6 +140,14 @@ pub(super) fn evaluate_arena_node_inner<'a>(
             args,
             ..
         } => crate::operators::missing::evaluate_missing_some_arena(args, actx, engine, arena),
+        CompiledNode::CompiledMissing(data) => {
+            crate::operators::missing::evaluate_compiled_missing_arena(data, actx, engine, arena)
+        }
+        CompiledNode::CompiledMissingSome(data) => {
+            crate::operators::missing::evaluate_compiled_missing_some_arena(
+                data, actx, engine, arena,
+            )
+        }
 
         #[cfg(feature = "ext-string")]
         CompiledNode::BuiltinOperator {

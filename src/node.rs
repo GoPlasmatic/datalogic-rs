@@ -93,6 +93,53 @@ pub struct CompiledExistsData {
     pub segments: Box<[PathSegment]>,
 }
 
+/// One arg to a `missing` / `missing_some` operator. Static literal paths are
+/// pre-parsed into segments at compile time so the runtime walks the input
+/// data without re-splitting the string or BTreeMap-keying via a borrowed
+/// `&str` on every call.
+#[derive(Debug, Clone)]
+pub enum CompiledMissingArg {
+    /// Literal string path resolved at compile time. `path` is the original
+    /// string to emit when the lookup fails; `segments` is its parse.
+    Static {
+        path: Box<str>,
+        segments: Box<[PathSegment]>,
+    },
+    /// Anything else (literal arrays-of-strings, expressions, var lookups…) —
+    /// evaluated at runtime, results coerced to path string(s) as before.
+    Dynamic(CompiledNode),
+}
+
+/// Data for a pre-compiled `missing` operator.
+#[derive(Debug, Clone)]
+pub struct CompiledMissingData {
+    pub id: u32,
+    pub args: Box<[CompiledMissingArg]>,
+}
+
+/// Data for a pre-compiled `missing_some` operator. `min_present` may be a
+/// literal integer (resolved at compile time) or a runtime expression.
+#[derive(Debug, Clone)]
+pub struct CompiledMissingSomeData {
+    pub id: u32,
+    pub min_present: CompiledMissingMin,
+    pub paths: CompiledMissingPaths,
+}
+
+#[derive(Debug, Clone)]
+pub enum CompiledMissingMin {
+    Static(usize),
+    Dynamic(CompiledNode),
+}
+
+#[derive(Debug, Clone)]
+pub enum CompiledMissingPaths {
+    /// Literal array of strings — every entry pre-parsed.
+    Static(Box<[(Box<str>, Box<[PathSegment]>)]>),
+    /// Runtime expression returning an array.
+    Dynamic(CompiledNode),
+}
+
 /// Data for a pre-compiled split with regex (boxed inside CompiledNode to reduce enum size).
 #[cfg(feature = "ext-string")]
 #[derive(Debug, Clone)]
@@ -195,6 +242,13 @@ pub enum CompiledNode {
     /// Boxed to reduce enum size (rare variant).
     #[cfg(feature = "error-handling")]
     CompiledThrow(Box<CompiledThrowData>),
+
+    /// A pre-compiled `missing` operator with paths parsed into segments.
+    CompiledMissing(Box<CompiledMissingData>),
+
+    /// A pre-compiled `missing_some` operator with paths parsed into segments
+    /// and (where literal) min-count resolved.
+    CompiledMissingSome(Box<CompiledMissingSomeData>),
 }
 
 impl CompiledNode {
@@ -219,6 +273,8 @@ impl CompiledNode {
             CompiledNode::CompiledSplitRegex(data) => data.id,
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(data) => data.id,
+            CompiledNode::CompiledMissing(data) => data.id,
+            CompiledNode::CompiledMissingSome(data) => data.id,
         }
     }
 
@@ -264,6 +320,8 @@ impl CompiledNode {
             CompiledNode::CompiledSplitRegex(_) => Some("split".to_string()),
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(_) => Some("throw".to_string()),
+            CompiledNode::CompiledMissing(_) => Some("missing".to_string()),
+            CompiledNode::CompiledMissingSome(_) => Some("missing_some".to_string()),
             _ => None,
         }
     }
@@ -407,6 +465,21 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
                 bytes += k.len() + estimate_arena_static_bytes(n);
             }
         }
+        CompiledNode::CompiledMissing(data) => {
+            for arg in data.args.iter() {
+                if let CompiledMissingArg::Dynamic(n) = arg {
+                    bytes += estimate_arena_static_bytes(n);
+                }
+            }
+        }
+        CompiledNode::CompiledMissingSome(data) => {
+            if let CompiledMissingMin::Dynamic(n) = &data.min_present {
+                bytes += estimate_arena_static_bytes(n);
+            }
+            if let CompiledMissingPaths::Dynamic(n) = &data.paths {
+                bytes += estimate_arena_static_bytes(n);
+            }
+        }
     }
     bytes
 }
@@ -443,6 +516,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::StructuredObject(data) => {
             data.fields.iter().all(|(_, node)| node_is_static(node))
         }
+        CompiledNode::CompiledMissing(_) | CompiledNode::CompiledMissingSome(_) => false,
     }
 }
 
