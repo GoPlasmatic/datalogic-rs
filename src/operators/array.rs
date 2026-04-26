@@ -67,7 +67,7 @@ fn evaluate_invariant_no_push<'a>(
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter operators.
-/// Avoids per-item context push/pop and evaluate_node dispatch.
+/// Avoids per-item context push/pop and dispatch overhead.
 /// When `segments` is `Some`, compares a field extracted via path traversal;
 /// when `None`, compares the whole item directly.
 enum FastPredicate<'a> {

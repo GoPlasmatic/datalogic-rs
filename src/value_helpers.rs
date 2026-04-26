@@ -99,16 +99,6 @@ pub fn access_path_ref<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
-/// Access a path in a JSON value using dot notation (cloning variant)
-/// Supports:
-/// - Object field access: "field" or "field.nested"
-/// - Array index access: "0" or "field.0"
-/// - Mixed: "field.0.nested"
-#[cfg(feature = "ext-control")]
-pub fn access_path(value: &Value, path: &str) -> Option<Value> {
-    access_path_ref(value, path).cloned()
-}
-
 /// Coerce a value to a number using the engine's configuration
 pub fn coerce_to_number(value: &Value, engine: &crate::DataLogic) -> Option<f64> {
     match value {

@@ -52,7 +52,6 @@ pub mod arena;
 mod compile;
 mod config;
 mod constants;
-mod context;
 #[cfg(feature = "datetime")]
 mod datetime;
 mod engine;
@@ -69,7 +68,6 @@ pub use arena::{ArenaContextStack, ArenaValue};
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };
-pub(crate) use context::ContextStack;
 pub use engine::DataLogic;
 pub use error::{Error, StructuredError};
 pub use node::{CompiledLogic, CompiledNode, MetadataHint, PathSegment, ReduceHint};

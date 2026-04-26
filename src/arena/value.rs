@@ -444,6 +444,101 @@ pub(crate) fn arena_traverse_segments<'a>(
     Some(cur)
 }
 
+/// Walk a dot-notation `path` on `&'a ArenaValue<'a>`. Mirrors
+/// `value_helpers::access_path_ref` for the arena value tree.
+///
+/// - `InputRef(v)` defers to the existing `&Value` walker and re-wraps the
+///   leaf in `InputRef` — zero clone for input-rooted lookups.
+/// - `Object(pairs)` does a linear key scan per segment.
+/// - `Array(items)` parses the segment as an index.
+/// - Anything else (or a missing segment) returns `None`.
+pub(crate) fn arena_access_path_str_ref<'a>(
+    av: &'a ArenaValue<'a>,
+    path: &str,
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    if path.is_empty() {
+        return Some(av);
+    }
+
+    if let ArenaValue::InputRef(v) = av {
+        let leaf = crate::value_helpers::access_path_ref(v, path)?;
+        return Some(arena.alloc(ArenaValue::InputRef(leaf)));
+    }
+
+    fn step<'a>(cur: &'a ArenaValue<'a>, seg: &str, arena: &'a Bump) -> Option<&'a ArenaValue<'a>> {
+        match cur {
+            ArenaValue::Object(pairs) => {
+                for (k, v) in *pairs {
+                    if *k == seg {
+                        let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                        return Some(av_ref);
+                    }
+                }
+                None
+            }
+            ArenaValue::Array(items) => {
+                let idx = seg.parse::<usize>().ok()?;
+                let entry = items.get(idx)?;
+                let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
+                Some(av_ref)
+            }
+            ArenaValue::InputRef(Value::Object(obj)) => {
+                let leaf = obj.get(seg)?;
+                Some(arena.alloc(ArenaValue::InputRef(leaf)))
+            }
+            ArenaValue::InputRef(Value::Array(arr)) => {
+                let idx = seg.parse::<usize>().ok()?;
+                let leaf = arr.get(idx)?;
+                Some(arena.alloc(ArenaValue::InputRef(leaf)))
+            }
+            _ => None,
+        }
+    }
+
+    if !path.contains('.') {
+        return step(av, path, arena);
+    }
+
+    let mut cur = av;
+    for seg in path.split('.') {
+        cur = step(cur, seg, arena)?;
+    }
+    Some(cur)
+}
+
+/// Apply a single evaluated path element (string field, numeric index) to an
+/// arena value. Mirrors the (deleted) value-mode `apply_path_element_ref` for
+/// the multi-arg `val` form where each arg is evaluated separately.
+pub(crate) fn arena_apply_path_element<'a>(
+    cur: &'a ArenaValue<'a>,
+    elem: &ArenaValue<'_>,
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    if let Some(s) = elem.as_str() {
+        return arena_access_path_str_ref(cur, s, arena);
+    }
+    if let Some(i) = elem.as_i64()
+        && i >= 0
+    {
+        let idx = i as usize;
+        return match cur {
+            ArenaValue::Array(items) => items.get(idx).map(|entry| {
+                let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
+                av_ref
+            }),
+            ArenaValue::InputRef(Value::Array(arr)) => arr
+                .get(idx)
+                .map(|leaf| &*arena.alloc(ArenaValue::InputRef(leaf))),
+            ArenaValue::Object(_) | ArenaValue::InputRef(Value::Object(_)) => {
+                arena_access_path_str_ref(cur, &i.to_string(), arena)
+            }
+            _ => None,
+        };
+    }
+    None
+}
+
 /// Render an `ArenaValue` as a `&'a str` allocated in the arena (or borrowed
 /// when already a string). Mirrors `helpers::to_string_cow` but produces
 /// arena-resident strings so string-building operators (cat, substr) can

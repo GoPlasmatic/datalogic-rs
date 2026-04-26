@@ -1,495 +1,7 @@
 use serde_json::Value;
 
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
-#[cfg(feature = "ext-control")]
-use crate::value_helpers::access_path;
-use crate::value_helpers::access_path_ref;
-use crate::{CompiledNode, ContextStack, DataLogic, Error, Result};
-
-/// Helper to apply a single path element (string or number) to a value (reference variant).
-/// Returns None if the path element is an invalid type (not string/number) or path doesn't exist.
-#[cfg(feature = "ext-control")]
-#[inline]
-fn apply_path_element_ref<'a>(current: &'a Value, path_elem: &Value) -> Option<&'a Value> {
-    match path_elem {
-        Value::String(path_str) => {
-            if let Value::Object(obj) = current {
-                obj.get(path_str)
-            } else {
-                access_path_ref(current, path_str)
-            }
-        }
-        Value::Number(n) => {
-            let index = n.as_u64()?;
-            if let Value::Array(arr) = current {
-                arr.get(index as usize)
-            } else {
-                // Try as object key
-                if let Value::Object(obj) = current {
-                    obj.get(&n.to_string())
-                } else {
-                    None
-                }
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Variable access operator function (var)
-#[inline]
-pub fn evaluate_var(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    arena: &bumpalo::Bump,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Ok(context.current().data().clone());
-    }
-
-    // Fast path: first arg is a literal string or number (most common case).
-    // Avoids cloning the Value through evaluate_node just to extract a &str path.
-    let path_arg;
-    let path_str;
-    let path = match &args[0] {
-        CompiledNode::Value {
-            value: Value::String(s),
-            ..
-        } => s.as_str(),
-        CompiledNode::Value {
-            value: Value::Number(n),
-            ..
-        } => {
-            path_str = n.to_string();
-            path_str.as_str()
-        }
-        // Dynamic path: must evaluate to get the value
-        other => {
-            path_arg = engine.evaluate_node(other, context, arena)?;
-            match &path_arg {
-                Value::String(s) => s.as_str(),
-                Value::Number(n) => {
-                    path_str = n.to_string();
-                    path_str.as_str()
-                }
-                _ => "",
-            }
-        }
-    };
-
-    // Fast path for reduce context fields — avoids BTreeMap lookup entirely
-    {
-        let frame = context.current();
-        if path == "current" {
-            if let Some(v) = frame.get_reduce_current() {
-                return Ok(v.clone());
-            }
-        } else if path == "accumulator" {
-            if let Some(v) = frame.get_reduce_accumulator() {
-                return Ok(v.clone());
-            }
-        } else if let Some(rest) = path.strip_prefix("current.") {
-            if let Some(current) = frame.get_reduce_current() {
-                return Ok(access_path_ref(current, rest)
-                    .cloned()
-                    .unwrap_or(Value::Null));
-            }
-        } else if let Some(rest) = path.strip_prefix("accumulator.")
-            && let Some(acc) = frame.get_reduce_accumulator()
-        {
-            return Ok(access_path_ref(acc, rest).cloned().unwrap_or(Value::Null));
-        }
-    }
-
-    // Access the variable in current context
-    match access_path_ref(context.current().data(), path) {
-        Some(result) => Ok(result.clone()),
-        None => {
-            // If not found and there's a default value, use it
-            if args.len() > 1 {
-                engine.evaluate_node(&args[1], context, arena)
-            } else {
-                Ok(Value::Null)
-            }
-        }
-    }
-}
-/// Value access operator function (val) with context level support
-#[cfg(feature = "ext-control")]
-#[inline]
-pub fn evaluate_val(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    arena: &bumpalo::Bump,
-) -> Result<Value> {
-    if args.is_empty() {
-        // No args means current context
-        return Ok(context.current().data().clone());
-    }
-
-    // Check if we have level access: [[level], path...]
-    // This handles both {"val": [[1], "index"]} and {"val": [[2], "", "", "/"]}
-    if args.len() >= 2 {
-        // First check if it's level access - evaluate first arg to check
-        let first_arg = engine.evaluate_node(&args[0], context, arena)?;
-        if let Value::Array(level_arr) = &first_arg
-            && let Some(Value::Number(level_num)) = level_arr.first()
-            && let Some(level) = level_num.as_i64()
-        {
-            // For metadata keys, only check if we have exactly 2 args
-            if args.len() == 2 {
-                let path_val = engine.evaluate_node(&args[1], context, arena)?;
-                let path = path_val.as_str().unwrap_or("");
-
-                // Special handling for metadata keys like "index" and "key"
-                // These are always in the current frame's metadata, regardless of level
-                if path == "index"
-                    && let Some(idx) = context.current().get_index()
-                {
-                    return Ok(Value::Number(serde_json::Number::from(idx as u64)));
-                } else if path == "key"
-                    && let Some(key) = context.current().get_key()
-                {
-                    return Ok(Value::String(key.to_string()));
-                }
-            }
-
-            // For simple two-arg case [[level], path], just access the path
-            if args.len() == 2 {
-                let path_val = engine.evaluate_node(&args[1], context, arena)?;
-                let path = match &path_val {
-                    Value::String(s) => s.clone(),
-                    Value::Number(n) if n.is_i64() => n.as_i64().unwrap().to_string(),
-                    Value::Number(n) if n.is_u64() => n.as_u64().unwrap().to_string(),
-                    _ => path_val.as_str().unwrap_or("").to_string(),
-                };
-
-                // Get frame at relative level for normal data access
-                let frame = context
-                    .get_at_level(level as isize)
-                    .ok_or(Error::InvalidContextLevel(level as isize))?;
-
-                return Ok(access_path_ref(frame.data(), &path)
-                    .cloned()
-                    .unwrap_or(Value::Null));
-            }
-
-            // For multi-arg case, chain path access
-            // First evaluate all path arguments
-            let mut paths = Vec::new();
-            for item in args.iter().skip(1) {
-                let path_val = engine.evaluate_node(item, context, arena)?;
-                let path = match &path_val {
-                    Value::String(s) => s.clone(),
-                    Value::Number(n) if n.is_i64() => n.as_i64().unwrap().to_string(),
-                    Value::Number(n) if n.is_u64() => n.as_u64().unwrap().to_string(),
-                    _ => path_val.as_str().unwrap_or("").to_string(),
-                };
-                paths.push(path);
-            }
-
-            // Now get the frame and apply paths
-            let frame = context
-                .get_at_level(level as isize)
-                .ok_or(Error::InvalidContextLevel(level as isize))?;
-
-            // Start with a reference and only clone at the end or when needed
-            let mut current_ref = frame.data();
-            let mut owned_value = None;
-
-            for path in &paths {
-                if let Some(owned) = owned_value.as_ref() {
-                    // If we already have an owned value, use access_path on it
-                    owned_value = Some(access_path(owned, path).unwrap_or(Value::Null));
-                } else {
-                    // Still working with references
-                    if let Some(next_ref) = access_path_ref(current_ref, path) {
-                        current_ref = next_ref;
-                    } else {
-                        // Path not found, return null
-                        return Ok(Value::Null);
-                    }
-                }
-            }
-
-            return Ok(owned_value.unwrap_or_else(|| current_ref.clone()));
-        } else {
-            // Non-level multi-arg path chain: ["user", "admin"] or [1, 1] etc.
-            // Pre-evaluate args, then use reference-based traversal, clone only at the end
-            let evaluated_args: Vec<Value> = args
-                .iter()
-                .map(|arg| engine.evaluate_node(arg, context, arena))
-                .collect::<Result<Vec<_>>>()?;
-            let current_frame = context.current();
-
-            // Fast path: resolve reduce context fields for first path element
-            let resolve_start = if let Some(Value::String(s)) = evaluated_args.first() {
-                if s == "current" {
-                    current_frame.get_reduce_current()
-                } else if s == "accumulator" {
-                    current_frame.get_reduce_accumulator()
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            if let Some(start) = resolve_start {
-                let mut current = start;
-                for evaluated in &evaluated_args[1..] {
-                    match apply_path_element_ref(current, evaluated) {
-                        Some(v) => current = v,
-                        None => return Ok(Value::Null),
-                    }
-                }
-                return Ok(current.clone());
-            }
-
-            let mut current = current_frame.data();
-            for evaluated in &evaluated_args {
-                match apply_path_element_ref(current, evaluated) {
-                    Some(v) => current = v,
-                    None => return Ok(Value::Null),
-                }
-            }
-            return Ok(current.clone());
-        }
-    }
-
-    // Single argument - evaluate it
-    let path_value = engine.evaluate_node(&args[0], context, arena)?;
-
-    // Handle array notation for context levels: [[level], "path", ...]
-    // Level indicates how many levels to go up from current
-    // Sign doesn't matter: [1] and [-1] both mean parent
-    // [2] and [-2] both mean grandparent, etc.
-    if let Value::Array(arr) = &path_value {
-        // Check if first element is a level access array: [[level], ...]
-        if arr.len() >= 2
-            && let Value::Array(level_arr) = &arr[0]
-            && let Some(Value::Number(level_num)) = level_arr.first()
-            && let Some(level) = level_num.as_i64()
-        {
-            // Special case for metadata keys with exactly 2 elements
-            if arr.len() == 2 {
-                let path = arr[1].as_str().unwrap_or("");
-
-                // Special handling for metadata keys like "index" and "key"
-                // These are always in the current frame's metadata, regardless of level
-                if path == "index"
-                    && let Some(idx) = context.current().get_index()
-                {
-                    return Ok(Value::Number(serde_json::Number::from(idx as u64)));
-                } else if path == "key"
-                    && let Some(key) = context.current().get_key()
-                {
-                    return Ok(Value::String(key.to_string()));
-                }
-            }
-
-            // Get frame at relative level for normal data access
-            // Both [1] and [-1] go up 1 level to parent
-            // Both [2] and [-2] go up 2 levels to grandparent
-            let frame = context
-                .get_at_level(level as isize)
-                .ok_or(Error::InvalidContextLevel(level as isize))?;
-
-            // Chain path access through remaining elements using references
-            let mut current = frame.data();
-            for item in arr.iter().skip(1) {
-                if let Some(path) = item.as_str() {
-                    if let Some(next) = access_path_ref(current, path) {
-                        current = next;
-                    } else {
-                        return Ok(Value::Null);
-                    }
-                } else {
-                    return Ok(Value::Null);
-                }
-            }
-            return Ok(current.clone());
-        } else {
-            // Array of paths like ["user", "admin"] or [1, 1] - chain access
-            // Use reference-based traversal, clone only at the end
-            let current_frame = context.current();
-            let mut current = current_frame.data();
-            for path_elem in arr {
-                match apply_path_element_ref(current, path_elem) {
-                    Some(v) => current = v,
-                    None => return Ok(Value::Null),
-                }
-            }
-            return Ok(current.clone());
-        }
-    }
-
-    // Fast path for reduce context fields in val operator
-    if let Value::String(s) = &path_value {
-        let frame = context.current();
-        if s == "current" {
-            if let Some(v) = frame.get_reduce_current() {
-                return Ok(v.clone());
-            }
-        } else if s == "accumulator" {
-            if let Some(v) = frame.get_reduce_accumulator() {
-                return Ok(v.clone());
-            }
-        } else if let Some(rest) = s.strip_prefix("current.") {
-            if let Some(current) = frame.get_reduce_current() {
-                return Ok(access_path_ref(current, rest)
-                    .cloned()
-                    .unwrap_or(Value::Null));
-            }
-        } else if let Some(rest) = s.strip_prefix("accumulator.")
-            && let Some(acc) = frame.get_reduce_accumulator()
-        {
-            return Ok(access_path_ref(acc, rest).cloned().unwrap_or(Value::Null));
-        }
-    }
-
-    // Standard path access in current context
-    match &path_value {
-        Value::String(s) => {
-            // For single string arguments, try direct object key access first
-            // This handles empty string keys and keys with dots correctly
-            if let Value::Object(obj) = context.current().data()
-                && let Some(val) = obj.get(s)
-            {
-                return Ok(val.clone());
-            }
-            // Fall back to access_path for complex paths
-            Ok(access_path_ref(context.current().data(), s)
-                .cloned()
-                .unwrap_or(Value::Null))
-        }
-        Value::Number(n) => {
-            // Handle numeric index for array access
-            if let Some(index) = n.as_u64() {
-                if let Value::Array(arr) = context.current().data() {
-                    Ok(arr.get(index as usize).cloned().unwrap_or(Value::Null))
-                } else {
-                    // Try converting to string for object key access
-                    let key = n.to_string();
-                    Ok(access_path_ref(context.current().data(), &key)
-                        .cloned()
-                        .unwrap_or(Value::Null))
-                }
-            } else {
-                Ok(Value::Null)
-            }
-        }
-        _ => Ok(Value::Null),
-    }
-}
-/// Exists operator function - checks if a key exists in the data
-#[cfg(feature = "ext-control")]
-#[inline]
-pub fn evaluate_exists(
-    args: &[CompiledNode],
-    context: &mut ContextStack,
-    engine: &DataLogic,
-    arena: &bumpalo::Bump,
-) -> Result<Value> {
-    if args.is_empty() {
-        return Ok(Value::Bool(false));
-    }
-
-    // If we have a single argument, evaluate it
-    if args.len() == 1 {
-        let path_arg = engine.evaluate_node(&args[0], context, arena)?;
-
-        // Handle different path formats
-        match path_arg {
-            Value::String(path) => {
-                // Simple string path
-                Ok(Value::Bool(key_exists(context.current().data(), &path)))
-            }
-            Value::Array(paths) => {
-                // Array of path segments for nested access
-                if paths.is_empty() {
-                    return Ok(Value::Bool(false));
-                }
-
-                let current_frame = context.current();
-                let mut current = current_frame.data();
-
-                for (i, path_val) in paths.iter().enumerate() {
-                    if let Value::String(path) = path_val {
-                        if let Value::Object(obj) = current {
-                            // For the last path segment, just check if key exists
-                            if i == paths.len() - 1 {
-                                return Ok(Value::Bool(obj.contains_key(path)));
-                            }
-                            // For intermediate segments, navigate deeper
-                            if let Some(next) = obj.get(path) {
-                                current = next;
-                            } else {
-                                return Ok(Value::Bool(false));
-                            }
-                        } else {
-                            return Ok(Value::Bool(false));
-                        }
-                    } else {
-                        return Ok(Value::Bool(false));
-                    }
-                }
-
-                // Should not reach here if paths is non-empty
-                Ok(Value::Bool(true))
-            }
-            _ => Ok(Value::Bool(false)),
-        }
-    } else {
-        // Multiple arguments - treat as path segments for nested access
-        // First evaluate all args to get the path segments
-        let mut paths = Vec::new();
-        for arg in args {
-            let path_val = engine.evaluate_node(arg, context, arena)?;
-            if let Value::String(path) = path_val {
-                paths.push(path);
-            } else {
-                return Ok(Value::Bool(false));
-            }
-        }
-
-        // Now navigate through the paths
-        let current_frame = context.current();
-        let mut current = current_frame.data();
-
-        for (i, path) in paths.iter().enumerate() {
-            if let Value::Object(obj) = current {
-                // For the last path segment, just check if key exists
-                if i == paths.len() - 1 {
-                    return Ok(Value::Bool(obj.contains_key(path)));
-                }
-                // For intermediate segments, navigate deeper
-                if let Some(next) = obj.get(path) {
-                    current = next;
-                } else {
-                    return Ok(Value::Bool(false));
-                }
-            } else {
-                return Ok(Value::Bool(false));
-            }
-        }
-
-        // Should not reach here if paths is non-empty
-        Ok(Value::Bool(true))
-    }
-}
-/// Helper function to check if a key exists in an object
-#[cfg(feature = "ext-control")]
-#[inline]
-fn key_exists(value: &Value, key: &str) -> bool {
-    if let Value::Object(obj) = value {
-        obj.contains_key(key)
-    } else {
-        false
-    }
-}
+use crate::{CompiledNode, Error, Result};
 
 /// Traverse pre-parsed path segments on a value (reference only, no context needed).
 #[inline(always)]
@@ -536,12 +48,54 @@ pub(crate) fn try_traverse_segments<'a>(
 //
 // Arena variants for var / val / exists. The compiled forms (CompiledVar /
 // CompiledExists) get the fast path: when the lookup resolves into the input
-// `Arc<Value>` we return `InputRef` with zero allocation. Frame-data lookups
-// during iteration still clone via `value_to_arena` until Phase 5's
-// ArenaContextStack adoption changes frames to hold `&'a ArenaValue<'a>`.
+// `Arc<Value>` we return `InputRef` with zero allocation. The raw forms
+// (`evaluate_var_arena` / `_val_arena` / `_exists_arena`) handle dynamic-path
+// expressions natively against the arena context stack.
 
-use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
+use crate::arena::{ArenaContextStack, ArenaValue};
 use bumpalo::Bump;
+
+/// Return the current frame's data as an `&'a ArenaValue<'a>`. For root frames
+/// (depth 0) this allocates a one-shot `InputRef` wrapper into the arena.
+#[inline]
+fn current_data_av<'a>(actx: &ArenaContextStack<'a>, arena: &'a Bump) -> &'a ArenaValue<'a> {
+    use crate::arena::context::ArenaContextRef;
+    match actx.current() {
+        ArenaContextRef::Frame(f) => f.data(),
+        ArenaContextRef::Root(v) => arena.alloc(ArenaValue::InputRef(v)),
+    }
+}
+
+/// Frame data at a given level (or `None` if the level walks past the root).
+#[inline]
+fn frame_data_at_level<'a>(
+    actx: &ArenaContextStack<'a>,
+    level: isize,
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    use crate::arena::context::ArenaContextRef;
+    let aref = actx.get_at_level(level)?;
+    Some(match aref {
+        ArenaContextRef::Frame(f) => f.data(),
+        ArenaContextRef::Root(v) => arena.alloc(ArenaValue::InputRef(v)),
+    })
+}
+
+/// Coerce an evaluated arena value into a path string. Mirrors the
+/// value-mode `match &path_arg { String, Number, _ => "" }` branch.
+#[inline]
+fn path_string_from_arena(av: &ArenaValue<'_>) -> String {
+    if let Some(s) = av.as_str() {
+        return s.to_string();
+    }
+    if let ArenaValue::Number(n) = av {
+        return n.to_string();
+    }
+    if let ArenaValue::InputRef(Value::Number(n)) = av {
+        return n.to_string();
+    }
+    String::new()
+}
 
 /// Pre-compiled `var`/`val` lookup spec — the five fields stored on
 /// [`CompiledNode::CompiledVar`], bundled so the arena evaluator takes one
@@ -712,26 +266,12 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
     Ok(crate::arena::pool::singleton_bool(found))
 }
 
-/// Build a transient `ContextStack` reflecting the current arena frame as root.
-/// Used by raw `var`/`val`/`exists` (rare dynamic-path forms) which still
-/// dispatch through the value-mode helpers; the local stack ensures those
-/// helpers see the right iter item via `context.current()`.
-#[inline]
-fn local_context_from_actx(actx: &ArenaContextStack<'_>) -> crate::ContextStack {
-    use std::sync::Arc;
-    let root: Value = match actx.current() {
-        crate::arena::context::ArenaContextRef::Root(v) => v.clone(),
-        crate::arena::context::ArenaContextRef::Frame(f) => crate::arena::arena_to_value(f.data()),
-    };
-    crate::ContextStack::new(Arc::new(root))
-}
-
-/// Arena variant of raw `var` operator (path resolved at runtime).
+/// Arena-native `var` operator (path resolved at runtime).
 ///
 /// Raw `var` (not statically compiled to `CompiledVar`) is rare — hit only
-/// for dynamic paths like `{"var": [{"if": ...}, "x"]}`. Synthesizes a
-/// one-shot `ContextStack` from the current actx frame and dispatches to
-/// the value-mode helper.
+/// for dynamic paths like `{"var": [{"if": ...}, "x"]}`. The path string is
+/// resolved against the current arena frame's data without any value-mode
+/// detour.
 #[inline]
 pub(crate) fn evaluate_var_arena<'a>(
     args: &'a [CompiledNode],
@@ -739,12 +279,118 @@ pub(crate) fn evaluate_var_arena<'a>(
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let mut context = local_context_from_actx(actx);
-    let v = evaluate_var(args, &mut context, engine, arena)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    use crate::arena::value::arena_access_path_str_ref;
+
+    if args.is_empty() {
+        return Ok(current_data_av(actx, arena));
+    }
+
+    // Resolve path string. Literal string/number is the common shape.
+    let owned_path: String;
+    let path: &str = match &args[0] {
+        CompiledNode::Value {
+            value: Value::String(s),
+            ..
+        } => s.as_str(),
+        CompiledNode::Value {
+            value: Value::Number(n),
+            ..
+        } => {
+            owned_path = n.to_string();
+            owned_path.as_str()
+        }
+        other => {
+            let av = engine.evaluate_arena_node(other, actx, arena)?;
+            owned_path = path_string_from_arena(av);
+            owned_path.as_str()
+        }
+    };
+
+    // Reduce-context fast paths — resolved on the current frame's reduce slots.
+    use crate::arena::context::ArenaContextRef;
+    if let ArenaContextRef::Frame(frame) = actx.current() {
+        if path == "current" {
+            if let Some(av) = frame.get_reduce_current() {
+                return Ok(av);
+            }
+        } else if path == "accumulator" {
+            if let Some(av) = frame.get_reduce_accumulator() {
+                return Ok(av);
+            }
+        } else if let Some(rest) = path.strip_prefix("current.") {
+            if let Some(cur) = frame.get_reduce_current() {
+                return Ok(arena_access_path_str_ref(cur, rest, arena)
+                    .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+            }
+        } else if let Some(rest) = path.strip_prefix("accumulator.")
+            && let Some(acc) = frame.get_reduce_accumulator()
+        {
+            return Ok(arena_access_path_str_ref(acc, rest, arena)
+                .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+        }
+    }
+
+    // Walk the path on current frame data.
+    let cur = current_data_av(actx, arena);
+    match arena_access_path_str_ref(cur, path, arena) {
+        Some(av) => Ok(av),
+        None => {
+            if args.len() > 1 {
+                engine.evaluate_arena_node(&args[1], actx, arena)
+            } else {
+                Ok(crate::arena::pool::singleton_null())
+            }
+        }
+    }
 }
 
-/// Arena variant of raw `val` operator. See [`evaluate_var_arena`].
+/// Read a `[level]` marker — the value-mode multi-arg `val` shape where
+/// `args[0]` evaluates to a one-element numeric array. Returns the `i64`
+/// level on a hit, `None` otherwise.
+#[cfg(feature = "ext-control")]
+#[inline]
+fn level_marker_from_array(av: &ArenaValue<'_>) -> Option<i64> {
+    match av {
+        ArenaValue::Array(items) if !items.is_empty() => items[0].as_i64(),
+        ArenaValue::InputRef(Value::Array(arr)) if !arr.is_empty() => arr[0].as_i64(),
+        _ => None,
+    }
+}
+
+/// Iterate the elements of an arena array, abstracting over `Array` vs
+/// `InputRef(Value::Array)`. Returns `None` if `av` is not array-shaped.
+#[cfg(feature = "ext-control")]
+#[inline]
+fn arena_array_len(av: &ArenaValue<'_>) -> Option<usize> {
+    match av {
+        ArenaValue::Array(items) => Some(items.len()),
+        ArenaValue::InputRef(Value::Array(arr)) => Some(arr.len()),
+        _ => None,
+    }
+}
+
+/// Get the i-th element of an arena array as a fresh `&'a ArenaValue<'a>`.
+#[cfg(feature = "ext-control")]
+#[inline]
+fn arena_array_get<'a>(
+    av: &'a ArenaValue<'a>,
+    i: usize,
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    match av {
+        ArenaValue::Array(items) => items.get(i).map(|entry| {
+            let av_ref: &'a ArenaValue<'a> = unsafe { &*(entry as *const ArenaValue<'a>) };
+            av_ref
+        }),
+        ArenaValue::InputRef(Value::Array(arr)) => arr
+            .get(i)
+            .map(|leaf| &*arena.alloc(ArenaValue::InputRef(leaf))),
+        _ => None,
+    }
+}
+
+/// Arena-native `val` operator. Mirrors the value-mode shape (level access,
+/// path chains, reduce shortcuts) but stays on `&ArenaValue` throughout.
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
@@ -753,12 +399,259 @@ pub(crate) fn evaluate_val_arena<'a>(
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let mut context = local_context_from_actx(actx);
-    let v = evaluate_val(args, &mut context, engine, arena)?;
-    Ok(arena.alloc(value_to_arena(&v, arena)))
+    use crate::arena::context::ArenaContextRef;
+    use crate::arena::value::{arena_access_path_str_ref, arena_apply_path_element};
+
+    if args.is_empty() {
+        return Ok(current_data_av(actx, arena));
+    }
+
+    // Multi-arg form: evaluate first to detect [[level], ...] vs path chain.
+    if args.len() >= 2 {
+        let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+        if let Some(level) = level_marker_from_array(first_av) {
+            // Metadata short-circuits — only valid with exactly 2 args.
+            if args.len() == 2 {
+                let path_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
+                let path_str = path_av.as_str().unwrap_or("");
+                if path_str == "index"
+                    && let Some(idx) = actx.current().get_index()
+                {
+                    return Ok(arena.alloc(ArenaValue::Number(
+                        crate::value::NumberValue::Integer(idx as i64),
+                    )));
+                }
+                if path_str == "key"
+                    && let Some(key) = actx.current().get_key()
+                {
+                    let s: &'a str = arena.alloc_str(key);
+                    return Ok(arena.alloc(ArenaValue::String(s)));
+                }
+
+                let path_owned = path_string_from_arena(path_av);
+                let frame_av = frame_data_at_level(actx, level as isize, arena)
+                    .ok_or(Error::InvalidContextLevel(level as isize))?;
+                return Ok(arena_access_path_str_ref(frame_av, &path_owned, arena)
+                    .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+            }
+
+            // Multi-arg path chain at a relative level.
+            let mut paths: Vec<String> = Vec::with_capacity(args.len() - 1);
+            for item in args.iter().skip(1) {
+                let av = engine.evaluate_arena_node(item, actx, arena)?;
+                paths.push(path_string_from_arena(av));
+            }
+            let mut cur = frame_data_at_level(actx, level as isize, arena)
+                .ok_or(Error::InvalidContextLevel(level as isize))?;
+            for path in &paths {
+                match arena_access_path_str_ref(cur, path, arena) {
+                    Some(next) => cur = next,
+                    None => return Ok(crate::arena::pool::singleton_null()),
+                }
+            }
+            return Ok(cur);
+        }
+
+        // Non-level multi-arg path chain: pre-eval all args.
+        let mut evaluated: Vec<&'a ArenaValue<'a>> = Vec::with_capacity(args.len());
+        evaluated.push(first_av);
+        for arg in args.iter().skip(1) {
+            evaluated.push(engine.evaluate_arena_node(arg, actx, arena)?);
+        }
+
+        // Reduce shortcut for the first segment.
+        let mut start: Option<&'a ArenaValue<'a>> = None;
+        if let ArenaContextRef::Frame(frame) = actx.current()
+            && let Some(s) = evaluated[0].as_str()
+        {
+            start = if s == "current" {
+                frame.get_reduce_current()
+            } else if s == "accumulator" {
+                frame.get_reduce_accumulator()
+            } else {
+                None
+            };
+        }
+
+        let (mut cur, rest_start) = match start {
+            Some(s) => (s, 1),
+            None => (current_data_av(actx, arena), 0),
+        };
+        for elem in &evaluated[rest_start..] {
+            match arena_apply_path_element(cur, elem, arena) {
+                Some(next) => cur = next,
+                None => return Ok(crate::arena::pool::singleton_null()),
+            }
+        }
+        return Ok(cur);
+    }
+
+    // Single-arg form: evaluate it.
+    let path_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+
+    // Array argument: either [[level], path...] or a path chain.
+    if let Some(arr_len) = arena_array_len(path_av) {
+        if arr_len >= 2 {
+            // Try the level form: first element is `[number, ...]`.
+            let first_elem = arena_array_get(path_av, 0, arena);
+            let level_opt = first_elem.and_then(|e| match e {
+                ArenaValue::Array(level_arr) if !level_arr.is_empty() => level_arr[0].as_i64(),
+                ArenaValue::InputRef(Value::Array(level_arr)) if !level_arr.is_empty() => {
+                    level_arr[0].as_i64()
+                }
+                _ => None,
+            });
+            if let Some(level) = level_opt {
+                if arr_len == 2 {
+                    let second = arena_array_get(path_av, 1, arena)
+                        .unwrap_or_else(|| crate::arena::pool::singleton_null());
+                    let path_str = second.as_str().unwrap_or("");
+                    if path_str == "index"
+                        && let Some(idx) = actx.current().get_index()
+                    {
+                        return Ok(arena.alloc(ArenaValue::Number(
+                            crate::value::NumberValue::Integer(idx as i64),
+                        )));
+                    }
+                    if path_str == "key"
+                        && let Some(key) = actx.current().get_key()
+                    {
+                        let s: &'a str = arena.alloc_str(key);
+                        return Ok(arena.alloc(ArenaValue::String(s)));
+                    }
+                }
+
+                let mut cur = frame_data_at_level(actx, level as isize, arena)
+                    .ok_or(Error::InvalidContextLevel(level as isize))?;
+                for i in 1..arr_len {
+                    let item = arena_array_get(path_av, i, arena)
+                        .unwrap_or_else(|| crate::arena::pool::singleton_null());
+                    let Some(seg) = item.as_str() else {
+                        return Ok(crate::arena::pool::singleton_null());
+                    };
+                    match arena_access_path_str_ref(cur, seg, arena) {
+                        Some(next) => cur = next,
+                        None => return Ok(crate::arena::pool::singleton_null()),
+                    }
+                }
+                return Ok(cur);
+            }
+        }
+
+        // Plain path-chain array.
+        let mut cur = current_data_av(actx, arena);
+        for i in 0..arr_len {
+            let elem = arena_array_get(path_av, i, arena)
+                .unwrap_or_else(|| crate::arena::pool::singleton_null());
+            match arena_apply_path_element(cur, elem, arena) {
+                Some(next) => cur = next,
+                None => return Ok(crate::arena::pool::singleton_null()),
+            }
+        }
+        return Ok(cur);
+    }
+
+    // String / number path on current data, with reduce shortcuts and the
+    // "direct-key wins over dotted-path" rule from the value-mode val.
+    if let Some(s) = path_av.as_str() {
+        if let ArenaContextRef::Frame(frame) = actx.current() {
+            if s == "current" {
+                if let Some(av) = frame.get_reduce_current() {
+                    return Ok(av);
+                }
+            } else if s == "accumulator" {
+                if let Some(av) = frame.get_reduce_accumulator() {
+                    return Ok(av);
+                }
+            } else if let Some(rest) = s.strip_prefix("current.") {
+                if let Some(cur) = frame.get_reduce_current() {
+                    return Ok(arena_access_path_str_ref(cur, rest, arena)
+                        .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+                }
+            } else if let Some(rest) = s.strip_prefix("accumulator.")
+                && let Some(acc) = frame.get_reduce_accumulator()
+            {
+                return Ok(arena_access_path_str_ref(acc, rest, arena)
+                    .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+            }
+        }
+
+        let cur = current_data_av(actx, arena);
+        // Direct object key lookup beats dot-path traversal so empty keys and
+        // keys containing dots resolve correctly.
+        match cur {
+            ArenaValue::Object(pairs) => {
+                for (k, v) in *pairs {
+                    if *k == s {
+                        let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                        return Ok(av_ref);
+                    }
+                }
+            }
+            ArenaValue::InputRef(Value::Object(obj)) => {
+                if let Some(leaf) = obj.get(s) {
+                    return Ok(arena.alloc(ArenaValue::InputRef(leaf)));
+                }
+            }
+            _ => {}
+        }
+        return Ok(arena_access_path_str_ref(cur, s, arena)
+            .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+    }
+
+    if let Some(i) = path_av.as_i64()
+        && i >= 0
+    {
+        let cur = current_data_av(actx, arena);
+        let key = i.to_string();
+        return Ok(arena_access_path_str_ref(cur, &key, arena)
+            .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+    }
+
+    Ok(crate::arena::pool::singleton_null())
 }
 
-/// Arena variant of raw `exists` operator. See [`evaluate_var_arena`].
+/// Test whether `key` exists on an arena Object. Matches the value-mode
+/// `obj.contains_key` semantics — Null values still count as present.
+#[cfg(feature = "ext-control")]
+#[inline]
+fn arena_object_contains(av: &ArenaValue<'_>, key: &str) -> bool {
+    match av {
+        ArenaValue::Object(pairs) => pairs.iter().any(|(k, _)| *k == key),
+        ArenaValue::InputRef(Value::Object(obj)) => obj.contains_key(key),
+        _ => false,
+    }
+}
+
+/// Step into an arena Object at `key`. Returns `None` for non-objects or
+/// missing keys.
+#[cfg(feature = "ext-control")]
+#[inline]
+fn arena_object_step<'a>(
+    av: &'a ArenaValue<'a>,
+    key: &str,
+    arena: &'a Bump,
+) -> Option<&'a ArenaValue<'a>> {
+    match av {
+        ArenaValue::Object(pairs) => {
+            for (k, v) in *pairs {
+                if *k == key {
+                    let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                    return Some(av_ref);
+                }
+            }
+            None
+        }
+        ArenaValue::InputRef(Value::Object(obj)) => obj
+            .get(key)
+            .map(|leaf| &*arena.alloc(ArenaValue::InputRef(leaf))),
+        _ => None,
+    }
+}
+
+/// Arena-native `exists` operator (raw form). Mirrors value-mode semantics:
+/// only Object types resolve, the final segment is a `contains_key` probe so
+/// keys with `null` values still report as present.
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_exists_arena<'a>(
@@ -767,12 +660,69 @@ pub(crate) fn evaluate_exists_arena<'a>(
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a ArenaValue<'a>> {
-    let mut context = local_context_from_actx(actx);
-    let v = evaluate_exists(args, &mut context, engine, arena)?;
-    Ok(crate::arena::pool::singleton_bool(matches!(
-        v,
-        Value::Bool(true)
-    )))
+    if args.is_empty() {
+        return Ok(crate::arena::pool::singleton_false());
+    }
+
+    let cur = current_data_av(actx, arena);
+
+    if args.len() == 1 {
+        let arg = engine.evaluate_arena_node(&args[0], actx, arena)?;
+        if let Some(s) = arg.as_str() {
+            return Ok(crate::arena::pool::singleton_bool(arena_object_contains(
+                cur, s,
+            )));
+        }
+        if let Some(arr_len) = arena_array_len(arg) {
+            if arr_len == 0 {
+                return Ok(crate::arena::pool::singleton_false());
+            }
+            let mut walk = cur;
+            for i in 0..arr_len {
+                let elem = arena_array_get(arg, i, arena)
+                    .unwrap_or_else(|| crate::arena::pool::singleton_null());
+                let Some(seg) = elem.as_str() else {
+                    return Ok(crate::arena::pool::singleton_false());
+                };
+                if i == arr_len - 1 {
+                    return Ok(crate::arena::pool::singleton_bool(arena_object_contains(
+                        walk, seg,
+                    )));
+                }
+                match arena_object_step(walk, seg, arena) {
+                    Some(next) => walk = next,
+                    None => return Ok(crate::arena::pool::singleton_false()),
+                }
+            }
+            return Ok(crate::arena::pool::singleton_true());
+        }
+        return Ok(crate::arena::pool::singleton_false());
+    }
+
+    // Multiple args — each must evaluate to a string segment.
+    let mut paths: Vec<&'a ArenaValue<'a>> = Vec::with_capacity(args.len());
+    for arg in args {
+        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        if av.as_str().is_none() {
+            return Ok(crate::arena::pool::singleton_false());
+        }
+        paths.push(av);
+    }
+    let mut walk = cur;
+    let last = paths.len() - 1;
+    for (i, av) in paths.iter().enumerate() {
+        let seg = av.as_str().expect("checked above");
+        if i == last {
+            return Ok(crate::arena::pool::singleton_bool(arena_object_contains(
+                walk, seg,
+            )));
+        }
+        match arena_object_step(walk, seg, arena) {
+            Some(next) => walk = next,
+            None => return Ok(crate::arena::pool::singleton_false()),
+        }
+    }
+    Ok(crate::arena::pool::singleton_true())
 }
 
 #[inline]

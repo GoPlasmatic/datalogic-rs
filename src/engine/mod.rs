@@ -6,7 +6,7 @@ use crate::config::EvaluationConfig;
 
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
-use crate::{CompiledLogic, CompiledNode, ContextStack, Error, Result, StructuredError};
+use crate::{CompiledLogic, CompiledNode, Error, Result, StructuredError};
 
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
 ///
@@ -497,33 +497,6 @@ impl DataLogic {
 
         let compiled = self.compile(&logic_value)?;
         self.evaluate_structured(&compiled, data_arc)
-    }
-
-    /// Compatibility shim — value-mode evaluation via arena dispatch.
-    ///
-    /// Used by the legacy `evaluate_var` / `evaluate_val` / `evaluate_exists`
-    /// helpers that are still reachable from arena raw `var`/`val`/`exists`
-    /// forms (rare dynamic-path expressions). The actx is seeded with the
-    /// caller's current frame as root so `var` lookups inside the dispatch
-    /// see what the calling op sees.
-    ///
-    /// The caller's `arena` is reused — these calls always originate from
-    /// an outer `evaluate_arena_node` frame that owns one, so allocating a
-    /// fresh `Bump` per call would be wasted work.
-    ///
-    /// A follow-up will port those raw forms to native arena impls and let
-    /// us drop this shim.
-    #[inline]
-    pub(crate) fn evaluate_node(
-        &self,
-        node: &CompiledNode,
-        context: &mut ContextStack,
-        arena: &bumpalo::Bump,
-    ) -> Result<Value> {
-        let root_owned: Value = context.current().data().clone();
-        let mut actx = crate::arena::ArenaContextStack::new(&root_owned);
-        let av = self.evaluate_arena_node(node, &mut actx, arena)?;
-        Ok(crate::arena::arena_to_value(av))
     }
 
     /// Arena-mode dispatch hub. Returns `&'a ArenaValue<'a>` for every

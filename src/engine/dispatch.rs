@@ -51,8 +51,8 @@ pub(super) fn evaluate_arena_node_inner<'a>(
         ),
 
         // Compiled exists: full dispatch — root scope walks the input
-        // directly, others bridge through `evaluate_node` for frame
-        // lookups. Result is always a Bool singleton.
+        // directly, others walk arena frame data. Result is always a
+        // Bool singleton.
         #[cfg(feature = "ext-control")]
         CompiledNode::CompiledExists(data) => {
             crate::operators::variable::evaluate_compiled_exists_arena(
