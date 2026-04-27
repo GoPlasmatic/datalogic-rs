@@ -134,6 +134,8 @@ fn compile_builtin(
         id: ctx.next_id(),
         opcode,
         args,
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     };
 
     // Optimization + static-fold passes (engine-dependent).
@@ -229,6 +231,8 @@ fn invalid_args_marker(
         id: ctx.next_id(),
         opcode,
         args,
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     }
 }
 

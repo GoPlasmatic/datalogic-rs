@@ -94,20 +94,15 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
         default_value,
     } = spec;
 
-    if let Some(av) = resolve_metadata_hint(metadata_hint, actx, arena) {
-        return Ok(av);
-    }
-
-    if let Some(res) =
-        resolve_reduce_hint(reduce_hint, segments, actx, engine, arena, default_value)
+    // Dominant-case fast path: plain root-scope `var` with no metadata/reduce
+    // hints, evaluated outside any iteration frame. Probed first as a single
+    // combined branch so the common case never pays for the metadata-hint
+    // pattern match or the reduce-hint frame inspection below.
+    if metadata_hint == MetadataHint::None
+        && reduce_hint == ReduceHint::None
+        && scope_level == 0
+        && actx.depth() == 0
     {
-        return res;
-    }
-
-    // Root-scope fast path: arena traversal directly on the root value. Kept
-    // inline because it dominates real workloads and branch prediction
-    // benefits from a flat call.
-    if scope_level == 0 && actx.depth() == 0 {
         let root_av = actx.root_input();
         let resolved = if segments.is_empty() {
             Some(root_av)
@@ -118,6 +113,16 @@ pub(crate) fn evaluate_compiled_var_arena<'a>(
             Some(av) => Ok(av),
             None => default_or_null_arena(default_value, actx, engine, arena),
         };
+    }
+
+    if let Some(av) = resolve_metadata_hint(metadata_hint, actx, arena) {
+        return Ok(av);
+    }
+
+    if let Some(res) =
+        resolve_reduce_hint(reduce_hint, segments, actx, engine, arena, default_value)
+    {
+        return res;
     }
 
     resolve_via_context_stack(scope_level, segments, actx, engine, arena, default_value)

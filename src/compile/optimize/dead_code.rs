@@ -20,7 +20,9 @@ use super::helpers::is_truthy_literal;
 /// is driven by the optimiser pipeline's fixpoint loop.
 pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
     match &node {
-        CompiledNode::BuiltinOperator { id, opcode, args } => {
+        CompiledNode::BuiltinOperator {
+            id, opcode, args, ..
+        } => {
             let rewritten = match opcode {
                 OpCode::If => eliminate_if(*id, args, engine),
                 OpCode::And => eliminate_and(*id, args, engine),
@@ -113,6 +115,8 @@ fn eliminate_if(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
         id: outer_id,
         opcode: OpCode::If,
         args: new_args.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     })
 }
 
@@ -158,6 +162,8 @@ fn eliminate_and(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Op
         id: outer_id,
         opcode: OpCode::And,
         args: remaining.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     })
 }
 
@@ -202,6 +208,8 @@ fn eliminate_or(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
         id: outer_id,
         opcode: OpCode::Or,
         args: remaining.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     })
 }
 

@@ -446,6 +446,8 @@ mod tests {
                 datavalue::OwnedDataValue::String("age".to_string()),
             )]
             .into_boxed_slice(),
+            predicate_hint: None,
+            iter_arg_kind: crate::operators::array::IterArgKind::General,
         };
 
         let tree = ExpressionNode::build_from_compiled(&node);
@@ -467,6 +469,8 @@ mod tests {
                 datavalue::OwnedDataValue::String("age".to_string()),
             )]
             .into_boxed_slice(),
+            predicate_hint: None,
+            iter_arg_kind: crate::operators::array::IterArgKind::General,
         };
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
@@ -478,6 +482,8 @@ mod tests {
                 )),
             ]
             .into_boxed_slice(),
+            predicate_hint: None,
+            iter_arg_kind: crate::operators::array::IterArgKind::General,
         };
 
         let tree = ExpressionNode::build_from_compiled(&node);

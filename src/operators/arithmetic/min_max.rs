@@ -10,7 +10,7 @@
 //! involve array iteration.
 
 use crate::arena::{DataContextStack, DataValue};
-use crate::operators::array::{ResolvedInput, resolve_iter_input};
+use crate::operators::array::{IterArgKind, ResolvedInput, resolve_iter_input};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
@@ -19,6 +19,7 @@ use bumpalo::Bump;
 #[inline]
 fn arena_min_max<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -44,7 +45,7 @@ fn arena_min_max<'a>(
         return Err(crate::constants::invalid_args());
     }
 
-    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(crate::constants::invalid_args()),
         ResolvedInput::Bridge(av) => {
@@ -151,20 +152,38 @@ fn arena_min_max_from_av<'a>(
 #[inline]
 pub(crate) fn evaluate_max_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    arena_min_max(args, actx, engine, arena, f64::NEG_INFINITY, |c, b| c > b)
+    arena_min_max(
+        args,
+        iter_arg_kind,
+        actx,
+        engine,
+        arena,
+        f64::NEG_INFINITY,
+        |c, b| c > b,
+    )
 }
 
 /// Arena-mode min(single_array_arg).
 #[inline]
 pub(crate) fn evaluate_min_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    arena_min_max(args, actx, engine, arena, f64::INFINITY, |c, b| c < b)
+    arena_min_max(
+        args,
+        iter_arg_kind,
+        actx,
+        engine,
+        arena,
+        f64::INFINITY,
+        |c, b| c < b,
+    )
 }

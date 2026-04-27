@@ -64,98 +64,111 @@ pub(super) fn evaluate_invariant_no_push<'a>(
     result
 }
 
-/// Represents a detected fast-path predicate pattern for quantifier/filter operators.
-/// Avoids per-item context push/pop and dispatch overhead.
-/// When `segments` is `Some`, compares a field extracted via path traversal;
-/// when `None`, compares the whole item directly.
-pub(super) enum FastPredicate<'a> {
+/// Represents a detected fast-path predicate pattern for quantifier/filter
+/// operators. Avoids per-item context push/pop and dispatch overhead.
+/// `var_path` is empty when the predicate compares the whole item directly;
+/// otherwise it walks into a field inside the item.
+///
+/// Detection is hoisted to compile time and the result is cached on the
+/// predicate's own [`CompiledNode::BuiltinOperator`] node — see the
+/// `predicate_hint` field. Quantifier/filter operators read the cached hint
+/// instead of pattern-matching the predicate tree on every iteration.
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub enum FastPredicate {
     /// Strict equality (===) or inequality (!==) against a literal
     StrictEq {
-        segments: Option<&'a [crate::node::PathSegment]>,
-        literal: &'a datavalue::OwnedDataValue,
+        var_path: Box<[crate::node::PathSegment]>,
+        literal: datavalue::OwnedDataValue,
         negate: bool,
     },
     /// Ordered numeric comparison (>, >=, <, <=) against a numeric literal
     NumericCmp {
-        segments: Option<&'a [crate::node::PathSegment]>,
+        var_path: Box<[crate::node::PathSegment]>,
         literal_f: f64,
         opcode: OpCode,
         var_is_lhs: bool,
     },
     /// Loose numeric equality (==) or inequality (!=) against a numeric literal
     LooseNumericEq {
-        segments: Option<&'a [crate::node::PathSegment]>,
+        var_path: Box<[crate::node::PathSegment]>,
         literal_f: f64,
         negate: bool,
     },
 }
 
-impl<'a> FastPredicate<'a> {
-    /// Try to detect a fast predicate pattern from a compiled predicate node.
-    pub(super) fn try_detect(predicate: &'a CompiledNode) -> Option<Self> {
-        if let CompiledNode::BuiltinOperator {
-            opcode,
-            args: pred_args,
-            ..
-        } = predicate
-            && pred_args.len() == 2
-        {
-            // Try both orderings: (var, literal) and (literal, var)
-            for (var_idx, lit_idx, var_is_lhs) in [(0, 1, true), (1, 0, false)] {
-                if let CompiledNode::CompiledVar {
-                    scope_level: 0,
-                    segments,
-                    reduce_hint: ReduceHint::None,
-                    metadata_hint: MetadataHint::None,
-                    default_value: None,
-                    ..
-                } = &pred_args[var_idx]
-                    && let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx]
-                {
-                    let segs = if segments.is_empty() {
-                        None
-                    } else {
-                        Some(&**segments)
-                    };
+impl FastPredicate {
+    /// Try to detect a fast predicate pattern from a compiled predicate's
+    /// `(opcode, args)` shape. Called at compile time during the post-compile
+    /// populate pass so the result can be cached on the node and reused for
+    /// every evaluation. Owns its `var_path` and `literal` so the cached
+    /// hint has no lifetime tie to the args slice.
+    pub(crate) fn try_detect_owned(opcode: OpCode, pred_args: &[CompiledNode]) -> Option<Self> {
+        if pred_args.len() != 2 {
+            return None;
+        }
+        // Try both orderings: (var, literal) and (literal, var)
+        for (var_idx, lit_idx, var_is_lhs) in [(0, 1, true), (1, 0, false)] {
+            if let CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            } = &pred_args[var_idx]
+                && let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx]
+            {
+                let var_path: Box<[crate::node::PathSegment]> = segments.clone();
 
-                    match opcode {
-                        OpCode::StrictEquals | OpCode::StrictNotEquals => {
-                            let negate = matches!(opcode, OpCode::StrictNotEquals);
-                            return Some(FastPredicate::StrictEq {
-                                segments: segs,
-                                literal,
+                match opcode {
+                    OpCode::StrictEquals | OpCode::StrictNotEquals => {
+                        let negate = matches!(opcode, OpCode::StrictNotEquals);
+                        return Some(FastPredicate::StrictEq {
+                            var_path,
+                            literal: literal.clone(),
+                            negate,
+                        });
+                    }
+                    OpCode::Equals | OpCode::NotEquals => {
+                        // For loose equality with numeric literals, we can use a fast
+                        // numeric comparison (loose == is same as strict for numbers)
+                        if let Some(lit_f) = literal.as_f64() {
+                            let negate = matches!(opcode, OpCode::NotEquals);
+                            return Some(FastPredicate::LooseNumericEq {
+                                var_path,
+                                literal_f: lit_f,
                                 negate,
                             });
                         }
-                        OpCode::Equals | OpCode::NotEquals => {
-                            // For loose equality with numeric literals, we can use a fast
-                            // numeric comparison (loose == is same as strict for numbers)
-                            if let Some(lit_f) = literal.as_f64() {
-                                let negate = matches!(opcode, OpCode::NotEquals);
-                                return Some(FastPredicate::LooseNumericEq {
-                                    segments: segs,
-                                    literal_f: lit_f,
-                                    negate,
-                                });
-                            }
-                        }
-                        OpCode::GreaterThan
-                        | OpCode::GreaterThanEqual
-                        | OpCode::LessThan
-                        | OpCode::LessThanEqual => {
-                            if let Some(lit_f) = literal.as_f64() {
-                                return Some(FastPredicate::NumericCmp {
-                                    segments: segs,
-                                    literal_f: lit_f,
-                                    opcode: *opcode,
-                                    var_is_lhs,
-                                });
-                            }
-                        }
-                        _ => {}
                     }
+                    OpCode::GreaterThan
+                    | OpCode::GreaterThanEqual
+                    | OpCode::LessThan
+                    | OpCode::LessThanEqual => {
+                        if let Some(lit_f) = literal.as_f64() {
+                            return Some(FastPredicate::NumericCmp {
+                                var_path,
+                                literal_f: lit_f,
+                                opcode,
+                                var_is_lhs,
+                            });
+                        }
+                    }
+                    _ => {}
                 }
             }
+        }
+        None
+    }
+
+    /// Look up the cached predicate hint on a compiled predicate node.
+    /// Returns `None` when the predicate isn't a `BuiltinOperator` or the
+    /// detection didn't match a fast pattern.
+    #[inline]
+    pub(super) fn from_node(predicate: &CompiledNode) -> Option<&FastPredicate> {
+        if let CompiledNode::BuiltinOperator { predicate_hint, .. } = predicate {
+            return predicate_hint.as_deref();
         }
         None
     }
@@ -163,13 +176,14 @@ impl<'a> FastPredicate<'a> {
     /// Resolve the value to compare: either the whole item or a field within it.
     #[inline]
     fn resolve_value<'b>(
-        segments: Option<&[crate::node::PathSegment]>,
+        segments: &[crate::node::PathSegment],
         item: &'b DataValue<'b>,
         arena: &'b Bump,
     ) -> Option<&'b DataValue<'b>> {
-        match segments {
-            None => Some(item),
-            Some(segs) => crate::arena::value::arena_traverse_segments(item, segs, arena),
+        if segments.is_empty() {
+            Some(item)
+        } else {
+            crate::arena::value::arena_traverse_segments(item, segments, arena)
         }
     }
 
@@ -178,23 +192,23 @@ impl<'a> FastPredicate<'a> {
     pub(super) fn evaluate<'b>(&self, item: &'b DataValue<'b>, arena: &'b Bump) -> bool {
         match self {
             FastPredicate::StrictEq {
-                segments,
+                var_path,
                 literal,
                 negate,
             } => {
-                let matches = match Self::resolve_value(*segments, item, arena) {
+                let matches = match Self::resolve_value(var_path, item, arena) {
                     Some(av) => arena_value_equals_value(av, literal),
                     None => false,
                 };
                 if *negate { !matches } else { matches }
             }
             FastPredicate::NumericCmp {
-                segments,
+                var_path,
                 literal_f,
                 opcode,
                 var_is_lhs,
             } => {
-                if let Some(val) = Self::resolve_value(*segments, item, arena)
+                if let Some(val) = Self::resolve_value(var_path, item, arena)
                     && let Some(val_f) = val.as_f64()
                 {
                     let (lhs, rhs) = if *var_is_lhs {
@@ -208,11 +222,11 @@ impl<'a> FastPredicate<'a> {
                 }
             }
             FastPredicate::LooseNumericEq {
-                segments,
+                var_path,
                 literal_f,
                 negate,
             } => {
-                let matches = if let Some(val) = Self::resolve_value(*segments, item, arena)
+                let matches = if let Some(val) = Self::resolve_value(var_path, item, arena)
                     && let Some(val_f) = val.as_f64()
                 {
                     val_f == *literal_f
@@ -353,89 +367,99 @@ pub(crate) enum ResolvedInput<'a> {
     Bridge(&'a DataValue<'a>),
 }
 
-/// Resolve `args[0]` for an iterator op. Tries (in order):
-///   1. Borrow from root data (cheapest — no eval, no alloc)
-///   2. Dispatch to arena (when arg is e.g. another filter — composition path)
-///   3. Bridge: caller handles non-borrowable inputs (objects, primitives)
+/// Compile-time classification of an iterator op's `args[0]` shape.
+/// Stored on the parent `BuiltinOperator` (filter/map/all/some/none/reduce
+/// /merge/min/max) and consulted by `resolve_iter_input` so the runtime
+/// shape match collapses to a single byte compare.
 ///
-/// The returned `IterSrc` borrows from the arena (`'a`) and is safe to iterate
-/// while the caller mutates `context` for predicate evaluation, because the
-/// underlying data lives in either the input `Arc` (held for the call's
-/// duration) or arena slices (allocated on the same arena).
+/// `RootVarBorrow` covers the dominant pattern: `args[0]` is a plain
+/// `{var: "..."}` against the root frame — we can read directly from
+/// `actx.root_input()` without dispatching into the arena evaluator. Any
+/// other shape, including nested operators, falls through to `General`.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IterArgKind {
+    /// `args[0]` is a `CompiledVar { scope_level: 0, … }` with no
+    /// metadata/reduce/default — borrow directly from the root frame.
+    /// `path_segments_empty == true` short-circuits the per-call segment
+    /// length check inside `resolve_iter_input`.
+    RootVarBorrow { path_segments_empty: bool },
+    /// `args[0]` is anything else — evaluate via the dispatcher.
+    General,
+}
+
+impl IterArgKind {
+    /// Classify `args[0]` at compile time. Called from
+    /// [`crate::node::populate_arena_lits`] whenever the parent
+    /// `BuiltinOperator` is one of the iterator ops listed above.
+    pub(crate) fn classify(arg: &CompiledNode) -> Self {
+        if let CompiledNode::CompiledVar {
+            scope_level: 0,
+            segments,
+            reduce_hint: ReduceHint::None,
+            metadata_hint: MetadataHint::None,
+            default_value: None,
+            ..
+        } = arg
+        {
+            return IterArgKind::RootVarBorrow {
+                path_segments_empty: segments.is_empty(),
+            };
+        }
+        IterArgKind::General
+    }
+}
+
+/// Resolve `args[0]` for an iterator op given the compile-time kind cached on
+/// the parent. Two paths only:
+///   - **Root borrow**: traverse `actx.root_input()` directly when we can —
+///     the dominant pattern in real workloads, reached in one byte compare.
+///   - **General**: dispatch through the arena evaluator (covers composition
+///     with another arena op, expressions, primitives — the dispatcher itself
+///     handles those branches).
+///
+/// `actx.depth() != 0` falls through to General even when the kind is
+/// `RootVarBorrow`, because a borrow at non-root depth would leak the caller's
+/// iteration frame instead of reading the rule's input.
+#[inline]
 pub(crate) fn resolve_iter_input<'a>(
     arg: &'a CompiledNode,
+    kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
-    // Path 1: root borrow — args[0] is a simple var that resolves into the
-    // input root data.
-    if let Some(av) = try_borrow_collection_from_root(arg, actx, arena) {
-        return Ok(arena_value_as_iter(av));
-    }
-
-    // Path 2: composition — arg is another arena-aware op. Dispatch and inspect.
-    if let CompiledNode::BuiltinOperator { opcode, .. } = arg
-        && matches!(
-            opcode,
-            OpCode::Filter
-                | OpCode::Map
-                | OpCode::All
-                | OpCode::Some
-                | OpCode::None
-                | OpCode::Reduce
-                | OpCode::Merge
-        )
+    if let IterArgKind::RootVarBorrow {
+        path_segments_empty,
+    } = kind
+        && actx.depth() == 0
     {
-        let av = engine.evaluate_node(arg, actx, arena)?;
-        return Ok(arena_value_as_iter(av));
+        let root = actx.root_input();
+        let av = if path_segments_empty {
+            Some(root)
+        } else if let CompiledNode::CompiledVar { segments, .. } = arg {
+            crate::arena::value::arena_traverse_segments(root, segments, arena)
+        } else {
+            // Compile-time invariant violated; fall through to General path.
+            None
+        };
+        if let Some(av) = av {
+            return Ok(arena_value_as_iter(av));
+        }
     }
 
-    // Path 3: anything else — evaluate through arena dispatch so the caller
-    // can handle the result natively (Object iteration / single-element wrap /
-    // error per op semantics).
     let av = engine.evaluate_node(arg, actx, arena)?;
     Ok(arena_value_as_iter(av))
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
+#[inline]
 fn arena_value_as_iter<'a>(av: &'a DataValue<'a>) -> ResolvedInput<'a> {
     match av {
         DataValue::Null => ResolvedInput::Empty,
         DataValue::Array(items) => ResolvedInput::Iterable(IterSrc(items)),
         _ => ResolvedInput::Bridge(av),
     }
-}
-
-/// Try to obtain the input collection by borrowing from the caller's root data.
-/// Returns `Some(&DataValue)` when args[0] is a simple root-scope `var` that
-/// resolves into the input data. The returned reference lives for the arena
-/// lifetime `'a`.
-#[inline]
-fn try_borrow_collection_from_root<'a>(
-    arg: &'a CompiledNode,
-    actx: &DataContextStack<'a>,
-    arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    if actx.depth() != 0 {
-        return None; // only root-scope borrows
-    }
-    if let CompiledNode::CompiledVar {
-        scope_level: 0,
-        segments,
-        reduce_hint: ReduceHint::None,
-        metadata_hint: MetadataHint::None,
-        default_value: None,
-        ..
-    } = arg
-    {
-        let root = actx.root_input();
-        if segments.is_empty() {
-            return Some(root);
-        }
-        return crate::arena::value::arena_traverse_segments(root, segments, arena);
-    }
-    None
 }
 
 /// True iff this arena value is `null`.

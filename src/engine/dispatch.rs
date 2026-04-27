@@ -84,38 +84,60 @@ pub(super) fn evaluate_node_inner<'a>(
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Filter,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_filter_arena(args, actx, engine, arena),
+        } => crate::operators::array::evaluate_filter_arena(
+            args,
+            *iter_arg_kind,
+            actx,
+            engine,
+            arena,
+        ),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Map,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_map_arena(args, actx, engine, arena),
+        } => crate::operators::array::evaluate_map_arena(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::All,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_all_arena(args, actx, engine, arena),
+        } => crate::operators::array::evaluate_all_arena(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Some,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_some_arena(args, actx, engine, arena),
+        } => {
+            crate::operators::array::evaluate_some_arena(args, *iter_arg_kind, actx, engine, arena)
+        }
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::None,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_none_arena(args, actx, engine, arena),
+        } => {
+            crate::operators::array::evaluate_none_arena(args, *iter_arg_kind, actx, engine, arena)
+        }
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Reduce,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_reduce_arena(args, actx, engine, arena),
+        } => crate::operators::array::evaluate_reduce_arena(
+            args,
+            *iter_arg_kind,
+            actx,
+            engine,
+            arena,
+        ),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Merge,
@@ -153,19 +175,36 @@ pub(super) fn evaluate_node_inner<'a>(
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Sort,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_sort_arena(args, actx, engine, arena),
+        } => {
+            crate::operators::array::evaluate_sort_arena(args, *iter_arg_kind, actx, engine, arena)
+        }
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Max,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::arithmetic::evaluate_max_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::evaluate_max_arena(
+            args,
+            *iter_arg_kind,
+            actx,
+            engine,
+            arena,
+        ),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Min,
             args,
+            iter_arg_kind,
             ..
-        } => crate::operators::arithmetic::evaluate_min_arena(args, actx, engine, arena),
+        } => crate::operators::arithmetic::evaluate_min_arena(
+            args,
+            *iter_arg_kind,
+            actx,
+            engine,
+            arena,
+        ),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Add,
             args,

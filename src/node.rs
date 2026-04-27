@@ -41,6 +41,31 @@ unsafe fn build_static_arena_value(
     unsafe { core::mem::transmute::<DataValue<'_>, DataValue<'static>>(av) }
 }
 
+/// Opcodes that consume `args[0]` as an iterator input via
+/// [`crate::operators::array::resolve_iter_input`]. Used by the post-compile
+/// populate pass to decide whether `iter_arg_kind` should be classified or
+/// left at the `General` default. Mirrors the actual call sites — Merge does
+/// not currently route through `resolve_iter_input`.
+#[inline]
+fn iterates_args0(opcode: OpCode) -> bool {
+    let _opcode = opcode;
+    #[cfg(feature = "ext-array")]
+    if matches!(opcode, OpCode::Sort) {
+        return true;
+    }
+    matches!(
+        opcode,
+        OpCode::Filter
+            | OpCode::Map
+            | OpCode::All
+            | OpCode::Some
+            | OpCode::None
+            | OpCode::Reduce
+            | OpCode::Min
+            | OpCode::Max
+    )
+}
+
 /// Walk the compiled tree and populate `arena_lit` for every literal whose
 /// `arena_lit` is currently `None` — this covers Null, Bool, String, Array,
 /// and Object literals that [`precompute_arena_lit`] left out at
@@ -71,10 +96,36 @@ pub(crate) unsafe fn populate_arena_lits(node: &mut CompiledNode, arena: &bumpal
                 unsafe { populate_arena_lits(n, arena) };
             }
         }
-        CompiledNode::BuiltinOperator { args, .. } => {
+        CompiledNode::BuiltinOperator {
+            opcode,
+            args,
+            predicate_hint,
+            iter_arg_kind,
+            ..
+        } => {
             for n in args.iter_mut() {
                 unsafe { populate_arena_lits(n, arena) };
             }
+            // Cache the fast-predicate detection result so quantifier/filter
+            // operators consult `predicate_hint` instead of re-running the
+            // structural detection on every iteration. Re-derive on every
+            // call (rather than guarding with `is_none`) so a clone of an
+            // already-populated tree gets a fresh hint matching the cloned
+            // args — `Box<[PathSegment]>` and `OwnedDataValue` move on clone,
+            // and the cached hint borrows nothing from them anyway.
+            *predicate_hint =
+                crate::operators::array::FastPredicate::try_detect_owned(*opcode, args)
+                    .map(Box::new);
+            // Cache the iterator-input classification for ops that consume
+            // `args[0]` as an iterable. Read by `resolve_iter_input` so the
+            // runtime shape match collapses to a byte compare. Other opcodes
+            // keep the default `General` (the populate pass overwrites on
+            // every clone).
+            *iter_arg_kind = if iterates_args0(*opcode) && !args.is_empty() {
+                crate::operators::array::IterArgKind::classify(&args[0])
+            } else {
+                crate::operators::array::IterArgKind::General
+            };
         }
         CompiledNode::CustomOperator(data) => {
             for n in data.args.iter_mut() {
@@ -294,10 +345,27 @@ pub enum CompiledNode {
     ///
     /// The OpCode enum enables direct dispatch without string lookups,
     /// significantly improving performance for the 50+ built-in operators.
+    ///
+    /// `predicate_hint` caches the result of [`FastPredicate::try_detect_owned`]
+    /// so quantifier/filter operators don't repeat the structural pattern
+    /// match on every iteration. Populated post-compile by
+    /// [`populate_arena_lits`]; `None` for nodes that aren't a fast-predicate
+    /// shape, and re-derived after every clone (the populate pass overwrites
+    /// the field).
+    ///
+    /// `iter_arg_kind` caches the
+    /// [`crate::operators::array::IterArgKind::classify`] result for `args[0]`
+    /// when this op iterates (filter/map/all/some/none/reduce/merge/min/max).
+    /// `IterArgKind::General` for everything else — the dispatcher reads the
+    /// kind and forwards it to `resolve_iter_input`, sidestepping the per-call
+    /// pattern match on the iterator input's shape. Re-derived on every
+    /// populate-arena-lits pass so clones stay correct.
     BuiltinOperator {
         id: u32,
         opcode: OpCode,
         args: Box<[CompiledNode]>,
+        predicate_hint: Option<Box<crate::operators::array::FastPredicate>>,
+        iter_arg_kind: crate::operators::array::IterArgKind,
     },
 
     /// A custom operator registered via `DataLogic::add_operator`.

@@ -24,5 +24,7 @@ pub(super) fn builtin(opcode: OpCode, args: Vec<CompiledNode>) -> CompiledNode {
         id: SYNTHETIC_ID,
         opcode,
         args: args.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     }
 }

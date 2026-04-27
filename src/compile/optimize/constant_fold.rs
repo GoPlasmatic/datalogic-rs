@@ -26,7 +26,9 @@ pub fn fold(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
             };
 
             match &node {
-                CompiledNode::BuiltinOperator { id, opcode, args } => {
+                CompiledNode::BuiltinOperator {
+                    id, opcode, args, ..
+                } => {
                     // Partial fold for commutative operators with mixed static/dynamic args
                     if is_commutative(opcode) && args.len() >= 2 {
                         match try_partial_fold(*id, *opcode, args, engine) {
@@ -84,6 +86,8 @@ fn try_partial_fold(
         id: SYNTHETIC_ID,
         opcode,
         args: static_args.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     };
     let folded_value = fold_static_node(&static_node, engine)?;
 
@@ -98,6 +102,8 @@ fn try_partial_fold(
         id: outer_id,
         opcode,
         args: new_args.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     })
 }
 
@@ -150,6 +156,8 @@ fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
         id: outer_id,
         opcode: OpCode::Cat,
         args: new_args.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
     })
 }
 
@@ -157,7 +165,10 @@ fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
 /// `{"+": ["5", {"var": "x"}]}` → `{"+": [5, {"var": "x"}]}`.
 /// Returns `Some(new_node)` if any string was coerced, `None` otherwise.
 fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
-    if let CompiledNode::BuiltinOperator { id, opcode, args } = node {
+    if let CompiledNode::BuiltinOperator {
+        id, opcode, args, ..
+    } = node
+    {
         if !is_arithmetic(opcode) {
             return None;
         }
@@ -200,6 +211,8 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
                 id: *id,
                 opcode: *opcode,
                 args: new_args.into_boxed_slice(),
+                predicate_hint: None,
+                iter_arg_kind: crate::operators::array::IterArgKind::General,
             });
         }
     }

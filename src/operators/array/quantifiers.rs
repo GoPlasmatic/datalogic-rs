@@ -5,7 +5,7 @@ use crate::arena::{DataContextStack, DataValue, IterGuard};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
-use super::helpers::{FastPredicate, ResolvedInput, resolve_iter_input};
+use super::helpers::{FastPredicate, IterArgKind, ResolvedInput, resolve_iter_input};
 
 /// Shape of a quantifier (`all` / `some` / `none`) — the three flags
 /// distinguishing them are bundled here so callers and helpers don't carry
@@ -45,6 +45,7 @@ impl QuantifierShape {
 #[inline]
 fn evaluate_quantifier_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -55,7 +56,7 @@ fn evaluate_quantifier_arena<'a>(
     }
 
     let predicate = &args[1];
-    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(singleton_bool(shape.empty_result)),
         ResolvedInput::Bridge(av) => {
@@ -67,8 +68,10 @@ fn evaluate_quantifier_arena<'a>(
         return Ok(singleton_bool(shape.empty_result));
     }
 
-    // Fast predicate path — no context push, no clones.
-    if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
+    // Fast predicate path — no context push, no clones. Detection is
+    // hoisted to compile time and cached on the predicate node, so we
+    // pull it from there instead of pattern-matching every call.
+    if let Some(fast_pred) = FastPredicate::from_node(predicate) {
         let len = src.len();
         for i in 0..len {
             if fast_pred.evaluate(src.get(i), arena) == shape.short_circuit_on {
@@ -156,6 +159,7 @@ fn quantifier_arena_bridge<'a>(
 #[inline]
 pub(crate) fn evaluate_all_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -164,6 +168,7 @@ pub(crate) fn evaluate_all_arena<'a>(
     // which deliberately rejects vacuous truth).
     evaluate_quantifier_arena(
         args,
+        iter_arg_kind,
         actx,
         engine,
         arena,
@@ -179,6 +184,7 @@ pub(crate) fn evaluate_all_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_some_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -186,6 +192,7 @@ pub(crate) fn evaluate_some_arena<'a>(
     // some: early-exit on true; empty array ⇒ false.
     evaluate_quantifier_arena(
         args,
+        iter_arg_kind,
         actx,
         engine,
         arena,
@@ -201,6 +208,7 @@ pub(crate) fn evaluate_some_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_none_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -208,6 +216,7 @@ pub(crate) fn evaluate_none_arena<'a>(
     // none: early-exit on true (then return false); empty array ⇒ true.
     evaluate_quantifier_arena(
         args,
+        iter_arg_kind,
         actx,
         engine,
         arena,

@@ -7,7 +7,7 @@ use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
-use super::helpers::{IterSrc, ResolvedInput, resolve_iter_input};
+use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 
 /// `sort`. Borrows input via `IterSrc` (no input clone), runs
 /// `slice::sort_by` over indices, and emits `DataValue::Array` re-borrowing
@@ -19,6 +19,7 @@ use super::helpers::{IterSrc, ResolvedInput, resolve_iter_input};
 #[inline]
 pub(crate) fn evaluate_sort_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -34,7 +35,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
 
-    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(DataValue::Null)),
         ResolvedInput::Bridge(av) => {

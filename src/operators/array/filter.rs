@@ -6,8 +6,8 @@ use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
-    FastPredicate, IterSrc, ResolvedInput, arena_value_equals_arena, evaluate_invariant_no_push,
-    resolve_iter_input, try_extract_filter_field_cmp,
+    FastPredicate, IterArgKind, IterSrc, ResolvedInput, arena_value_equals_arena,
+    evaluate_invariant_no_push, resolve_iter_input, try_extract_filter_field_cmp,
 };
 
 /// `filter`. Fast path: input collection resolves at root scope (the dominant
@@ -15,6 +15,7 @@ use super::helpers::{
 #[inline]
 pub(crate) fn evaluate_filter_arena<'a>(
     args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
@@ -24,7 +25,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
     }
 
     // Resolve input via unified helper (root borrow OR upstream arena op).
-    let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(arena.alloc(DataValue::Array(&[]))),
         ResolvedInput::Bridge(av) => {
@@ -42,8 +43,8 @@ pub(crate) fn evaluate_filter_arena<'a>(
         return Ok(result);
     }
 
-    if let Some(fast_pred) = FastPredicate::try_detect(predicate) {
-        return Ok(filter_with_fast_predicate(&src, &fast_pred, arena));
+    if let Some(fast_pred) = FastPredicate::from_node(predicate) {
+        return Ok(filter_with_fast_predicate(&src, fast_pred, arena));
     }
 
     filter_general(&src, predicate, actx, engine, arena)
@@ -102,7 +103,7 @@ fn filter_strict_eq_field_fast_path<'a>(
 #[inline]
 fn filter_with_fast_predicate<'a>(
     src: &IterSrc<'a>,
-    fast_pred: &FastPredicate<'a>,
+    fast_pred: &FastPredicate,
     arena: &'a Bump,
 ) -> &'a DataValue<'a> {
     let len = src.len();

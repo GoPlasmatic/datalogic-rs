@@ -13,7 +13,9 @@ use crate::opcode::OpCode;
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
 pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
     match &node {
-        CompiledNode::BuiltinOperator { id, opcode, args } => match opcode {
+        CompiledNode::BuiltinOperator {
+            id, opcode, args, ..
+        } => match opcode {
             OpCode::Not if args.len() == 1 => {
                 // Check if inner is also Not → collapse to DoubleNot
                 if let CompiledNode::BuiltinOperator {
@@ -28,6 +30,8 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                             id: *id,
                             opcode: OpCode::DoubleNot,
                             args: inner_args.clone(),
+                            predicate_hint: None,
+                            iter_arg_kind: crate::operators::array::IterArgKind::General,
                         },
                         true,
                     );
@@ -48,6 +52,8 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                             id: *id,
                             opcode: OpCode::DoubleNot,
                             args: inner_args.clone(),
+                            predicate_hint: None,
+                            iter_arg_kind: crate::operators::array::IterArgKind::General,
                         },
                         true,
                     );
