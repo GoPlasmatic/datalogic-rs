@@ -33,16 +33,13 @@ pub(crate) fn strict_equals(left: &DataValue<'_>, right: &DataValue<'_>) -> bool
         (DataValue::Number(a), DataValue::Number(b)) => a == b,
         (DataValue::String(a), DataValue::String(b)) => a == b,
         (DataValue::Array(a), DataValue::Array(b)) => {
-            a.len() == b.len()
-                && a.iter()
-                    .zip(b.iter())
-                    .all(|(x, y)| strict_equals(x, y))
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| strict_equals(x, y))
         }
         (DataValue::Object(a), DataValue::Object(b)) => {
             a.len() == b.len()
-                && a.iter().zip(b.iter()).all(|((ka, va), (kb, vb))| {
-                    *ka == *kb && strict_equals(va, vb)
-                })
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|((ka, va), (kb, vb))| *ka == *kb && strict_equals(va, vb))
         }
         #[cfg(feature = "datetime")]
         (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
@@ -66,10 +63,18 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
         // Same-type cases
         (DataValue::Null, DataValue::Null) => Equal,
         (DataValue::Bool(a), DataValue::Bool(b)) => {
-            if a == b { Equal } else { NotEqual }
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
         }
         (DataValue::String(a), DataValue::String(b)) => {
-            if a == b { Equal } else { NotEqual }
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
         }
         (DataValue::Number(a), DataValue::Number(b)) => {
             let a_f = a.as_f64();
@@ -90,8 +95,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
         },
 
         // Number-Bool coercion
-        (DataValue::Number(n), DataValue::Bool(b))
-        | (DataValue::Bool(b), DataValue::Number(n)) => {
+        (DataValue::Number(n), DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Number(n)) => {
             if n.as_f64() == (if *b { 1.0 } else { 0.0 }) {
                 Equal
             } else {
@@ -100,8 +104,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
         }
 
         // String-Bool coercion
-        (DataValue::String(s), DataValue::Bool(b))
-        | (DataValue::Bool(b), DataValue::String(s)) => {
+        (DataValue::String(s), DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::String(s)) => {
             if *s == (if *b { "true" } else { "false" }) {
                 Equal
             } else {
@@ -114,7 +117,11 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
             if n.as_f64() == 0.0 { Equal } else { NotEqual }
         }
         (DataValue::Null, DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Null) => {
-            if !*b { Equal } else { NotEqual }
+            if !*b {
+                Equal
+            } else {
+                NotEqual
+            }
         }
         (DataValue::Null, DataValue::String(s)) | (DataValue::String(s), DataValue::Null) => {
             if s.is_empty() { Equal } else { NotEqual }
@@ -134,9 +141,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
 
         // Array-array structural compare
         (DataValue::Array(a), DataValue::Array(b)) => {
-            if a.len() == b.len()
-                && a.iter().zip(b.iter()).all(|(x, y)| strict_equals(x, y))
-            {
+            if a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| strict_equals(x, y)) {
                 Equal
             } else {
                 Incompatible

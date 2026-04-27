@@ -4,7 +4,7 @@
 //!
 //! The entry points live here; the heavy lifting is split across
 //! - [`node`] — the recursive `compile_node` dispatch.
-//! - [`operator`] — `var` / `val` / `exists` / split-regex specialisations.
+//! - [`operator`] — `var` / `val` / `exists` specialisations.
 //! - [`missing`] — `missing` / `missing_some` static path pre-parsing.
 //! - [`path`] — shared dot-path parsing.
 //! - [`optimize`] — DCE, strength reduction, constant folding.

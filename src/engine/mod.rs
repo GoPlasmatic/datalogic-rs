@@ -473,11 +473,7 @@ impl DataLogic {
     /// Pure v5 entry — no `serde_json` round-trips. Replaces the legacy
     /// `evaluate_json` (which returned a `serde_json::Value` and is now
     /// gated behind the `compat` feature).
-    pub fn evaluate_str(
-        &self,
-        compiled: &CompiledLogic,
-        data: &str,
-    ) -> Result<String> {
+    pub fn evaluate_str(&self, compiled: &CompiledLogic, data: &str) -> Result<String> {
         let arena = bumpalo::Bump::new();
         let data_dv = datavalue::DataValue::from_str(data, &arena)?;
         let data_ref = arena.alloc(data_dv);
@@ -755,8 +751,7 @@ impl DataLogic {
     fn run_trace(&self, compiled: &CompiledLogic, data_arc: Arc<Value>) -> TracedResult {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
-        let (result, error_path) =
-            self.evaluate_with_trace(compiled, data_arc, &mut collector);
+        let (result, error_path) = self.evaluate_with_trace(compiled, data_arc, &mut collector);
         let steps = collector.into_steps();
         match result {
             Ok(value) => TracedResult {

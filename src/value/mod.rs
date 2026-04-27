@@ -77,7 +77,10 @@ pub(crate) fn owned_to_serde(v: &datavalue::OwnedDataValue) -> serde_json::Value
             serde_json::Value::Array(items.iter().map(owned_to_serde).collect())
         }
         OwnedDataValue::Object(pairs) => serde_json::Value::Object(
-            pairs.iter().map(|(k, v)| (k.clone(), owned_to_serde(v))).collect(),
+            pairs
+                .iter()
+                .map(|(k, v)| (k.clone(), owned_to_serde(v)))
+                .collect(),
         ),
         #[cfg(feature = "datetime")]
         OwnedDataValue::DateTime(dt) => {

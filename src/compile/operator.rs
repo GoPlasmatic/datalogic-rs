@@ -4,18 +4,9 @@
 //! form into specialised tree nodes that capture decisions at compile time:
 //! - `var` / `val` → `CompiledVar` with pre-parsed segments and reduce hints.
 //! - `exists` → `CompiledExists`.
-//! - `split` with a named-capture regex → `CompiledSplitRegex` with the
-//!   compiled `Regex` cached on the node.
 
-
-#[cfg(feature = "ext-control")]
 use crate::node::PathSegment;
 use crate::node::{CompileCtx, CompiledNode, MetadataHint, ReduceHint};
-#[cfg(feature = "ext-string")]
-use std::sync::Arc;
-
-#[cfg(feature = "ext-string")]
-use regex::Regex;
 
 use super::path::{parse_path_segments, parse_var_path};
 
@@ -68,7 +59,6 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
 }
 
 /// Try to compile a `val` operator into a `CompiledVar` node.
-#[cfg(feature = "ext-control")]
 pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
     if args.is_empty() {
         return Some(CompiledNode::CompiledVar {
@@ -121,7 +111,6 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
     None
 }
 
-#[cfg(feature = "ext-control")]
 fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Option<CompiledNode> {
     let CompiledNode::Value {
         value: datavalue::OwnedDataValue::String(s),
@@ -155,7 +144,6 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
     })
 }
 
-#[cfg(feature = "ext-control")]
 fn scope_level_metadata_hint(args: &[CompiledNode]) -> MetadataHint {
     if args.len() == 2
         && let CompiledNode::Value {
@@ -172,7 +160,6 @@ fn scope_level_metadata_hint(args: &[CompiledNode]) -> MetadataHint {
     MetadataHint::None
 }
 
-#[cfg(feature = "ext-control")]
 fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
     match arg {
         CompiledNode::Value {
@@ -188,12 +175,14 @@ fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
         CompiledNode::Value {
             value: datavalue::OwnedDataValue::Number(n),
             ..
-        } => n.as_i64().filter(|i| *i >= 0).map(|i| PathSegment::Index(i as usize)),
+        } => n
+            .as_i64()
+            .filter(|i| *i >= 0)
+            .map(|i| PathSegment::Index(i as usize)),
         _ => None,
     }
 }
 
-#[cfg(feature = "ext-control")]
 fn try_compile_val_segments(
     args: &[CompiledNode],
     scope_level: u32,
@@ -215,7 +204,6 @@ fn try_compile_val_segments(
     })
 }
 
-#[cfg(feature = "ext-control")]
 fn try_collect_val_segments(
     args: &[CompiledNode],
     segments: &mut Vec<PathSegment>,
@@ -287,45 +275,6 @@ pub(super) fn try_compile_exists(
             id: ctx.next_id(),
             scope_level: 0,
             segments: segments.into_boxed_slice(),
-        },
-    )))
-}
-
-/// Try to compile a `split` operator with a named-capture regex pattern
-/// into a specialised `CompiledSplitRegex` node — caches the compiled
-/// `Regex` on the node so it isn't re-compiled per evaluation.
-#[cfg(feature = "ext-string")]
-pub(super) fn try_compile_split_regex(
-    args: &[CompiledNode],
-    ctx: &mut CompileCtx,
-) -> Option<CompiledNode> {
-    if args.len() < 2 {
-        return None;
-    }
-
-    let pattern = match &args[1] {
-        CompiledNode::Value {
-            value: datavalue::OwnedDataValue::String(s),
-            ..
-        } if s.contains("(?P<") => s.as_str(),
-        _ => return None,
-    };
-
-    let re = Regex::new(pattern).ok()?;
-    let capture_names: Vec<Box<str>> = re.capture_names().flatten().map(|n| n.into()).collect();
-
-    if capture_names.is_empty() {
-        return None;
-    }
-
-    let text_args = vec![args[0].clone()].into_boxed_slice();
-
-    Some(CompiledNode::CompiledSplitRegex(Box::new(
-        crate::node::CompiledSplitRegexData {
-            id: ctx.next_id(),
-            args: text_args,
-            regex: Arc::new(re),
-            capture_names: capture_names.into_boxed_slice(),
         },
     )))
 }

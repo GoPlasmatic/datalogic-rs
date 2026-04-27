@@ -65,15 +65,10 @@ pub(super) fn evaluate_node_inner<'a>(
         // wrapper before reaching this match.
         CompiledNode::Value { .. } => unreachable!("literal handled by wrapper"),
 
-        // Raw var/val/exists operator forms (rare — most are precompiled
+        // Raw val/exists operator forms (rare — most are precompiled
         // to CompiledVar/CompiledExists, but dynamic-path forms remain
-        // as BuiltinOperator).
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Var,
-            args,
-            ..
-        } => crate::operators::variable::evaluate_var_arena(args, actx, engine, arena),
-        #[cfg(feature = "ext-control")]
+        // as BuiltinOperator). `var` and `val` both arrive here as
+        // OpCode::Val — see `OpCode::FromStr` for the normalization.
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Val,
             args,
@@ -252,17 +247,14 @@ pub(super) fn evaluate_node_inner<'a>(
             ..
         } => crate::operators::logical::evaluate_or_arena(args, actx, engine, arena),
 
-        // Control
+        // Control. `if` and `?:` both arrive here as OpCode::If — see
+        // `OpCode::FromStr`. `evaluate_if_arena` handles the 3-arg case
+        // identically to a ternary.
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::If,
             args,
             ..
         } => crate::operators::control::evaluate_if_arena(args, actx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Ternary,
-            args,
-            ..
-        } => crate::operators::control::evaluate_ternary_arena(args, actx, engine, arena),
         #[cfg(feature = "ext-control")]
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Coalesce,
@@ -493,20 +485,6 @@ pub(super) fn evaluate_node_inner<'a>(
         // for args; rare on the hot path.
         CompiledNode::CustomOperator(data) => {
             evaluate_custom_operator_arena(data, actx, engine, arena)
-        }
-
-        // CompiledSplitRegex (ext-string regex split): build the result
-        // object directly in the arena.
-        #[cfg(feature = "ext-string")]
-        CompiledNode::CompiledSplitRegex(data) => {
-            crate::operators::string::evaluate_split_with_regex_arena(
-                &data.args,
-                actx,
-                engine,
-                &data.regex,
-                &data.capture_names,
-                arena,
-            )
         }
 
         // No fallback — every CompiledNode shape is covered by an

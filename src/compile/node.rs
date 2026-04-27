@@ -76,7 +76,7 @@ fn compile_operator_invocation(
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     if let Ok(opcode) = op_name.parse::<OpCode>() {
-        return compile_builtin(opcode, args_value, engine, preserve_structure, ctx);
+        return compile_builtin(op_name, opcode, args_value, engine, preserve_structure, ctx);
     }
 
     #[cfg(feature = "preserve")]
@@ -95,11 +95,12 @@ fn compile_operator_invocation(
 }
 
 /// Builtin operator path: handle invalid-args sentinels for `and`/`or`/`if`,
-/// preserve-args for `Preserve`, var/val/exists/split-regex specialisations,
+/// preserve-args for `Preserve`, var/val/exists specialisations,
 /// missing/missing_some, throw, and fall through to a generic
 /// `BuiltinOperator` (with optimization + static-fold passes when an
 /// `engine` is supplied).
 fn compile_builtin(
+    op_name: &str,
     opcode: OpCode,
     args_value: &OwnedDataValue,
     engine: Option<&DataLogic>,
@@ -113,7 +114,7 @@ fn compile_builtin(
 
     let args = compile_builtin_args(opcode, args_value, engine, preserve_structure, ctx)?;
 
-    if let Some(node) = try_specialised(opcode, &args, ctx) {
+    if let Some(node) = try_specialised(op_name, opcode, &args, ctx) {
         return Ok(node);
     }
 
@@ -164,7 +165,10 @@ fn compile_builtin_args(
                 .iter()
                 .map(|v| CompiledNode::value_with_id(ctx.next_id(), v.clone()))
                 .collect::<Vec<_>>(),
-            _ => vec![CompiledNode::value_with_id(ctx.next_id(), args_value.clone())],
+            _ => vec![CompiledNode::value_with_id(
+                ctx.next_id(),
+                args_value.clone(),
+            )],
         };
         return Ok(nodes.into_boxed_slice());
     }
@@ -173,36 +177,37 @@ fn compile_builtin_args(
 }
 
 /// Try the operator-specific compile-time specialisations: `var`, `val`,
-/// `exists`, `split` (regex). Returns `None` if no specialisation applies.
+/// `exists`. Returns `None` if no specialisation applies.
+///
+/// `var` and `val` both compile to `CompiledVar`, but with different arg
+/// shape semantics — `var`'s second arg is a default fallback, `val`'s
+/// is a path-chain segment. We dispatch on the source operator name to
+/// keep those semantics distinct, even though both map to `OpCode::Val`.
 fn try_specialised(
+    op_name: &str,
     opcode: OpCode,
     args: &[CompiledNode],
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
-    if opcode == OpCode::Var
+    if op_name == "var"
         && let Some(node) = operator::try_compile_var(args, ctx)
+    {
+        return Some(node);
+    }
+    if op_name == "val"
+        && let Some(node) = operator::try_compile_val(args, ctx)
     {
         return Some(node);
     }
     #[cfg(feature = "ext-control")]
     {
-        if opcode == OpCode::Val
-            && let Some(node) = operator::try_compile_val(args, ctx)
-        {
-            return Some(node);
-        }
         if opcode == OpCode::Exists
             && let Some(node) = operator::try_compile_exists(args, ctx)
         {
             return Some(node);
         }
     }
-    #[cfg(feature = "ext-string")]
-    if opcode == OpCode::Split
-        && let Some(node) = operator::try_compile_split_regex(args, ctx)
-    {
-        return Some(node);
-    }
+    let _ = opcode;
     None
 }
 
@@ -215,10 +220,7 @@ fn invalid_args_marker(
     ctx: &mut CompileCtx,
 ) -> CompiledNode {
     let invalid_value = OwnedDataValue::Object(vec![
-        (
-            "__invalid_args__".to_string(),
-            OwnedDataValue::Bool(true),
-        ),
+        ("__invalid_args__".to_string(), OwnedDataValue::Bool(true)),
         ("value".to_string(), args_value.clone()),
     ]);
     let value_node = CompiledNode::value_with_id(ctx.next_id(), invalid_value);

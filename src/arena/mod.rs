@@ -17,14 +17,14 @@ pub(crate) mod value;
 
 pub use context::DataContextStack;
 pub(crate) use context::IterGuard;
-pub use value::DataValue;
 #[cfg(feature = "compat")]
 #[allow(unused_imports)]
 pub(crate) use pool::ArenaGuard;
-#[cfg(feature = "compat")]
-pub use value::value_to_arena;
+pub use value::DataValue;
 #[cfg(feature = "compat")]
 pub(crate) use value::arena_to_value;
+#[cfg(feature = "compat")]
+pub use value::value_to_arena;
 pub(crate) use value::{
     coerce_arena_to_number_cfg, data_to_json_string, is_truthy_arena, to_string_arena,
     try_coerce_arena_to_integer_cfg,

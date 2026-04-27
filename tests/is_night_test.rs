@@ -4,7 +4,7 @@
 
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
-use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Error, Result};
+use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
 use serde_json::json;
 
 /// Custom arena operator: checks whether a datetime argument falls in the

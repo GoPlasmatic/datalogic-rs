@@ -311,11 +311,7 @@ impl<'a> DataContextStack<'a> {
     }
 
     #[inline]
-    fn replace_reduce_data(
-        &mut self,
-        current: &'a DataValue<'a>,
-        accumulator: &'a DataValue<'a>,
-    ) {
+    fn replace_reduce_data(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
         if let Some(frame) = self.frames.last_mut() {
             *frame = ArenaContextFrame::Reduce {
                 current,
@@ -449,14 +445,12 @@ mod tests {
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
-        let a: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+        let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
         ctx.push_with_index(a, 0);
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current().get_index(), Some(0));
 
-        let b: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
+        let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
         ctx.replace_top_data(b, 1);
         assert_eq!(ctx.current().get_index(), Some(1));
 
@@ -507,10 +501,8 @@ mod tests {
         let root_val = Value::Null;
         let mut ctx = DataContextStack::from_value(&root_val, &arena);
 
-        let a: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(10)));
-        let b: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(20)));
+        let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(10)));
+        let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(20)));
         ctx.push_with_index(a, 0);
         ctx.push_with_index(b, 0);
         assert_eq!(ctx.depth(), 2);
@@ -532,10 +524,8 @@ mod tests {
         let mut ctx = DataContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
 
-        let a: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
-        let b: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
+        let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+        let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
 
         {
             let mut g = IterGuard::new(&mut ctx);

@@ -1,6 +1,3 @@
-#[cfg(feature = "ext-string")]
-use regex::Regex;
-
 use crate::{CompiledNode, DataLogic, Result};
 // =============================================================================
 // Arena-mode string operators
@@ -232,8 +229,8 @@ pub(crate) fn evaluate_trim_arena<'a>(
     Ok(arena.alloc(DataValue::String(arena.alloc_str(s.trim()))))
 }
 
-/// Native arena-mode `split`. Plain-string delimiter and named-capture
-/// regex paths build their result directly in the arena.
+/// Native arena-mode `split`. Splits text by a plain string delimiter,
+/// building the result directly in the arena.
 #[cfg(feature = "ext-string")]
 #[inline]
 pub(crate) fn evaluate_split_arena<'a>(
@@ -266,31 +263,6 @@ pub(crate) fn evaluate_split_arena<'a>(
         }
     };
 
-    // Named-capture regex path: a dynamic regex delimiter with `(?P<…>)`
-    // named groups returns an object.
-    if delim_str.contains("(?P<")
-        && let Ok(re) = Regex::new(delim_str)
-    {
-        let capture_names: Vec<_> = re.capture_names().flatten().collect();
-        if !capture_names.is_empty() {
-            return if let Some(captures) = re.captures(text_str) {
-                let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
-                    bumpalo::collections::Vec::with_capacity_in(capture_names.len(), arena);
-                for name in capture_names {
-                    if let Some(m) = captures.name(name) {
-                        let k: &'a str = arena.alloc_str(name);
-                        let v: &'a str = arena.alloc_str(m.as_str());
-                        pairs.push((k, DataValue::String(v)));
-                    }
-                }
-                Ok(arena.alloc(DataValue::Object(pairs.into_bump_slice())))
-            } else {
-                Ok(arena.alloc(DataValue::Object(&[])))
-            };
-        }
-    }
-
-    // Plain string split path.
     split_arena_normal(text_str, delim_str, arena)
 }
 
@@ -321,40 +293,4 @@ fn split_arena_normal<'a>(text: &str, delim: &str, arena: &'a Bump) -> Result<&'
         items.push(DataValue::String(arena.alloc_str(part)));
     }
     Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
-}
-
-/// Arena variant of split-with-regex (compiled regex form).
-#[cfg(feature = "ext-string")]
-#[inline]
-pub(crate) fn evaluate_split_with_regex_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
-    regex: &Regex,
-    capture_names: &[Box<str>],
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::constants::invalid_args());
-    }
-    let text_av = engine.evaluate_node(&args[0], actx, arena)?;
-    let text_str = match text_av {
-        DataValue::String(s) => *s,
-        _ => to_string_arena(text_av, arena),
-    };
-
-    if let Some(captures) = regex.captures(text_str) {
-        let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
-            bumpalo::collections::Vec::with_capacity_in(capture_names.len(), arena);
-        for name in capture_names {
-            if let Some(m) = captures.name(name) {
-                let k: &'a str = arena.alloc_str(name);
-                let v: &'a str = arena.alloc_str(m.as_str());
-                pairs.push((k, DataValue::String(v)));
-            }
-        }
-        Ok(arena.alloc(DataValue::Object(pairs.into_bump_slice())))
-    } else {
-        Ok(arena.alloc(DataValue::Object(&[])))
-    }
 }

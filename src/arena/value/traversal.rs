@@ -153,7 +153,6 @@ pub(crate) fn arena_path_exists_str(av: &DataValue<'_>, path: &str) -> bool {
 /// Apply a single evaluated path element (string field, numeric index) to an
 /// arena value. Mirrors the (deleted) value-mode `apply_path_element_ref` for
 /// the multi-arg `val` form where each arg is evaluated separately.
-#[cfg(feature = "ext-control")]
 pub(crate) fn arena_apply_path_element<'a>(
     cur: &'a DataValue<'a>,
     elem: &DataValue<'_>,

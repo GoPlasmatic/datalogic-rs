@@ -86,16 +86,6 @@ impl ExpressionNode {
                 id,
                 Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
             ),
-            #[cfg(feature = "ext-string")]
-            CompiledNode::CompiledSplitRegex(data) => ExpressionNode {
-                id,
-                expression: format!(
-                    "{{\"split\": [{}, \"{}\"]}}",
-                    Self::node_to_json_string(&data.args[0]),
-                    data.regex.as_str()
-                ),
-                children: Self::op_children(&data.args),
-            },
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(_)
             | CompiledNode::CompiledMissing(_)
@@ -172,9 +162,7 @@ impl ExpressionNode {
     /// Convert a CompiledNode to its JSON string representation
     fn node_to_json_string(node: &CompiledNode) -> String {
         match node {
-            CompiledNode::Value { value, .. } => {
-                serde_json::to_string(value).unwrap_or_default()
-            }
+            CompiledNode::Value { value, .. } => serde_json::to_string(value).unwrap_or_default(),
             CompiledNode::Array { nodes, .. } => {
                 let items: Vec<String> = nodes.iter().map(Self::node_to_json_string).collect();
                 format!("[{}]", items.join(", "))
@@ -198,14 +186,6 @@ impl ExpressionNode {
             #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(data) => {
                 Self::compiled_exists_to_json_string(data.scope_level, &data.segments)
-            }
-            #[cfg(feature = "ext-string")]
-            CompiledNode::CompiledSplitRegex(data) => {
-                format!(
-                    "{{\"split\": [{}, \"{}\"]}}",
-                    Self::node_to_json_string(&data.args[0]),
-                    data.regex.as_str()
-                )
             }
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(data) => {
@@ -458,11 +438,14 @@ mod tests {
 
     #[test]
     fn test_expression_node_from_simple_operator() {
-        // Create a simple {"var": "age"} node
+        // Create a simple {"val": "age"} node (var is normalized to Val).
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
-            opcode: OpCode::Var,
-            args: vec![CompiledNode::synthetic_value(datavalue::OwnedDataValue::String("age".to_string()))].into_boxed_slice(),
+            opcode: OpCode::Val,
+            args: vec![CompiledNode::synthetic_value(
+                datavalue::OwnedDataValue::String("age".to_string()),
+            )]
+            .into_boxed_slice(),
         };
 
         let tree = ExpressionNode::build_from_compiled(&node);
@@ -470,24 +453,29 @@ mod tests {
         // Synthetic test nodes all share SYNTHETIC_ID (0); the structural
         // assertions below still hold.
         assert_eq!(tree.id, crate::node::SYNTHETIC_ID);
-        assert_eq!(tree.expression, r#"{"var": "age"}"#);
+        assert_eq!(tree.expression, r#"{"val": "age"}"#);
         assert!(tree.children.is_empty()); // "age" is a literal, not a child
     }
 
     #[test]
     fn test_expression_node_from_nested_operator() {
-        // Create {">=": [{"var": "age"}, 18]}
+        // Create {">=": [{"val": "age"}, 18]}
         let var_node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
-            opcode: OpCode::Var,
-            args: vec![CompiledNode::synthetic_value(datavalue::OwnedDataValue::String("age".to_string()))].into_boxed_slice(),
+            opcode: OpCode::Val,
+            args: vec![CompiledNode::synthetic_value(
+                datavalue::OwnedDataValue::String("age".to_string()),
+            )]
+            .into_boxed_slice(),
         };
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::GreaterThanEqual,
             args: vec![
                 var_node,
-                CompiledNode::synthetic_value(datavalue::OwnedDataValue::Number(datavalue::NumberValue::Integer(18))),
+                CompiledNode::synthetic_value(datavalue::OwnedDataValue::Number(
+                    datavalue::NumberValue::Integer(18),
+                )),
             ]
             .into_boxed_slice(),
         };
@@ -497,7 +485,7 @@ mod tests {
         assert_eq!(tree.id, crate::node::SYNTHETIC_ID);
         assert!(tree.expression.contains(">="));
         assert_eq!(tree.children.len(), 1); // var node is a child
-        assert!(tree.children[0].expression.contains("var"));
+        assert!(tree.children[0].expression.contains("val"));
     }
 
     #[test]

@@ -24,10 +24,9 @@ pub(crate) fn evaluate_throw_arena<'a>(
 
     let owned = match owned {
         OwnedDataValue::Object(_) => owned,
-        OwnedDataValue::String(s) => OwnedDataValue::Object(vec![(
-            "type".to_string(),
-            OwnedDataValue::String(s),
-        )]),
+        OwnedDataValue::String(s) => {
+            OwnedDataValue::Object(vec![("type".to_string(), OwnedDataValue::String(s))])
+        }
         other => OwnedDataValue::Object(vec![(
             "type".to_string(),
             OwnedDataValue::String(format!("{:?}", other)),

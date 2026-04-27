@@ -1,7 +1,6 @@
 //! `+`, `-`, `*` — basic arithmetic with overflow promotion to `f64` and
 //! optional datetime/duration support.
 
-
 use crate::arena::{
     DataContextStack, DataValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg,
 };

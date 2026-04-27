@@ -1,4 +1,3 @@
-
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
 use crate::{CompiledNode, Error, Result};
 
@@ -6,9 +5,11 @@ use crate::{CompiledNode, Error, Result};
 // Arena-mode variable access
 // =============================================================================
 //
-// Arena variants for var / val / exists. The raw forms
-// (`evaluate_var_arena` / `_val_arena` / `_exists_arena`) handle dynamic-path
-// expressions natively against the arena context stack.
+// Arena variants for val / exists. The raw forms (`evaluate_val_arena` /
+// `evaluate_exists_arena`) handle dynamic-path expressions natively against
+// the arena context stack. Both `var` and `val` operator names normalize to
+// `OpCode::Val` (see `OpCode::FromStr`); the var-specific arg shape (path +
+// default fallback) is collapsed at compile time by `try_compile_var`.
 
 use crate::arena::{DataContextStack, DataValue};
 use bumpalo::Bump;
@@ -26,7 +27,6 @@ fn current_data_av<'a>(actx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a Dat
 }
 
 /// Frame data at a given level (or `None` if the level walks past the root).
-#[cfg(feature = "ext-control")]
 #[inline]
 fn frame_data_at_level<'a>(
     actx: &DataContextStack<'a>,
@@ -258,88 +258,9 @@ pub(crate) fn evaluate_compiled_exists_arena<'a>(
     Ok(crate::arena::pool::singleton_bool(found))
 }
 
-/// Arena-native `var` operator (path resolved at runtime).
-///
-/// Raw `var` (not statically compiled to `CompiledVar`) is rare — hit only
-/// for dynamic paths like `{"var": [{"if": ...}, "x"]}`. The path string is
-/// resolved against the current arena frame's data without any value-mode
-/// detour.
-#[inline]
-pub(crate) fn evaluate_var_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    use crate::arena::value::arena_access_path_str_ref;
-
-    if args.is_empty() {
-        return Ok(current_data_av(actx, arena));
-    }
-
-    // Resolve path string. Literal string/number is the common shape.
-    let owned_path: String;
-    let path: &str = match &args[0] {
-        CompiledNode::Value {
-            value: datavalue::OwnedDataValue::String(s),
-            ..
-        } => s.as_str(),
-        CompiledNode::Value {
-            value: datavalue::OwnedDataValue::Number(n),
-            ..
-        } => {
-            owned_path = n.to_string();
-            owned_path.as_str()
-        }
-        other => {
-            let av = engine.evaluate_node(other, actx, arena)?;
-            owned_path = path_string_from_arena(av);
-            owned_path.as_str()
-        }
-    };
-
-    // Reduce-context fast paths — resolved on the current frame's reduce slots.
-    use crate::arena::context::ArenaContextRef;
-    if let ArenaContextRef::Frame(frame) = actx.current() {
-        if path == "current" {
-            if let Some(av) = frame.get_reduce_current() {
-                return Ok(av);
-            }
-        } else if path == "accumulator" {
-            if let Some(av) = frame.get_reduce_accumulator() {
-                return Ok(av);
-            }
-        } else if let Some(rest) = path.strip_prefix("current.") {
-            if let Some(cur) = frame.get_reduce_current() {
-                return Ok(arena_access_path_str_ref(cur, rest, arena)
-                    .unwrap_or_else(|| crate::arena::pool::singleton_null()));
-            }
-        } else if let Some(rest) = path.strip_prefix("accumulator.")
-            && let Some(acc) = frame.get_reduce_accumulator()
-        {
-            return Ok(arena_access_path_str_ref(acc, rest, arena)
-                .unwrap_or_else(|| crate::arena::pool::singleton_null()));
-        }
-    }
-
-    // Walk the path on current frame data.
-    let cur = current_data_av(actx, arena);
-    match arena_access_path_str_ref(cur, path, arena) {
-        Some(av) => Ok(av),
-        None => {
-            if args.len() > 1 {
-                engine.evaluate_node(&args[1], actx, arena)
-            } else {
-                Ok(crate::arena::pool::singleton_null())
-            }
-        }
-    }
-}
-
 /// Read a `[level]` marker — the value-mode multi-arg `val` shape where
 /// `args[0]` evaluates to a one-element numeric array. Returns the `i64`
 /// level on a hit, `None` otherwise.
-#[cfg(feature = "ext-control")]
 #[inline]
 fn level_marker_from_array(av: &DataValue<'_>) -> Option<i64> {
     match av {
@@ -349,7 +270,6 @@ fn level_marker_from_array(av: &DataValue<'_>) -> Option<i64> {
 }
 
 /// Length of an arena array, or `None` if not array-shaped.
-#[cfg(feature = "ext-control")]
 #[inline]
 fn arena_array_len(av: &DataValue<'_>) -> Option<usize> {
     match av {
@@ -359,7 +279,6 @@ fn arena_array_len(av: &DataValue<'_>) -> Option<usize> {
 }
 
 /// Get the i-th element of an arena array as a fresh `&'a DataValue<'a>`.
-#[cfg(feature = "ext-control")]
 #[inline]
 fn arena_array_get<'a>(
     av: &'a DataValue<'a>,
@@ -377,7 +296,12 @@ fn arena_array_get<'a>(
 
 /// Arena-native `val` operator. Mirrors the value-mode shape (level access,
 /// path chains, reduce shortcuts) but stays on `&DataValue` throughout.
-#[cfg(feature = "ext-control")]
+///
+/// Also handles the dynamic-fallback `var` shape (path + default) — when
+/// `var`'s args[0] is a non-array path that resolves to null and args[1]
+/// exists, args[1] is evaluated as the default. The path-chain interpretation
+/// (`{"val": ["a", "b"]}` walks `a.b`) is unaffected because chain-walking
+/// runs ahead of the fallback check.
 #[inline]
 pub(crate) fn evaluate_val_arena<'a>(
     args: &'a [CompiledNode],
@@ -403,9 +327,11 @@ pub(crate) fn evaluate_val_arena<'a>(
                 if path_str == "index"
                     && let Some(idx) = actx.current().get_index()
                 {
-                    return Ok(arena.alloc(DataValue::Number(
-                        crate::value::NumberValue::Integer(idx as i64),
-                    )));
+                    return Ok(
+                        arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(
+                            idx as i64,
+                        ))),
+                    );
                 }
                 if path_str == "key"
                     && let Some(key) = actx.current().get_key()
@@ -475,8 +401,18 @@ pub(crate) fn evaluate_val_arena<'a>(
     // Single-arg form: evaluate it.
     let path_av = engine.evaluate_node(&args[0], actx, arena)?;
 
+    // Null path → current data (matches canonical `var` semantics for
+    // `{"var": null}` and the empty-string path for `{"var": ""}`).
+    if matches!(path_av, DataValue::Null) {
+        return Ok(current_data_av(actx, arena));
+    }
+
     // Array argument: either [[level], path...] or a path chain.
     if let Some(arr_len) = arena_array_len(path_av) {
+        // Empty array → current data (matches `{"var": []}` semantics).
+        if arr_len == 0 {
+            return Ok(current_data_av(actx, arena));
+        }
         if arr_len >= 2 {
             // Try the level form: first element is `[number, ...]`.
             let first_elem = arena_array_get(path_av, 0, arena);

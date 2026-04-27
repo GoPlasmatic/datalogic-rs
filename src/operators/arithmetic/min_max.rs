@@ -9,7 +9,6 @@
 //! The multi-arg form (`max(a, b, c)`) is handled separately — it doesn't
 //! involve array iteration.
 
-
 use crate::arena::{DataContextStack, DataValue};
 use crate::operators::array::{ResolvedInput, resolve_iter_input};
 use crate::{CompiledNode, DataLogic, Result};

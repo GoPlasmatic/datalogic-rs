@@ -1,7 +1,6 @@
 //! Internal helpers shared by the array operators (filter / map / reduce /
 //! quantifiers / sort / slice / merge / length).
 
-
 use crate::arena::{DataContextStack, DataValue};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;

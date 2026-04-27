@@ -44,24 +44,6 @@ pub(crate) fn evaluate_if_arena<'a>(
     Ok(arena.alloc(DataValue::Null))
 }
 
-#[inline]
-pub(crate) fn evaluate_ternary_arena<'a>(
-    args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() < 3 {
-        return Ok(arena.alloc(DataValue::Null));
-    }
-    let cond = engine.evaluate_node(&args[0], actx, arena)?;
-    if is_truthy_arena(cond, engine) {
-        engine.evaluate_node(&args[1], actx, arena)
-    } else {
-        engine.evaluate_node(&args[2], actx, arena)
-    }
-}
-
 #[cfg(feature = "ext-control")]
 #[inline]
 pub(crate) fn evaluate_coalesce_arena<'a>(

@@ -7,7 +7,7 @@
 //! engine.
 
 use bumpalo::Bump;
-use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Error, Result};
+use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
 use serde_json::json;
 
 /// A simple operator that calculates the average of an array of numbers.

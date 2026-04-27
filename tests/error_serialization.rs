@@ -89,8 +89,14 @@ fn serialize_parse_error() {
 fn serialize_thrown() {
     use datavalue::{NumberValue, OwnedDataValue};
     let owned = OwnedDataValue::Object(vec![
-        ("code".to_string(), OwnedDataValue::Number(NumberValue::Integer(42))),
-        ("reason".to_string(), OwnedDataValue::String("boom".to_string())),
+        (
+            "code".to_string(),
+            OwnedDataValue::Number(NumberValue::Integer(42)),
+        ),
+        (
+            "reason".to_string(),
+            OwnedDataValue::String("boom".to_string()),
+        ),
     ]);
     let err = Error::Thrown(owned);
     let v = to_json(&err);

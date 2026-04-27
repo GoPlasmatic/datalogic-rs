@@ -1,7 +1,7 @@
 //! Integration tests for the `DataOperator` trait — zero-clone custom operators.
 
 use bumpalo::Bump;
-use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
+use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Result};
 use serde_json::json;
 
 /// Doubles the first numeric argument. Returns a fresh arena-allocated number.

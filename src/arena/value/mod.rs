@@ -16,14 +16,12 @@ mod traversal;
 pub(crate) use coercion::coerce_arena_to_number;
 pub(crate) use coercion::{coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
 #[cfg(feature = "compat")]
-pub use conversion::value_to_arena;
-#[cfg(feature = "compat")]
 pub(crate) use conversion::arena_to_value;
 pub(crate) use conversion::reborrow_arena_value;
-#[cfg(feature = "ext-control")]
+#[cfg(feature = "compat")]
+pub use conversion::value_to_arena;
 pub(crate) use lookup::arena_object_lookup_field;
 pub(crate) use strings::{data_to_json_string, is_truthy_arena, to_string_arena};
-#[cfg(feature = "ext-control")]
 pub(crate) use traversal::arena_apply_path_element;
 pub(crate) use traversal::{
     arena_access_path_str_ref, arena_path_exists_segments, arena_path_exists_str,

@@ -19,10 +19,12 @@
 //! Operators are grouped by functionality and feature-gated:
 //!
 //! - **Core** (always available):
-//!   - Variable Access: `var`
+//!   - Variable Access: `val` (canonical; `var` is accepted as input and
+//!     normalized to `val` at compile time)
 //!   - Comparison: `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=`
 //!   - Logical: `!`, `!!`, `and`, `or`
-//!   - Control Flow: `if`, `?:`
+//!   - Control Flow: `if` (canonical; `?:` is accepted as input and normalized
+//!     to `if` at compile time)
 //!   - Arithmetic: `+`, `-`, `*`, `/`, `%`, `max`, `min`
 //!   - String: `cat`, `substr`, `in`
 //!   - Array: `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`
@@ -31,7 +33,7 @@
 //! - **datetime**: `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now`
 //! - **ext-string**: `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`
 //! - **ext-array**: `sort`, `slice`
-//! - **ext-control**: `val`, `exists`, `??`, `switch`/`match`, `type`
+//! - **ext-control**: `exists`, `??`, `switch`/`match`, `type`
 //! - **error-handling**: `try`, `throw`
 //! - **ext-math**: `abs`, `ceil`, `floor`
 //!
@@ -50,7 +52,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpCode {
     // === Core: Variable Access ===
-    Var = 0,
+    Val = 1,
 
     // === Core: Comparison Operators ===
     Equals = 2,
@@ -70,7 +72,6 @@ pub enum OpCode {
 
     // === Core: Control Flow ===
     If = 14,
-    Ternary = 15,
 
     // === Core: Arithmetic Operators ===
     Add = 16,
@@ -141,8 +142,6 @@ pub enum OpCode {
 
     // === ext-control ===
     #[cfg(feature = "ext-control")]
-    Val = 1,
-    #[cfg(feature = "ext-control")]
     Exists = 57,
     #[cfg(feature = "ext-control")]
     Coalesce = 56,
@@ -171,8 +170,11 @@ impl FromStr for OpCode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            // Core
-            "var" => Ok(OpCode::Var),
+            // Core. `var` is accepted as a synonym of `val` — both normalize
+            // to OpCode::Val. The compile pipeline (`try_specialised`)
+            // dispatches the appropriate compile-time specialiser based on
+            // the source operator name.
+            "var" | "val" => Ok(OpCode::Val),
             "==" => Ok(OpCode::Equals),
             "===" => Ok(OpCode::StrictEquals),
             "!=" => Ok(OpCode::NotEquals),
@@ -185,8 +187,10 @@ impl FromStr for OpCode {
             "!!" => Ok(OpCode::DoubleNot),
             "and" => Ok(OpCode::And),
             "or" => Ok(OpCode::Or),
-            "if" => Ok(OpCode::If),
-            "?:" => Ok(OpCode::Ternary),
+            // `?:` is accepted as a synonym of the 3-arg form of `if` —
+            // both normalize to OpCode::If. `evaluate_if_arena` already
+            // handles the 3-arg case identically to a ternary.
+            "if" | "?:" => Ok(OpCode::If),
             "+" => Ok(OpCode::Add),
             "-" => Ok(OpCode::Subtract),
             "*" => Ok(OpCode::Multiply),
@@ -249,8 +253,6 @@ impl FromStr for OpCode {
 
             // ext-control
             #[cfg(feature = "ext-control")]
-            "val" => Ok(OpCode::Val),
-            #[cfg(feature = "ext-control")]
             "exists" => Ok(OpCode::Exists),
             #[cfg(feature = "ext-control")]
             "??" => Ok(OpCode::Coalesce),
@@ -283,7 +285,7 @@ impl OpCode {
     pub fn as_str(&self) -> &'static str {
         match self {
             // Core
-            OpCode::Var => "var",
+            OpCode::Val => "val",
             OpCode::Equals => "==",
             OpCode::StrictEquals => "===",
             OpCode::NotEquals => "!=",
@@ -297,7 +299,6 @@ impl OpCode {
             OpCode::And => "and",
             OpCode::Or => "or",
             OpCode::If => "if",
-            OpCode::Ternary => "?:",
             OpCode::Add => "+",
             OpCode::Subtract => "-",
             OpCode::Multiply => "*",
@@ -359,8 +360,6 @@ impl OpCode {
             OpCode::Slice => "slice",
 
             // ext-control
-            #[cfg(feature = "ext-control")]
-            OpCode::Val => "val",
             #[cfg(feature = "ext-control")]
             OpCode::Exists => "exists",
             #[cfg(feature = "ext-control")]

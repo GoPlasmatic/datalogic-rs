@@ -174,7 +174,9 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
                     // Try parsing as integer first, then float
                     if let Ok(i) = s.parse::<i64>() {
                         changed = true;
-                        CompiledNode::synthetic_value(OwnedDataValue::Number(NumberValue::Integer(i)))
+                        CompiledNode::synthetic_value(OwnedDataValue::Number(NumberValue::Integer(
+                            i,
+                        )))
                     } else if let Ok(f) = s.parse::<f64>() {
                         if f.is_finite() {
                             changed = true;

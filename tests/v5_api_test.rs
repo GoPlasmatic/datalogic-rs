@@ -21,7 +21,9 @@ fn builder_default_engine() {
 fn evaluate_str_with_variable() {
     let engine = DataLogic::new();
     let compiled = engine.compile_str(r#"{"var": "name"}"#).unwrap();
-    let result = engine.evaluate_str(&compiled, r#"{"name": "Alice"}"#).unwrap();
+    let result = engine
+        .evaluate_str(&compiled, r#"{"name": "Alice"}"#)
+        .unwrap();
     assert_eq!(result, "\"Alice\"");
 }
 

@@ -1,10 +1,6 @@
 use crate::arena::DataValue;
 use crate::opcode::OpCode;
 use datavalue::OwnedDataValue;
-#[cfg(feature = "ext-string")]
-use regex::Regex;
-#[cfg(feature = "ext-string")]
-use std::sync::Arc;
 
 /// Pre-build a `DataValue<'static>` for primitive literals that don't
 /// require additional storage (Numbers — inline `NumberValue`). Used at
@@ -98,12 +94,6 @@ pub(crate) unsafe fn populate_arena_lits(node: &mut CompiledNode, arena: &bumpal
         }
         #[cfg(feature = "ext-control")]
         CompiledNode::CompiledExists(_) => {}
-        #[cfg(feature = "ext-string")]
-        CompiledNode::CompiledSplitRegex(data) => {
-            for n in data.args.iter_mut() {
-                unsafe { populate_arena_lits(n, arena) };
-            }
-        }
         #[cfg(feature = "error-handling")]
         CompiledNode::CompiledThrow(data) => {
             if data.arena_error.is_none() {
@@ -248,16 +238,6 @@ pub enum CompiledMissingPaths {
     Dynamic(CompiledNode),
 }
 
-/// Data for a pre-compiled split with regex (boxed inside CompiledNode to reduce enum size).
-#[cfg(feature = "ext-string")]
-#[derive(Debug, Clone)]
-pub struct CompiledSplitRegexData {
-    pub id: u32,
-    pub args: Box<[CompiledNode]>,
-    pub regex: Arc<Regex>,
-    pub capture_names: Box<[Box<str>]>,
-}
-
 /// Data for a pre-compiled throw with a static error object.
 /// Previously `Box<Value>`; upgraded to a named struct so it can carry an id
 /// alongside the error payload.
@@ -347,11 +327,6 @@ pub enum CompiledNode {
     #[cfg(feature = "ext-control")]
     CompiledExists(Box<CompiledExistsData>),
 
-    /// A pre-compiled split with regex pattern.
-    /// Boxed to reduce enum size (rare variant).
-    #[cfg(feature = "ext-string")]
-    CompiledSplitRegex(Box<CompiledSplitRegexData>),
-
     /// A pre-compiled throw with a static error object.
     /// Boxed to reduce enum size (rare variant).
     #[cfg(feature = "error-handling")]
@@ -383,8 +358,6 @@ impl CompiledNode {
             CompiledNode::CompiledVar { id, .. } => *id,
             #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(data) => data.id,
-            #[cfg(feature = "ext-string")]
-            CompiledNode::CompiledSplitRegex(data) => data.id,
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(data) => data.id,
             CompiledNode::CompiledMissing(data) => data.id,
@@ -430,8 +403,6 @@ impl CompiledNode {
             CompiledNode::CompiledVar { .. } => Some("var".to_string()),
             #[cfg(feature = "ext-control")]
             CompiledNode::CompiledExists(_) => Some("exists".to_string()),
-            #[cfg(feature = "ext-string")]
-            CompiledNode::CompiledSplitRegex(_) => Some("split".to_string()),
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(_) => Some("throw".to_string()),
             CompiledNode::CompiledMissing(_) => Some("missing".to_string()),
@@ -622,12 +593,6 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
         }
         #[cfg(feature = "ext-control")]
         CompiledNode::CompiledExists(_) => {}
-        #[cfg(feature = "ext-string")]
-        CompiledNode::CompiledSplitRegex(data) => {
-            for n in data.args.iter() {
-                bytes += estimate_arena_static_bytes(n);
-            }
-        }
         #[cfg(feature = "error-handling")]
         CompiledNode::CompiledThrow(data) => {
             bytes += estimate_value_bytes(&data.error);
@@ -660,9 +625,7 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
 fn estimate_value_bytes(v: &OwnedDataValue) -> usize {
     match v {
         OwnedDataValue::String(s) => s.len() + 16,
-        OwnedDataValue::Array(arr) => {
-            16 + arr.iter().map(estimate_value_bytes).sum::<usize>()
-        }
+        OwnedDataValue::Array(arr) => 16 + arr.iter().map(estimate_value_bytes).sum::<usize>(),
         OwnedDataValue::Object(pairs) => {
             16 + pairs
                 .iter()
@@ -683,8 +646,6 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::CompiledVar { .. } => false,
         #[cfg(feature = "ext-control")]
         CompiledNode::CompiledExists(_) => false,
-        #[cfg(feature = "ext-string")]
-        CompiledNode::CompiledSplitRegex(data) => data.args.iter().all(node_is_static),
         #[cfg(feature = "error-handling")]
         CompiledNode::CompiledThrow(_) => false,
         #[cfg(feature = "preserve")]
@@ -719,9 +680,9 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
     match opcode {
         // Context-dependent: These operators read from the data context, which is
         // not available at compile time. They must remain dynamic.
-        Var | Missing | MissingSome => false,
+        Val | Missing | MissingSome => false,
         #[cfg(feature = "ext-control")]
-        Val | Exists => false,
+        Exists => false,
 
         // Iteration operators: These push new contexts for each iteration and use
         // callbacks that may reference the iteration variable. Even with static

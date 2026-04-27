@@ -86,11 +86,7 @@ fn sort_direction<'a>(
 }
 
 #[inline]
-fn sort_no_extractor<'a>(
-    src: &IterSrc<'a>,
-    ascending: bool,
-    arena: &'a Bump,
-) -> &'a DataValue<'a> {
+fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) -> &'a DataValue<'a> {
     let len = src.len();
     let mut indices: Vec<usize> = (0..len).collect();
     indices.sort_by(|&a, &b| {
