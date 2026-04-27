@@ -11,7 +11,7 @@ use bumpalo::Bump;
 
 /// Resolve the lookup-target for `missing` / `missing_some` — current
 /// context's data view as `&'a DataValue<'a>`.
-#[inline]
+#[inline(always)]
 fn lookup_av<'a>(actx: &DataContextStack<'a>) -> &'a DataValue<'a> {
     if actx.depth() > 0 {
         use crate::arena::context::ArenaContextRef;

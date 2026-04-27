@@ -17,7 +17,7 @@ use bumpalo::Bump;
 /// Return the current frame's data as an `&'a DataValue<'a>`. Root and frame
 /// branches both return their stored `&DataValue` directly — no per-call
 /// allocation.
-#[inline]
+#[inline(always)]
 fn current_data_av<'a>(actx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
     use crate::arena::context::ArenaContextRef;
     match actx.current() {
@@ -79,7 +79,7 @@ pub(crate) struct CompiledVarSpec<'n> {
 ///
 /// Each branch falls through to `default_or_null_arena` on miss; the var's
 /// `default_value` (when present) is evaluated lazily there.
-#[inline]
+#[inline(always)]
 pub(crate) fn evaluate_compiled_var_arena<'a>(
     spec: CompiledVarSpec<'a>,
     actx: &mut DataContextStack<'a>,

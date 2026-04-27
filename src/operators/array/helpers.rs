@@ -174,7 +174,7 @@ impl FastPredicate {
     }
 
     /// Resolve the value to compare: either the whole item or a field within it.
-    #[inline]
+    #[inline(always)]
     fn resolve_value<'b>(
         segments: &[crate::node::PathSegment],
         item: &'b DataValue<'b>,
@@ -188,7 +188,11 @@ impl FastPredicate {
     }
 
     /// Evaluate this predicate against a single item.
-    #[inline]
+    ///
+    /// `#[inline(always)]` because this runs once per item in every
+    /// quantifier/filter fast path — the per-call overhead of an outlined
+    /// version dominates the actual comparison work for scalar predicates.
+    #[inline(always)]
     pub(super) fn evaluate<'b>(&self, item: &'b DataValue<'b>, arena: &'b Bump) -> bool {
         match self {
             FastPredicate::StrictEq {
@@ -281,7 +285,13 @@ pub(super) fn arena_value_equals_arena(a: &DataValue<'_>, b: &DataValue<'_>) -> 
 /// [`OwnedDataValue`] literal — used by `FastPredicate::StrictEq` to
 /// compare an arena-resident item against a compile-time literal without
 /// allocating.
-#[inline]
+///
+/// Scalar arms (Null/Bool/Number/String) live in the `#[inline(always)]`
+/// entry point so the dominant `filter(arr, == [{var}, scalar])` shape
+/// compiles down to a few branches at the call site. Compound arms
+/// (Array/Object) trampoline to an outlined helper to keep the inlined
+/// body small.
+#[inline(always)]
 fn arena_value_equals_value(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
     use datavalue::OwnedDataValue;
     match (av, v) {
@@ -289,6 +299,20 @@ fn arena_value_equals_value(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -
         (DataValue::Bool(a), OwnedDataValue::Bool(b)) => a == b,
         (DataValue::Number(a), OwnedDataValue::Number(b)) => a == b,
         (DataValue::String(s), OwnedDataValue::String(b)) => *s == b.as_str(),
+        (DataValue::Array(_), OwnedDataValue::Array(_))
+        | (DataValue::Object(_), OwnedDataValue::Object(_)) => {
+            arena_value_equals_value_compound(av, v)
+        }
+        _ => false,
+    }
+}
+
+/// Compound (Array/Object) cases of [`arena_value_equals_value`]. Outlined
+/// so the recursive body never gets inlined into the per-item fast path.
+#[inline(never)]
+fn arena_value_equals_value_compound(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
+    use datavalue::OwnedDataValue;
+    match (av, v) {
         (DataValue::Array(items), OwnedDataValue::Array(b)) => {
             items.len() == b.len()
                 && items
@@ -421,7 +445,12 @@ impl IterArgKind {
 /// `actx.depth() != 0` falls through to General even when the kind is
 /// `RootVarBorrow`, because a borrow at non-root depth would leak the caller's
 /// iteration frame instead of reading the rule's input.
-#[inline]
+///
+/// `#[inline(always)]` because every iterator-op call funnels through here —
+/// outlining was paying a function call for every quantifier/filter/map/
+/// reduce despite the body being short and largely constant-foldable from
+/// the call site (the cached `IterArgKind` tag).
+#[inline(always)]
 pub(crate) fn resolve_iter_input<'a>(
     arg: &'a CompiledNode,
     kind: IterArgKind,

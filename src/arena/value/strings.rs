@@ -108,6 +108,11 @@ fn write_json_string(buf: &mut String, s: &str) {
 }
 
 /// Config-aware truthiness for `DataValue`. Mirrors `helpers::is_truthy`.
+///
+/// `#[inline(always)]` because the function ends up inside the per-iteration
+/// general path of every quantifier/filter — outlining was paying a real call
+/// per item even though the hot branch is just the JS/Python default.
+#[inline(always)]
 pub(crate) fn is_truthy_arena(v: &DataValue<'_>, engine: &crate::DataLogic) -> bool {
     use crate::config::TruthyEvaluator;
     match &engine.config().truthy_evaluator {
