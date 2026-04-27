@@ -1,27 +1,33 @@
 //! Arena allocation infrastructure for zero-clone evaluation.
 //!
-//! Public types ([`ArenaValue`], [`ArenaContextStack`]) are also re-exported
+//! Public types ([`DataValue`], [`DataContextStack`]) are also re-exported
 //! at the crate root for ergonomics. They appear in
-//! [`crate::ArenaOperator::evaluate_arena`] signatures and let users
+//! [`crate::DataOperator::evaluate`] signatures and let users
 //! implement custom operators that participate in arena dispatch without
 //! materializing `serde_json::Value`.
 //!
 //! The arena is acquired and released within a single
 //! [`crate::DataLogic::evaluate_ref`] / [`crate::DataLogic::evaluate`]
-//! call; the [`ArenaValue`] tree borrows from a [`bumpalo::Bump`] plus the
+//! call; the [`DataValue`] tree borrows from a [`bumpalo::Bump`] plus the
 //! caller's input `&Value`.
 
 pub(crate) mod context;
 pub(crate) mod pool;
 pub(crate) mod value;
 
-pub use context::ArenaContextStack;
+pub use context::DataContextStack;
 pub(crate) use context::IterGuard;
+pub use value::DataValue;
+#[cfg(feature = "compat")]
+#[allow(unused_imports)]
 pub(crate) use pool::ArenaGuard;
-pub use value::{ArenaValue, value_to_arena};
+#[cfg(feature = "compat")]
+pub use value::value_to_arena;
+#[cfg(feature = "compat")]
+pub(crate) use value::arena_to_value;
 pub(crate) use value::{
-    arena_to_value, arena_to_value_cow, coerce_arena_to_number_cfg, is_truthy_arena,
-    to_string_arena, try_coerce_arena_to_integer_cfg,
+    coerce_arena_to_number_cfg, data_to_json_string, is_truthy_arena, to_string_arena,
+    try_coerce_arena_to_integer_cfg,
 };
 
 /// Allocate an empty `bumpalo::collections::Vec` with `cap` reserved slots.

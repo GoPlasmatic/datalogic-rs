@@ -1,10 +1,9 @@
 //! `+`, `-`, `*` — basic arithmetic with overflow promotion to `f64` and
 //! optional datetime/duration support.
 
-use serde_json::Value;
 
 use crate::arena::{
-    ArenaContextStack, ArenaValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg,
+    DataContextStack, DataValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg,
 };
 use crate::value::NumberValue;
 use crate::{CompiledNode, DataLogic, Result};
@@ -21,10 +20,10 @@ use super::helpers::{
 #[inline]
 pub(crate) fn evaluate_add_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(arena_number(arena, NumberValue::from_i64(0)));
     }
@@ -52,12 +51,12 @@ pub(crate) fn evaluate_add_arena<'a>(
 fn add_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let a_av = engine.evaluate_arena_node(a, actx, arena)?;
-    let b_av = engine.evaluate_arena_node(b, actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let a_av = engine.evaluate_node(a, actx, arena)?;
+    let b_av = engine.evaluate_node(b, actx, arena)?;
 
     // Integer-preserving fast path (both native Number with i64 values).
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -106,10 +105,10 @@ fn add_two_arg<'a>(
 #[inline]
 pub(crate) fn evaluate_multiply_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(arena_number(arena, NumberValue::from_i64(1)));
     }
@@ -137,12 +136,12 @@ pub(crate) fn evaluate_multiply_arena<'a>(
 fn multiply_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let a_av = engine.evaluate_arena_node(a, actx, arena)?;
-    let b_av = engine.evaluate_arena_node(b, actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let a_av = engine.evaluate_node(a, actx, arena)?;
+    let b_av = engine.evaluate_node(b, actx, arena)?;
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -191,10 +190,10 @@ fn multiply_two_arg<'a>(
 #[inline]
 pub(crate) fn evaluate_subtract_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
@@ -210,14 +209,14 @@ pub(crate) fn evaluate_subtract_arena<'a>(
 #[inline]
 fn subtract_one_arg<'a>(
     arg: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let av = engine.evaluate_arena_node(arg, actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let av = engine.evaluate_node(arg, actx, arena)?;
 
     // Array fold case: (first - second - ...).
-    if let ArenaValue::Array(items) = av {
+    if let DataValue::Array(items) = av {
         if items.is_empty() {
             return Err(crate::constants::invalid_args());
         }
@@ -249,12 +248,12 @@ fn subtract_one_arg<'a>(
 fn subtract_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let a_av = engine.evaluate_arena_node(a, actx, arena)?;
-    let b_av = engine.evaluate_arena_node(b, actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let a_av = engine.evaluate_node(a, actx, arena)?;
+    let b_av = engine.evaluate_node(b, actx, arena)?;
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -289,11 +288,11 @@ fn subtract_two_arg<'a>(
 #[inline]
 fn subtract_variadic<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
     let mut all_int =
         first_av.as_i64().is_some() || try_coerce_arena_to_integer_cfg(first_av, engine).is_some();
     let mut int_acc: i64 = first_av
@@ -306,7 +305,7 @@ fn subtract_variadic<'a>(
     };
 
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, actx, arena)?;
         if all_int
             && let Some(i) = av
                 .as_i64()
@@ -347,18 +346,18 @@ fn subtract_variadic<'a>(
 /// or treat as a single-value sum/product.
 fn arena_one_arg_arith<'a>(
     arg: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: ArithOp,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // Literal array argument is invalid for + / *. Apply NaN config (default
     // ThrowError → propagates the error up).
     let is_literal_array = matches!(arg, CompiledNode::Array { .. })
         || matches!(
             arg,
             CompiledNode::Value {
-                value: Value::Array(_),
+                value: datavalue::OwnedDataValue::Array(_),
                 ..
             }
         );
@@ -372,10 +371,10 @@ fn arena_one_arg_arith<'a>(
         };
     }
 
-    let av = engine.evaluate_arena_node(arg, actx, arena)?;
+    let av = engine.evaluate_node(arg, actx, arena)?;
 
     // Array result (e.g. from `var "items"`): fold all elements.
-    if let ArenaValue::Array(items) = av {
+    if let DataValue::Array(items) = av {
         return one_arg_array_fold(items, engine, arena, op);
     }
 
@@ -408,11 +407,11 @@ fn arena_one_arg_arith<'a>(
 /// path and overflow-to-f64.
 #[inline]
 fn one_arg_array_fold<'a>(
-    items: &[ArenaValue<'a>],
+    items: &[DataValue<'a>],
     engine: &DataLogic,
     arena: &'a Bump,
     op: ArithOp,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if items.is_empty() {
         return Ok(arena_number(
             arena,

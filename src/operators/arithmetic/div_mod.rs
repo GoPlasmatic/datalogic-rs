@@ -1,7 +1,7 @@
 //! `/` and `%` — division and modulo. Shares the unified
 //! [`arena_div_or_mod`] entry point with a [`DivOp`] discriminator.
 
-use crate::arena::{ArenaContextStack, ArenaValue, coerce_arena_to_number_cfg};
+use crate::arena::{DataContextStack, DataValue, coerce_arena_to_number_cfg};
 use crate::config::DivisionByZeroHandling;
 use crate::value::NumberValue;
 use crate::{CompiledNode, DataLogic, Result};
@@ -45,11 +45,11 @@ impl DivOp {
 #[inline]
 pub(crate) fn arena_div_or_mod<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
@@ -66,13 +66,13 @@ pub(crate) fn arena_div_or_mod<'a>(
 fn div_mod_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
-) -> Result<&'a ArenaValue<'a>> {
-    let a_av = engine.evaluate_arena_node(a, actx, arena)?;
-    let b_av = engine.evaluate_arena_node(b, actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let a_av = engine.evaluate_node(a, actx, arena)?;
+    let b_av = engine.evaluate_node(b, actx, arena)?;
 
     // Duration / Number — only for `/`, not `%` (modulo on durations
     // is not defined).
@@ -106,7 +106,7 @@ fn divbyzero_arena<'a>(
     arena: &'a Bump,
     dividend: f64,
     engine: &DataLogic,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     match engine.config().division_by_zero {
         DivisionByZeroHandling::ThrowError => Err(crate::constants::nan_error()),
         DivisionByZeroHandling::ReturnNull => Ok(crate::arena::pool::singleton_null()),
@@ -137,14 +137,14 @@ fn divbyzero_arena<'a>(
 ///     non-array argument → InvalidArguments.
 fn arena_one_arg_div_mod<'a>(
     arg: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
-) -> Result<&'a ArenaValue<'a>> {
-    let av = engine.evaluate_arena_node(arg, actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let av = engine.evaluate_node(arg, actx, arena)?;
 
-    if let ArenaValue::Array(items) = av {
+    if let DataValue::Array(items) = av {
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::constants::invalid_args());
@@ -190,16 +190,16 @@ fn arena_one_arg_div_mod<'a>(
 /// per-step zero-divisor check.
 fn arena_variadic_div_mod<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
-) -> Result<&'a ArenaValue<'a>> {
-    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+) -> Result<&'a DataValue<'a>> {
+    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
     let mut result =
         coerce_arena_to_number_cfg(first_av, engine).ok_or_else(crate::constants::nan_error)?;
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, actx, arena)?;
         let n = coerce_arena_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
         if n == 0.0 {
             return Err(crate::constants::nan_error());

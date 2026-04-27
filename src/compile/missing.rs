@@ -1,7 +1,7 @@
 //! Compilation for `missing` and `missing_some` — pre-parse static path
 //! arguments so runtime evaluation can skip the parser.
 
-use serde_json::Value;
+use datavalue::{NumberValue, OwnedDataValue};
 
 use crate::node::{
     CompileCtx, CompiledMissingArg, CompiledMissingData, CompiledMissingMin, CompiledMissingPaths,
@@ -11,16 +11,16 @@ use crate::node::{
 use super::path::parse_path_segments;
 
 /// Build a `CompiledMissing` from raw operator args. Each arg that is a
-/// literal `Value::String` is pre-parsed; everything else (including
-/// literal arrays of strings, var lookups, computed expressions) goes
-/// through the runtime dispatch path.
+/// literal string is pre-parsed; everything else (including literal arrays
+/// of strings, var lookups, computed expressions) goes through the runtime
+/// dispatch path.
 pub(super) fn compile_missing(args: Box<[CompiledNode]>, ctx: &mut CompileCtx) -> CompiledNode {
     let mapped: Vec<CompiledMissingArg> = args
         .into_vec()
         .into_iter()
         .map(|arg| match &arg {
             CompiledNode::Value {
-                value: Value::String(s),
+                value: OwnedDataValue::String(s),
                 ..
             } => {
                 let segments = parse_path_segments(s).into_boxed_slice();
@@ -51,12 +51,12 @@ pub(super) fn compile_missing_some(
 
     let min_present = match min_arg {
         Some(CompiledNode::Value {
-            value: Value::Number(n),
+            value: OwnedDataValue::Number(n),
             ..
-        }) => match n.as_i64() {
-            Some(v) if v >= 0 => CompiledMissingMin::Static(v as usize),
-            Some(_) => CompiledMissingMin::Static(0),
-            None => CompiledMissingMin::Static(n.as_f64().unwrap_or(0.0).max(0.0) as usize),
+        }) => match n {
+            NumberValue::Integer(v) if v >= 0 => CompiledMissingMin::Static(v as usize),
+            NumberValue::Integer(_) => CompiledMissingMin::Static(0),
+            NumberValue::Float(f) => CompiledMissingMin::Static(f.max(0.0) as usize),
         },
         Some(other) => CompiledMissingMin::Dynamic(other),
         None => CompiledMissingMin::Static(1),
@@ -64,14 +64,14 @@ pub(super) fn compile_missing_some(
 
     let paths = match paths_arg {
         Some(CompiledNode::Value {
-            value: Value::Array(arr),
+            value: OwnedDataValue::Array(arr),
             ..
-        }) if arr.iter().all(|v| matches!(v, Value::String(_))) => {
+        }) if arr.iter().all(|v| matches!(v, OwnedDataValue::String(_))) => {
             let parsed: Vec<(Box<str>, Box<[PathSegment]>)> = arr
                 .into_iter()
                 .map(|v| {
                     let s = match v {
-                        Value::String(s) => s,
+                        OwnedDataValue::String(s) => s,
                         _ => unreachable!(),
                     };
                     let segments = parse_path_segments(&s).into_boxed_slice();

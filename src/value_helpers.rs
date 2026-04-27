@@ -1,9 +1,8 @@
-//! Boundary equality helpers for `serde_json::Value`.
+//! Boundary equality helpers for [`DataValue`].
 //!
-//! All evaluation-hot-path operators dispatch on `ArenaValue`. The functions
-//! here are reached only from the comparison-arena collection-fallback path
-//! (rare — array-vs-array / object-vs-object), via the `arena_to_value_cow`
-//! materialisation in `operators/comparison.rs`.
+//! All evaluation-hot-path operators dispatch on `DataValue`. The functions
+//! here are reached from the comparison-arena collection-fallback path
+//! (rare — array-vs-array / object-vs-object) in `operators/comparison.rs`.
 //!
 //! # Equality modes
 //!
@@ -21,45 +20,60 @@
 //! | Null      | Bool       | `null` equals `false` |
 //! | Null      | String     | `null` equals `""` |
 
+use crate::arena::DataValue;
 use crate::constants::NAN_ERROR;
-use serde_json::Value;
 
-/// Compare two values with strict equality (JavaScript ===).
-pub(crate) fn strict_equals(left: &Value, right: &Value) -> bool {
-    left == right
+/// Compare two values with strict equality (JavaScript ===). Walks both
+/// trees structurally; arena and number type tags must match exactly for
+/// equality.
+pub(crate) fn strict_equals(left: &DataValue<'_>, right: &DataValue<'_>) -> bool {
+    match (left, right) {
+        (DataValue::Null, DataValue::Null) => true,
+        (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
+        (DataValue::Number(a), DataValue::Number(b)) => a == b,
+        (DataValue::String(a), DataValue::String(b)) => a == b,
+        (DataValue::Array(a), DataValue::Array(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|(x, y)| strict_equals(x, y))
+        }
+        (DataValue::Object(a), DataValue::Object(b)) => {
+            a.len() == b.len()
+                && a.iter().zip(b.iter()).all(|((ka, va), (kb, vb))| {
+                    *ka == *kb && strict_equals(va, vb)
+                })
+        }
+        #[cfg(feature = "datetime")]
+        (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
+        #[cfg(feature = "datetime")]
+        (DataValue::Duration(a), DataValue::Duration(b)) => a == b,
+        _ => false,
+    }
 }
 
-/// Result of loose equality comparison for incompatible types
+/// Result of loose equality comparison for incompatible types.
 enum LooseEqualsResult {
     Equal,
     NotEqual,
     Incompatible,
 }
 
-/// Core implementation of loose equality comparison
-fn loose_equals_core(left: &Value, right: &Value) -> LooseEqualsResult {
+fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEqualsResult {
     use LooseEqualsResult::*;
 
     match (left, right) {
-        // Same type comparisons
-        (Value::Null, Value::Null) => Equal,
-        (Value::Bool(a), Value::Bool(b)) => {
-            if a == b {
-                Equal
-            } else {
-                NotEqual
-            }
+        // Same-type cases
+        (DataValue::Null, DataValue::Null) => Equal,
+        (DataValue::Bool(a), DataValue::Bool(b)) => {
+            if a == b { Equal } else { NotEqual }
         }
-        (Value::String(a), Value::String(b)) => {
-            if a == b {
-                Equal
-            } else {
-                NotEqual
-            }
+        (DataValue::String(a), DataValue::String(b)) => {
+            if a == b { Equal } else { NotEqual }
         }
-        (Value::Number(a), Value::Number(b)) => {
-            let a_f = a.as_f64().unwrap_or(f64::NAN);
-            let b_f = b.as_f64().unwrap_or(f64::NAN);
+        (DataValue::Number(a), DataValue::Number(b)) => {
+            let a_f = a.as_f64();
+            let b_f = b.as_f64();
             if !a_f.is_nan() && !b_f.is_nan() && a_f == b_f {
                 Equal
             } else {
@@ -68,17 +82,17 @@ fn loose_equals_core(left: &Value, right: &Value) -> LooseEqualsResult {
         }
 
         // Number-String coercion
-        (Value::Number(n), Value::String(s)) | (Value::String(s), Value::Number(n)) => {
-            match (n.as_f64(), s.parse::<f64>().ok()) {
-                (Some(n_f), Some(s_f)) if n_f == s_f => Equal,
-                (Some(_), Some(_)) => NotEqual,
-                _ => Incompatible,
-            }
-        }
+        (DataValue::Number(n), DataValue::String(s))
+        | (DataValue::String(s), DataValue::Number(n)) => match s.parse::<f64>().ok() {
+            Some(s_f) if n.as_f64() == s_f => Equal,
+            Some(_) => NotEqual,
+            None => Incompatible,
+        },
 
         // Number-Bool coercion
-        (Value::Number(n), Value::Bool(b)) | (Value::Bool(b), Value::Number(n)) => {
-            if n.as_f64() == Some(if *b { 1.0 } else { 0.0 }) {
+        (DataValue::Number(n), DataValue::Bool(b))
+        | (DataValue::Bool(b), DataValue::Number(n)) => {
+            if n.as_f64() == (if *b { 1.0 } else { 0.0 }) {
                 Equal
             } else {
                 NotEqual
@@ -86,8 +100,9 @@ fn loose_equals_core(left: &Value, right: &Value) -> LooseEqualsResult {
         }
 
         // String-Bool coercion
-        (Value::String(s), Value::Bool(b)) | (Value::Bool(b), Value::String(s)) => {
-            if s == if *b { "true" } else { "false" } {
+        (DataValue::String(s), DataValue::Bool(b))
+        | (DataValue::Bool(b), DataValue::String(s)) => {
+            if *s == (if *b { "true" } else { "false" }) {
                 Equal
             } else {
                 NotEqual
@@ -95,43 +110,33 @@ fn loose_equals_core(left: &Value, right: &Value) -> LooseEqualsResult {
         }
 
         // Null coercions
-        (Value::Null, Value::Number(n)) | (Value::Number(n), Value::Null) => {
-            if n.as_f64() == Some(0.0) {
-                Equal
-            } else {
-                NotEqual
-            }
+        (DataValue::Null, DataValue::Number(n)) | (DataValue::Number(n), DataValue::Null) => {
+            if n.as_f64() == 0.0 { Equal } else { NotEqual }
         }
-        (Value::Null, Value::Bool(b)) | (Value::Bool(b), Value::Null) => {
-            if !*b {
-                Equal
-            } else {
-                NotEqual
-            }
+        (DataValue::Null, DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Null) => {
+            if !*b { Equal } else { NotEqual }
         }
-        (Value::Null, Value::String(s)) | (Value::String(s), Value::Null) => {
-            if s.is_empty() {
-                Equal
-            } else {
-                NotEqual
-            }
+        (DataValue::Null, DataValue::String(s)) | (DataValue::String(s), DataValue::Null) => {
+            if s.is_empty() { Equal } else { NotEqual }
         }
 
-        // Complex types compared to primitives - incompatible
-        (Value::Array(_), _) | (_, Value::Array(_))
-            if !matches!((left, right), (Value::Array(_), Value::Array(_))) =>
+        // Composite mixed with primitive: incompatible
+        (DataValue::Array(_), _) | (_, DataValue::Array(_))
+            if !matches!((left, right), (DataValue::Array(_), DataValue::Array(_))) =>
         {
             Incompatible
         }
-        (Value::Object(_), _) | (_, Value::Object(_))
-            if !matches!((left, right), (Value::Object(_), Value::Object(_))) =>
+        (DataValue::Object(_), _) | (_, DataValue::Object(_))
+            if !matches!((left, right), (DataValue::Object(_), DataValue::Object(_))) =>
         {
             Incompatible
         }
 
-        // Array to array comparison
-        (Value::Array(a), Value::Array(b)) => {
-            if a.len() == b.len() && a.iter().zip(b.iter()).all(|(av, bv)| av == bv) {
+        // Array-array structural compare
+        (DataValue::Array(a), DataValue::Array(b)) => {
+            if a.len() == b.len()
+                && a.iter().zip(b.iter()).all(|(x, y)| strict_equals(x, y))
+            {
                 Equal
             } else {
                 Incompatible
@@ -146,8 +151,8 @@ fn loose_equals_core(left: &Value, right: &Value) -> LooseEqualsResult {
 /// `loose_equality_errors` enabled, type-incompatible operands return an
 /// error; otherwise they compare as not-equal.
 pub(crate) fn loose_equals(
-    left: &Value,
-    right: &Value,
+    left: &DataValue<'_>,
+    right: &DataValue<'_>,
     engine: &crate::DataLogic,
 ) -> crate::Result<bool> {
     use crate::Error;

@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::arena::{ArenaContextStack, ArenaValue, IterGuard};
+use crate::arena::{DataContextStack, DataValue, IterGuard};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
@@ -10,19 +10,19 @@ use bumpalo::Bump;
 use super::helpers::{IterSrc, ResolvedInput, resolve_iter_input};
 
 /// `sort`. Borrows input via `IterSrc` (no input clone), runs
-/// `slice::sort_by` over indices, and emits `ArenaValue::Array` re-borrowing
+/// `slice::sort_by` over indices, and emits `DataValue::Array` re-borrowing
 /// the original arena items in their sorted order — avoids a deep-clone of
 /// the input array, which dominates for object arrays.
 ///
 /// Fast path (extractor is a root-scope `var`): keys come from
-/// `arena_traverse_segments` returning `&ArenaValue` directly, no key clones.
+/// `arena_traverse_segments` returning `&DataValue` directly, no key clones.
 #[inline]
 pub(crate) fn evaluate_sort_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
@@ -36,7 +36,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
 
     let src = match resolve_iter_input(&args[0], actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(ArenaValue::Null)),
+        ResolvedInput::Empty => return Ok(arena.alloc(DataValue::Null)),
         ResolvedInput::Bridge(av) => {
             return sort_arena_from_value(av, args, actx, engine, arena);
         }
@@ -44,12 +44,12 @@ pub(crate) fn evaluate_sort_arena<'a>(
 
     let len = src.len();
     if len == 0 {
-        return Ok(arena.alloc(ArenaValue::Array(&[])));
+        return Ok(arena.alloc(DataValue::Array(&[])));
     }
 
     let ascending = sort_direction(args, actx, engine, arena)?;
 
-    // No extractor — sort items directly by ArenaValue order.
+    // No extractor — sort items directly by DataValue order.
     if args.len() <= 2 {
         return Ok(sort_no_extractor(&src, ascending, arena));
     }
@@ -70,14 +70,14 @@ pub(crate) fn evaluate_sort_arena<'a>(
 #[inline]
 fn sort_direction<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<bool> {
     if args.len() > 1 {
-        let dir = engine.evaluate_arena_node(&args[1], actx, arena)?;
+        let dir = engine.evaluate_node(&args[1], actx, arena)?;
         Ok(match dir {
-            ArenaValue::Bool(b) => *b,
+            DataValue::Bool(b) => *b,
             _ => true,
         })
     } else {
@@ -90,7 +90,7 @@ fn sort_no_extractor<'a>(
     src: &IterSrc<'a>,
     ascending: bool,
     arena: &'a Bump,
-) -> &'a ArenaValue<'a> {
+) -> &'a DataValue<'a> {
     let len = src.len();
     let mut indices: Vec<usize> = (0..len).collect();
     indices.sort_by(|&a, &b| {
@@ -102,7 +102,7 @@ fn sort_no_extractor<'a>(
             .into_iter()
             .map(|i| crate::arena::value::reborrow_arena_value(src.get(i))),
     );
-    arena.alloc(ArenaValue::Array(slice))
+    arena.alloc(DataValue::Array(slice))
 }
 
 /// Extractor fast path: `{var: "field..."}` over non-empty segments at scope 0.
@@ -112,7 +112,7 @@ fn sort_fast_path_var_extractor<'a>(
     extractor: &'a CompiledNode,
     ascending: bool,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     let CompiledNode::CompiledVar {
         scope_level: 0,
         segments,
@@ -129,7 +129,7 @@ fn sort_fast_path_var_extractor<'a>(
     }
 
     let len = src.len();
-    let mut keyed: Vec<(usize, Option<&ArenaValue<'a>>)> = (0..len)
+    let mut keyed: Vec<(usize, Option<&DataValue<'a>>)> = (0..len)
         .map(|i| {
             (
                 i,
@@ -151,7 +151,7 @@ fn sort_fast_path_var_extractor<'a>(
             .into_iter()
             .map(|(i, _)| crate::arena::value::reborrow_arena_value(src.get(i))),
     );
-    Some(arena.alloc(ArenaValue::Array(slice)))
+    Some(arena.alloc(DataValue::Array(slice)))
 }
 
 #[inline]
@@ -159,17 +159,17 @@ fn sort_general_extractor<'a>(
     src: &IterSrc<'a>,
     extractor: &'a CompiledNode,
     ascending: bool,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     let len = src.len();
-    let mut keys: Vec<ArenaValue<'a>> = Vec::with_capacity(len);
+    let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(len);
     let mut guard = IterGuard::new(actx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
-        let key_av = engine.evaluate_arena_node(extractor, guard.stack(), arena)?;
+        let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;
         keys.push(crate::arena::value::reborrow_arena_value(key_av));
     }
     drop(guard);
@@ -184,7 +184,7 @@ fn sort_general_extractor<'a>(
             .into_iter()
             .map(|i| crate::arena::value::reborrow_arena_value(src.get(i))),
     );
-    Ok(arena.alloc(ArenaValue::Array(slice)))
+    Ok(arena.alloc(DataValue::Array(slice)))
 }
 
 /// Sort a resolved arena value when the input wasn't borrowable as a
@@ -193,21 +193,21 @@ fn sort_general_extractor<'a>(
 /// as the borrowed path.
 #[inline]
 fn sort_arena_from_value<'a>(
-    av: &'a ArenaValue<'a>,
+    av: &'a DataValue<'a>,
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let arena_items_slice: &'a [ArenaValue<'a>] = match av {
-        ArenaValue::Null => {
+) -> Result<&'a DataValue<'a>> {
+    let arena_items_slice: &'a [DataValue<'a>] = match av {
+        DataValue::Null => {
             return Ok(crate::arena::pool::singleton_null());
         }
-        ArenaValue::Array(items) => items,
+        DataValue::Array(items) => items,
         _ => return Err(crate::constants::invalid_args()),
     };
     if arena_items_slice.is_empty() {
-        return Ok(arena.alloc(ArenaValue::Array(&[])));
+        return Ok(arena.alloc(DataValue::Array(&[])));
     }
 
     let ascending = sort_direction(args, actx, engine, arena)?;
@@ -224,17 +224,17 @@ fn sort_arena_from_value<'a>(
                 .into_iter()
                 .map(|i| crate::arena::value::reborrow_arena_value(&arena_items_slice[i])),
         );
-        return Ok(arena.alloc(ArenaValue::Array(items)));
+        return Ok(arena.alloc(DataValue::Array(items)));
     }
 
     // Extractor present — push items into arena context, evaluate,
     // collect keys, sort indices.
     let extractor = &args[2];
-    let mut keys: Vec<ArenaValue<'a>> = Vec::with_capacity(n);
+    let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(n);
     let mut guard = IterGuard::new(actx);
     for (i, item_av) in arena_items_slice.iter().enumerate() {
         guard.step_indexed(item_av, i);
-        let key_av = engine.evaluate_arena_node(extractor, guard.stack(), arena)?;
+        let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;
         keys.push(crate::arena::value::reborrow_arena_value(key_av));
     }
     drop(guard);
@@ -250,31 +250,31 @@ fn sort_arena_from_value<'a>(
             .into_iter()
             .map(|i| crate::arena::value::reborrow_arena_value(&arena_items_slice[i])),
     );
-    Ok(arena.alloc(ArenaValue::Array(out)))
+    Ok(arena.alloc(DataValue::Array(out)))
 }
 
 /// Compare arena values for sorting.
 /// Type order: null < bool < number < string < array < object.
 #[inline]
-fn compare_values(a: &ArenaValue<'_>, b: &ArenaValue<'_>) -> Ordering {
+fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
     #[inline]
-    fn type_rank(v: &ArenaValue<'_>) -> u8 {
+    fn type_rank(v: &DataValue<'_>) -> u8 {
         match v {
-            ArenaValue::Null => 0,
-            ArenaValue::Bool(_) => 1,
-            ArenaValue::Number(_) => 2,
-            ArenaValue::String(_) => 3,
-            ArenaValue::Array(_) => 4,
-            ArenaValue::Object(_) => 5,
+            DataValue::Null => 0,
+            DataValue::Bool(_) => 1,
+            DataValue::Number(_) => 2,
+            DataValue::String(_) => 3,
+            DataValue::Array(_) => 4,
+            DataValue::Object(_) => 5,
             #[cfg(feature = "datetime")]
-            ArenaValue::DateTime(_) | ArenaValue::Duration(_) => 3,
+            DataValue::DateTime(_) | DataValue::Duration(_) => 3,
         }
     }
 
     match (a, b) {
-        (ArenaValue::Null, ArenaValue::Null) => Ordering::Equal,
-        (ArenaValue::Bool(a), ArenaValue::Bool(b)) => a.cmp(b),
-        (ArenaValue::Number(a), ArenaValue::Number(b)) => {
+        (DataValue::Null, DataValue::Null) => Ordering::Equal,
+        (DataValue::Bool(a), DataValue::Bool(b)) => a.cmp(b),
+        (DataValue::Number(a), DataValue::Number(b)) => {
             let a_f = a.as_f64();
             let b_f = b.as_f64();
             if a_f < b_f {
@@ -285,9 +285,9 @@ fn compare_values(a: &ArenaValue<'_>, b: &ArenaValue<'_>) -> Ordering {
                 Ordering::Equal
             }
         }
-        (ArenaValue::String(a), ArenaValue::String(b)) => a.cmp(b),
-        (ArenaValue::Array(_), ArenaValue::Array(_)) => Ordering::Equal,
-        (ArenaValue::Object(_), ArenaValue::Object(_)) => Ordering::Equal,
+        (DataValue::String(a), DataValue::String(b)) => a.cmp(b),
+        (DataValue::Array(_), DataValue::Array(_)) => Ordering::Equal,
+        (DataValue::Object(_), DataValue::Object(_)) => Ordering::Equal,
         _ => type_rank(a).cmp(&type_rank(b)),
     }
 }

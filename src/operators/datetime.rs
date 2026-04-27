@@ -47,28 +47,28 @@ use crate::{CompiledNode, DataLogic, Error, Result};
 // Datetime operators.
 // =============================================================================
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{DataContextStack, DataValue};
 use bumpalo::Bump;
 
 /// Resolve an arg as an arena string. Returns `None` if not string-like.
 #[inline]
-fn arg_as_str_arena<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
+fn arg_as_str_arena<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
     match av {
-        ArenaValue::String(s) => Some(*s),
+        DataValue::String(s) => Some(*s),
         _ => None,
     }
 }
 
 /// True iff this arena Object has a `datetime` key (boundary form).
 #[inline]
-fn is_datetime_object_arena(av: &ArenaValue<'_>) -> bool {
-    matches!(av, ArenaValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "datetime"))
+fn is_datetime_object_arena(av: &DataValue<'_>) -> bool {
+    matches!(av, DataValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "datetime"))
 }
 
 /// True iff this arena Object has a `timestamp` key (boundary form).
 #[inline]
-fn is_duration_object_arena(av: &ArenaValue<'_>) -> bool {
-    matches!(av, ArenaValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "timestamp"))
+fn is_duration_object_arena(av: &DataValue<'_>) -> bool {
+    matches!(av, DataValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "timestamp"))
 }
 
 /// Native arena-mode `datetime`. Returns the input unchanged if it parses
@@ -76,16 +76,16 @@ fn is_duration_object_arena(av: &ArenaValue<'_>) -> bool {
 #[inline]
 pub(crate) fn evaluate_datetime_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(
             "datetime requires an argument".to_string(),
         ));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let av = engine.evaluate_node(&args[0], actx, arena)?;
 
     // Datetime object passthrough.
     if is_datetime_object_arena(av) {
@@ -109,16 +109,16 @@ pub(crate) fn evaluate_datetime_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_timestamp_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(Error::InvalidArguments(
             "timestamp requires an argument".to_string(),
         ));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let av = engine.evaluate_node(&args[0], actx, arena)?;
 
     if is_duration_object_arena(av) {
         return Ok(av);
@@ -128,7 +128,7 @@ pub(crate) fn evaluate_timestamp_arena<'a>(
         && let Some(duration) = DataDuration::parse(s)
     {
         let s_arena: &'a str = arena.alloc_str(&duration.to_string());
-        return Ok(arena.alloc(ArenaValue::String(s_arena)));
+        return Ok(arena.alloc(DataValue::String(s_arena)));
     }
 
     Err(Error::InvalidArguments(
@@ -152,23 +152,23 @@ fn jsonlogic_to_chrono_format(format: &str) -> String {
 #[inline]
 pub(crate) fn evaluate_parse_date_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments(
             "parse_date requires date string and format".to_string(),
         ));
     }
-    let date_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let fmt_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
+    let date_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let fmt_av = engine.evaluate_node(&args[1], actx, arena)?;
     if let (Some(date), Some(fmt)) = (arg_as_str_arena(date_av), arg_as_str_arena(fmt_av)) {
         let chrono_format = jsonlogic_to_chrono_format(fmt);
         if let Some(dt) = DataDateTime::parse_with_format(date, &chrono_format) {
             let iso = dt.to_iso_string();
             let s: &'a str = arena.alloc_str(&iso);
-            return Ok(arena.alloc(ArenaValue::String(s)));
+            return Ok(arena.alloc(DataValue::String(s)));
         }
     }
     Err(Error::InvalidArguments("Failed to parse date".to_string()))
@@ -178,17 +178,17 @@ pub(crate) fn evaluate_parse_date_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_format_date_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(Error::InvalidArguments(
             "format_date requires datetime and format".to_string(),
         ));
     }
-    let dt_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let fmt_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
+    let dt_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let fmt_av = engine.evaluate_node(&args[1], actx, arena)?;
 
     // Resolve the datetime — supports object form and string form.
     let dt: Option<DataDateTime> = crate::operators::helpers::extract_datetime_arena(dt_av);
@@ -204,7 +204,7 @@ pub(crate) fn evaluate_format_date_arena<'a>(
         };
         let formatted = datetime.format(&chrono_format);
         let s: &'a str = arena.alloc_str(&formatted);
-        return Ok(arena.alloc(ArenaValue::String(s)));
+        return Ok(arena.alloc(DataValue::String(s)));
     }
 
     Err(Error::InvalidArguments("Failed to format date".to_string()))
@@ -214,20 +214,20 @@ pub(crate) fn evaluate_format_date_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_date_diff_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 3 {
         return Err(Error::InvalidArguments(
             "date_diff requires two dates and a unit".to_string(),
         ));
     }
-    let d1_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let d2_av = engine.evaluate_arena_node(&args[1], actx, arena)?;
-    let unit_av = engine.evaluate_arena_node(&args[2], actx, arena)?;
+    let d1_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let d2_av = engine.evaluate_node(&args[1], actx, arena)?;
+    let unit_av = engine.evaluate_node(&args[2], actx, arena)?;
 
-    let resolve_dt = |av: &'a ArenaValue<'a>| -> Option<DataDateTime> {
+    let resolve_dt = |av: &'a DataValue<'a>| -> Option<DataDateTime> {
         crate::operators::helpers::extract_datetime_arena(av)
     };
     let dt1 = resolve_dt(d1_av);
@@ -236,7 +236,7 @@ pub(crate) fn evaluate_date_diff_arena<'a>(
 
     if let (Some(a), Some(b), Some(u)) = (dt1, dt2, unit) {
         let diff = a.diff_in_unit(&b, u);
-        return Ok(arena.alloc(ArenaValue::from_i64(diff as i64)));
+        return Ok(arena.alloc(DataValue::from_i64(diff as i64)));
     }
     Err(Error::InvalidArguments(
         "Failed to calculate date difference".to_string(),
@@ -247,15 +247,15 @@ pub(crate) fn evaluate_date_diff_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_now_arena<'a>(
     _args: &[CompiledNode],
-    _actx: &mut ArenaContextStack<'a>,
+    _actx: &mut DataContextStack<'a>,
     _engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     let now = Utc::now();
     let data_dt = DataDateTime {
         dt: now,
         original_offset: Some(0),
     };
     let s: &'a str = arena.alloc_str(&data_dt.to_iso_string());
-    Ok(arena.alloc(ArenaValue::String(s)))
+    Ok(arena.alloc(DataValue::String(s)))
 }

@@ -87,11 +87,15 @@ fn serialize_parse_error() {
 
 #[test]
 fn serialize_thrown() {
-    let payload = json!({"code": 42, "reason": "boom"});
-    let err = Error::Thrown(payload.clone());
+    use datavalue::{NumberValue, OwnedDataValue};
+    let owned = OwnedDataValue::Object(vec![
+        ("code".to_string(), OwnedDataValue::Number(NumberValue::Integer(42))),
+        ("reason".to_string(), OwnedDataValue::String("boom".to_string())),
+    ]);
+    let err = Error::Thrown(owned);
     let v = to_json(&err);
     assert_eq!(v["type"], json!("Thrown"));
-    assert_eq!(v["thrown"], payload);
+    assert_eq!(v["thrown"], json!({"code": 42, "reason": "boom"}));
     // message is the Display output, which prints the JSON payload
     assert!(v["message"].as_str().unwrap().starts_with("Thrown: "));
 }
@@ -273,7 +277,13 @@ fn display_output_snapshot() {
         (Error::ArithmeticError("x".into()), "Arithmetic error: x"),
         (Error::Custom("raw".into()), "raw"),
         (Error::ParseError("x".into()), "Parse error: x"),
-        (Error::Thrown(json!({"k": 1})), "Thrown: {\"k\":1}"),
+        (
+            Error::Thrown(datavalue::OwnedDataValue::Object(vec![(
+                "k".to_string(),
+                datavalue::OwnedDataValue::Number(datavalue::NumberValue::Integer(1)),
+            )])),
+            "Thrown: {\"k\":1}",
+        ),
         (Error::FormatError("x".into()), "Format error: x"),
         (
             Error::IndexOutOfBounds {

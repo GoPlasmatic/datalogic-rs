@@ -9,7 +9,11 @@ pub const NAN_ERROR: &str = "NaN";
 /// Returns a NaN error with a JSON value `{"type": "NaN"}`.
 #[inline]
 pub fn nan_error() -> crate::Error {
-    crate::Error::Thrown(serde_json::json!({"type": "NaN"}))
+    use datavalue::OwnedDataValue;
+    crate::Error::Thrown(OwnedDataValue::Object(vec![(
+        "type".to_string(),
+        OwnedDataValue::String("NaN".to_string()),
+    )]))
 }
 
 /// Returns the canonical "Invalid Arguments" error.

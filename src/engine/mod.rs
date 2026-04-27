@@ -1,3 +1,4 @@
+#[cfg(feature = "compat")]
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -6,7 +7,9 @@ use crate::config::EvaluationConfig;
 
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
-use crate::{CompiledLogic, CompiledNode, Error, Result, StructuredError};
+use crate::{CompiledLogic, CompiledNode, Result};
+#[cfg(feature = "compat")]
+use crate::{Error, StructuredError};
 
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
 ///
@@ -36,8 +39,8 @@ use crate::{CompiledLogic, CompiledNode, Error, Result, StructuredError};
 /// assert_eq!(result, json!(true));
 /// ```
 pub struct DataLogic {
-    /// Custom `ArenaOperator` implementations registered with the engine.
-    pub(super) custom_arena_operators: HashMap<String, Box<dyn crate::ArenaOperator>>,
+    /// Custom `DataOperator` implementations registered with the engine.
+    pub(super) custom_arena_operators: HashMap<String, Box<dyn crate::DataOperator>>,
     /// Flag to preserve structure of objects with unknown operators
     #[cfg(feature = "preserve")]
     preserve_structure: bool,
@@ -54,6 +57,32 @@ impl Default for DataLogic {
 }
 
 impl DataLogic {
+    /// Start a [`crate::DataLogicBuilder`] for fluent construction.
+    ///
+    /// Replaces the 4.x `new` / `with_preserve_structure` / `with_config` /
+    /// `with_config_and_structure` constructors. The four old methods are
+    /// still reachable through `crate::compat::DataLogicLegacyExt`.
+    #[inline]
+    pub fn builder() -> crate::DataLogicBuilder {
+        crate::DataLogicBuilder::new()
+    }
+
+    /// Internal seam used by the builder. Not part of the public API.
+    #[doc(hidden)]
+    #[inline]
+    pub(crate) fn from_builder_parts(
+        config: EvaluationConfig,
+        _preserve_structure: bool,
+        operators: HashMap<String, Box<dyn crate::DataOperator>>,
+    ) -> Self {
+        Self {
+            custom_arena_operators: operators,
+            #[cfg(feature = "preserve")]
+            preserve_structure: _preserve_structure,
+            config,
+        }
+    }
+
     /// Internal constructor — single source of truth for the four public
     /// `new`/`with_*` variants. `_preserve_structure` is parameterised here
     /// so non-`preserve` builds can ignore it without four near-duplicate
@@ -111,25 +140,25 @@ impl DataLogic {
     ///
     /// ```rust
     /// use bumpalo::Bump;
-    /// use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Result};
+    /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
     /// use serde_json::{json, Value};
     /// use std::sync::Arc;
     ///
     /// struct UpperOperator;
-    /// impl ArenaOperator for UpperOperator {
-    ///     fn evaluate_arena<'a>(
+    /// impl DataOperator for UpperOperator {
+    ///     fn evaluate<'a>(
     ///         &self,
-    ///         args: &[&'a ArenaValue<'a>],
-    ///         _actx: &mut ArenaContextStack<'a>,
+    ///         args: &[&'a DataValue<'a>],
+    ///         _actx: &mut DataContextStack<'a>,
     ///         arena: &'a Bump,
-    ///     ) -> Result<&'a ArenaValue<'a>> {
+    ///     ) -> Result<&'a DataValue<'a>> {
     ///         let s = args[0].as_str().unwrap_or("").to_uppercase();
-    ///         Ok(arena.alloc(ArenaValue::String(arena.alloc_str(&s))))
+    ///         Ok(arena.alloc(DataValue::String(arena.alloc_str(&s))))
     ///     }
     /// }
     ///
     /// let mut engine = DataLogic::with_preserve_structure();
-    /// engine.add_arena_operator("upper".to_string(), Box::new(UpperOperator));
+    /// engine.add_operator("upper".to_string(), Box::new(UpperOperator));
     ///
     /// let logic = json!({
     ///     "message": {"upper": {"var": "text"}},
@@ -201,37 +230,37 @@ impl DataLogic {
         }
     }
 
-    /// Registers a custom [`crate::ArenaOperator`] with the engine.
+    /// Registers a custom [`crate::DataOperator`] with the engine.
     ///
-    /// Implementations take pre-evaluated args as `&'a ArenaValue<'a>` and
+    /// Implementations take pre-evaluated args as `&'a DataValue<'a>` and
     /// return an arena-allocated result.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Result};
+    /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
     /// use bumpalo::Bump;
     /// use serde_json::json;
     ///
     /// struct Plus42;
-    /// impl ArenaOperator for Plus42 {
-    ///     fn evaluate_arena<'a>(
+    /// impl DataOperator for Plus42 {
+    ///     fn evaluate<'a>(
     ///         &self,
-    ///         args: &[&'a ArenaValue<'a>],
-    ///         _actx: &mut ArenaContextStack<'a>,
+    ///         args: &[&'a DataValue<'a>],
+    ///         _actx: &mut DataContextStack<'a>,
     ///         arena: &'a Bump,
-    ///     ) -> Result<&'a ArenaValue<'a>> {
+    ///     ) -> Result<&'a DataValue<'a>> {
     ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
-    ///         Ok(arena.alloc(ArenaValue::from_f64(n + 42.0)))
+    ///         Ok(arena.alloc(DataValue::from_f64(n + 42.0)))
     ///     }
     /// }
     ///
     /// let mut engine = DataLogic::new();
-    /// engine.add_arena_operator("plus42".into(), Box::new(Plus42));
+    /// engine.add_operator("plus42".into(), Box::new(Plus42));
     /// let compiled = engine.compile(&json!({"plus42": 8})).unwrap();
     /// assert_eq!(engine.evaluate_ref(&compiled, &json!({})).unwrap(), json!(50));
     /// ```
-    pub fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::ArenaOperator>) {
+    pub fn add_operator(&mut self, name: String, operator: Box<dyn crate::DataOperator>) {
         self.custom_arena_operators.insert(name, operator);
     }
 
@@ -276,9 +305,25 @@ impl DataLogic {
     /// let logic = json!({"==": [1, 1]});
     /// let compiled: Arc<_> = engine.compile(&logic).unwrap();
     /// ```
+    #[cfg(feature = "compat")]
     pub fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
+        let owned = crate::value::owned_from_serde(logic);
+        self.compile_value(&owned)
+    }
+
+    /// Compile a parsed [`OwnedDataValue`] rule into reusable
+    /// [`CompiledLogic`]. The hot-path entry — no `serde_json::Value` round
+    /// trip.
+    pub fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<Arc<CompiledLogic>> {
         let compiled = CompiledLogic::compile_with_static_eval(logic, self)?;
         Ok(Arc::new(compiled))
+    }
+
+    /// Compile a raw JSON string into reusable [`CompiledLogic`]. Parses
+    /// with the `datavalue` parser (no `serde_json` dependency).
+    pub fn compile_str(&self, logic: &str) -> Result<Arc<CompiledLogic>> {
+        let owned = datavalue::OwnedDataValue::from_json(logic)?;
+        self.compile_value(&owned)
     }
 
     /// Evaluates compiled logic with Arc-wrapped data.
@@ -295,6 +340,7 @@ impl DataLogic {
     /// # Returns
     ///
     /// The evaluation result, or an error if evaluation fails.
+    #[cfg(feature = "compat")]
     pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
         self.eval_to_value(compiled, &data)
     }
@@ -314,22 +360,24 @@ impl DataLogic {
     /// # Returns
     ///
     /// The evaluation result, or an error if evaluation fails.
+    #[cfg(feature = "compat")]
     pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         self.eval_to_value(compiled, data)
     }
 
     /// Arena-mode evaluation entry. Acquires a thread-local `Bump` (from the
     /// pool, or freshly sized from the rule's compile-time hint), dispatches
-    /// through `evaluate_arena_node`, and converts the result back to owned
+    /// through `evaluate_node`, and converts the result back to owned
     /// `Value` at the boundary. The arena is reset and returned to the pool
     /// when `guard` drops at end of function.
+    #[cfg(feature = "compat")]
     #[inline]
     fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         use crate::arena::{ArenaGuard, arena_to_value};
         let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
-        let mut actx = crate::arena::ArenaContextStack::from_value(data, arena);
-        let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
+        let mut actx = crate::arena::DataContextStack::from_value(data, arena);
+        let result = self.evaluate_node(&compiled.root, &mut actx, arena)?;
         let owned = arena_to_value(result);
         drop(guard);
         Ok(owned)
@@ -363,52 +411,102 @@ impl DataLogic {
     /// let result = engine.evaluate_owned(&compiled, data).unwrap();
     /// assert_eq!(result, json!("Alice"));
     /// ```
+    #[cfg(feature = "compat")]
     pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
         self.evaluate(compiled, Arc::new(data))
     }
 
     // (evaluate_ref is the canonical zero-Arc path; see definition above.)
 
-    /// Pure arena evaluation against a caller-provided `Bump`. Returns the
-    /// arena-allocated result without converting to `serde_json::Value`, and
-    /// without touching the thread-local `ArenaGuard` slot — the caller owns
-    /// the arena's lifecycle and decides when to `reset()` it. Returned
-    /// `&'a ArenaValue<'a>` borrows from `arena`, so it must drop before the
-    /// next `arena.reset()` (the borrow checker enforces this).
+    /// Pure arena evaluation against a caller-provided [`bumpalo::Bump`].
+    /// Returns an arena-allocated `&DataValue<'a>` — the v5 hot-path entry.
     ///
-    /// `data` is `&'a ArenaValue<'a>` so callers operate consistently in
-    /// arena terms. Deep-convert an existing `&Value` via
-    /// `arena.alloc(value_to_arena(value, arena))` — primitives stay inline,
-    /// composites are allocated in the arena.
+    /// The caller owns the `Bump` lifecycle and decides when to `reset()` it;
+    /// the returned reference borrows from `arena`, so it must be dropped
+    /// before the next `arena.reset()` (the borrow checker enforces this).
     ///
-    /// Used by `examples/benchmark.rs` to measure dispatch in isolation by
-    /// creating one arena up-front and resetting only between rules,
-    /// excluding the per-call ArenaGuard pop/push from the measurement.
-    /// Not part of the stable API.
+    /// Pre-parse JSON input via
+    /// `OwnedDataValue::from_json(s)?.to_arena(&arena)` (or
+    /// `DataValue::from_str(s, &arena)?` from `datavalue`) to obtain the
+    /// `&DataValue<'a>` data argument.
+    ///
+    /// ```ignore
+    /// use bumpalo::Bump;
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let engine = DataLogic::new();
+    /// let compiled = engine.compile_str(r#"{"+": [1, 2]}"#).unwrap();
+    /// let arena = Bump::new();
+    /// let data = datavalue::DataValue::from_str("null", &arena).unwrap();
+    /// let result = engine.evaluate_value(&compiled, arena.alloc(data), &arena).unwrap();
+    /// assert_eq!(result.as_i64(), Some(3));
+    /// ```
+    #[inline(always)]
+    pub fn evaluate_value<'a>(
+        &self,
+        compiled: &'a CompiledLogic,
+        data: &'a crate::arena::DataValue<'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a crate::arena::DataValue<'a>> {
+        let mut actx = crate::arena::DataContextStack::new(data);
+        self.evaluate_node(&compiled.root, &mut actx, arena)
+    }
+
+    /// Deprecated v4-era alias for [`Self::evaluate_value`]. Kept while the
+    /// benchmark binary references it; new code should call `evaluate_value`.
     #[doc(hidden)]
     #[inline(always)]
     pub fn evaluate_in_arena<'a>(
         &self,
         compiled: &'a CompiledLogic,
-        data: &'a crate::arena::ArenaValue<'a>,
+        data: &'a crate::arena::DataValue<'a>,
         arena: &'a bumpalo::Bump,
-    ) -> Result<&'a crate::arena::ArenaValue<'a>> {
-        let mut actx = crate::arena::ArenaContextStack::new(data);
-        self.evaluate_arena_node(&compiled.root, &mut actx, arena)
+    ) -> Result<&'a crate::arena::DataValue<'a>> {
+        self.evaluate_value(compiled, data, arena)
     }
 
-    /// Pure arena evaluation for benchmarking — runs `evaluate_arena_node`
+    /// One-shot string boundary: parse `logic` + `data` JSON, evaluate
+    /// against `compiled`, return the result as a JSON `String`. Acquires
+    /// a fresh per-call [`bumpalo::Bump`] internally; for repeated calls,
+    /// drive [`Self::evaluate_value`] with a reused arena instead.
+    ///
+    /// Pure v5 entry — no `serde_json` round-trips. Replaces the legacy
+    /// `evaluate_json` (which returned a `serde_json::Value` and is now
+    /// gated behind the `compat` feature).
+    pub fn evaluate_str(
+        &self,
+        compiled: &CompiledLogic,
+        data: &str,
+    ) -> Result<String> {
+        let arena = bumpalo::Bump::new();
+        let data_dv = datavalue::DataValue::from_str(data, &arena)?;
+        let data_ref = arena.alloc(data_dv);
+        let result = self.evaluate_value(compiled, data_ref, &arena)?;
+        Ok(crate::arena::data_to_json_string(result))
+    }
+
+    /// Convenience: compile the logic from a string, evaluate against the
+    /// data string, return the result as a JSON `String`. Use
+    /// [`Self::compile_str`] + [`Self::evaluate_str`] separately when the
+    /// same logic runs against many data inputs.
+    pub fn evaluate_logic_str(&self, logic: &str, data: &str) -> Result<String> {
+        let compiled = self.compile_str(logic)?;
+        self.evaluate_str(&compiled, data)
+    }
+
+    /// Pure arena evaluation for benchmarking — runs `evaluate_node`
     /// against an internally-acquired `ArenaGuard`. Kept as the equivalent
     /// of the public `evaluate*` API minus the `arena_to_value` boundary,
     /// so callers can compare dispatch-only cost with vs. without the
     /// thread-local arena slot. Not part of the stable API.
+    #[cfg(feature = "compat")]
     #[doc(hidden)]
-    pub fn evaluate_arena_bench(&self, compiled: &CompiledLogic, data: &Value) -> Result<()> {
+    pub fn evaluate_bench(&self, compiled: &CompiledLogic, data: &Value) -> Result<()> {
         use crate::arena::ArenaGuard;
         let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
-        let mut actx = crate::arena::ArenaContextStack::from_value(data, arena);
-        let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena)?;
+        let mut actx = crate::arena::DataContextStack::from_value(data, arena);
+        let result = self.evaluate_node(&compiled.root, &mut actx, arena)?;
         std::hint::black_box(result);
         drop(guard);
         Ok(())
@@ -440,6 +538,7 @@ impl DataLogic {
     /// ).unwrap();
     /// assert_eq!(result, serde_json::json!(true));
     /// ```
+    #[cfg(feature = "compat")]
     pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
         let (compiled, data_arc) = self.parse_and_compile(logic, data)?;
         self.evaluate(&compiled, data_arc)
@@ -448,6 +547,7 @@ impl DataLogic {
     /// Parse `logic` and `data` JSON strings, compile the logic, and wrap
     /// the data in an `Arc`. Shared boilerplate for the public `evaluate_json*`
     /// entry points.
+    #[cfg(feature = "compat")]
     fn parse_and_compile(
         &self,
         logic: &str,
@@ -465,6 +565,7 @@ impl DataLogic {
     /// `Error` is wrapped with the name of the outermost operator in the
     /// compiled logic, so non-Rust consumers can surface typed error
     /// information without parsing `Display` strings.
+    #[cfg(feature = "compat")]
     pub fn evaluate_structured(
         &self,
         compiled: &CompiledLogic,
@@ -473,8 +574,8 @@ impl DataLogic {
         use crate::arena::{ArenaGuard, arena_to_value};
         let guard = ArenaGuard::acquire(compiled.arena_capacity());
         let arena = guard.arena();
-        let mut actx = crate::arena::ArenaContextStack::from_value(&data, arena);
-        match self.evaluate_arena_node(&compiled.root, &mut actx, arena) {
+        let mut actx = crate::arena::DataContextStack::from_value(&data, arena);
+        match self.evaluate_node(&compiled.root, &mut actx, arena) {
             Ok(av) => {
                 let owned = arena_to_value(av);
                 drop(guard);
@@ -493,6 +594,7 @@ impl DataLogic {
 
     /// Convenience method: parse, compile, and evaluate with a structured
     /// error on failure. Sibling of [`evaluate_json`](Self::evaluate_json).
+    #[cfg(feature = "compat")]
     pub fn evaluate_json_structured(
         &self,
         logic: &str,
@@ -506,7 +608,7 @@ impl DataLogic {
         self.evaluate_structured(&compiled, data_arc)
     }
 
-    /// Arena-mode dispatch hub. Returns `&'a ArenaValue<'a>` for every
+    /// Arena-mode dispatch hub. Returns `&'a DataValue<'a>` for every
     /// `CompiledNode` shape — exhaustive match, no value-mode fallback.
     ///
     /// On error, accumulates the failing node's id onto the context stack's
@@ -514,12 +616,12 @@ impl DataLogic {
     /// path. When a tracer is attached to `actx`, records a step per
     /// non-literal node (entry context + result/error).
     #[inline(always)]
-    pub(crate) fn evaluate_arena_node<'a>(
+    pub(crate) fn evaluate_node<'a>(
         &self,
         node: &'a CompiledNode,
-        actx: &mut crate::arena::ArenaContextStack<'a>,
+        actx: &mut crate::arena::DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
-    ) -> Result<&'a crate::arena::ArenaValue<'a>> {
+    ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
         if let CompiledNode::Value {
             value, arena_lit, ..
@@ -528,8 +630,8 @@ impl DataLogic {
             // Compiled-tree literals always have `arena_lit` populated by
             // `populate_arena_lits` (run during `CompiledLogic::new`), so
             // this branch covers every literal in any finalized rule.
-            // ArenaValue is covariant in its lifetime, so
-            // `&'a ArenaValue<'static>` satisfies `&'a ArenaValue<'a>`
+            // DataValue is covariant in its lifetime, so
+            // `&'a DataValue<'static>` satisfies `&'a DataValue<'a>`
             // without unsafe.
             if let Some(av) = arena_lit {
                 return Ok(av);
@@ -538,14 +640,20 @@ impl DataLogic {
             // helpers in `trace.rs`, ad-hoc `synthetic_value` wrappers that
             // never went through `CompiledLogic::new`). Mirrors the old
             // pre-populate fast path.
-            use crate::arena::value_to_arena;
+            use datavalue::OwnedDataValue;
             return Ok(match value {
-                Value::Null => crate::arena::pool::singleton_null(),
-                Value::Bool(b) => crate::arena::pool::singleton_bool(*b),
-                Value::String(s) if s.is_empty() => crate::arena::pool::singleton_empty_string(),
-                Value::Array(a) if a.is_empty() => crate::arena::pool::singleton_empty_array(),
-                Value::String(s) => arena.alloc(crate::arena::ArenaValue::String(s.as_str())),
-                _ => arena.alloc(value_to_arena(value, arena)),
+                OwnedDataValue::Null => crate::arena::pool::singleton_null(),
+                OwnedDataValue::Bool(b) => crate::arena::pool::singleton_bool(*b),
+                OwnedDataValue::String(s) if s.is_empty() => {
+                    crate::arena::pool::singleton_empty_string()
+                }
+                OwnedDataValue::Array(a) if a.is_empty() => {
+                    crate::arena::pool::singleton_empty_array()
+                }
+                OwnedDataValue::String(s) => {
+                    arena.alloc(crate::arena::DataValue::String(s.as_str()))
+                }
+                _ => arena.alloc(value.to_arena(arena)),
             });
         }
 
@@ -554,7 +662,7 @@ impl DataLogic {
         #[cfg(feature = "trace")]
         let ctx_snapshot: Option<Value> = actx.has_tracer().then(|| actx.current_data_as_value());
 
-        let result = dispatch::evaluate_arena_node_inner(self, node, actx, arena);
+        let result = dispatch::evaluate_node_inner(self, node, actx, arena);
 
         // Accumulate the failing node's id on every Err. We always pay
         // the (single) Vec::push since errors are rare and structured-error
@@ -579,14 +687,14 @@ impl DataLogic {
     pub(crate) fn eval_iter_body<'a>(
         &self,
         body: &'a CompiledNode,
-        actx: &mut crate::arena::ArenaContextStack<'a>,
+        actx: &mut crate::arena::DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
         _index: u32,
         _total: u32,
-    ) -> Result<&'a crate::arena::ArenaValue<'a>> {
+    ) -> Result<&'a crate::arena::DataValue<'a>> {
         #[cfg(feature = "trace")]
         actx.trace_push_iteration(_index, _total);
-        let res = self.evaluate_arena_node(body, actx, arena);
+        let res = self.evaluate_node(body, actx, arena);
         #[cfg(feature = "trace")]
         actx.trace_pop_iteration();
         res
@@ -633,8 +741,9 @@ impl DataLogic {
     /// static evaluation so every operator stays in the tree as a step source.
     #[cfg(feature = "trace")]
     fn compile_for_trace(&self, logic_value: &Value) -> Result<Arc<CompiledLogic>> {
+        let owned = crate::value::owned_from_serde(logic_value);
         Ok(Arc::new(CompiledLogic::compile_for_trace(
-            logic_value,
+            &owned,
             self.preserve_structure(),
         )?))
     }
@@ -647,7 +756,7 @@ impl DataLogic {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
         let (result, error_path) =
-            self.evaluate_arena_with_trace(compiled, data_arc, &mut collector);
+            self.evaluate_with_trace(compiled, data_arc, &mut collector);
         let steps = collector.into_steps();
         match result {
             Ok(value) => TracedResult {
@@ -698,11 +807,11 @@ impl DataLogic {
 
     /// Arena-mode traced evaluation. Acquires an arena, attaches the
     /// caller's [`TraceCollector`] to the arena context, and dispatches
-    /// through [`evaluate_arena_node`]. Returns `(result, error_path)`
+    /// through [`evaluate_node`]. Returns `(result, error_path)`
     /// where `error_path` is the structured-error breadcrumb of node ids
     /// leading to the failure (empty on success).
     #[cfg(feature = "trace")]
-    fn evaluate_arena_with_trace(
+    fn evaluate_with_trace(
         &self,
         compiled: &CompiledLogic,
         data: Arc<Value>,
@@ -713,9 +822,9 @@ impl DataLogic {
         let arena = guard.arena();
         let arc_for_borrow = Arc::clone(&data);
         let root_ref: &Value = &arc_for_borrow;
-        let mut actx = crate::arena::ArenaContextStack::from_value(root_ref, arena);
+        let mut actx = crate::arena::DataContextStack::from_value(root_ref, arena);
         actx.set_tracer(collector);
-        let result = self.evaluate_arena_node(&compiled.root, &mut actx, arena);
+        let result = self.evaluate_node(&compiled.root, &mut actx, arena);
         match result {
             Ok(av) => {
                 let owned = arena_to_value(av);

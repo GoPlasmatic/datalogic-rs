@@ -1,9 +1,8 @@
 //! Internal helpers shared by the array operators (filter / map / reduce /
 //! quantifiers / sort / slice / merge / length).
 
-use serde_json::Value;
 
-use crate::arena::{ArenaContextStack, ArenaValue, value_to_arena};
+use crate::arena::{DataContextStack, DataValue};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
 use crate::{CompiledNode, DataLogic, Result};
@@ -52,16 +51,16 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
 #[inline]
 pub(super) fn evaluate_invariant_no_push<'a>(
     invariant_node: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if let CompiledNode::Value { value, .. } = invariant_node {
-        return Ok(arena.alloc(value_to_arena(value, arena)));
+        return Ok(arena.alloc(value.to_arena(arena)));
     }
-    let null_av: &'a ArenaValue<'a> = arena.alloc(ArenaValue::Null);
+    let null_av: &'a DataValue<'a> = arena.alloc(DataValue::Null);
     actx.push(null_av);
-    let result = engine.evaluate_arena_node(invariant_node, actx, arena);
+    let result = engine.evaluate_node(invariant_node, actx, arena);
     actx.pop();
     result
 }
@@ -74,7 +73,7 @@ pub(super) enum FastPredicate<'a> {
     /// Strict equality (===) or inequality (!==) against a literal
     StrictEq {
         segments: Option<&'a [crate::node::PathSegment]>,
-        literal: &'a Value,
+        literal: &'a datavalue::OwnedDataValue,
         negate: bool,
     },
     /// Ordered numeric comparison (>, >=, <, <=) against a numeric literal
@@ -166,9 +165,9 @@ impl<'a> FastPredicate<'a> {
     #[inline]
     fn resolve_value<'b>(
         segments: Option<&[crate::node::PathSegment]>,
-        item: &'b ArenaValue<'b>,
+        item: &'b DataValue<'b>,
         arena: &'b Bump,
-    ) -> Option<&'b ArenaValue<'b>> {
+    ) -> Option<&'b DataValue<'b>> {
         match segments {
             None => Some(item),
             Some(segs) => crate::arena::value::arena_traverse_segments(item, segs, arena),
@@ -177,7 +176,7 @@ impl<'a> FastPredicate<'a> {
 
     /// Evaluate this predicate against a single item.
     #[inline]
-    pub(super) fn evaluate<'b>(&self, item: &'b ArenaValue<'b>, arena: &'b Bump) -> bool {
+    pub(super) fn evaluate<'b>(&self, item: &'b DataValue<'b>, arena: &'b Bump) -> bool {
         match self {
             FastPredicate::StrictEq {
                 segments,
@@ -227,24 +226,24 @@ impl<'a> FastPredicate<'a> {
     }
 }
 
-/// Strict equality between two `ArenaValue`s.
+/// Strict equality between two `DataValue`s.
 #[inline]
-pub(super) fn arena_value_equals_arena(a: &ArenaValue<'_>, b: &ArenaValue<'_>) -> bool {
+pub(super) fn arena_value_equals_arena(a: &DataValue<'_>, b: &DataValue<'_>) -> bool {
     match (a, b) {
-        (ArenaValue::Null, ArenaValue::Null) => true,
-        (ArenaValue::Bool(x), ArenaValue::Bool(y)) => x == y,
-        (ArenaValue::Number(x), ArenaValue::Number(y)) => match (x.as_i64(), y.as_i64()) {
+        (DataValue::Null, DataValue::Null) => true,
+        (DataValue::Bool(x), DataValue::Bool(y)) => x == y,
+        (DataValue::Number(x), DataValue::Number(y)) => match (x.as_i64(), y.as_i64()) {
             (Some(a), Some(b)) => a == b,
             _ => x.as_f64() == y.as_f64(),
         },
-        (ArenaValue::String(x), ArenaValue::String(y)) => *x == *y,
-        (ArenaValue::Array(x), ArenaValue::Array(y)) => {
+        (DataValue::String(x), DataValue::String(y)) => *x == *y,
+        (DataValue::Array(x), DataValue::Array(y)) => {
             x.len() == y.len()
                 && x.iter()
                     .zip(y.iter())
                     .all(|(a, b)| arena_value_equals_arena(a, b))
         }
-        (ArenaValue::Object(x), ArenaValue::Object(y)) => {
+        (DataValue::Object(x), DataValue::Object(y)) => {
             if x.len() != y.len() {
                 return false;
             }
@@ -265,36 +264,32 @@ pub(super) fn arena_value_equals_arena(a: &ArenaValue<'_>, b: &ArenaValue<'_>) -
     }
 }
 
-/// Strict equality between an `ArenaValue` and a `serde_json::Value` literal —
-/// used by `FastPredicate::StrictEq` to compare an arena-resident item against
-/// a compile-time literal without allocating.
+/// Strict equality between a [`DataValue`] (arena) and an
+/// [`OwnedDataValue`] literal — used by `FastPredicate::StrictEq` to
+/// compare an arena-resident item against a compile-time literal without
+/// allocating.
 #[inline]
-fn arena_value_equals_value(av: &ArenaValue<'_>, v: &Value) -> bool {
+fn arena_value_equals_value(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
+    use datavalue::OwnedDataValue;
     match (av, v) {
-        (ArenaValue::Null, Value::Null) => true,
-        (ArenaValue::Bool(a), Value::Bool(b)) => a == b,
-        (ArenaValue::Number(a), Value::Number(b)) => match (a.as_i64(), b.as_i64()) {
-            (Some(x), Some(y)) => x == y,
-            _ => match (a.as_f64(), b.as_f64()) {
-                (x, Some(y)) => x == y,
-                _ => false,
-            },
-        },
-        (ArenaValue::String(s), Value::String(b)) => *s == b.as_str(),
-        (ArenaValue::Array(items), Value::Array(b)) => {
+        (DataValue::Null, OwnedDataValue::Null) => true,
+        (DataValue::Bool(a), OwnedDataValue::Bool(b)) => a == b,
+        (DataValue::Number(a), OwnedDataValue::Number(b)) => a == b,
+        (DataValue::String(s), OwnedDataValue::String(b)) => *s == b.as_str(),
+        (DataValue::Array(items), OwnedDataValue::Array(b)) => {
             items.len() == b.len()
                 && items
                     .iter()
                     .zip(b.iter())
                     .all(|(x, y)| arena_value_equals_value(x, y))
         }
-        (ArenaValue::Object(pairs), Value::Object(b)) => {
+        (DataValue::Object(pairs), OwnedDataValue::Object(b)) => {
             if pairs.len() != b.len() {
                 return false;
             }
             for (k, av) in *pairs {
-                match b.get(*k) {
-                    Some(bv) => {
+                match b.iter().find(|(bk, _)| bk == *k) {
+                    Some((_, bv)) => {
                         if !arena_value_equals_value(av, bv) {
                             return false;
                         }
@@ -325,9 +320,9 @@ fn inline_numeric_cmp(lhs: f64, rhs: f64, opcode: OpCode) -> bool {
 // =============================================================================
 
 /// Unified view over an iterator op's input collection. Single shape:
-/// arena slice of `ArenaValue`. Wrapper kept for API stability.
+/// arena slice of `DataValue`. Wrapper kept for API stability.
 #[derive(Clone, Copy)]
-pub(crate) struct IterSrc<'a>(pub(crate) &'a [ArenaValue<'a>]);
+pub(crate) struct IterSrc<'a>(pub(crate) &'a [DataValue<'a>]);
 
 impl<'a> IterSrc<'a> {
     #[inline]
@@ -342,7 +337,7 @@ impl<'a> IterSrc<'a> {
 
     /// Get item by index.
     #[inline]
-    pub(crate) fn get(&self, i: usize) -> &'a ArenaValue<'a> {
+    pub(crate) fn get(&self, i: usize) -> &'a DataValue<'a> {
         &self.0[i]
     }
 }
@@ -356,7 +351,7 @@ pub(crate) enum ResolvedInput<'a> {
     /// Object or other non-array input. Carries the resolved arena value
     /// so callers can dispatch natively (object-iteration / error / etc.)
     /// without re-evaluating the arg.
-    Bridge(&'a ArenaValue<'a>),
+    Bridge(&'a DataValue<'a>),
 }
 
 /// Resolve `args[0]` for an iterator op. Tries (in order):
@@ -370,7 +365,7 @@ pub(crate) enum ResolvedInput<'a> {
 /// duration) or arena slices (allocated on the same arena).
 pub(crate) fn resolve_iter_input<'a>(
     arg: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
@@ -393,36 +388,36 @@ pub(crate) fn resolve_iter_input<'a>(
                 | OpCode::Merge
         )
     {
-        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, actx, arena)?;
         return Ok(arena_value_as_iter(av));
     }
 
     // Path 3: anything else — evaluate through arena dispatch so the caller
     // can handle the result natively (Object iteration / single-element wrap /
     // error per op semantics).
-    let av = engine.evaluate_arena_node(arg, actx, arena)?;
+    let av = engine.evaluate_node(arg, actx, arena)?;
     Ok(arena_value_as_iter(av))
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
-fn arena_value_as_iter<'a>(av: &'a ArenaValue<'a>) -> ResolvedInput<'a> {
+fn arena_value_as_iter<'a>(av: &'a DataValue<'a>) -> ResolvedInput<'a> {
     match av {
-        ArenaValue::Null => ResolvedInput::Empty,
-        ArenaValue::Array(items) => ResolvedInput::Iterable(IterSrc(items)),
+        DataValue::Null => ResolvedInput::Empty,
+        DataValue::Array(items) => ResolvedInput::Iterable(IterSrc(items)),
         _ => ResolvedInput::Bridge(av),
     }
 }
 
 /// Try to obtain the input collection by borrowing from the caller's root data.
-/// Returns `Some(&ArenaValue)` when args[0] is a simple root-scope `var` that
+/// Returns `Some(&DataValue)` when args[0] is a simple root-scope `var` that
 /// resolves into the input data. The returned reference lives for the arena
 /// lifetime `'a`.
 #[inline]
 fn try_borrow_collection_from_root<'a>(
     arg: &'a CompiledNode,
-    actx: &ArenaContextStack<'a>,
+    actx: &DataContextStack<'a>,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     if actx.depth() != 0 {
         return None; // only root-scope borrows
     }
@@ -446,6 +441,6 @@ fn try_borrow_collection_from_root<'a>(
 
 /// True iff this arena value is `null`.
 #[inline]
-pub(super) fn item_is_null(av: &ArenaValue<'_>) -> bool {
-    matches!(av, ArenaValue::Null)
+pub(super) fn item_is_null(av: &DataValue<'_>) -> bool {
+    matches!(av, DataValue::Null)
 }

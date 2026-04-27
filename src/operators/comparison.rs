@@ -126,23 +126,23 @@ impl OrdOp {
 // Arena-mode comparison operators
 // =============================================================================
 //
-// Equality and ordering are dispatched on `&ArenaValue` directly. Primitive
+// Equality and ordering are dispatched on `&DataValue` directly. Primitive
 // operands take an arena-native fast path; only collection-vs-collection
 // equality (rare) materializes once via `arena_to_value_cow`.
 
-use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value_cow, coerce_arena_to_number_cfg};
+use crate::arena::{DataContextStack, DataValue, coerce_arena_to_number_cfg};
 use bumpalo::Bump;
 
 /// View an arena value as `&str` if it's a string variant.
 #[inline]
-fn arena_as_str<'a>(av: &'a ArenaValue<'a>) -> Option<&'a str> {
+fn arena_as_str<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
     match av {
-        ArenaValue::String(s) => Some(*s),
+        DataValue::String(s) => Some(*s),
         _ => None,
     }
 }
 
-/// Tagged primitive view of an `ArenaValue`. Returns `None` for collections
+/// Tagged primitive view of an `DataValue`. Returns `None` for collections
 /// (Array/Object) and DateTime/Duration which need the slow path.
 enum ArenaKind<'a> {
     Null,
@@ -152,12 +152,12 @@ enum ArenaKind<'a> {
 }
 
 #[inline]
-fn arena_kind<'a>(av: &'a ArenaValue<'a>) -> Option<ArenaKind<'a>> {
+fn arena_kind<'a>(av: &'a DataValue<'a>) -> Option<ArenaKind<'a>> {
     match av {
-        ArenaValue::Null => Some(ArenaKind::Null),
-        ArenaValue::Bool(b) => Some(ArenaKind::Bool(*b)),
-        ArenaValue::Number(n) => Some(ArenaKind::Num(n.as_f64())),
-        ArenaValue::String(s) => Some(ArenaKind::Str(s)),
+        DataValue::Null => Some(ArenaKind::Null),
+        DataValue::Bool(b) => Some(ArenaKind::Bool(*b)),
+        DataValue::Number(n) => Some(ArenaKind::Num(n.as_f64())),
+        DataValue::String(s) => Some(ArenaKind::Str(s)),
         _ => None,
     }
 }
@@ -166,8 +166,8 @@ fn arena_kind<'a>(av: &'a ArenaValue<'a>) -> Option<ArenaKind<'a>> {
 /// collections fall back to the legacy `Value`-based helper.
 #[inline]
 pub(crate) fn compare_equals_arena(
-    left: &ArenaValue<'_>,
-    right: &ArenaValue<'_>,
+    left: &DataValue<'_>,
+    right: &DataValue<'_>,
     strict: bool,
     engine: &DataLogic,
 ) -> Result<bool> {
@@ -176,9 +176,9 @@ pub(crate) fn compare_equals_arena(
     {
         use crate::operators::helpers::{extract_datetime_arena, extract_duration_arena};
         let probe_dt = match (left, right) {
-            (ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null, _)
-            | (_, ArenaValue::Number(_) | ArenaValue::Bool(_) | ArenaValue::Null) => false,
-            (ArenaValue::String(s), _) | (_, ArenaValue::String(s))
+            (DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null, _)
+            | (_, DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null) => false,
+            (DataValue::String(s), _) | (_, DataValue::String(s))
                 if !could_be_datetime_or_duration(s) =>
             {
                 false
@@ -206,13 +206,11 @@ pub(crate) fn compare_equals_arena(
     }
 
     // Collection-vs-collection (or other unhandled combo) — fall back to
-    // value-mode helper via a `Cow` materialization.
-    let l = arena_to_value_cow(left);
-    let r = arena_to_value_cow(right);
+    // the DataValue-based helpers.
     if strict {
-        Ok(strict_equals(&l, &r))
+        Ok(strict_equals(left, right))
     } else {
-        loose_equals(&l, &r, engine)
+        loose_equals(left, right, engine)
     }
 }
 
@@ -221,8 +219,8 @@ pub(crate) fn compare_equals_arena(
 /// side is a collection or when loose-coercion needs the value-mode path.
 #[inline]
 fn compare_equals_primitive(
-    left: &ArenaValue<'_>,
-    right: &ArenaValue<'_>,
+    left: &DataValue<'_>,
+    right: &DataValue<'_>,
     strict: bool,
     engine: &DataLogic,
 ) -> Option<bool> {
@@ -268,14 +266,14 @@ fn compare_equals_primitive(
 /// Arena-native ordered comparison. Mirrors `compare_ordered` exactly.
 #[inline]
 fn compare_ordered_arena(
-    left: &ArenaValue<'_>,
-    right: &ArenaValue<'_>,
+    left: &DataValue<'_>,
+    right: &DataValue<'_>,
     op: OrdOp,
     engine: &DataLogic,
 ) -> Result<bool> {
     // Number vs Number — most common case.
-    let l_is_num = matches!(left, ArenaValue::Number(_));
-    let r_is_num = matches!(right, ArenaValue::Number(_));
+    let l_is_num = matches!(left, DataValue::Number(_));
+    let r_is_num = matches!(right, DataValue::Number(_));
     if l_is_num && r_is_num {
         let lf = left.as_f64().unwrap_or(f64::NAN);
         let rf = right.as_f64().unwrap_or(f64::NAN);
@@ -319,7 +317,7 @@ fn compare_ordered_arena(
 
     // Arrays / Objects can't be ordered.
     let is_collection =
-        |av: &ArenaValue<'_>| matches!(av, ArenaValue::Array(_) | ArenaValue::Object(_));
+        |av: &DataValue<'_>| matches!(av, DataValue::Array(_) | DataValue::Object(_));
     if is_collection(left) || is_collection(right) {
         return Err(crate::constants::nan_error());
     }
@@ -337,7 +335,7 @@ fn compare_ordered_arena(
     }
 
     // Number-String mismatch — NaN error.
-    let is_str = |av: &ArenaValue<'_>| matches!(av, ArenaValue::String(_));
+    let is_str = |av: &DataValue<'_>| matches!(av, DataValue::String(_));
     if (l_is_num && is_str(right)) || (r_is_num && is_str(left)) {
         return Err(crate::constants::nan_error());
     }
@@ -348,16 +346,16 @@ fn compare_ordered_arena(
 #[inline]
 pub(crate) fn evaluate_strict_equals_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let cur_av = engine.evaluate_node(arg, actx, arena)?;
         if !compare_equals_arena(first_av, cur_av, true, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -368,15 +366,15 @@ pub(crate) fn evaluate_strict_equals_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_strict_not_equals_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
+    let a = engine.evaluate_node(&args[0], actx, arena)?;
+    let b = engine.evaluate_node(&args[1], actx, arena)?;
     let eq = compare_equals_arena(a, b, true, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -384,16 +382,16 @@ pub(crate) fn evaluate_strict_not_equals_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_equals_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let first_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let cur_av = engine.evaluate_node(arg, actx, arena)?;
         if !compare_equals_arena(first_av, cur_av, false, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -404,15 +402,15 @@ pub(crate) fn evaluate_equals_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_not_equals_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let a = engine.evaluate_arena_node(&args[0], actx, arena)?;
-    let b = engine.evaluate_arena_node(&args[1], actx, arena)?;
+    let a = engine.evaluate_node(&args[0], actx, arena)?;
+    let b = engine.evaluate_node(&args[1], actx, arena)?;
     let eq = compare_equals_arena(a, b, false, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -420,17 +418,17 @@ pub(crate) fn evaluate_not_equals_arena<'a>(
 #[inline]
 fn evaluate_ord_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: OrdOp,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let mut prev_av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let mut prev_av = engine.evaluate_node(&args[0], actx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let cur_av = engine.evaluate_node(arg, actx, arena)?;
         if !compare_ordered_arena(prev_av, cur_av, op, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -442,39 +440,39 @@ fn evaluate_ord_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_greater_than_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     evaluate_ord_arena(args, actx, engine, arena, OrdOp::Gt)
 }
 
 #[inline]
 pub(crate) fn evaluate_greater_than_equal_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     evaluate_ord_arena(args, actx, engine, arena, OrdOp::Gte)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     evaluate_ord_arena(args, actx, engine, arena, OrdOp::Lt)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_equal_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     evaluate_ord_arena(args, actx, engine, arena, OrdOp::Lte)
 }

@@ -1,6 +1,6 @@
-use serde_json::Value;
+use datavalue::OwnedDataValue;
 
-use crate::arena::{ArenaContextStack, ArenaValue, arena_to_value};
+use crate::arena::{DataContextStack, DataValue};
 use crate::{CompiledNode, DataLogic, Error, Result};
 use bumpalo::Bump;
 
@@ -8,25 +8,31 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_throw_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let error_obj: Value = if args.is_empty() {
-        Value::Null
+) -> Result<&'a DataValue<'a>> {
+    let owned: OwnedDataValue = if args.is_empty() {
+        OwnedDataValue::Null
     } else if let CompiledNode::Value { value, .. } = &args[0] {
         // Literal fast path — skip arena dispatch.
         value.clone()
     } else {
-        let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
-        arena_to_value(av)
+        let av = engine.evaluate_node(&args[0], actx, arena)?;
+        av.to_owned()
     };
 
-    let error_obj = match error_obj {
-        Value::Object(_) => error_obj,
-        Value::String(s) => serde_json::json!({"type": s}),
-        other => serde_json::json!({"type": other.to_string()}),
+    let owned = match owned {
+        OwnedDataValue::Object(_) => owned,
+        OwnedDataValue::String(s) => OwnedDataValue::Object(vec![(
+            "type".to_string(),
+            OwnedDataValue::String(s),
+        )]),
+        other => OwnedDataValue::Object(vec![(
+            "type".to_string(),
+            OwnedDataValue::String(format!("{:?}", other)),
+        )]),
     };
 
-    Err(Error::Thrown(error_obj))
+    Err(Error::Thrown(owned))
 }

@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "4.1.0"
+version = "5.0.0"
 edition = "2024"
 exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "test-wasm.cjs"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
@@ -13,28 +13,27 @@ keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 
 [features]
-# Default is the minimal feature set needed to run `tests/suites/compatible.json`
-# (the JSONLogic compatibility suite). Every other capability — datetime ops,
-# error handling (try/throw), preserve_structure templating, and the ext-* op
-# extensions (length/sort/slice/coalesce/switch/type/val/exists/abs/ceil/floor/
-# starts_with/ends_with/upper/lower/trim/split) — is opt-in. This keeps the
-# default arena-dispatch table small and the build cheap; users opt in via
-# `features = ["..."]` (or `--all-features` for the full set).
-default = []
+# `compat` is on by default so existing 4.x callers compile unchanged. The
+# `compat` module bridges `serde_json::Value` to the v5 `DataValue` /
+# `OwnedDataValue` core. Drop it (`default-features = false`) for a fully
+# serde_json-free build.
+default = ["compat"]
+compat = ["dep:serde_json", "datavalue/serde_json"]
 preserve = []
-datetime = ["dep:chrono"]
-trace = []
+datetime = ["datavalue/datetime", "dep:chrono"]
+trace = ["compat"]
 ext-string = []
 ext-array = []
 ext-control = []
 error-handling = []
 ext-math = []
-wasm = ["datetime", "chrono/wasmbind"]
+wasm = ["datetime"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", optional = true }
 chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"], optional = true }
+datavalue = { path = "../../../../datavalue-rs", version = "0.1", features = ["serde"] }
 regex = { version = "1.12.3", default-features = false, features = ["std", "perf", "unicode"] }
 bumpalo = { version = "3", features = ["collections"] }
 

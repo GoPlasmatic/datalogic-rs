@@ -21,64 +21,64 @@
 //! - Each thread has its own pool — no cross-thread contention
 //! - Pool is bounded (4 entries) so memory is capped per thread
 //! - The guard borrow-checks: `&Bump` cannot outlive the guard, so an
-//!   `ArenaValue<'a>` cannot accidentally survive into the next pool reuse.
+//!   `DataValue<'a>` cannot accidentally survive into the next pool reuse.
 
 use bumpalo::Bump;
 use std::cell::Cell;
 use std::mem::ManuallyDrop;
 
-use crate::arena::value::ArenaValue;
+use crate::arena::value::DataValue;
 
 // =============================================================================
 // Preallocated singletons. Returning these from operators avoids a per-call
-// `arena.alloc(ArenaValue::Bool(true))` for every comparison / truthiness
+// `arena.alloc(DataValue::Bool(true))` for every comparison / truthiness
 // branch.
 //
 // Soundness: the values are `'static` and contain no arena-borrowed data,
-// so a `&'static ArenaValue<'static>` is safely castable to `&'a ArenaValue<'a>`
+// so a `&'static DataValue<'static>` is safely castable to `&'a DataValue<'a>`
 // for any caller lifetime `'a`. The `'a` parameter of the destination is
-// covariant in ArenaValue, so the lifetime can be shortened freely.
+// covariant in DataValue, so the lifetime can be shortened freely.
 // =============================================================================
 
-static SINGLETON_NULL: ArenaValue<'static> = ArenaValue::Null;
-static SINGLETON_TRUE: ArenaValue<'static> = ArenaValue::Bool(true);
-static SINGLETON_FALSE: ArenaValue<'static> = ArenaValue::Bool(false);
-static SINGLETON_EMPTY_STRING: ArenaValue<'static> = ArenaValue::String("");
-static SINGLETON_EMPTY_ARRAY: ArenaValue<'static> = ArenaValue::Array(&[]);
+static SINGLETON_NULL: DataValue<'static> = DataValue::Null;
+static SINGLETON_TRUE: DataValue<'static> = DataValue::Bool(true);
+static SINGLETON_FALSE: DataValue<'static> = DataValue::Bool(false);
+static SINGLETON_EMPTY_STRING: DataValue<'static> = DataValue::String("");
+static SINGLETON_EMPTY_ARRAY: DataValue<'static> = DataValue::Array(&[]);
 
 /// Borrow the static `Null` singleton at any caller lifetime.
 #[inline]
-pub(crate) fn singleton_null<'a>() -> &'a ArenaValue<'a> {
+pub(crate) fn singleton_null<'a>() -> &'a DataValue<'a> {
     &SINGLETON_NULL
 }
 
 /// Borrow the static `Bool(true)` singleton.
 #[inline]
-pub(crate) fn singleton_true<'a>() -> &'a ArenaValue<'a> {
+pub(crate) fn singleton_true<'a>() -> &'a DataValue<'a> {
     &SINGLETON_TRUE
 }
 
 /// Borrow the static `Bool(false)` singleton.
 #[inline]
-pub(crate) fn singleton_false<'a>() -> &'a ArenaValue<'a> {
+pub(crate) fn singleton_false<'a>() -> &'a DataValue<'a> {
     &SINGLETON_FALSE
 }
 
 /// Borrow the static `Bool(b)` singleton without branching on the caller side.
 #[inline]
-pub(crate) fn singleton_bool<'a>(b: bool) -> &'a ArenaValue<'a> {
+pub(crate) fn singleton_bool<'a>(b: bool) -> &'a DataValue<'a> {
     if b { &SINGLETON_TRUE } else { &SINGLETON_FALSE }
 }
 
 /// Borrow the static empty-string singleton.
 #[inline]
-pub(crate) fn singleton_empty_string<'a>() -> &'a ArenaValue<'a> {
+pub(crate) fn singleton_empty_string<'a>() -> &'a DataValue<'a> {
     &SINGLETON_EMPTY_STRING
 }
 
 /// Borrow the static empty-array singleton.
 #[inline]
-pub(crate) fn singleton_empty_array<'a>() -> &'a ArenaValue<'a> {
+pub(crate) fn singleton_empty_array<'a>() -> &'a DataValue<'a> {
     &SINGLETON_EMPTY_ARRAY
 }
 
@@ -100,13 +100,15 @@ thread_local! {
 /// and returns it to the thread-local slot on drop.
 ///
 /// Use `guard.arena()` to get a `&Bump` (whose lifetime is bounded by the
-/// guard, so `ArenaValue<'_>` cannot escape the call).
+/// guard, so `DataValue<'_>` cannot escape the call).
+#[cfg_attr(not(feature = "compat"), allow(dead_code))]
 pub(crate) struct ArenaGuard {
     /// `ManuallyDrop` lets `Drop::drop` move the `Bump` back into the slot
     /// without violating `Drop`'s `&mut self` aliasing rules.
     arena: ManuallyDrop<Bump>,
 }
 
+#[cfg_attr(not(feature = "compat"), allow(dead_code))]
 impl ArenaGuard {
     /// Take the thread's `Bump` from the slot, or allocate a fresh one sized
     /// to `min_capacity` if the slot is empty.

@@ -27,7 +27,7 @@
 //! // Output: {"name": "John", "status": "active"}
 //! ```
 
-use crate::arena::{ArenaContextStack, ArenaValue, value::reborrow_arena_value};
+use crate::arena::{DataContextStack, DataValue, value::reborrow_arena_value};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
@@ -38,27 +38,27 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_preserve_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     match args.len() {
         0 => Ok(crate::arena::pool::singleton_empty_array()),
         1 => {
-            // Literal fast path — skip evaluate_arena_node dispatch.
+            // Literal fast path — skip evaluate_node dispatch.
             if let CompiledNode::Value { value, .. } = &args[0] {
-                return Ok(arena.alloc(crate::arena::value_to_arena(value, arena)));
+                return Ok(arena.alloc(value.to_arena(arena)));
             }
-            engine.evaluate_arena_node(&args[0], actx, arena)
+            engine.evaluate_node(&args[0], actx, arena)
         }
         _ => {
-            let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+            let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
             for arg in args {
-                let av = engine.evaluate_arena_node(arg, actx, arena)?;
+                let av = engine.evaluate_node(arg, actx, arena)?;
                 items.push(reborrow_arena_value(av));
             }
-            Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
+            Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
         }
     }
 }

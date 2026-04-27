@@ -10,7 +10,7 @@
 use crate::DataLogic;
 use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
 use crate::opcode::OpCode;
-use serde_json::Value;
+use datavalue::{NumberValue, OwnedDataValue};
 
 /// Apply partial constant folding to a compiled node.
 ///
@@ -110,7 +110,7 @@ fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
 
     for arg in args {
         if let CompiledNode::Value {
-            value: Value::String(s),
+            value: OwnedDataValue::String(s),
             ..
         } = arg
         {
@@ -126,7 +126,7 @@ fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
         } else {
             // Flush any accumulated static string
             if let Some(s) = current_static_str.take() {
-                new_args.push(CompiledNode::synthetic_value(Value::String(s)));
+                new_args.push(CompiledNode::synthetic_value(OwnedDataValue::String(s)));
             }
             new_args.push(arg.clone());
         }
@@ -134,7 +134,7 @@ fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
 
     // Flush final accumulated string
     if let Some(s) = current_static_str.take() {
-        new_args.push(CompiledNode::synthetic_value(Value::String(s)));
+        new_args.push(CompiledNode::synthetic_value(OwnedDataValue::String(s)));
     }
 
     if !folded_any {
@@ -167,22 +167,20 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
             .iter()
             .map(|arg| {
                 if let CompiledNode::Value {
-                    value: Value::String(s),
+                    value: OwnedDataValue::String(s),
                     ..
                 } = arg
                 {
                     // Try parsing as integer first, then float
                     if let Ok(i) = s.parse::<i64>() {
                         changed = true;
-                        CompiledNode::synthetic_value(Value::Number(i.into()))
+                        CompiledNode::synthetic_value(OwnedDataValue::Number(NumberValue::Integer(i)))
                     } else if let Ok(f) = s.parse::<f64>() {
                         if f.is_finite() {
-                            if let Some(n) = serde_json::Number::from_f64(f) {
-                                changed = true;
-                                CompiledNode::synthetic_value(Value::Number(n))
-                            } else {
-                                arg.clone()
-                            }
+                            changed = true;
+                            CompiledNode::synthetic_value(OwnedDataValue::Number(
+                                NumberValue::from_f64(f),
+                            ))
                         } else {
                             arg.clone()
                         }
@@ -213,12 +211,12 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
 /// thread-local pool, since folding runs during `compile`, not the eval hot
 /// path. Returns `None` on any error (the caller falls back to leaving the
 /// node un-folded).
-pub(crate) fn fold_static_node(node: &CompiledNode, engine: &DataLogic) -> Option<Value> {
+pub(crate) fn fold_static_node(node: &CompiledNode, engine: &DataLogic) -> Option<OwnedDataValue> {
     let arena = bumpalo::Bump::new();
-    let null_root = Value::Null;
-    let mut actx = crate::arena::ArenaContextStack::from_value(&null_root, &arena);
-    let av = engine.evaluate_arena_node(node, &mut actx, &arena).ok()?;
-    Some(crate::arena::arena_to_value(av))
+    let null_root: &crate::arena::DataValue<'_> = arena.alloc(crate::arena::DataValue::Null);
+    let mut actx = crate::arena::DataContextStack::new(null_root);
+    let av = engine.evaluate_node(node, &mut actx, &arena).ok()?;
+    Some(av.to_owned())
 }
 
 fn is_arithmetic(opcode: &OpCode) -> bool {
@@ -232,20 +230,24 @@ fn is_arithmetic(opcode: &OpCode) -> bool {
 mod tests {
     use super::super::test_helpers::{builtin, val, var_node};
     use super::*;
-    use serde_json::json;
+    use datavalue::OwnedDataValue;
+
+    fn ov(s: &str) -> OwnedDataValue {
+        OwnedDataValue::from_json(s).unwrap()
+    }
 
     #[test]
     fn test_partial_fold_add() {
         let engine = DataLogic::new();
         let node = builtin(
             OpCode::Add,
-            vec![val(json!(1)), val(json!(2)), var_node("x"), val(json!(3))],
+            vec![val(ov("1")), val(ov("2")), var_node("x"), val(ov("3"))],
         );
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
             if let CompiledNode::Value { value, .. } = &args[0] {
-                assert_eq!(*value, json!(6));
+                assert_eq!(value.as_i64(), Some(6));
             } else {
                 panic!("expected folded value");
             }
@@ -259,13 +261,13 @@ mod tests {
         let engine = DataLogic::new();
         let node = builtin(
             OpCode::Cat,
-            vec![val(json!("hello ")), val(json!("world")), var_node("x")],
+            vec![val(ov("\"hello \"")), val(ov("\"world\"")), var_node("x")],
         );
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
             if let CompiledNode::Value { value, .. } = &args[0] {
-                assert_eq!(*value, json!("hello world"));
+                assert_eq!(value.as_str(), Some("hello world"));
             }
         }
     }
@@ -273,12 +275,12 @@ mod tests {
     #[test]
     fn test_precoerce_numeric_string() {
         let engine = DataLogic::new();
-        let node = builtin(OpCode::Add, vec![val(json!("5")), var_node("x")]);
+        let node = builtin(OpCode::Add, vec![val(ov("\"5\"")), var_node("x")]);
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result
             && let CompiledNode::Value { value, .. } = &args[0]
         {
-            assert_eq!(*value, json!(5));
+            assert_eq!(value.as_i64(), Some(5));
         }
     }
 }

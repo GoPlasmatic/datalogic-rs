@@ -4,22 +4,22 @@
 
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
-use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Error, Result};
+use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Error, Result};
 use serde_json::json;
 
 /// Custom arena operator: checks whether a datetime argument falls in the
-/// nighttime window (hours outside 7..19 UTC). Demonstrates an `ArenaOperator`
+/// nighttime window (hours outside 7..19 UTC). Demonstrates an `DataOperator`
 /// that pulls a string out of a pre-evaluated arg without round-tripping
 /// through `serde_json::Value`.
 struct IsNightOperator;
 
-impl ArenaOperator for IsNightOperator {
-    fn evaluate_arena<'a>(
+impl DataOperator for IsNightOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[&'a ArenaValue<'a>],
-        _actx: &mut ArenaContextStack<'a>,
+        args: &[&'a DataValue<'a>],
+        _actx: &mut DataContextStack<'a>,
         arena: &'a Bump,
-    ) -> Result<&'a ArenaValue<'a>> {
+    ) -> Result<&'a DataValue<'a>> {
         if args.len() != 1 {
             return Err(Error::InvalidArguments(
                 "Expected exactly one argument".to_string(),
@@ -30,11 +30,11 @@ impl ArenaOperator for IsNightOperator {
             .ok_or_else(|| Error::InvalidArguments("Invalid datetime argument".to_string()))?;
         let hour = dt.hour();
         let is_night = !(7..19).contains(&hour);
-        Ok(arena.alloc(ArenaValue::Bool(is_night)))
+        Ok(arena.alloc(DataValue::Bool(is_night)))
     }
 }
 
-fn parse_datetime_arena(av: &ArenaValue<'_>) -> Option<DateTime<chrono::Utc>> {
+fn parse_datetime_arena(av: &DataValue<'_>) -> Option<DateTime<chrono::Utc>> {
     // Arena-resident string (e.g., from a custom op chain or input).
     if let Some(s) = av.as_str()
         && let Ok(dt) = DateTime::parse_from_rfc3339(s)
@@ -42,7 +42,7 @@ fn parse_datetime_arena(av: &ArenaValue<'_>) -> Option<DateTime<chrono::Utc>> {
         return Some(dt.with_timezone(&chrono::Utc));
     }
     // Arena-resident object — walk it for a `datetime` field.
-    if let ArenaValue::Object(pairs) = av {
+    if let DataValue::Object(pairs) = av {
         for (k, v) in pairs.iter() {
             if *k == "datetime"
                 && let Some(s) = v.as_str()
@@ -58,7 +58,7 @@ fn parse_datetime_arena(av: &ArenaValue<'_>) -> Option<DateTime<chrono::Utc>> {
 #[test]
 fn test_is_night_nighttime() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     // 8 PM should be nighttime
     let logic = json!({"is_night": {"datetime": "2022-07-06T20:00:00Z"}});
@@ -82,7 +82,7 @@ fn test_is_night_nighttime() {
 #[test]
 fn test_is_night_daytime() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T08:00:00Z"}});
     let compiled = engine.compile(&logic).unwrap();
@@ -103,7 +103,7 @@ fn test_is_night_daytime() {
 #[test]
 fn test_is_night_boundaries() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T19:00:00Z"}});
     let compiled = engine.compile(&logic).unwrap();
@@ -124,7 +124,7 @@ fn test_is_night_boundaries() {
 #[test]
 fn test_is_night_with_string() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": "2022-07-06T21:00:00Z"});
     let compiled = engine.compile(&logic).unwrap();
@@ -140,7 +140,7 @@ fn test_is_night_with_string() {
 #[test]
 fn test_is_night_with_variable() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": {"var": "check_time"}});
     let compiled = engine.compile(&logic).unwrap();
@@ -156,7 +156,7 @@ fn test_is_night_with_variable() {
 #[test]
 fn test_is_night_with_timezone() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T22:00:00+05:00"}});
     let compiled = engine.compile(&logic).unwrap();
@@ -172,7 +172,7 @@ fn test_is_night_with_timezone() {
 #[test]
 fn test_is_night_with_preserve_structure() {
     let mut engine = DataLogic::with_preserve_structure();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({
         "get_the_garlic": {
@@ -206,7 +206,7 @@ fn test_is_night_with_preserve_structure() {
 #[test]
 fn test_is_night_error_invalid_argument() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": 42});
     let compiled = engine.compile(&logic).unwrap();
@@ -222,7 +222,7 @@ fn test_is_night_error_invalid_argument() {
 #[test]
 fn test_is_night_error_argument_count() {
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({"is_night": []});
     let compiled = engine.compile(&logic).unwrap();
@@ -241,7 +241,7 @@ fn test_is_night_error_argument_count() {
 #[test]
 fn test_is_night_complex_structured_object() {
     let mut engine = DataLogic::with_preserve_structure();
-    engine.add_arena_operator("is_night".to_string(), Box::new(IsNightOperator));
+    engine.add_operator("is_night".to_string(), Box::new(IsNightOperator));
 
     let logic = json!({
         "vampire_status": {

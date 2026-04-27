@@ -9,9 +9,8 @@
 //! The multi-arg form (`max(a, b, c)`) is handled separately — it doesn't
 //! involve array iteration.
 
-use serde_json::Value;
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{DataContextStack, DataValue};
 use crate::operators::array::{ResolvedInput, resolve_iter_input};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
@@ -21,12 +20,12 @@ use bumpalo::Bump;
 #[inline]
 fn arena_min_max<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
@@ -41,7 +40,7 @@ fn arena_min_max<'a>(
         return Err(crate::constants::invalid_args());
     }
     if let CompiledNode::Value { value, .. } = &args[0]
-        && matches!(value, Value::Array(_))
+        && matches!(value, datavalue::OwnedDataValue::Array(_))
     {
         return Err(crate::constants::invalid_args());
     }
@@ -51,11 +50,11 @@ fn arena_min_max<'a>(
         ResolvedInput::Empty => return Err(crate::constants::invalid_args()),
         ResolvedInput::Bridge(av) => {
             // Array-shaped bridges iterate natively.
-            if matches!(av, ArenaValue::Array(_)) {
+            if matches!(av, DataValue::Array(_)) {
                 return arena_min_max_from_av(av, init, pick_better, arena);
             }
             // Single non-array arg: must be a `Number`; returned unchanged.
-            if !matches!(av, ArenaValue::Number(_)) {
+            if !matches!(av, DataValue::Number(_)) {
                 return Err(crate::constants::invalid_args());
             }
             return Ok(av);
@@ -71,7 +70,7 @@ fn arena_min_max<'a>(
     let len = src.len();
     for i in 0..len {
         match src.get(i) {
-            ArenaValue::Number(n) => {
+            DataValue::Number(n) => {
                 let f = n.as_f64();
                 if pick_better(f, best_f) {
                     best_f = f;
@@ -86,25 +85,25 @@ fn arena_min_max<'a>(
         // Re-borrow the arena value to preserve the original Number variant
         // (integer typing).
         Some(i) => Ok(src.get(i)),
-        None => Ok(arena.alloc(ArenaValue::Null)),
+        None => Ok(arena.alloc(DataValue::Null)),
     }
 }
 
 #[inline]
 fn arena_min_max_variadic<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     let mut best_f = init;
-    let mut best_av: Option<&'a ArenaValue<'a>> = None;
+    let mut best_av: Option<&'a DataValue<'a>> = None;
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, actx, arena)?;
         let f = match av {
-            ArenaValue::Number(n) => n.as_f64(),
+            DataValue::Number(n) => n.as_f64(),
             _ => return Err(crate::constants::invalid_args()),
         };
         if pick_better(f, best_f) {
@@ -118,17 +117,17 @@ fn arena_min_max_variadic<'a>(
     }
 }
 
-/// Iterate an `&'a ArenaValue<'a>` (Array variant) for min/max. Used when
+/// Iterate an `&'a DataValue<'a>` (Array variant) for min/max. Used when
 /// the input came from a composed arena op (e.g. `merge`).
 #[inline]
 fn arena_min_max_from_av<'a>(
-    av: &'a ArenaValue<'a>,
+    av: &'a DataValue<'a>,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
-    let items: &[ArenaValue<'a>] = match av {
-        ArenaValue::Array(items) => items,
+) -> Result<&'a DataValue<'a>> {
+    let items: &[DataValue<'a>] = match av {
+        DataValue::Array(items) => items,
         _ => return Err(crate::constants::invalid_args()),
     };
     if items.is_empty() {
@@ -145,7 +144,7 @@ fn arena_min_max_from_av<'a>(
     }
     match best_idx {
         Some(i) => Ok(arena.alloc(crate::arena::value::reborrow_arena_value(&items[i]))),
-        None => Ok(arena.alloc(ArenaValue::Null)),
+        None => Ok(arena.alloc(DataValue::Null)),
     }
 }
 
@@ -153,10 +152,10 @@ fn arena_min_max_from_av<'a>(
 #[inline]
 pub(crate) fn evaluate_max_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     arena_min_max(args, actx, engine, arena, f64::NEG_INFINITY, |c, b| c > b)
 }
 
@@ -164,9 +163,9 @@ pub(crate) fn evaluate_max_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_min_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     arena_min_max(args, actx, engine, arena, f64::INFINITY, |c, b| c < b)
 }

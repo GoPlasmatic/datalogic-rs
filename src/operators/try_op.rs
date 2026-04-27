@@ -35,22 +35,22 @@
 //!
 //! - [`throw`](super::throw) - Throw an error to be caught by `try`
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{DataContextStack, DataValue};
 use crate::{CompiledNode, DataLogic, Error, Result};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_try_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(ArenaValue::Null));
+        return Ok(arena.alloc(DataValue::Null));
     }
     if args.len() == 1 {
-        return engine.evaluate_arena_node(&args[0], actx, arena);
+        return engine.evaluate_node(&args[0], actx, arena);
     }
 
     // Multi-arg form: try arms in sequence; final arm receives the error
@@ -62,7 +62,7 @@ pub(crate) fn evaluate_try_arena<'a>(
             return arena_try_last_with_error_context(arg, &mut last_err, actx, engine, arena);
         }
         let saved_len = actx.error_path_len();
-        match engine.evaluate_arena_node(arg, actx, arena) {
+        match engine.evaluate_node(arg, actx, arena) {
             Ok(v) => return Ok(v),
             Err(e) => {
                 actx.truncate_error_path(saved_len);
@@ -79,17 +79,17 @@ pub(crate) fn evaluate_try_arena<'a>(
 fn arena_try_last_with_error_context<'a>(
     arg: &'a CompiledNode,
     last_error: &mut Option<Error>,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if let Some(Error::Thrown(error_obj)) = last_error.take() {
-        let av: &'a ArenaValue<'a> = arena.alloc(crate::arena::value_to_arena(&error_obj, arena));
+        let av: &'a DataValue<'a> = arena.alloc(error_obj.to_arena(arena));
         actx.push(av);
-        let result = engine.evaluate_arena_node(arg, actx, arena);
+        let result = engine.evaluate_node(arg, actx, arena);
         actx.pop();
         result
     } else {
-        engine.evaluate_arena_node(arg, actx, arena)
+        engine.evaluate_node(arg, actx, arena)
     }
 }

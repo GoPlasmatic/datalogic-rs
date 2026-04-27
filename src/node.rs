@@ -1,28 +1,27 @@
-use crate::arena::ArenaValue;
+use crate::arena::DataValue;
 use crate::opcode::OpCode;
-use crate::value::NumberValue;
+use datavalue::OwnedDataValue;
 #[cfg(feature = "ext-string")]
 use regex::Regex;
-use serde_json::Value;
 #[cfg(feature = "ext-string")]
 use std::sync::Arc;
 
-/// Pre-build an `ArenaValue<'static>` for primitive literals that don't
+/// Pre-build a `DataValue<'static>` for primitive literals that don't
 /// require additional storage (Numbers — inline `NumberValue`). Used at
 /// `CompiledNode::Value` construction time so the arena dispatch hot path
-/// can return a borrow without `value_to_arena` for the most common
+/// can return a borrow without re-arena work for the most common
 /// primitive case. Other literal shapes (Null/Bool/String/Array/Object)
 /// are populated post-compile by [`populate_arena_lits`] using the
 /// per-`CompiledLogic` static arena.
 #[inline]
-fn precompute_arena_lit(value: &Value) -> Option<Box<ArenaValue<'static>>> {
+fn precompute_arena_lit(value: &OwnedDataValue) -> Option<Box<DataValue<'static>>> {
     match value {
-        Value::Number(n) => Some(Box::new(ArenaValue::Number(NumberValue::from_serde(n)))),
+        OwnedDataValue::Number(n) => Some(Box::new(DataValue::Number(*n))),
         _ => None,
     }
 }
 
-/// Build an `ArenaValue<'a>` from a `serde_json::Value` using the supplied
+/// Build an `DataValue<'a>` from an [`OwnedDataValue`] using the supplied
 /// arena, then transmute the lifetime to `'static`. Used by the post-compile
 /// populate pass: the resulting `'static` claim is upheld by the caller
 /// owning the arena alongside the references inside the same struct
@@ -30,17 +29,20 @@ fn precompute_arena_lit(value: &Value) -> Option<Box<ArenaValue<'static>>> {
 ///
 /// # Safety
 ///
-/// The returned `ArenaValue<'static>` borrows into `arena`. The caller must
+/// The returned `DataValue<'static>` borrows into `arena`. The caller must
 /// ensure `arena` outlives every read of the returned value. In practice
 /// this is upheld by storing the arena and the result in the same owning
 /// struct (`CompiledLogic`) — the references can be accessed only through
 /// `&CompiledLogic`, which keeps the arena alive for the access.
 #[inline]
-unsafe fn build_static_arena_value(value: &Value, arena: &bumpalo::Bump) -> ArenaValue<'static> {
-    let av = crate::arena::value::value_to_arena(value, arena);
+unsafe fn build_static_arena_value(
+    value: &OwnedDataValue,
+    arena: &bumpalo::Bump,
+) -> DataValue<'static> {
+    let av = value.to_arena(arena);
     // SAFETY: caller guarantees `arena` lives at least as long as any read of
     // the returned `'static` value. Layout-identical lifetime cast.
-    unsafe { core::mem::transmute::<ArenaValue<'_>, ArenaValue<'static>>(av) }
+    unsafe { core::mem::transmute::<DataValue<'_>, DataValue<'static>>(av) }
 }
 
 /// Walk the compiled tree and populate `arena_lit` for every literal whose
@@ -263,13 +265,13 @@ pub struct CompiledSplitRegexData {
 #[derive(Debug, Clone)]
 pub struct CompiledThrowData {
     pub id: u32,
-    pub error: Value,
+    pub error: OwnedDataValue,
     /// Arena-resident mirror of `error` populated post-compile by
     /// [`populate_arena_lits`]. The borrowed lifetime is `'static` only
     /// because the backing storage lives in [`CompiledLogic::static_arena`],
     /// which is moved into the same owning struct.
     #[doc(hidden)]
-    pub(crate) arena_error: Option<Box<ArenaValue<'static>>>,
+    pub(crate) arena_error: Option<Box<DataValue<'static>>>,
 }
 
 /// A compiled node representing a single operation or value in the logic tree.
@@ -288,7 +290,7 @@ pub enum CompiledNode {
     ///
     /// Used for literals like numbers, strings, booleans, and null.
     ///
-    /// `arena_lit` holds a pre-built `ArenaValue` for primitive literals
+    /// `arena_lit` holds a pre-built `DataValue` for primitive literals
     /// that don't borrow from a per-call arena (e.g. Number). The arena
     /// dispatch hot path returns this borrow directly, skipping
     /// `value_to_arena` and the per-call `arena.alloc`. `None` for
@@ -298,8 +300,8 @@ pub enum CompiledNode {
     /// `Arc<CompiledLogic>`.
     Value {
         id: u32,
-        value: Value,
-        arena_lit: Option<Box<ArenaValue<'static>>>,
+        value: OwnedDataValue,
+        arena_lit: Option<Box<DataValue<'static>>>,
     },
 
     /// An array of compiled nodes.
@@ -397,7 +399,7 @@ impl CompiledNode {
     /// observed by tracing or error reporting, so assigning a real id would
     /// be misleading.
     #[inline]
-    pub fn synthetic_value(value: Value) -> Self {
+    pub fn synthetic_value(value: OwnedDataValue) -> Self {
         Self::value_with_id(SYNTHETIC_ID, value)
     }
 
@@ -408,7 +410,7 @@ impl CompiledNode {
     /// a new precomputable variant only requires editing
     /// [`precompute_arena_lit`].
     #[inline]
-    pub fn value_with_id(id: u32, value: Value) -> Self {
+    pub fn value_with_id(id: u32, value: OwnedDataValue) -> Self {
         let arena_lit = precompute_arena_lit(&value);
         CompiledNode::Value {
             id,
@@ -527,7 +529,7 @@ pub struct CompiledLogic {
 // only ever allocates into `static_arena` during construction (see
 // [`CompiledLogic::new`]). After construction, no method on `&CompiledLogic`
 // reaches into `static_arena` — the arena is read-only via the existing
-// `&'static ArenaValue<'static>` references stored in `root`. Concurrent
+// `&'static DataValue<'static>` references stored in `root`. Concurrent
 // `&CompiledLogic` readers therefore never race on `Bump`'s internal cells.
 unsafe impl Sync for CompiledLogic {}
 
@@ -577,6 +579,7 @@ impl CompiledLogic {
 
     /// Conservative arena capacity for one evaluation of this rule:
     /// `static_bytes × 2`, with a 4 KiB floor.
+    #[cfg(feature = "compat")]
     #[inline]
     pub(crate) fn arena_capacity(&self) -> usize {
         self.arena_static_bytes.saturating_mul(2).max(4096)
@@ -589,7 +592,7 @@ impl CompiledLogic {
 /// chunk allocation. Data-dependent allocations (filter results, map outputs)
 /// can't be predicted here.
 fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
-    // Base cost per node when promoted to ArenaValue: ~32 bytes for the enum +
+    // Base cost per node when promoted to DataValue: ~32 bytes for the enum +
     // a small fudge for slice headers. Add string content separately.
     const PER_NODE: usize = 48;
     let mut bytes = PER_NODE;
@@ -654,12 +657,14 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
     bytes
 }
 
-fn estimate_value_bytes(v: &Value) -> usize {
+fn estimate_value_bytes(v: &OwnedDataValue) -> usize {
     match v {
-        Value::String(s) => s.len() + 16,
-        Value::Array(arr) => 16 + arr.iter().map(estimate_value_bytes).sum::<usize>(),
-        Value::Object(obj) => {
-            16 + obj
+        OwnedDataValue::String(s) => s.len() + 16,
+        OwnedDataValue::Array(arr) => {
+            16 + arr.iter().map(estimate_value_bytes).sum::<usize>()
+        }
+        OwnedDataValue::Object(pairs) => {
+            16 + pairs
                 .iter()
                 .map(|(k, v)| k.len() + estimate_value_bytes(v))
                 .sum::<usize>()

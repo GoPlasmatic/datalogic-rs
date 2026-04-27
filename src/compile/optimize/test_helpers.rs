@@ -2,9 +2,9 @@
 
 use crate::node::{CompiledNode, MetadataHint, PathSegment, ReduceHint, SYNTHETIC_ID};
 use crate::opcode::OpCode;
-use serde_json::Value;
+use datavalue::OwnedDataValue;
 
-pub(super) fn val(v: Value) -> CompiledNode {
+pub(super) fn val(v: OwnedDataValue) -> CompiledNode {
     CompiledNode::synthetic_value(v)
 }
 

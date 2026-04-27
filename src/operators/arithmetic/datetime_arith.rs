@@ -2,14 +2,14 @@
 //! operand is a datetime/duration form so the caller falls through to the
 //! generic numeric path.
 
-use crate::arena::ArenaValue;
+use crate::arena::DataValue;
 use crate::arena::value::coerce_arena_to_number;
 use bumpalo::Bump;
 
-/// Wrap an owned string into an arena-resident `ArenaValue::String`.
+/// Wrap an owned string into an arena-resident `DataValue::String`.
 #[inline]
-fn alloc_string_av<'a>(arena: &'a Bump, s: &str) -> &'a ArenaValue<'a> {
-    arena.alloc(ArenaValue::String(arena.alloc_str(s)))
+fn alloc_string_av<'a>(arena: &'a Bump, s: &str) -> &'a DataValue<'a> {
+    arena.alloc(DataValue::String(arena.alloc_str(s)))
 }
 
 /// Extract `(DateTime, Duration)` slots from an arena value. The two slots
@@ -17,7 +17,7 @@ fn alloc_string_av<'a>(arena: &'a Bump, s: &str) -> &'a ArenaValue<'a> {
 /// for `Duration`.
 #[inline]
 fn arena_extract_dt_dur(
-    av: &ArenaValue<'_>,
+    av: &DataValue<'_>,
 ) -> (
     Option<crate::datetime::DataDateTime>,
     Option<crate::datetime::DataDuration>,
@@ -38,10 +38,10 @@ fn arena_extract_dt_dur(
 /// - Duration − Duration → Duration string.
 #[inline]
 pub(super) fn arena_datetime_subtract<'a>(
-    a_av: &'a ArenaValue<'a>,
-    b_av: &'a ArenaValue<'a>,
+    a_av: &'a DataValue<'a>,
+    b_av: &'a DataValue<'a>,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     let (a_dt, a_dur) = arena_extract_dt_dur(a_av);
     let (b_dt, b_dur) = arena_extract_dt_dur(b_av);
 
@@ -62,10 +62,10 @@ pub(super) fn arena_datetime_subtract<'a>(
 /// - Duration + Duration → Duration string.
 #[inline]
 pub(super) fn arena_datetime_add<'a>(
-    a_av: &'a ArenaValue<'a>,
-    b_av: &'a ArenaValue<'a>,
+    a_av: &'a DataValue<'a>,
+    b_av: &'a DataValue<'a>,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     let (a_dt, a_dur) = arena_extract_dt_dur(a_av);
     let (_b_dt, b_dur) = arena_extract_dt_dur(b_av);
 
@@ -86,10 +86,10 @@ pub(super) fn arena_datetime_add<'a>(
 /// - scalar × Duration → Duration string.
 #[inline]
 pub(super) fn arena_datetime_multiply<'a>(
-    a_av: &'a ArenaValue<'a>,
-    b_av: &'a ArenaValue<'a>,
+    a_av: &'a DataValue<'a>,
+    b_av: &'a DataValue<'a>,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     let (_, a_dur) = arena_extract_dt_dur(a_av);
     let (_, b_dur) = arena_extract_dt_dur(b_av);
 
@@ -110,10 +110,10 @@ pub(super) fn arena_datetime_multiply<'a>(
 /// LHS so the generic numeric path handles regular division.
 #[inline]
 pub(super) fn arena_datetime_divide<'a>(
-    a_av: &'a ArenaValue<'a>,
-    b_av: &'a ArenaValue<'a>,
+    a_av: &'a DataValue<'a>,
+    b_av: &'a DataValue<'a>,
     arena: &'a Bump,
-) -> Option<crate::Result<&'a ArenaValue<'a>>> {
+) -> Option<crate::Result<&'a DataValue<'a>>> {
     let (_, a_dur) = arena_extract_dt_dur(a_av);
     let a_dur = a_dur?;
     let divisor = coerce_arena_to_number(b_av)?;

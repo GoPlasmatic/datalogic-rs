@@ -1,13 +1,13 @@
 //! Example demonstrating how to create and use custom operators in DataLogic.
 //!
-//! Custom operators are implemented via the `ArenaOperator` trait, which
-//! receives **pre-evaluated** arguments as `&ArenaValue` borrows and returns
-//! an arena-allocated `ArenaValue` result. This avoids the per-call clone of
+//! Custom operators are implemented via the `DataOperator` trait, which
+//! receives **pre-evaluated** arguments as `&DataValue` borrows and returns
+//! an arena-allocated `DataValue` result. This avoids the per-call clone of
 //! `serde_json::Value` and is required to register a custom op with the
 //! engine.
 
 use bumpalo::Bump;
-use datalogic_rs::{ArenaContextStack, ArenaOperator, ArenaValue, DataLogic, Error, Result};
+use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Error, Result};
 use serde_json::json;
 
 /// A simple operator that calculates the average of an array of numbers.
@@ -16,15 +16,15 @@ use serde_json::json;
 /// Or:    {"avg": {"var": "scores"}} -> average of scores array
 struct AverageOperator;
 
-impl ArenaOperator for AverageOperator {
-    fn evaluate_arena<'a>(
+impl DataOperator for AverageOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[&'a ArenaValue<'a>],
-        _actx: &mut ArenaContextStack<'a>,
+        args: &[&'a DataValue<'a>],
+        _actx: &mut DataContextStack<'a>,
         arena: &'a Bump,
-    ) -> Result<&'a ArenaValue<'a>> {
+    ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
-            return Ok(arena.alloc(ArenaValue::Null));
+            return Ok(arena.alloc(DataValue::Null));
         }
 
         // Collect numbers from each argument. Arrays unpack into their
@@ -32,7 +32,7 @@ impl ArenaOperator for AverageOperator {
         let mut numbers: Vec<f64> = Vec::new();
         for av in args {
             match av {
-                ArenaValue::Array(items) => {
+                DataValue::Array(items) => {
                     for it in items.iter() {
                         if let Some(n) = it.as_f64() {
                             numbers.push(n);
@@ -48,11 +48,11 @@ impl ArenaOperator for AverageOperator {
         }
 
         if numbers.is_empty() {
-            return Ok(arena.alloc(ArenaValue::Null));
+            return Ok(arena.alloc(DataValue::Null));
         }
 
         let avg = numbers.iter().sum::<f64>() / numbers.len() as f64;
-        Ok(arena.alloc(ArenaValue::from_f64(avg)))
+        Ok(arena.alloc(DataValue::from_f64(avg)))
     }
 }
 
@@ -61,13 +61,13 @@ impl ArenaOperator for AverageOperator {
 /// Usage: {"between": [value, min, max]} -> boolean
 struct BetweenOperator;
 
-impl ArenaOperator for BetweenOperator {
-    fn evaluate_arena<'a>(
+impl DataOperator for BetweenOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[&'a ArenaValue<'a>],
-        _actx: &mut ArenaContextStack<'a>,
+        args: &[&'a DataValue<'a>],
+        _actx: &mut DataContextStack<'a>,
         arena: &'a Bump,
-    ) -> Result<&'a ArenaValue<'a>> {
+    ) -> Result<&'a DataValue<'a>> {
         if args.len() < 3 {
             return Err(Error::InvalidArguments(
                 "between requires 3 arguments: value, min, max".to_string(),
@@ -82,7 +82,7 @@ impl ArenaOperator for BetweenOperator {
         let hi = args[2]
             .as_f64()
             .ok_or_else(|| Error::InvalidArguments("max must be a number".into()))?;
-        Ok(arena.alloc(ArenaValue::Bool(v >= lo && v <= hi)))
+        Ok(arena.alloc(DataValue::Bool(v >= lo && v <= hi)))
     }
 }
 
@@ -91,13 +91,13 @@ impl ArenaOperator for BetweenOperator {
 /// Usage: {"format": ["Hello, {}!", "World"]} -> "Hello, World!"
 struct FormatOperator;
 
-impl ArenaOperator for FormatOperator {
-    fn evaluate_arena<'a>(
+impl DataOperator for FormatOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[&'a ArenaValue<'a>],
-        _actx: &mut ArenaContextStack<'a>,
+        args: &[&'a DataValue<'a>],
+        _actx: &mut DataContextStack<'a>,
         arena: &'a Bump,
-    ) -> Result<&'a ArenaValue<'a>> {
+    ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
             return Err(Error::InvalidArguments(
                 "format requires at least a template string".to_string(),
@@ -111,10 +111,10 @@ impl ArenaOperator for FormatOperator {
         for av in args.iter().skip(1) {
             if let Some(pos) = result.find("{}") {
                 let replacement = match av {
-                    ArenaValue::String(s) => (*s).to_string(),
-                    ArenaValue::Bool(b) => b.to_string(),
-                    ArenaValue::Null => "null".to_string(),
-                    ArenaValue::Number(_) => av
+                    DataValue::String(s) => (*s).to_string(),
+                    DataValue::Bool(b) => b.to_string(),
+                    DataValue::Null => "null".to_string(),
+                    DataValue::Number(_) => av
                         .as_f64()
                         .map(|n| {
                             if n.fract() == 0.0 {
@@ -131,7 +131,7 @@ impl ArenaOperator for FormatOperator {
         }
 
         let s = arena.alloc_str(&result);
-        Ok(arena.alloc(ArenaValue::String(s)))
+        Ok(arena.alloc(DataValue::String(s)))
     }
 }
 
@@ -141,9 +141,9 @@ fn main() {
 
     // Create engine and register custom operators
     let mut engine = DataLogic::new();
-    engine.add_arena_operator("avg".to_string(), Box::new(AverageOperator));
-    engine.add_arena_operator("between".to_string(), Box::new(BetweenOperator));
-    engine.add_arena_operator("format".to_string(), Box::new(FormatOperator));
+    engine.add_operator("avg".to_string(), Box::new(AverageOperator));
+    engine.add_operator("between".to_string(), Box::new(BetweenOperator));
+    engine.add_operator("format".to_string(), Box::new(FormatOperator));
 
     // Example 1: Average operator
     println!("1. Average Operator");

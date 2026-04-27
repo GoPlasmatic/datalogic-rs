@@ -1,37 +1,36 @@
 use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
-use serde_json::Value;
+use datavalue::{NumberValue, OwnedDataValue};
 
-/// Checks if a value is truthy using the engine's configuration.
-#[inline(always)]
-pub fn is_truthy(value: &Value, engine: &crate::DataLogic) -> bool {
+/// Truthiness for an [`OwnedDataValue`] (compile-time literal form). The
+/// runtime arena-resident form has its own [`crate::arena::is_truthy_arena`]
+/// in the arena helpers module.
+#[inline]
+pub fn is_truthy_owned(value: &OwnedDataValue, engine: &crate::DataLogic) -> bool {
     match &engine.config().truthy_evaluator {
-        TruthyEvaluator::JavaScript | TruthyEvaluator::Python => is_truthy_js(value),
+        TruthyEvaluator::JavaScript | TruthyEvaluator::Python => is_truthy_owned_js(value),
         TruthyEvaluator::StrictBoolean => match value {
-            Value::Null => false,
-            Value::Bool(b) => *b,
+            OwnedDataValue::Null => false,
+            OwnedDataValue::Bool(b) => *b,
             _ => true,
         },
-        TruthyEvaluator::Custom(f) => f(value),
+        #[cfg(feature = "compat")]
+        TruthyEvaluator::Custom(f) => f(&crate::value::owned_to_serde(value)),
     }
 }
 
-/// Checks if a value is truthy according to JavaScript rules.
-#[inline(always)]
-fn is_truthy_js(value: &Value) -> bool {
+#[inline]
+fn is_truthy_owned_js(value: &OwnedDataValue) -> bool {
     match value {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => {
-            if let Some(f) = n.as_f64() {
-                f != 0.0 && !f.is_nan()
-            } else {
-                n.as_i64() != Some(0) && n.as_u64() != Some(0)
-            }
-        }
-        Value::String(s) => !s.is_empty(),
-        Value::Array(arr) => !arr.is_empty(),
-        Value::Object(obj) => !obj.is_empty(),
+        OwnedDataValue::Null => false,
+        OwnedDataValue::Bool(b) => *b,
+        OwnedDataValue::Number(NumberValue::Integer(i)) => *i != 0,
+        OwnedDataValue::Number(NumberValue::Float(f)) => *f != 0.0 && !f.is_nan(),
+        OwnedDataValue::String(s) => !s.is_empty(),
+        OwnedDataValue::Array(items) => !items.is_empty(),
+        OwnedDataValue::Object(pairs) => !pairs.is_empty(),
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::DateTime(_) | OwnedDataValue::Duration(_) => true,
     }
 }
 
@@ -40,16 +39,16 @@ fn is_truthy_js(value: &Value) -> bool {
 #[cfg(feature = "datetime")]
 #[inline]
 pub(crate) fn extract_datetime_arena(
-    av: &crate::arena::ArenaValue<'_>,
+    av: &crate::arena::DataValue<'_>,
 ) -> Option<crate::datetime::DataDateTime> {
-    use crate::arena::ArenaValue;
+    use crate::arena::DataValue;
     match av {
-        ArenaValue::DateTime(dt) => Some(dt.clone()),
-        ArenaValue::String(s) => crate::datetime::DataDateTime::parse(s),
-        ArenaValue::Object(pairs) => {
+        DataValue::DateTime(dt) => Some(dt.clone()),
+        DataValue::String(s) => crate::datetime::DataDateTime::parse(s),
+        DataValue::Object(pairs) => {
             for (k, v) in *pairs {
                 if *k == "datetime"
-                    && let ArenaValue::String(s) = v
+                    && let DataValue::String(s) = v
                 {
                     return crate::datetime::DataDateTime::parse(s);
                 }
@@ -64,16 +63,16 @@ pub(crate) fn extract_datetime_arena(
 #[cfg(feature = "datetime")]
 #[inline]
 pub(crate) fn extract_duration_arena(
-    av: &crate::arena::ArenaValue<'_>,
+    av: &crate::arena::DataValue<'_>,
 ) -> Option<crate::datetime::DataDuration> {
-    use crate::arena::ArenaValue;
+    use crate::arena::DataValue;
     match av {
-        ArenaValue::Duration(d) => Some(d.clone()),
-        ArenaValue::String(s) => crate::datetime::DataDuration::parse(s),
-        ArenaValue::Object(pairs) => {
+        DataValue::Duration(d) => Some(d.clone()),
+        DataValue::String(s) => crate::datetime::DataDuration::parse(s),
+        DataValue::Object(pairs) => {
             for (k, v) in *pairs {
                 if *k == "timestamp"
-                    && let ArenaValue::String(s) = v
+                    && let DataValue::String(s) = v
                 {
                     return crate::datetime::DataDuration::parse(s);
                 }
@@ -91,7 +90,7 @@ pub fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<()> {
     if args.len() == 1
         && let CompiledNode::Value { value, .. } = &args[0]
         && let Some(obj) = value.as_object()
-        && obj.contains_key("__invalid_args__")
+        && obj.iter().any(|(k, _)| k == "__invalid_args__")
     {
         return Err(crate::constants::invalid_args());
     }

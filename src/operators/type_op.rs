@@ -41,47 +41,47 @@ use crate::{CompiledNode, DataLogic, Result};
 // Evaluates the arg via arena dispatch and returns a `&'static str` from a
 // small set of type names. The string is allocated once into the arena.
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{DataContextStack, DataValue};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_type_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(ArenaValue::String("null")));
+        return Ok(arena.alloc(DataValue::String("null")));
     }
-    let av = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let av = engine.evaluate_node(&args[0], actx, arena)?;
 
     // Datetime/duration object detection (e.g. {"datetime": "..."}).
     #[cfg(feature = "datetime")]
     {
-        if let ArenaValue::Object(pairs) = av {
+        if let DataValue::Object(pairs) = av {
             if pairs.iter().any(|(k, _)| *k == "datetime") {
-                return Ok(arena.alloc(ArenaValue::String("datetime")));
+                return Ok(arena.alloc(DataValue::String("datetime")));
             }
             if pairs.iter().any(|(k, _)| *k == "timestamp") {
-                return Ok(arena.alloc(ArenaValue::String("duration")));
+                return Ok(arena.alloc(DataValue::String("duration")));
             }
         }
     }
 
     let type_str: &'static str = match av {
-        ArenaValue::Null => "null",
-        ArenaValue::Bool(_) => "boolean",
-        ArenaValue::Number(_) => "number",
-        ArenaValue::String(s) => classify_string(s),
-        ArenaValue::Array(_) => "array",
-        ArenaValue::Object(_) => "object",
+        DataValue::Null => "null",
+        DataValue::Bool(_) => "boolean",
+        DataValue::Number(_) => "number",
+        DataValue::String(s) => classify_string(s),
+        DataValue::Array(_) => "array",
+        DataValue::Object(_) => "object",
         #[cfg(feature = "datetime")]
-        ArenaValue::DateTime(_) => "datetime",
+        DataValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
-        ArenaValue::Duration(_) => "duration",
+        DataValue::Duration(_) => "duration",
     };
-    Ok(arena.alloc(ArenaValue::String(type_str)))
+    Ok(arena.alloc(DataValue::String(type_str)))
 }
 
 /// Classify a string into "datetime" / "duration" / "string" using the

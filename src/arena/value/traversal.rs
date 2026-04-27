@@ -1,4 +1,4 @@
-//! Path traversal on `ArenaValue`. Two pairs:
+//! Path traversal on `DataValue`. Two pairs:
 //! - **By segments** (`PathSegment` slice from compiled vars): preferred,
 //!   no string parsing.
 //! - **By dot-string**: legacy / dynamic paths.
@@ -7,35 +7,35 @@
 //! traversal step; the `_exists` variants are thin `.is_some()` wrappers
 //! over the value-returning core.
 
-use super::ArenaValue;
+use super::DataValue;
 use super::lookup::arena_object_lookup_field;
 use crate::node::PathSegment;
 use bumpalo::Bump;
 
 /// Reborrow an arena array entry up to the arena's `'a` lifetime. `slice.get(i)`
-/// gives `Option<&'short ArenaValue<'a>>` — the cast restores `'a` on the outer
-/// reference, which is sound because the slice is `&'a [ArenaValue<'a>]` and
+/// gives `Option<&'short DataValue<'a>>` — the cast restores `'a` on the outer
+/// reference, which is sound because the slice is `&'a [DataValue<'a>]` and
 /// nothing reallocates.
 #[inline(always)]
-unsafe fn reborrow_slice_entry<'a>(entry: &ArenaValue<'a>) -> &'a ArenaValue<'a> {
-    unsafe { &*(entry as *const ArenaValue<'a>) }
+unsafe fn reborrow_slice_entry<'a>(entry: &DataValue<'a>) -> &'a DataValue<'a> {
+    unsafe { &*(entry as *const DataValue<'a>) }
 }
 
 /// Take one traversal step by `PathSegment`. Tight loop body — must always
 /// inline so the cross-module callers in `variable.rs` see a flat walk.
 #[inline(always)]
-fn step_segment<'a>(cur: &'a ArenaValue<'a>, seg: &PathSegment) -> Option<&'a ArenaValue<'a>> {
+fn step_segment<'a>(cur: &'a DataValue<'a>, seg: &PathSegment) -> Option<&'a DataValue<'a>> {
     match (cur, seg) {
-        (ArenaValue::Object(pairs), PathSegment::Field(key)) => {
+        (DataValue::Object(pairs), PathSegment::Field(key)) => {
             arena_object_lookup_field(pairs, key.as_ref())
         }
-        (ArenaValue::Array(items), PathSegment::Index(idx)) => {
+        (DataValue::Array(items), PathSegment::Index(idx)) => {
             items.get(*idx).map(|e| unsafe { reborrow_slice_entry(e) })
         }
-        (ArenaValue::Object(pairs), PathSegment::FieldOrIndex(key, _)) => {
+        (DataValue::Object(pairs), PathSegment::FieldOrIndex(key, _)) => {
             arena_object_lookup_field(pairs, key.as_ref())
         }
-        (ArenaValue::Array(items), PathSegment::FieldOrIndex(_, idx)) => {
+        (DataValue::Array(items), PathSegment::FieldOrIndex(_, idx)) => {
             items.get(*idx).map(|e| unsafe { reborrow_slice_entry(e) })
         }
         _ => None,
@@ -46,10 +46,10 @@ fn step_segment<'a>(cur: &'a ArenaValue<'a>, seg: &PathSegment) -> Option<&'a Ar
 /// array indices on the fly). Tight loop body — `inline(always)` for the
 /// same reason as `step_segment`.
 #[inline(always)]
-fn step_str<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>> {
+fn step_str<'a>(cur: &'a DataValue<'a>, seg: &str) -> Option<&'a DataValue<'a>> {
     match cur {
-        ArenaValue::Object(pairs) => arena_object_lookup_field(pairs, seg),
-        ArenaValue::Array(items) => {
+        DataValue::Object(pairs) => arena_object_lookup_field(pairs, seg),
+        DataValue::Array(items) => {
             let idx = seg.parse::<usize>().ok()?;
             items.get(idx).map(|e| unsafe { reborrow_slice_entry(e) })
         }
@@ -57,15 +57,15 @@ fn step_str<'a>(cur: &'a ArenaValue<'a>, seg: &str) -> Option<&'a ArenaValue<'a>
     }
 }
 
-/// Walk path segments on an `&'a ArenaValue<'a>`. Used by variable-arena
+/// Walk path segments on an `&'a DataValue<'a>`. Used by variable-arena
 /// lookups. Returns `None` if any segment misses or the value isn't
 /// traversable.
 #[inline]
 pub(crate) fn arena_traverse_segments<'a>(
-    av: &'a ArenaValue<'a>,
+    av: &'a DataValue<'a>,
     segments: &[PathSegment],
     _arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     if segments.is_empty() {
         return Some(av);
     }
@@ -79,19 +79,19 @@ pub(crate) fn arena_traverse_segments<'a>(
 /// Allocation-free segments-exists check. Companion of [`arena_traverse_segments`]
 /// for compile-time-parsed paths where the leaf value isn't consumed.
 #[inline]
-pub(crate) fn arena_path_exists_segments(av: &ArenaValue<'_>, segments: &[PathSegment]) -> bool {
+pub(crate) fn arena_path_exists_segments(av: &DataValue<'_>, segments: &[PathSegment]) -> bool {
     if segments.is_empty() {
         return true;
     }
-    // Re-bind to a `&'a ArenaValue<'a>`-shaped reference so we can reuse
+    // Re-bind to a `&'a DataValue<'a>`-shaped reference so we can reuse
     // `step_segment`'s lifetime contract. The lifetimes coincide for the
     // duration of this function — we never return a reference.
-    let mut cur: &ArenaValue<'_> = av;
+    let mut cur: &DataValue<'_> = av;
     for seg in segments {
         match step_segment(
             // SAFETY: shrink the inner lifetime to the outer borrow's
             // lifetime; we never let the resulting reference escape.
-            unsafe { &*(cur as *const ArenaValue<'_>) },
+            unsafe { &*(cur as *const DataValue<'_>) },
             seg,
         ) {
             Some(next) => cur = next,
@@ -101,13 +101,13 @@ pub(crate) fn arena_path_exists_segments(av: &ArenaValue<'_>, segments: &[PathSe
     true
 }
 
-/// Walk a dot-notation `path` on `&'a ArenaValue<'a>`.
+/// Walk a dot-notation `path` on `&'a DataValue<'a>`.
 #[inline]
 pub(crate) fn arena_access_path_str_ref<'a>(
-    av: &'a ArenaValue<'a>,
+    av: &'a DataValue<'a>,
     path: &str,
     _arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     if path.is_empty() {
         return Some(av);
     }
@@ -121,17 +121,17 @@ pub(crate) fn arena_access_path_str_ref<'a>(
     Some(cur)
 }
 
-/// Allocation-free path-exists check on `&ArenaValue`. Used by `missing` /
+/// Allocation-free path-exists check on `&DataValue`. Used by `missing` /
 /// `missing_some` where the leaf value isn't consumed.
 #[inline]
-pub(crate) fn arena_path_exists_str(av: &ArenaValue<'_>, path: &str) -> bool {
+pub(crate) fn arena_path_exists_str(av: &DataValue<'_>, path: &str) -> bool {
     if path.is_empty() {
         return true;
     }
-    let mut cur: &ArenaValue<'_> = av;
-    let walk = |cur: &mut &ArenaValue<'_>, seg: &str| -> bool {
+    let mut cur: &DataValue<'_> = av;
+    let walk = |cur: &mut &DataValue<'_>, seg: &str| -> bool {
         // SAFETY: identical to arena_path_exists_segments — never escape.
-        match step_str(unsafe { &*(*cur as *const ArenaValue<'_>) }, seg) {
+        match step_str(unsafe { &*(*cur as *const DataValue<'_>) }, seg) {
             Some(next) => {
                 *cur = next;
                 true
@@ -155,10 +155,10 @@ pub(crate) fn arena_path_exists_str(av: &ArenaValue<'_>, path: &str) -> bool {
 /// the multi-arg `val` form where each arg is evaluated separately.
 #[cfg(feature = "ext-control")]
 pub(crate) fn arena_apply_path_element<'a>(
-    cur: &'a ArenaValue<'a>,
-    elem: &ArenaValue<'_>,
+    cur: &'a DataValue<'a>,
+    elem: &DataValue<'_>,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     if let Some(s) = elem.as_str() {
         return arena_access_path_str_ref(cur, s, arena);
     }
@@ -167,10 +167,10 @@ pub(crate) fn arena_apply_path_element<'a>(
     {
         let idx = i as usize;
         return match cur {
-            ArenaValue::Array(items) => items
+            DataValue::Array(items) => items
                 .get(idx)
                 .map(|entry| unsafe { reborrow_slice_entry(entry) }),
-            ArenaValue::Object(_) => arena_access_path_str_ref(cur, &i.to_string(), arena),
+            DataValue::Object(_) => arena_access_path_str_ref(cur, &i.to_string(), arena),
             _ => None,
         };
     }

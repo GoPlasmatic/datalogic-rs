@@ -3,7 +3,9 @@
 //! This module provides configuration options to customize the evaluation behavior
 //! of the DataLogic engine while maintaining backward compatibility.
 
+#[cfg(feature = "compat")]
 use serde_json::Value;
+#[cfg(feature = "compat")]
 use std::sync::Arc;
 
 /// Main configuration structure for DataLogic evaluation behavior
@@ -69,7 +71,9 @@ pub enum TruthyEvaluator {
     /// - true: everything else
     StrictBoolean,
 
-    /// Custom truthiness evaluator
+    /// Custom truthiness evaluator (compat-only — accepts a
+    /// `serde_json::Value` for back-compat with v4 callbacks).
+    #[cfg(feature = "compat")]
     Custom(Arc<dyn Fn(&Value) -> bool + Send + Sync>),
 }
 

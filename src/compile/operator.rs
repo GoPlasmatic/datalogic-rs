@@ -7,7 +7,6 @@
 //! - `split` with a named-capture regex → `CompiledSplitRegex` with the
 //!   compiled `Regex` cached on the node.
 
-use serde_json::Value;
 
 #[cfg(feature = "ext-control")]
 use crate::node::PathSegment;
@@ -35,14 +34,14 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
 
     let (segments, reduce_hint) = match &args[0] {
         CompiledNode::Value {
-            value: Value::String(s),
+            value: datavalue::OwnedDataValue::String(s),
             ..
         } => {
             let (hint, segs) = parse_var_path(s);
             (segs, hint)
         }
         CompiledNode::Value {
-            value: Value::Number(n),
+            value: datavalue::OwnedDataValue::Number(n),
             ..
         } => {
             let s = n.to_string();
@@ -87,10 +86,10 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
     }
 
     if let CompiledNode::Value {
-        value: Value::Array(level_arr),
+        value: datavalue::OwnedDataValue::Array(level_arr),
         ..
     } = &args[0]
-        && let Some(Value::Number(level_num)) = level_arr.first()
+        && let Some(datavalue::OwnedDataValue::Number(level_num)) = level_arr.first()
         && let Some(level) = level_num.as_i64()
     {
         let scope_level = level.unsigned_abs() as u32;
@@ -101,11 +100,11 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
     if let Some(first_seg) = val_arg_to_segment(&args[0]) {
         let reduce_hint = match &args[0] {
             CompiledNode::Value {
-                value: Value::String(s),
+                value: datavalue::OwnedDataValue::String(s),
                 ..
             } if s == "current" => ReduceHint::CurrentPath,
             CompiledNode::Value {
-                value: Value::String(s),
+                value: datavalue::OwnedDataValue::String(s),
                 ..
             } if s == "accumulator" => ReduceHint::AccumulatorPath,
             _ => ReduceHint::None,
@@ -125,7 +124,7 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
 #[cfg(feature = "ext-control")]
 fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Option<CompiledNode> {
     let CompiledNode::Value {
-        value: Value::String(s),
+        value: datavalue::OwnedDataValue::String(s),
         ..
     } = arg
     else {
@@ -160,7 +159,7 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
 fn scope_level_metadata_hint(args: &[CompiledNode]) -> MetadataHint {
     if args.len() == 2
         && let CompiledNode::Value {
-            value: Value::String(s),
+            value: datavalue::OwnedDataValue::String(s),
             ..
         } = &args[1]
     {
@@ -177,7 +176,7 @@ fn scope_level_metadata_hint(args: &[CompiledNode]) -> MetadataHint {
 fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
     match arg {
         CompiledNode::Value {
-            value: Value::String(s),
+            value: datavalue::OwnedDataValue::String(s),
             ..
         } => {
             if let Ok(idx) = s.parse::<usize>() {
@@ -187,9 +186,9 @@ fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
             }
         }
         CompiledNode::Value {
-            value: Value::Number(n),
+            value: datavalue::OwnedDataValue::Number(n),
             ..
-        } => n.as_u64().map(|idx| PathSegment::Index(idx as usize)),
+        } => n.as_i64().filter(|i| *i >= 0).map(|i| PathSegment::Index(i as usize)),
         _ => None,
     }
 }
@@ -255,7 +254,7 @@ pub(super) fn try_compile_exists(
 
     if args.len() == 1 {
         if let CompiledNode::Value {
-            value: Value::String(s),
+            value: datavalue::OwnedDataValue::String(s),
             ..
         } = &args[0]
         {
@@ -273,7 +272,7 @@ pub(super) fn try_compile_exists(
     let mut segments = Vec::new();
     for arg in args {
         if let CompiledNode::Value {
-            value: Value::String(s),
+            value: datavalue::OwnedDataValue::String(s),
             ..
         } = arg
         {
@@ -306,7 +305,7 @@ pub(super) fn try_compile_split_regex(
 
     let pattern = match &args[1] {
         CompiledNode::Value {
-            value: Value::String(s),
+            value: datavalue::OwnedDataValue::String(s),
             ..
         } if s.contains("(?P<") => s.as_str(),
         _ => return None,

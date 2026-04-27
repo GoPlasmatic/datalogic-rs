@@ -5,7 +5,7 @@
 //! length + first-byte prefilter so non-matching pairs reject in a single
 //! byte compare before reaching the byte loop.
 
-use super::ArenaValue;
+use super::DataValue;
 
 /// Inline byte-equality for object keys vs. lookup targets. Sidesteps the
 /// libc `memcmp` call that `<&str as PartialEq>::eq` lowers to — for the
@@ -79,15 +79,15 @@ pub(crate) fn key_eq(a: &str, b: &str) -> bool {
 /// which length-checks correctly.
 #[inline(always)]
 pub(crate) fn arena_object_lookup_field<'a>(
-    pairs: &'a [(&'a str, ArenaValue<'a>)],
+    pairs: &'a [(&'a str, DataValue<'a>)],
     target: &str,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     let tb = target.as_bytes();
     let tlen = tb.len();
     if tlen == 0 {
         for (k, v) in pairs {
             if k.is_empty() {
-                let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                let av_ref: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
                 return Some(av_ref);
             }
         }
@@ -105,10 +105,10 @@ pub(crate) fn arena_object_lookup_field<'a>(
             continue;
         }
         if key_eq(k, target) {
-            // SAFETY: pairs is `&'a [(&'a str, ArenaValue<'a>)]`.
+            // SAFETY: pairs is `&'a [(&'a str, DataValue<'a>)]`.
             // The cast restores the 'a lifetime that `pairs.iter()` would
             // otherwise tie to the iterator's shorter borrow.
-            let av_ref: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+            let av_ref: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
             return Some(av_ref);
         }
     }

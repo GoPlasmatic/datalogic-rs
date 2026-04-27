@@ -1,37 +1,38 @@
-//! `ArenaContextStack` — context stack used during arena-mode evaluation.
+//! `DataContextStack` — context stack used during arena-mode evaluation.
 //!
-//! Frames hold `&'a ArenaValue<'a>`, and so does the root: callers either
+//! Frames hold `&'a DataValue<'a>`, and so does the root: callers either
 //! pass an arena-resident value directly (e.g. `evaluate_in_arena`) or use
 //! `from_value` to deep-convert a borrowed `&Value` into the arena.
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
 //! (no `Value::clone`, no `BTreeMap::clone`).
 
-use super::value::ArenaValue;
+use super::value::DataValue;
+#[cfg(feature = "compat")]
 use bumpalo::Bump;
 
 /// A single frame in the arena-mode context stack.
 #[derive(Clone, Copy)]
 pub(crate) enum ArenaContextFrame<'a> {
     Indexed {
-        data: &'a ArenaValue<'a>,
+        data: &'a DataValue<'a>,
         index: usize,
     },
     Keyed {
-        data: &'a ArenaValue<'a>,
+        data: &'a DataValue<'a>,
         index: usize,
         key: &'a str,
     },
     Reduce {
-        current: &'a ArenaValue<'a>,
-        accumulator: &'a ArenaValue<'a>,
+        current: &'a DataValue<'a>,
+        accumulator: &'a DataValue<'a>,
     },
-    Data(&'a ArenaValue<'a>),
+    Data(&'a DataValue<'a>),
 }
 
 impl<'a> ArenaContextFrame<'a> {
     #[inline]
-    pub(crate) fn data(&self) -> &'a ArenaValue<'a> {
+    pub(crate) fn data(&self) -> &'a DataValue<'a> {
         match self {
             Self::Indexed { data, .. } | Self::Keyed { data, .. } | Self::Data(data) => data,
             Self::Reduce { current, .. } => current,
@@ -55,7 +56,7 @@ impl<'a> ArenaContextFrame<'a> {
     }
 
     #[inline]
-    pub(crate) fn get_reduce_current(&self) -> Option<&'a ArenaValue<'a>> {
+    pub(crate) fn get_reduce_current(&self) -> Option<&'a DataValue<'a>> {
         match self {
             Self::Reduce { current, .. } => Some(current),
             _ => None,
@@ -63,7 +64,7 @@ impl<'a> ArenaContextFrame<'a> {
     }
 
     #[inline]
-    pub(crate) fn get_reduce_accumulator(&self) -> Option<&'a ArenaValue<'a>> {
+    pub(crate) fn get_reduce_accumulator(&self) -> Option<&'a DataValue<'a>> {
         match self {
             Self::Reduce { accumulator, .. } => Some(accumulator),
             _ => None,
@@ -74,10 +75,10 @@ impl<'a> ArenaContextFrame<'a> {
 /// Reference to an arena context frame (either a stack frame or the root).
 pub(crate) enum ArenaContextRef<'a, 'ctx> {
     Frame(&'ctx ArenaContextFrame<'a>),
-    /// Root carries the original input as `&'a ArenaValue<'a>`, deep-converted
+    /// Root carries the original input as `&'a DataValue<'a>`, deep-converted
     /// from a `&Value` at API entry or supplied directly by arena-native
     /// callers.
-    Root(&'a ArenaValue<'a>),
+    Root(&'a DataValue<'a>),
 }
 
 impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
@@ -99,7 +100,7 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 
     #[cfg(test)]
     #[inline]
-    fn root_data(&self) -> Option<&'a ArenaValue<'a>> {
+    fn root_data(&self) -> Option<&'a DataValue<'a>> {
         match self {
             Self::Root(av) => Some(*av),
             Self::Frame(_) => None,
@@ -108,7 +109,7 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 
     #[cfg(test)]
     #[inline]
-    fn frame_data(&self) -> Option<&'a ArenaValue<'a>> {
+    fn frame_data(&self) -> Option<&'a DataValue<'a>> {
         match self {
             Self::Frame(f) => Some(f.data()),
             Self::Root(_) => None,
@@ -117,10 +118,10 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 }
 
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
-/// root is `&'a ArenaValue<'a>` (deep-converted from `&Value` for the public
+/// root is `&'a DataValue<'a>` (deep-converted from `&Value` for the public
 /// API, or supplied directly by arena-native callers).
-pub struct ArenaContextStack<'a> {
-    root: &'a ArenaValue<'a>,
+pub struct DataContextStack<'a> {
+    root: &'a DataValue<'a>,
     frames: Vec<ArenaContextFrame<'a>>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     /// Mirrors `ContextStack::error_path`.
@@ -134,9 +135,9 @@ pub struct ArenaContextStack<'a> {
     tracer: Option<std::ptr::NonNull<crate::trace::TraceCollector>>,
 }
 
-impl<'a> ArenaContextStack<'a> {
+impl<'a> DataContextStack<'a> {
     #[inline]
-    pub(crate) fn new(root: &'a ArenaValue<'a>) -> Self {
+    pub(crate) fn new(root: &'a DataValue<'a>) -> Self {
         Self {
             root,
             frames: Vec::new(),
@@ -146,9 +147,11 @@ impl<'a> ArenaContextStack<'a> {
         }
     }
 
-    /// Build a context stack from a borrowed `&Value` by deep-converting it
-    /// into an arena-resident `ArenaValue`. This is the canonical entry point
-    /// for the `&Value`-based public APIs.
+    /// Build a context stack from a borrowed `&serde_json::Value` by
+    /// deep-converting it into an arena-resident `DataValue`. Bridge for the
+    /// compat-mode public APIs only — v5 callers build a `DataValue` first
+    /// and use [`DataContextStack::new`] directly.
+    #[cfg(feature = "compat")]
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
         let av = crate::arena::value::value_to_arena(root, arena);
@@ -174,7 +177,7 @@ impl<'a> ArenaContextStack<'a> {
     /// Snapshot the current frame's data as an owned `Value`. Used by the
     /// arena dispatcher before recursing into a child, so the trace step
     /// can record the context that operator saw.
-    #[cfg(feature = "trace")]
+    #[cfg(all(feature = "trace", feature = "compat"))]
     pub(crate) fn current_data_as_value(&self) -> serde_json::Value {
         match self.current() {
             ArenaContextRef::Root(av) => crate::arena::arena_to_value(av),
@@ -185,12 +188,12 @@ impl<'a> ArenaContextStack<'a> {
     /// Record the result of a node into the attached tracer. No-op if no
     /// tracer is attached. Callers gate on [`has_tracer`] first to skip the
     /// `Value::clone()` when not tracing.
-    #[cfg(feature = "trace")]
+    #[cfg(all(feature = "trace", feature = "compat"))]
     pub(crate) fn record_node_result(
         &mut self,
         node_id: u32,
         ctx_data: serde_json::Value,
-        result: &crate::Result<&'a crate::arena::ArenaValue<'a>>,
+        result: &crate::Result<&'a crate::arena::DataValue<'a>>,
     ) {
         let Some(ptr) = self.tracer else {
             return;
@@ -232,7 +235,7 @@ impl<'a> ArenaContextStack<'a> {
 
     /// Get the root input data (borrowed for the call's duration).
     #[inline]
-    pub fn root_input(&self) -> &'a ArenaValue<'a> {
+    pub fn root_input(&self) -> &'a DataValue<'a> {
         self.root
     }
 
@@ -270,23 +273,23 @@ impl<'a> ArenaContextStack<'a> {
     // ----- frame mutation ---------------------------------------------------
 
     #[inline]
-    pub(crate) fn push(&mut self, data: &'a ArenaValue<'a>) {
+    pub(crate) fn push(&mut self, data: &'a DataValue<'a>) {
         self.frames.push(ArenaContextFrame::Data(data));
     }
 
     #[inline]
-    pub(crate) fn push_with_index(&mut self, data: &'a ArenaValue<'a>, index: usize) {
+    pub(crate) fn push_with_index(&mut self, data: &'a DataValue<'a>, index: usize) {
         self.frames.push(ArenaContextFrame::Indexed { data, index });
     }
 
     #[inline]
-    fn push_with_key_index(&mut self, data: &'a ArenaValue<'a>, index: usize, key: &'a str) {
+    fn push_with_key_index(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
         self.frames
             .push(ArenaContextFrame::Keyed { data, index, key });
     }
 
     #[inline]
-    fn push_reduce(&mut self, current: &'a ArenaValue<'a>, accumulator: &'a ArenaValue<'a>) {
+    fn push_reduce(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
         self.frames.push(ArenaContextFrame::Reduce {
             current,
             accumulator,
@@ -294,14 +297,14 @@ impl<'a> ArenaContextStack<'a> {
     }
 
     #[inline]
-    fn replace_top_data(&mut self, data: &'a ArenaValue<'a>, index: usize) {
+    fn replace_top_data(&mut self, data: &'a DataValue<'a>, index: usize) {
         if let Some(frame) = self.frames.last_mut() {
             *frame = ArenaContextFrame::Indexed { data, index };
         }
     }
 
     #[inline]
-    fn replace_top_key_data(&mut self, data: &'a ArenaValue<'a>, index: usize, key: &'a str) {
+    fn replace_top_key_data(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
         if let Some(frame) = self.frames.last_mut() {
             *frame = ArenaContextFrame::Keyed { data, index, key };
         }
@@ -310,8 +313,8 @@ impl<'a> ArenaContextStack<'a> {
     #[inline]
     fn replace_reduce_data(
         &mut self,
-        current: &'a ArenaValue<'a>,
-        accumulator: &'a ArenaValue<'a>,
+        current: &'a DataValue<'a>,
+        accumulator: &'a DataValue<'a>,
     ) {
         if let Some(frame) = self.frames.last_mut() {
             *frame = ArenaContextFrame::Reduce {
@@ -346,6 +349,7 @@ impl<'a> ArenaContextStack<'a> {
         self.error_path.truncate(len);
     }
 
+    #[cfg(feature = "compat")]
     #[inline]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
@@ -367,13 +371,13 @@ impl<'a> ArenaContextStack<'a> {
 /// All three iteration shapes are covered: indexed (array), keyed (object),
 /// and reduce (current/accumulator).
 pub(crate) struct IterGuard<'g, 'a> {
-    actx: &'g mut ArenaContextStack<'a>,
+    actx: &'g mut DataContextStack<'a>,
     pushed: bool,
 }
 
 impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
-    pub(crate) fn new(actx: &'g mut ArenaContextStack<'a>) -> Self {
+    pub(crate) fn new(actx: &'g mut DataContextStack<'a>) -> Self {
         Self {
             actx,
             pushed: false,
@@ -381,7 +385,7 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     }
 
     #[inline]
-    pub(crate) fn step_indexed(&mut self, data: &'a ArenaValue<'a>, index: usize) {
+    pub(crate) fn step_indexed(&mut self, data: &'a DataValue<'a>, index: usize) {
         if self.pushed {
             self.actx.replace_top_data(data, index);
         } else {
@@ -391,7 +395,7 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     }
 
     #[inline]
-    pub(crate) fn step_keyed(&mut self, data: &'a ArenaValue<'a>, index: usize, key: &'a str) {
+    pub(crate) fn step_keyed(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
         if self.pushed {
             self.actx.replace_top_key_data(data, index, key);
         } else {
@@ -403,8 +407,8 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
     pub(crate) fn step_reduce(
         &mut self,
-        current: &'a ArenaValue<'a>,
-        accumulator: &'a ArenaValue<'a>,
+        current: &'a DataValue<'a>,
+        accumulator: &'a DataValue<'a>,
     ) {
         if self.pushed {
             self.actx.replace_reduce_data(current, accumulator);
@@ -415,9 +419,9 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     }
 
     /// Mutable access to the wrapped stack — for `engine.eval_iter_body(...)`
-    /// and similar calls that take `&mut ArenaContextStack`.
+    /// and similar calls that take `&mut DataContextStack`.
     #[inline]
-    pub(crate) fn stack(&mut self) -> &mut ArenaContextStack<'a> {
+    pub(crate) fn stack(&mut self) -> &mut DataContextStack<'a> {
         self.actx
     }
 }
@@ -431,28 +435,28 @@ impl Drop for IterGuard<'_, '_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat"))]
 mod tests {
     use super::*;
-    use crate::arena::value::ArenaValue;
+    use crate::arena::value::DataValue;
     use serde_json::Value;
 
     #[test]
     fn lifecycle_indexed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
-        let a: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
+        let a: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
         ctx.push_with_index(a, 0);
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current().get_index(), Some(0));
 
-        let b: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(2)));
+        let b: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
         ctx.replace_top_data(b, 1);
         assert_eq!(ctx.current().get_index(), Some(1));
 
@@ -464,13 +468,13 @@ mod tests {
     fn lifecycle_keyed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
 
-        let a: &ArenaValue = arena.alloc(ArenaValue::Bool(true));
+        let a: &DataValue = arena.alloc(DataValue::Bool(true));
         ctx.push_with_key_index(a, 0, "k1");
         assert_eq!(ctx.current().get_key(), Some("k1"));
 
-        let b: &ArenaValue = arena.alloc(ArenaValue::Bool(false));
+        let b: &DataValue = arena.alloc(DataValue::Bool(false));
         ctx.replace_top_key_data(b, 1, "k2");
         assert_eq!(ctx.current().get_key(), Some("k2"));
         assert_eq!(ctx.current().get_index(), Some(1));
@@ -480,12 +484,12 @@ mod tests {
     fn lifecycle_reduce() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
 
-        let cur: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
-        let acc: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(0)));
+        let cur: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+        let acc: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(0)));
         ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
@@ -501,12 +505,12 @@ mod tests {
     fn get_at_level_walks_up() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
 
-        let a: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(10)));
-        let b: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(20)));
+        let a: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(10)));
+        let b: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(20)));
         ctx.push_with_index(a, 0);
         ctx.push_with_index(b, 0);
         assert_eq!(ctx.depth(), 2);
@@ -525,13 +529,13 @@ mod tests {
     fn iter_guard_pushes_then_pops_indexed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
 
-        let a: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
-        let b: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(2)));
+        let a: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+        let b: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
 
         {
             let mut g = IterGuard::new(&mut ctx);
@@ -549,7 +553,7 @@ mod tests {
     fn iter_guard_no_push_no_pop() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
         {
             let _g = IterGuard::new(&mut ctx);
@@ -562,10 +566,10 @@ mod tests {
     fn iter_guard_keyed_and_reduce() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
 
-        let a: &ArenaValue = arena.alloc(ArenaValue::Bool(true));
-        let b: &ArenaValue = arena.alloc(ArenaValue::Bool(false));
+        let a: &DataValue = arena.alloc(DataValue::Bool(true));
+        let b: &DataValue = arena.alloc(DataValue::Bool(false));
 
         {
             let mut g = IterGuard::new(&mut ctx);
@@ -577,10 +581,10 @@ mod tests {
         }
         assert_eq!(ctx.depth(), 0);
 
-        let cur: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(1)));
-        let acc: &ArenaValue =
-            arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(0)));
+        let cur: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+        let acc: &DataValue =
+            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(0)));
         {
             let mut g = IterGuard::new(&mut ctx);
             g.step_reduce(cur, acc);
@@ -595,7 +599,7 @@ mod tests {
     fn error_path_round_trip() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = ArenaContextStack::from_value(&root_val, &arena);
+        let mut ctx = DataContextStack::from_value(&root_val, &arena);
 
         ctx.push_error_step(1);
         ctx.push_error_step(2);

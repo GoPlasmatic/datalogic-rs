@@ -51,7 +51,9 @@ impl ExpressionNode {
     fn build_node(node: &CompiledNode) -> ExpressionNode {
         let id = node.id();
         match node {
-            CompiledNode::Value { value, .. } => Self::leaf(id, value.to_string()),
+            CompiledNode::Value { value, .. } => {
+                Self::leaf(id, serde_json::to_string(value).unwrap_or_default())
+            }
             CompiledNode::Array { nodes, .. } => ExpressionNode {
                 id,
                 expression: Self::node_to_json_string(node),
@@ -170,7 +172,9 @@ impl ExpressionNode {
     /// Convert a CompiledNode to its JSON string representation
     fn node_to_json_string(node: &CompiledNode) -> String {
         match node {
-            CompiledNode::Value { value, .. } => value.to_string(),
+            CompiledNode::Value { value, .. } => {
+                serde_json::to_string(value).unwrap_or_default()
+            }
             CompiledNode::Array { nodes, .. } => {
                 let items: Vec<String> = nodes.iter().map(Self::node_to_json_string).collect();
                 format!("[{}]", items.join(", "))
@@ -205,12 +209,16 @@ impl ExpressionNode {
             }
             #[cfg(feature = "error-handling")]
             CompiledNode::CompiledThrow(data) => {
-                if let serde_json::Value::Object(err_map) = &data.error
-                    && let Some(serde_json::Value::String(s)) = err_map.get("type")
+                if let datavalue::OwnedDataValue::Object(pairs) = &data.error
+                    && let Some((_, datavalue::OwnedDataValue::String(s))) =
+                        pairs.iter().find(|(k, _)| k == "type")
                 {
                     return format!("{{\"throw\": \"{}\"}}", s);
                 }
-                format!("{{\"throw\": {}}}", data.error)
+                format!(
+                    "{{\"throw\": {}}}",
+                    serde_json::to_string(&data.error).unwrap_or_default()
+                )
             }
             CompiledNode::CompiledMissing(data) => {
                 let parts: Vec<String> = data
@@ -454,7 +462,7 @@ mod tests {
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Var,
-            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))].into_boxed_slice(),
+            args: vec![CompiledNode::synthetic_value(datavalue::OwnedDataValue::String("age".to_string()))].into_boxed_slice(),
         };
 
         let tree = ExpressionNode::build_from_compiled(&node);
@@ -472,14 +480,14 @@ mod tests {
         let var_node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Var,
-            args: vec![CompiledNode::synthetic_value(serde_json::json!("age"))].into_boxed_slice(),
+            args: vec![CompiledNode::synthetic_value(datavalue::OwnedDataValue::String("age".to_string()))].into_boxed_slice(),
         };
         let node = CompiledNode::BuiltinOperator {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::GreaterThanEqual,
             args: vec![
                 var_node,
-                CompiledNode::synthetic_value(serde_json::json!(18)),
+                CompiledNode::synthetic_value(datavalue::OwnedDataValue::Number(datavalue::NumberValue::Integer(18))),
             ]
             .into_boxed_slice(),
         };

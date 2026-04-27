@@ -1,11 +1,11 @@
 //! Shared infrastructure for the arithmetic operators: NaN handling,
 //! coercion-pair helpers, the integer-checked-with-float-fallback pattern,
-//! the variadic fold spec, and the small helpers around `ArenaValue::Number`
+//! the variadic fold spec, and the small helpers around `DataValue::Number`
 //! allocation.
 
 use crate::DataLogic;
 use crate::Result;
-use crate::arena::{ArenaValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
+use crate::arena::{DataValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
 use crate::config::NanHandling;
 use crate::value::NumberValue;
 use bumpalo::Bump;
@@ -29,10 +29,10 @@ pub(super) fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
     }
 }
 
-/// Wrap a [`NumberValue`] in an arena-resident [`ArenaValue::Number`].
+/// Wrap a [`NumberValue`] in an arena-resident [`DataValue::Number`].
 #[inline]
-pub(super) fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a ArenaValue<'a> {
-    arena.alloc(ArenaValue::Number(n))
+pub(super) fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue<'a> {
+    arena.alloc(DataValue::Number(n))
 }
 
 /// Try the checked-integer op; on overflow promote both operands to `f64` and
@@ -56,8 +56,8 @@ pub(super) fn try_int_op(
 /// Returns `None` if either operand can't be coerced.
 #[inline]
 pub(super) fn coerce_pair_int(
-    a: &ArenaValue<'_>,
-    b: &ArenaValue<'_>,
+    a: &DataValue<'_>,
+    b: &DataValue<'_>,
     engine: &DataLogic,
 ) -> Option<(i64, i64)> {
     Some((
@@ -70,8 +70,8 @@ pub(super) fn coerce_pair_int(
 /// Returns `None` if either operand can't be coerced.
 #[inline]
 pub(super) fn coerce_pair_f64(
-    a: &ArenaValue<'_>,
-    b: &ArenaValue<'_>,
+    a: &DataValue<'_>,
+    b: &DataValue<'_>,
     engine: &DataLogic,
 ) -> Option<(f64, f64)> {
     Some((
@@ -129,17 +129,17 @@ pub(super) struct VariadicFoldSpec {
 #[inline]
 pub(super) fn arena_variadic_fold<'a>(
     args: &'a [crate::CompiledNode],
-    actx: &mut crate::arena::ArenaContextStack<'a>,
+    actx: &mut crate::arena::DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     spec: VariadicFoldSpec,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     let mut int_acc: i64 = spec.int_init;
     let mut float_acc: f64 = spec.float_init;
     let mut all_int = true;
 
     for arg in args {
-        let av = engine.evaluate_arena_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, actx, arena)?;
         if all_int && let Some(i) = av.as_i64() {
             match (spec.i_combine)(int_acc, i) {
                 Some(r) => int_acc = r,

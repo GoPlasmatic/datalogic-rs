@@ -1,6 +1,6 @@
 //! `length` — string char count or array length.
 
-use crate::arena::{ArenaContextStack, ArenaValue};
+use crate::arena::{DataContextStack, DataValue};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
@@ -10,23 +10,23 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_length_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {
         return Err(crate::constants::invalid_args());
     }
 
     // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
     // stay arena-resident on the intermediate.
-    let arg = engine.evaluate_arena_node(&args[0], actx, arena)?;
+    let arg = engine.evaluate_node(&args[0], actx, arena)?;
 
     let n: i64 = match arg {
-        ArenaValue::String(s) => s.chars().count() as i64,
-        ArenaValue::Array(items) => items.len() as i64,
+        DataValue::String(s) => s.chars().count() as i64,
+        DataValue::Array(items) => items.len() as i64,
         _ => return Err(crate::constants::invalid_args()),
     };
 
-    Ok(arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(n))))
+    Ok(arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(n))))
 }

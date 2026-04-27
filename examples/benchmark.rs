@@ -1,5 +1,5 @@
 use datalogic_rs::DataLogic;
-use datalogic_rs::arena::ArenaValue;
+use datalogic_rs::arena::DataValue;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -45,9 +45,9 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
     }
 
     // Persistent arena holding the deep-converted input data. Never reset,
-    // so the &ArenaValue handles outlive every per-iteration eval-arena reset.
+    // so the &DataValue handles outlive every per-iteration eval-arena reset.
     let data_arena = bumpalo::Bump::new();
-    let arena_inputs: Vec<&ArenaValue<'_>> = test_cases
+    let arena_inputs: Vec<&DataValue<'_>> = test_cases
         .iter()
         .map(|(_, data)| &*data_arena.alloc(datalogic_rs::arena::value_to_arena(data, &data_arena)))
         .collect();

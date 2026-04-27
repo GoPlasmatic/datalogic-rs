@@ -11,7 +11,6 @@
 use crate::DataLogic;
 use crate::node::CompiledNode;
 use crate::opcode::OpCode;
-use serde_json::Value;
 
 use super::helpers::is_truthy_literal;
 
@@ -43,7 +42,7 @@ pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool)
 /// Returns `Some(new_node)` if the input was rewritten, `None` otherwise.
 fn eliminate_if(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::synthetic_value(Value::Null));
+        return Some(CompiledNode::synthetic_value(datavalue::OwnedDataValue::Null));
     }
 
     let mut i = 0;
@@ -95,7 +94,7 @@ fn eliminate_if(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
 
     if new_args.is_empty() {
         // All conditions were statically false, no else clause
-        return Some(CompiledNode::synthetic_value(Value::Null));
+        return Some(CompiledNode::synthetic_value(datavalue::OwnedDataValue::Null));
     }
 
     if new_args.len() == 1 {
@@ -217,7 +216,7 @@ fn eliminate_or(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compat"))]
 mod tests {
     use super::super::test_helpers::{builtin, val, var_node};
     use super::*;
@@ -228,7 +227,7 @@ mod tests {
         let engine = DataLogic::new();
         let node = builtin(
             OpCode::If,
-            vec![val(json!(true)), var_node("x"), var_node("y")],
+            vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x"), var_node("y")],
         );
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
@@ -239,7 +238,7 @@ mod tests {
         let engine = DataLogic::new();
         let node = builtin(
             OpCode::If,
-            vec![val(json!(false)), var_node("x"), var_node("y")],
+            vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x"), var_node("y")],
         );
         let (result, _changed) = eliminate(node, &engine);
         // Should return "y" (the else branch)
@@ -249,7 +248,7 @@ mod tests {
     #[test]
     fn test_and_with_true_prefix() {
         let engine = DataLogic::new();
-        let node = builtin(OpCode::And, vec![val(json!(true)), var_node("x")]);
+        let node = builtin(OpCode::And, vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x")]);
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
@@ -257,7 +256,7 @@ mod tests {
     #[test]
     fn test_and_with_false() {
         let engine = DataLogic::new();
-        let node = builtin(OpCode::And, vec![val(json!(false)), var_node("x")]);
+        let node = builtin(OpCode::And, vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x")]);
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::Value { .. }));
     }
@@ -265,7 +264,7 @@ mod tests {
     #[test]
     fn test_or_with_true() {
         let engine = DataLogic::new();
-        let node = builtin(OpCode::Or, vec![val(json!(true)), var_node("x")]);
+        let node = builtin(OpCode::Or, vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x")]);
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::Value { .. }));
     }
@@ -273,7 +272,7 @@ mod tests {
     #[test]
     fn test_or_with_false_prefix() {
         let engine = DataLogic::new();
-        let node = builtin(OpCode::Or, vec![val(json!(false)), var_node("x")]);
+        let node = builtin(OpCode::Or, vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x")]);
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));
     }
@@ -283,7 +282,7 @@ mod tests {
         let engine = DataLogic::new();
         let node = builtin(
             OpCode::Ternary,
-            vec![val(json!(true)), var_node("x"), var_node("y")],
+            vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x"), var_node("y")],
         );
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::CompiledVar { .. }));

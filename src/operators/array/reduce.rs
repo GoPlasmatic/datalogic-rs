@@ -1,6 +1,6 @@
 //! `reduce` — fold an array into a single value via an accumulator.
 
-use crate::arena::{ArenaContextStack, ArenaValue, IterGuard};
+use crate::arena::{DataContextStack, DataValue, IterGuard};
 use crate::node::ReduceHint;
 use crate::opcode::OpCode;
 use crate::{CompiledNode, DataLogic, Result};
@@ -15,17 +15,17 @@ use super::helpers::{IterSrc, ResolvedInput, resolve_iter_input};
 #[inline]
 pub(crate) fn evaluate_reduce_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 || args.len() > 3 {
         return Err(crate::constants::invalid_args());
     }
 
     let body = &args[1];
-    let initial: &'a ArenaValue<'a> = if args.len() == 3 {
-        engine.evaluate_arena_node(&args[2], actx, arena)?
+    let initial: &'a DataValue<'a> = if args.len() == 3 {
+        engine.evaluate_node(&args[2], actx, arena)?
     } else {
         crate::arena::pool::singleton_null()
     };
@@ -64,14 +64,14 @@ pub(crate) fn evaluate_reduce_arena<'a>(
 fn reduce_general<'a>(
     src: &IterSrc<'a>,
     body: &'a CompiledNode,
-    initial: &'a ArenaValue<'a>,
-    actx: &mut ArenaContextStack<'a>,
+    initial: &'a DataValue<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     let len = src.len();
     let total = len as u32;
-    let mut acc_av: &'a ArenaValue<'a> = initial;
+    let mut acc_av: &'a DataValue<'a> = initial;
     let mut guard = IterGuard::new(actx);
     for i in 0..len {
         let item = src.get(i);
@@ -87,30 +87,30 @@ fn reduce_general<'a>(
 /// return the initial value.
 #[inline]
 fn reduce_arena_bridge<'a>(
-    input: &'a ArenaValue<'a>,
+    input: &'a DataValue<'a>,
     body: &'a CompiledNode,
-    initial: &'a ArenaValue<'a>,
-    actx: &mut ArenaContextStack<'a>,
+    initial: &'a DataValue<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     match input {
-        ArenaValue::Object(pairs) => {
+        DataValue::Object(pairs) => {
             let total = pairs.len() as u32;
-            let mut acc_av: &'a ArenaValue<'a> = initial;
+            let mut acc_av: &'a DataValue<'a> = initial;
             let mut guard = IterGuard::new(actx);
             for (i, (_k, v)) in pairs.iter().enumerate() {
                 // SAFETY: pairs[i].1 lives in the arena for `'a`.
-                let item_av: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
                 guard.step_reduce(item_av, acc_av);
                 acc_av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
             }
             drop(guard);
             Ok(acc_av)
         }
-        ArenaValue::Array(items) => {
+        DataValue::Array(items) => {
             let total = items.len() as u32;
-            let mut acc_av: &'a ArenaValue<'a> = initial;
+            let mut acc_av: &'a DataValue<'a> = initial;
             let mut guard = IterGuard::new(actx);
             for (i, item_av) in items.iter().enumerate() {
                 guard.step_reduce(item_av, acc_av);
@@ -130,11 +130,11 @@ fn reduce_arena_bridge<'a>(
 /// directly.
 fn try_reduce_fast_path_arena<'a>(
     src: &IterSrc<'a>,
-    initial: &'a ArenaValue<'a>,
+    initial: &'a DataValue<'a>,
     body_args: &[CompiledNode],
     opcode: OpCode,
     arena: &'a Bump,
-) -> Option<&'a ArenaValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     // Identify which arg is current and which is accumulator.
     let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
         (
@@ -207,7 +207,7 @@ fn try_reduce_fast_path_arena<'a>(
         }
         if all_int {
             return acc_i.map(|v| {
-                &*arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_i64(v)))
+                &*arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(v)))
             });
         }
     }
@@ -230,7 +230,7 @@ fn try_reduce_fast_path_arena<'a>(
         };
     }
     Some(
-        arena.alloc(ArenaValue::Number(crate::value::NumberValue::from_f64(
+        arena.alloc(DataValue::Number(crate::value::NumberValue::from_f64(
             acc_f,
         ))),
     )

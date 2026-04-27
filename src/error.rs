@@ -1,3 +1,4 @@
+use datavalue::OwnedDataValue;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::fmt;
 
@@ -29,7 +30,7 @@ pub enum Error {
     ParseError(String),
 
     /// Thrown error from throw operator
-    Thrown(serde_json::Value),
+    Thrown(OwnedDataValue),
 
     /// Invalid format string or pattern
     FormatError(String),
@@ -52,7 +53,17 @@ impl fmt::Display for Error {
             Error::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
             Error::Custom(msg) => write!(f, "{}", msg),
             Error::ParseError(msg) => write!(f, "Parse error: {}", msg),
-            Error::Thrown(val) => write!(f, "Thrown: {}", val),
+            Error::Thrown(val) => {
+                #[cfg(feature = "compat")]
+                {
+                    let json = crate::value::owned_to_serde(val);
+                    write!(f, "Thrown: {}", json)
+                }
+                #[cfg(not(feature = "compat"))]
+                {
+                    write!(f, "Thrown: {:?}", val)
+                }
+            }
             Error::FormatError(msg) => write!(f, "Format error: {}", msg),
             Error::IndexOutOfBounds { index, length } => {
                 write!(
@@ -68,9 +79,16 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+#[cfg(feature = "compat")]
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Error::ParseError(err.to_string())
+    }
+}
+
+impl From<datavalue::ParseError> for Error {
+    fn from(err: datavalue::ParseError) -> Self {
+        Error::ParseError(format!("{:?}", err))
     }
 }
 

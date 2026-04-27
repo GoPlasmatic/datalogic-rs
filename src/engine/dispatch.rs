@@ -1,32 +1,32 @@
 //! Arena-mode dispatch hub.
 //!
-//! [`evaluate_arena_node_inner`] is the exhaustive `CompiledNode` match that
+//! [`evaluate_node_inner`] is the exhaustive `CompiledNode` match that
 //! routes each node shape to its operator implementation. It is invoked from
-//! `DataLogic::evaluate_arena_node`, which handles the literal fast path,
+//! `DataLogic::evaluate_node`, which handles the literal fast path,
 //! breadcrumb accumulation, and trace recording before delegating here.
 
 use super::DataLogic;
-use crate::arena::ArenaContextStack;
+use crate::arena::DataContextStack;
 use crate::{CompiledNode, Error, Result};
 
 /// Inner dispatch — never called directly; reachable only via
-/// `DataLogic::evaluate_arena_node` which handles the literal fast path,
+/// `DataLogic::evaluate_node` which handles the literal fast path,
 /// breadcrumb accumulation, and trace recording.
 ///
 /// `#[inline(always)]` is load-bearing here: this function is the hot
-/// dispatch and the compiler inlines it into `evaluate_arena_node` in the
+/// dispatch and the compiler inlines it into `evaluate_node` in the
 /// single-file layout. Crossing the module boundary loses that inline
 /// decision (measured ~1 ns regression on the 15 ns baseline).
 #[inline(always)]
-pub(super) fn evaluate_arena_node_inner<'a>(
+pub(super) fn evaluate_node_inner<'a>(
     engine: &DataLogic,
     node: &'a CompiledNode,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     arena: &'a bumpalo::Bump,
-) -> Result<&'a crate::arena::ArenaValue<'a>> {
+) -> Result<&'a crate::arena::DataValue<'a>> {
     match node {
         // Compiled var: full dispatch via the arena helper. Root and
-        // frame data are both arena-resident `ArenaValue`s, so lookups
+        // frame data are both arena-resident `DataValue`s, so lookups
         // are zero-copy borrows.
         CompiledNode::CompiledVar {
             scope_level,
@@ -61,7 +61,7 @@ pub(super) fn evaluate_arena_node_inner<'a>(
             )
         }
 
-        // Value literal: handled by the outer `evaluate_arena_node`
+        // Value literal: handled by the outer `evaluate_node`
         // wrapper before reaching this match.
         CompiledNode::Value { .. } => unreachable!("literal handled by wrapper"),
 
@@ -526,61 +526,61 @@ pub(super) fn evaluate_arena_node_inner<'a>(
 // (multi-word locals + drop glue) which, when inlined, forced the
 // dispatch prologue to reserve ~464 B of stack on every recursive call.
 // `#[inline(never)]` is load-bearing — see the comment on
-// `evaluate_arena_node_inner`.
+// `evaluate_node_inner`.
 
 #[cfg(feature = "preserve")]
 #[inline(never)]
 fn evaluate_structured_object_arena<'a>(
     data: &'a crate::node::StructuredObjectData,
-    actx: &mut crate::arena::ArenaContextStack<'a>,
+    actx: &mut crate::arena::DataContextStack<'a>,
     engine: &super::DataLogic,
     arena: &'a bumpalo::Bump,
-) -> crate::Result<&'a crate::arena::ArenaValue<'a>> {
-    use crate::arena::ArenaValue;
-    let mut pairs: bumpalo::collections::Vec<'a, (&'a str, ArenaValue<'a>)> =
+) -> crate::Result<&'a crate::arena::DataValue<'a>> {
+    use crate::arena::DataValue;
+    let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
         bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
     for (key, n) in data.fields.iter() {
-        let val_av = engine.evaluate_arena_node(n, actx, arena)?;
+        let val_av = engine.evaluate_node(n, actx, arena)?;
         let val_owned = crate::arena::value::reborrow_arena_value(val_av);
         let k_arena: &'a str = arena.alloc_str(key);
         pairs.push((k_arena, val_owned));
     }
-    Ok(arena.alloc(ArenaValue::Object(pairs.into_bump_slice())))
+    Ok(arena.alloc(DataValue::Object(pairs.into_bump_slice())))
 }
 
 #[inline(never)]
 fn evaluate_array_literal_arena<'a>(
     nodes: &'a [crate::CompiledNode],
-    actx: &mut crate::arena::ArenaContextStack<'a>,
+    actx: &mut crate::arena::DataContextStack<'a>,
     engine: &super::DataLogic,
     arena: &'a bumpalo::Bump,
-) -> crate::Result<&'a crate::arena::ArenaValue<'a>> {
-    use crate::arena::ArenaValue;
-    let mut items: bumpalo::collections::Vec<'a, ArenaValue<'a>> =
+) -> crate::Result<&'a crate::arena::DataValue<'a>> {
+    use crate::arena::DataValue;
+    let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
     for n in nodes.iter() {
-        let av = engine.evaluate_arena_node(n, actx, arena)?;
+        let av = engine.evaluate_node(n, actx, arena)?;
         items.push(crate::arena::value::reborrow_arena_value(av));
     }
-    Ok(arena.alloc(ArenaValue::Array(items.into_bump_slice())))
+    Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
 }
 
 #[inline(never)]
 fn evaluate_custom_operator_arena<'a>(
     data: &'a crate::node::CustomOperatorData,
-    actx: &mut crate::arena::ArenaContextStack<'a>,
+    actx: &mut crate::arena::DataContextStack<'a>,
     engine: &super::DataLogic,
     arena: &'a bumpalo::Bump,
-) -> crate::Result<&'a crate::arena::ArenaValue<'a>> {
-    use crate::arena::ArenaValue;
+) -> crate::Result<&'a crate::arena::DataValue<'a>> {
+    use crate::arena::DataValue;
     let arena_op = engine
         .custom_arena_operators
         .get(&data.name)
         .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
-    let mut arena_args: bumpalo::collections::Vec<'a, &'a ArenaValue<'a>> =
+    let mut arena_args: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
     for arg in data.args.iter() {
-        arena_args.push(engine.evaluate_arena_node(arg, actx, arena)?);
+        arena_args.push(engine.evaluate_node(arg, actx, arena)?);
     }
-    arena_op.evaluate_arena(&arena_args, actx, arena)
+    arena_op.evaluate(&arena_args, actx, arena)
 }

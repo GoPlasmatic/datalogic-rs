@@ -1,7 +1,7 @@
 //! Quantifier operators: `all`, `some`, `none`.
 
 use crate::arena::pool::singleton_bool;
-use crate::arena::{ArenaContextStack, ArenaValue, IterGuard};
+use crate::arena::{DataContextStack, DataValue, IterGuard};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
@@ -45,11 +45,11 @@ impl QuantifierShape {
 #[inline]
 fn evaluate_quantifier_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     shape: QuantifierShape,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
         return Err(crate::constants::invalid_args());
     }
@@ -78,7 +78,7 @@ fn evaluate_quantifier_arena<'a>(
         return Ok(singleton_bool(shape.finalize(false)));
     }
 
-    // General path: zero-clone via ArenaContextStack.
+    // General path: zero-clone via DataContextStack.
     let len = src.len();
     let total = len as u32;
     let mut found_short = false;
@@ -100,15 +100,15 @@ fn evaluate_quantifier_arena<'a>(
 /// inline arena Array inputs iterate items.
 #[inline]
 fn quantifier_arena_bridge<'a>(
-    input: &'a ArenaValue<'a>,
+    input: &'a DataValue<'a>,
     predicate: &'a CompiledNode,
     shape: QuantifierShape,
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     match input {
-        ArenaValue::Object(pairs) => {
+        DataValue::Object(pairs) => {
             if pairs.is_empty() {
                 return Ok(singleton_bool(shape.empty_result));
             }
@@ -117,7 +117,7 @@ fn quantifier_arena_bridge<'a>(
             let mut guard = IterGuard::new(actx);
             for (i, (k, v)) in pairs.iter().enumerate() {
                 // SAFETY: pairs[i].1 lives in the arena for `'a`.
-                let item_av: &'a ArenaValue<'a> = unsafe { &*(v as *const ArenaValue<'a>) };
+                let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
                 let key_arena: &'a str = k;
                 guard.step_keyed(item_av, i, key_arena);
                 let av = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
@@ -129,7 +129,7 @@ fn quantifier_arena_bridge<'a>(
             drop(guard);
             Ok(singleton_bool(shape.finalize(found_short)))
         }
-        ArenaValue::Array(items) => {
+        DataValue::Array(items) => {
             if items.is_empty() {
                 return Ok(singleton_bool(shape.empty_result));
             }
@@ -156,10 +156,10 @@ fn quantifier_arena_bridge<'a>(
 #[inline]
 pub(crate) fn evaluate_all_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // all: early-exit on false; empty array ⇒ false (matching existing impl,
     // which deliberately rejects vacuous truth).
     evaluate_quantifier_arena(
@@ -179,10 +179,10 @@ pub(crate) fn evaluate_all_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_some_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // some: early-exit on true; empty array ⇒ false.
     evaluate_quantifier_arena(
         args,
@@ -201,10 +201,10 @@ pub(crate) fn evaluate_some_arena<'a>(
 #[inline]
 pub(crate) fn evaluate_none_arena<'a>(
     args: &'a [CompiledNode],
-    actx: &mut ArenaContextStack<'a>,
+    actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
-) -> Result<&'a ArenaValue<'a>> {
+) -> Result<&'a DataValue<'a>> {
     // none: early-exit on true (then return false); empty array ⇒ true.
     evaluate_quantifier_arena(
         args,
