@@ -43,7 +43,7 @@ pub(crate) fn extract_datetime_arena(
 ) -> Option<crate::datetime::DataDateTime> {
     use crate::arena::DataValue;
     match av {
-        DataValue::DateTime(dt) => Some(dt.clone()),
+        DataValue::DateTime(dt) => Some(*dt),
         DataValue::String(s) => crate::datetime::DataDateTime::parse(s),
         DataValue::Object(pairs) => {
             for (k, v) in *pairs {
@@ -67,7 +67,7 @@ pub(crate) fn extract_duration_arena(
 ) -> Option<crate::datetime::DataDuration> {
     use crate::arena::DataValue;
     match av {
-        DataValue::Duration(d) => Some(d.clone()),
+        DataValue::Duration(d) => Some(*d),
         DataValue::String(s) => crate::datetime::DataDuration::parse(s),
         DataValue::Object(pairs) => {
             for (k, v) in *pairs {

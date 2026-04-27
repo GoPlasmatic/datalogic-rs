@@ -60,45 +60,59 @@ fn step_str<'a>(cur: &'a DataValue<'a>, seg: &str) -> Option<&'a DataValue<'a>> 
 /// Walk path segments on an `&'a DataValue<'a>`. Used by variable-arena
 /// lookups. Returns `None` if any segment misses or the value isn't
 /// traversable.
-#[inline]
+#[inline(always)]
 pub(crate) fn arena_traverse_segments<'a>(
     av: &'a DataValue<'a>,
     segments: &[PathSegment],
     _arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    if segments.is_empty() {
-        return Some(av);
+    // Single-segment fast path: 76% of paths in real workloads are length-1
+    // (`{var: "x"}`-style). Avoids the loop's range bookkeeping and lets
+    // step_segment + arena_object_lookup_field collapse into the caller.
+    match segments.len() {
+        0 => Some(av),
+        1 => step_segment(av, &segments[0]),
+        _ => {
+            let mut cur = av;
+            for seg in segments {
+                cur = step_segment(cur, seg)?;
+            }
+            Some(cur)
+        }
     }
-    let mut cur = av;
-    for seg in segments {
-        cur = step_segment(cur, seg)?;
-    }
-    Some(cur)
 }
 
 /// Allocation-free segments-exists check. Companion of [`arena_traverse_segments`]
 /// for compile-time-parsed paths where the leaf value isn't consumed.
-#[inline]
+#[inline(always)]
 pub(crate) fn arena_path_exists_segments(av: &DataValue<'_>, segments: &[PathSegment]) -> bool {
-    if segments.is_empty() {
-        return true;
-    }
-    // Re-bind to a `&'a DataValue<'a>`-shaped reference so we can reuse
-    // `step_segment`'s lifetime contract. The lifetimes coincide for the
-    // duration of this function — we never return a reference.
-    let mut cur: &DataValue<'_> = av;
-    for seg in segments {
-        match step_segment(
-            // SAFETY: shrink the inner lifetime to the outer borrow's
-            // lifetime; we never let the resulting reference escape.
-            unsafe { &*(cur as *const DataValue<'_>) },
-            seg,
-        ) {
-            Some(next) => cur = next,
-            None => return false,
+    // Single-segment fast path mirrors `arena_traverse_segments`'s — the
+    // dominant `missing` / `missing_some` shape is one-segment paths.
+    match segments.len() {
+        0 => true,
+        1 => step_segment(
+            // SAFETY: shrink the lifetime to this function's borrow; the
+            // reference never escapes.
+            unsafe { &*(av as *const DataValue<'_>) },
+            &segments[0],
+        )
+        .is_some(),
+        _ => {
+            let mut cur: &DataValue<'_> = av;
+            for seg in segments {
+                match step_segment(
+                    // SAFETY: shrink the inner lifetime to the outer borrow's
+                    // lifetime; we never let the resulting reference escape.
+                    unsafe { &*(cur as *const DataValue<'_>) },
+                    seg,
+                ) {
+                    Some(next) => cur = next,
+                    None => return false,
+                }
+            }
+            true
         }
     }
-    true
 }
 
 /// Walk a dot-notation `path` on `&'a DataValue<'a>`.

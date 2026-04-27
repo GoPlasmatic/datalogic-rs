@@ -217,7 +217,6 @@ fn eliminate_or(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
 mod tests {
     use super::super::test_helpers::{builtin, val, var_node};
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_if_true_condition() {
