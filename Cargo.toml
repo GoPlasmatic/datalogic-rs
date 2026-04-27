@@ -2,7 +2,7 @@
 name = "datalogic-rs"
 version = "5.0.0"
 edition = "2024"
-exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "test-wasm.cjs"]
+exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
@@ -33,7 +33,7 @@ wasm = ["datetime"]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
 chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"], optional = true }
-datavalue = { package = "datavalue-rs", path = "../datavalue-rs", version = "0.1", features = ["serde"] }
+datavalue = { package = "datavalue-rs", version = "0.1", features = ["serde"] }
 bumpalo = { version = "3", features = ["collections"] }
 
 [dev-dependencies]

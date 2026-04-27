@@ -61,25 +61,43 @@ jobs:
         run: cd wasm && ./build.sh
 
       # Build UI demo and embed bundle
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
+          # No `cache:` here — `ui/package-lock.json` is generated on first
+          # `npm install`, but isn't checked in. Add `cache: 'npm'` once
+          # a lockfile is committed.
 
-      - name: Install dependencies
-        run: pnpm install
+      # Pin the UI's `@goplasmatic/datalogic` dep to the version we just
+      # built in `wasm/pkg/` (extracted from the root Cargo.toml). Without
+      # this the local link below would mismatch ui/package.json's pin and
+      # `npm install` would replace the symlink with the registry copy.
+      # docs.yml doesn't publish, so this in-memory edit is build-only.
+      - name: Pin UI -> WASM version to local build
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          cd ui && npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
+
+      # Wire the freshly-built local WASM into ui/node_modules BEFORE
+      # `npm install`. With the symlink already present and its version
+      # matching ui/package.json's pin, `npm install` preserves it instead
+      # of fetching the registry copy.
+      - name: Link local WASM package into UI
+        run: |
+          cd wasm/pkg && npm link
+          cd ../../ui && npm link @goplasmatic/datalogic
+
+      - name: Install UI dependencies
+        run: cd ui && npm install
 
       - name: Build UI demo
-        run: pnpm build:ui
+        run: cd ui && npm run build
         env:
           GITHUB_ACTIONS: true
 
       - name: Build UI embed bundle
-        run: pnpm --filter @goplasmatic/datalogic-ui build:embed
+        run: cd ui && npm run build:embed
 
       # Copy embed bundle to docs source assets (before mdbook build picks it up)
       - name: Copy embed bundle to docs source

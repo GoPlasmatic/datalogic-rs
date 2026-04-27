@@ -12,13 +12,13 @@ VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": "\(.*\)"
 echo "Building @goplasmatic/datalogic-ui@$VERSION..."
 
 # Build the library
-pnpm build:lib
+npm run build:lib
 
 echo ""
 echo "Publishing @goplasmatic/datalogic-ui@$VERSION to npm..."
 
-# Publish (use pnpm to resolve workspace:* protocol to actual version)
-pnpm publish --access public --no-git-checks
+# Publish
+npm publish --access public
 
 echo ""
 echo "Published @goplasmatic/datalogic-ui@$VERSION successfully!"

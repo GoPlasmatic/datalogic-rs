@@ -169,26 +169,39 @@ jobs:
           name: wasm-pkg
           path: wasm/pkg/
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Sync UI version from Cargo.toml
+      - name: Sync UI version + WASM dep from Cargo.toml
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          cd ui && npm version "$VERSION" --no-git-tag-version --allow-same-version
+          cd ui
+          # Bump ui's own version
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # Pin the @goplasmatic/datalogic dep to the same version we are
+          # about to publish (the wasm publish job runs first). Without
+          # this, the published ui would still reference an older WASM.
+          npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
 
-      - name: Install dependencies
-        run: pnpm install
+      # Wire the freshly-built local WASM artifact into ui/node_modules
+      # BEFORE running npm install. With the symlink already present and
+      # its version matching ui/package.json's pin, `npm install` preserves
+      # it instead of fetching from the registry — important because
+      # publish-wasm may have just run and the new $VERSION may not be
+      # indexed on npm yet.
+      - name: Link local WASM package into UI
+        run: |
+          cd wasm/pkg && npm link
+          cd ../../ui && npm link @goplasmatic/datalogic
+
+      - name: Install UI dependencies
+        run: cd ui && npm install
 
       - name: Build UI library
-        run: pnpm build:ui:lib
+        run: cd ui && npm run build:lib
 
       - name: Check if version exists on npm
         id: check
@@ -204,7 +217,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd ui && pnpm publish --access public --no-git-checks
+        run: cd ui && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
