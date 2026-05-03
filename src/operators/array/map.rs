@@ -1,7 +1,9 @@
 //! `map` — transform each item via a body expression.
 
 use crate::arena::{DataContextStack, DataValue, IterGuard, bvec};
-use crate::node::{MetadataHint, ReduceHint};
+use crate::node::{MetadataHint, PathSegment, ReduceHint};
+use crate::opcode::OpCode;
+use crate::value::NumberValue;
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
@@ -41,7 +43,138 @@ pub(crate) fn evaluate_map_arena<'a>(
         return Ok(result);
     }
 
+    if let Some(result) = map_arith_var_lit_fast_path(&src, body, arena) {
+        return Ok(result);
+    }
+
     map_general(&src, body, actx, engine, arena)
+}
+
+/// Detect a `{op: [{val:[…]}, literal]}` (or literal-first) body and fold
+/// the iteration into a tight loop with no per-item context push or
+/// dispatcher recursion. Covers the dominant `{*: [{val:[]}, 2]}` style of
+/// arithmetic-with-literal map bodies seen in real workloads.
+///
+/// Returns `None` if the body shape doesn't match — caller falls through to
+/// the general path. On match, returns the fully-built result array.
+#[inline]
+fn map_arith_var_lit_fast_path<'a>(
+    src: &IterSrc<'a>,
+    body: &'a CompiledNode,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
+    let CompiledNode::BuiltinOperator { opcode, args, .. } = body else {
+        return None;
+    };
+    if args.len() != 2 {
+        return None;
+    }
+    let opcode = *opcode;
+    if !matches!(
+        opcode,
+        OpCode::Add | OpCode::Subtract | OpCode::Multiply
+    ) {
+        return None;
+    }
+
+    // Detect (var(item), literal) or (literal, var(item)).
+    let (var_segs, lit_value, var_is_lhs) = match (&args[0], &args[1]) {
+        (
+            CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            },
+            CompiledNode::Value { value, .. },
+        ) => (segments.as_ref(), value, true),
+        (
+            CompiledNode::Value { value, .. },
+            CompiledNode::CompiledVar {
+                scope_level: 0,
+                segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            },
+        ) => (segments.as_ref(), value, false),
+        _ => return None,
+    };
+
+    let lit_f = lit_value.as_f64()?;
+    let lit_i = lit_value.as_i64();
+    let len = src.len();
+
+    // Integer fast path. Aborts (without committing results) on the first
+    // overflow or non-integer input — caller falls through to f64.
+    if let Some(li) = lit_i {
+        if let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena)
+        {
+            return Some(av);
+        }
+    }
+
+    // f64 path.
+    let mut results = bvec::<DataValue<'a>>(arena, len);
+    for i in 0..len {
+        let item = src.get(i);
+        let val = if var_segs.is_empty() {
+            item
+        } else {
+            crate::arena::value::arena_traverse_segments(item, var_segs, arena)?
+        };
+        let item_f = val.as_f64()?;
+        let (a, b) = if var_is_lhs {
+            (item_f, lit_f)
+        } else {
+            (lit_f, item_f)
+        };
+        let r = match opcode {
+            OpCode::Add => a + b,
+            OpCode::Subtract => a - b,
+            OpCode::Multiply => a * b,
+            _ => unreachable!(),
+        };
+        results.push(DataValue::Number(NumberValue::from_f64(r)));
+    }
+    Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
+}
+
+/// Integer-only branch of [`map_arith_var_lit_fast_path`]. Returns `None`
+/// (without allocating into the arena) on overflow or non-integer input so
+/// the caller's f64 path can take over.
+#[inline]
+fn map_arith_var_lit_int<'a>(
+    src: &IterSrc<'a>,
+    var_segs: &[PathSegment],
+    li: i64,
+    opcode: OpCode,
+    var_is_lhs: bool,
+    len: usize,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
+    let mut results = bvec::<DataValue<'a>>(arena, len);
+    for i in 0..len {
+        let item = src.get(i);
+        let val = if var_segs.is_empty() {
+            item
+        } else {
+            crate::arena::value::arena_traverse_segments(item, var_segs, arena)?
+        };
+        let item_i = val.as_i64()?;
+        let (a, b) = if var_is_lhs { (item_i, li) } else { (li, item_i) };
+        let r = match opcode {
+            OpCode::Add => a.checked_add(b)?,
+            OpCode::Subtract => a.checked_sub(b)?,
+            OpCode::Multiply => a.checked_mul(b)?,
+            _ => unreachable!(),
+        };
+        results.push(DataValue::Number(NumberValue::Integer(r)));
+    }
+    Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
 /// Body fast path: `var` body with simple shape — identity (empty segments)

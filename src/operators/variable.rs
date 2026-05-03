@@ -144,10 +144,13 @@ fn resolve_metadata_hint<'a>(
                 &*arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
             })
         }),
-        MetadataHint::Key => actx.current().get_key().map(|key| {
-            let s: &'a str = arena.alloc_str(key);
-            &*arena.alloc(DataValue::String(s))
-        }),
+        // `key` already has lifetime `'a` (object pairs live in the arena
+        // for the call) — no `alloc_str` copy needed; only the `String`
+        // wrapper requires a bump alloc.
+        MetadataHint::Key => actx
+            .current()
+            .get_key()
+            .map(|key| &*arena.alloc(DataValue::String(key))),
         MetadataHint::None => None,
     }
 }
@@ -333,17 +336,15 @@ pub(crate) fn evaluate_val_arena<'a>(
                 if path_str == "index"
                     && let Some(idx) = actx.current().get_index()
                 {
-                    return Ok(
-                        arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(
-                            idx as i64,
-                        ))),
-                    );
+                    let i = idx as i64;
+                    return Ok(crate::arena::pool::singleton_small_int(i).unwrap_or_else(
+                        || arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i))),
+                    ));
                 }
                 if path_str == "key"
                     && let Some(key) = actx.current().get_key()
                 {
-                    let s: &'a str = arena.alloc_str(key);
-                    return Ok(arena.alloc(DataValue::String(s)));
+                    return Ok(arena.alloc(DataValue::String(key)));
                 }
 
                 let path_owned = path_string_from_arena(path_av);
@@ -434,15 +435,15 @@ pub(crate) fn evaluate_val_arena<'a>(
                     if path_str == "index"
                         && let Some(idx) = actx.current().get_index()
                     {
-                        return Ok(arena.alloc(DataValue::Number(
-                            crate::value::NumberValue::Integer(idx as i64),
-                        )));
+                        let i = idx as i64;
+                        return Ok(crate::arena::pool::singleton_small_int(i).unwrap_or_else(
+                            || arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i))),
+                        ));
                     }
                     if path_str == "key"
                         && let Some(key) = actx.current().get_key()
                     {
-                        let s: &'a str = arena.alloc_str(key);
-                        return Ok(arena.alloc(DataValue::String(s)));
+                        return Ok(arena.alloc(DataValue::String(key)));
                     }
                 }
 

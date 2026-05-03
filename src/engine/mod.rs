@@ -50,6 +50,33 @@ pub struct DataLogic {
 
 mod dispatch;
 
+/// Cold fallback for `CompiledNode::Value { arena_lit: None, .. }` — only
+/// reached by ad-hoc `synthetic_value` wrappers (test helpers, trace nodes
+/// built outside `CompiledLogic::new`). Outlined so the inliner doesn't
+/// expand it into the hot `evaluate_node` literal arm.
+#[cold]
+#[inline(never)]
+fn literal_fallback_arena<'a>(
+    value: &'a datavalue::OwnedDataValue,
+    arena: &'a bumpalo::Bump,
+) -> &'a crate::arena::DataValue<'a> {
+    use datavalue::OwnedDataValue;
+    match value {
+        OwnedDataValue::Null => crate::arena::pool::singleton_null(),
+        OwnedDataValue::Bool(b) => crate::arena::pool::singleton_bool(*b),
+        OwnedDataValue::String(s) if s.is_empty() => {
+            crate::arena::pool::singleton_empty_string()
+        }
+        OwnedDataValue::Array(a) if a.is_empty() => {
+            crate::arena::pool::singleton_empty_array()
+        }
+        OwnedDataValue::String(s) => {
+            arena.alloc(crate::arena::DataValue::String(s.as_str()))
+        }
+        _ => arena.alloc(value.to_arena(arena)),
+    }
+}
+
 impl Default for DataLogic {
     fn default() -> Self {
         Self::new()
@@ -634,23 +661,10 @@ impl DataLogic {
             }
             // Fallback for nodes built outside the compile pipeline (test
             // helpers in `trace.rs`, ad-hoc `synthetic_value` wrappers that
-            // never went through `CompiledLogic::new`). Mirrors the old
-            // pre-populate fast path.
-            use datavalue::OwnedDataValue;
-            return Ok(match value {
-                OwnedDataValue::Null => crate::arena::pool::singleton_null(),
-                OwnedDataValue::Bool(b) => crate::arena::pool::singleton_bool(*b),
-                OwnedDataValue::String(s) if s.is_empty() => {
-                    crate::arena::pool::singleton_empty_string()
-                }
-                OwnedDataValue::Array(a) if a.is_empty() => {
-                    crate::arena::pool::singleton_empty_array()
-                }
-                OwnedDataValue::String(s) => {
-                    arena.alloc(crate::arena::DataValue::String(s.as_str()))
-                }
-                _ => arena.alloc(value.to_arena(arena)),
-            });
+            // never went through `CompiledLogic::new`). Outlined + cold so
+            // the literal fast path stays a single load+branch in the
+            // dispatched dominant case.
+            return Ok(literal_fallback_arena(value, arena));
         }
 
         // Snapshot context for trace BEFORE recursing — children will
