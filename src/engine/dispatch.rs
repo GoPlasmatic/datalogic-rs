@@ -554,6 +554,9 @@ fn evaluate_structured_object_arena<'a>(
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
+    if data.fields.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_object());
+    }
     let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
         bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
     for (key, n) in data.fields.iter() {
@@ -573,6 +576,9 @@ fn evaluate_array_literal_arena<'a>(
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
+    if nodes.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
     let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
     for n in nodes.iter() {

@@ -65,6 +65,9 @@ fn slice_array<'a>(
 ) -> &'a DataValue<'a> {
     let len = items.len() as i64;
     let indices = slice_indices(len, start, end, step);
+    if indices.is_empty() {
+        return crate::arena::pool::singleton_empty_array();
+    }
     let mut out = bvec::<DataValue<'a>>(arena, indices.len());
     for i in indices {
         out.push(crate::arena::value::reborrow_arena_value(

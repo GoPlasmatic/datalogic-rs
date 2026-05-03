@@ -16,7 +16,7 @@ pub(crate) fn evaluate_if_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::pool::singleton_null());
     }
     check_invalid_args_marker(args)?;
 
@@ -41,7 +41,7 @@ pub(crate) fn evaluate_if_arena<'a>(
         }
         i += 2;
     }
-    Ok(arena.alloc(DataValue::Null))
+    Ok(crate::arena::pool::singleton_null())
 }
 
 #[cfg(feature = "ext-control")]
@@ -53,7 +53,7 @@ pub(crate) fn evaluate_coalesce_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::pool::singleton_null());
     }
     for arg in args {
         let v = engine.evaluate_node(arg, actx, arena)?;
@@ -61,7 +61,7 @@ pub(crate) fn evaluate_coalesce_arena<'a>(
             return Ok(v);
         }
     }
-    Ok(arena.alloc(DataValue::Null))
+    Ok(crate::arena::pool::singleton_null())
 }
 
 #[cfg(feature = "ext-control")]
@@ -74,7 +74,7 @@ pub(crate) fn evaluate_switch_arena<'a>(
 ) -> Result<&'a DataValue<'a>> {
     use crate::operators::comparison::compare_equals_arena;
     if args.len() < 2 {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::pool::singleton_null());
     }
     let disc_av = engine.evaluate_node(&args[0], actx, arena)?;
 
@@ -125,5 +125,5 @@ pub(crate) fn evaluate_switch_arena<'a>(
     if args.len() > 2 {
         return engine.evaluate_node(&args[2], actx, arena);
     }
-    Ok(arena.alloc(DataValue::Null))
+    Ok(crate::arena::pool::singleton_null())
 }

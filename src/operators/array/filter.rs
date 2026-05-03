@@ -27,7 +27,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
     // Resolve input via unified helper (root borrow OR upstream arena op).
     let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(DataValue::Array(&[]))),
+        ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_empty_array()),
         ResolvedInput::Bridge(av) => {
             return filter_arena_bridge(av, &args[1], actx, engine, arena);
         }
@@ -36,7 +36,7 @@ pub(crate) fn evaluate_filter_arena<'a>(
     let predicate = &args[1];
     let len = src.len();
     if len == 0 {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(crate::arena::pool::singleton_empty_array());
     }
 
     if let Some(result) = filter_strict_eq_field_fast_path(&src, predicate, actx, engine, arena)? {
@@ -93,6 +93,9 @@ fn filter_strict_eq_field_fast_path<'a>(
             results.push(crate::arena::value::reborrow_arena_value(item));
         }
     }
+    if results.is_empty() {
+        return Ok(Some(crate::arena::pool::singleton_empty_array()));
+    }
     Ok(Some(
         arena.alloc(DataValue::Array(results.into_bump_slice())),
     ))
@@ -113,6 +116,9 @@ fn filter_with_fast_predicate<'a>(
         if fast_pred.evaluate(item, arena) {
             results.push(crate::arena::value::reborrow_arena_value(item));
         }
+    }
+    if results.is_empty() {
+        return crate::arena::pool::singleton_empty_array();
     }
     arena.alloc(DataValue::Array(results.into_bump_slice()))
 }
@@ -141,6 +147,9 @@ fn filter_general<'a>(
         }
     }
     drop(guard);
+    if results.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
@@ -189,6 +198,9 @@ fn filter_bridge_object<'a>(
         }
     }
     drop(guard);
+    if kept.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_object());
+    }
     Ok(arena.alloc(DataValue::Object(kept.into_bump_slice())))
 }
 
@@ -211,5 +223,8 @@ fn filter_bridge_array<'a>(
         }
     }
     drop(guard);
+    if kept.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
     Ok(arena.alloc(DataValue::Array(kept.into_bump_slice())))
 }

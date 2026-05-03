@@ -52,7 +52,7 @@ pub(crate) fn evaluate_type_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::String("null")));
+        return Ok(crate::arena::pool::singleton_type_name("null"));
     }
     let av = engine.evaluate_node(&args[0], actx, arena)?;
 
@@ -61,10 +61,10 @@ pub(crate) fn evaluate_type_arena<'a>(
     {
         if let DataValue::Object(pairs) = av {
             if pairs.iter().any(|(k, _)| *k == "datetime") {
-                return Ok(arena.alloc(DataValue::String("datetime")));
+                return Ok(crate::arena::pool::singleton_type_name("datetime"));
             }
             if pairs.iter().any(|(k, _)| *k == "timestamp") {
-                return Ok(arena.alloc(DataValue::String("duration")));
+                return Ok(crate::arena::pool::singleton_type_name("duration"));
             }
         }
     }
@@ -81,7 +81,7 @@ pub(crate) fn evaluate_type_arena<'a>(
         #[cfg(feature = "datetime")]
         DataValue::Duration(_) => "duration",
     };
-    Ok(arena.alloc(DataValue::String(type_str)))
+    Ok(crate::arena::pool::singleton_type_name(type_str))
 }
 
 /// Classify a string into "datetime" / "duration" / "string" using the

@@ -207,8 +207,11 @@ fn try_reduce_fast_path_arena<'a>(
             }
         }
         if all_int {
-            return acc_i
-                .map(|v| &*arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(v))));
+            return acc_i.map(|v| {
+                crate::arena::pool::singleton_small_int(v).unwrap_or_else(|| {
+                    &*arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(v)))
+                })
+            });
         }
     }
 

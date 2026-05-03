@@ -28,5 +28,8 @@ pub(crate) fn evaluate_length_arena<'a>(
         _ => return Err(crate::constants::invalid_args()),
     };
 
+    if let Some(av) = crate::arena::pool::singleton_small_int(n) {
+        return Ok(av);
+    }
     Ok(arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(n))))
 }

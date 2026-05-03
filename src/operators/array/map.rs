@@ -26,7 +26,7 @@ pub(crate) fn evaluate_map_arena<'a>(
     let body = &args[1];
     let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(DataValue::Array(&[]))),
+        ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_empty_array()),
         ResolvedInput::Bridge(av) => {
             return map_arena_bridge(av, body, actx, engine, arena);
         }
@@ -34,7 +34,7 @@ pub(crate) fn evaluate_map_arena<'a>(
 
     let len = src.len();
     if len == 0 {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(crate::arena::pool::singleton_empty_array());
     }
 
     if let Some(result) = map_var_fast_path(&src, body, arena) {

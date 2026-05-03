@@ -37,7 +37,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
 
     let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(arena.alloc(DataValue::Null)),
+        ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_null()),
         ResolvedInput::Bridge(av) => {
             return sort_arena_from_value(av, args, actx, engine, arena);
         }
@@ -45,7 +45,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
 
     let len = src.len();
     if len == 0 {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(crate::arena::pool::singleton_empty_array());
     }
 
     let ascending = sort_direction(args, actx, engine, arena)?;
@@ -204,7 +204,7 @@ fn sort_arena_from_value<'a>(
         _ => return Err(crate::constants::invalid_args()),
     };
     if arena_items_slice.is_empty() {
-        return Ok(arena.alloc(DataValue::Array(&[])));
+        return Ok(crate::arena::pool::singleton_empty_array());
     }
 
     let ascending = sort_direction(args, actx, engine, arena)?;

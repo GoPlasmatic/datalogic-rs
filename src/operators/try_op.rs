@@ -47,7 +47,7 @@ pub(crate) fn evaluate_try_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::pool::singleton_null());
     }
     if args.len() == 1 {
         return engine.evaluate_node(&args[0], actx, arena);

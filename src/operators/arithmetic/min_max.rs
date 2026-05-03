@@ -85,7 +85,7 @@ fn arena_min_max<'a>(
         // Re-borrow the arena value to preserve the original Number variant
         // (integer typing).
         Some(i) => Ok(src.get(i)),
-        None => Ok(arena.alloc(DataValue::Null)),
+        None => Ok(crate::arena::pool::singleton_null()),
     }
 }
 
@@ -144,7 +144,7 @@ fn arena_min_max_from_av<'a>(
     }
     match best_idx {
         Some(i) => Ok(arena.alloc(crate::arena::value::reborrow_arena_value(&items[i]))),
-        None => Ok(arena.alloc(DataValue::Null)),
+        None => Ok(crate::arena::pool::singleton_null()),
     }
 }
 

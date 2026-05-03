@@ -58,6 +58,9 @@ pub(crate) fn evaluate_missing_arena<'a>(
         }
     }
 
+    if missing.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
     Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
 }
 
@@ -106,7 +109,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
         _ => false,
     };
 
-    if short_circuit || present_count >= min_present {
+    if short_circuit || present_count >= min_present || missing.is_empty() {
         return Ok(crate::arena::pool::singleton_empty_array());
     }
     Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
@@ -156,6 +159,9 @@ pub(crate) fn evaluate_compiled_missing_arena<'a>(
             }
         }
     }
+    if missing.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
     Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
 }
 
@@ -193,7 +199,7 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
                     missing.push(DataValue::String(path.as_ref()));
                 }
             }
-            if present >= min_present {
+            if present >= min_present || missing.is_empty() {
                 return Ok(crate::arena::pool::singleton_empty_array());
             }
             Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
@@ -211,7 +217,7 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
                 }),
                 _ => false,
             };
-            if short || present >= min_present {
+            if short || present >= min_present || missing.is_empty() {
                 return Ok(crate::arena::pool::singleton_empty_array());
             }
             Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))

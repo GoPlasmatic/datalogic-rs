@@ -38,5 +38,8 @@ pub(crate) fn evaluate_merge_arena<'a>(
         }
     }
 
+    if results.is_empty() {
+        return Ok(crate::arena::pool::singleton_empty_array());
+    }
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }

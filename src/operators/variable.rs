@@ -139,9 +139,10 @@ fn resolve_metadata_hint<'a>(
 ) -> Option<&'a DataValue<'a>> {
     match hint {
         MetadataHint::Index => actx.current().get_index().map(|idx| {
-            &*arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(
-                idx as i64,
-            )))
+            let i = idx as i64;
+            crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
+                &*arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
+            })
         }),
         MetadataHint::Key => actx.current().get_key().map(|key| {
             let s: &'a str = arena.alloc_str(key);

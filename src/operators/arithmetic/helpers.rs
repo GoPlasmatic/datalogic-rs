@@ -30,6 +30,12 @@ pub(super) fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
 }
 
 /// Wrap a [`NumberValue`] in an arena-resident [`DataValue::Number`].
+///
+/// Note: we do *not* route through `singleton_small_int` here. Most arithmetic
+/// results are not small non-negative integers, so probing the singleton table
+/// on every arena_number call costs more than it saves. Sites where the result
+/// is *typically* small (length, var-index, reduce-int accumulator) call
+/// `singleton_small_int` directly themselves.
 #[inline]
 pub(super) fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue<'a> {
     arena.alloc(DataValue::Number(n))
