@@ -39,12 +39,16 @@ pub(crate) fn evaluate_map_arena<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    if let Some(result) = map_var_fast_path(&src, body, arena) {
-        return Ok(result);
-    }
+    // Fast paths bypass `eval_iter_body`, so they skip the tracer's
+    // per-iteration markers. Only enter them when no tracer is attached.
+    if !actx.is_tracing() {
+        if let Some(result) = map_var_fast_path(&src, body, arena) {
+            return Ok(result);
+        }
 
-    if let Some(result) = map_arith_var_lit_fast_path(&src, body, arena) {
-        return Ok(result);
+        if let Some(result) = map_arith_var_lit_fast_path(&src, body, arena) {
+            return Ok(result);
+        }
     }
 
     map_general(&src, body, actx, engine, arena)
@@ -70,10 +74,7 @@ fn map_arith_var_lit_fast_path<'a>(
         return None;
     }
     let opcode = *opcode;
-    if !matches!(
-        opcode,
-        OpCode::Add | OpCode::Subtract | OpCode::Multiply
-    ) {
+    if !matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply) {
         return None;
     }
 
@@ -110,11 +111,10 @@ fn map_arith_var_lit_fast_path<'a>(
 
     // Integer fast path. Aborts (without committing results) on the first
     // overflow or non-integer input — caller falls through to f64.
-    if let Some(li) = lit_i {
-        if let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena)
-        {
-            return Some(av);
-        }
+    if let Some(li) = lit_i
+        && let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena)
+    {
+        return Some(av);
     }
 
     // f64 path.
@@ -165,7 +165,11 @@ fn map_arith_var_lit_int<'a>(
             crate::arena::value::arena_traverse_segments(item, var_segs, arena)?
         };
         let item_i = val.as_i64()?;
-        let (a, b) = if var_is_lhs { (item_i, li) } else { (li, item_i) };
+        let (a, b) = if var_is_lhs {
+            (item_i, li)
+        } else {
+            (li, item_i)
+        };
         let r = match opcode {
             OpCode::Add => a.checked_add(b)?,
             OpCode::Subtract => a.checked_sub(b)?,

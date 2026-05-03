@@ -70,8 +70,11 @@ fn evaluate_quantifier_arena<'a>(
 
     // Fast predicate path — no context push, no clones. Detection is
     // hoisted to compile time and cached on the predicate node, so we
-    // pull it from there instead of pattern-matching every call.
-    if let Some(fast_pred) = FastPredicate::from_node(predicate) {
+    // pull it from there instead of pattern-matching every call. Skipped
+    // when a tracer is attached so iteration markers still get recorded.
+    if !actx.is_tracing()
+        && let Some(fast_pred) = FastPredicate::from_node(predicate)
+    {
         let len = src.len();
         for i in 0..len {
             if fast_pred.evaluate(src.get(i), arena) == shape.short_circuit_on {

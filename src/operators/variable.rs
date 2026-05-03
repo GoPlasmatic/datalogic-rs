@@ -337,9 +337,11 @@ pub(crate) fn evaluate_val_arena<'a>(
                     && let Some(idx) = actx.current().get_index()
                 {
                     let i = idx as i64;
-                    return Ok(crate::arena::pool::singleton_small_int(i).unwrap_or_else(
-                        || arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i))),
-                    ));
+                    return Ok(
+                        crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
+                            arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
+                        }),
+                    );
                 }
                 if path_str == "key"
                     && let Some(key) = actx.current().get_key()
@@ -437,7 +439,10 @@ pub(crate) fn evaluate_val_arena<'a>(
                     {
                         let i = idx as i64;
                         return Ok(crate::arena::pool::singleton_small_int(i).unwrap_or_else(
-                            || arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i))),
+                            || {
+                                arena
+                                    .alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
+                            },
                         ));
                     }
                     if path_str == "key"

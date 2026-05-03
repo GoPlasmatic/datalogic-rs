@@ -174,6 +174,22 @@ impl<'a> DataContextStack<'a> {
         self.tracer.is_some()
     }
 
+    /// Cross-feature wrapper around [`has_tracer`]. Always callable; folds to
+    /// `false` when the `trace` feature is off so callers don't need their own
+    /// `cfg` shims. Used by iterator-op fast paths to skip optimizations that
+    /// would bypass [`eval_iter_body`]'s trace markers.
+    #[inline]
+    pub(crate) fn is_tracing(&self) -> bool {
+        #[cfg(feature = "trace")]
+        {
+            self.has_tracer()
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            false
+        }
+    }
+
     /// Snapshot the current frame's data as an owned `Value`. Used by the
     /// arena dispatcher before recursing into a child, so the trace step
     /// can record the context that operator saw.

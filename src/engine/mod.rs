@@ -64,15 +64,9 @@ fn literal_fallback_arena<'a>(
     match value {
         OwnedDataValue::Null => crate::arena::pool::singleton_null(),
         OwnedDataValue::Bool(b) => crate::arena::pool::singleton_bool(*b),
-        OwnedDataValue::String(s) if s.is_empty() => {
-            crate::arena::pool::singleton_empty_string()
-        }
-        OwnedDataValue::Array(a) if a.is_empty() => {
-            crate::arena::pool::singleton_empty_array()
-        }
-        OwnedDataValue::String(s) => {
-            arena.alloc(crate::arena::DataValue::String(s.as_str()))
-        }
+        OwnedDataValue::String(s) if s.is_empty() => crate::arena::pool::singleton_empty_string(),
+        OwnedDataValue::Array(a) if a.is_empty() => crate::arena::pool::singleton_empty_array(),
+        OwnedDataValue::String(s) => arena.alloc(crate::arena::DataValue::String(s.as_str())),
         _ => arena.alloc(value.to_arena(arena)),
     }
 }

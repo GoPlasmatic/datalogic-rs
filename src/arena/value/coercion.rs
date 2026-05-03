@@ -55,7 +55,7 @@ pub(crate) fn try_coerce_arena_to_integer_cfg(
 /// Coerce an `DataValue` to f64 using default JSON Logic coercion rules
 /// (no engine config consulted). Used by datetime arithmetic where the
 /// duration/scalar-multiply path runs before user config can intervene.
-#[cfg(any(test, feature = "datetime"))]
+#[cfg(feature = "datetime")]
 pub(crate) fn coerce_arena_to_number(v: &DataValue<'_>) -> Option<f64> {
     match v {
         DataValue::Number(n) => Some(n.as_f64()),

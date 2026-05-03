@@ -12,7 +12,7 @@ mod lookup;
 mod strings;
 mod traversal;
 
-#[cfg(any(test, feature = "datetime"))]
+#[cfg(feature = "datetime")]
 pub(crate) use coercion::coerce_arena_to_number;
 pub(crate) use coercion::{coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
 #[cfg(feature = "compat")]

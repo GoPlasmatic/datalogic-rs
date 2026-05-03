@@ -39,12 +39,18 @@ pub(crate) fn evaluate_filter_arena<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    if let Some(result) = filter_strict_eq_field_fast_path(&src, predicate, actx, engine, arena)? {
-        return Ok(result);
-    }
+    // Fast paths bypass `eval_iter_body` and skip tracer markers. Defer to the
+    // general path when a tracer is attached.
+    if !actx.is_tracing() {
+        if let Some(result) =
+            filter_strict_eq_field_fast_path(&src, predicate, actx, engine, arena)?
+        {
+            return Ok(result);
+        }
 
-    if let Some(fast_pred) = FastPredicate::from_node(predicate) {
-        return Ok(filter_with_fast_predicate(&src, fast_pred, arena));
+        if let Some(fast_pred) = FastPredicate::from_node(predicate) {
+            return Ok(filter_with_fast_predicate(&src, fast_pred, arena));
+        }
     }
 
     filter_general(&src, predicate, actx, engine, arena)
