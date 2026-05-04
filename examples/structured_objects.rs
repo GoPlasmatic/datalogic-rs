@@ -4,6 +4,8 @@
 //! literal output fields rather than operators. This enables JSON templating
 //! where the output structure mirrors the input template.
 
+#![allow(deprecated)]
+
 use datalogic_rs::DataLogic;
 use serde_json::json;
 
@@ -24,7 +26,7 @@ fn main() {
         "active": true
     });
 
-    let compiled = engine.compile(&template).unwrap();
+    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "user": {
             "name": "Alice Johnson",
@@ -58,7 +60,7 @@ fn main() {
         }
     });
 
-    let compiled = engine.compile(&template).unwrap();
+    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "first": "John",
         "last": "Doe",
@@ -93,7 +95,7 @@ fn main() {
         "points": {"var": "points"}
     });
 
-    let compiled = engine.compile(&template).unwrap();
+    let compiled = engine.compile_serde_value(&template).unwrap();
 
     let data1 = json!({"isActive": true, "points": 1500});
     let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
@@ -119,7 +121,7 @@ fn main() {
         "totalProducts": {"length": {"var": "products"}}
     });
 
-    let compiled = engine.compile(&template).unwrap();
+    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "products": [
             {"id": 1, "name": "Widget", "price": 9.99, "quantity": 50},
@@ -158,7 +160,7 @@ fn main() {
         "timestamp": {"now": []}
     });
 
-    let compiled = engine.compile(&template).unwrap();
+    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "userId": "usr_12345",
         "name": "Jane Smith",
@@ -191,14 +193,14 @@ fn main() {
     let data = json!({"x": 42});
 
     // Standard engine treats multi-key objects as errors
-    let standard_result = standard_engine.compile(&template);
+    let standard_result = standard_engine.compile_serde_value(&template);
     println!(
         "   Standard engine: {:?}",
         standard_result.err().map(|e| e.to_string())
     );
 
     // Preserve engine treats unknown keys as output fields
-    let preserve_compiled = preserve_engine.compile(&template).unwrap();
+    let preserve_compiled = preserve_engine.compile_serde_value(&template).unwrap();
     let preserve_result = preserve_engine
         .evaluate_owned(&preserve_compiled, data)
         .unwrap();

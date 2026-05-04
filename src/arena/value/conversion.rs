@@ -28,7 +28,7 @@ pub(crate) fn reborrow_arena_value<'a>(av: &DataValue<'a>) -> DataValue<'a> {
 }
 
 #[cfg(feature = "compat")]
-pub(crate) use compat_impl::arena_to_value;
+pub use compat_impl::arena_to_value;
 #[cfg(feature = "compat")]
 pub use compat_impl::value_to_arena;
 
@@ -42,7 +42,7 @@ mod compat_impl {
     /// once at the public API boundary on the final result. Allocations here are
     /// the same ones the user would have paid for in the non-arena path — we
     /// haven't added work, only deferred and consolidated it.
-    pub(crate) fn arena_to_value(v: &DataValue<'_>) -> Value {
+    pub fn arena_to_value(v: &DataValue<'_>) -> Value {
         match v {
             DataValue::Null => Value::Null,
             DataValue::Bool(b) => Value::Bool(*b),

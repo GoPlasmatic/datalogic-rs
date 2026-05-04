@@ -5,6 +5,7 @@
 // practice users running this runner will want `--all-features` to actually
 // exercise every suite.
 #![cfg(feature = "preserve")]
+#![allow(deprecated)]
 
 use datalogic_rs::DataLogic;
 use serde_json::{Value, json};
@@ -131,8 +132,8 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
         }
 
         // Compile and evaluate
-        match test_engine.compile(rule) {
-            Ok(compiled) => match test_engine.evaluate(&compiled, data_arc) {
+        match test_engine.compile_serde_value(rule) {
+            Ok(compiled) => match test_engine.evaluate_arc_value(&compiled, data_arc) {
                 Ok(result) => {
                     if expects_error {
                         println!("✗ Test {}: {}", index, description);

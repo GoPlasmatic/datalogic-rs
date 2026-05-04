@@ -520,19 +520,20 @@ impl CompileCtx {
 /// # Example
 ///
 /// ```rust
-/// use datalogic_rs::DataLogic;
-/// use serde_json::json;
+/// use bumpalo::Bump;
+/// use datalogic_rs::{DataLogic, DataValue};
 /// use std::sync::Arc;
 ///
 /// let engine = DataLogic::new();
-/// let logic = json!({">": [{"var": "score"}, 90]});
-/// let compiled = engine.compile(&logic).unwrap(); // Returns Arc<CompiledLogic>
+/// let compiled = engine.compile(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
 ///
-/// // Can be shared across threads
+/// // Compiled logic can be cloned and sent across threads.
 /// let compiled_clone = Arc::clone(&compiled);
 /// std::thread::spawn(move || {
-///     let data = json!({"score": 95});
-///     let result = engine.evaluate_owned(&compiled_clone, data);
+///     let engine = DataLogic::new();
+///     let arena = Bump::new();
+///     let data = DataValue::from_str(r#"{"score": 95}"#, &arena).unwrap();
+///     let _result = engine.evaluate(&compiled_clone, arena.alloc(data), &arena);
 /// });
 /// ```
 pub struct CompiledLogic {
@@ -617,8 +618,9 @@ impl CompiledLogic {
     }
 
     /// Conservative arena capacity for one evaluation of this rule:
-    /// `static_bytes × 2`, with a 4 KiB floor.
-    #[cfg(feature = "compat")]
+    /// `static_bytes × 2`, with a 4 KiB floor. Currently unused — kept for
+    /// the thread-local arena pool wiring that may return in 5.x.
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn arena_capacity(&self) -> usize {
         self.arena_static_bytes.saturating_mul(2).max(4096)

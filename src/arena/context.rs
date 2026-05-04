@@ -1,14 +1,14 @@
 //! `DataContextStack` — context stack used during arena-mode evaluation.
 //!
 //! Frames hold `&'a DataValue<'a>`, and so does the root: callers either
-//! pass an arena-resident value directly (e.g. `evaluate_in_arena`) or use
+//! pass an arena-resident value directly (e.g. `DataLogic::evaluate`) or use
 //! `from_value` to deep-convert a borrowed `&Value` into the arena.
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
 //! (no `Value::clone`, no `BTreeMap::clone`).
 
 use super::value::DataValue;
-#[cfg(feature = "compat")]
+#[cfg(all(test, feature = "compat"))]
 use bumpalo::Bump;
 
 /// A single frame in the arena-mode context stack.
@@ -148,10 +148,10 @@ impl<'a> DataContextStack<'a> {
     }
 
     /// Build a context stack from a borrowed `&serde_json::Value` by
-    /// deep-converting it into an arena-resident `DataValue`. Bridge for the
-    /// compat-mode public APIs only — v5 callers build a `DataValue` first
-    /// and use [`DataContextStack::new`] directly.
-    #[cfg(feature = "compat")]
+    /// deep-converting it into an arena-resident `DataValue`. Used only by
+    /// the test module below — production v5 / compat paths construct a
+    /// [`DataContextStack::new`] directly with an arena-resident value.
+    #[cfg(all(test, feature = "compat"))]
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
         let av = crate::arena::value::value_to_arena(root, arena);

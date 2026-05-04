@@ -27,11 +27,11 @@ pub(crate) fn to_string_arena<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str
     }
 }
 
-/// Render a [`DataValue`] as a JSON `String`. Public crate-internal so the
-/// engine's v5 boundary helper can serialize results without pulling in
-/// `serde_json`.
+/// Render a [`DataValue`] as a JSON `String`. Public so v5 callers using
+/// the arena hot path can serialize a result without pulling in `serde_json`
+/// or going through the deprecated `arena_to_value` boundary.
 #[inline]
-pub(crate) fn data_to_json_string(v: &DataValue<'_>) -> String {
+pub fn data_to_json_string(v: &DataValue<'_>) -> String {
     let mut buf = String::new();
     write_data_json(&mut buf, v);
     buf

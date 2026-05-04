@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use datalogic_rs::DataLogic;
 use datalogic_rs::arena::DataValue;
 use serde_json::Value;
@@ -34,7 +36,7 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
             && let Some(logic) = test_case.get("rule")
         {
             let data = test_case.get("data").cloned().unwrap_or(Value::Null);
-            if let Ok(compiled) = engine.compile(logic) {
+            if let Ok(compiled) = engine.compile_serde_value(logic) {
                 test_cases.push((compiled, data));
             }
         }
@@ -58,14 +60,14 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
 
     // Warm-up — pure arena dispatch, no boundary conversion.
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
-        let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
+        let _ = engine.evaluate(compiled_logic, data_av, &arena);
     }
     arena.reset();
 
     let start = Instant::now();
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
         for _ in 0..ITERATIONS {
-            let _ = engine.evaluate_in_arena(compiled_logic, data_av, &arena);
+            let _ = engine.evaluate(compiled_logic, data_av, &arena);
             arena.reset();
         }
     }

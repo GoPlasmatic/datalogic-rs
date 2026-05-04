@@ -1,5 +1,7 @@
 //! Integration tests for the `DataOperator` trait — zero-clone custom operators.
 
+#![allow(deprecated)]
+
 use bumpalo::Bump;
 use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Result};
 use serde_json::json;
@@ -42,7 +44,7 @@ fn arena_operator_double_at_root() {
     let mut engine = DataLogic::new();
     engine.add_operator("double".into(), Box::new(DoubleArena));
 
-    let compiled = engine.compile(&json!({"double": 21})).unwrap();
+    let compiled = engine.compile_serde_value(&json!({"double": 21})).unwrap();
     let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(42));
 }
@@ -54,7 +56,7 @@ fn arena_operator_inside_filter() {
     engine.add_operator("double".into(), Box::new(DoubleArena));
 
     let compiled = engine
-        .compile(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
+        .compile_serde_value(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
         .unwrap();
     let result = engine
         .evaluate_ref(&compiled, &json!({"xs": [1, 2, 3, 4]}))
@@ -67,7 +69,9 @@ fn arena_operator_string_result() {
     let mut engine = DataLogic::new();
     engine.add_operator("xcat".into(), Box::new(CatArena));
 
-    let compiled = engine.compile(&json!({"xcat": ["he", "ll", "o"]})).unwrap();
+    let compiled = engine
+        .compile_serde_value(&json!({"xcat": ["he", "ll", "o"]}))
+        .unwrap();
     let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!("hello"));
 }
@@ -79,7 +83,7 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
     // bridges synthesize their own context from actx.root_input().
     let engine = DataLogic::new();
     let logic = serde_json::json!({"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine
         .evaluate_ref(&compiled, &serde_json::json!({"items": [1, 2, 3, 4, 5]}))
         .unwrap();
@@ -92,7 +96,9 @@ fn arena_operator_with_input_ref() {
     let mut engine = DataLogic::new();
     engine.add_operator("double".into(), Box::new(DoubleArena));
 
-    let compiled = engine.compile(&json!({"double": {"var": "n"}})).unwrap();
+    let compiled = engine
+        .compile_serde_value(&json!({"double": {"var": "n"}}))
+        .unwrap();
     let result = engine.evaluate_ref(&compiled, &json!({"n": 5})).unwrap();
     assert_eq!(result, json!(10));
 }
@@ -125,7 +131,7 @@ fn arena_operator_passthrough_input_ref() {
     engine.add_operator("read_field".into(), Box::new(ReadField));
 
     let compiled = engine
-        .compile(&serde_json::json!({"read_field": {"var": "name"}}))
+        .compile_serde_value(&serde_json::json!({"read_field": {"var": "name"}}))
         .unwrap();
     let result = engine
         .evaluate_ref(&compiled, &serde_json::json!({"name": "Alice"}))
@@ -161,7 +167,7 @@ fn arena_operator_inside_filter_reads_iter_item_field() {
     // `identity` on `{"var": "active"}`, which the dispatcher resolves
     // against the iter frame.
     let compiled = engine
-        .compile(&serde_json::json!({
+        .compile_serde_value(&serde_json::json!({
             "filter": [{"var": "items"}, {"identity": {"var": "active"}}]
         }))
         .unwrap();

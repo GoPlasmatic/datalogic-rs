@@ -182,14 +182,14 @@ thread_local! {
 ///
 /// Use `guard.arena()` to get a `&Bump` (whose lifetime is bounded by the
 /// guard, so `DataValue<'_>` cannot escape the call).
-#[cfg_attr(not(feature = "compat"), allow(dead_code))]
+#[allow(dead_code)] // Test-only utility after v5 funnel landed.
 pub(crate) struct ArenaGuard {
     /// `ManuallyDrop` lets `Drop::drop` move the `Bump` back into the slot
     /// without violating `Drop`'s `&mut self` aliasing rules.
     arena: ManuallyDrop<Bump>,
 }
 
-#[cfg_attr(not(feature = "compat"), allow(dead_code))]
+#[allow(dead_code)] // Test-only utility after v5 funnel landed.
 impl ArenaGuard {
     /// Take the thread's `Bump` from the slot, or allocate a fresh one sized
     /// to `min_capacity` if the slot is empty.

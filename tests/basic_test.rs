@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use datalogic_rs::DataLogic;
 use serde_json::json;
 use std::sync::Arc;
@@ -10,8 +12,10 @@ fn test_basic_equality() {
     let logic = json!({"==": [1, 1]});
     let data = json!({});
 
-    let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let result = engine
+        .evaluate_arc_value(&compiled, Arc::new(data))
+        .unwrap();
 
     assert_eq!(result, json!(true));
 }
@@ -24,8 +28,10 @@ fn test_variable_access() {
     let logic = json!({"var": "name"});
     let data = json!({"name": "Alice"});
 
-    let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let result = engine
+        .evaluate_arc_value(&compiled, Arc::new(data))
+        .unwrap();
 
     assert_eq!(result, json!("Alice"));
 }
@@ -44,12 +50,16 @@ fn test_if_then_else() {
     });
 
     let data1 = json!({"temp": 100});
-    let compiled = engine.compile(&logic).unwrap();
-    let result1 = engine.evaluate(&compiled, Arc::new(data1)).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let result1 = engine
+        .evaluate_arc_value(&compiled, Arc::new(data1))
+        .unwrap();
     assert_eq!(result1, json!("hot"));
 
     let data2 = json!({"temp": 50});
-    let result2 = engine.evaluate(&compiled, Arc::new(data2)).unwrap();
+    let result2 = engine
+        .evaluate_arc_value(&compiled, Arc::new(data2))
+        .unwrap();
     assert_eq!(result2, json!("cold"));
 }
 
@@ -69,8 +79,10 @@ fn test_map_with_context() {
     });
 
     let data = json!({});
-    let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let result = engine
+        .evaluate_arc_value(&compiled, Arc::new(data))
+        .unwrap();
 
     assert_eq!(result, json!([1, 3, 5]));
 }
@@ -85,8 +97,10 @@ fn test_now_operator() {
     let logic = json!({"now": []});
     let data = json!({});
 
-    let compiled = engine.compile(&logic).unwrap();
-    let result = engine.evaluate(&compiled, Arc::new(data)).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let result = engine
+        .evaluate_arc_value(&compiled, Arc::new(data))
+        .unwrap();
 
     // Verify it's a string
     assert!(result.is_string(), "Now operator should return a string");
@@ -102,7 +116,9 @@ fn test_now_operator() {
 
     // Test that two calls return different times (with a small delay)
     std::thread::sleep(std::time::Duration::from_millis(10));
-    let result2 = engine.evaluate(&compiled, Arc::new(json!({}))).unwrap();
+    let result2 = engine
+        .evaluate_arc_value(&compiled, Arc::new(json!({})))
+        .unwrap();
 
     // Note: We can't guarantee they'll be different due to timing precision,
     // but both should be valid datetime strings
@@ -117,14 +133,16 @@ fn test_evaluate_ref_api() {
     let engine = DataLogic::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 3, "b": 4});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
 
     // evaluate_ref takes &Value (no Arc).
     let result = engine.evaluate_ref(&compiled, &data).unwrap();
     assert_eq!(result, json!(7));
 
     // evaluate (Arc form) still works.
-    let result2 = engine.evaluate(&compiled, Arc::new(data.clone())).unwrap();
+    let result2 = engine
+        .evaluate_arc_value(&compiled, Arc::new(data.clone()))
+        .unwrap();
     assert_eq!(result2, json!(7));
 
     // evaluate_owned still works.
@@ -139,7 +157,7 @@ fn test_evaluate_ref_with_arena_dispatch() {
     // A rule that triggers arena dispatch (filter + length).
     let logic = json!({"length": {"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]}});
     let data = json!({"items": [1, 2, 3, 4, 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_ref(&compiled, &data).unwrap();
     assert_eq!(result, json!(3));
 }

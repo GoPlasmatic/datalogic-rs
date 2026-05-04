@@ -1,6 +1,7 @@
 //! Integration tests for execution trace feature
 
 #![cfg(feature = "trace")]
+#![allow(deprecated)]
 
 use datalogic_rs::DataLogic;
 use serde_json::json;

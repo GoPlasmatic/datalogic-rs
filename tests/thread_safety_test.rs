@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 #[cfg(test)]
 mod thread_safety_tests {
     use datalogic_rs::DataLogic;
@@ -12,7 +14,7 @@ mod thread_safety_tests {
 
         let engine = DataLogic::new();
         let logic = json!({"==": [1, 1]});
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
 
         // This will fail to compile if CompiledLogic doesn't implement Send + Sync
         assert_send_sync::<datalogic_rs::CompiledLogic>();
@@ -38,7 +40,7 @@ mod thread_safety_tests {
             ]
         });
 
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
 
         // Test data sets
         let test_cases = vec![
@@ -58,7 +60,7 @@ mod thread_safety_tests {
                 let data = Arc::new(data);
 
                 thread::spawn(move || {
-                    let result = engine.evaluate(&compiled, data).unwrap();
+                    let result = engine.evaluate_arc_value(&compiled, data).unwrap();
                     assert_eq!(result.as_str().unwrap(), expected);
                 })
             })
@@ -81,8 +83,8 @@ mod thread_safety_tests {
                     let data = json!({"a": i, "b": i * 2});
                     let data = Arc::new(data);
 
-                    let compiled = engine.compile(&logic).unwrap();
-                    let result = engine.evaluate(&compiled, data).unwrap();
+                    let compiled = engine.compile_serde_value(&logic).unwrap();
+                    let result = engine.evaluate_arc_value(&compiled, data).unwrap();
 
                     assert_eq!(result.as_i64().unwrap(), i + i * 2);
                 })
@@ -111,7 +113,7 @@ mod thread_safety_tests {
             ]
         });
 
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
 
         // Different data sets for each thread
         let datasets = vec![
@@ -130,7 +132,7 @@ mod thread_safety_tests {
                 thread::spawn(move || {
                     // Each thread creates its own engine
                     let engine = DataLogic::new();
-                    let result = engine.evaluate(&compiled, data).unwrap();
+                    let result = engine.evaluate_arc_value(&compiled, data).unwrap();
 
                     // Verify results based on thread index (multiply by 2)
                     let arr = result.as_array().unwrap();
@@ -172,7 +174,7 @@ mod async_tests {
             ]
         });
 
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
 
         // Spawn multiple async tasks
         let mut tasks = vec![];
@@ -191,7 +193,7 @@ mod async_tests {
                 });
                 let data = Arc::new(data);
 
-                let result = engine.evaluate(&compiled, data).unwrap();
+                let result = engine.evaluate_arc_value(&compiled, data).unwrap();
                 let filtered = result.as_array().unwrap();
 
                 // Should filter out the "Kid" entries
@@ -230,8 +232,8 @@ mod async_tests {
             let data = Arc::new(json!({})); // Empty data for these tests
 
             let task = tokio::spawn(async move {
-                let compiled = engine.compile(&logic).unwrap();
-                engine.evaluate(&compiled, data).unwrap()
+                let compiled = engine.compile_serde_value(&logic).unwrap();
+                engine.evaluate_arc_value(&compiled, data).unwrap()
             });
 
             tasks.push(task);
@@ -259,7 +261,7 @@ mod async_tests {
             ]
         });
 
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
 
         // CPU-intensive operation in spawn_blocking
         let handle = tokio::task::spawn_blocking(move || {
@@ -268,7 +270,7 @@ mod async_tests {
             });
             let data = Arc::new(data);
 
-            engine.evaluate(&compiled, data).unwrap()
+            engine.evaluate_arc_value(&compiled, data).unwrap()
         });
 
         let result = handle.await.unwrap();

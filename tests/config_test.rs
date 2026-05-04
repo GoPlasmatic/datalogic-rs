@@ -1,5 +1,7 @@
 //! Tests for configuration options
 
+#![allow(deprecated)]
+
 use datalogic_rs::{
     DataLogic, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };
@@ -11,7 +13,7 @@ fn test_nan_handling_throw_error() {
     // Default behavior - throw error on NaN
     let engine = DataLogic::new();
     let logic = json!({"+": [1, "not_a_number"]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({});
     let result = engine.evaluate_owned(&compiled, data);
     assert!(result.is_err());
@@ -24,7 +26,7 @@ fn test_nan_handling_ignore_value() {
     let engine = DataLogic::with_config(config);
 
     let logic = json!({"+": [1, "not_a_number", 2]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({});
     let result = engine.evaluate_owned(&compiled, data).unwrap();
     assert_eq!(result, json!(3)); // 1 + 2, ignoring "not_a_number"
@@ -37,7 +39,7 @@ fn test_nan_handling_coerce_to_zero() {
     let engine = DataLogic::with_config(config);
 
     let logic = json!({"+": [1, "not_a_number", 2]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({});
     let result = engine.evaluate_owned(&compiled, data).unwrap();
     assert_eq!(result, json!(3)); // 1 + 0 + 2
@@ -50,7 +52,7 @@ fn test_nan_handling_return_null() {
     let engine = DataLogic::with_config(config);
 
     let logic = json!({"+": [1, "not_a_number", 2]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({});
     let result = engine.evaluate_owned(&compiled, data).unwrap();
     assert_eq!(result, json!(null));
@@ -63,19 +65,19 @@ fn test_numeric_coercion_default() {
 
     // Empty string to 0
     let logic = json!({"+": ["", 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(5)); // 0 + 5
 
     // Boolean to number
     let logic = json!({"+": [true, false, 3]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(4)); // 1 + 0 + 3
 
     // Null to 0
     let logic = json!({"+": [null, 10]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(10)); // 0 + 10
 }
@@ -96,19 +98,19 @@ fn test_numeric_coercion_strict() {
 
     // Empty string not coerced
     let logic = json!({"+": ["", 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(5)); // Ignored "" + 5
 
     // Boolean not coerced
     let logic = json!({"+": [true, 3]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(3)); // Ignored true + 3
 
     // Null not coerced
     let logic = json!({"+": [null, 10]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(10)); // Ignored null + 10
 }
@@ -118,7 +120,7 @@ fn test_loose_equality_errors_default() {
     // Default - throws errors for incompatible types
     let engine = DataLogic::new();
     let logic = json!({"==": [[], 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({}));
     assert!(result.is_err());
 }
@@ -130,7 +132,7 @@ fn test_loose_equality_errors_disabled() {
     let engine = DataLogic::with_config(config);
 
     let logic = json!({"==": [[], 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(false)); // Array vs Number = false (no error)
 }
@@ -142,13 +144,13 @@ fn test_safe_arithmetic_preset() {
 
     // Non-numeric values ignored
     let logic = json!({"+": [1, "not_a_number", 2, [3, 4], 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(8)); // 1 + 2 + 5 (ignoring invalid values)
 
     // No equality errors
     let logic = json!({"==": [[], "string"]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(false));
 }
@@ -160,13 +162,13 @@ fn test_strict_preset() {
 
     // Strict numeric parsing
     let logic = json!({"+": [true, 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({}));
     assert!(result.is_err()); // Boolean not coerced in strict mode
 
     // Null not coerced to 0
     let logic = json!({"+": [null, 5]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({}));
     assert!(result.is_err());
 }
@@ -178,7 +180,7 @@ fn test_thread_safety() {
     let engine = Arc::new(DataLogic::with_config(config));
 
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
-    let compiled = Arc::new(engine.compile(&logic).unwrap());
+    let compiled = Arc::new(engine.compile_serde_value(&logic).unwrap());
 
     let mut handles = vec![];
 
@@ -208,7 +210,7 @@ fn test_runtime_config_change() {
 
     // First engine with default config (throws error)
     let engine1 = DataLogic::new();
-    let compiled1 = engine1.compile(&logic).unwrap();
+    let compiled1 = engine1.compile_serde_value(&logic).unwrap();
     let result = engine1.evaluate_owned(&compiled1, json!({}));
     assert!(result.is_err());
 
@@ -216,7 +218,7 @@ fn test_runtime_config_change() {
     let engine2 = DataLogic::with_config(
         EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue),
     );
-    let compiled2 = engine2.compile(&logic).unwrap();
+    let compiled2 = engine2.compile_serde_value(&logic).unwrap();
     let result = engine2.evaluate_owned(&compiled2, json!({})).unwrap();
     assert_eq!(result, json!(1)); // "not_a_number" ignored
 }
@@ -228,7 +230,7 @@ fn test_subtraction_with_config() {
     let engine = DataLogic::with_config(config);
 
     let logic = json!({"-": [10, "invalid", 3]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(7)); // 10 - 3 (ignoring "invalid")
 }
@@ -240,7 +242,7 @@ fn test_multiplication_with_config() {
     let engine = DataLogic::with_config(config);
 
     let logic = json!({"*": [2, "invalid", 3]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(6)); // 2 * 3 (treating "invalid" as identity 1 for multiplication)
 }
@@ -259,13 +261,13 @@ fn test_comparison_with_config() {
 
     // Boolean still coerced to number for comparison
     let logic = json!({">": [true, false]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     assert_eq!(result, json!(true)); // 1 > 0
 
     // Empty string not coerced to 0
     let logic = json!({">": ["", -1]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({}));
     assert!(result.is_err()); // Can't compare empty string to number
 }
@@ -290,7 +292,7 @@ fn test_truthy_evaluator_javascript() {
 
     // Test empty object - using data from context
     let empty_obj_test = json!({"if": [{"var": "obj"}, "truthy", "falsy"]});
-    let compiled = engine.compile(&empty_obj_test).unwrap();
+    let compiled = engine.compile_serde_value(&empty_obj_test).unwrap();
     let result = engine
         .evaluate_owned(&compiled, json!({"obj": {}}))
         .unwrap();
@@ -311,7 +313,7 @@ fn test_truthy_evaluator_javascript() {
     );
 
     for (logic, expected) in test_cases {
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
         let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
@@ -336,7 +338,7 @@ fn test_truthy_evaluator_strict_boolean() {
     ];
 
     for (logic, expected) in test_cases {
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
         let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
@@ -370,7 +372,7 @@ fn test_truthy_evaluator_custom() {
     ];
 
     for (logic, expected) in test_cases {
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
         let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
@@ -399,7 +401,7 @@ fn test_truthy_in_logical_operators() {
     ];
 
     for (logic, expected) in test_cases {
-        let compiled = engine.compile(&logic).unwrap();
+        let compiled = engine.compile_serde_value(&logic).unwrap();
         let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }

@@ -17,22 +17,32 @@
 //! - **Extensible**: Add custom operators via the [`DataOperator`] trait
 //! - **Structured templates**: Preserve object structure for dynamic outputs
 //!
-//! ## Quick Start
+//! ## Quick Start (one-shot)
 //!
 //! ```rust
 //! use datalogic_rs::DataLogic;
-//! use serde_json::json;
 //!
 //! let engine = DataLogic::new();
+//! let result = engine.evaluate_str(
+//!     r#"{"==": [{"var": "status"}, "active"]}"#,
+//!     r#"{"status": "active"}"#,
+//! ).unwrap();
+//! assert_eq!(result, "true");
+//! ```
 //!
-//! // Compile your logic once
-//! let logic = json!({"==": [{"var": "status"}, "active"]});
-//! let compiled = engine.compile(&logic).unwrap();
+//! ## Power-user (compile once, evaluate many)
 //!
-//! // Evaluate with different data
-//! let data = json!({"status": "active"});
-//! let result = engine.evaluate_owned(&compiled, data).unwrap();
-//! assert_eq!(result, json!(true));
+//! ```rust
+//! use bumpalo::Bump;
+//! use datalogic_rs::{DataLogic, DataValue};
+//!
+//! let engine = DataLogic::new();
+//! let compiled = engine.compile(r#"{"==": [{"var": "status"}, "active"]}"#).unwrap();
+//!
+//! let arena = Bump::new();
+//! let data = DataValue::from_str(r#"{"status": "active"}"#, &arena).unwrap();
+//! let result = engine.evaluate(&compiled, arena.alloc(data), &arena).unwrap();
+//! assert_eq!(result.as_bool(), Some(true));
 //! ```
 //!
 //! ## Architecture
@@ -112,7 +122,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```rust
 /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
 /// use bumpalo::Bump;
-/// use serde_json::json;
 ///
 /// struct DoubleArena;
 /// impl DataOperator for DoubleArena {
@@ -130,10 +139,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// let mut engine = DataLogic::new();
 /// engine.add_operator("double".into(), Box::new(DoubleArena));
 ///
-/// let logic = json!({"double": 21});
-/// let compiled = engine.compile(&logic).unwrap();
-/// let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
-/// assert_eq!(result, json!(42));
+/// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
+/// assert_eq!(result, "42");
 /// ```
 pub trait DataOperator: Send + Sync {
     /// Evaluate this operator with arena-allocated args and result.

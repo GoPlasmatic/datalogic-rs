@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use datalogic_rs::{DataLogic, Error, StructuredError};
 use serde_json::{Value, json};
 

@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use datalogic_rs::DataLogic;
 use serde_json::json;
 use std::sync::Arc;
@@ -18,8 +20,8 @@ fn test_arc_data_sharing() {
 
     // Test 1: Simple variable access
     let logic1 = json!({"var": "user.name"});
-    let compiled1 = engine.compile(&logic1).unwrap();
-    let result1 = engine.evaluate(&compiled1, data.clone()).unwrap();
+    let compiled1 = engine.compile_serde_value(&logic1).unwrap();
+    let result1 = engine.evaluate_arc_value(&compiled1, data.clone()).unwrap();
     assert_eq!(result1, json!("Alice"));
 
     // Test 2: Array map operation (uses nested contexts)
@@ -29,8 +31,8 @@ fn test_arc_data_sharing() {
             {"+": [{"var": ""}, 10]}
         ]
     });
-    let compiled2 = engine.compile(&logic2).unwrap();
-    let result2 = engine.evaluate(&compiled2, data.clone()).unwrap();
+    let compiled2 = engine.compile_serde_value(&logic2).unwrap();
+    let result2 = engine.evaluate_arc_value(&compiled2, data.clone()).unwrap();
     assert_eq!(result2, json!([11, 12, 13, 14, 15]));
 
     // Test 3: Complex nested operation
@@ -44,8 +46,8 @@ fn test_arc_data_sharing() {
             []
         ]
     });
-    let compiled3 = engine.compile(&logic3).unwrap();
-    let result3 = engine.evaluate(&compiled3, data.clone()).unwrap();
+    let compiled3 = engine.compile_serde_value(&logic3).unwrap();
+    let result3 = engine.evaluate_arc_value(&compiled3, data.clone()).unwrap();
     assert_eq!(result3, json!([3, 4, 5]));
 
     // Verify the Arc is still valid and unchanged

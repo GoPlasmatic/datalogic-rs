@@ -6,6 +6,8 @@
 //! `serde_json::Value` and is required to register a custom op with the
 //! engine.
 
+#![allow(deprecated)]
+
 use bumpalo::Bump;
 use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
 use serde_json::json;
@@ -150,12 +152,12 @@ fn main() {
     println!("-------------------");
 
     let logic = json!({"avg": [10, 20, 30, 40, 50]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
     println!("   avg([10, 20, 30, 40, 50]) = {}", result);
 
     let logic = json!({"avg": {"var": "scores"}});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({"scores": [85, 90, 78, 92, 88]});
     let result = engine.evaluate_owned(&compiled, data).unwrap();
     println!("   avg(scores) = {} (from data)\n", result);
@@ -165,7 +167,7 @@ fn main() {
     println!("-------------------");
 
     let logic = json!({"between": [{"var": "age"}, 18, 65]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
 
     let data1 = json!({"age": 25});
     let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
@@ -181,7 +183,7 @@ fn main() {
 
     let logic =
         json!({"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]});
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({"name": "Alice", "count": 5});
     let result = engine.evaluate_owned(&compiled, data).unwrap();
     println!("   {}\n", result);
@@ -205,7 +207,7 @@ fn main() {
             ]}
         ]
     });
-    let compiled = engine.compile(&logic).unwrap();
+    let compiled = engine.compile_serde_value(&logic).unwrap();
 
     for score in [95, 82, 75, 55] {
         let data = json!({"score": score});

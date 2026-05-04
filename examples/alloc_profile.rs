@@ -1,5 +1,7 @@
 //! Allocation-counting profiler — measures allocs/free/bytes per evaluate().
 //! Used to validate the arena POC measurement criteria from ARENA_RFC.md.
+#![allow(deprecated)]
+
 use datalogic_rs::DataLogic;
 use serde_json::Value;
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -36,15 +38,15 @@ fn snapshot() -> (u64, u64, u64) {
 }
 
 fn measure(name: &str, engine: &DataLogic, rule: Value, data: Value, iters: u32) {
-    let compiled = engine.compile(&rule).unwrap();
+    let compiled = engine.compile_serde_value(&rule).unwrap();
     let data_arc = Arc::new(data);
     for _ in 0..1000 {
-        let _ = engine.evaluate(&compiled, data_arc.clone());
+        let _ = engine.evaluate_arc_value(&compiled, data_arc.clone());
     }
     let (a0, b0, f0) = snapshot();
     let t0 = Instant::now();
     for _ in 0..iters {
-        let _ = engine.evaluate(&compiled, data_arc.clone());
+        let _ = engine.evaluate_arc_value(&compiled, data_arc.clone());
     }
     let elapsed = t0.elapsed();
     let (a1, b1, f1) = snapshot();

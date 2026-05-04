@@ -129,42 +129,51 @@ pub trait DataLogicLegacyExt: Sized {
 
     // ---- Compile entry ----
 
-    /// Deprecated: use `DataLogic::compile_value(&DataValue)` after parsing
-    /// the JSON via `OwnedDataValue::from_json` / `DataValue::from_str`.
+    /// Deprecated: use `DataLogic::compile(&str)` for the v5 entry, or
+    /// `DataLogic::compile_serde_value(&Value)` for the direct serde_json
+    /// boundary.
     #[deprecated(
         since = "5.0.0",
-        note = "use `DataLogic::compile_value(&DataValue)` once you have a parsed value, or `DataLogic::compile_json_str(&str)` for the raw-string boundary"
+        note = "use `DataLogic::compile(&str)` or `compile_serde_value(&Value)`"
     )]
     fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>>;
 
     // ---- Evaluate methods ----
 
-    /// Deprecated: use `DataLogic::evaluate_to_json(&CompiledLogic, &DataValue, &Bump)`.
+    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_to_json` (returns `serde_json::Value`) or the pure-arena `evaluate`"
+        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
     )]
     fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value>;
 
-    /// Deprecated: use `DataLogic::evaluate_to_json(&CompiledLogic, &DataValue, &Bump)`.
-    #[deprecated(since = "5.0.0", note = "use `evaluate_to_json`")]
-    fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value>;
-
-    /// Deprecated: use `DataLogic::evaluate_to_json(&CompiledLogic, &DataValue, &Bump)`.
-    #[deprecated(since = "5.0.0", note = "use `evaluate_to_json`")]
-    fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value>;
-
-    /// Deprecated: use `DataLogic::evaluate_json_strings(logic, data)`.
+    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_json_strings` (returns `String`)"
+        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+    )]
+    fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value>;
+
+    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+    )]
+    fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value>;
+
+    /// Deprecated: use `DataLogic::evaluate_str(&str, &str)` (returns
+    /// `String`) or `DataLogic::evaluate_value(&Value, &Value)` (returns
+    /// `Value`).
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate_str(&str, &str)` or `evaluate_value(&Value, &Value)`"
     )]
     fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value>;
 
-    /// Deprecated: enable structured errors via `builder().structured_errors(true)`.
+    /// Deprecated: a v5 structured-error API will land in 5.1.
     #[deprecated(
         since = "5.0.0",
-        note = "build the engine with `builder().structured_errors(true)` and use `evaluate_to_json`"
+        note = "the v5 structured-error API lands in 5.1; this method will be removed at that time"
     )]
     fn evaluate_structured(
         &self,
@@ -172,10 +181,10 @@ pub trait DataLogicLegacyExt: Sized {
         data: Arc<Value>,
     ) -> std::result::Result<Value, StructuredError>;
 
-    /// Deprecated: enable structured errors via `builder().structured_errors(true)`.
+    /// Deprecated: a v5 structured-error API will land in 5.1.
     #[deprecated(
         since = "5.0.0",
-        note = "build the engine with `builder().structured_errors(true)` and use `evaluate_json_strings`"
+        note = "the v5 structured-error API lands in 5.1; this method will be removed at that time"
     )]
     fn evaluate_json_structured(
         &self,
@@ -210,15 +219,11 @@ impl DataLogicLegacyExt for DataLogic {
     }
 
     fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
-        // Bridge through serde_json::to_string → OwnedDataValue::from_json,
-        // then walk via the existing v4 entry. The serde_json::Value is
-        // re-serialized rather than walked directly so the v5 internal path
-        // (which does not reference serde_json::Value) stays the only target.
-        DataLogic::compile(self, logic)
+        DataLogic::compile_serde_value(self, logic)
     }
 
     fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        DataLogic::evaluate(self, compiled, data)
+        DataLogic::evaluate_arc_value(self, compiled, data)
     }
 
     fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {

@@ -28,15 +28,13 @@ use crate::{Error, StructuredError};
 ///
 /// ```rust
 /// use datalogic_rs::DataLogic;
-/// use serde_json::json;
 ///
 /// let engine = DataLogic::new();
-/// let logic = json!({">": [{"var": "age"}, 18]});
-/// let compiled = engine.compile(&logic).unwrap();
-///
-/// let data = json!({"age": 21});
-/// let result = engine.evaluate_owned(&compiled, data).unwrap();
-/// assert_eq!(result, json!(true));
+/// let result = engine.evaluate_str(
+///     r#"{">": [{"var": "age"}, 18]}"#,
+///     r#"{"age": 21}"#,
+/// ).unwrap();
+/// assert_eq!(result, "true");
 /// ```
 pub struct DataLogic {
     /// Custom `DataOperator` implementations registered with the engine.
@@ -162,8 +160,6 @@ impl DataLogic {
     /// ```rust
     /// use bumpalo::Bump;
     /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
-    /// use serde_json::{json, Value};
-    /// use std::sync::Arc;
     ///
     /// struct UpperOperator;
     /// impl DataOperator for UpperOperator {
@@ -181,13 +177,11 @@ impl DataLogic {
     /// let mut engine = DataLogic::with_preserve_structure();
     /// engine.add_operator("upper".to_string(), Box::new(UpperOperator));
     ///
-    /// let logic = json!({
-    ///     "message": {"upper": {"var": "text"}},
-    ///     "count": {"var": "num"}
-    /// });
-    /// let compiled = engine.compile(&logic).unwrap();
-    /// let result = engine.evaluate(&compiled, Arc::new(json!({"text": "hello", "num": 5}))).unwrap();
-    /// // Returns: {"message": "HELLO", "count": 5}
+    /// let result = engine.evaluate_str(
+    ///     r#"{"message": {"upper": {"var": "text"}}, "count": {"var": "num"}}"#,
+    ///     r#"{"text": "hello", "num": 5}"#,
+    /// ).unwrap();
+    /// // result == r#"{"message":"HELLO","count":5}"#
     /// ```
     #[cfg(feature = "preserve")]
     pub fn with_preserve_structure() -> Self {
@@ -261,7 +255,6 @@ impl DataLogic {
     /// ```rust
     /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
     /// use bumpalo::Bump;
-    /// use serde_json::json;
     ///
     /// struct Plus42;
     /// impl DataOperator for Plus42 {
@@ -278,8 +271,8 @@ impl DataLogic {
     ///
     /// let mut engine = DataLogic::new();
     /// engine.add_operator("plus42".into(), Box::new(Plus42));
-    /// let compiled = engine.compile(&json!({"plus42": 8})).unwrap();
-    /// assert_eq!(engine.evaluate_ref(&compiled, &json!({})).unwrap(), json!(50));
+    /// let result = engine.evaluate_str(r#"{"plus42": 8}"#, "null").unwrap();
+    /// assert_eq!(result, "50");
     /// ```
     pub fn add_operator(&mut self, name: String, operator: Box<dyn crate::DataOperator>) {
         self.custom_arena_operators.insert(name, operator);
@@ -298,172 +291,68 @@ impl DataLogic {
         self.custom_arena_operators.contains_key(name)
     }
 
-    /// Compiles a JSON logic expression into an optimized form.
+    // ============================================================
+    // V5 PUBLIC API — power users compile once + evaluate many; normal
+    // users call `evaluate_str` directly.
+    // ============================================================
+
+    /// Compile a JSON logic string into reusable [`CompiledLogic`].
     ///
-    /// Compilation performs:
-    /// - Static evaluation of constant expressions
-    /// - OpCode assignment for built-in operators
-    /// - Structure analysis for templating
-    ///
-    /// The returned `Arc<CompiledLogic>` can be safely shared across threads.
-    ///
-    /// # Arguments
-    ///
-    /// * `logic` - The JSON logic expression to compile
-    ///
-    /// # Returns
-    ///
-    /// An `Arc`-wrapped compiled logic structure, or an error if compilation fails.
+    /// The canonical v5 entry point for compilation. Returns an
+    /// `Arc<CompiledLogic>` that can be reused across many evaluations and
+    /// shared across threads.
     ///
     /// # Example
     ///
     /// ```rust
     /// use datalogic_rs::DataLogic;
-    /// use serde_json::json;
-    /// use std::sync::Arc;
     ///
     /// let engine = DataLogic::new();
-    /// let logic = json!({"==": [1, 1]});
-    /// let compiled: Arc<_> = engine.compile(&logic).unwrap();
+    /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// ```
-    #[cfg(feature = "compat")]
-    pub fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
-        let owned = crate::value::owned_from_serde(logic);
-        self.compile_value(&owned)
-    }
-
-    /// Compile a parsed [`OwnedDataValue`] rule into reusable
-    /// [`CompiledLogic`]. The hot-path entry — no `serde_json::Value` round
-    /// trip.
-    pub fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<Arc<CompiledLogic>> {
-        let compiled = CompiledLogic::compile_with_static_eval(logic, self)?;
-        Ok(Arc::new(compiled))
-    }
-
-    /// Compile a raw JSON string into reusable [`CompiledLogic`]. Parses
-    /// with the `datavalue` parser (no `serde_json` dependency).
-    pub fn compile_str(&self, logic: &str) -> Result<Arc<CompiledLogic>> {
+    pub fn compile(&self, logic: &str) -> Result<Arc<CompiledLogic>> {
         let owned = datavalue::OwnedDataValue::from_json(logic)?;
         self.compile_value(&owned)
     }
 
-    /// Evaluates compiled logic with Arc-wrapped data.
-    ///
-    /// Use this method when you already have data in an `Arc` to avoid re-wrapping.
-    /// For owned data, use `evaluate_owned` instead. For borrowed data, use
-    /// `evaluate_ref` to skip the Arc altogether.
-    ///
-    /// # Arguments
-    ///
-    /// * `compiled` - The compiled logic to evaluate
-    /// * `data` - The data context wrapped in an `Arc`
-    ///
-    /// # Returns
-    ///
-    /// The evaluation result, or an error if evaluation fails.
-    #[cfg(feature = "compat")]
-    pub fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        self.eval_to_value(compiled, &data)
+    /// Internal compile helper shared by [`Self::compile`] and the compat
+    /// `compile_serde_value` shim. Not part of the public API.
+    #[doc(hidden)]
+    pub(crate) fn compile_value(
+        &self,
+        logic: &datavalue::OwnedDataValue,
+    ) -> Result<Arc<CompiledLogic>> {
+        let compiled = CompiledLogic::compile_with_static_eval(logic, self)?;
+        Ok(Arc::new(compiled))
     }
 
-    /// Evaluates compiled logic against borrowed data.
+    /// Evaluate compiled logic against arena-resident data.
     ///
-    /// This is the canonical fast path — no `Arc` is required. Use this when
-    /// you have a `&Value` (e.g., from a parsed input) and don't need to share
-    /// the data across threads. For Arc-wrapped data use [`evaluate`]; for
-    /// owned data use [`evaluate_owned`].
+    /// The hot path for repeated evaluation. The caller owns the
+    /// [`bumpalo::Bump`] lifecycle and may `reset()` it between calls; the
+    /// returned `&DataValue<'a>` borrows from the arena, so it must be
+    /// dropped before the next reset (enforced by the borrow checker).
     ///
-    /// # Arguments
-    ///
-    /// * `compiled` - The compiled logic to evaluate
-    /// * `data` - The data context (borrowed)
-    ///
-    /// # Returns
-    ///
-    /// The evaluation result, or an error if evaluation fails.
-    #[cfg(feature = "compat")]
-    pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        self.eval_to_value(compiled, data)
-    }
-
-    /// Arena-mode evaluation entry. Acquires a thread-local `Bump` (from the
-    /// pool, or freshly sized from the rule's compile-time hint), dispatches
-    /// through `evaluate_node`, and converts the result back to owned
-    /// `Value` at the boundary. The arena is reset and returned to the pool
-    /// when `guard` drops at end of function.
-    #[cfg(feature = "compat")]
-    #[inline]
-    fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        use crate::arena::{ArenaGuard, arena_to_value};
-        let guard = ArenaGuard::acquire(compiled.arena_capacity());
-        let arena = guard.arena();
-        let mut actx = crate::arena::DataContextStack::from_value(data, arena);
-        let result = self.evaluate_node(&compiled.root, &mut actx, arena)?;
-        let owned = arena_to_value(result);
-        drop(guard);
-        Ok(owned)
-    }
-
-    /// Evaluates compiled logic with owned data.
-    ///
-    /// This is a convenience method that wraps the data in an `Arc` before evaluation.
-    /// If you already have Arc-wrapped data, use `evaluate` instead.
-    ///
-    /// # Arguments
-    ///
-    /// * `compiled` - The compiled logic to evaluate
-    /// * `data` - The owned data context
-    ///
-    /// # Returns
-    ///
-    /// The evaluation result, or an error if evaluation fails.
+    /// Pre-parse JSON input via
+    /// [`datavalue::DataValue::from_str`](datavalue::DataValue::from_str)
+    /// to obtain the `&DataValue<'a>` data argument.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::DataLogic;
-    /// use serde_json::json;
-    ///
-    /// let engine = DataLogic::new();
-    /// let logic = json!({"var": "name"});
-    /// let compiled = engine.compile(&logic).unwrap();
-    ///
-    /// let data = json!({"name": "Alice"});
-    /// let result = engine.evaluate_owned(&compiled, data).unwrap();
-    /// assert_eq!(result, json!("Alice"));
-    /// ```
-    #[cfg(feature = "compat")]
-    pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
-        self.evaluate(compiled, Arc::new(data))
-    }
-
-    // (evaluate_ref is the canonical zero-Arc path; see definition above.)
-
-    /// Pure arena evaluation against a caller-provided [`bumpalo::Bump`].
-    /// Returns an arena-allocated `&DataValue<'a>` — the v5 hot-path entry.
-    ///
-    /// The caller owns the `Bump` lifecycle and decides when to `reset()` it;
-    /// the returned reference borrows from `arena`, so it must be dropped
-    /// before the next `arena.reset()` (the borrow checker enforces this).
-    ///
-    /// Pre-parse JSON input via
-    /// `OwnedDataValue::from_json(s)?.to_arena(&arena)` (or
-    /// `DataValue::from_str(s, &arena)?` from `datavalue`) to obtain the
-    /// `&DataValue<'a>` data argument.
-    ///
-    /// ```ignore
     /// use bumpalo::Bump;
-    /// use datalogic_rs::DataLogic;
+    /// use datalogic_rs::{DataLogic, DataValue};
     ///
     /// let engine = DataLogic::new();
-    /// let compiled = engine.compile_str(r#"{"+": [1, 2]}"#).unwrap();
+    /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 2]}"#).unwrap();
+    ///
     /// let arena = Bump::new();
-    /// let data = datavalue::DataValue::from_str("null", &arena).unwrap();
-    /// let result = engine.evaluate_value(&compiled, arena.alloc(data), &arena).unwrap();
-    /// assert_eq!(result.as_i64(), Some(3));
+    /// let data = DataValue::from_str(r#"{"x": 40}"#, &arena).unwrap();
+    /// let result = engine.evaluate(&compiled, arena.alloc(data), &arena).unwrap();
+    /// assert_eq!(result.as_i64(), Some(42));
     /// ```
     #[inline(always)]
-    pub fn evaluate_value<'a>(
+    pub fn evaluate<'a>(
         &self,
         compiled: &'a CompiledLogic,
         data: &'a crate::arena::DataValue<'a>,
@@ -473,75 +362,12 @@ impl DataLogic {
         self.evaluate_node(&compiled.root, &mut actx, arena)
     }
 
-    /// Deprecated v4-era alias for [`Self::evaluate_value`]. Kept while the
-    /// benchmark binary references it; new code should call `evaluate_value`.
-    #[doc(hidden)]
-    #[inline(always)]
-    pub fn evaluate_in_arena<'a>(
-        &self,
-        compiled: &'a CompiledLogic,
-        data: &'a crate::arena::DataValue<'a>,
-        arena: &'a bumpalo::Bump,
-    ) -> Result<&'a crate::arena::DataValue<'a>> {
-        self.evaluate_value(compiled, data, arena)
-    }
-
-    /// One-shot string boundary: parse `logic` + `data` JSON, evaluate
-    /// against `compiled`, return the result as a JSON `String`. Acquires
-    /// a fresh per-call [`bumpalo::Bump`] internally; for repeated calls,
-    /// drive [`Self::evaluate_value`] with a reused arena instead.
+    /// One-shot evaluation with JSON-string boundary on both sides.
     ///
-    /// Pure v5 entry — no `serde_json` round-trips. Replaces the legacy
-    /// `evaluate_json` (which returned a `serde_json::Value` and is now
-    /// gated behind the `compat` feature).
-    pub fn evaluate_str(&self, compiled: &CompiledLogic, data: &str) -> Result<String> {
-        let arena = bumpalo::Bump::new();
-        let data_dv = datavalue::DataValue::from_str(data, &arena)?;
-        let data_ref = arena.alloc(data_dv);
-        let result = self.evaluate_value(compiled, data_ref, &arena)?;
-        Ok(crate::arena::data_to_json_string(result))
-    }
-
-    /// Convenience: compile the logic from a string, evaluate against the
-    /// data string, return the result as a JSON `String`. Use
-    /// [`Self::compile_str`] + [`Self::evaluate_str`] separately when the
-    /// same logic runs against many data inputs.
-    pub fn evaluate_logic_str(&self, logic: &str, data: &str) -> Result<String> {
-        let compiled = self.compile_str(logic)?;
-        self.evaluate_str(&compiled, data)
-    }
-
-    /// Pure arena evaluation for benchmarking — runs `evaluate_node`
-    /// against an internally-acquired `ArenaGuard`. Kept as the equivalent
-    /// of the public `evaluate*` API minus the `arena_to_value` boundary,
-    /// so callers can compare dispatch-only cost with vs. without the
-    /// thread-local arena slot. Not part of the stable API.
-    #[cfg(feature = "compat")]
-    #[doc(hidden)]
-    pub fn evaluate_bench(&self, compiled: &CompiledLogic, data: &Value) -> Result<()> {
-        use crate::arena::ArenaGuard;
-        let guard = ArenaGuard::acquire(compiled.arena_capacity());
-        let arena = guard.arena();
-        let mut actx = crate::arena::DataContextStack::from_value(data, arena);
-        let result = self.evaluate_node(&compiled.root, &mut actx, arena)?;
-        std::hint::black_box(result);
-        drop(guard);
-        Ok(())
-    }
-
-    /// Convenience method for evaluating JSON strings directly.
-    ///
-    /// This method combines compilation and evaluation in a single call.
-    /// For repeated evaluations, compile once and reuse the compiled logic.
-    ///
-    /// # Arguments
-    ///
-    /// * `logic` - JSON logic as a string
-    /// * `data` - Data context as a JSON string
-    ///
-    /// # Returns
-    ///
-    /// The evaluation result, or an error if parsing or evaluation fails.
+    /// Parses `logic` + `data`, evaluates, and returns the result as a JSON
+    /// `String`. Allocates a fresh [`bumpalo::Bump`] internally — for
+    /// repeated calls against the same rule, prefer [`Self::compile`] +
+    /// [`Self::evaluate`] with a reused arena.
     ///
     /// # Example
     ///
@@ -549,55 +375,125 @@ impl DataLogic {
     /// use datalogic_rs::DataLogic;
     ///
     /// let engine = DataLogic::new();
-    /// let result = engine.evaluate_json(
+    /// let result = engine.evaluate_str(
     ///     r#"{"==": [{"var": "x"}, 5]}"#,
-    ///     r#"{"x": 5}"#
+    ///     r#"{"x": 5}"#,
     /// ).unwrap();
-    /// assert_eq!(result, serde_json::json!(true));
+    /// assert_eq!(result, "true");
     /// ```
-    #[cfg(feature = "compat")]
-    pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
-        let (compiled, data_arc) = self.parse_and_compile(logic, data)?;
-        self.evaluate(&compiled, data_arc)
+    pub fn evaluate_str(&self, logic: &str, data: &str) -> Result<String> {
+        let compiled = self.compile(logic)?;
+        let arena = bumpalo::Bump::new();
+        let data_dv = datavalue::DataValue::from_str(data, &arena)?;
+        let result = self.evaluate(&compiled, arena.alloc(data_dv), &arena)?;
+        Ok(crate::arena::data_to_json_string(result))
     }
 
-    /// Parse `logic` and `data` JSON strings, compile the logic, and wrap
-    /// the data in an `Arc`. Shared boilerplate for the public `evaluate_json*`
-    /// entry points.
+    /// One-shot evaluation with `serde_json::Value` boundary on both sides.
+    ///
+    /// Mirror of [`Self::evaluate_str`] for callers already on `serde_json`.
+    /// Funnels through [`Self::evaluate`] internally.
     #[cfg(feature = "compat")]
-    fn parse_and_compile(
-        &self,
-        logic: &str,
-        data: &str,
-    ) -> Result<(Arc<CompiledLogic>, Arc<Value>)> {
+    pub fn evaluate_value(&self, logic: &Value, data: &Value) -> Result<Value> {
+        let logic_owned = crate::value::owned_from_serde(logic);
+        let compiled = self.compile_value(&logic_owned)?;
+        let arena = bumpalo::Bump::new();
+        let data_av = crate::arena::value_to_arena(data, &arena);
+        let result = self.evaluate(&compiled, arena.alloc(data_av), &arena)?;
+        Ok(crate::arena::arena_to_value(result))
+    }
+
+    // ============================================================
+    // DEPRECATED v4 COMPAT — all funnel through v5 `evaluate` /
+    // `compile_value`. Removed in 5.1.
+    // ============================================================
+
+    /// Deprecated: use [`Self::compile`] (`&str`) or
+    /// [`Self::evaluate_value`] (`&Value, &Value`) for one-shot.
+    #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `compile(&str)` or `evaluate_value(&Value, &Value)` for one-shot"
+    )]
+    pub fn compile_serde_value(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
+        let owned = crate::value::owned_from_serde(logic);
+        self.compile_value(&owned)
+    }
+
+    /// Deprecated: use [`Self::evaluate`] (`&CompiledLogic, &DataValue, &Bump`).
+    #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+    )]
+    pub fn evaluate_arc_value(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
+        self.eval_to_value(compiled, &data)
+    }
+
+    /// Deprecated: use [`Self::evaluate`] or [`Self::evaluate_value`].
+    #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+    )]
+    pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+        self.eval_to_value(compiled, data)
+    }
+
+    /// Deprecated: use [`Self::evaluate`] or [`Self::evaluate_value`].
+    #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+    )]
+    pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
+        self.eval_to_value(compiled, &data)
+    }
+
+    /// Deprecated: use [`Self::evaluate_str`] or [`Self::evaluate_value`].
+    #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate_str(&str, &str)` or `evaluate_value(&Value, &Value)`"
+    )]
+    pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
-        let compiled = self.compile(&logic_value)?;
-        Ok((compiled, Arc::new(data_value)))
+        self.evaluate_value(&logic_value, &data_value)
     }
 
-    /// Evaluates a compiled rule, returning a `StructuredError` on failure.
-    ///
-    /// Identical to [`evaluate`](Self::evaluate) on success. On error, the
-    /// `Error` is wrapped with the name of the outermost operator in the
-    /// compiled logic, so non-Rust consumers can surface typed error
-    /// information without parsing `Display` strings.
+    /// Internal `&Value -> Value` adapter shared by the compat eval shims.
+    /// Funnels through public [`Self::evaluate`] so the dispatch path is
+    /// identical to the v5 entry.
     #[cfg(feature = "compat")]
+    #[doc(hidden)]
+    pub(crate) fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+        let arena = bumpalo::Bump::new();
+        let data_av = crate::arena::value_to_arena(data, &arena);
+        let result = self.evaluate(compiled, arena.alloc(data_av), &arena)?;
+        Ok(crate::arena::arena_to_value(result))
+    }
+
+    /// Deprecated: structured-error variant of the compat evaluate.
+    /// Calls `evaluate_node` directly because the structured error path
+    /// needs the [`crate::arena::DataContextStack`] after evaluation to
+    /// extract the error breadcrumb. A v5 sibling will land alongside a
+    /// dedicated structured-error API.
+    #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate_value` (returns Result<Value, Error>); a v5 structured-error API will replace this"
+    )]
     pub fn evaluate_structured(
         &self,
         compiled: &CompiledLogic,
         data: Arc<Value>,
     ) -> std::result::Result<Value, StructuredError> {
-        use crate::arena::{ArenaGuard, arena_to_value};
-        let guard = ArenaGuard::acquire(compiled.arena_capacity());
-        let arena = guard.arena();
-        let mut actx = crate::arena::DataContextStack::from_value(&data, arena);
-        match self.evaluate_node(&compiled.root, &mut actx, arena) {
-            Ok(av) => {
-                let owned = arena_to_value(av);
-                drop(guard);
-                Ok(owned)
-            }
+        let arena = bumpalo::Bump::new();
+        let data_av = crate::arena::value_to_arena(&data, &arena);
+        let mut actx = crate::arena::DataContextStack::new(arena.alloc(data_av));
+        match self.evaluate_node(&compiled.root, &mut actx, &arena) {
+            Ok(av) => Ok(crate::arena::arena_to_value(av)),
             Err(e) => {
                 let path = actx.take_error_path();
                 let mut se = StructuredError::from(e).with_path(path);
@@ -609,9 +505,12 @@ impl DataLogic {
         }
     }
 
-    /// Convenience method: parse, compile, and evaluate with a structured
-    /// error on failure. Sibling of [`evaluate_json`](Self::evaluate_json).
+    /// Deprecated: parse + compile + structured evaluate.
     #[cfg(feature = "compat")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `evaluate_str` / `evaluate_value`; a v5 structured-error API will replace this"
+    )]
     pub fn evaluate_json_structured(
         &self,
         logic: &str,
@@ -619,10 +518,10 @@ impl DataLogic {
     ) -> std::result::Result<Value, StructuredError> {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
-        let data_arc = Arc::new(data_value);
-
-        let compiled = self.compile(&logic_value)?;
-        self.evaluate_structured(&compiled, data_arc)
+        #[allow(deprecated)]
+        let compiled = self.compile_serde_value(&logic_value)?;
+        #[allow(deprecated)]
+        self.evaluate_structured(&compiled, Arc::new(data_value))
     }
 
     /// Arena-mode dispatch hub. Returns `&'a DataValue<'a>` for every
@@ -704,35 +603,13 @@ impl DataLogic {
         res
     }
 
-    /// Evaluate JSON logic with execution trace for debugging.
-    ///
-    /// This method compiles and evaluates JSONLogic while recording each
-    /// execution step for replay in debugging UIs.
-    ///
-    /// # Arguments
-    ///
-    /// * `logic` - JSON logic as a string
-    /// * `data` - Data context as a JSON string
-    ///
-    /// # Returns
-    ///
-    /// A `TracedResult` containing the result, expression tree, and execution steps.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use datalogic_rs::DataLogic;
-    ///
-    /// let engine = DataLogic::new();
-    /// let result = engine.evaluate_json_with_trace(
-    ///     r#"{">=": [{"var": "age"}, 18]}"#,
-    ///     r#"{"age": 25}"#
-    /// ).unwrap();
-    ///
-    /// println!("Result: {}", result.result);
-    /// println!("Steps: {}", result.steps.len());
-    /// ```
+    /// Deprecated: traced evaluation with serde_json boundary. A v5 trace
+    /// surface will land in 5.1 alongside the structured-error v5 API.
     #[cfg(feature = "trace")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "the v5 trace surface lands in 5.1; this method will be removed at that time"
+    )]
     pub fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
@@ -786,16 +663,13 @@ impl DataLogic {
         }
     }
 
-    /// Traced evaluation that returns a [`StructuredError`] on any setup
-    /// failure (parse / compile) and embeds a structured error inside
-    /// [`TracedResult`] on runtime failure.
-    ///
-    /// Unlike [`evaluate_json_with_trace`](Self::evaluate_json_with_trace),
-    /// this method returns `Err` for parse/compile problems rather than
-    /// wrapping them in a trace payload, which matches what non-Rust
-    /// consumers usually want (no partial trace data when the rule never
-    /// started evaluating).
+    /// Deprecated: structured-error trace variant. A v5 trace surface will
+    /// land in 5.1.
     #[cfg(feature = "trace")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "the v5 trace surface lands in 5.1; this method will be removed at that time"
+    )]
     pub fn evaluate_json_with_trace_structured(
         &self,
         logic: &str,
@@ -808,11 +682,14 @@ impl DataLogic {
         Ok(self.run_trace(&compiled, data_arc))
     }
 
-    /// Arena-mode traced evaluation. Acquires an arena, attaches the
+    /// Arena-mode traced evaluation. Allocates an arena, attaches the
     /// caller's [`TraceCollector`] to the arena context, and dispatches
-    /// through [`evaluate_node`]. Returns `(result, error_path)`
-    /// where `error_path` is the structured-error breadcrumb of node ids
-    /// leading to the failure (empty on success).
+    /// through [`evaluate_node`]. Returns `(result, error_path)` where
+    /// `error_path` is the structured-error breadcrumb of node ids leading
+    /// to the failure (empty on success). Calls `evaluate_node` directly
+    /// (not the public [`Self::evaluate`]) because the trace path needs the
+    /// [`crate::arena::DataContextStack`] both before (to attach the tracer)
+    /// and after (to extract the breadcrumb) the evaluation.
     #[cfg(feature = "trace")]
     fn evaluate_with_trace(
         &self,
@@ -820,21 +697,15 @@ impl DataLogic {
         data: Arc<Value>,
         collector: &mut TraceCollector,
     ) -> (Result<Value>, Vec<u32>) {
-        use crate::arena::{ArenaGuard, arena_to_value};
-        let guard = ArenaGuard::acquire(compiled.arena_capacity());
-        let arena = guard.arena();
-        let arc_for_borrow = Arc::clone(&data);
-        let root_ref: &Value = &arc_for_borrow;
-        let mut actx = crate::arena::DataContextStack::from_value(root_ref, arena);
+        let arena = bumpalo::Bump::new();
+        let data_av = crate::arena::value_to_arena(&data, &arena);
+        let mut actx = crate::arena::DataContextStack::new(arena.alloc(data_av));
         actx.set_tracer(collector);
-        let result = self.evaluate_node(&compiled.root, &mut actx, arena);
+        let result = self.evaluate_node(&compiled.root, &mut actx, &arena);
         match result {
             Ok(av) => {
-                let owned = arena_to_value(av);
+                let owned = crate::arena::arena_to_value(av);
                 let path = actx.take_error_path();
-                drop(guard);
-                drop(arc_for_borrow);
-                drop(data);
                 (Ok(owned), path)
             }
             Err(e) => {
