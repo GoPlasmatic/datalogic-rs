@@ -27,7 +27,7 @@ ext-array = []
 ext-control = []
 error-handling = []
 ext-math = []
-wasm = ["datetime"]
+wasm = ["datetime", "trace", "preserve"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

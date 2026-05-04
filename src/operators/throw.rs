@@ -33,5 +33,5 @@ pub(crate) fn evaluate_throw_arena<'a>(
         )]),
     };
 
-    Err(Error::Thrown(owned))
+    Err(Error::thrown(owned))
 }

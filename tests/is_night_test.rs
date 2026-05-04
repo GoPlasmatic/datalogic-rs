@@ -22,13 +22,13 @@ impl DataOperator for IsNightOperator {
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() != 1 {
-            return Err(Error::InvalidArguments(
+            return Err(Error::invalid_arguments(
                 "Expected exactly one argument".to_string(),
             ));
         }
 
         let dt = parse_datetime_arena(args[0])
-            .ok_or_else(|| Error::InvalidArguments("Invalid datetime argument".to_string()))?;
+            .ok_or_else(|| Error::invalid_arguments("Invalid datetime argument".to_string()))?;
         let hour = dt.hour();
         let is_night = !(7..19).contains(&hour);
         Ok(arena.alloc(DataValue::Bool(is_night)))

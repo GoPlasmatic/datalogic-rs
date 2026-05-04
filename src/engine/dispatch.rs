@@ -505,7 +505,7 @@ pub(super) fn evaluate_node_inner<'a>(
 
         // CompiledThrow — constant-folded error literal.
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(data) => Err(Error::Thrown(data.error.clone())),
+        CompiledNode::CompiledThrow(data) => Err(Error::thrown(data.error.clone())),
 
         // StructuredObject (preserve mode): out-of-line — bumpalo::Vec
         // construction would otherwise force a large stack frame on every
@@ -532,8 +532,8 @@ pub(super) fn evaluate_node_inner<'a>(
         // panic. If a future variant lands and you see this, add the
         // dispatch arm.
         #[allow(unreachable_patterns)]
-        _ => Err(Error::InvalidArguments(
-            "internal: unhandled CompiledNode shape in arena dispatch".into(),
+        _ => Err(Error::invalid_arguments(
+            "internal: unhandled CompiledNode shape in arena dispatch",
         )),
     }
 }
@@ -599,7 +599,7 @@ fn evaluate_custom_operator_arena<'a>(
     let arena_op = engine
         .custom_arena_operators
         .get(&data.name)
-        .ok_or_else(|| Error::InvalidOperator(data.name.clone()))?;
+        .ok_or_else(|| Error::invalid_operator(data.name.clone()))?;
     let mut arena_args: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
     for arg in data.args.iter() {

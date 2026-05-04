@@ -1,6 +1,6 @@
 #![allow(deprecated)]
 
-use datalogic_rs::{DataLogic, Error, StructuredError};
+use datalogic_rs::{DataLogic, Error};
 use serde_json::{Value, json};
 
 fn to_json(err: &Error) -> Value {
@@ -9,7 +9,7 @@ fn to_json(err: &Error) -> Value {
 
 #[test]
 fn serialize_invalid_operator() {
-    let err = Error::InvalidOperator("foo".into());
+    let err = Error::invalid_operator("foo");
     assert_eq!(
         to_json(&err),
         json!({"type": "InvalidOperator", "message": "Invalid operator: foo"})
@@ -18,7 +18,7 @@ fn serialize_invalid_operator() {
 
 #[test]
 fn serialize_invalid_arguments() {
-    let err = Error::InvalidArguments("need 2".into());
+    let err = Error::invalid_arguments("need 2");
     assert_eq!(
         to_json(&err),
         json!({"type": "InvalidArguments", "message": "Invalid arguments: need 2"})
@@ -27,7 +27,7 @@ fn serialize_invalid_arguments() {
 
 #[test]
 fn serialize_variable_not_found() {
-    let err = Error::VariableNotFound("user.name".into());
+    let err = Error::variable_not_found("user.name");
     assert_eq!(
         to_json(&err),
         json!({
@@ -40,7 +40,7 @@ fn serialize_variable_not_found() {
 
 #[test]
 fn serialize_invalid_context_level() {
-    let err = Error::InvalidContextLevel(-3);
+    let err = Error::invalid_context_level(-3);
     assert_eq!(
         to_json(&err),
         json!({
@@ -53,7 +53,7 @@ fn serialize_invalid_context_level() {
 
 #[test]
 fn serialize_type_error() {
-    let err = Error::TypeError("cannot compare".into());
+    let err = Error::type_error("cannot compare");
     assert_eq!(
         to_json(&err),
         json!({"type": "TypeError", "message": "Type error: cannot compare"})
@@ -62,7 +62,7 @@ fn serialize_type_error() {
 
 #[test]
 fn serialize_arithmetic_error() {
-    let err = Error::ArithmeticError("divide by zero".into());
+    let err = Error::arithmetic_error("divide by zero");
     assert_eq!(
         to_json(&err),
         json!({"type": "ArithmeticError", "message": "Arithmetic error: divide by zero"})
@@ -71,7 +71,7 @@ fn serialize_arithmetic_error() {
 
 #[test]
 fn serialize_custom() {
-    let err = Error::Custom("user-defined".into());
+    let err = Error::custom("user-defined");
     assert_eq!(
         to_json(&err),
         json!({"type": "Custom", "message": "user-defined"})
@@ -80,7 +80,7 @@ fn serialize_custom() {
 
 #[test]
 fn serialize_parse_error() {
-    let err = Error::ParseError("expected value".into());
+    let err = Error::parse_error("expected value");
     assert_eq!(
         to_json(&err),
         json!({"type": "ParseError", "message": "Parse error: expected value"})
@@ -100,7 +100,7 @@ fn serialize_thrown() {
             OwnedDataValue::String("boom".to_string()),
         ),
     ]);
-    let err = Error::Thrown(owned);
+    let err = Error::thrown(owned);
     let v = to_json(&err);
     assert_eq!(v["type"], json!("Thrown"));
     assert_eq!(v["thrown"], json!({"code": 42, "reason": "boom"}));
@@ -110,7 +110,7 @@ fn serialize_thrown() {
 
 #[test]
 fn serialize_format_error() {
-    let err = Error::FormatError("bad pattern".into());
+    let err = Error::format_error("bad pattern");
     assert_eq!(
         to_json(&err),
         json!({"type": "FormatError", "message": "Format error: bad pattern"})
@@ -119,10 +119,7 @@ fn serialize_format_error() {
 
 #[test]
 fn serialize_index_out_of_bounds() {
-    let err = Error::IndexOutOfBounds {
-        index: 5,
-        length: 3,
-    };
+    let err = Error::index_out_of_bounds(5, 3);
     assert_eq!(
         to_json(&err),
         json!({
@@ -136,7 +133,7 @@ fn serialize_index_out_of_bounds() {
 
 #[test]
 fn serialize_configuration_error() {
-    let err = Error::ConfigurationError("invalid setting".into());
+    let err = Error::configuration_error("invalid setting");
     assert_eq!(
         to_json(&err),
         json!({"type": "ConfigurationError", "message": "Configuration error: invalid setting"})
@@ -145,8 +142,7 @@ fn serialize_configuration_error() {
 
 #[test]
 fn structured_error_adds_operator_field() {
-    let se =
-        StructuredError::from(Error::ArithmeticError("divide by zero".into())).with_operator("/");
+    let se = Error::arithmetic_error("divide by zero").with_operator("/");
     let v = serde_json::to_value(&se).unwrap();
     assert_eq!(
         v,
@@ -160,18 +156,14 @@ fn structured_error_adds_operator_field() {
 
 #[test]
 fn structured_error_omits_operator_when_none() {
-    let se = StructuredError::from(Error::TypeError("x".into()));
+    let se = Error::type_error("x");
     let v = serde_json::to_value(&se).unwrap();
     assert_eq!(v, json!({"type": "TypeError", "message": "Type error: x"}));
 }
 
 #[test]
 fn structured_error_flattens_variant_extras() {
-    let se = StructuredError::from(Error::IndexOutOfBounds {
-        index: 10,
-        length: 2,
-    })
-    .with_operator("substr");
+    let se = Error::index_out_of_bounds(10, 2).with_operator("substr");
     let v = serde_json::to_value(&se).unwrap();
     assert_eq!(
         v,
@@ -271,39 +263,33 @@ fn evaluate_json_with_trace_structured_populates_error_fields() {
 #[test]
 fn display_output_snapshot() {
     let cases: &[(Error, &str)] = &[
+        (Error::invalid_operator("foo"), "Invalid operator: foo"),
+        (Error::invalid_arguments("x"), "Invalid arguments: x"),
         (
-            Error::InvalidOperator("foo".into()),
-            "Invalid operator: foo",
-        ),
-        (Error::InvalidArguments("x".into()), "Invalid arguments: x"),
-        (
-            Error::VariableNotFound("user.name".into()),
+            Error::variable_not_found("user.name"),
             "Variable not found: user.name",
         ),
-        (Error::InvalidContextLevel(-2), "Invalid context level: -2"),
-        (Error::TypeError("x".into()), "Type error: x"),
-        (Error::ArithmeticError("x".into()), "Arithmetic error: x"),
-        (Error::Custom("raw".into()), "raw"),
-        (Error::ParseError("x".into()), "Parse error: x"),
         (
-            Error::Thrown(datavalue::OwnedDataValue::Object(vec![(
+            Error::invalid_context_level(-2),
+            "Invalid context level: -2",
+        ),
+        (Error::type_error("x"), "Type error: x"),
+        (Error::arithmetic_error("x"), "Arithmetic error: x"),
+        (Error::custom("raw"), "raw"),
+        (Error::parse_error("x"), "Parse error: x"),
+        (
+            Error::thrown(datavalue::OwnedDataValue::Object(vec![(
                 "k".to_string(),
                 datavalue::OwnedDataValue::Number(datavalue::NumberValue::Integer(1)),
             )])),
             "Thrown: {\"k\":1}",
         ),
-        (Error::FormatError("x".into()), "Format error: x"),
+        (Error::format_error("x"), "Format error: x"),
         (
-            Error::IndexOutOfBounds {
-                index: 1,
-                length: 0,
-            },
+            Error::index_out_of_bounds(1, 0),
             "Index 1 out of bounds for array of length 0",
         ),
-        (
-            Error::ConfigurationError("x".into()),
-            "Configuration error: x",
-        ),
+        (Error::configuration_error("x"), "Configuration error: x"),
     ];
     for (err, expected) in cases {
         assert_eq!(err.to_string(), *expected, "Display changed for {:?}", err);

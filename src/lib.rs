@@ -72,6 +72,7 @@ mod error;
 mod node;
 mod opcode;
 mod operators;
+mod path;
 #[cfg(feature = "trace")]
 mod trace;
 mod value;
@@ -86,10 +87,15 @@ pub use config::{
 pub use datavalue::{DataDateTime, DataDuration};
 pub use datavalue::{NumberValue, OwnedDataValue};
 pub use engine::DataLogic;
-pub use error::{Error, StructuredError};
+#[allow(deprecated)]
+pub use error::StructuredError;
+pub use error::{Error, ErrorKind};
 pub use node::CompiledLogic;
+pub use path::PathStep;
 #[cfg(feature = "trace")]
-pub use trace::{ExecutionStep, ExpressionNode, TraceCollector, TracedResult};
+pub use trace::{
+    ExecutionStep, ExpressionNode, TraceCollector, TracedResult, TracedRun, TracedSession,
+};
 
 // `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint`
 // were public in 4.x. They are compile-internal types — `pub(crate)` for

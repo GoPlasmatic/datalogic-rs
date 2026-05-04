@@ -70,7 +70,7 @@ pub(crate) fn evaluate_try_arena<'a>(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| Error::InvalidArguments(crate::constants::INVALID_ARGS.into())))
+    Err(last_err.unwrap_or_else(|| Error::invalid_arguments(crate::constants::INVALID_ARGS)))
 }
 
 /// Pushes the thrown error object onto the arena context stack as the
@@ -83,7 +83,11 @@ fn arena_try_last_with_error_context<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if let Some(Error::Thrown(error_obj)) = last_error.take() {
+    if let Some(Error {
+        kind: crate::ErrorKind::Thrown(error_obj),
+        ..
+    }) = last_error.take()
+    {
         let av: &'a DataValue<'a> = arena.alloc(error_obj.to_arena(arena));
         actx.push(av);
         let result = engine.evaluate_node(arg, actx, arena);

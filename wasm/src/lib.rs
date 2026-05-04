@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use datalogic_rs::{CompiledLogic, DataLogic, StructuredError};
+use datalogic_rs::{CompiledLogic, DataLogic, DataValue, Error};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -13,16 +13,17 @@ fn make_engine(preserve_structure: bool) -> DataLogic {
     }
 }
 
-/// Serialize a `StructuredError` to a JSON string for the JS boundary.
-/// If serialization somehow fails, fall back to the Display string so the
-/// caller always receives *something* informative.
-fn structured_err_to_json(err: &StructuredError) -> String {
+/// Serialize an `Error` (the merged structured form) for the JS boundary.
+/// Falls back to the Display string if JSON serialisation somehow fails so
+/// callers always receive *something* informative.
+fn err_to_json(err: &Error) -> String {
     serde_json::to_string(err).unwrap_or_else(|_| err.to_string())
 }
 
-/// Wrap any serializable error payload into `{ "type": "ParseError", ... }`
-/// JSON. Used for parse/compile failures at the WASM surface so the error
-/// shape is consistent with runtime errors from the engine.
+/// Wrap a parse-stage failure into the same `{ type: "ParseError", ... }`
+/// JSON shape used for runtime errors. Used when the WASM boundary itself
+/// fails to parse user input (logic JSON / data JSON) before the engine ever
+/// runs.
 fn input_err_to_json(stage: &str, message: impl std::fmt::Display) -> String {
     #[derive(Serialize)]
     struct Wire<'a> {
@@ -52,19 +53,19 @@ pub fn init() {
 /// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
 ///
 /// # Returns
-/// JSON string result or error message
+/// JSON string result, or the merged structured `Error` JSON on failure.
 #[wasm_bindgen]
 pub fn evaluate(logic: &str, data: &str, preserve_structure: bool) -> Result<String, String> {
     make_engine(preserve_structure)
-        .evaluate_json(logic, data)
-        .map(|v| v.to_string())
-        .map_err(|e| e.to_string())
+        .evaluate_str(logic, data)
+        .map_err(|e| err_to_json(&e))
 }
 
 /// Evaluate a JSONLogic expression with execution trace for debugging.
 ///
-/// Returns a JSON string containing the result, expression tree, and execution steps.
-/// This enables step-by-step debugging and visualization of the evaluation process.
+/// Returns a JSON string containing the result, expression tree, and execution
+/// steps. Powered by [`DataLogic::with_trace`] +
+/// [`datalogic_rs::TracedSession::evaluate_str`].
 ///
 /// # Arguments
 /// * `logic` - JSON string containing the JSONLogic expression
@@ -72,33 +73,59 @@ pub fn evaluate(logic: &str, data: &str, preserve_structure: bool) -> Result<Str
 /// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
 ///
 /// # Returns
-/// JSON string containing TracedResult (result, expression_tree, steps) or error message
-///
-/// # Example Output
-/// ```json
-/// {
-///   "result": true,
-///   "expression_tree": {
-///     "id": 0,
-///     "expression": "{\"and\": [...]}",
-///     "children": [...]
-///   },
-///   "steps": [
-///     {"id": 0, "node_id": 2, "context": {...}, "result": 25, "error": null},
-///     ...
-///   ]
-/// }
-/// ```
+/// JSON string of the form `{ result, steps, expression_tree, error? }`. On
+/// runtime failure the `error` field carries the merged structured `Error`
+/// JSON (`type`, `message`, variant extras, optional `operator`/`path`).
 #[wasm_bindgen]
 pub fn evaluate_with_trace(
     logic: &str,
     data: &str,
     preserve_structure: bool,
 ) -> Result<String, String> {
-    make_engine(preserve_structure)
-        .evaluate_json_with_trace(logic, data)
-        .map(|traced_result| serde_json::to_string(&traced_result).unwrap_or_default())
-        .map_err(|e| e.to_string())
+    let engine = make_engine(preserve_structure);
+    let run = engine.with_trace().evaluate_str(logic, data);
+    Ok(traced_run_to_json(&run))
+}
+
+/// Render a [`datalogic_rs::TracedRun`] into the JS wire shape. Mirrors the
+/// historical `TracedResult` JSON layout: `{ result, expression_tree, steps,
+/// error?, error_structured? }`.
+fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
+    #[derive(Serialize)]
+    struct Wire<'a> {
+        result: serde_json::Value,
+        expression_tree: &'a datalogic_rs::ExpressionNode,
+        steps: &'a [datalogic_rs::ExecutionStep],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_structured: Option<&'a Error>,
+    }
+
+    let result_json: serde_json::Value;
+    let mut error_msg: Option<String> = None;
+    let mut error_struct: Option<&Error> = None;
+    match &run.result {
+        Ok(s) => {
+            // The String is already JSON; surface it as the parsed value when
+            // possible, falling back to a JSON string otherwise.
+            result_json = serde_json::from_str::<serde_json::Value>(s.as_str())
+                .unwrap_or_else(|_| serde_json::Value::String(s.to_string()));
+        }
+        Err(e) => {
+            result_json = serde_json::Value::Null;
+            error_msg = Some(e.to_string());
+            error_struct = Some(e);
+        }
+    }
+    serde_json::to_string(&Wire {
+        result: result_json,
+        expression_tree: &run.expression_tree,
+        steps: &run.steps,
+        error: error_msg,
+        error_structured: error_struct,
+    })
+    .unwrap_or_default()
 }
 
 /// A compiled JSONLogic rule that can be evaluated multiple times.
@@ -121,9 +148,11 @@ impl CompiledRule {
     #[wasm_bindgen(constructor)]
     pub fn new(logic: &str, preserve_structure: bool) -> Result<CompiledRule, String> {
         let engine = make_engine(preserve_structure);
-        let parsed: serde_json::Value = serde_json::from_str(logic).map_err(|e| e.to_string())?;
-        let compiled = engine.compile(&parsed).map_err(|e| e.to_string())?;
-        Ok(CompiledRule { engine, compiled })
+        let compiled = engine.compile(logic).map_err(|e| err_to_json(&e))?;
+        Ok(CompiledRule {
+            engine,
+            compiled: Arc::new(compiled),
+        })
     }
 
     /// Evaluate the compiled rule against data.
@@ -132,66 +161,53 @@ impl CompiledRule {
     /// * `data` - JSON string containing the data to evaluate against
     ///
     /// # Returns
-    /// JSON string result or error message
+    /// JSON string result or merged structured `Error` JSON on failure.
     pub fn evaluate(&self, data: &str) -> Result<String, String> {
-        let data: serde_json::Value = serde_json::from_str(data).map_err(|e| e.to_string())?;
-        self.engine
-            .evaluate_owned(&self.compiled, data)
-            .map(|v| v.to_string())
-            .map_err(|e| e.to_string())
+        let arena = bumpalo::Bump::new();
+        let data_dv = DataValue::from_str(data, &arena)
+            .map_err(|e| input_err_to_json("parse-data", format!("{:?}", e)))?;
+        let result = self
+            .engine
+            .evaluate(&*self.compiled, data_dv, &arena)
+            .map_err(|e| err_to_json(&e))?;
+        Ok(datalogic_rs::arena::data_to_json_string(result))
     }
 
-    /// Evaluate the compiled rule and return a structured error on failure.
-    ///
-    /// On success, returns the JSON-encoded result (same shape as
-    /// [`evaluate`](Self::evaluate)). On failure, the error string is a
-    /// JSON document with `type`, `message`, variant-specific extras
-    /// (e.g. `thrown`, `index`, `length`), and an optional `operator`
-    /// field naming the outermost operator.
+    /// Backwards-compatible alias for [`Self::evaluate`]. Pre-merge the
+    /// "structured" variant returned a richer error shape; today every error
+    /// already carries the merged structured form, so the two paths are
+    /// identical.
     #[wasm_bindgen(js_name = evaluateStructured)]
     pub fn evaluate_structured(&self, data: &str) -> Result<String, String> {
-        let data: serde_json::Value = serde_json::from_str(data)
-            .map_err(|e| input_err_to_json("parse-data", e))?;
-        let data_arc = Arc::new(data);
-        self.engine
-            .evaluate_structured(&self.compiled, data_arc)
-            .map(|v| v.to_string())
-            .map_err(|e| structured_err_to_json(&e))
+        self.evaluate(data)
     }
 }
 
 /// Evaluate a JSONLogic expression with structured errors on failure.
 ///
-/// Behaves like [`evaluate`] on success. On error, returns a JSON-encoded
-/// [`StructuredError`] with `type`, `message`, variant-specific extras, and
-/// an optional `operator` field. Callers can `JSON.parse` the error string
-/// and switch on `err.type`.
+/// Behaves like [`evaluate`] today — the merged `Error` shape always carries
+/// `type`, `message`, variant extras, and (when populated) `operator` /
+/// `path`. The function is kept as a separate JS export for back-compat with
+/// callers binding `evaluateStructured`.
 #[wasm_bindgen(js_name = evaluateStructured)]
 pub fn evaluate_structured(
     logic: &str,
     data: &str,
     preserve_structure: bool,
 ) -> Result<String, String> {
-    make_engine(preserve_structure)
-        .evaluate_json_structured(logic, data)
-        .map(|v| v.to_string())
-        .map_err(|e| structured_err_to_json(&e))
+    evaluate(logic, data, preserve_structure)
 }
 
 /// Evaluate a JSONLogic expression with execution trace and structured errors.
 ///
-/// Returns the same `TracedResult` JSON as [`evaluate_with_trace`], with an
-/// additional `error_structured` field populated when the rule errored at
-/// runtime. Setup failures (invalid logic/data JSON, compile errors) are
-/// returned via the `Err` channel as a JSON `StructuredError`.
+/// Today the trace path always returns the merged structured-error shape via
+/// `error_structured` on failure, so this is an alias for
+/// [`evaluate_with_trace`]. Kept for back-compat with the JS binding name.
 #[wasm_bindgen(js_name = evaluateWithTraceStructured)]
 pub fn evaluate_with_trace_structured(
     logic: &str,
     data: &str,
     preserve_structure: bool,
 ) -> Result<String, String> {
-    make_engine(preserve_structure)
-        .evaluate_json_with_trace_structured(logic, data)
-        .map(|traced| serde_json::to_string(&traced).unwrap_or_default())
-        .map_err(|e| structured_err_to_json(&e))
+    evaluate_with_trace(logic, data, preserve_structure)
 }

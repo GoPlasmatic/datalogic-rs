@@ -71,19 +71,19 @@ impl DataOperator for BetweenOperator {
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() < 3 {
-            return Err(Error::InvalidArguments(
+            return Err(Error::invalid_arguments(
                 "between requires 3 arguments: value, min, max".to_string(),
             ));
         }
         let v = args[0]
             .as_f64()
-            .ok_or_else(|| Error::InvalidArguments("value must be a number".into()))?;
+            .ok_or_else(|| Error::invalid_arguments("value must be a number"))?;
         let lo = args[1]
             .as_f64()
-            .ok_or_else(|| Error::InvalidArguments("min must be a number".into()))?;
+            .ok_or_else(|| Error::invalid_arguments("min must be a number"))?;
         let hi = args[2]
             .as_f64()
-            .ok_or_else(|| Error::InvalidArguments("max must be a number".into()))?;
+            .ok_or_else(|| Error::invalid_arguments("max must be a number"))?;
         Ok(arena.alloc(DataValue::Bool(v >= lo && v <= hi)))
     }
 }
@@ -101,12 +101,12 @@ impl DataOperator for FormatOperator {
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
-            return Err(Error::InvalidArguments(
+            return Err(Error::invalid_arguments(
                 "format requires at least a template string".to_string(),
             ));
         }
         let template = args[0].as_str().ok_or_else(|| {
-            Error::InvalidArguments("first argument must be a string".to_string())
+            Error::invalid_arguments("first argument must be a string".to_string())
         })?;
 
         let mut result = template.to_string();

@@ -60,7 +60,7 @@ fn compile_multi_key_object(
         )));
     }
     let _ = (pairs, engine, preserve_structure, ctx);
-    Err(crate::error::Error::InvalidOperator(
+    Err(crate::error::Error::invalid_operator(
         "Unknown Operator".to_string(),
     ))
 }

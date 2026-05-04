@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{CompiledNode, OpCode, StructuredError};
+use crate::{CompiledNode, Error, OpCode};
 
 /// The result of a traced evaluation, containing both the result and execution trace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,9 +22,9 @@ pub struct TracedResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Structured top-level error if evaluation failed. Serialize-only —
-    /// ignored on deserialize (StructuredError is a Rust→JS shape).
+    /// ignored on deserialize ([`Error`] is a Rust→JS shape).
     #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, default)]
-    pub error_structured: Option<StructuredError>,
+    pub error_structured: Option<Error>,
 }
 
 /// Represents a node in the expression tree for flow diagram rendering.
@@ -431,6 +431,115 @@ impl Default for TraceCollector {
     }
 }
 
+// ============================================================================
+// v5 trace surface — `engine.with_trace().evaluate*(...)` returning `TracedRun`.
+// ============================================================================
+
+/// Result of a traced evaluation produced by [`TracedSession`]. Always
+/// includes the trace data; the value-or-error split lives on
+/// [`Self::result`].
+#[derive(Debug, Clone)]
+pub struct TracedRun<R> {
+    /// `Ok(value)` on success, `Err(error)` on failure. The error always
+    /// carries the operator + path metadata populated by the engine.
+    pub result: Result<R, Error>,
+    /// Per-node execution log captured during the run.
+    pub steps: Vec<ExecutionStep>,
+    /// Compile-time expression tree for flow-diagram rendering.
+    pub expression_tree: ExpressionNode,
+}
+
+/// Trace-enabled view over a [`crate::DataLogic`] engine. Constructed via
+/// [`crate::DataLogic::with_trace`]. The session's `evaluate*` methods mirror
+/// the engine's, but each call returns a [`TracedRun`] carrying the trace
+/// alongside the result.
+pub struct TracedSession<'e> {
+    engine: &'e crate::DataLogic,
+}
+
+impl<'e> TracedSession<'e> {
+    /// Construct a session over `engine`. Invoked from
+    /// [`crate::DataLogic::with_trace`].
+    #[inline]
+    pub(crate) fn new(engine: &'e crate::DataLogic) -> Self {
+        Self { engine }
+    }
+
+    /// Arena-mode traced evaluation. The result references the supplied arena;
+    /// the trace data is owned and outlives the arena reset cycle.
+    ///
+    /// Pair this with [`crate::DataLogic::compile_traceable`] for the most
+    /// faithful trace — `compile_traceable` skips the static-evaluation pass
+    /// so every operator yields a step.
+    pub fn evaluate<'a, D: crate::IntoArenaData<'a>>(
+        &self,
+        compiled: &'a crate::CompiledLogic,
+        data: D,
+        arena: &'a bumpalo::Bump,
+    ) -> TracedRun<&'a crate::DataValue<'a>> {
+        let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
+        let mut collector = TraceCollector::new();
+        let data_ref = data.into_arena_data(arena);
+        let mut actx = crate::arena::DataContextStack::new(data_ref);
+        actx.set_tracer(&mut collector);
+
+        let outcome = self.engine.evaluate_node(&compiled.root, &mut actx, arena);
+        let result = match outcome {
+            Ok(av) => Ok(av),
+            Err(mut e) => {
+                e = e.with_path(actx.take_error_path());
+                if let Some(name) = compiled.root.operator_name() {
+                    e = e.with_operator(name);
+                }
+                Err(e)
+            }
+        };
+        TracedRun {
+            result,
+            steps: collector.into_steps(),
+            expression_tree,
+        }
+    }
+
+    /// One-shot traced evaluation with JSON-string boundary on both sides.
+    /// Compiles via [`crate::DataLogic::compile_traceable`] internally so the
+    /// trace surfaces every operator.
+    pub fn evaluate_str(&self, logic: &str, data: &str) -> TracedRun<String> {
+        // Compile failures land in `result` directly with no steps/tree.
+        let compiled = match self.engine.compile_traceable(logic) {
+            Ok(c) => c,
+            Err(e) => {
+                return TracedRun {
+                    result: Err(e),
+                    steps: Vec::new(),
+                    expression_tree: ExpressionNode {
+                        id: 0,
+                        expression: String::new(),
+                        children: Vec::new(),
+                    },
+                };
+            }
+        };
+        let arena = bumpalo::Bump::new();
+        let data_dv = match datavalue::DataValue::from_str(data, &arena) {
+            Ok(d) => d,
+            Err(e) => {
+                return TracedRun {
+                    result: Err(e.into()),
+                    steps: Vec::new(),
+                    expression_tree: ExpressionNode::build_from_compiled(&compiled.root),
+                };
+            }
+        };
+        let inner = self.evaluate(&compiled, data_dv, &arena);
+        TracedRun {
+            result: inner.result.map(crate::arena::data_to_json_string),
+            steps: inner.steps,
+            expression_tree: inner.expression_tree,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -519,5 +628,28 @@ mod tests {
         let steps = collector.into_steps();
         assert_eq!(steps[0].iteration_index, Some(0));
         assert_eq!(steps[0].iteration_total, Some(3));
+    }
+
+    #[test]
+    fn traced_session_evaluate_str_smoke() {
+        let engine = crate::DataLogic::new();
+        let run = engine
+            .with_trace()
+            .evaluate_str(r#"{"+": [1, 2, 3]}"#, "null");
+        assert_eq!(run.result.unwrap(), "6");
+        // compile_traceable keeps the operator visible -> at least one step.
+        assert!(!run.steps.is_empty(), "expected non-empty steps");
+        assert_ne!(run.expression_tree.id, 0);
+    }
+
+    #[test]
+    fn traced_session_carries_error_metadata() {
+        let engine = crate::DataLogic::new();
+        let run = engine
+            .with_trace()
+            .evaluate_str(r#"{"+": ["x", 1]}"#, "null");
+        let err = run.result.expect_err("string-arith should fail");
+        assert_eq!(err.operator.as_deref(), Some("+"));
+        assert!(!err.path.is_empty(), "expected populated breadcrumb");
     }
 }

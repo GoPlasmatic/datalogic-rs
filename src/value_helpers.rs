@@ -166,7 +166,7 @@ pub(crate) fn loose_equals(
         LooseEqualsResult::NotEqual => Ok(false),
         LooseEqualsResult::Incompatible => {
             if engine.config().loose_equality_errors {
-                Err(Error::InvalidArguments(NAN_ERROR.into()))
+                Err(Error::invalid_arguments(NAN_ERROR))
             } else {
                 Ok(false)
             }

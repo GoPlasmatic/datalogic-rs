@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
 
+#[cfg(feature = "compat")]
+use crate::Error;
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledLogic, CompiledNode, Result};
-#[cfg(feature = "compat")]
-use crate::{Error, StructuredError};
 
 /// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
 ///
@@ -251,11 +251,55 @@ impl DataLogic {
         self.compile_value(&owned)
     }
 
+    /// Compile a JSON logic string for **traced** evaluation.
+    ///
+    /// Identical to [`Self::compile`] except the static-evaluation pass is
+    /// skipped: every operator survives in the compiled tree so it can produce
+    /// a trace step. Pair with [`Self::with_trace`] when stepping through a
+    /// rule for debugging.
+    ///
+    /// Compiled output is *also* runnable through the regular
+    /// [`Self::evaluate`] / [`Self::evaluate_str`] paths if you don't care
+    /// about traces — you'll just pay slightly more dispatch work because
+    /// constant subtrees weren't folded.
+    #[cfg(feature = "trace")]
+    pub fn compile_traceable(&self, logic: &str) -> Result<CompiledLogic> {
+        let owned = datavalue::OwnedDataValue::from_json(logic)?;
+        CompiledLogic::compile_for_trace(&owned, self.preserve_structure())
+    }
+
     /// Internal compile helper shared by [`Self::compile`] and the compat
     /// `compile_serde_value` shim. Not part of the public API.
     #[doc(hidden)]
     pub(crate) fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<CompiledLogic> {
         CompiledLogic::compile_with_static_eval(logic, self)
+    }
+
+    /// Open a [`crate::TracedSession`] over this engine. Calls made through
+    /// the session collect a per-call trace; the bare `evaluate*` methods on
+    /// `DataLogic` itself are unchanged and pay no trace overhead.
+    ///
+    /// Available only when the crate is built with `feature = "trace"`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "trace")] {
+    /// use datalogic_rs::DataLogic;
+    ///
+    /// let engine = DataLogic::new();
+    /// let run = engine
+    ///     .with_trace()
+    ///     .evaluate_str(r#"{"+": [1, 2]}"#, "null");
+    /// assert_eq!(run.result.unwrap(), "3");
+    /// // run.steps is the per-node execution log;
+    /// // run.expression_tree is the rule's compile-time tree shape.
+    /// # }
+    /// ```
+    #[cfg(feature = "trace")]
+    #[inline]
+    pub fn with_trace(&self) -> crate::trace::TracedSession<'_> {
+        crate::trace::TracedSession::new(self)
     }
 
     /// Evaluate compiled logic against arena-resident data.
@@ -296,7 +340,16 @@ impl DataLogic {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         let data_ref = data.into_arena_data(arena);
         let mut actx = crate::arena::DataContextStack::new(data_ref);
-        self.evaluate_node(&compiled.root, &mut actx, arena)
+        match self.evaluate_node(&compiled.root, &mut actx, arena) {
+            Ok(av) => Ok(av),
+            Err(mut e) => {
+                e = e.with_path(actx.take_error_path());
+                if let Some(name) = compiled.root.operator_name() {
+                    e = e.with_operator(name);
+                }
+                Err(e)
+            }
+        }
     }
 
     /// One-shot evaluation with JSON-string boundary on both sides.
@@ -419,25 +472,24 @@ impl DataLogic {
     #[cfg(feature = "compat")]
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_value` (returns Result<Value, Error>); a v5 structured-error API will replace this"
+        note = "use `evaluate_value` — `Error` now carries `operator`/`path` directly so a separate structured variant is unnecessary"
     )]
     pub fn evaluate_structured(
         &self,
         compiled: &CompiledLogic,
         data: Arc<Value>,
-    ) -> std::result::Result<Value, StructuredError> {
+    ) -> std::result::Result<Value, Error> {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_arena(&data, &arena);
         let mut actx = crate::arena::DataContextStack::new(arena.alloc(data_av));
         match self.evaluate_node(&compiled.root, &mut actx, &arena) {
             Ok(av) => Ok(crate::arena::arena_to_value(av)),
-            Err(e) => {
-                let path = actx.take_error_path();
-                let mut se = StructuredError::from(e).with_path(path);
+            Err(mut e) => {
+                e = e.with_path(actx.take_error_path());
                 if let Some(name) = compiled.root.operator_name() {
-                    se = se.with_operator(name);
+                    e = e.with_operator(name);
                 }
-                Err(se)
+                Err(e)
             }
         }
     }
@@ -446,13 +498,13 @@ impl DataLogic {
     #[cfg(feature = "compat")]
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_str` / `evaluate_value`; a v5 structured-error API will replace this"
+        note = "use `evaluate_str` / `evaluate_value` — `Error` now carries `operator`/`path` directly"
     )]
     pub fn evaluate_json_structured(
         &self,
         logic: &str,
         data: &str,
-    ) -> std::result::Result<Value, StructuredError> {
+    ) -> std::result::Result<Value, Error> {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
         #[allow(deprecated)]
@@ -540,12 +592,11 @@ impl DataLogic {
         res
     }
 
-    /// Deprecated: traced evaluation with serde_json boundary. A v5 trace
-    /// surface will land in 5.1 alongside the structured-error v5 API.
+    /// Deprecated: use [`Self::with_trace`] + [`crate::TracedSession::evaluate_str`].
     #[cfg(feature = "trace")]
     #[deprecated(
         since = "5.0.0",
-        note = "the v5 trace surface lands in 5.1; this method will be removed at that time"
+        note = "use `engine.with_trace().evaluate_str(logic, data)` (returns TracedRun); this method will be removed in 5.1"
     )]
     pub fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult> {
         let logic_value: Value = serde_json::from_str(logic)?;
@@ -583,35 +634,36 @@ impl DataLogic {
                 error: None,
                 error_structured: None,
             },
-            Err(e) => {
+            Err(mut e) => {
                 let message = e.to_string();
-                let mut structured = StructuredError::from(e).with_path(error_path);
+                e = e.with_path(error_path);
                 if let Some(name) = compiled.root.operator_name() {
-                    structured = structured.with_operator(name);
+                    e = e.with_operator(name);
                 }
                 TracedResult {
                     result: Value::Null,
                     expression_tree,
                     steps,
                     error: Some(message),
-                    error_structured: Some(structured),
+                    error_structured: Some(e),
                 }
             }
         }
     }
 
-    /// Deprecated: structured-error trace variant. A v5 trace surface will
-    /// land in 5.1.
+    /// Deprecated: use [`Self::with_trace`] + [`crate::TracedSession::evaluate_str`]
+    /// — `TracedRun.result` already carries the merged structured `Error` on
+    /// failure.
     #[cfg(feature = "trace")]
     #[deprecated(
         since = "5.0.0",
-        note = "the v5 trace surface lands in 5.1; this method will be removed at that time"
+        note = "use `engine.with_trace().evaluate_str(logic, data)`; this method will be removed in 5.1"
     )]
     pub fn evaluate_json_with_trace_structured(
         &self,
         logic: &str,
         data: &str,
-    ) -> std::result::Result<TracedResult, StructuredError> {
+    ) -> std::result::Result<TracedResult, Error> {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
         let data_arc = Arc::new(data_value);

@@ -103,7 +103,7 @@ fn extract_opt_i64_arena<'a>(
         return match value {
             datavalue::OwnedDataValue::Number(n) => Ok(n.as_i64()),
             datavalue::OwnedDataValue::Null => Ok(None),
-            _ => Err(Error::InvalidArguments("NaN".to_string())),
+            _ => Err(Error::invalid_arguments("NaN".to_string())),
         };
     }
     let av = engine.evaluate_node(node, actx, arena)?;
@@ -111,7 +111,7 @@ fn extract_opt_i64_arena<'a>(
         DataValue::Null => Ok(None),
         _ => match av.as_i64() {
             Some(i) => Ok(Some(i)),
-            None => Err(Error::InvalidArguments("NaN".to_string())),
+            None => Err(Error::invalid_arguments("NaN".to_string())),
         },
     }
 }

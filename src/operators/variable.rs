@@ -217,7 +217,7 @@ fn resolve_via_context_stack<'a>(
         actx.current()
     } else {
         actx.get_at_level(scope_level as isize)
-            .ok_or(Error::InvalidContextLevel(scope_level as isize))?
+            .ok_or(Error::invalid_context_level(scope_level as isize))?
     };
     let av = match aref {
         ArenaContextRef::Frame(f) => f.data(),
@@ -351,7 +351,7 @@ pub(crate) fn evaluate_val_arena<'a>(
 
                 let path_owned = path_string_from_arena(path_av);
                 let frame_av = frame_data_at_level(actx, level as isize, arena)
-                    .ok_or(Error::InvalidContextLevel(level as isize))?;
+                    .ok_or(Error::invalid_context_level(level as isize))?;
                 return Ok(arena_access_path_str_ref(frame_av, &path_owned, arena)
                     .unwrap_or_else(|| crate::arena::pool::singleton_null()));
             }
@@ -363,7 +363,7 @@ pub(crate) fn evaluate_val_arena<'a>(
                 paths.push(path_string_from_arena(av));
             }
             let mut cur = frame_data_at_level(actx, level as isize, arena)
-                .ok_or(Error::InvalidContextLevel(level as isize))?;
+                .ok_or(Error::invalid_context_level(level as isize))?;
             for path in &paths {
                 match arena_access_path_str_ref(cur, path, arena) {
                     Some(next) => cur = next,
@@ -453,7 +453,7 @@ pub(crate) fn evaluate_val_arena<'a>(
                 }
 
                 let mut cur = frame_data_at_level(actx, level as isize, arena)
-                    .ok_or(Error::InvalidContextLevel(level as isize))?;
+                    .ok_or(Error::invalid_context_level(level as isize))?;
                 for i in 1..arr_len {
                     let item = arena_array_get(path_av, i, arena)
                         .unwrap_or_else(|| crate::arena::pool::singleton_null());

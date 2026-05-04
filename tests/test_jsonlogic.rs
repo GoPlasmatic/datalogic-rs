@@ -158,7 +158,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
                         // Check if the error matches expected error
                         if let Some(expected_error_obj) = expected_error {
                             // Extract the error type from the thrown error
-                            if let datalogic_rs::Error::Thrown(thrown_value) = &e {
+                            if let datalogic_rs::ErrorKind::Thrown(thrown_value) = &e.kind {
                                 let thrown_as_serde = serde_json::to_value(thrown_value)
                                     .unwrap_or(serde_json::Value::Null);
                                 if &thrown_as_serde == expected_error_obj {
@@ -173,7 +173,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
                                     println!("  Got error:      {:?}", thrown_value);
                                     failed += 1;
                                 }
-                            } else if let datalogic_rs::Error::InvalidArguments(msg) = &e {
+                            } else if let datalogic_rs::ErrorKind::InvalidArguments(msg) = &e.kind {
                                 // Check if it's an InvalidArguments error
                                 let error_obj = serde_json::json!({"type": msg});
                                 if &error_obj == expected_error_obj {
@@ -188,7 +188,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
                                     println!("  Got error:      {:?}", error_obj);
                                     failed += 1;
                                 }
-                            } else if let datalogic_rs::Error::InvalidOperator(_msg) = &e {
+                            } else if let datalogic_rs::ErrorKind::InvalidOperator(_msg) = &e.kind {
                                 // Check if it's an InvalidOperator error
                                 let error_obj = serde_json::json!({"type": "Unknown Operator"});
                                 if &error_obj == expected_error_obj {
@@ -226,7 +226,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
                 if expects_error {
                     // Check if the compilation error matches expected error
                     if let Some(expected_error_obj) = expected_error {
-                        if let datalogic_rs::Error::InvalidOperator(_msg) = &e {
+                        if let datalogic_rs::ErrorKind::InvalidOperator(_msg) = &e.kind {
                             let error_obj = serde_json::json!({"type": "Unknown Operator"});
                             if &error_obj == expected_error_obj {
                                 println!("✓ Test {}: {} (error as expected)", index, description);

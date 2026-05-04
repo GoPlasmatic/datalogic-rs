@@ -361,7 +361,9 @@ impl<'a> DataContextStack<'a> {
         self.error_path.truncate(len);
     }
 
-    #[cfg(feature = "compat")]
+    /// Move the breadcrumb out of the stack, leaving an empty `Vec` behind.
+    /// Used by the public `evaluate*` methods to attach the path to the
+    /// returned [`crate::Error`] on failure.
     #[inline]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
