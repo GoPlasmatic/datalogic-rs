@@ -14,7 +14,7 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 /// iteration allocs. Other body shapes evaluate the body via arena dispatch
 /// per item.
 #[inline]
-pub(crate) fn evaluate_map_arena<'a>(
+pub(crate) fn evaluate_map<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -124,7 +124,7 @@ fn map_arith_var_lit_fast_path<'a>(
         let val = if var_segs.is_empty() {
             item
         } else {
-            crate::arena::value::arena_traverse_segments(item, var_segs, arena)?
+            crate::arena::value::traverse_segments(item, var_segs, arena)?
         };
         let item_f = val.as_f64()?;
         let (a, b) = if var_is_lhs {
@@ -162,7 +162,7 @@ fn map_arith_var_lit_int<'a>(
         let val = if var_segs.is_empty() {
             item
         } else {
-            crate::arena::value::arena_traverse_segments(item, var_segs, arena)?
+            crate::arena::value::traverse_segments(item, var_segs, arena)?
         };
         let item_i = val.as_i64()?;
         let (a, b) = if var_is_lhs {
@@ -205,13 +205,13 @@ fn map_var_fast_path<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, len);
     if segments.is_empty() {
         for i in 0..len {
-            results.push(crate::arena::value::reborrow_arena_value(src.get(i)));
+            results.push(*src.get(i));
         }
     } else {
         for i in 0..len {
             let item = src.get(i);
-            match crate::arena::value::arena_traverse_segments(item, segments, arena) {
-                Some(v) => results.push(crate::arena::value::reborrow_arena_value(v)),
+            match crate::arena::value::traverse_segments(item, segments, arena) {
+                Some(v) => results.push(*v),
                 None => results.push(DataValue::Null),
             }
         }
@@ -236,7 +236,7 @@ fn map_general<'a>(
         let item = src.get(i);
         guard.step_indexed(item, i);
         let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
-        results.push(crate::arena::value::reborrow_arena_value(av));
+        results.push(*av);
     }
     drop(guard);
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
@@ -275,10 +275,10 @@ fn map_bridge_object<'a>(
     for (i, (k, v)) in pairs.iter().enumerate() {
         // SAFETY: pairs[i].1 lives in the arena for `'a`; reborrow as `&'a` is sound.
         let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-        let key_arena: &'a str = k;
-        guard.step_keyed(item_av, i, key_arena);
+        let key: &'a str = k;
+        guard.step_keyed(item_av, i, key);
         let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
-        results.push(crate::arena::value::reborrow_arena_value(av));
+        results.push(*av);
     }
     drop(guard);
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
@@ -298,7 +298,7 @@ fn map_bridge_array<'a>(
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
-        results.push(crate::arena::value::reborrow_arena_value(av));
+        results.push(*av);
     }
     drop(guard);
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
@@ -315,7 +315,7 @@ fn map_bridge_single<'a>(
     let item_av: &'a DataValue<'a> = input;
     actx.push_with_index(item_av, 0);
     let av = engine.eval_iter_body(body, actx, arena, 0, 1)?;
-    let owned = crate::arena::value::reborrow_arena_value(av);
+    let owned = *av;
     actx.pop();
     let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));
     Ok(arena.alloc(DataValue::Array(slice)))

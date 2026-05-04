@@ -552,7 +552,7 @@ mod tests {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Val,
             args: vec![CompiledNode::synthetic_value(
-                datavalue::OwnedDataValue::String("age".to_string()),
+                datavalue::OwnedDataValue::from("age"),
             )]
             .into_boxed_slice(),
             predicate_hint: None,
@@ -575,7 +575,7 @@ mod tests {
             id: crate::node::SYNTHETIC_ID,
             opcode: OpCode::Val,
             args: vec![CompiledNode::synthetic_value(
-                datavalue::OwnedDataValue::String("age".to_string()),
+                datavalue::OwnedDataValue::from("age"),
             )]
             .into_boxed_slice(),
             predicate_hint: None,

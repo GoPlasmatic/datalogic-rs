@@ -22,18 +22,18 @@ mod slice;
 mod sort;
 
 // Operator entry points (consumed by the dispatcher).
-pub(crate) use filter::evaluate_filter_arena;
-pub(crate) use map::evaluate_map_arena;
-pub(crate) use merge::evaluate_merge_arena;
-pub(crate) use quantifiers::{evaluate_all_arena, evaluate_none_arena, evaluate_some_arena};
-pub(crate) use reduce::evaluate_reduce_arena;
+pub(crate) use filter::evaluate_filter;
+pub(crate) use map::evaluate_map;
+pub(crate) use merge::evaluate_merge;
+pub(crate) use quantifiers::{evaluate_all, evaluate_none, evaluate_some};
+pub(crate) use reduce::evaluate_reduce;
 
 #[cfg(feature = "ext-string")]
-pub(crate) use length::evaluate_length_arena;
+pub(crate) use length::evaluate_length;
 #[cfg(feature = "ext-array")]
-pub(crate) use slice::evaluate_slice_arena;
+pub(crate) use slice::evaluate_slice;
 #[cfg(feature = "ext-array")]
-pub(crate) use sort::evaluate_sort_arena;
+pub(crate) use sort::evaluate_sort;
 
 // Iterator-input infrastructure consumed by `arithmetic` (and other crate
 // callers) to compose with array results.

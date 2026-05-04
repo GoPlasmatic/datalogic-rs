@@ -8,7 +8,7 @@ use bumpalo::Bump;
 /// `length(filter(...))`, the filter result lives in the arena and length
 /// just reads the slice length — zero conversion cost on the intermediate.
 #[inline]
-pub(crate) fn evaluate_length_arena<'a>(
+pub(crate) fn evaluate_length<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,

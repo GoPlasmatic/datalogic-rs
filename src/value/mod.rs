@@ -2,90 +2,34 @@
 //!
 //! `NumberValue` lives in the `datavalue` crate. The two crates ship the
 //! same shape (`Integer(i64)` / `Float(f64)`) so this is a transparent
-//! re-export. Compat shims for `serde_json::Number` interop live alongside
-//! the rest of the compat surface.
+//! re-export. The serde_json bridges are also datavalue-native (under its
+//! `serde_json` feature, enabled by `datalogic-rs/compat`); the helpers
+//! here just thread the datalogic DateTime/Duration sentinel format
+//! (`{"datetime": "..."}`, `{"timestamp": "..."}`) which datavalue does
+//! not preserve.
 
 pub use datavalue::NumberValue;
 
-/// Construct a [`NumberValue`] from a `serde_json::Number`. Used by the
-/// `compat` layer when bridging old `serde_json::Value` callers; not part
-/// of the v5 surface.
-#[cfg(feature = "compat")]
-#[inline]
-pub(crate) fn number_from_serde(n: &serde_json::Number) -> NumberValue {
-    if let Some(i) = n.as_i64() {
-        NumberValue::Integer(i)
-    } else if let Some(u) = n.as_u64() {
-        if u <= i64::MAX as u64 {
-            NumberValue::Integer(u as i64)
-        } else {
-            NumberValue::Float(u as f64)
-        }
-    } else {
-        NumberValue::Float(n.as_f64().unwrap_or(0.0))
-    }
-}
-
-/// Convert a [`NumberValue`] back into a `serde_json::Number` for the
-/// compat boundary. NaN/Inf return `None` since `serde_json::Number`
-/// rejects them.
-#[cfg(feature = "compat")]
-#[inline]
-pub(crate) fn number_to_serde(n: NumberValue) -> Option<serde_json::Number> {
-    match n {
-        NumberValue::Integer(i) => Some(serde_json::Number::from(i)),
-        NumberValue::Float(f) => serde_json::Number::from_f64(f),
-    }
-}
-
-/// Walk a `serde_json::Value` and produce an [`OwnedDataValue`]. The fast
-/// path for callers who already hold a parsed `serde_json::Value` and want
-/// to compile or evaluate against it via the v5 `DataValue` core without
-/// stringifying first.
+/// Walk a `serde_json::Value` and produce an [`OwnedDataValue`]. Thin
+/// wrapper over `OwnedDataValue::from(&serde_json::Value)`; provided as
+/// the named entry point for the v4 compat surface.
 ///
 /// Available under `feature = "compat"` — non-compat builds have no serde_json
 /// dependency.
 #[cfg(feature = "compat")]
+#[inline]
 pub fn owned_from_serde(v: &serde_json::Value) -> datavalue::OwnedDataValue {
-    use datavalue::OwnedDataValue;
-    match v {
-        serde_json::Value::Null => OwnedDataValue::Null,
-        serde_json::Value::Bool(b) => OwnedDataValue::Bool(*b),
-        serde_json::Value::Number(n) => OwnedDataValue::Number(number_from_serde(n)),
-        serde_json::Value::String(s) => OwnedDataValue::String(s.clone()),
-        serde_json::Value::Array(arr) => {
-            OwnedDataValue::Array(arr.iter().map(owned_from_serde).collect())
-        }
-        serde_json::Value::Object(obj) => OwnedDataValue::Object(
-            obj.iter()
-                .map(|(k, v)| (k.clone(), owned_from_serde(v)))
-                .collect(),
-        ),
-    }
+    datavalue::OwnedDataValue::from(v)
 }
 
 /// Inverse of [`owned_from_serde`] — walk an [`OwnedDataValue`] and produce
-/// a `serde_json::Value`. Available under `feature = "compat"`.
+/// a `serde_json::Value`. Delegates to `datavalue` for non-datetime shapes;
+/// wraps DateTime/Duration in datalogic sentinel objects so values produced
+/// inside the engine round-trip through the v4 input boundary.
 #[cfg(feature = "compat")]
 pub fn owned_to_serde(v: &datavalue::OwnedDataValue) -> serde_json::Value {
     use datavalue::OwnedDataValue;
     match v {
-        OwnedDataValue::Null => serde_json::Value::Null,
-        OwnedDataValue::Bool(b) => serde_json::Value::Bool(*b),
-        OwnedDataValue::Number(n) => match number_to_serde(*n) {
-            Some(num) => serde_json::Value::Number(num),
-            None => serde_json::Value::Null,
-        },
-        OwnedDataValue::String(s) => serde_json::Value::String(s.clone()),
-        OwnedDataValue::Array(items) => {
-            serde_json::Value::Array(items.iter().map(owned_to_serde).collect())
-        }
-        OwnedDataValue::Object(pairs) => serde_json::Value::Object(
-            pairs
-                .iter()
-                .map(|(k, v)| (k.clone(), owned_to_serde(v)))
-                .collect(),
-        ),
         #[cfg(feature = "datetime")]
         OwnedDataValue::DateTime(dt) => {
             let mut map = serde_json::Map::new();
@@ -104,5 +48,18 @@ pub fn owned_to_serde(v: &datavalue::OwnedDataValue) -> serde_json::Value {
             );
             serde_json::Value::Object(map)
         }
+        // Composite arms recurse manually so nested DateTime/Duration values
+        // route back through the sentinel-wrapping arms above.
+        OwnedDataValue::Array(items) => {
+            serde_json::Value::Array(items.iter().map(owned_to_serde).collect())
+        }
+        OwnedDataValue::Object(pairs) => serde_json::Value::Object(
+            pairs
+                .iter()
+                .map(|(k, v)| (k.clone(), owned_to_serde(v)))
+                .collect(),
+        ),
+        // Scalars: delegate to datavalue.
+        other => other.to_serde_value(),
     }
 }

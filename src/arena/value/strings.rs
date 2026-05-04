@@ -11,7 +11,7 @@ use super::DataValue;
 /// when already a string). Mirrors `helpers::to_string_cow` but produces
 /// arena-resident strings so string-building operators (cat, substr) can
 /// chain without heap traffic.
-pub(crate) fn to_string_arena<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
+pub(crate) fn data_to_str<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
     match v {
         DataValue::String(s) => s,
         DataValue::Null => "",
@@ -29,7 +29,7 @@ pub(crate) fn to_string_arena<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str
 
 /// Render a [`DataValue`] as a JSON `String`. Public so v5 callers using
 /// the arena hot path can serialize a result without pulling in `serde_json`
-/// or going through the deprecated `arena_to_value` boundary.
+/// or going through the deprecated `data_to_value` boundary.
 #[inline]
 pub fn data_to_json_string(v: &DataValue<'_>) -> String {
     let mut buf = String::new();
@@ -113,7 +113,7 @@ fn write_json_string(buf: &mut String, s: &str) {
 /// general path of every quantifier/filter — outlining was paying a real call
 /// per item even though the hot branch is just the JS/Python default.
 #[inline(always)]
-pub(crate) fn is_truthy_arena(v: &DataValue<'_>, engine: &crate::DataLogic) -> bool {
+pub(crate) fn is_truthy(v: &DataValue<'_>, engine: &crate::DataLogic) -> bool {
     use crate::config::TruthyEvaluator;
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript | TruthyEvaluator::Python => super::is_truthy_default(v),
@@ -123,6 +123,6 @@ pub(crate) fn is_truthy_arena(v: &DataValue<'_>, engine: &crate::DataLogic) -> b
             _ => true,
         },
         #[cfg(feature = "compat")]
-        TruthyEvaluator::Custom(f) => f(&super::conversion::arena_to_value(v)),
+        TruthyEvaluator::Custom(f) => f(&super::conversion::data_to_value(v)),
     }
 }

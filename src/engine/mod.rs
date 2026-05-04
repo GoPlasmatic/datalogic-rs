@@ -37,7 +37,7 @@ use crate::{CompiledLogic, CompiledNode, Result};
 /// ```
 pub struct DataLogic {
     /// Custom `DataOperator` implementations registered with the engine.
-    pub(super) custom_arena_operators: HashMap<String, Box<dyn crate::DataOperator>>,
+    pub(super) custom_operators: HashMap<String, Box<dyn crate::DataOperator>>,
     /// Flag to preserve structure of objects with unknown operators
     #[cfg(feature = "preserve")]
     preserve_structure: bool,
@@ -47,13 +47,13 @@ pub struct DataLogic {
 
 mod dispatch;
 
-/// Cold fallback for `CompiledNode::Value { arena_lit: None, .. }` — only
+/// Cold fallback for `CompiledNode::Value { lit: None, .. }` — only
 /// reached by ad-hoc `synthetic_value` wrappers (test helpers, trace nodes
 /// built outside `CompiledLogic::new`). Outlined so the inliner doesn't
 /// expand it into the hot `evaluate_node` literal arm.
 #[cold]
 #[inline(never)]
-fn literal_fallback_arena<'a>(
+fn literal_fallback<'a>(
     value: &'a datavalue::OwnedDataValue,
     arena: &'a bumpalo::Bump,
 ) -> &'a crate::arena::DataValue<'a> {
@@ -96,7 +96,7 @@ impl DataLogic {
         operators: HashMap<String, Box<dyn crate::DataOperator>>,
     ) -> Self {
         Self {
-            custom_arena_operators: operators,
+            custom_operators: operators,
             #[cfg(feature = "preserve")]
             preserve_structure: _preserve_structure,
             config,
@@ -110,7 +110,7 @@ impl DataLogic {
     #[inline]
     fn new_inner(config: EvaluationConfig, _preserve_structure: bool) -> Self {
         Self {
-            custom_arena_operators: HashMap::new(),
+            custom_operators: HashMap::new(),
             #[cfg(feature = "preserve")]
             preserve_structure: _preserve_structure,
             config,
@@ -180,7 +180,7 @@ impl DataLogic {
     /// assert_eq!(result, "50");
     /// ```
     pub fn add_operator(&mut self, name: impl Into<String>, operator: impl crate::IntoOperatorBox) {
-        self.custom_arena_operators
+        self.custom_operators
             .insert(name.into(), operator.into_operator_box());
     }
 
@@ -194,7 +194,7 @@ impl DataLogic {
     ///
     /// `true` if the operator exists, `false` otherwise.
     pub fn has_custom_operator(&self, name: &str) -> bool {
-        self.custom_arena_operators.contains_key(name)
+        self.custom_operators.contains_key(name)
     }
 
     /// Iterator over the names of every custom operator currently registered
@@ -202,14 +202,14 @@ impl DataLogic {
     /// Useful for tooling, UIs, and tests that need to introspect what's
     /// available.
     pub fn operator_names(&self) -> impl Iterator<Item = &str> {
-        self.custom_arena_operators.keys().map(String::as_str)
+        self.custom_operators.keys().map(String::as_str)
     }
 
     /// Remove a custom operator by name. Returns the removed operator's
     /// boxed handle if it was registered, `None` otherwise. Built-in
     /// operators dispatched via [`crate::OpCode`] are not affected.
     pub fn remove_operator(&mut self, name: &str) -> Option<Box<dyn crate::DataOperator>> {
-        self.custom_arena_operators.remove(name)
+        self.custom_operators.remove(name)
     }
 
     // ============================================================
@@ -373,9 +373,9 @@ impl DataLogic {
         let logic_owned = crate::value::owned_from_serde(logic);
         let compiled = self.compile_value(&logic_owned)?;
         let arena = bumpalo::Bump::new();
-        let data_av = crate::arena::value_to_arena(data, &arena);
+        let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(&compiled, data_av, &arena)?;
-        Ok(crate::arena::arena_to_value(result))
+        Ok(crate::arena::data_to_value(result))
     }
 
     /// Internal `&Value -> Value` adapter used by the compat shims in
@@ -385,9 +385,9 @@ impl DataLogic {
     #[doc(hidden)]
     pub(crate) fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         let arena = bumpalo::Bump::new();
-        let data_av = crate::arena::value_to_arena(data, &arena);
+        let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(compiled, data_av, &arena)?;
-        Ok(crate::arena::arena_to_value(result))
+        Ok(crate::arena::data_to_value(result))
     }
 
     /// Arena-mode dispatch hub. Returns `&'a DataValue<'a>` for every
@@ -406,16 +406,16 @@ impl DataLogic {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
         if let CompiledNode::Value {
-            value, arena_lit, ..
+            value, lit, ..
         } = node
         {
-            // Compiled-tree literals always have `arena_lit` populated by
-            // `populate_arena_lits` (run during `CompiledLogic::new`), so
+            // Compiled-tree literals always have `lit` populated by
+            // `populate_lits` (run during `CompiledLogic::new`), so
             // this branch covers every literal in any finalized rule.
             // DataValue is covariant in its lifetime, so
             // `&'a DataValue<'static>` satisfies `&'a DataValue<'a>`
             // without unsafe.
-            if let Some(av) = arena_lit {
+            if let Some(av) = lit {
                 return Ok(av);
             }
             // Fallback for nodes built outside the compile pipeline (test
@@ -423,7 +423,7 @@ impl DataLogic {
             // never went through `CompiledLogic::new`). Outlined + cold so
             // the literal fast path stays a single load+branch in the
             // dispatched dominant case.
-            return Ok(literal_fallback_arena(value, arena));
+            return Ok(literal_fallback(value, arena));
         }
 
         // Snapshot context for trace BEFORE recursing — children will
@@ -535,13 +535,13 @@ impl DataLogic {
         collector: &mut TraceCollector,
     ) -> (Result<Value>, Vec<u32>) {
         let arena = bumpalo::Bump::new();
-        let data_av = crate::arena::value_to_arena(&data, &arena);
+        let data_av = crate::arena::value_to_data(&data, &arena);
         let mut actx = crate::arena::DataContextStack::new(arena.alloc(data_av));
         actx.set_tracer(collector);
         let result = self.evaluate_node(&compiled.root, &mut actx, &arena);
         match result {
             Ok(av) => {
-                let owned = crate::arena::arena_to_value(av);
+                let owned = crate::arena::data_to_value(av);
                 let path = actx.take_error_path();
                 (Ok(owned), path)
             }

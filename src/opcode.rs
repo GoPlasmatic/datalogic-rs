@@ -188,7 +188,7 @@ impl FromStr for OpCode {
             "and" => Ok(OpCode::And),
             "or" => Ok(OpCode::Or),
             // `?:` is accepted as a synonym of the 3-arg form of `if` —
-            // both normalize to OpCode::If. `evaluate_if_arena` already
+            // both normalize to OpCode::If. `evaluate_if` already
             // handles the 3-arg case identically to a ternary.
             "if" | "?:" => Ok(OpCode::If),
             "+" => Ok(OpCode::Add),

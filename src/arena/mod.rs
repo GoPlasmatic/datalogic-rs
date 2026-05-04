@@ -19,15 +19,15 @@ pub use context::DataContextStack;
 pub(crate) use context::IterGuard;
 #[cfg(feature = "compat")]
 #[allow(unused_imports)]
-pub(crate) use pool::ArenaGuard;
+pub(crate) use pool::BumpGuard;
 pub use value::DataValue;
 #[cfg(feature = "compat")]
-pub use value::arena_to_value;
+pub use value::data_to_value;
 pub use value::data_to_json_string;
 #[cfg(feature = "compat")]
-pub use value::value_to_arena;
+pub use value::value_to_data;
 pub(crate) use value::{
-    coerce_arena_to_number_cfg, is_truthy_arena, to_string_arena, try_coerce_arena_to_integer_cfg,
+    coerce_to_number_cfg, is_truthy, data_to_str, try_coerce_to_integer_cfg,
 };
 
 /// Allocate an empty `bumpalo::collections::Vec` with `cap` reserved slots.

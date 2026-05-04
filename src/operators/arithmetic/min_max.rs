@@ -17,7 +17,7 @@ use bumpalo::Bump;
 /// Generic helper for max/min over an arena-iterable input. `pick_better`
 /// returns true when `candidate_f` should replace `best_f` (strictly better).
 #[inline]
-fn arena_min_max<'a>(
+fn min_max<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -32,7 +32,7 @@ fn arena_min_max<'a>(
 
     // Multi-arg variadic form: evaluate each arg, pick the best Number.
     if args.len() > 1 {
-        return arena_min_max_variadic(args, actx, engine, arena, init, pick_better);
+        return min_max_variadic(args, actx, engine, arena, init, pick_better);
     }
 
     // Reject literal-array arg shape.
@@ -51,7 +51,7 @@ fn arena_min_max<'a>(
         ResolvedInput::Bridge(av) => {
             // Array-shaped bridges iterate natively.
             if matches!(av, DataValue::Array(_)) {
-                return arena_min_max_from_av(av, init, pick_better, arena);
+                return min_max_from_av(av, init, pick_better, arena);
             }
             // Single non-array arg: must be a `Number`; returned unchanged.
             if !matches!(av, DataValue::Number(_)) {
@@ -90,7 +90,7 @@ fn arena_min_max<'a>(
 }
 
 #[inline]
-fn arena_min_max_variadic<'a>(
+fn min_max_variadic<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -120,7 +120,7 @@ fn arena_min_max_variadic<'a>(
 /// Iterate an `&'a DataValue<'a>` (Array variant) for min/max. Used when
 /// the input came from a composed arena op (e.g. `merge`).
 #[inline]
-fn arena_min_max_from_av<'a>(
+fn min_max_from_av<'a>(
     av: &'a DataValue<'a>,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
@@ -143,21 +143,21 @@ fn arena_min_max_from_av<'a>(
         }
     }
     match best_idx {
-        Some(i) => Ok(arena.alloc(crate::arena::value::reborrow_arena_value(&items[i]))),
+        Some(i) => Ok(arena.alloc(items[i])),
         None => Ok(crate::arena::pool::singleton_null()),
     }
 }
 
 /// Arena-mode max(single_array_arg).
 #[inline]
-pub(crate) fn evaluate_max_arena<'a>(
+pub(crate) fn evaluate_max<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    arena_min_max(
+    min_max(
         args,
         iter_arg_kind,
         actx,
@@ -170,14 +170,14 @@ pub(crate) fn evaluate_max_arena<'a>(
 
 /// Arena-mode min(single_array_arg).
 #[inline]
-pub(crate) fn evaluate_min_arena<'a>(
+pub(crate) fn evaluate_min<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    arena_min_max(
+    min_max(
         args,
         iter_arg_kind,
         actx,

@@ -5,7 +5,7 @@
 //!
 //! Each OS thread keeps a small bounded pool of recycled `Bump`s.
 //! `acquire()` pops one (or creates a new sized arena if the pool is empty);
-//! the returned `ArenaGuard` returns the arena to the pool on drop after
+//! the returned `BumpGuard` returns the arena to the pool on drop after
 //! `Bump::reset()` (O(1) — no individual allocations are freed).
 //!
 //! ## Why TLS, not `bumpalo-herd`
@@ -183,14 +183,14 @@ thread_local! {
 /// Use `guard.arena()` to get a `&Bump` (whose lifetime is bounded by the
 /// guard, so `DataValue<'_>` cannot escape the call).
 #[allow(dead_code)] // Test-only utility after v5 funnel landed.
-pub(crate) struct ArenaGuard {
+pub(crate) struct BumpGuard {
     /// `ManuallyDrop` lets `Drop::drop` move the `Bump` back into the slot
     /// without violating `Drop`'s `&mut self` aliasing rules.
     arena: ManuallyDrop<Bump>,
 }
 
 #[allow(dead_code)] // Test-only utility after v5 funnel landed.
-impl ArenaGuard {
+impl BumpGuard {
     /// Take the thread's `Bump` from the slot, or allocate a fresh one sized
     /// to `min_capacity` if the slot is empty.
     #[inline]
@@ -211,7 +211,7 @@ impl ArenaGuard {
     }
 }
 
-impl Drop for ArenaGuard {
+impl Drop for BumpGuard {
     #[inline]
     fn drop(&mut self) {
         // SAFETY: `arena` is `ManuallyDrop`-wrapped and we only take it once,
@@ -251,7 +251,7 @@ mod tests {
         drain_slot();
 
         // First acquire: slot empty, fresh Bump.
-        let g1 = ArenaGuard::acquire(4096);
+        let g1 = BumpGuard::acquire(4096);
         let _ = g1.arena().alloc_str("hello");
         drop(g1);
 
@@ -265,7 +265,7 @@ mod tests {
         assert!(occupied, "released arena should be in the slot");
 
         // Second acquire: should take the previous one (slot becomes empty).
-        let g2 = ArenaGuard::acquire(4096);
+        let g2 = BumpGuard::acquire(4096);
         let still_empty = ARENA_SLOT.with(|s| {
             let b = s.take();
             let empty = b.is_none();
@@ -284,8 +284,8 @@ mod tests {
         // bump replaces it and inner's bump is freed.
         drain_slot();
 
-        let outer = ArenaGuard::acquire(4096);
-        let inner = ArenaGuard::acquire(4096);
+        let outer = BumpGuard::acquire(4096);
+        let inner = BumpGuard::acquire(4096);
         let _ = inner.arena().alloc_str("inner");
         drop(inner);
         let _ = outer.arena().alloc_str("outer");
@@ -305,12 +305,12 @@ mod tests {
     fn reset_makes_arena_reusable() {
         drain_slot();
 
-        let g1 = ArenaGuard::acquire(4096);
+        let g1 = BumpGuard::acquire(4096);
         let s1 = g1.arena().alloc_str("first");
         assert_eq!(s1, "first");
         drop(g1);
 
-        let g2 = ArenaGuard::acquire(4096);
+        let g2 = BumpGuard::acquire(4096);
         let s2 = g2.arena().alloc_str("second");
         assert_eq!(s2, "second");
         drop(g2);

@@ -40,7 +40,7 @@ use crate::{CompiledNode, DataLogic, Error, Result};
 use bumpalo::Bump;
 
 #[inline]
-pub(crate) fn evaluate_try_arena<'a>(
+pub(crate) fn evaluate_try<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -59,7 +59,7 @@ pub(crate) fn evaluate_try_arena<'a>(
     let mut last_err: Option<Error> = None;
     for (i, arg) in args.iter().enumerate() {
         if i == last_idx {
-            return arena_try_last_with_error_context(arg, &mut last_err, actx, engine, arena);
+            return try_last_with_error_context(arg, &mut last_err, actx, engine, arena);
         }
         let saved_len = actx.error_path_len();
         match engine.evaluate_node(arg, actx, arena) {
@@ -76,7 +76,7 @@ pub(crate) fn evaluate_try_arena<'a>(
 /// Pushes the thrown error object onto the arena context stack as the
 /// current frame so the catch arm's `var`/`val` lookups see error fields.
 #[inline]
-fn arena_try_last_with_error_context<'a>(
+fn try_last_with_error_context<'a>(
     arg: &'a CompiledNode,
     last_error: &mut Option<Error>,
     actx: &mut DataContextStack<'a>,

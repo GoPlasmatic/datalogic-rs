@@ -20,7 +20,7 @@
 //!
 //! The integer-checked-with-float-fallback pattern is centralised in
 //! [`helpers::try_int_op`] for the 2-arg ops and in
-//! [`helpers::arena_variadic_fold`] for variadic ops.
+//! [`helpers::variadic_fold`] for variadic ops.
 //!
 //! ## NaN handling
 //!
@@ -38,9 +38,9 @@ mod datetime_arith;
 #[cfg(feature = "ext-math")]
 mod unary_math;
 
-pub(crate) use basic::{evaluate_add_arena, evaluate_multiply_arena, evaluate_subtract_arena};
-pub(crate) use div_mod::{DivOp, arena_div_or_mod};
-pub(crate) use min_max::{evaluate_max_arena, evaluate_min_arena};
+pub(crate) use basic::{evaluate_add, evaluate_multiply, evaluate_subtract};
+pub(crate) use div_mod::{DivOp, div_or_mod};
+pub(crate) use min_max::{evaluate_max, evaluate_min};
 
 #[cfg(feature = "ext-math")]
-pub(crate) use unary_math::{UnaryMathOp, arena_unary_math};
+pub(crate) use unary_math::{UnaryMathOp, unary_math};

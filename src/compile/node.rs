@@ -261,7 +261,7 @@ fn try_compile_throw_literal(
                 "type".to_string(),
                 OwnedDataValue::String(s.clone()),
             )]),
-            arena_error: None,
+            precomputed_error: None,
         },
     )))
 }

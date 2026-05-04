@@ -1,13 +1,13 @@
 //! `/` and `%` — division and modulo. Shares the unified
-//! [`arena_div_or_mod`] entry point with a [`DivOp`] discriminator.
+//! [`div_or_mod`] entry point with a [`DivOp`] discriminator.
 
-use crate::arena::{DataContextStack, DataValue, coerce_arena_to_number_cfg};
+use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg};
 use crate::config::DivisionByZeroHandling;
 use crate::value::NumberValue;
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
-use super::helpers::arena_number;
+use super::helpers::alloc_number;
 
 /// `/` vs `%` discriminant for the unified divide/modulo entry point.
 #[derive(Clone, Copy)]
@@ -43,7 +43,7 @@ impl DivOp {
 /// (`/` → 1/x; `%` → invalid), 2-arg primary, variadic fold, and divbyzero
 /// per engine config.
 #[inline]
-pub(crate) fn arena_div_or_mod<'a>(
+pub(crate) fn div_or_mod<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -54,10 +54,10 @@ pub(crate) fn arena_div_or_mod<'a>(
         return Err(crate::constants::invalid_args());
     }
     if args.len() == 1 {
-        return arena_one_arg_div_mod(&args[0], actx, engine, arena, op);
+        return one_arg_div_mod(&args[0], actx, engine, arena, op);
     }
     if args.len() > 2 {
-        return arena_variadic_div_mod(args, actx, engine, arena, op);
+        return variadic_div_mod(args, actx, engine, arena, op);
     }
     div_mod_two_arg(&args[0], &args[1], actx, engine, arena, op)
 }
@@ -78,13 +78,13 @@ fn div_mod_two_arg<'a>(
     // is not defined).
     #[cfg(feature = "datetime")]
     if !op.is_modulo()
-        && let Some(r) = super::datetime_arith::arena_datetime_divide(a_av, b_av, arena)
+        && let Some(r) = super::datetime_arith::datetime_divide(a_av, b_av, arena)
     {
         return r;
     }
 
-    let af = coerce_arena_to_number_cfg(a_av, engine).ok_or_else(crate::constants::nan_error)?;
-    let bf = coerce_arena_to_number_cfg(b_av, engine).ok_or_else(crate::constants::nan_error)?;
+    let af = coerce_to_number_cfg(a_av, engine).ok_or_else(crate::constants::nan_error)?;
+    let bf = coerce_to_number_cfg(b_av, engine).ok_or_else(crate::constants::nan_error)?;
     let na = NumberValue::from_f64(af);
     let nb = NumberValue::from_f64(bf);
     if nb.is_zero() {
@@ -93,16 +93,16 @@ fn div_mod_two_arg<'a>(
         if a_av.as_i64().is_some() && b_av.as_i64().is_some() {
             return Err(crate::constants::nan_error());
         }
-        return divbyzero_arena(arena, na.as_f64(), engine);
+        return divbyzero(arena, na.as_f64(), engine);
     }
     match op.apply_number(&na, &nb) {
-        Some(r) => Ok(arena_number(arena, r)),
+        Some(r) => Ok(alloc_number(arena, r)),
         None => Err(crate::constants::nan_error()),
     }
 }
 
 #[inline]
-fn divbyzero_arena<'a>(
+fn divbyzero<'a>(
     arena: &'a Bump,
     dividend: f64,
     engine: &DataLogic,
@@ -116,7 +116,7 @@ fn divbyzero_arena<'a>(
             } else {
                 f64::NEG_INFINITY
             };
-            Ok(arena_number(arena, NumberValue::from_f64(v)))
+            Ok(alloc_number(arena, NumberValue::from_f64(v)))
         }
         DivisionByZeroHandling::ReturnBounds => {
             let v = if dividend > 0.0 {
@@ -126,7 +126,7 @@ fn divbyzero_arena<'a>(
             } else {
                 0.0
             };
-            Ok(arena_number(arena, NumberValue::from_f64(v)))
+            Ok(alloc_number(arena, NumberValue::from_f64(v)))
         }
     }
 }
@@ -135,7 +135,7 @@ fn divbyzero_arena<'a>(
 ///   * `/` with array → fold (a/b/c). `/` with non-array → 1/x.
 ///   * `%` with array of ≥2 numeric elements → fold (a%b%c). `%` with single
 ///     non-array argument → InvalidArguments.
-fn arena_one_arg_div_mod<'a>(
+fn one_arg_div_mod<'a>(
     arg: &'a CompiledNode,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -149,17 +149,17 @@ fn arena_one_arg_div_mod<'a>(
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::constants::invalid_args());
         }
-        let mut result = coerce_arena_to_number_cfg(&items[0], engine)
+        let mut result = coerce_to_number_cfg(&items[0], engine)
             .ok_or_else(crate::constants::nan_error)?;
         for elem in &items[1..] {
             let n =
-                coerce_arena_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
+                coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
             if n == 0.0 {
                 return Err(crate::constants::nan_error());
             }
             result = op.apply_f64(result, n);
         }
-        return Ok(arena_number(arena, NumberValue::from_f64(result)));
+        return Ok(alloc_number(arena, NumberValue::from_f64(result)));
     }
 
     // Non-array single value.
@@ -172,23 +172,23 @@ fn arena_one_arg_div_mod<'a>(
             return Err(crate::constants::nan_error());
         }
         if i == -1 {
-            return Ok(arena_number(arena, NumberValue::from_i64(-1)));
+            return Ok(alloc_number(arena, NumberValue::from_i64(-1)));
         }
         if 1 % i == 0 {
-            return Ok(arena_number(arena, NumberValue::from_i64(1 / i)));
+            return Ok(alloc_number(arena, NumberValue::from_i64(1 / i)));
         }
-        return Ok(arena_number(arena, NumberValue::from_f64(1.0 / i as f64)));
+        return Ok(alloc_number(arena, NumberValue::from_f64(1.0 / i as f64)));
     }
-    let f = coerce_arena_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
+    let f = coerce_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
     if f == 0.0 {
         return Err(crate::constants::nan_error());
     }
-    Ok(arena_number(arena, NumberValue::from_f64(1.0 / f)))
+    Ok(alloc_number(arena, NumberValue::from_f64(1.0 / f)))
 }
 
 /// Native arena variadic (≥3 args) `/` / `%`. Folds left-associatively with
 /// per-step zero-divisor check.
-fn arena_variadic_div_mod<'a>(
+fn variadic_div_mod<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -197,14 +197,14 @@ fn arena_variadic_div_mod<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.evaluate_node(&args[0], actx, arena)?;
     let mut result =
-        coerce_arena_to_number_cfg(first_av, engine).ok_or_else(crate::constants::nan_error)?;
+        coerce_to_number_cfg(first_av, engine).ok_or_else(crate::constants::nan_error)?;
     for arg in args.iter().skip(1) {
         let av = engine.evaluate_node(arg, actx, arena)?;
-        let n = coerce_arena_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
+        let n = coerce_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
         if n == 0.0 {
             return Err(crate::constants::nan_error());
         }
         result = op.apply_f64(result, n);
     }
-    Ok(arena_number(arena, NumberValue::from_f64(result)))
+    Ok(alloc_number(arena, NumberValue::from_f64(result)))
 }

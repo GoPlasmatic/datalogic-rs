@@ -3,7 +3,7 @@ use crate::config::TruthyEvaluator;
 use datavalue::{NumberValue, OwnedDataValue};
 
 /// Truthiness for an [`OwnedDataValue`] (compile-time literal form). The
-/// runtime arena-resident form has its own [`crate::arena::is_truthy_arena`]
+/// runtime arena-resident form has its own [`crate::arena::is_truthy`]
 /// in the arena helpers module.
 #[inline]
 pub fn is_truthy_owned(value: &OwnedDataValue, engine: &crate::DataLogic) -> bool {
@@ -38,7 +38,7 @@ fn is_truthy_owned_js(value: &OwnedDataValue) -> bool {
 /// directly without `Value` materialization.
 #[cfg(feature = "datetime")]
 #[inline]
-pub(crate) fn extract_datetime_arena(
+pub(crate) fn extract_datetime(
     av: &crate::arena::DataValue<'_>,
 ) -> Option<crate::datetime::DataDateTime> {
     use crate::arena::DataValue;
@@ -59,10 +59,10 @@ pub(crate) fn extract_datetime_arena(
     }
 }
 
-/// Arena-native duration extraction. See [`extract_datetime_arena`].
+/// Arena-native duration extraction. See [`extract_datetime`].
 #[cfg(feature = "datetime")]
 #[inline]
-pub(crate) fn extract_duration_arena(
+pub(crate) fn extract_duration(
     av: &crate::arena::DataValue<'_>,
 ) -> Option<crate::datetime::DataDuration> {
     use crate::arena::DataValue;

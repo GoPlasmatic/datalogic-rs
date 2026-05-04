@@ -27,7 +27,7 @@
 //! // Output: {"name": "John", "status": "active"}
 //! ```
 
-use crate::arena::{DataContextStack, DataValue, value::reborrow_arena_value};
+use crate::arena::{DataContextStack, DataValue};
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
@@ -36,7 +36,7 @@ use bumpalo::Bump;
 /// - 1 arg : the evaluated arg (or its literal value, fast-path).
 /// - N args: arena array of evaluated args.
 #[inline]
-pub(crate) fn evaluate_preserve_arena<'a>(
+pub(crate) fn evaluate_preserve<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -56,7 +56,7 @@ pub(crate) fn evaluate_preserve_arena<'a>(
                 bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
             for arg in args {
                 let av = engine.evaluate_node(arg, actx, arena)?;
-                items.push(reborrow_arena_value(av));
+                items.push(*av);
             }
             Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
         }

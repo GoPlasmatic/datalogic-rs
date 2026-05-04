@@ -13,7 +13,7 @@ use bumpalo::Bump;
 
 /// A single frame in the arena-mode context stack.
 #[derive(Clone, Copy)]
-pub(crate) enum ArenaContextFrame<'a> {
+pub(crate) enum ContextFrame<'a> {
     Indexed {
         data: &'a DataValue<'a>,
         index: usize,
@@ -30,7 +30,7 @@ pub(crate) enum ArenaContextFrame<'a> {
     Data(&'a DataValue<'a>),
 }
 
-impl<'a> ArenaContextFrame<'a> {
+impl<'a> ContextFrame<'a> {
     #[inline]
     pub(crate) fn data(&self) -> &'a DataValue<'a> {
         match self {
@@ -73,15 +73,15 @@ impl<'a> ArenaContextFrame<'a> {
 }
 
 /// Reference to an arena context frame (either a stack frame or the root).
-pub(crate) enum ArenaContextRef<'a, 'ctx> {
-    Frame(&'ctx ArenaContextFrame<'a>),
+pub(crate) enum ContextRef<'a, 'ctx> {
+    Frame(&'ctx ContextFrame<'a>),
     /// Root carries the original input as `&'a DataValue<'a>`, deep-converted
     /// from a `&Value` at API entry or supplied directly by arena-native
     /// callers.
     Root(&'a DataValue<'a>),
 }
 
-impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
+impl<'a, 'ctx> ContextRef<'a, 'ctx> {
     #[inline]
     pub(crate) fn get_index(&self) -> Option<usize> {
         match self {
@@ -122,7 +122,7 @@ impl<'a, 'ctx> ArenaContextRef<'a, 'ctx> {
 /// API, or supplied directly by arena-native callers).
 pub struct DataContextStack<'a> {
     root: &'a DataValue<'a>,
-    frames: Vec<ArenaContextFrame<'a>>,
+    frames: Vec<ContextFrame<'a>>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     /// Mirrors `ContextStack::error_path`.
     error_path: Vec<u32>,
@@ -154,7 +154,7 @@ impl<'a> DataContextStack<'a> {
     #[cfg(all(test, feature = "compat"))]
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
-        let av = crate::arena::value::value_to_arena(root, arena);
+        let av = crate::arena::value::value_to_data(root, arena);
         Self::new(arena.alloc(av))
     }
 
@@ -196,8 +196,8 @@ impl<'a> DataContextStack<'a> {
     #[cfg(all(feature = "trace", feature = "compat"))]
     pub(crate) fn current_data_as_value(&self) -> serde_json::Value {
         match self.current() {
-            ArenaContextRef::Root(av) => crate::arena::arena_to_value(av),
-            ArenaContextRef::Frame(f) => crate::arena::arena_to_value(f.data()),
+            ContextRef::Root(av) => crate::arena::data_to_value(av),
+            ContextRef::Frame(f) => crate::arena::data_to_value(f.data()),
         }
     }
 
@@ -219,7 +219,7 @@ impl<'a> DataContextStack<'a> {
         let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
         match result {
             Ok(av) => {
-                let v = crate::arena::arena_to_value(av);
+                let v = crate::arena::data_to_value(av);
                 collector.record_step(node_id, ctx_data, v);
             }
             Err(e) => {
@@ -263,50 +263,50 @@ impl<'a> DataContextStack<'a> {
 
     /// Get the current context (top frame, or root if empty).
     #[inline]
-    pub(crate) fn current(&self) -> ArenaContextRef<'a, '_> {
+    pub(crate) fn current(&self) -> ContextRef<'a, '_> {
         if let Some(frame) = self.frames.last() {
-            ArenaContextRef::Frame(frame)
+            ContextRef::Frame(frame)
         } else {
-            ArenaContextRef::Root(self.root)
+            ContextRef::Root(self.root)
         }
     }
 
     /// Walk `level` frames up from the current context. Negative/positive
     /// magnitudes treated as absolute (matches `ContextStack::get_at_level`).
-    pub(crate) fn get_at_level(&self, level: isize) -> Option<ArenaContextRef<'a, '_>> {
+    pub(crate) fn get_at_level(&self, level: isize) -> Option<ContextRef<'a, '_>> {
         let levels_up = level.unsigned_abs();
         if levels_up == 0 {
             return Some(self.current());
         }
         let frame_count = self.frames.len();
         if levels_up >= frame_count {
-            return Some(ArenaContextRef::Root(self.root));
+            return Some(ContextRef::Root(self.root));
         }
         let target_index = frame_count - levels_up;
-        self.frames.get(target_index).map(ArenaContextRef::Frame)
+        self.frames.get(target_index).map(ContextRef::Frame)
     }
 
     // ----- frame mutation ---------------------------------------------------
 
     #[inline]
     pub(crate) fn push(&mut self, data: &'a DataValue<'a>) {
-        self.frames.push(ArenaContextFrame::Data(data));
+        self.frames.push(ContextFrame::Data(data));
     }
 
     #[inline]
     pub(crate) fn push_with_index(&mut self, data: &'a DataValue<'a>, index: usize) {
-        self.frames.push(ArenaContextFrame::Indexed { data, index });
+        self.frames.push(ContextFrame::Indexed { data, index });
     }
 
     #[inline]
     fn push_with_key_index(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
         self.frames
-            .push(ArenaContextFrame::Keyed { data, index, key });
+            .push(ContextFrame::Keyed { data, index, key });
     }
 
     #[inline]
     fn push_reduce(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
-        self.frames.push(ArenaContextFrame::Reduce {
+        self.frames.push(ContextFrame::Reduce {
             current,
             accumulator,
         });
@@ -315,21 +315,21 @@ impl<'a> DataContextStack<'a> {
     #[inline]
     fn replace_top_data(&mut self, data: &'a DataValue<'a>, index: usize) {
         if let Some(frame) = self.frames.last_mut() {
-            *frame = ArenaContextFrame::Indexed { data, index };
+            *frame = ContextFrame::Indexed { data, index };
         }
     }
 
     #[inline]
     fn replace_top_key_data(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
         if let Some(frame) = self.frames.last_mut() {
-            *frame = ArenaContextFrame::Keyed { data, index, key };
+            *frame = ContextFrame::Keyed { data, index, key };
         }
     }
 
     #[inline]
     fn replace_reduce_data(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
         if let Some(frame) = self.frames.last_mut() {
-            *frame = ArenaContextFrame::Reduce {
+            *frame = ContextFrame::Reduce {
                 current,
                 accumulator,
             };
@@ -337,7 +337,7 @@ impl<'a> DataContextStack<'a> {
     }
 
     #[inline]
-    pub(crate) fn pop(&mut self) -> Option<ArenaContextFrame<'a>> {
+    pub(crate) fn pop(&mut self) -> Option<ContextFrame<'a>> {
         self.frames.pop()
     }
 
@@ -505,7 +505,7 @@ mod tests {
         ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
-        if let ArenaContextRef::Frame(f) = ctx.current() {
+        if let ContextRef::Frame(f) = ctx.current() {
             assert!(f.get_reduce_current().is_some());
             assert!(f.get_reduce_accumulator().is_some());
         } else {

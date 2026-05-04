@@ -5,7 +5,7 @@
 
 use crate::DataLogic;
 use crate::Result;
-use crate::arena::{DataValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
+use crate::arena::{DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::NanHandling;
 use crate::value::NumberValue;
 use bumpalo::Bump;
@@ -33,11 +33,11 @@ pub(super) fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
 ///
 /// Note: we do *not* route through `singleton_small_int` here. Most arithmetic
 /// results are not small non-negative integers, so probing the singleton table
-/// on every arena_number call costs more than it saves. Sites where the result
+/// on every alloc_number call costs more than it saves. Sites where the result
 /// is *typically* small (length, var-index, reduce-int accumulator) call
 /// `singleton_small_int` directly themselves.
 #[inline]
-pub(super) fn arena_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue<'a> {
+pub(super) fn alloc_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue<'a> {
     arena.alloc(DataValue::Number(n))
 }
 
@@ -67,8 +67,8 @@ pub(super) fn coerce_pair_int(
     engine: &DataLogic,
 ) -> Option<(i64, i64)> {
     Some((
-        try_coerce_arena_to_integer_cfg(a, engine)?,
-        try_coerce_arena_to_integer_cfg(b, engine)?,
+        try_coerce_to_integer_cfg(a, engine)?,
+        try_coerce_to_integer_cfg(b, engine)?,
     ))
 }
 
@@ -81,8 +81,8 @@ pub(super) fn coerce_pair_f64(
     engine: &DataLogic,
 ) -> Option<(f64, f64)> {
     Some((
-        coerce_arena_to_number_cfg(a, engine)?,
-        coerce_arena_to_number_cfg(b, engine)?,
+        coerce_to_number_cfg(a, engine)?,
+        coerce_to_number_cfg(b, engine)?,
     ))
 }
 
@@ -133,7 +133,7 @@ pub(super) struct VariadicFoldSpec {
 /// overflow promotion to `f64`. Used by `+` and `*` for the 2+ arg form.
 /// Non-numeric args trigger NaN handling per engine config.
 #[inline]
-pub(super) fn arena_variadic_fold<'a>(
+pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],
     actx: &mut crate::arena::DataContextStack<'a>,
     engine: &DataLogic,
@@ -160,7 +160,7 @@ pub(super) fn arena_variadic_fold<'a>(
         // `true`/`false`/`null`/numeric strings compose into the variadic op.
         let f_opt = av
             .as_f64()
-            .or_else(|| coerce_arena_to_number_cfg(av, engine));
+            .or_else(|| coerce_to_number_cfg(av, engine));
         if let Some(f) = f_opt {
             if all_int {
                 all_int = false;
@@ -181,8 +181,8 @@ pub(super) fn arena_variadic_fold<'a>(
     }
 
     if all_int {
-        Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+        Ok(alloc_number(arena, NumberValue::from_i64(int_acc)))
     } else {
-        Ok(arena_number(arena, NumberValue::from_f64(float_acc)))
+        Ok(alloc_number(arena, NumberValue::from_f64(float_acc)))
     }
 }

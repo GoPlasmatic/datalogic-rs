@@ -3,7 +3,7 @@ use crate::{CompiledNode, DataLogic, Result};
 // =============================================================================
 // Arena-mode missing / missing_some
 //
-// Path lookups walk `&DataValue` natively via `arena_path_exists_*`.
+// Path lookups walk `&DataValue` natively via `path_exists_*`.
 // =============================================================================
 
 use crate::arena::{DataContextStack, DataValue};
@@ -14,10 +14,10 @@ use bumpalo::Bump;
 #[inline(always)]
 fn lookup_av<'a>(actx: &DataContextStack<'a>) -> &'a DataValue<'a> {
     if actx.depth() > 0 {
-        use crate::arena::context::ArenaContextRef;
+        use crate::arena::context::ContextRef;
         match actx.current() {
-            ArenaContextRef::Frame(f) => f.data(),
-            ArenaContextRef::Root(av) => av,
+            ContextRef::Frame(f) => f.data(),
+            ContextRef::Root(av) => av,
         }
     } else {
         actx.root_input()
@@ -27,7 +27,7 @@ fn lookup_av<'a>(actx: &DataContextStack<'a>) -> &'a DataValue<'a> {
 /// Native arena-mode `missing`. Accumulates missing-path strings directly
 /// into the arena.
 #[inline]
-pub(crate) fn evaluate_missing_arena<'a>(
+pub(crate) fn evaluate_missing<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -42,15 +42,15 @@ pub(crate) fn evaluate_missing_arena<'a>(
         match av {
             DataValue::Array(items) => {
                 for it in *items {
-                    if let Some(path) = arena_value_as_str(it)
-                        && !crate::arena::value::arena_path_exists_str(lookup, path)
+                    if let Some(path) = value_as_str(it)
+                        && !crate::arena::value::path_exists_str(lookup, path)
                     {
                         missing.push(DataValue::String(arena.alloc_str(path)));
                     }
                 }
             }
             DataValue::String(s) => {
-                if !crate::arena::value::arena_path_exists_str(lookup, s) {
+                if !crate::arena::value::path_exists_str(lookup, s) {
                     missing.push(DataValue::String(arena.alloc_str(s)));
                 }
             }
@@ -66,7 +66,7 @@ pub(crate) fn evaluate_missing_arena<'a>(
 
 /// Native arena-mode `missing_some`.
 #[inline]
-pub(crate) fn evaluate_missing_some_arena<'a>(
+pub(crate) fn evaluate_missing_some<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -90,7 +90,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
                         missing: &mut bumpalo::collections::Vec<'a, DataValue<'a>>,
                         present_count: &mut usize|
      -> bool {
-        if !crate::arena::value::arena_path_exists_str(lookup, path) {
+        if !crate::arena::value::path_exists_str(lookup, path) {
             missing.push(DataValue::String(arena.alloc_str(path)));
         } else {
             *present_count += 1;
@@ -103,7 +103,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
 
     let short_circuit = match paths_av {
         DataValue::Array(items) => items.iter().any(|it| {
-            arena_value_as_str(it)
+            value_as_str(it)
                 .is_some_and(|p| process_path(p, &mut missing, &mut present_count))
         }),
         _ => false,
@@ -116,7 +116,7 @@ pub(crate) fn evaluate_missing_some_arena<'a>(
 }
 
 #[inline]
-fn arena_value_as_str<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
+fn value_as_str<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
     match av {
         DataValue::String(s) => Some(*s),
         _ => None,
@@ -134,9 +134,9 @@ use crate::node::{
 
 /// Evaluate a `missing` op whose static literal-string paths have been
 /// pre-parsed into segments. Static paths walk via
-/// `arena_path_exists_segments`; dynamic args use the runtime path string.
+/// `path_exists_segments`; dynamic args use the runtime path string.
 #[inline]
-pub(crate) fn evaluate_compiled_missing_arena<'a>(
+pub(crate) fn evaluate_compiled_missing<'a>(
     data: &'a CompiledMissingData,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -149,7 +149,7 @@ pub(crate) fn evaluate_compiled_missing_arena<'a>(
     for arg in data.args.iter() {
         match arg {
             CompiledMissingArg::Static { path, segments } => {
-                if !crate::arena::value::arena_path_exists_segments(lookup, segments) {
+                if !crate::arena::value::path_exists_segments(lookup, segments) {
                     missing.push(DataValue::String(path.as_ref()));
                 }
             }
@@ -168,7 +168,7 @@ pub(crate) fn evaluate_compiled_missing_arena<'a>(
 /// Evaluate a `missing_some` op whose literal min-count and literal array-of-
 /// strings paths have been pre-resolved at compile time.
 #[inline]
-pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
+pub(crate) fn evaluate_compiled_missing_some<'a>(
     data: &'a CompiledMissingSomeData,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -190,7 +190,7 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
                 bumpalo::collections::Vec::with_capacity_in(paths.len(), arena);
             let mut present = 0usize;
             for (path, segments) in paths.iter() {
-                if crate::arena::value::arena_path_exists_segments(lookup, segments) {
+                if crate::arena::value::path_exists_segments(lookup, segments) {
                     present += 1;
                     if present >= min_present {
                         return Ok(crate::arena::pool::singleton_empty_array());
@@ -211,7 +211,7 @@ pub(crate) fn evaluate_compiled_missing_some_arena<'a>(
             let mut present = 0usize;
             let short = match paths_av {
                 DataValue::Array(items) => items.iter().any(|it| {
-                    arena_value_as_str(it).is_some_and(|p| {
+                    value_as_str(it).is_some_and(|p| {
                         check_path(p, lookup, &mut missing, &mut present, min_present, arena)
                     })
                 }),
@@ -234,7 +234,7 @@ fn check_path<'a>(
     min_present: usize,
     arena: &'a Bump,
 ) -> bool {
-    if !crate::arena::value::arena_path_exists_str(lookup, path) {
+    if !crate::arena::value::path_exists_str(lookup, path) {
         missing.push(DataValue::String(arena.alloc_str(path)));
     } else {
         *present += 1;
@@ -255,15 +255,15 @@ fn accumulate_dynamic_missing<'a>(
     match av {
         DataValue::Array(items) => {
             for it in *items {
-                if let Some(path) = arena_value_as_str(it)
-                    && !crate::arena::value::arena_path_exists_str(lookup, path)
+                if let Some(path) = value_as_str(it)
+                    && !crate::arena::value::path_exists_str(lookup, path)
                 {
                     missing.push(DataValue::String(arena.alloc_str(path)));
                 }
             }
         }
         DataValue::String(s) => {
-            if !crate::arena::value::arena_path_exists_str(lookup, s) {
+            if !crate::arena::value::path_exists_str(lookup, s) {
                 missing.push(DataValue::String(arena.alloc_str(s)));
             }
         }

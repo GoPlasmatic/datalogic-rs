@@ -10,10 +10,7 @@ pub const NAN_ERROR: &str = "NaN";
 #[inline]
 pub fn nan_error() -> crate::Error {
     use datavalue::OwnedDataValue;
-    crate::Error::thrown(OwnedDataValue::Object(vec![(
-        "type".to_string(),
-        OwnedDataValue::String("NaN".to_string()),
-    )]))
+    crate::Error::thrown(OwnedDataValue::object([("type", "NaN")]))
 }
 
 /// Returns the canonical "Invalid Arguments" error.

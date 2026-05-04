@@ -45,7 +45,7 @@ use crate::arena::{DataContextStack, DataValue};
 use bumpalo::Bump;
 
 #[inline]
-pub(crate) fn evaluate_type_arena<'a>(
+pub(crate) fn evaluate_type<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,

@@ -6,14 +6,14 @@ use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
-    FastPredicate, IterArgKind, IterSrc, ResolvedInput, arena_value_equals_arena,
+    FastPredicate, IterArgKind, IterSrc, ResolvedInput,
     evaluate_invariant_no_push, resolve_iter_input, try_extract_filter_field_cmp,
 };
 
 /// `filter`. Fast path: input collection resolves at root scope (the dominant
 /// pattern in real workloads). Bridge path handles non-borrowable inputs.
 #[inline]
-pub(crate) fn evaluate_filter_arena<'a>(
+pub(crate) fn evaluate_filter<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -91,12 +91,12 @@ fn filter_strict_eq_field_fast_path<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
-        let matches = match crate::arena::value::arena_traverse_segments(item, segments, arena) {
-            Some(av) => arena_value_equals_arena(av, invariant_val),
+        let matches = match crate::arena::value::traverse_segments(item, segments, arena) {
+            Some(av) => av == invariant_val,
             None => false,
         };
         if matches == is_eq {
-            results.push(crate::arena::value::reborrow_arena_value(item));
+            results.push(*item);
         }
     }
     if results.is_empty() {
@@ -120,7 +120,7 @@ fn filter_with_fast_predicate<'a>(
     for i in 0..len {
         let item = src.get(i);
         if fast_pred.evaluate(item, arena) {
-            results.push(crate::arena::value::reborrow_arena_value(item));
+            results.push(*item);
         }
     }
     if results.is_empty() {
@@ -148,8 +148,8 @@ fn filter_general<'a>(
         let item = src.get(i);
         guard.step_indexed(item, i);
         let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy_arena(keep, engine) {
-            results.push(crate::arena::value::reborrow_arena_value(item));
+        if crate::arena::is_truthy(keep, engine) {
+            results.push(*item);
         }
     }
     drop(guard);
@@ -193,13 +193,13 @@ fn filter_bridge_object<'a>(
         // SAFETY: pairs[i].1 lives in the arena for `'a`; the slice borrow is
         // a sub-borrow of that arena, and reborrowing it as `&'a` is sound.
         let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-        let key_arena: &'a str = k;
-        guard.step_keyed(item_av, i, key_arena);
+        let key: &'a str = k;
+        guard.step_keyed(item_av, i, key);
         let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy_arena(keep, engine) {
+        if crate::arena::is_truthy(keep, engine) {
             kept.push((
-                key_arena,
-                crate::arena::value::reborrow_arena_value(item_av),
+                key,
+                *item_av,
             ));
         }
     }
@@ -224,8 +224,8 @@ fn filter_bridge_array<'a>(
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy_arena(keep, engine) {
-            kept.push(crate::arena::value::reborrow_arena_value(item_av));
+        if crate::arena::is_truthy(keep, engine) {
+            kept.push(*item_av);
         }
     }
     drop(guard);

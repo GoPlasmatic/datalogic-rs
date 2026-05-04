@@ -23,32 +23,6 @@
 use crate::arena::DataValue;
 use crate::constants::NAN_ERROR;
 
-/// Compare two values with strict equality (JavaScript ===). Walks both
-/// trees structurally; arena and number type tags must match exactly for
-/// equality.
-pub(crate) fn strict_equals(left: &DataValue<'_>, right: &DataValue<'_>) -> bool {
-    match (left, right) {
-        (DataValue::Null, DataValue::Null) => true,
-        (DataValue::Bool(a), DataValue::Bool(b)) => a == b,
-        (DataValue::Number(a), DataValue::Number(b)) => a == b,
-        (DataValue::String(a), DataValue::String(b)) => a == b,
-        (DataValue::Array(a), DataValue::Array(b)) => {
-            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| strict_equals(x, y))
-        }
-        (DataValue::Object(a), DataValue::Object(b)) => {
-            a.len() == b.len()
-                && a.iter()
-                    .zip(b.iter())
-                    .all(|((ka, va), (kb, vb))| *ka == *kb && strict_equals(va, vb))
-        }
-        #[cfg(feature = "datetime")]
-        (DataValue::DateTime(a), DataValue::DateTime(b)) => a == b,
-        #[cfg(feature = "datetime")]
-        (DataValue::Duration(a), DataValue::Duration(b)) => a == b,
-        _ => false,
-    }
-}
-
 /// Result of loose equality comparison for incompatible types.
 enum LooseEqualsResult {
     Equal,
@@ -141,7 +115,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
 
         // Array-array structural compare
         (DataValue::Array(a), DataValue::Array(b)) => {
-            if a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| strict_equals(x, y)) {
+            if a == b {
                 Equal
             } else {
                 Incompatible

@@ -248,7 +248,7 @@ impl From<serde_json::Error> for Error {
 
 impl From<datavalue::ParseError> for Error {
     fn from(err: datavalue::ParseError) -> Self {
-        Error::new(ErrorKind::ParseError(format!("{:?}", err)))
+        Error::new(ErrorKind::ParseError(err.to_string()))
     }
 }
 

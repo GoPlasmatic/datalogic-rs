@@ -7,7 +7,7 @@ use super::DataValue;
 /// Config-aware arena-native f64 coercion. Mirrors
 /// `value_helpers::coerce_to_number` exactly — same engine config gates.
 #[inline]
-pub(crate) fn coerce_arena_to_number_cfg(
+pub(crate) fn coerce_to_number_cfg(
     v: &DataValue<'_>,
     engine: &crate::DataLogic,
 ) -> Option<f64> {
@@ -31,7 +31,7 @@ pub(crate) fn coerce_arena_to_number_cfg(
 /// Config-aware arena-native i64 coercion. Mirrors
 /// `value_helpers::try_coerce_to_integer`.
 #[inline]
-pub(crate) fn try_coerce_arena_to_integer_cfg(
+pub(crate) fn try_coerce_to_integer_cfg(
     v: &DataValue<'_>,
     engine: &crate::DataLogic,
 ) -> Option<i64> {
@@ -56,7 +56,7 @@ pub(crate) fn try_coerce_arena_to_integer_cfg(
 /// (no engine config consulted). Used by datetime arithmetic where the
 /// duration/scalar-multiply path runs before user config can intervene.
 #[cfg(feature = "datetime")]
-pub(crate) fn coerce_arena_to_number(v: &DataValue<'_>) -> Option<f64> {
+pub(crate) fn coerce_to_number(v: &DataValue<'_>) -> Option<f64> {
     match v {
         DataValue::Number(n) => Some(n.as_f64()),
         DataValue::Bool(true) => Some(1.0),
@@ -72,7 +72,7 @@ pub(crate) fn coerce_arena_to_number(v: &DataValue<'_>) -> Option<f64> {
         }
         DataValue::Array(items) => match items.len() {
             0 => Some(0.0),
-            1 => coerce_arena_to_number(&items[0]),
+            1 => coerce_to_number(&items[0]),
             _ => None,
         },
         DataValue::Object(_) => None,

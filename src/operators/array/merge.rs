@@ -9,7 +9,7 @@ use super::helpers::item_is_null;
 /// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
 /// op) into a single array, skipping nulls.
 #[inline]
-pub(crate) fn evaluate_merge_arena<'a>(
+pub(crate) fn evaluate_merge<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -27,14 +27,14 @@ pub(crate) fn evaluate_merge_arena<'a>(
             DataValue::Array(items) => {
                 for item in items.iter() {
                     if !item_is_null(item) {
-                        results.push(crate::arena::value::reborrow_arena_value(item));
+                        results.push(*item);
                     }
                 }
             }
             // Null inputs are skipped per merge semantics.
             DataValue::Null => {}
             // Scalar / object — push as-is.
-            other => results.push(crate::arena::value::reborrow_arena_value(other)),
+            other => results.push(*other),
         }
     }
 

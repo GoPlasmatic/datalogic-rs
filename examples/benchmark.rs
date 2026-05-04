@@ -52,7 +52,7 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
     let data_arena = bumpalo::Bump::new();
     let arena_inputs: Vec<&DataValue<'_>> = test_cases
         .iter()
-        .map(|(_, data)| &*data_arena.alloc(datalogic_rs::arena::value_to_arena(data, &data_arena)))
+        .map(|(_, data)| &*data_arena.alloc(datalogic_rs::arena::value_to_data(data, &data_arena)))
         .collect();
 
     // Eval arena: reset between iterations so the bump pointer stays at

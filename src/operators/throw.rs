@@ -6,7 +6,7 @@ use bumpalo::Bump;
 
 /// `throw`. Builds the error object directly from the argument's arena form.
 #[inline]
-pub(crate) fn evaluate_throw_arena<'a>(
+pub(crate) fn evaluate_throw<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -24,13 +24,8 @@ pub(crate) fn evaluate_throw_arena<'a>(
 
     let owned = match owned {
         OwnedDataValue::Object(_) => owned,
-        OwnedDataValue::String(s) => {
-            OwnedDataValue::Object(vec![("type".to_string(), OwnedDataValue::String(s))])
-        }
-        other => OwnedDataValue::Object(vec![(
-            "type".to_string(),
-            OwnedDataValue::String(format!("{:?}", other)),
-        )]),
+        OwnedDataValue::String(s) => OwnedDataValue::object([("type", s)]),
+        other => OwnedDataValue::object([("type", format!("{:?}", other))]),
     };
 
     Err(Error::thrown(owned))

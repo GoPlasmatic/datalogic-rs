@@ -13,7 +13,7 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 /// composes), with inline arithmetic fast paths for the dominant
 /// `current op accumulator` pattern.
 #[inline]
-pub(crate) fn evaluate_reduce_arena<'a>(
+pub(crate) fn evaluate_reduce<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -54,7 +54,7 @@ pub(crate) fn evaluate_reduce_arena<'a>(
         } = body
         && body_args.len() == 2
         && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
-        && let Some(result) = try_reduce_fast_path_arena(&src, initial, body_args, *opcode, arena)
+        && let Some(result) = try_reduce_fast_path(&src, initial, body_args, *opcode, arena)
     {
         return Ok(result);
     }
@@ -132,7 +132,7 @@ fn reduce_arena_bridge<'a>(
 /// `{+|-|*: [val("current"[+path]), val("accumulator")]}` body shape and
 /// folds without per-item context push or body dispatch. Iterates `IterSrc`
 /// directly.
-fn try_reduce_fast_path_arena<'a>(
+fn try_reduce_fast_path<'a>(
     src: &IterSrc<'a>,
     initial: &'a DataValue<'a>,
     body_args: &[CompiledNode],
@@ -194,7 +194,7 @@ fn try_reduce_fast_path_arena<'a>(
             let current_val = if current_segments.is_empty() {
                 item
             } else {
-                crate::arena::value::arena_traverse_segments(item, current_segments, arena)?
+                crate::arena::value::traverse_segments(item, current_segments, arena)?
             };
             if let Some(cur_i) = current_val.as_i64() {
                 let a = acc_i.unwrap();
@@ -225,7 +225,7 @@ fn try_reduce_fast_path_arena<'a>(
         let current_val = if current_segments.is_empty() {
             item
         } else {
-            crate::arena::value::arena_traverse_segments(item, current_segments, arena)?
+            crate::arena::value::traverse_segments(item, current_segments, arena)?
         };
         let cur_f = current_val.as_f64()?;
         acc_f = match opcode {

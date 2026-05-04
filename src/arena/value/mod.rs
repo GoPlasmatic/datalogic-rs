@@ -13,26 +13,25 @@ mod strings;
 mod traversal;
 
 #[cfg(feature = "datetime")]
-pub(crate) use coercion::coerce_arena_to_number;
-pub(crate) use coercion::{coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg};
+pub(crate) use coercion::coerce_to_number;
+pub(crate) use coercion::{coerce_to_number_cfg, try_coerce_to_integer_cfg};
 #[cfg(feature = "compat")]
-pub use conversion::arena_to_value;
-pub(crate) use conversion::reborrow_arena_value;
+pub use conversion::data_to_value;
 #[cfg(feature = "compat")]
-pub use conversion::value_to_arena;
-pub(crate) use lookup::arena_object_lookup_field;
+pub use conversion::value_to_data;
+pub(crate) use lookup::object_lookup_field;
 pub use strings::data_to_json_string;
-pub(crate) use strings::{is_truthy_arena, to_string_arena};
-pub(crate) use traversal::arena_apply_path_element;
+pub(crate) use strings::{is_truthy, data_to_str};
+pub(crate) use traversal::apply_path_element;
 pub(crate) use traversal::{
-    arena_access_path_str_ref, arena_path_exists_segments, arena_path_exists_str,
-    arena_traverse_segments,
+    access_path_str_ref, path_exists_segments, path_exists_str,
+    traverse_segments,
 };
 
 pub use datavalue::DataValue;
 
 /// JavaScript/Python-style default truthiness for a [`DataValue`].
-/// `is_truthy_arena` (config-aware) delegates here for the common
+/// `is_truthy` (config-aware) delegates here for the common
 /// truthiness modes; operators can call this directly when they need the
 /// default rules unconditionally.
 #[inline]

@@ -15,9 +15,9 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 /// the input array, which dominates for object arrays.
 ///
 /// Fast path (extractor is a root-scope `var`): keys come from
-/// `arena_traverse_segments` returning `&DataValue` directly, no key clones.
+/// `traverse_segments` returning `&DataValue` directly, no key clones.
 #[inline]
-pub(crate) fn evaluate_sort_arena<'a>(
+pub(crate) fn evaluate_sort<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -58,7 +58,7 @@ pub(crate) fn evaluate_sort_arena<'a>(
     let extractor = &args[2];
 
     // Fast path: extractor is a root-scope `var` over non-empty segments —
-    // keys come from `arena_traverse_segments` directly.
+    // keys come from `traverse_segments` directly.
     if let Some(result) = sort_fast_path_var_extractor(&src, extractor, ascending, arena) {
         return Ok(result);
     }
@@ -97,7 +97,7 @@ fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) ->
     let slice = arena.alloc_slice_fill_iter(
         indices
             .into_iter()
-            .map(|i| crate::arena::value::reborrow_arena_value(src.get(i))),
+            .map(|i| *src.get(i)),
     );
     arena.alloc(DataValue::Array(slice))
 }
@@ -130,7 +130,7 @@ fn sort_fast_path_var_extractor<'a>(
         .map(|i| {
             (
                 i,
-                crate::arena::value::arena_traverse_segments(src.get(i), segments, arena),
+                crate::arena::value::traverse_segments(src.get(i), segments, arena),
             )
         })
         .collect();
@@ -146,7 +146,7 @@ fn sort_fast_path_var_extractor<'a>(
     let slice = arena.alloc_slice_fill_iter(
         keyed
             .into_iter()
-            .map(|(i, _)| crate::arena::value::reborrow_arena_value(src.get(i))),
+            .map(|(i, _)| *src.get(i)),
     );
     Some(arena.alloc(DataValue::Array(slice)))
 }
@@ -167,7 +167,7 @@ fn sort_general_extractor<'a>(
         let item = src.get(i);
         guard.step_indexed(item, i);
         let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;
-        keys.push(crate::arena::value::reborrow_arena_value(key_av));
+        keys.push(*key_av);
     }
     drop(guard);
 
@@ -179,7 +179,7 @@ fn sort_general_extractor<'a>(
     let slice = arena.alloc_slice_fill_iter(
         indices
             .into_iter()
-            .map(|i| crate::arena::value::reborrow_arena_value(src.get(i))),
+            .map(|i| *src.get(i)),
     );
     Ok(arena.alloc(DataValue::Array(slice)))
 }
@@ -196,30 +196,30 @@ fn sort_arena_from_value<'a>(
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let arena_items_slice: &'a [DataValue<'a>] = match av {
+    let items_slice: &'a [DataValue<'a>] = match av {
         DataValue::Null => {
             return Ok(crate::arena::pool::singleton_null());
         }
         DataValue::Array(items) => items,
         _ => return Err(crate::constants::invalid_args()),
     };
-    if arena_items_slice.is_empty() {
+    if items_slice.is_empty() {
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
     let ascending = sort_direction(args, actx, engine, arena)?;
-    let n = arena_items_slice.len();
+    let n = items_slice.len();
 
     if args.len() <= 2 {
         let mut indices: Vec<usize> = (0..n).collect();
         indices.sort_by(|&a, &b| {
-            let cmp = compare_values(&arena_items_slice[a], &arena_items_slice[b]);
+            let cmp = compare_values(&items_slice[a], &items_slice[b]);
             if ascending { cmp } else { cmp.reverse() }
         });
         let items = arena.alloc_slice_fill_iter(
             indices
                 .into_iter()
-                .map(|i| crate::arena::value::reborrow_arena_value(&arena_items_slice[i])),
+                .map(|i| *&items_slice[i]),
         );
         return Ok(arena.alloc(DataValue::Array(items)));
     }
@@ -229,10 +229,10 @@ fn sort_arena_from_value<'a>(
     let extractor = &args[2];
     let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(n);
     let mut guard = IterGuard::new(actx);
-    for (i, item_av) in arena_items_slice.iter().enumerate() {
+    for (i, item_av) in items_slice.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;
-        keys.push(crate::arena::value::reborrow_arena_value(key_av));
+        keys.push(*key_av);
     }
     drop(guard);
 
@@ -245,7 +245,7 @@ fn sort_arena_from_value<'a>(
     let out = arena.alloc_slice_fill_iter(
         indices
             .into_iter()
-            .map(|i| crate::arena::value::reborrow_arena_value(&arena_items_slice[i])),
+            .map(|i| *&items_slice[i]),
     );
     Ok(arena.alloc(DataValue::Array(out)))
 }

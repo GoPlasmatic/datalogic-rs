@@ -43,7 +43,7 @@ impl QuantifierShape {
 ///   - `some`: early_truthy = true (true ⇒ return true immediately)
 ///   - `none`: same as `some` but invert the final result
 #[inline]
-fn evaluate_quantifier_arena<'a>(
+fn evaluate_quantifier<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -93,7 +93,7 @@ fn evaluate_quantifier_arena<'a>(
         let item = src.get(i);
         guard.step_indexed(item, i);
         let av = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
+        if crate::arena::is_truthy(av, engine) == shape.short_circuit_on {
             found_short = true;
             break;
         }
@@ -124,10 +124,10 @@ fn quantifier_arena_bridge<'a>(
             for (i, (k, v)) in pairs.iter().enumerate() {
                 // SAFETY: pairs[i].1 lives in the arena for `'a`.
                 let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-                let key_arena: &'a str = k;
-                guard.step_keyed(item_av, i, key_arena);
+                let key: &'a str = k;
+                guard.step_keyed(item_av, i, key);
                 let av = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-                if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
+                if crate::arena::is_truthy(av, engine) == shape.short_circuit_on {
                     found_short = true;
                     break;
                 }
@@ -145,7 +145,7 @@ fn quantifier_arena_bridge<'a>(
             for (i, item_av) in items.iter().enumerate() {
                 guard.step_indexed(item_av, i);
                 let av = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-                if crate::arena::is_truthy_arena(av, engine) == shape.short_circuit_on {
+                if crate::arena::is_truthy(av, engine) == shape.short_circuit_on {
                     found_short = true;
                     break;
                 }
@@ -160,7 +160,7 @@ fn quantifier_arena_bridge<'a>(
 
 /// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.
 #[inline]
-pub(crate) fn evaluate_all_arena<'a>(
+pub(crate) fn evaluate_all<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -169,7 +169,7 @@ pub(crate) fn evaluate_all_arena<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // all: early-exit on false; empty array ⇒ false (matching existing impl,
     // which deliberately rejects vacuous truth).
-    evaluate_quantifier_arena(
+    evaluate_quantifier(
         args,
         iter_arg_kind,
         actx,
@@ -185,7 +185,7 @@ pub(crate) fn evaluate_all_arena<'a>(
 
 /// Arena-mode `some` — true iff any item satisfies predicate. Short-circuits on true.
 #[inline]
-pub(crate) fn evaluate_some_arena<'a>(
+pub(crate) fn evaluate_some<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -193,7 +193,7 @@ pub(crate) fn evaluate_some_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // some: early-exit on true; empty array ⇒ false.
-    evaluate_quantifier_arena(
+    evaluate_quantifier(
         args,
         iter_arg_kind,
         actx,
@@ -209,7 +209,7 @@ pub(crate) fn evaluate_some_arena<'a>(
 
 /// Arena-mode `none` — true iff no item satisfies predicate. Short-circuits on true.
 #[inline]
-pub(crate) fn evaluate_none_arena<'a>(
+pub(crate) fn evaluate_none<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     actx: &mut DataContextStack<'a>,
@@ -217,7 +217,7 @@ pub(crate) fn evaluate_none_arena<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // none: early-exit on true (then return false); empty array ⇒ true.
-    evaluate_quantifier_arena(
+    evaluate_quantifier(
         args,
         iter_arg_kind,
         actx,

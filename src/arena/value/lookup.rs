@@ -1,7 +1,7 @@
 //! Object key equality and field lookup. Both are micro-optimised: the hot
 //! path here is variable resolution, so `key_eq` sidesteps the libc
 //! `memcmp` call that `<&str as PartialEq>` lowers to (size-class dispatch
-//! covers up to 16-byte keys), and `arena_object_lookup_field` adds a
+//! covers up to 16-byte keys), and `object_lookup_field` adds a
 //! length + first-byte prefilter so non-matching pairs reject in a single
 //! byte compare before reaching the byte loop.
 
@@ -78,7 +78,7 @@ pub(crate) fn key_eq(a: &str, b: &str) -> bool {
 /// `key_eq` byte loop. Empty targets fall through to `key_eq` directly,
 /// which length-checks correctly.
 #[inline(always)]
-pub(crate) fn arena_object_lookup_field<'a>(
+pub(crate) fn object_lookup_field<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
     target: &str,
 ) -> Option<&'a DataValue<'a>> {

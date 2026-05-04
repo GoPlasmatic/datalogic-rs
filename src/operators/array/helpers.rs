@@ -183,7 +183,7 @@ impl FastPredicate {
         if segments.is_empty() {
             Some(item)
         } else {
-            crate::arena::value::arena_traverse_segments(item, segments, arena)
+            crate::arena::value::traverse_segments(item, segments, arena)
         }
     }
 
@@ -201,7 +201,7 @@ impl FastPredicate {
                 negate,
             } => {
                 let matches = match Self::resolve_value(var_path, item, arena) {
-                    Some(av) => arena_value_equals_value(av, literal),
+                    Some(av) => value_equals_serde(av, literal),
                     None => false,
                 };
                 if *negate { !matches } else { matches }
@@ -243,44 +243,6 @@ impl FastPredicate {
     }
 }
 
-/// Strict equality between two `DataValue`s.
-#[inline]
-pub(super) fn arena_value_equals_arena(a: &DataValue<'_>, b: &DataValue<'_>) -> bool {
-    match (a, b) {
-        (DataValue::Null, DataValue::Null) => true,
-        (DataValue::Bool(x), DataValue::Bool(y)) => x == y,
-        (DataValue::Number(x), DataValue::Number(y)) => match (x.as_i64(), y.as_i64()) {
-            (Some(a), Some(b)) => a == b,
-            _ => x.as_f64() == y.as_f64(),
-        },
-        (DataValue::String(x), DataValue::String(y)) => *x == *y,
-        (DataValue::Array(x), DataValue::Array(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .zip(y.iter())
-                    .all(|(a, b)| arena_value_equals_arena(a, b))
-        }
-        (DataValue::Object(x), DataValue::Object(y)) => {
-            if x.len() != y.len() {
-                return false;
-            }
-            for (k, v) in *x {
-                let found = y.iter().find(|(yk, _)| *yk == *k).map(|(_, yv)| yv);
-                match found {
-                    Some(yv) => {
-                        if !arena_value_equals_arena(v, yv) {
-                            return false;
-                        }
-                    }
-                    None => return false,
-                }
-            }
-            true
-        }
-        _ => false,
-    }
-}
-
 /// Strict equality between a [`DataValue`] (arena) and an
 /// [`OwnedDataValue`] literal — used by `FastPredicate::StrictEq` to
 /// compare an arena-resident item against a compile-time literal without
@@ -292,7 +254,7 @@ pub(super) fn arena_value_equals_arena(a: &DataValue<'_>, b: &DataValue<'_>) -> 
 /// (Array/Object) trampoline to an outlined helper to keep the inlined
 /// body small.
 #[inline(always)]
-fn arena_value_equals_value(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
+fn value_equals_serde(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
     use datavalue::OwnedDataValue;
     match (av, v) {
         (DataValue::Null, OwnedDataValue::Null) => true,
@@ -301,16 +263,16 @@ fn arena_value_equals_value(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -
         (DataValue::String(s), OwnedDataValue::String(b)) => *s == b.as_str(),
         (DataValue::Array(_), OwnedDataValue::Array(_))
         | (DataValue::Object(_), OwnedDataValue::Object(_)) => {
-            arena_value_equals_value_compound(av, v)
+            value_equals_serde_compound(av, v)
         }
         _ => false,
     }
 }
 
-/// Compound (Array/Object) cases of [`arena_value_equals_value`]. Outlined
+/// Compound (Array/Object) cases of [`value_equals_serde`]. Outlined
 /// so the recursive body never gets inlined into the per-item fast path.
 #[inline(never)]
-fn arena_value_equals_value_compound(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
+fn value_equals_serde_compound(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool {
     use datavalue::OwnedDataValue;
     match (av, v) {
         (DataValue::Array(items), OwnedDataValue::Array(b)) => {
@@ -318,7 +280,7 @@ fn arena_value_equals_value_compound(av: &DataValue<'_>, v: &datavalue::OwnedDat
                 && items
                     .iter()
                     .zip(b.iter())
-                    .all(|(x, y)| arena_value_equals_value(x, y))
+                    .all(|(x, y)| value_equals_serde(x, y))
         }
         (DataValue::Object(pairs), OwnedDataValue::Object(b)) => {
             if pairs.len() != b.len() {
@@ -327,7 +289,7 @@ fn arena_value_equals_value_compound(av: &DataValue<'_>, v: &datavalue::OwnedDat
             for (k, av) in *pairs {
                 match b.iter().find(|(bk, _)| bk == *k) {
                     Some((_, bv)) => {
-                        if !arena_value_equals_value(av, bv) {
+                        if !value_equals_serde(av, bv) {
                             return false;
                         }
                     }
@@ -414,7 +376,7 @@ pub enum IterArgKind {
 
 impl IterArgKind {
     /// Classify `args[0]` at compile time. Called from
-    /// [`crate::node::populate_arena_lits`] whenever the parent
+    /// [`crate::node::populate_lits`] whenever the parent
     /// `BuiltinOperator` is one of the iterator ops listed above.
     pub(crate) fn classify(arg: &CompiledNode) -> Self {
         if let CompiledNode::CompiledVar {
@@ -467,23 +429,23 @@ pub(crate) fn resolve_iter_input<'a>(
         let av = if path_segments_empty {
             Some(root)
         } else if let CompiledNode::CompiledVar { segments, .. } = arg {
-            crate::arena::value::arena_traverse_segments(root, segments, arena)
+            crate::arena::value::traverse_segments(root, segments, arena)
         } else {
             // Compile-time invariant violated; fall through to General path.
             None
         };
         if let Some(av) = av {
-            return Ok(arena_value_as_iter(av));
+            return Ok(value_as_iter(av));
         }
     }
 
     let av = engine.evaluate_node(arg, actx, arena)?;
-    Ok(arena_value_as_iter(av))
+    Ok(value_as_iter(av))
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
 #[inline]
-fn arena_value_as_iter<'a>(av: &'a DataValue<'a>) -> ResolvedInput<'a> {
+fn value_as_iter<'a>(av: &'a DataValue<'a>) -> ResolvedInput<'a> {
     match av {
         DataValue::Null => ResolvedInput::Empty,
         DataValue::Array(items) => ResolvedInput::Iterable(IterSrc(items)),

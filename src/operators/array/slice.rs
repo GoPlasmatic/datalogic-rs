@@ -7,7 +7,7 @@ use bumpalo::Bump;
 /// Native arena-mode `slice`. Returns array slices as views over arena items;
 /// string slices are allocated in the arena.
 #[inline]
-pub(crate) fn evaluate_slice_arena<'a>(
+pub(crate) fn evaluate_slice<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -70,9 +70,7 @@ fn slice_array<'a>(
     }
     let mut out = bvec::<DataValue<'a>>(arena, indices.len());
     for i in indices {
-        out.push(crate::arena::value::reborrow_arena_value(
-            &items[i as usize],
-        ));
+        out.push(items[i as usize]);
     }
     arena.alloc(DataValue::Array(out.into_bump_slice()))
 }
@@ -88,8 +86,8 @@ fn slice_string<'a>(
 ) -> &'a DataValue<'a> {
     let chars: Vec<char> = s.chars().collect();
     let result_string = slice_chars(&chars, chars.len() as i64, start, end, step);
-    let s_arena: &'a str = arena.alloc_str(&result_string);
-    arena.alloc(DataValue::String(s_arena))
+    let s: &'a str = arena.alloc_str(&result_string);
+    arena.alloc(DataValue::String(s))
 }
 
 #[inline]

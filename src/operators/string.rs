@@ -7,11 +7,11 @@ use crate::{CompiledNode, DataLogic, Result};
 // build the result. For string-producing ops, the result is allocated as
 // `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
 
-use crate::arena::{DataContextStack, DataValue, to_string_arena};
+use crate::arena::{DataContextStack, DataValue, data_to_str};
 use bumpalo::Bump;
 
 #[inline]
-pub(crate) fn evaluate_cat_arena<'a>(
+pub(crate) fn evaluate_cat<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -25,10 +25,10 @@ pub(crate) fn evaluate_cat_arena<'a>(
             // For arrays, concat each item's string form.
             DataValue::Array(items) => {
                 for it in *items {
-                    buf.push_str(to_string_arena(it, arena));
+                    buf.push_str(data_to_str(it, arena));
                 }
             }
-            _ => buf.push_str(to_string_arena(av, arena)),
+            _ => buf.push_str(data_to_str(av, arena)),
         }
     }
     Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
@@ -37,7 +37,7 @@ pub(crate) fn evaluate_cat_arena<'a>(
 /// `substr` — char-indexed substring extraction. Negative start counts from
 /// end; negative length is treated as an end position.
 #[inline]
-pub(crate) fn evaluate_substr_arena<'a>(
+pub(crate) fn evaluate_substr<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -48,7 +48,7 @@ pub(crate) fn evaluate_substr_arena<'a>(
     }
 
     let s_av = engine.evaluate_node(&args[0], actx, arena)?;
-    let string = to_string_arena(s_av, arena);
+    let string = data_to_str(s_av, arena);
     let char_count = string.chars().count();
 
     // Read start (defaults to 0). Literal fast path skips dispatch.
@@ -116,7 +116,7 @@ pub(crate) fn evaluate_substr_arena<'a>(
 /// Native arena-mode `in` — checks whether a needle is contained in a
 /// haystack (string-substring, array-element).
 #[inline]
-pub(crate) fn evaluate_in_arena<'a>(
+pub(crate) fn evaluate_in<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -137,7 +137,7 @@ pub(crate) fn evaluate_in_arena<'a>(
         // Array haystack — element-equality check via arena-native
         // strict-equals.
         DataValue::Array(items) => items.iter().any(|it| {
-            crate::operators::comparison::compare_equals_arena(it, needle, true, engine)
+            crate::operators::comparison::compare_equals(it, needle, true, engine)
                 .unwrap_or(false)
         }),
         _ => false,
@@ -147,7 +147,7 @@ pub(crate) fn evaluate_in_arena<'a>(
 
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_starts_with_arena<'a>(
+pub(crate) fn evaluate_starts_with<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -158,14 +158,14 @@ pub(crate) fn evaluate_starts_with_arena<'a>(
     }
     let s = engine.evaluate_node(&args[0], actx, arena)?;
     let p = engine.evaluate_node(&args[1], actx, arena)?;
-    let s_str = to_string_arena(s, arena);
-    let p_str = to_string_arena(p, arena);
+    let s_str = data_to_str(s, arena);
+    let p_str = data_to_str(p, arena);
     Ok(crate::arena::pool::singleton_bool(s_str.starts_with(p_str)))
 }
 
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_ends_with_arena<'a>(
+pub(crate) fn evaluate_ends_with<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -176,14 +176,14 @@ pub(crate) fn evaluate_ends_with_arena<'a>(
     }
     let s = engine.evaluate_node(&args[0], actx, arena)?;
     let p = engine.evaluate_node(&args[1], actx, arena)?;
-    let s_str = to_string_arena(s, arena);
-    let p_str = to_string_arena(p, arena);
+    let s_str = data_to_str(s, arena);
+    let p_str = data_to_str(p, arena);
     Ok(crate::arena::pool::singleton_bool(s_str.ends_with(p_str)))
 }
 
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_upper_arena<'a>(
+pub(crate) fn evaluate_upper<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -193,13 +193,13 @@ pub(crate) fn evaluate_upper_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let av = engine.evaluate_node(&args[0], actx, arena)?;
-    let s = to_string_arena(av, arena);
+    let s = data_to_str(av, arena);
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&s.to_uppercase()))))
 }
 
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_lower_arena<'a>(
+pub(crate) fn evaluate_lower<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -209,13 +209,13 @@ pub(crate) fn evaluate_lower_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let av = engine.evaluate_node(&args[0], actx, arena)?;
-    let s = to_string_arena(av, arena);
+    let s = data_to_str(av, arena);
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&s.to_lowercase()))))
 }
 
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_trim_arena<'a>(
+pub(crate) fn evaluate_trim<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -225,7 +225,7 @@ pub(crate) fn evaluate_trim_arena<'a>(
         return Err(crate::constants::invalid_args());
     }
     let av = engine.evaluate_node(&args[0], actx, arena)?;
-    let s = to_string_arena(av, arena);
+    let s = data_to_str(av, arena);
     Ok(arena.alloc(DataValue::String(arena.alloc_str(s.trim()))))
 }
 
@@ -233,7 +233,7 @@ pub(crate) fn evaluate_trim_arena<'a>(
 /// building the result directly in the arena.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_split_arena<'a>(
+pub(crate) fn evaluate_split<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -245,7 +245,7 @@ pub(crate) fn evaluate_split_arena<'a>(
     let text_av = engine.evaluate_node(&args[0], actx, arena)?;
     let text_str: &'a str = match text_av {
         DataValue::String(s) => s,
-        _ => to_string_arena(text_av, arena),
+        _ => data_to_str(text_av, arena),
     };
 
     // Resolve the delimiter as a string. Literal-string fast path skips dispatch.
@@ -259,7 +259,7 @@ pub(crate) fn evaluate_split_arena<'a>(
         let av = engine.evaluate_node(&args[1], actx, arena)?;
         match av {
             DataValue::String(s) => s,
-            _ => to_string_arena(av, arena),
+            _ => data_to_str(av, arena),
         }
     };
 

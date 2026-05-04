@@ -2,14 +2,14 @@
 //! optional datetime/duration support.
 
 use crate::arena::{
-    DataContextStack, DataValue, coerce_arena_to_number_cfg, try_coerce_arena_to_integer_cfg,
+    DataContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg,
 };
 use crate::value::NumberValue;
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
-    ArithOp, NanAction, VariadicFoldSpec, arena_number, arena_variadic_fold, coerce_pair_f64,
+    ArithOp, NanAction, VariadicFoldSpec, alloc_number, variadic_fold, coerce_pair_f64,
     coerce_pair_int, handle_nan, try_int_op,
 };
 
@@ -17,22 +17,22 @@ use super::helpers::{
 /// 1-arg single value (coerce + return), 2-arg (numeric or datetime native),
 /// and variadic (sum all args).
 #[inline]
-pub(crate) fn evaluate_add_arena<'a>(
+pub(crate) fn evaluate_add<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena_number(arena, NumberValue::from_i64(0)));
+        return Ok(alloc_number(arena, NumberValue::from_i64(0)));
     }
     if args.len() == 1 {
-        return arena_one_arg_arith(&args[0], actx, engine, arena, ArithOp::Add);
+        return one_arg_arith(&args[0], actx, engine, arena, ArithOp::Add);
     }
     if args.len() == 2 {
         return add_two_arg(&args[0], &args[1], actx, engine, arena);
     }
-    arena_variadic_fold(
+    variadic_fold(
         args,
         actx,
         engine,
@@ -59,7 +59,7 @@ fn add_two_arg<'a>(
 
     // Integer-preserving fast path (both native Number with i64 values).
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             try_int_op(ia, ib, i64::checked_add, |x, y| x + y),
         ));
@@ -67,19 +67,19 @@ fn add_two_arg<'a>(
 
     // Config-aware arena-native coercion (covers bool/null/string operands).
     if let Some((i1, i2)) = coerce_pair_int(a_av, b_av, engine) {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             try_int_op(i1, i2, i64::checked_add, |x, y| x + y),
         ));
     }
     if let Some((f1, f2)) = coerce_pair_f64(a_av, b_av, engine) {
-        return Ok(arena_number(arena, NumberValue::from_f64(f1 + f2)));
+        return Ok(alloc_number(arena, NumberValue::from_f64(f1 + f2)));
     }
 
     // Datetime / duration arithmetic.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = super::datetime_arith::arena_datetime_add(a_av, b_av, arena) {
+        if let Some(av) = super::datetime_arith::datetime_add(a_av, b_av, arena) {
             return Ok(av);
         }
     }
@@ -87,7 +87,7 @@ fn add_two_arg<'a>(
     // Non-numeric, non-datetime — handle NaN per config.
     let mut sum = 0.0f64;
     for av in [a_av, b_av] {
-        if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
+        if let Some(f) = coerce_to_number_cfg(av, engine) {
             sum += f;
         } else {
             match handle_nan(engine)? {
@@ -96,28 +96,28 @@ fn add_two_arg<'a>(
             }
         }
     }
-    Ok(arena_number(arena, NumberValue::from_f64(sum)))
+    Ok(alloc_number(arena, NumberValue::from_f64(sum)))
 }
 
 /// Arena-mode `*`. 0-arg (1), 1-arg array (product), 1-arg scalar,
 /// 2-arg (numeric or duration*scalar native), variadic.
 #[inline]
-pub(crate) fn evaluate_multiply_arena<'a>(
+pub(crate) fn evaluate_multiply<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena_number(arena, NumberValue::from_i64(1)));
+        return Ok(alloc_number(arena, NumberValue::from_i64(1)));
     }
     if args.len() == 1 {
-        return arena_one_arg_arith(&args[0], actx, engine, arena, ArithOp::Multiply);
+        return one_arg_arith(&args[0], actx, engine, arena, ArithOp::Multiply);
     }
     if args.len() == 2 {
         return multiply_two_arg(&args[0], &args[1], actx, engine, arena);
     }
-    arena_variadic_fold(
+    variadic_fold(
         args,
         actx,
         engine,
@@ -144,7 +144,7 @@ fn multiply_two_arg<'a>(
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             try_int_op(ia, ib, i64::checked_mul, |x, y| x * y),
         ));
@@ -154,25 +154,25 @@ fn multiply_two_arg<'a>(
     // inputs aren't coerced to None and lost.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = super::datetime_arith::arena_datetime_multiply(a_av, b_av, arena) {
+        if let Some(av) = super::datetime_arith::datetime_multiply(a_av, b_av, arena) {
             return Ok(av);
         }
     }
 
     if let Some((i1, i2)) = coerce_pair_int(a_av, b_av, engine) {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             try_int_op(i1, i2, i64::checked_mul, |x, y| x * y),
         ));
     }
     if let Some((f1, f2)) = coerce_pair_f64(a_av, b_av, engine) {
-        return Ok(arena_number(arena, NumberValue::from_f64(f1 * f2)));
+        return Ok(alloc_number(arena, NumberValue::from_f64(f1 * f2)));
     }
 
     // Non-numeric — handle NaN per config (multiplicative identity is 1).
     let mut product = 1.0f64;
     for av in [a_av, b_av] {
-        if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
+        if let Some(f) = coerce_to_number_cfg(av, engine) {
             product *= f;
         } else {
             match handle_nan(engine)? {
@@ -181,13 +181,13 @@ fn multiply_two_arg<'a>(
             }
         }
     }
-    Ok(arena_number(arena, NumberValue::from_f64(product)))
+    Ok(alloc_number(arena, NumberValue::from_f64(product)))
 }
 
 /// Arena-mode `-`. Handles 1-arg (negate / array fold), 2-arg primary
 /// (numeric or datetime), and variadic (left-fold subtractive).
 #[inline]
-pub(crate) fn evaluate_subtract_arena<'a>(
+pub(crate) fn evaluate_subtract<'a>(
     args: &'a [CompiledNode],
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -219,26 +219,26 @@ fn subtract_one_arg<'a>(
         if items.is_empty() {
             return Err(crate::constants::invalid_args());
         }
-        let mut result = coerce_arena_to_number_cfg(&items[0], engine)
+        let mut result = coerce_to_number_cfg(&items[0], engine)
             .ok_or_else(crate::constants::nan_error)?;
         for elem in &items[1..] {
             let n =
-                coerce_arena_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
+                coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
             result -= n;
         }
-        return Ok(arena_number(arena, NumberValue::from_f64(result)));
+        return Ok(alloc_number(arena, NumberValue::from_f64(result)));
     }
     // Negate single value (preserve integer typing when possible).
     if let Some(i) = av.as_i64() {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             i.checked_neg()
                 .map(NumberValue::from_i64)
                 .unwrap_or_else(|| NumberValue::from_f64(-(i as f64))),
         ));
     }
-    if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
-        return Ok(arena_number(arena, NumberValue::from_f64(-f)));
+    if let Some(f) = coerce_to_number_cfg(av, engine) {
+        return Ok(alloc_number(arena, NumberValue::from_f64(-f)));
     }
     Err(crate::constants::nan_error())
 }
@@ -256,26 +256,26 @@ fn subtract_two_arg<'a>(
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             try_int_op(ia, ib, i64::checked_sub, |x, y| x - y),
         ));
     }
 
     if let Some((i1, i2)) = coerce_pair_int(a_av, b_av, engine) {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             try_int_op(i1, i2, i64::checked_sub, |x, y| x - y),
         ));
     }
     if let Some((f1, f2)) = coerce_pair_f64(a_av, b_av, engine) {
-        return Ok(arena_number(arena, NumberValue::from_f64(f1 - f2)));
+        return Ok(alloc_number(arena, NumberValue::from_f64(f1 - f2)));
     }
 
     // Datetime / duration arithmetic.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = super::datetime_arith::arena_datetime_subtract(a_av, b_av, arena) {
+        if let Some(av) = super::datetime_arith::datetime_subtract(a_av, b_av, arena) {
             return Ok(av);
         }
     }
@@ -293,12 +293,12 @@ fn subtract_variadic<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.evaluate_node(&args[0], actx, arena)?;
     let mut all_int =
-        first_av.as_i64().is_some() || try_coerce_arena_to_integer_cfg(first_av, engine).is_some();
+        first_av.as_i64().is_some() || try_coerce_to_integer_cfg(first_av, engine).is_some();
     let mut int_acc: i64 = first_av
         .as_i64()
-        .or_else(|| try_coerce_arena_to_integer_cfg(first_av, engine))
+        .or_else(|| try_coerce_to_integer_cfg(first_av, engine))
         .unwrap_or_default();
-    let mut float_acc: f64 = match coerce_arena_to_number_cfg(first_av, engine) {
+    let mut float_acc: f64 = match coerce_to_number_cfg(first_av, engine) {
         Some(f) => f,
         None => return Err(crate::constants::nan_error()),
     };
@@ -308,7 +308,7 @@ fn subtract_variadic<'a>(
         if all_int
             && let Some(i) = av
                 .as_i64()
-                .or_else(|| try_coerce_arena_to_integer_cfg(av, engine))
+                .or_else(|| try_coerce_to_integer_cfg(av, engine))
         {
             match int_acc.checked_sub(i) {
                 Some(r) => int_acc = r,
@@ -319,7 +319,7 @@ fn subtract_variadic<'a>(
             }
             continue;
         }
-        if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
+        if let Some(f) = coerce_to_number_cfg(av, engine) {
             if all_int {
                 all_int = false;
                 float_acc = int_acc as f64 - f;
@@ -335,15 +335,15 @@ fn subtract_variadic<'a>(
     }
 
     if all_int {
-        Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+        Ok(alloc_number(arena, NumberValue::from_i64(int_acc)))
     } else {
-        Ok(arena_number(arena, NumberValue::from_f64(float_acc)))
+        Ok(alloc_number(arena, NumberValue::from_f64(float_acc)))
     }
 }
 
 /// 1-arg `+` / `*`: literal-array reject, then either array-fold the elements
 /// or treat as a single-value sum/product.
-fn arena_one_arg_arith<'a>(
+fn one_arg_arith<'a>(
     arg: &'a CompiledNode,
     actx: &mut DataContextStack<'a>,
     engine: &DataLogic,
@@ -362,7 +362,7 @@ fn arena_one_arg_arith<'a>(
         );
     if is_literal_array {
         return match handle_nan(engine)? {
-            NanAction::Skip => Ok(arena_number(
+            NanAction::Skip => Ok(alloc_number(
                 arena,
                 NumberValue::from_i64(op.identity_int()),
             )),
@@ -378,23 +378,23 @@ fn arena_one_arg_arith<'a>(
     }
 
     // Non-array single value: coerce and return (op identity * coerced).
-    if let Some(i) = try_coerce_arena_to_integer_cfg(av, engine) {
+    if let Some(i) = try_coerce_to_integer_cfg(av, engine) {
         return match op.combine_int(op.identity_int(), i) {
-            Some(r) => Ok(arena_number(arena, NumberValue::from_i64(r))),
-            None => Ok(arena_number(
+            Some(r) => Ok(alloc_number(arena, NumberValue::from_i64(r))),
+            None => Ok(alloc_number(
                 arena,
                 NumberValue::from_f64(op.combine_f(op.identity_int() as f64, i as f64)),
             )),
         };
     }
-    if let Some(f) = coerce_arena_to_number_cfg(av, engine) {
-        return Ok(arena_number(
+    if let Some(f) = coerce_to_number_cfg(av, engine) {
+        return Ok(alloc_number(
             arena,
             NumberValue::from_f64(op.combine_f(op.identity_int() as f64, f)),
         ));
     }
     match handle_nan(engine)? {
-        NanAction::Skip => Ok(arena_number(
+        NanAction::Skip => Ok(alloc_number(
             arena,
             NumberValue::from_i64(op.identity_int()),
         )),
@@ -412,7 +412,7 @@ fn one_arg_array_fold<'a>(
     op: ArithOp,
 ) -> Result<&'a DataValue<'a>> {
     if items.is_empty() {
-        return Ok(arena_number(
+        return Ok(alloc_number(
             arena,
             NumberValue::from_i64(op.identity_int()),
         ));
@@ -421,9 +421,9 @@ fn one_arg_array_fold<'a>(
     let mut int_acc: i64 = op.identity_int();
     let mut float_acc: f64 = op.identity_int() as f64;
     for item in items.iter() {
-        let int_opt = try_coerce_arena_to_integer_cfg(item, engine);
+        let int_opt = try_coerce_to_integer_cfg(item, engine);
         let float_opt = if int_opt.is_none() {
-            coerce_arena_to_number_cfg(item, engine)
+            coerce_to_number_cfg(item, engine)
         } else {
             None
         };
@@ -454,8 +454,8 @@ fn one_arg_array_fold<'a>(
         }
     }
     if all_int {
-        Ok(arena_number(arena, NumberValue::from_i64(int_acc)))
+        Ok(alloc_number(arena, NumberValue::from_i64(int_acc)))
     } else {
-        Ok(arena_number(arena, NumberValue::from_f64(float_acc)))
+        Ok(alloc_number(arena, NumberValue::from_f64(float_acc)))
     }
 }
