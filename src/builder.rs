@@ -2,8 +2,8 @@
 //!
 //! Replaces the four ad-hoc 4.x constructors (`new`, `with_preserve_structure`,
 //! `with_config`, `with_config_and_structure`) with a single fluent builder.
-//! All four are still reachable through `crate::compat::DataLogicLegacyExt` —
-//! see that module for the deprecated shims.
+//! All four are still reachable through `crate::compat::LegacyApi` — see that
+//! module for the deprecated shims.
 
 use std::collections::HashMap;
 

@@ -383,11 +383,3 @@ impl LegacyApi for DataLogic {
         DataLogic::add_operator(self, name, operator)
     }
 }
-
-/// Deprecated alias for [`LegacyApi`]. Kept so 4.x callers using
-/// `DataLogicLegacyExt` keep compiling — switch to `LegacyApi` for clarity.
-#[deprecated(
-    since = "5.0.0",
-    note = "renamed to `LegacyApi`; this alias will be removed in 5.1"
-)]
-pub use self::LegacyApi as DataLogicLegacyExt;
