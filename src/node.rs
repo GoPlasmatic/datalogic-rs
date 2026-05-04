@@ -610,15 +610,6 @@ impl CompiledLogic {
     pub fn is_static(&self) -> bool {
         node_is_static(&self.root)
     }
-
-    /// Conservative arena capacity for one evaluation of this rule:
-    /// `static_bytes × 2`, with a 4 KiB floor. Currently unused — kept for
-    /// the thread-local arena pool wiring that may return in 5.x.
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn static_arena_capacity(&self) -> usize {
-        self.arena_static_bytes.saturating_mul(2).max(4096)
-    }
 }
 
 /// Estimate the static (rule-dependent, data-independent) portion of arena

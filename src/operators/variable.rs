@@ -14,13 +14,39 @@ use crate::{CompiledNode, Error, Result};
 use crate::arena::{DataContextStack, DataValue};
 use bumpalo::Bump;
 
+/// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) against
+/// the current frame, returning the singleton/string handle if it matches.
+/// Used by both the multi-arg and single-arg array branches of
+/// [`evaluate_val`] — extracted so the branches don't drift.
+#[inline]
+fn metadata_hint_lookup<'a>(
+    ctx: &DataContextStack<'a>,
+    path: &str,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
+    if path == "index" {
+        let idx = ctx.current().get_index()?;
+        let i = idx as i64;
+        return Some(
+            crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
+                arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
+            }),
+        );
+    }
+    if path == "key" {
+        let key = ctx.current().get_key()?;
+        return Some(arena.alloc(DataValue::String(key)));
+    }
+    None
+}
+
 /// Return the current frame's data as an `&'a DataValue<'a>`. Root and frame
 /// branches both return their stored `&DataValue` directly — no per-call
 /// allocation.
 #[inline(always)]
-fn current_data_av<'a>(actx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
+fn current_data_av<'a>(ctx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
     use crate::arena::context::ContextRef;
-    match actx.current() {
+    match ctx.current() {
         ContextRef::Frame(f) => f.data(),
         ContextRef::Root(av) => av,
     }
@@ -29,12 +55,12 @@ fn current_data_av<'a>(actx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a Dat
 /// Frame data at a given level (or `None` if the level walks past the root).
 #[inline]
 fn frame_data_at_level<'a>(
-    actx: &DataContextStack<'a>,
+    ctx: &DataContextStack<'a>,
     level: isize,
     _arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     use crate::arena::context::ContextRef;
-    let aref = actx.get_at_level(level)?;
+    let aref = ctx.get_at_level(level)?;
     Some(match aref {
         ContextRef::Frame(f) => f.data(),
         ContextRef::Root(av) => av,
@@ -82,7 +108,7 @@ pub(crate) struct CompiledVarSpec<'n> {
 #[inline(always)]
 pub(crate) fn evaluate_compiled_var<'a>(
     spec: CompiledVarSpec<'a>,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -101,9 +127,9 @@ pub(crate) fn evaluate_compiled_var<'a>(
     if metadata_hint == MetadataHint::None
         && reduce_hint == ReduceHint::None
         && scope_level == 0
-        && actx.depth() == 0
+        && ctx.depth() == 0
     {
-        let root_av = actx.root_input();
+        let root_av = ctx.root_input();
         let resolved = if segments.is_empty() {
             Some(root_av)
         } else {
@@ -111,21 +137,20 @@ pub(crate) fn evaluate_compiled_var<'a>(
         };
         return match resolved {
             Some(av) => Ok(av),
-            None => default_or_null(default_value, actx, engine, arena),
+            None => default_or_null(default_value, ctx, engine, arena),
         };
     }
 
-    if let Some(av) = resolve_metadata_hint(metadata_hint, actx, arena) {
+    if let Some(av) = resolve_metadata_hint(metadata_hint, ctx, arena) {
         return Ok(av);
     }
 
-    if let Some(res) =
-        resolve_reduce_hint(reduce_hint, segments, actx, engine, arena, default_value)
+    if let Some(res) = resolve_reduce_hint(reduce_hint, segments, ctx, engine, arena, default_value)
     {
         return res;
     }
 
-    resolve_via_context_stack(scope_level, segments, actx, engine, arena, default_value)
+    resolve_via_context_stack(scope_level, segments, ctx, engine, arena, default_value)
 }
 
 /// Stage 1 — metadata hints (`index` / `key`) read from the current iteration
@@ -134,11 +159,11 @@ pub(crate) fn evaluate_compiled_var<'a>(
 #[inline]
 fn resolve_metadata_hint<'a>(
     hint: MetadataHint,
-    actx: &DataContextStack<'a>,
+    ctx: &DataContextStack<'a>,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     match hint {
-        MetadataHint::Index => actx.current().get_index().map(|idx| {
+        MetadataHint::Index => ctx.current().get_index().map(|idx| {
             let i = idx as i64;
             crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
                 &*arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
@@ -147,7 +172,7 @@ fn resolve_metadata_hint<'a>(
         // `key` already has lifetime `'a` (object pairs live in the arena
         // for the call) — no `alloc_str` copy needed; only the `String`
         // wrapper requires a bump alloc.
-        MetadataHint::Key => actx
+        MetadataHint::Key => ctx
             .current()
             .get_key()
             .map(|key| &*arena.alloc(DataValue::String(key))),
@@ -165,16 +190,16 @@ fn resolve_metadata_hint<'a>(
 fn resolve_reduce_hint<'a>(
     reduce_hint: ReduceHint,
     segments: &[PathSegment],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
     default_value: Option<&'a CompiledNode>,
 ) -> Option<Result<&'a DataValue<'a>>> {
-    if reduce_hint == ReduceHint::None || actx.depth() == 0 {
+    if reduce_hint == ReduceHint::None || ctx.depth() == 0 {
         return None;
     }
     use crate::arena::context::ContextRef;
-    let ContextRef::Frame(f) = actx.current() else {
+    let ContextRef::Frame(f) = ctx.current() else {
         return None;
     };
 
@@ -193,7 +218,7 @@ fn resolve_reduce_hint<'a>(
             let resolved = crate::arena::value::traverse_segments(slot, &segments[1..], arena);
             Some(match resolved {
                 Some(av) => Ok(av),
-                None => default_or_null(default_value, actx, engine, arena),
+                None => default_or_null(default_value, ctx, engine, arena),
             })
         }
         ReduceHint::None => unreachable!(),
@@ -206,16 +231,16 @@ fn resolve_reduce_hint<'a>(
 fn resolve_via_context_stack<'a>(
     scope_level: u32,
     segments: &[PathSegment],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
     default_value: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
     use crate::arena::context::ContextRef;
     let aref = if scope_level == 0 {
-        actx.current()
+        ctx.current()
     } else {
-        actx.get_at_level(scope_level as isize)
+        ctx.get_at_level(scope_level as isize)
             .ok_or(Error::invalid_context_level(scope_level as isize))?
     };
     let av = match aref {
@@ -227,7 +252,7 @@ fn resolve_via_context_stack<'a>(
     }
     match crate::arena::value::traverse_segments(av, segments, arena) {
         Some(child) => Ok(child),
-        None => default_or_null(default_value, actx, engine, arena),
+        None => default_or_null(default_value, ctx, engine, arena),
     }
 }
 
@@ -237,21 +262,21 @@ fn resolve_via_context_stack<'a>(
 pub(crate) fn evaluate_compiled_exists<'a>(
     scope_level: u32,
     segments: &[PathSegment],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // Root scope at depth 0: walk input directly (no clone, no frame access).
-    if scope_level == 0 && actx.depth() == 0 {
+    if scope_level == 0 && ctx.depth() == 0 {
         let found = segments.is_empty()
-            || crate::arena::value::traverse_segments(actx.root_input(), segments, arena).is_some();
+            || crate::arena::value::traverse_segments(ctx.root_input(), segments, arena).is_some();
         return Ok(crate::arena::pool::singleton_bool(found));
     }
 
     use crate::arena::context::ContextRef;
     let aref = if scope_level == 0 {
-        actx.current()
+        ctx.current()
     } else {
-        match actx.get_at_level(scope_level as isize) {
+        match ctx.get_at_level(scope_level as isize) {
             Some(f) => f,
             None => return Ok(crate::arena::pool::singleton_false()),
         }
@@ -308,7 +333,7 @@ fn array_get<'a>(av: &'a DataValue<'a>, i: usize, _arena: &'a Bump) -> Option<&'
 #[inline]
 pub(crate) fn evaluate_val<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -316,35 +341,23 @@ pub(crate) fn evaluate_val<'a>(
     use crate::arena::value::{access_path_str_ref, apply_path_element};
 
     if args.is_empty() {
-        return Ok(current_data_av(actx, arena));
+        return Ok(current_data_av(ctx, arena));
     }
 
     // Multi-arg form: evaluate first to detect [[level], ...] vs path chain.
     if args.len() >= 2 {
-        let first_av = engine.evaluate_node(&args[0], actx, arena)?;
+        let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
         if let Some(level) = level_marker_from_array(first_av) {
             // Metadata short-circuits — only valid with exactly 2 args.
             if args.len() == 2 {
-                let path_av = engine.evaluate_node(&args[1], actx, arena)?;
+                let path_av = engine.evaluate_node(&args[1], ctx, arena)?;
                 let path_str = path_av.as_str().unwrap_or("");
-                if path_str == "index"
-                    && let Some(idx) = actx.current().get_index()
-                {
-                    let i = idx as i64;
-                    return Ok(
-                        crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
-                            arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
-                        }),
-                    );
-                }
-                if path_str == "key"
-                    && let Some(key) = actx.current().get_key()
-                {
-                    return Ok(arena.alloc(DataValue::String(key)));
+                if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
+                    return Ok(av);
                 }
 
                 let path_owned = path_string_from_data(path_av);
-                let frame_av = frame_data_at_level(actx, level as isize, arena)
+                let frame_av = frame_data_at_level(ctx, level as isize, arena)
                     .ok_or(Error::invalid_context_level(level as isize))?;
                 return Ok(access_path_str_ref(frame_av, &path_owned, arena)
                     .unwrap_or_else(|| crate::arena::pool::singleton_null()));
@@ -353,10 +366,10 @@ pub(crate) fn evaluate_val<'a>(
             // Multi-arg path chain at a relative level.
             let mut paths: Vec<String> = Vec::with_capacity(args.len() - 1);
             for item in args.iter().skip(1) {
-                let av = engine.evaluate_node(item, actx, arena)?;
+                let av = engine.evaluate_node(item, ctx, arena)?;
                 paths.push(path_string_from_data(av));
             }
-            let mut cur = frame_data_at_level(actx, level as isize, arena)
+            let mut cur = frame_data_at_level(ctx, level as isize, arena)
                 .ok_or(Error::invalid_context_level(level as isize))?;
             for path in &paths {
                 match access_path_str_ref(cur, path, arena) {
@@ -371,12 +384,12 @@ pub(crate) fn evaluate_val<'a>(
         let mut evaluated: Vec<&'a DataValue<'a>> = Vec::with_capacity(args.len());
         evaluated.push(first_av);
         for arg in args.iter().skip(1) {
-            evaluated.push(engine.evaluate_node(arg, actx, arena)?);
+            evaluated.push(engine.evaluate_node(arg, ctx, arena)?);
         }
 
         // Reduce shortcut for the first segment.
         let mut start: Option<&'a DataValue<'a>> = None;
-        if let ContextRef::Frame(frame) = actx.current()
+        if let ContextRef::Frame(frame) = ctx.current()
             && let Some(s) = evaluated[0].as_str()
         {
             start = if s == "current" {
@@ -390,7 +403,7 @@ pub(crate) fn evaluate_val<'a>(
 
         let (mut cur, rest_start) = match start {
             Some(s) => (s, 1),
-            None => (current_data_av(actx, arena), 0),
+            None => (current_data_av(ctx, arena), 0),
         };
         for elem in &evaluated[rest_start..] {
             match apply_path_element(cur, elem, arena) {
@@ -402,19 +415,19 @@ pub(crate) fn evaluate_val<'a>(
     }
 
     // Single-arg form: evaluate it.
-    let path_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let path_av = engine.evaluate_node(&args[0], ctx, arena)?;
 
     // Null path → current data (matches canonical `var` semantics for
     // `{"var": null}` and the empty-string path for `{"var": ""}`).
     if matches!(path_av, DataValue::Null) {
-        return Ok(current_data_av(actx, arena));
+        return Ok(current_data_av(ctx, arena));
     }
 
     // Array argument: either [[level], path...] or a path chain.
     if let Some(arr_len) = array_len(path_av) {
         // Empty array → current data (matches `{"var": []}` semantics).
         if arr_len == 0 {
-            return Ok(current_data_av(actx, arena));
+            return Ok(current_data_av(ctx, arena));
         }
         if arr_len >= 2 {
             // Try the level form: first element is `[number, ...]`.
@@ -428,25 +441,12 @@ pub(crate) fn evaluate_val<'a>(
                     let second = array_get(path_av, 1, arena)
                         .unwrap_or_else(|| crate::arena::pool::singleton_null());
                     let path_str = second.as_str().unwrap_or("");
-                    if path_str == "index"
-                        && let Some(idx) = actx.current().get_index()
-                    {
-                        let i = idx as i64;
-                        return Ok(crate::arena::pool::singleton_small_int(i).unwrap_or_else(
-                            || {
-                                arena
-                                    .alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
-                            },
-                        ));
-                    }
-                    if path_str == "key"
-                        && let Some(key) = actx.current().get_key()
-                    {
-                        return Ok(arena.alloc(DataValue::String(key)));
+                    if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
+                        return Ok(av);
                     }
                 }
 
-                let mut cur = frame_data_at_level(actx, level as isize, arena)
+                let mut cur = frame_data_at_level(ctx, level as isize, arena)
                     .ok_or(Error::invalid_context_level(level as isize))?;
                 for i in 1..arr_len {
                     let item = array_get(path_av, i, arena)
@@ -464,7 +464,7 @@ pub(crate) fn evaluate_val<'a>(
         }
 
         // Plain path-chain array.
-        let mut cur = current_data_av(actx, arena);
+        let mut cur = current_data_av(ctx, arena);
         for i in 0..arr_len {
             let elem = array_get(path_av, i, arena)
                 .unwrap_or_else(|| crate::arena::pool::singleton_null());
@@ -479,7 +479,7 @@ pub(crate) fn evaluate_val<'a>(
     // String / number path on current data, with reduce shortcuts and the
     // "direct-key wins over dotted-path" rule from the value-mode val.
     if let Some(s) = path_av.as_str() {
-        if let ContextRef::Frame(frame) = actx.current() {
+        if let ContextRef::Frame(frame) = ctx.current() {
             if s == "current" {
                 if let Some(av) = frame.get_reduce_current() {
                     return Ok(av);
@@ -501,7 +501,7 @@ pub(crate) fn evaluate_val<'a>(
             }
         }
 
-        let cur = current_data_av(actx, arena);
+        let cur = current_data_av(ctx, arena);
         // Direct object key lookup beats dot-path traversal so empty keys and
         // keys containing dots resolve correctly.
         if let DataValue::Object(pairs) = cur
@@ -516,7 +516,7 @@ pub(crate) fn evaluate_val<'a>(
     if let Some(i) = path_av.as_i64()
         && i >= 0
     {
-        let cur = current_data_av(actx, arena);
+        let cur = current_data_av(ctx, arena);
         let key = i.to_string();
         return Ok(access_path_str_ref(cur, &key, arena)
             .unwrap_or_else(|| crate::arena::pool::singleton_null()));
@@ -558,7 +558,7 @@ fn object_step<'a>(
 #[inline]
 pub(crate) fn evaluate_exists<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -566,10 +566,10 @@ pub(crate) fn evaluate_exists<'a>(
         return Ok(crate::arena::pool::singleton_false());
     }
 
-    let cur = current_data_av(actx, arena);
+    let cur = current_data_av(ctx, arena);
 
     if args.len() == 1 {
-        let arg = engine.evaluate_node(&args[0], actx, arena)?;
+        let arg = engine.evaluate_node(&args[0], ctx, arena)?;
         if let Some(s) = arg.as_str() {
             return Ok(crate::arena::pool::singleton_bool(object_contains(cur, s)));
         }
@@ -602,7 +602,7 @@ pub(crate) fn evaluate_exists<'a>(
     // Multiple args — each must evaluate to a string segment.
     let mut paths: Vec<&'a DataValue<'a>> = Vec::with_capacity(args.len());
     for arg in args {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         if av.as_str().is_none() {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -628,12 +628,12 @@ pub(crate) fn evaluate_exists<'a>(
 #[inline]
 fn default_or_null<'a>(
     default_value: Option<&'a CompiledNode>,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &crate::DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match default_value {
-        Some(node) => engine.evaluate_node(node, actx, arena),
+        Some(node) => engine.evaluate_node(node, ctx, arena),
         None => Ok(crate::arena::pool::singleton_null()),
     }
 }

@@ -12,15 +12,15 @@ use bumpalo::Bump;
 /// Resolve the lookup-target for `missing` / `missing_some` — current
 /// context's data view as `&'a DataValue<'a>`.
 #[inline(always)]
-fn lookup_av<'a>(actx: &DataContextStack<'a>) -> &'a DataValue<'a> {
-    if actx.depth() > 0 {
+fn lookup_av<'a>(ctx: &DataContextStack<'a>) -> &'a DataValue<'a> {
+    if ctx.depth() > 0 {
         use crate::arena::context::ContextRef;
-        match actx.current() {
+        match ctx.current() {
             ContextRef::Frame(f) => f.data(),
             ContextRef::Root(av) => av,
         }
     } else {
-        actx.root_input()
+        ctx.root_input()
     }
 }
 
@@ -29,16 +29,16 @@ fn lookup_av<'a>(actx: &DataContextStack<'a>) -> &'a DataValue<'a> {
 #[inline]
 pub(crate) fn evaluate_missing<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let lookup = lookup_av(actx);
+    let lookup = lookup_av(ctx);
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
 
     for arg in args {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         match av {
             DataValue::Array(items) => {
                 for it in *items {
@@ -68,7 +68,7 @@ pub(crate) fn evaluate_missing<'a>(
 #[inline]
 pub(crate) fn evaluate_missing_some<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -76,11 +76,11 @@ pub(crate) fn evaluate_missing_some<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    let min_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let min_av = engine.evaluate_node(&args[0], ctx, arena)?;
     let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
 
-    let paths_av = engine.evaluate_node(&args[1], actx, arena)?;
-    let lookup = lookup_av(actx);
+    let paths_av = engine.evaluate_node(&args[1], ctx, arena)?;
+    let lookup = lookup_av(ctx);
 
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
@@ -137,11 +137,11 @@ use crate::node::{
 #[inline]
 pub(crate) fn evaluate_compiled_missing<'a>(
     data: &'a CompiledMissingData,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let lookup = lookup_av(actx);
+    let lookup = lookup_av(ctx);
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
 
@@ -153,7 +153,7 @@ pub(crate) fn evaluate_compiled_missing<'a>(
                 }
             }
             CompiledMissingArg::Dynamic(node) => {
-                let av = engine.evaluate_node(node, actx, arena)?;
+                let av = engine.evaluate_node(node, ctx, arena)?;
                 accumulate_dynamic_missing(av, lookup, &mut missing, arena);
             }
         }
@@ -169,19 +169,19 @@ pub(crate) fn evaluate_compiled_missing<'a>(
 #[inline]
 pub(crate) fn evaluate_compiled_missing_some<'a>(
     data: &'a CompiledMissingSomeData,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let min_present = match &data.min_present {
         CompiledMissingMin::Static(n) => *n,
         CompiledMissingMin::Dynamic(node) => {
-            let av = engine.evaluate_node(node, actx, arena)?;
+            let av = engine.evaluate_node(node, ctx, arena)?;
             av.as_i64().unwrap_or(1).max(0) as usize
         }
     };
 
-    let lookup = lookup_av(actx);
+    let lookup = lookup_av(ctx);
 
     match &data.paths {
         CompiledMissingPaths::Static(paths) => {
@@ -204,7 +204,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
             Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
         }
         CompiledMissingPaths::Dynamic(node) => {
-            let paths_av = engine.evaluate_node(node, actx, arena)?;
+            let paths_av = engine.evaluate_node(node, ctx, arena)?;
             let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::new_in(arena);
             let mut present = 0usize;

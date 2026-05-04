@@ -1,8 +1,5 @@
 //! Example demonstrating the configuration system in DataLogic
 
-#![allow(deprecated)]
-
-use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::{
     DataLogic, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };
@@ -59,11 +56,10 @@ fn demonstrate_truthiness(name: &str, engine: &DataLogic) {
         (json!([1]), "[1]"),
     ];
 
+    let logic = json!({"!!": [{"var": "value"}]});
     for (value, description) in test_values {
-        let logic = json!({"!!": [{"var": "value"}]});
-        let compiled = engine.compile_serde_value(&logic).unwrap();
         let data = json!({"value": value});
-        let result = engine.evaluate_owned(&compiled, data).unwrap();
+        let result = engine.evaluate_value(&logic, &data).unwrap();
         println!(
             "  {} is {}",
             description,
@@ -78,32 +74,30 @@ fn demonstrate_truthiness(name: &str, engine: &DataLogic) {
 }
 
 fn demonstrate_nan_handling() {
+    let logic = json!({"+": ["hello", 1]});
+    let data = json!({});
+
     // Default: throw error
     let default_engine = DataLogic::new();
-    let logic = json!({"+": ["hello", 1]});
-    let compiled = default_engine.compile_serde_value(&logic).unwrap();
-    let result = default_engine.evaluate_owned(&compiled, json!({}));
+    let result = default_engine.evaluate_value(&logic, &data);
     println!("Default (ThrowError): {:?}", result);
 
     // Ignore non-numeric values
     let ignore_config = EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue);
     let ignore_engine = DataLogic::builder().config(ignore_config).build();
-    let compiled = ignore_engine.compile_serde_value(&logic).unwrap();
-    let result = ignore_engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let result = ignore_engine.evaluate_value(&logic, &data).unwrap();
     println!("IgnoreValue: {} (non-numeric ignored)", result);
 
     // Return null
     let null_config = EvaluationConfig::default().with_nan_handling(NanHandling::ReturnNull);
     let null_engine = DataLogic::builder().config(null_config).build();
-    let compiled = null_engine.compile_serde_value(&logic).unwrap();
-    let result = null_engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let result = null_engine.evaluate_value(&logic, &data).unwrap();
     println!("ReturnNull: {}", result);
 
     // Coerce to zero
     let coerce_config = EvaluationConfig::default().with_nan_handling(NanHandling::CoerceToZero);
     let coerce_engine = DataLogic::builder().config(coerce_config).build();
-    let compiled = coerce_engine.compile_serde_value(&logic).unwrap();
-    let result = coerce_engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let result = coerce_engine.evaluate_value(&logic, &data).unwrap();
     println!("CoerceToZero: {} (\"hello\" treated as 0)", result);
 }
 
@@ -116,10 +110,10 @@ fn demonstrate_numeric_coercion() {
         (json!({"+": [null, 5]}), "null + 5"),
     ];
 
+    let data = json!({});
     println!("Default (Coercion Enabled):");
     for (logic, desc) in &test_cases {
-        let compiled = default_engine.compile_serde_value(logic).unwrap();
-        let result = default_engine.evaluate_owned(&compiled, json!({})).unwrap();
+        let result = default_engine.evaluate_value(logic, &data).unwrap();
         println!("  {} = {}", desc, result);
     }
 
@@ -137,8 +131,7 @@ fn demonstrate_numeric_coercion() {
 
     println!("\nStrict (No Coercion):");
     for (logic, desc) in &test_cases {
-        let compiled = strict_engine.compile_serde_value(logic).unwrap();
-        let result = strict_engine.evaluate_owned(&compiled, json!({})).unwrap();
+        let result = strict_engine.evaluate_value(logic, &data).unwrap();
         println!("  {} = {}", desc, result);
     }
 }

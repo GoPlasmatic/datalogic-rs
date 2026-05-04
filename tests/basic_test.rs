@@ -1,47 +1,27 @@
-#![allow(deprecated)]
-
 use datalogic_rs::DataLogic;
-use datalogic_rs::compat::LegacyApi;
 use serde_json::json;
-use std::sync::Arc;
 
 #[test]
 fn test_basic_equality() {
     let engine = DataLogic::new();
-
-    // Test {"==": [1, 1]}
     let logic = json!({"==": [1, 1]});
     let data = json!({});
-
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine
-        .evaluate_arc_value(&compiled, Arc::new(data))
-        .unwrap();
-
+    let result = engine.evaluate_value(&logic, &data).unwrap();
     assert_eq!(result, json!(true));
 }
 
 #[test]
 fn test_variable_access() {
     let engine = DataLogic::new();
-
-    // Test {"var": "name"}
     let logic = json!({"var": "name"});
     let data = json!({"name": "Alice"});
-
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine
-        .evaluate_arc_value(&compiled, Arc::new(data))
-        .unwrap();
-
+    let result = engine.evaluate_value(&logic, &data).unwrap();
     assert_eq!(result, json!("Alice"));
 }
 
 #[test]
 fn test_if_then_else() {
     let engine = DataLogic::new();
-
-    // Test {"if": [{"==": [{"var": "temp"}, 100]}, "hot", "cold"]}
     let logic = json!({
         "if": [
             {"==": [{"var": "temp"}, 100]},
@@ -50,17 +30,12 @@ fn test_if_then_else() {
         ]
     });
 
-    let data1 = json!({"temp": 100});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
     let result1 = engine
-        .evaluate_arc_value(&compiled, Arc::new(data1))
+        .evaluate_value(&logic, &json!({"temp": 100}))
         .unwrap();
     assert_eq!(result1, json!("hot"));
 
-    let data2 = json!({"temp": 50});
-    let result2 = engine
-        .evaluate_arc_value(&compiled, Arc::new(data2))
-        .unwrap();
+    let result2 = engine.evaluate_value(&logic, &json!({"temp": 50})).unwrap();
     assert_eq!(result2, json!("cold"));
 }
 
@@ -69,22 +44,13 @@ fn test_if_then_else() {
 #[test]
 fn test_map_with_context() {
     let engine = DataLogic::new();
-
-    // Test map that adds index to each element
-    // {"map": [[1, 2, 3], {"+": [{"val": []}, {"val": [[-1], "index"]}]}]}
     let logic = json!({
         "map": [
             [1, 2, 3],
             {"+": [{"val": []}, {"val": [[0], "index"]}]}
         ]
     });
-
-    let data = json!({});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine
-        .evaluate_arc_value(&compiled, Arc::new(data))
-        .unwrap();
-
+    let result = engine.evaluate_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!([1, 3, 5]));
 }
 
@@ -94,19 +60,11 @@ fn test_now_operator() {
     use chrono::DateTime;
     let engine = DataLogic::new();
 
-    // Test the now operator
     let logic = json!({"now": []});
-    let data = json!({});
+    let result = engine.evaluate_value(&logic, &json!({})).unwrap();
 
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine
-        .evaluate_arc_value(&compiled, Arc::new(data))
-        .unwrap();
-
-    // Verify it's a string
     assert!(result.is_string(), "Now operator should return a string");
 
-    // Verify it's a valid ISO datetime format
     if let serde_json::Value::String(datetime_str) = &result {
         let parsed = DateTime::parse_from_rfc3339(datetime_str);
         assert!(
@@ -115,14 +73,8 @@ fn test_now_operator() {
         );
     }
 
-    // Test that two calls return different times (with a small delay)
     std::thread::sleep(std::time::Duration::from_millis(10));
-    let result2 = engine
-        .evaluate_arc_value(&compiled, Arc::new(json!({})))
-        .unwrap();
-
-    // Note: We can't guarantee they'll be different due to timing precision,
-    // but both should be valid datetime strings
+    let result2 = engine.evaluate_value(&logic, &json!({})).unwrap();
     assert!(
         result2.is_string(),
         "Second call to now should also return a string"
@@ -130,35 +82,21 @@ fn test_now_operator() {
 }
 
 #[test]
-fn test_evaluate_ref_api() {
+fn test_evaluate_value_api() {
     let engine = DataLogic::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 3, "b": 4});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-
-    // evaluate_ref takes &Value (no Arc).
-    let result = engine.evaluate_ref(&compiled, &data).unwrap();
+    let result = engine.evaluate_value(&logic, &data).unwrap();
     assert_eq!(result, json!(7));
-
-    // evaluate (Arc form) still works.
-    let result2 = engine
-        .evaluate_arc_value(&compiled, Arc::new(data.clone()))
-        .unwrap();
-    assert_eq!(result2, json!(7));
-
-    // evaluate_owned still works.
-    let result3 = engine.evaluate_owned(&compiled, data).unwrap();
-    assert_eq!(result3, json!(7));
 }
 
 #[cfg(feature = "ext-string")]
 #[test]
-fn test_evaluate_ref_with_arena_dispatch() {
+fn test_evaluate_with_arena_dispatch() {
     let engine = DataLogic::new();
     // A rule that triggers arena dispatch (filter + length).
     let logic = json!({"length": {"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]}});
     let data = json!({"items": [1, 2, 3, 4, 5]});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_ref(&compiled, &data).unwrap();
+    let result = engine.evaluate_value(&logic, &data).unwrap();
     assert_eq!(result, json!(3));
 }

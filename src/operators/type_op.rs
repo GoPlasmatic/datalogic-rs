@@ -47,14 +47,14 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_type<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_type_name("null"));
     }
-    let av = engine.evaluate_node(&args[0], actx, arena)?;
+    let av = engine.evaluate_node(&args[0], ctx, arena)?;
 
     // Datetime/duration object detection (e.g. {"datetime": "..."}).
     #[cfg(feature = "datetime")]

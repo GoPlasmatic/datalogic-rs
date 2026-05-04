@@ -39,11 +39,10 @@
 //!
 //! # Adding New Operators
 //!
-//! 1. Add a new variant to the `OpCode` enum
-//! 2. Add string mapping in `FromStr` implementation
-//! 3. Add reverse mapping in `as_str()` method
-//! 4. Add dispatch case in `evaluate_direct()`
-//! 5. Implement the operator function in the appropriate `operators/` module
+//! 1. Add a new variant to the [`OpCode`] enum
+//! 2. Add an entry (canonical name first, then any aliases) to [`OPCODE_NAMES`]
+//! 3. Add the dispatch arm in `src/engine/dispatch.rs`
+//! 4. Implement the operator function in the appropriate `src/operators/` module
 
 use std::str::FromStr;
 
@@ -165,223 +164,150 @@ pub enum OpCode {
     Floor = 51,
 }
 
+/// Single source of truth for `(operator string, OpCode)` mappings.
+///
+/// The first entry per opcode is the canonical name returned by
+/// [`OpCode::as_str`]; subsequent entries with the same opcode are accepted
+/// as aliases by [`OpCode::from_str`]. Feature-gated entries follow the
+/// same `#[cfg]` as their corresponding [`OpCode`] variant.
+const OPCODE_NAMES: &[(&str, OpCode)] = &[
+    // Core: variable access. `var` is accepted as a synonym of `val` —
+    // both normalize to OpCode::Val. The compile pipeline (`try_specialised`)
+    // dispatches the appropriate compile-time specialiser based on the source
+    // operator name.
+    ("val", OpCode::Val),
+    ("var", OpCode::Val),
+    // Core: comparison
+    ("==", OpCode::Equals),
+    ("===", OpCode::StrictEquals),
+    ("!=", OpCode::NotEquals),
+    ("!==", OpCode::StrictNotEquals),
+    (">", OpCode::GreaterThan),
+    (">=", OpCode::GreaterThanEqual),
+    ("<", OpCode::LessThan),
+    ("<=", OpCode::LessThanEqual),
+    // Core: logical
+    ("!", OpCode::Not),
+    ("!!", OpCode::DoubleNot),
+    ("and", OpCode::And),
+    ("or", OpCode::Or),
+    // Core: control flow. `?:` is accepted as a synonym of `if` — both
+    // normalize to OpCode::If. `evaluate_if` already handles the 3-arg case
+    // identically to a ternary.
+    ("if", OpCode::If),
+    ("?:", OpCode::If),
+    // Core: arithmetic
+    ("+", OpCode::Add),
+    ("-", OpCode::Subtract),
+    ("*", OpCode::Multiply),
+    ("/", OpCode::Divide),
+    ("%", OpCode::Modulo),
+    ("max", OpCode::Max),
+    ("min", OpCode::Min),
+    // Core: string
+    ("cat", OpCode::Cat),
+    ("substr", OpCode::Substr),
+    ("in", OpCode::In),
+    // Core: array
+    ("merge", OpCode::Merge),
+    ("filter", OpCode::Filter),
+    ("map", OpCode::Map),
+    ("reduce", OpCode::Reduce),
+    ("all", OpCode::All),
+    ("some", OpCode::Some),
+    ("none", OpCode::None),
+    // Core: missing
+    ("missing", OpCode::Missing),
+    ("missing_some", OpCode::MissingSome),
+    // preserve
+    #[cfg(feature = "preserve")]
+    ("preserve", OpCode::Preserve),
+    // datetime
+    #[cfg(feature = "datetime")]
+    ("datetime", OpCode::Datetime),
+    #[cfg(feature = "datetime")]
+    ("timestamp", OpCode::Timestamp),
+    #[cfg(feature = "datetime")]
+    ("parse_date", OpCode::ParseDate),
+    #[cfg(feature = "datetime")]
+    ("format_date", OpCode::FormatDate),
+    #[cfg(feature = "datetime")]
+    ("date_diff", OpCode::DateDiff),
+    #[cfg(feature = "datetime")]
+    ("now", OpCode::Now),
+    // ext-string
+    #[cfg(feature = "ext-string")]
+    ("length", OpCode::Length),
+    #[cfg(feature = "ext-string")]
+    ("starts_with", OpCode::StartsWith),
+    #[cfg(feature = "ext-string")]
+    ("ends_with", OpCode::EndsWith),
+    #[cfg(feature = "ext-string")]
+    ("upper", OpCode::Upper),
+    #[cfg(feature = "ext-string")]
+    ("lower", OpCode::Lower),
+    #[cfg(feature = "ext-string")]
+    ("trim", OpCode::Trim),
+    #[cfg(feature = "ext-string")]
+    ("split", OpCode::Split),
+    // ext-array
+    #[cfg(feature = "ext-array")]
+    ("sort", OpCode::Sort),
+    #[cfg(feature = "ext-array")]
+    ("slice", OpCode::Slice),
+    // ext-control
+    #[cfg(feature = "ext-control")]
+    ("exists", OpCode::Exists),
+    #[cfg(feature = "ext-control")]
+    ("??", OpCode::Coalesce),
+    #[cfg(feature = "ext-control")]
+    ("switch", OpCode::Switch),
+    #[cfg(feature = "ext-control")]
+    ("match", OpCode::Switch),
+    #[cfg(feature = "ext-control")]
+    ("type", OpCode::Type),
+    // error-handling
+    #[cfg(feature = "error-handling")]
+    ("try", OpCode::Try),
+    #[cfg(feature = "error-handling")]
+    ("throw", OpCode::Throw),
+    // ext-math
+    #[cfg(feature = "ext-math")]
+    ("abs", OpCode::Abs),
+    #[cfg(feature = "ext-math")]
+    ("ceil", OpCode::Ceil),
+    #[cfg(feature = "ext-math")]
+    ("floor", OpCode::Floor),
+];
+
 impl FromStr for OpCode {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            // Core. `var` is accepted as a synonym of `val` — both normalize
-            // to OpCode::Val. The compile pipeline (`try_specialised`)
-            // dispatches the appropriate compile-time specialiser based on
-            // the source operator name.
-            "var" | "val" => Ok(OpCode::Val),
-            "==" => Ok(OpCode::Equals),
-            "===" => Ok(OpCode::StrictEquals),
-            "!=" => Ok(OpCode::NotEquals),
-            "!==" => Ok(OpCode::StrictNotEquals),
-            ">" => Ok(OpCode::GreaterThan),
-            ">=" => Ok(OpCode::GreaterThanEqual),
-            "<" => Ok(OpCode::LessThan),
-            "<=" => Ok(OpCode::LessThanEqual),
-            "!" => Ok(OpCode::Not),
-            "!!" => Ok(OpCode::DoubleNot),
-            "and" => Ok(OpCode::And),
-            "or" => Ok(OpCode::Or),
-            // `?:` is accepted as a synonym of the 3-arg form of `if` —
-            // both normalize to OpCode::If. `evaluate_if` already
-            // handles the 3-arg case identically to a ternary.
-            "if" | "?:" => Ok(OpCode::If),
-            "+" => Ok(OpCode::Add),
-            "-" => Ok(OpCode::Subtract),
-            "*" => Ok(OpCode::Multiply),
-            "/" => Ok(OpCode::Divide),
-            "%" => Ok(OpCode::Modulo),
-            "max" => Ok(OpCode::Max),
-            "min" => Ok(OpCode::Min),
-            "cat" => Ok(OpCode::Cat),
-            "substr" => Ok(OpCode::Substr),
-            "in" => Ok(OpCode::In),
-            "merge" => Ok(OpCode::Merge),
-            "filter" => Ok(OpCode::Filter),
-            "map" => Ok(OpCode::Map),
-            "reduce" => Ok(OpCode::Reduce),
-            "all" => Ok(OpCode::All),
-            "some" => Ok(OpCode::Some),
-            "none" => Ok(OpCode::None),
-            "missing" => Ok(OpCode::Missing),
-            "missing_some" => Ok(OpCode::MissingSome),
-
-            // preserve
-            #[cfg(feature = "preserve")]
-            "preserve" => Ok(OpCode::Preserve),
-
-            // datetime
-            #[cfg(feature = "datetime")]
-            "datetime" => Ok(OpCode::Datetime),
-            #[cfg(feature = "datetime")]
-            "timestamp" => Ok(OpCode::Timestamp),
-            #[cfg(feature = "datetime")]
-            "parse_date" => Ok(OpCode::ParseDate),
-            #[cfg(feature = "datetime")]
-            "format_date" => Ok(OpCode::FormatDate),
-            #[cfg(feature = "datetime")]
-            "date_diff" => Ok(OpCode::DateDiff),
-            #[cfg(feature = "datetime")]
-            "now" => Ok(OpCode::Now),
-
-            // ext-string
-            #[cfg(feature = "ext-string")]
-            "length" => Ok(OpCode::Length),
-            #[cfg(feature = "ext-string")]
-            "starts_with" => Ok(OpCode::StartsWith),
-            #[cfg(feature = "ext-string")]
-            "ends_with" => Ok(OpCode::EndsWith),
-            #[cfg(feature = "ext-string")]
-            "upper" => Ok(OpCode::Upper),
-            #[cfg(feature = "ext-string")]
-            "lower" => Ok(OpCode::Lower),
-            #[cfg(feature = "ext-string")]
-            "trim" => Ok(OpCode::Trim),
-            #[cfg(feature = "ext-string")]
-            "split" => Ok(OpCode::Split),
-
-            // ext-array
-            #[cfg(feature = "ext-array")]
-            "sort" => Ok(OpCode::Sort),
-            #[cfg(feature = "ext-array")]
-            "slice" => Ok(OpCode::Slice),
-
-            // ext-control
-            #[cfg(feature = "ext-control")]
-            "exists" => Ok(OpCode::Exists),
-            #[cfg(feature = "ext-control")]
-            "??" => Ok(OpCode::Coalesce),
-            #[cfg(feature = "ext-control")]
-            "switch" | "match" => Ok(OpCode::Switch),
-            #[cfg(feature = "ext-control")]
-            "type" => Ok(OpCode::Type),
-
-            // error-handling
-            #[cfg(feature = "error-handling")]
-            "try" => Ok(OpCode::Try),
-            #[cfg(feature = "error-handling")]
-            "throw" => Ok(OpCode::Throw),
-
-            // ext-math
-            #[cfg(feature = "ext-math")]
-            "abs" => Ok(OpCode::Abs),
-            #[cfg(feature = "ext-math")]
-            "ceil" => Ok(OpCode::Ceil),
-            #[cfg(feature = "ext-math")]
-            "floor" => Ok(OpCode::Floor),
-
-            _ => Err(()),
+        // Linear scan over OPCODE_NAMES. Compilation is cold (one-shot per
+        // rule) and the table is small (~60 entries), so this is fine.
+        for (name, op) in OPCODE_NAMES {
+            if *name == s {
+                return Ok(*op);
+            }
         }
+        Err(())
     }
 }
 
 impl OpCode {
-    /// Convert OpCode back to string (for debugging/display)
+    /// Convert OpCode back to its canonical string form (for debugging /
+    /// display / serialization). Returns the first entry in [`OPCODE_NAMES`]
+    /// whose opcode matches `self`.
     pub fn as_str(&self) -> &'static str {
-        match self {
-            // Core
-            OpCode::Val => "val",
-            OpCode::Equals => "==",
-            OpCode::StrictEquals => "===",
-            OpCode::NotEquals => "!=",
-            OpCode::StrictNotEquals => "!==",
-            OpCode::GreaterThan => ">",
-            OpCode::GreaterThanEqual => ">=",
-            OpCode::LessThan => "<",
-            OpCode::LessThanEqual => "<=",
-            OpCode::Not => "!",
-            OpCode::DoubleNot => "!!",
-            OpCode::And => "and",
-            OpCode::Or => "or",
-            OpCode::If => "if",
-            OpCode::Add => "+",
-            OpCode::Subtract => "-",
-            OpCode::Multiply => "*",
-            OpCode::Divide => "/",
-            OpCode::Modulo => "%",
-            OpCode::Max => "max",
-            OpCode::Min => "min",
-            OpCode::Cat => "cat",
-            OpCode::Substr => "substr",
-            OpCode::In => "in",
-            OpCode::Merge => "merge",
-            OpCode::Filter => "filter",
-            OpCode::Map => "map",
-            OpCode::Reduce => "reduce",
-            OpCode::All => "all",
-            OpCode::Some => "some",
-            OpCode::None => "none",
-            OpCode::Missing => "missing",
-            OpCode::MissingSome => "missing_some",
-
-            // preserve
-            #[cfg(feature = "preserve")]
-            OpCode::Preserve => "preserve",
-
-            // datetime
-            #[cfg(feature = "datetime")]
-            OpCode::Datetime => "datetime",
-            #[cfg(feature = "datetime")]
-            OpCode::Timestamp => "timestamp",
-            #[cfg(feature = "datetime")]
-            OpCode::ParseDate => "parse_date",
-            #[cfg(feature = "datetime")]
-            OpCode::FormatDate => "format_date",
-            #[cfg(feature = "datetime")]
-            OpCode::DateDiff => "date_diff",
-            #[cfg(feature = "datetime")]
-            OpCode::Now => "now",
-
-            // ext-string
-            #[cfg(feature = "ext-string")]
-            OpCode::Length => "length",
-            #[cfg(feature = "ext-string")]
-            OpCode::StartsWith => "starts_with",
-            #[cfg(feature = "ext-string")]
-            OpCode::EndsWith => "ends_with",
-            #[cfg(feature = "ext-string")]
-            OpCode::Upper => "upper",
-            #[cfg(feature = "ext-string")]
-            OpCode::Lower => "lower",
-            #[cfg(feature = "ext-string")]
-            OpCode::Trim => "trim",
-            #[cfg(feature = "ext-string")]
-            OpCode::Split => "split",
-
-            // ext-array
-            #[cfg(feature = "ext-array")]
-            OpCode::Sort => "sort",
-            #[cfg(feature = "ext-array")]
-            OpCode::Slice => "slice",
-
-            // ext-control
-            #[cfg(feature = "ext-control")]
-            OpCode::Exists => "exists",
-            #[cfg(feature = "ext-control")]
-            OpCode::Coalesce => "??",
-            #[cfg(feature = "ext-control")]
-            OpCode::Switch => "switch",
-            #[cfg(feature = "ext-control")]
-            OpCode::Type => "type",
-
-            // error-handling
-            #[cfg(feature = "error-handling")]
-            OpCode::Try => "try",
-            #[cfg(feature = "error-handling")]
-            OpCode::Throw => "throw",
-
-            // ext-math
-            #[cfg(feature = "ext-math")]
-            OpCode::Abs => "abs",
-            #[cfg(feature = "ext-math")]
-            OpCode::Ceil => "ceil",
-            #[cfg(feature = "ext-math")]
-            OpCode::Floor => "floor",
+        for (name, op) in OPCODE_NAMES {
+            if *op == *self {
+                return name;
+            }
         }
+        // Unreachable: OPCODE_NAMES has an entry for every variant compiled
+        // in the current feature set. If you've added a variant without a
+        // name entry, `from_str` will reject it too — fix the table.
+        unreachable!("OPCODE_NAMES missing entry for {self:?}")
     }
 }

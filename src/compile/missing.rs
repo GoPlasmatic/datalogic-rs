@@ -8,7 +8,7 @@ use crate::node::{
     CompiledMissingSomeData, CompiledNode, PathSegment,
 };
 
-use super::path::parse_path_segments;
+use super::path_parser::parse_path_segments;
 
 /// Build a `CompiledMissing` from raw operator args. Each arg that is a
 /// literal string is pre-parsed; everything else (including literal arrays

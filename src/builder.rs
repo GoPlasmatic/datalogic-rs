@@ -63,6 +63,11 @@ impl DataLogicBuilder {
     /// `T: DataOperator` or a pre-boxed `Box<dyn DataOperator>` via
     /// [`IntoOperatorBox`]. Multiple calls with the same name overwrite the
     /// prior registration.
+    ///
+    /// Operators can also be added or removed after the engine is built via
+    /// [`DataLogic::add_operator`] and [`DataLogic::remove_operator`]; use
+    /// the builder for the static set, the post-build mutators for dynamic
+    /// registration.
     #[inline]
     pub fn add_operator(mut self, name: impl Into<String>, operator: impl IntoOperatorBox) -> Self {
         self.operators

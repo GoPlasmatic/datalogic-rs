@@ -19,7 +19,7 @@ impl DataOperator for IsNightOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() != 1 {

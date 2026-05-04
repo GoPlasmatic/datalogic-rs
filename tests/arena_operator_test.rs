@@ -13,7 +13,7 @@ impl DataOperator for DoubleArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -27,7 +27,7 @@ impl DataOperator for CatArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let mut buf = bumpalo::collections::String::new_in(arena);
@@ -81,7 +81,7 @@ fn arena_operator_string_result() {
 fn evaluate_ref_var_inside_filter_bridge_object_input() {
     // Object input forces filter to bridge to value-mode (ResolvedInput::Bridge).
     // Inside that bridge, var lookups need to see the input — exercises that
-    // bridges synthesize their own context from actx.root_input().
+    // bridges synthesize their own context from ctx.root_input().
     let engine = DataLogic::new();
     let logic = serde_json::json!({"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -112,7 +112,7 @@ impl DataOperator for ReadField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         // The arg has already been evaluated through the var lookup;
@@ -148,7 +148,7 @@ impl DataOperator for ReadActiveField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let av = args

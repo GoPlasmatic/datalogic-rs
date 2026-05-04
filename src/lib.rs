@@ -45,6 +45,28 @@
 //! assert_eq!(result.as_bool(), Some(true));
 //! ```
 //!
+//! ## Reusing the arena across many evaluations
+//!
+//! For high-throughput callers, allocate the arena once and `reset()` it
+//! between evaluations to keep peak memory bounded:
+//!
+//! ```rust
+//! use bumpalo::Bump;
+//! use datalogic_rs::{DataLogic, DataValue};
+//!
+//! let engine = DataLogic::new();
+//! let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
+//!
+//! let mut arena = Bump::new();
+//! for x in 0..3 {
+//!     let payload = format!(r#"{{"x": {}}}"#, x);
+//!     let data = DataValue::from_str(&payload, &arena).unwrap();
+//!     let result = engine.evaluate(&compiled, data, &arena).unwrap();
+//!     assert_eq!(result.as_i64(), Some(x + 1));
+//!     arena.reset();
+//! }
+//! ```
+//!
 //! ## Architecture
 //!
 //! The library uses a two-phase approach:
@@ -76,7 +98,6 @@ mod path;
 #[cfg(feature = "trace")]
 mod trace;
 mod value;
-mod value_helpers;
 
 pub use arena::{DataContextStack, DataValue};
 pub use builder::DataLogicBuilder;
@@ -119,11 +140,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ## Lifetime
 ///
 /// `'a` is the arena lifetime, tied to the [`bumpalo::Bump`] allocator
-/// that lives for the duration of one [`DataLogic::evaluate_ref`] /
-/// [`DataLogic::evaluate`] call. Args borrow from the caller's input and
-/// from prior arena allocations; the returned `&'a DataValue<'a>` must
-/// be allocated in the arena (or be a preallocated singleton) — never a
-/// stack reference.
+/// that lives for the duration of one [`DataLogic::evaluate`] call. Args
+/// borrow from the caller's input and from prior arena allocations; the
+/// returned `&'a DataValue<'a>` must be allocated in the arena (or be a
+/// preallocated singleton) — never a stack reference.
 ///
 /// ## Example
 ///
@@ -136,7 +156,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///     fn evaluate<'a>(
 ///         &self,
 ///         args: &[&'a DataValue<'a>],
-///         _actx: &mut DataContextStack<'a>,
+///         _ctx: &mut DataContextStack<'a>,
 ///         arena: &'a Bump,
 ///     ) -> Result<&'a DataValue<'a>> {
 ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -157,7 +177,7 @@ pub trait DataOperator: Send + Sync {
     ///
     /// * `args` — pre-evaluated args as `&'a DataValue<'a>`. The arena
     ///   dispatcher has already recursed into each arg's expression tree.
-    /// * `actx` — the arena context stack. Most operators won't touch
+    /// * `ctx` — the arena context stack. Most operators won't touch
     ///   this; it's needed only when the operator iterates and pushes
     ///   its own frames (analogous to `filter` / `map`).
     /// * `arena` — the [`bumpalo::Bump`] allocator. Use `arena.alloc(...)`
@@ -165,7 +185,7 @@ pub trait DataOperator: Send + Sync {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        actx: &mut DataContextStack<'a>,
+        ctx: &mut DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }

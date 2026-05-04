@@ -6,35 +6,35 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_not<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_true());
     }
-    let v = engine.evaluate_node(&args[0], actx, arena)?;
+    let v = engine.evaluate_node(&args[0], ctx, arena)?;
     Ok(crate::arena::pool::singleton_bool(!is_truthy(v, engine)))
 }
 
 #[inline]
 pub(crate) fn evaluate_double_not<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_false());
     }
-    let v = engine.evaluate_node(&args[0], actx, arena)?;
+    let v = engine.evaluate_node(&args[0], ctx, arena)?;
     Ok(crate::arena::pool::singleton_bool(is_truthy(v, engine)))
 }
 
 #[inline]
 pub(crate) fn evaluate_and<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -44,7 +44,7 @@ pub(crate) fn evaluate_and<'a>(
     check_invalid_args_marker(args)?;
     let mut last: &DataValue<'a> = crate::arena::pool::singleton_true();
     for arg in args {
-        let v = engine.evaluate_node(arg, actx, arena)?;
+        let v = engine.evaluate_node(arg, ctx, arena)?;
         if !is_truthy(v, engine) {
             return Ok(v);
         }
@@ -56,7 +56,7 @@ pub(crate) fn evaluate_and<'a>(
 #[inline]
 pub(crate) fn evaluate_or<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -66,7 +66,7 @@ pub(crate) fn evaluate_or<'a>(
     check_invalid_args_marker(args)?;
     let mut last: &DataValue<'a> = crate::arena::pool::singleton_false();
     for arg in args {
-        let v = engine.evaluate_node(arg, actx, arena)?;
+        let v = engine.evaluate_node(arg, ctx, arena)?;
         if is_truthy(v, engine) {
             return Ok(v);
         }

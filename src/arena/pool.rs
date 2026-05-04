@@ -23,8 +23,11 @@
 //! - The guard borrow-checks: `&Bump` cannot outlive the guard, so an
 //!   `DataValue<'a>` cannot accidentally survive into the next pool reuse.
 
+#[cfg(test)]
 use bumpalo::Bump;
+#[cfg(test)]
 use std::cell::Cell;
+#[cfg(test)]
 use std::mem::ManuallyDrop;
 
 use crate::arena::value::DataValue;
@@ -173,6 +176,7 @@ pub(crate) fn singleton_type_name<'a>(name: &'static str) -> &'a DataValue<'a> {
 // reclaimed). We trade a small re-entrancy reuse loss for one TLS access +
 // `Cell::take` instead of a TLS access + `RefCell::borrow_mut` + `Vec::pop`.
 
+#[cfg(test)]
 thread_local! {
     static ARENA_SLOT: Cell<Option<Bump>> = const { Cell::new(None) };
 }
@@ -182,14 +186,18 @@ thread_local! {
 ///
 /// Use `guard.arena()` to get a `&Bump` (whose lifetime is bounded by the
 /// guard, so `DataValue<'_>` cannot escape the call).
-#[allow(dead_code)] // Test-only utility after v5 funnel landed.
+///
+/// Test-only after the v5 evaluate funnel landed; the production paths now
+/// take the caller's `&Bump` directly. Kept in tree to verify the slot
+/// pool behaviour (`acquire`/`release`/`reset` on drop) in unit tests.
+#[cfg(test)]
 pub(crate) struct BumpGuard {
     /// `ManuallyDrop` lets `Drop::drop` move the `Bump` back into the slot
     /// without violating `Drop`'s `&mut self` aliasing rules.
     arena: ManuallyDrop<Bump>,
 }
 
-#[allow(dead_code)] // Test-only utility after v5 funnel landed.
+#[cfg(test)]
 impl BumpGuard {
     /// Take the thread's `Bump` from the slot, or allocate a fresh one sized
     /// to `min_capacity` if the slot is empty.
@@ -211,6 +219,7 @@ impl BumpGuard {
     }
 }
 
+#[cfg(test)]
 impl Drop for BumpGuard {
     #[inline]
     fn drop(&mut self) {

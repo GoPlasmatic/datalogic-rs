@@ -120,7 +120,9 @@ impl DataLogic {
     /// Creates a new DataLogic engine with all built-in operators.
     ///
     /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
-    /// Structure preservation is disabled by default.
+    /// Structure preservation is disabled by default. For non-default
+    /// configuration (custom [`EvaluationConfig`], structure preservation,
+    /// pre-registered custom operators) prefer [`Self::builder`].
     ///
     /// # Example
     ///
@@ -166,7 +168,7 @@ impl DataLogic {
     ///     fn evaluate<'a>(
     ///         &self,
     ///         args: &[&'a DataValue<'a>],
-    ///         _actx: &mut DataContextStack<'a>,
+    ///         _ctx: &mut DataContextStack<'a>,
     ///         arena: &'a Bump,
     ///     ) -> Result<&'a DataValue<'a>> {
     ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -324,11 +326,11 @@ impl DataLogic {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         let data_ref = data.into_arena_data(arena);
-        let mut actx = crate::arena::DataContextStack::new(data_ref);
-        match self.evaluate_node(&compiled.root, &mut actx, arena) {
+        let mut ctx = crate::arena::DataContextStack::new(data_ref);
+        match self.evaluate_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
             Err(mut e) => {
-                e = e.with_path(actx.take_error_path());
+                e = e.with_path(ctx.take_error_path());
                 if let Some(name) = compiled.root.operator_name() {
                     e = e.with_operator(name);
                 }
@@ -395,13 +397,13 @@ impl DataLogic {
     ///
     /// On error, accumulates the failing node's id onto the context stack's
     /// breadcrumb so [`StructuredError`] consumers can surface the failing
-    /// path. When a tracer is attached to `actx`, records a step per
+    /// path. When a tracer is attached to `ctx`, records a step per
     /// non-literal node (entry context + result/error).
     #[inline(always)]
     pub(crate) fn evaluate_node<'a>(
         &self,
         node: &'a CompiledNode,
-        actx: &mut crate::arena::DataContextStack<'a>,
+        ctx: &mut crate::arena::DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
@@ -426,20 +428,20 @@ impl DataLogic {
         // Snapshot context for trace BEFORE recursing — children will
         // mutate iteration frames. Cheap when no tracer is attached.
         #[cfg(feature = "trace")]
-        let ctx_snapshot: Option<Value> = actx.has_tracer().then(|| actx.current_data_as_value());
+        let ctx_snapshot: Option<Value> = ctx.has_tracer().then(|| ctx.current_data_as_value());
 
-        let result = dispatch::evaluate_node_inner(self, node, actx, arena);
+        let result = dispatch::evaluate_node_inner(self, node, ctx, arena);
 
         // Accumulate the failing node's id on every Err. We always pay
         // the (single) Vec::push since errors are rare and structured-error
         // consumers need the breadcrumb.
         if result.is_err() {
-            actx.push_error_step(node.id());
+            ctx.push_error_step(node.id());
         }
 
         #[cfg(feature = "trace")]
         if let Some(ctx_data) = ctx_snapshot {
-            actx.record_node_result(node.id(), ctx_data, &result);
+            ctx.record_node_result(node.id(), ctx_data, &result);
         }
 
         result
@@ -453,16 +455,16 @@ impl DataLogic {
     pub(crate) fn eval_iter_body<'a>(
         &self,
         body: &'a CompiledNode,
-        actx: &mut crate::arena::DataContextStack<'a>,
+        ctx: &mut crate::arena::DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
         _index: u32,
         _total: u32,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         #[cfg(feature = "trace")]
-        actx.trace_push_iteration(_index, _total);
-        let res = self.evaluate_node(body, actx, arena);
+        ctx.trace_push_iteration(_index, _total);
+        let res = self.evaluate_node(body, ctx, arena);
         #[cfg(feature = "trace")]
-        actx.trace_pop_iteration();
+        ctx.trace_pop_iteration();
         res
     }
 
@@ -533,17 +535,17 @@ impl DataLogic {
     ) -> (Result<Value>, Vec<u32>) {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(&data, &arena);
-        let mut actx = crate::arena::DataContextStack::new(arena.alloc(data_av));
-        actx.set_tracer(collector);
-        let result = self.evaluate_node(&compiled.root, &mut actx, &arena);
+        let mut ctx = crate::arena::DataContextStack::new(arena.alloc(data_av));
+        ctx.set_tracer(collector);
+        let result = self.evaluate_node(&compiled.root, &mut ctx, &arena);
         match result {
             Ok(av) => {
                 let owned = crate::arena::data_to_value(av);
-                let path = actx.take_error_path();
+                let path = ctx.take_error_path();
                 (Ok(owned), path)
             }
             Err(e) => {
-                let path = actx.take_error_path();
+                let path = ctx.take_error_path();
                 (Err(e), path)
             }
         }

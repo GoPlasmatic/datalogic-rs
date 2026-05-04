@@ -4,10 +4,7 @@
 //! literal output fields rather than operators. This enables JSON templating
 //! where the output structure mirrors the input template.
 
-#![allow(deprecated)]
-
 use datalogic_rs::DataLogic;
-use datalogic_rs::compat::LegacyApi;
 use serde_json::json;
 
 fn main() {
@@ -27,7 +24,6 @@ fn main() {
         "active": true
     });
 
-    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "user": {
             "name": "Alice Johnson",
@@ -35,7 +31,7 @@ fn main() {
         }
     });
 
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate_value(&template, &data).unwrap();
     println!(
         "   Template: {}",
         serde_json::to_string_pretty(&template).unwrap()
@@ -61,14 +57,13 @@ fn main() {
         }
     });
 
-    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "first": "John",
         "last": "Doe",
         "timestamp": "2024-01-15T10:30:00Z"
     });
 
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate_value(&template, &data).unwrap();
     println!(
         "   Result: {}\n",
         serde_json::to_string_pretty(&result).unwrap()
@@ -96,14 +91,12 @@ fn main() {
         "points": {"var": "points"}
     });
 
-    let compiled = engine.compile_serde_value(&template).unwrap();
-
     let data1 = json!({"isActive": true, "points": 1500});
-    let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
+    let result1 = engine.evaluate_value(&template, &data1).unwrap();
     println!("   User with 1500 points: {}", result1);
 
     let data2 = json!({"isActive": false, "points": 750});
-    let result2 = engine.evaluate_owned(&compiled, data2).unwrap();
+    let result2 = engine.evaluate_value(&template, &data2).unwrap();
     println!("   User with 750 points:  {}\n", result2);
 
     // Example 4: Arrays with mapped content
@@ -122,7 +115,6 @@ fn main() {
         "totalProducts": {"length": {"var": "products"}}
     });
 
-    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "products": [
             {"id": 1, "name": "Widget", "price": 9.99, "quantity": 50},
@@ -131,7 +123,7 @@ fn main() {
         ]
     });
 
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate_value(&template, &data).unwrap();
     println!(
         "   Result: {}\n",
         serde_json::to_string_pretty(&result).unwrap()
@@ -161,7 +153,6 @@ fn main() {
         "timestamp": {"now": []}
     });
 
-    let compiled = engine.compile_serde_value(&template).unwrap();
     let data = json!({
         "userId": "usr_12345",
         "name": "Jane Smith",
@@ -173,7 +164,7 @@ fn main() {
         ]
     });
 
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate_value(&template, &data).unwrap();
     println!(
         "   Result: {}\n",
         serde_json::to_string_pretty(&result).unwrap()
@@ -194,17 +185,14 @@ fn main() {
     let data = json!({"x": 42});
 
     // Standard engine treats multi-key objects as errors
-    let standard_result = standard_engine.compile_serde_value(&template);
+    let standard_result = standard_engine.evaluate_value(&template, &data);
     println!(
         "   Standard engine: {:?}",
         standard_result.err().map(|e| e.to_string())
     );
 
     // Preserve engine treats unknown keys as output fields
-    let preserve_compiled = preserve_engine.compile_serde_value(&template).unwrap();
-    let preserve_result = preserve_engine
-        .evaluate_owned(&preserve_compiled, data)
-        .unwrap();
+    let preserve_result = preserve_engine.evaluate_value(&template, &data).unwrap();
     println!("   Preserve engine: {}", preserve_result);
 
     println!("\nDone!");

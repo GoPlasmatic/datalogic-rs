@@ -1,8 +1,5 @@
-#![allow(deprecated)]
-
 use datalogic_rs::DataLogic;
 use datalogic_rs::arena::DataValue;
-use datalogic_rs::compat::LegacyApi;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -37,7 +34,11 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
             && let Some(logic) = test_case.get("rule")
         {
             let data = test_case.get("data").cloned().unwrap_or(Value::Null);
-            if let Ok(compiled) = engine.compile_serde_value(logic) {
+            let logic_str = match serde_json::to_string(logic) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if let Ok(compiled) = engine.compile(&logic_str) {
                 test_cases.push((compiled, data));
             }
         }

@@ -11,7 +11,7 @@ use super::helpers::item_is_null;
 #[inline]
 pub(crate) fn evaluate_merge<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -21,7 +21,7 @@ pub(crate) fn evaluate_merge<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, args.len());
 
     for arg in args {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         match av {
             // Direct arena Array (e.g. result of upstream arena filter/map).
             DataValue::Array(items) => {

@@ -26,6 +26,11 @@
 //! - **Operator registration** — `add_arena_operator` (use
 //!   `DataLogic::add_operator` / the builder).
 //!
+//! Compile-internal types (`CompiledNode`, `OpCode`, `MetadataHint`,
+//! `PathSegment`, `ReduceHint`) were public in 4.x but are intentionally not
+//! re-exported here. Any code that walked the compiled tree was already
+//! broken by the arena rewrite — there is no v5-compatible shim for it.
+//!
 //! The module is gated by the `compat` feature, which is on by default. Drop
 //! it (`default-features = false`) for a fully serde_json-free build.
 //!
@@ -54,20 +59,10 @@ use crate::trace::TracedResult;
 
 // ---- Type / trait aliases ------------------------------------------------
 
-/// Deprecated re-exports of compile-internal types that were public in 4.x.
-/// These are not part of the v5 public surface — they're surfaced here only
-/// so existing `crate::CompiledNode` / `crate::OpCode` / etc. paths keep
-/// resolving for downstream code that mid-tree-inspected the rule.
-#[deprecated(
-    since = "5.0.0",
-    note = "compile-internal types are no longer part of the public API; the `compat` module will be removed in 5.1"
-)]
-pub use crate::node::{CompiledNode, MetadataHint, PathSegment, ReduceHint};
-#[deprecated(
-    since = "5.0.0",
-    note = "compile-internal types are no longer part of the public API; the `compat` module will be removed in 5.1"
-)]
-pub use crate::opcode::OpCode;
+// `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint` were
+// public in 4.x but are compile-internal in v5. They are not re-exported here:
+// any 4.x code that walked the compiled tree was already broken by the arena
+// rewrite, so keeping the names compiling adds no real migration value.
 
 /// Deprecated alias for [`crate::DataValue`].
 #[deprecated(
@@ -95,7 +90,7 @@ pub trait ArenaOperator: Send + Sync {
     fn evaluate_arena<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        actx: &mut crate::DataContextStack<'a>,
+        ctx: &mut crate::DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>>;
 }
@@ -107,10 +102,10 @@ impl<T: ArenaOperator + ?Sized> crate::DataOperator for T {
     fn evaluate<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        actx: &mut crate::DataContextStack<'a>,
+        ctx: &mut crate::DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>> {
-        ArenaOperator::evaluate_arena(self, args, actx, arena)
+        ArenaOperator::evaluate_arena(self, args, ctx, arena)
     }
 }
 

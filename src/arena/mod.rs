@@ -17,9 +17,6 @@ pub(crate) mod value;
 
 pub use context::DataContextStack;
 pub(crate) use context::IterGuard;
-#[cfg(feature = "compat")]
-#[allow(unused_imports)]
-pub(crate) use pool::BumpGuard;
 pub use value::DataValue;
 pub use value::data_to_json_string;
 #[cfg(feature = "compat")]

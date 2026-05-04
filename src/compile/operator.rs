@@ -8,7 +8,7 @@
 use crate::node::PathSegment;
 use crate::node::{CompileCtx, CompiledNode, MetadataHint, ReduceHint};
 
-use super::path::{parse_path_segments, parse_var_path};
+use super::path_parser::{parse_path_segments, parse_var_path};
 
 /// Try to compile a `var` operator into a `CompiledVar` node.
 pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {

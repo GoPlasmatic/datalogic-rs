@@ -8,7 +8,7 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_throw<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -18,7 +18,7 @@ pub(crate) fn evaluate_throw<'a>(
         // Literal fast path — skip arena dispatch.
         value.clone()
     } else {
-        let av = engine.evaluate_node(&args[0], actx, arena)?;
+        let av = engine.evaluate_node(&args[0], ctx, arena)?;
         av.to_owned()
     };
 

@@ -1,11 +1,25 @@
-//! Numeric coercion for `DataValue` — config-aware variants gated on the
-//! engine's `numeric_coercion` settings, plus a default-rules variant for
-//! contexts that intentionally bypass the engine config.
+//! Numeric coercion for `DataValue`.
+//!
+//! There are four distinct coercion policies in the crate; this module owns
+//! the *general-purpose* one. The others have intentionally different
+//! semantics and live next to their callers:
+//!
+//! | Policy            | Where                                          | Used by                          |
+//! |-------------------|------------------------------------------------|----------------------------------|
+//! | Numeric (config)  | this module — `coerce_to_number_cfg`           | comparison, arithmetic helpers   |
+//! | Numeric (default) | this module — `coerce_to_number` (datetime)    | datetime arithmetic              |
+//! | Equality          | `operators/comparison.rs::loose_equals_core`   | `==` / `!=` (typed coercion table) |
+//! | Arithmetic pair   | `operators/arithmetic/helpers.rs::coerce_pair_*` | `+`/`-`/`*`/`/`/`%` (delegate to `_cfg`) |
+//!
+//! Equality coercion is structural (NaN-strict, type-table) and does not
+//! reuse the f64 path; arithmetic-pair helpers are thin wrappers over
+//! [`coerce_to_number_cfg`] / [`try_coerce_to_integer_cfg`].
 
 use super::DataValue;
 
-/// Config-aware arena-native f64 coercion. Mirrors
-/// `value_helpers::coerce_to_number` exactly — same engine config gates.
+/// Config-aware arena-native f64 coercion. Honours the engine's
+/// [`crate::EvaluationConfig::numeric_coercion`] flags
+/// (`empty_string_to_zero`, `bool_to_number`, `null_to_zero`).
 #[inline]
 pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::DataLogic) -> Option<f64> {
     match v {
@@ -25,8 +39,9 @@ pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::DataLogic)
     }
 }
 
-/// Config-aware arena-native i64 coercion. Mirrors
-/// `value_helpers::try_coerce_to_integer`.
+/// Config-aware arena-native i64 coercion. Honours the same
+/// `numeric_coercion` flags as [`coerce_to_number_cfg`] but bails for
+/// fractional values.
 #[inline]
 pub(crate) fn try_coerce_to_integer_cfg(
     v: &DataValue<'_>,

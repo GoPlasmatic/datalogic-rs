@@ -9,7 +9,7 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_slice<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -17,7 +17,7 @@ pub(crate) fn evaluate_slice<'a>(
         return Err(crate::constants::invalid_args());
     }
 
-    let coll_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let coll_av = engine.evaluate_node(&args[0], ctx, arena)?;
 
     // Null passthrough.
     if matches!(coll_av, DataValue::Null) {
@@ -26,17 +26,17 @@ pub(crate) fn evaluate_slice<'a>(
 
     // Resolve start/end/step.
     let start = if args.len() > 1 {
-        extract_opt_i64_arena(&args[1], actx, engine, arena)?
+        extract_opt_i64_arena(&args[1], ctx, engine, arena)?
     } else {
         None
     };
     let end = if args.len() > 2 {
-        extract_opt_i64_arena(&args[2], actx, engine, arena)?
+        extract_opt_i64_arena(&args[2], ctx, engine, arena)?
     } else {
         None
     };
     let step = if args.len() > 3 {
-        let s = extract_opt_i64_arena(&args[3], actx, engine, arena)?.unwrap_or(1);
+        let s = extract_opt_i64_arena(&args[3], ctx, engine, arena)?.unwrap_or(1);
         if s == 0 {
             return Err(crate::constants::invalid_args());
         }
@@ -93,7 +93,7 @@ fn slice_string<'a>(
 #[inline]
 fn extract_opt_i64_arena<'a>(
     node: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<Option<i64>> {
@@ -104,7 +104,7 @@ fn extract_opt_i64_arena<'a>(
             _ => Err(Error::invalid_arguments("NaN".to_string())),
         };
     }
-    let av = engine.evaluate_node(node, actx, arena)?;
+    let av = engine.evaluate_node(node, ctx, arena)?;
     match av {
         DataValue::Null => Ok(None),
         _ => match av.as_i64() {

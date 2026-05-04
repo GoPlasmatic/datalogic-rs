@@ -480,14 +480,14 @@ impl<'e> TracedSession<'e> {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
         let data_ref = data.into_arena_data(arena);
-        let mut actx = crate::arena::DataContextStack::new(data_ref);
-        actx.set_tracer(&mut collector);
+        let mut ctx = crate::arena::DataContextStack::new(data_ref);
+        ctx.set_tracer(&mut collector);
 
-        let outcome = self.engine.evaluate_node(&compiled.root, &mut actx, arena);
+        let outcome = self.engine.evaluate_node(&compiled.root, &mut ctx, arena);
         let result = match outcome {
             Ok(av) => Ok(av),
             Err(mut e) => {
-                e = e.with_path(actx.take_error_path());
+                e = e.with_path(ctx.take_error_path());
                 if let Some(name) = compiled.root.operator_name() {
                     e = e.with_operator(name);
                 }

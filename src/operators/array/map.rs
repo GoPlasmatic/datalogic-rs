@@ -17,7 +17,7 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 pub(crate) fn evaluate_map<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -26,11 +26,11 @@ pub(crate) fn evaluate_map<'a>(
     }
 
     let body = &args[1];
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_empty_array()),
         ResolvedInput::Bridge(av) => {
-            return map_arena_bridge(av, body, actx, engine, arena);
+            return map_arena_bridge(av, body, ctx, engine, arena);
         }
     };
 
@@ -41,7 +41,7 @@ pub(crate) fn evaluate_map<'a>(
 
     // Fast paths bypass `eval_iter_body`, so they skip the tracer's
     // per-iteration markers. Only enter them when no tracer is attached.
-    if !actx.is_tracing() {
+    if !ctx.is_tracing() {
         if let Some(result) = map_var_fast_path(&src, body, arena) {
             return Ok(result);
         }
@@ -51,7 +51,7 @@ pub(crate) fn evaluate_map<'a>(
         }
     }
 
-    map_general(&src, body, actx, engine, arena)
+    map_general(&src, body, ctx, engine, arena)
 }
 
 /// Detect a `{op: [{val:[…]}, literal]}` (or literal-first) body and fold
@@ -224,14 +224,14 @@ fn map_var_fast_path<'a>(
 fn map_general<'a>(
     src: &IterSrc<'a>,
     body: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
     let total = len as u32;
     let mut results = bvec::<DataValue<'a>>(arena, len);
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
@@ -249,15 +249,15 @@ fn map_general<'a>(
 fn map_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     body: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
-        DataValue::Object(pairs) => map_bridge_object(pairs, body, actx, engine, arena),
-        DataValue::Array(items) => map_bridge_array(items, body, actx, engine, arena),
+        DataValue::Object(pairs) => map_bridge_object(pairs, body, ctx, engine, arena),
+        DataValue::Array(items) => map_bridge_array(items, body, ctx, engine, arena),
         // Single-element collection (number, string, bool primitive input).
-        _ => map_bridge_single(input, body, actx, engine, arena),
+        _ => map_bridge_single(input, body, ctx, engine, arena),
     }
 }
 
@@ -265,13 +265,13 @@ fn map_arena_bridge<'a>(
 fn map_bridge_object<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
     body: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = pairs.len() as u32;
     let mut results = bvec::<DataValue<'a>>(arena, pairs.len());
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for (i, (k, v)) in pairs.iter().enumerate() {
         // SAFETY: pairs[i].1 lives in the arena for `'a`; reborrow as `&'a` is sound.
         let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
@@ -288,13 +288,13 @@ fn map_bridge_object<'a>(
 fn map_bridge_array<'a>(
     items: &'a [DataValue<'a>],
     body: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = items.len() as u32;
     let mut results = bvec::<DataValue<'a>>(arena, items.len());
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
@@ -308,15 +308,15 @@ fn map_bridge_array<'a>(
 fn map_bridge_single<'a>(
     input: &'a DataValue<'a>,
     body: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let item_av: &'a DataValue<'a> = input;
-    actx.push_with_index(item_av, 0);
-    let av = engine.eval_iter_body(body, actx, arena, 0, 1)?;
+    ctx.push_with_index(item_av, 0);
+    let av = engine.eval_iter_body(body, ctx, arena, 0, 1)?;
     let owned = *av;
-    actx.pop();
+    ctx.pop();
     let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));
     Ok(arena.alloc(DataValue::Array(slice)))
 }

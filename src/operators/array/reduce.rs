@@ -16,7 +16,7 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 pub(crate) fn evaluate_reduce<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -26,16 +26,16 @@ pub(crate) fn evaluate_reduce<'a>(
 
     let body = &args[1];
     let initial: &'a DataValue<'a> = if args.len() == 3 {
-        engine.evaluate_node(&args[2], actx, arena)?
+        engine.evaluate_node(&args[2], ctx, arena)?
     } else {
         crate::arena::pool::singleton_null()
     };
 
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(initial),
         ResolvedInput::Bridge(av) => {
-            return reduce_arena_bridge(av, body, initial, actx, engine, arena);
+            return reduce_arena_bridge(av, body, initial, ctx, engine, arena);
         }
     };
 
@@ -46,7 +46,7 @@ pub(crate) fn evaluate_reduce<'a>(
     // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} for + / - / *.
     // Skipped when a tracer is attached so per-iteration trace markers still get
     // recorded via `eval_iter_body` in the general path.
-    if !actx.is_tracing()
+    if !ctx.is_tracing()
         && let CompiledNode::BuiltinOperator {
             opcode,
             args: body_args,
@@ -59,7 +59,7 @@ pub(crate) fn evaluate_reduce<'a>(
         return Ok(result);
     }
 
-    reduce_general(&src, body, initial, actx, engine, arena)
+    reduce_general(&src, body, initial, ctx, engine, arena)
 }
 
 /// General reduce path — push reduce frames via `IterGuard` and dispatch the
@@ -69,14 +69,14 @@ fn reduce_general<'a>(
     src: &IterSrc<'a>,
     body: &'a CompiledNode,
     initial: &'a DataValue<'a>,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
     let total = len as u32;
     let mut acc_av: &'a DataValue<'a> = initial;
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_reduce(item, acc_av);
@@ -94,7 +94,7 @@ fn reduce_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     body: &'a CompiledNode,
     initial: &'a DataValue<'a>,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -102,7 +102,7 @@ fn reduce_arena_bridge<'a>(
         DataValue::Object(pairs) => {
             let total = pairs.len() as u32;
             let mut acc_av: &'a DataValue<'a> = initial;
-            let mut guard = IterGuard::new(actx);
+            let mut guard = IterGuard::new(ctx);
             for (i, (_k, v)) in pairs.iter().enumerate() {
                 // SAFETY: pairs[i].1 lives in the arena for `'a`.
                 let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
@@ -115,7 +115,7 @@ fn reduce_arena_bridge<'a>(
         DataValue::Array(items) => {
             let total = items.len() as u32;
             let mut acc_av: &'a DataValue<'a> = initial;
-            let mut guard = IterGuard::new(actx);
+            let mut guard = IterGuard::new(ctx);
             for (i, item_av) in items.iter().enumerate() {
                 guard.step_reduce(item_av, acc_av);
                 acc_av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;

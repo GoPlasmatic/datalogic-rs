@@ -45,7 +45,7 @@ impl DivOp {
 #[inline]
 pub(crate) fn div_or_mod<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
@@ -54,25 +54,25 @@ pub(crate) fn div_or_mod<'a>(
         return Err(crate::constants::invalid_args());
     }
     if args.len() == 1 {
-        return one_arg_div_mod(&args[0], actx, engine, arena, op);
+        return one_arg_div_mod(&args[0], ctx, engine, arena, op);
     }
     if args.len() > 2 {
-        return variadic_div_mod(args, actx, engine, arena, op);
+        return variadic_div_mod(args, ctx, engine, arena, op);
     }
-    div_mod_two_arg(&args[0], &args[1], actx, engine, arena, op)
+    div_mod_two_arg(&args[0], &args[1], ctx, engine, arena, op)
 }
 
 #[inline]
 fn div_mod_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, actx, arena)?;
-    let b_av = engine.evaluate_node(b, actx, arena)?;
+    let a_av = engine.evaluate_node(a, ctx, arena)?;
+    let b_av = engine.evaluate_node(b, ctx, arena)?;
 
     // Duration / Number — only for `/`, not `%` (modulo on durations
     // is not defined).
@@ -133,12 +133,12 @@ fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &DataLogic) -> Result<&
 ///     non-array argument → InvalidArguments.
 fn one_arg_div_mod<'a>(
     arg: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    let av = engine.evaluate_node(arg, actx, arena)?;
+    let av = engine.evaluate_node(arg, ctx, arena)?;
 
     if let DataValue::Array(items) = av {
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
@@ -185,16 +185,16 @@ fn one_arg_div_mod<'a>(
 /// per-step zero-divisor check.
 fn variadic_div_mod<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
     let mut result =
         coerce_to_number_cfg(first_av, engine).ok_or_else(crate::constants::nan_error)?;
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         let n = coerce_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
         if n == 0.0 {
             return Err(crate::constants::nan_error());

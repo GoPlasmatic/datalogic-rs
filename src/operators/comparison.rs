@@ -42,8 +42,146 @@
 //! - Comparing arrays or objects (except datetime/duration objects)
 //! - Comparing a number with a non-numeric string
 
-use crate::value_helpers::loose_equals;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg};
+use crate::constants::NAN_ERROR;
+use crate::{CompiledNode, DataLogic, Error, Result};
+use bumpalo::Bump;
+
+// ─── Loose equality (==/!=) ──────────────────────────────────────────────────
+//
+// Reached from the comparison-arena collection-fallback path (rare — array-vs-
+// array / object-vs-object) and from the primitive `==`/`!=` arms. Strict
+// equality (`===`) compares values directly without going through here.
+//
+// Loose coercion table:
+//
+// | Left Type | Right Type | Behavior                       |
+// |-----------|------------|--------------------------------|
+// | Number    | String     | Parse string as number         |
+// | Number    | Bool       | `true` → `1`, `false` → `0`    |
+// | String    | Bool       | Compare to `"true"`/`"false"`  |
+// | Null      | Number     | `null` equals `0`              |
+// | Null      | Bool       | `null` equals `false`          |
+// | Null      | String     | `null` equals `""`             |
+
+enum LooseEqualsResult {
+    Equal,
+    NotEqual,
+    Incompatible,
+}
+
+fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEqualsResult {
+    use LooseEqualsResult::*;
+
+    match (left, right) {
+        // Same-type cases
+        (DataValue::Null, DataValue::Null) => Equal,
+        (DataValue::Bool(a), DataValue::Bool(b)) => {
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+        (DataValue::String(a), DataValue::String(b)) => {
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+        (DataValue::Number(a), DataValue::Number(b)) => {
+            let a_f = a.as_f64();
+            let b_f = b.as_f64();
+            if !a_f.is_nan() && !b_f.is_nan() && a_f == b_f {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+
+        // Number-String coercion
+        (DataValue::Number(n), DataValue::String(s))
+        | (DataValue::String(s), DataValue::Number(n)) => match s.parse::<f64>().ok() {
+            Some(s_f) if n.as_f64() == s_f => Equal,
+            Some(_) => NotEqual,
+            None => Incompatible,
+        },
+
+        // Number-Bool coercion
+        (DataValue::Number(n), DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Number(n)) => {
+            if n.as_f64() == (if *b { 1.0 } else { 0.0 }) {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+
+        // String-Bool coercion
+        (DataValue::String(s), DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::String(s)) => {
+            if *s == (if *b { "true" } else { "false" }) {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+
+        // Null coercions
+        (DataValue::Null, DataValue::Number(n)) | (DataValue::Number(n), DataValue::Null) => {
+            if n.as_f64() == 0.0 { Equal } else { NotEqual }
+        }
+        (DataValue::Null, DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Null) => {
+            if !*b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+        (DataValue::Null, DataValue::String(s)) | (DataValue::String(s), DataValue::Null) => {
+            if s.is_empty() { Equal } else { NotEqual }
+        }
+
+        // Composite mixed with primitive: incompatible
+        (DataValue::Array(_), _) | (_, DataValue::Array(_))
+            if !matches!((left, right), (DataValue::Array(_), DataValue::Array(_))) =>
+        {
+            Incompatible
+        }
+        (DataValue::Object(_), _) | (_, DataValue::Object(_))
+            if !matches!((left, right), (DataValue::Object(_), DataValue::Object(_))) =>
+        {
+            Incompatible
+        }
+
+        // Array-array structural compare
+        (DataValue::Array(a), DataValue::Array(b)) => {
+            if a == b {
+                Equal
+            } else {
+                Incompatible
+            }
+        }
+
+        _ => NotEqual,
+    }
+}
+
+/// Compare two values with loose equality. When the engine config has
+/// `loose_equality_errors` enabled, type-incompatible operands return an
+/// error; otherwise they compare as not-equal.
+fn loose_equals(left: &DataValue<'_>, right: &DataValue<'_>, engine: &DataLogic) -> Result<bool> {
+    match loose_equals_core(left, right) {
+        LooseEqualsResult::Equal => Ok(true),
+        LooseEqualsResult::NotEqual => Ok(false),
+        LooseEqualsResult::Incompatible => {
+            if engine.config().loose_equality_errors {
+                Err(Error::invalid_arguments(NAN_ERROR))
+            } else {
+                Ok(false)
+            }
+        }
+    }
+}
 
 /// Returns true if a string could plausibly be a datetime or duration.
 /// Filters out pure numeric strings and short strings that can't be either format.
@@ -129,9 +267,6 @@ impl OrdOp {
 // Equality and ordering are dispatched on `&DataValue` directly. Primitive
 // operands take an arena-native fast path; collection-vs-collection equality
 // falls through to `DataValue`'s `PartialEq` in the datavalue crate.
-
-use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg};
-use bumpalo::Bump;
 
 /// View an arena value as `&str` if it's a string variant.
 #[inline]
@@ -271,12 +406,16 @@ fn compare_ordered(
     op: OrdOp,
     engine: &DataLogic,
 ) -> Result<bool> {
-    // Number vs Number — most common case.
-    let l_is_num = matches!(left, DataValue::Number(_));
-    let r_is_num = matches!(right, DataValue::Number(_));
-    if l_is_num && r_is_num {
-        let lf = left.as_f64().unwrap_or(f64::NAN);
-        let rf = right.as_f64().unwrap_or(f64::NAN);
+    // Number vs Number — most common case. Both operands are guaranteed
+    // numeric by the `matches!` guards, so `as_f64()` cannot return None
+    // (every NumberValue variant converts losslessly to f64).
+    if let (DataValue::Number(_), DataValue::Number(_)) = (left, right) {
+        let lf = left
+            .as_f64()
+            .expect("DataValue::Number is always f64-convertible");
+        let rf = right
+            .as_f64()
+            .expect("DataValue::Number is always f64-convertible");
         return Ok(op.apply_f64(lf, rf));
     }
 
@@ -335,8 +474,9 @@ fn compare_ordered(
     }
 
     // Number-String mismatch — NaN error.
+    let is_num = |av: &DataValue<'_>| matches!(av, DataValue::Number(_));
     let is_str = |av: &DataValue<'_>| matches!(av, DataValue::String(_));
-    if (l_is_num && is_str(right)) || (r_is_num && is_str(left)) {
+    if (is_num(left) && is_str(right)) || (is_num(right) && is_str(left)) {
         return Err(crate::constants::nan_error());
     }
 
@@ -346,16 +486,16 @@ fn compare_ordered(
 #[inline]
 pub(crate) fn evaluate_strict_equals<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_node(arg, actx, arena)?;
+        let cur_av = engine.evaluate_node(arg, ctx, arena)?;
         if !compare_equals(first_av, cur_av, true, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -366,15 +506,15 @@ pub(crate) fn evaluate_strict_equals<'a>(
 #[inline]
 pub(crate) fn evaluate_strict_not_equals<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let a = engine.evaluate_node(&args[0], actx, arena)?;
-    let b = engine.evaluate_node(&args[1], actx, arena)?;
+    let a = engine.evaluate_node(&args[0], ctx, arena)?;
+    let b = engine.evaluate_node(&args[1], ctx, arena)?;
     let eq = compare_equals(a, b, true, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -382,16 +522,16 @@ pub(crate) fn evaluate_strict_not_equals<'a>(
 #[inline]
 pub(crate) fn evaluate_equals<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_node(arg, actx, arena)?;
+        let cur_av = engine.evaluate_node(arg, ctx, arena)?;
         if !compare_equals(first_av, cur_av, false, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -402,15 +542,15 @@ pub(crate) fn evaluate_equals<'a>(
 #[inline]
 pub(crate) fn evaluate_not_equals<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let a = engine.evaluate_node(&args[0], actx, arena)?;
-    let b = engine.evaluate_node(&args[1], actx, arena)?;
+    let a = engine.evaluate_node(&args[0], ctx, arena)?;
+    let b = engine.evaluate_node(&args[1], ctx, arena)?;
     let eq = compare_equals(a, b, false, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -418,7 +558,7 @@ pub(crate) fn evaluate_not_equals<'a>(
 #[inline]
 fn evaluate_ord<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: OrdOp,
@@ -426,9 +566,9 @@ fn evaluate_ord<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let mut prev_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let mut prev_av = engine.evaluate_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_node(arg, actx, arena)?;
+        let cur_av = engine.evaluate_node(arg, ctx, arena)?;
         if !compare_ordered(prev_av, cur_av, op, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -440,39 +580,39 @@ fn evaluate_ord<'a>(
 #[inline]
 pub(crate) fn evaluate_greater_than<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, actx, engine, arena, OrdOp::Gt)
+    evaluate_ord(args, ctx, engine, arena, OrdOp::Gt)
 }
 
 #[inline]
 pub(crate) fn evaluate_greater_than_equal<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, actx, engine, arena, OrdOp::Gte)
+    evaluate_ord(args, ctx, engine, arena, OrdOp::Gte)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, actx, engine, arena, OrdOp::Lt)
+    evaluate_ord(args, ctx, engine, arena, OrdOp::Lt)
 }
 
 #[inline]
 pub(crate) fn evaluate_less_than_equal<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, actx, engine, arena, OrdOp::Lte)
+    evaluate_ord(args, ctx, engine, arena, OrdOp::Lte)
 }

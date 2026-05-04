@@ -20,7 +20,7 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 pub(crate) fn evaluate_sort<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -35,11 +35,11 @@ pub(crate) fn evaluate_sort<'a>(
         return Err(crate::constants::invalid_args());
     }
 
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_null()),
         ResolvedInput::Bridge(av) => {
-            return sort_arena_from_value(av, args, actx, engine, arena);
+            return sort_arena_from_value(av, args, ctx, engine, arena);
         }
     };
 
@@ -48,7 +48,7 @@ pub(crate) fn evaluate_sort<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    let ascending = sort_direction(args, actx, engine, arena)?;
+    let ascending = sort_direction(args, ctx, engine, arena)?;
 
     // No extractor — sort items directly by DataValue order.
     if args.len() <= 2 {
@@ -64,19 +64,19 @@ pub(crate) fn evaluate_sort<'a>(
     }
 
     // General extractor — push each item, evaluate, collect keys, sort indices.
-    sort_general_extractor(&src, extractor, ascending, actx, engine, arena)
+    sort_general_extractor(&src, extractor, ascending, ctx, engine, arena)
 }
 
 /// Read the optional `args[1]` direction flag — defaults to ascending.
 #[inline]
 fn sort_direction<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<bool> {
     if args.len() > 1 {
-        let dir = engine.evaluate_node(&args[1], actx, arena)?;
+        let dir = engine.evaluate_node(&args[1], ctx, arena)?;
         Ok(match dir {
             DataValue::Bool(b) => *b,
             _ => true,
@@ -148,13 +148,13 @@ fn sort_general_extractor<'a>(
     src: &IterSrc<'a>,
     extractor: &'a CompiledNode,
     ascending: bool,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
     let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(len);
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
@@ -180,7 +180,7 @@ fn sort_general_extractor<'a>(
 fn sort_arena_from_value<'a>(
     av: &'a DataValue<'a>,
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -195,7 +195,7 @@ fn sort_arena_from_value<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    let ascending = sort_direction(args, actx, engine, arena)?;
+    let ascending = sort_direction(args, ctx, engine, arena)?;
     let n = items_slice.len();
 
     if args.len() <= 2 {
@@ -212,7 +212,7 @@ fn sort_arena_from_value<'a>(
     // collect keys, sort indices.
     let extractor = &args[2];
     let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(n);
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for (i, item_av) in items_slice.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;

@@ -53,7 +53,7 @@ impl UnaryMathOp {
 #[inline]
 pub(crate) fn unary_math<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: UnaryMathOp,
@@ -71,14 +71,14 @@ pub(crate) fn unary_math<'a>(
     };
 
     if args.len() == 1 {
-        let av = engine.evaluate_node(&args[0], actx, arena)?;
+        let av = engine.evaluate_node(&args[0], ctx, arena)?;
         let n = value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
         return Ok(to_arena(op.apply(n), arena));
     }
 
     let mut items = bvec::<DataValue<'a>>(arena, args.len());
     for arg in args {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         let n = value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
         let r = to_arena(op.apply(n), arena);
         items.push(*r);

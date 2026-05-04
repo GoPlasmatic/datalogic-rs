@@ -20,7 +20,7 @@ use bumpalo::Bump;
 fn min_max<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     init: f64,
@@ -32,7 +32,7 @@ fn min_max<'a>(
 
     // Multi-arg variadic form: evaluate each arg, pick the best Number.
     if args.len() > 1 {
-        return min_max_variadic(args, actx, engine, arena, init, pick_better);
+        return min_max_variadic(args, ctx, engine, arena, init, pick_better);
     }
 
     // Reject literal-array arg shape.
@@ -45,7 +45,7 @@ fn min_max<'a>(
         return Err(crate::constants::invalid_args());
     }
 
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(crate::constants::invalid_args()),
         ResolvedInput::Bridge(av) => {
@@ -92,7 +92,7 @@ fn min_max<'a>(
 #[inline]
 fn min_max_variadic<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     init: f64,
@@ -101,7 +101,7 @@ fn min_max_variadic<'a>(
     let mut best_f = init;
     let mut best_av: Option<&'a DataValue<'a>> = None;
     for arg in args {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         let f = match av {
             DataValue::Number(n) => n.as_f64(),
             _ => return Err(crate::constants::invalid_args()),
@@ -153,14 +153,14 @@ fn min_max_from_av<'a>(
 pub(crate) fn evaluate_max<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     min_max(
         args,
         iter_arg_kind,
-        actx,
+        ctx,
         engine,
         arena,
         f64::NEG_INFINITY,
@@ -173,14 +173,14 @@ pub(crate) fn evaluate_max<'a>(
 pub(crate) fn evaluate_min<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     min_max(
         args,
         iter_arg_kind,
-        actx,
+        ctx,
         engine,
         arena,
         f64::INFINITY,

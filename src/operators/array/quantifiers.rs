@@ -46,7 +46,7 @@ impl QuantifierShape {
 fn evaluate_quantifier<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     shape: QuantifierShape,
@@ -56,11 +56,11 @@ fn evaluate_quantifier<'a>(
     }
 
     let predicate = &args[1];
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(singleton_bool(shape.empty_result)),
         ResolvedInput::Bridge(av) => {
-            return quantifier_arena_bridge(av, predicate, shape, actx, engine, arena);
+            return quantifier_arena_bridge(av, predicate, shape, ctx, engine, arena);
         }
     };
 
@@ -72,7 +72,7 @@ fn evaluate_quantifier<'a>(
     // hoisted to compile time and cached on the predicate node, so we
     // pull it from there instead of pattern-matching every call. Skipped
     // when a tracer is attached so iteration markers still get recorded.
-    if !actx.is_tracing()
+    if !ctx.is_tracing()
         && let Some(fast_pred) = FastPredicate::from_node(predicate)
     {
         let len = src.len();
@@ -88,7 +88,7 @@ fn evaluate_quantifier<'a>(
     let len = src.len();
     let total = len as u32;
     let mut found_short = false;
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
@@ -109,7 +109,7 @@ fn quantifier_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     predicate: &'a CompiledNode,
     shape: QuantifierShape,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -120,7 +120,7 @@ fn quantifier_arena_bridge<'a>(
             }
             let total = pairs.len() as u32;
             let mut found_short = false;
-            let mut guard = IterGuard::new(actx);
+            let mut guard = IterGuard::new(ctx);
             for (i, (k, v)) in pairs.iter().enumerate() {
                 // SAFETY: pairs[i].1 lives in the arena for `'a`.
                 let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
@@ -141,7 +141,7 @@ fn quantifier_arena_bridge<'a>(
             }
             let total = items.len() as u32;
             let mut found_short = false;
-            let mut guard = IterGuard::new(actx);
+            let mut guard = IterGuard::new(ctx);
             for (i, item_av) in items.iter().enumerate() {
                 guard.step_indexed(item_av, i);
                 let av = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
@@ -163,7 +163,7 @@ fn quantifier_arena_bridge<'a>(
 pub(crate) fn evaluate_all<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -172,7 +172,7 @@ pub(crate) fn evaluate_all<'a>(
     evaluate_quantifier(
         args,
         iter_arg_kind,
-        actx,
+        ctx,
         engine,
         arena,
         QuantifierShape {
@@ -188,7 +188,7 @@ pub(crate) fn evaluate_all<'a>(
 pub(crate) fn evaluate_some<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -196,7 +196,7 @@ pub(crate) fn evaluate_some<'a>(
     evaluate_quantifier(
         args,
         iter_arg_kind,
-        actx,
+        ctx,
         engine,
         arena,
         QuantifierShape {
@@ -212,7 +212,7 @@ pub(crate) fn evaluate_some<'a>(
 pub(crate) fn evaluate_none<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -220,7 +220,7 @@ pub(crate) fn evaluate_none<'a>(
     evaluate_quantifier(
         args,
         iter_arg_kind,
-        actx,
+        ctx,
         engine,
         arena,
         QuantifierShape {

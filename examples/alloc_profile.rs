@@ -1,12 +1,9 @@
 //! Allocation-counting profiler — measures allocs/free/bytes per evaluate().
 //! Used to validate the arena POC measurement criteria from ARENA_RFC.md.
-#![allow(deprecated)]
 
 use datalogic_rs::DataLogic;
-use datalogic_rs::compat::LegacyApi;
 use serde_json::Value;
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -39,15 +36,22 @@ fn snapshot() -> (u64, u64, u64) {
 }
 
 fn measure(name: &str, engine: &DataLogic, rule: Value, data: Value, iters: u32) {
-    let compiled = engine.compile_serde_value(&rule).unwrap();
-    let data_arc = Arc::new(data);
+    let rule_str = serde_json::to_string(&rule).unwrap();
+    let compiled = engine.compile(&rule_str).unwrap();
+    let data_str = serde_json::to_string(&data).unwrap();
+    let data_arena = bumpalo::Bump::new();
+    let data_av = datavalue::DataValue::from_str(&data_str, &data_arena).unwrap();
+    let data_av = data_arena.alloc(data_av);
+    let mut arena = bumpalo::Bump::with_capacity(64 * 1024);
     for _ in 0..1000 {
-        let _ = engine.evaluate_arc_value(&compiled, data_arc.clone());
+        let _ = engine.evaluate(&compiled, *data_av, &arena);
+        arena.reset();
     }
     let (a0, b0, f0) = snapshot();
     let t0 = Instant::now();
     for _ in 0..iters {
-        let _ = engine.evaluate_arc_value(&compiled, data_arc.clone());
+        let _ = engine.evaluate(&compiled, *data_av, &arena);
+        arena.reset();
     }
     let elapsed = t0.elapsed();
     let (a1, b1, f1) = snapshot();

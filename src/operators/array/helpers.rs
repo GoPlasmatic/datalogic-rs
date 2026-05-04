@@ -50,7 +50,7 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
 #[inline]
 pub(super) fn evaluate_invariant_no_push<'a>(
     invariant_node: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -58,9 +58,9 @@ pub(super) fn evaluate_invariant_no_push<'a>(
         return Ok(arena.alloc(value.to_arena(arena)));
     }
     let null_av: &'a DataValue<'a> = crate::arena::pool::singleton_null();
-    actx.push(null_av);
-    let result = engine.evaluate_node(invariant_node, actx, arena);
-    actx.pop();
+    ctx.push(null_av);
+    let result = engine.evaluate_node(invariant_node, ctx, arena);
+    ctx.pop();
     result
 }
 
@@ -358,7 +358,7 @@ pub(crate) enum ResolvedInput<'a> {
 ///
 /// `RootVarBorrow` covers the dominant pattern: `args[0]` is a plain
 /// `{var: "..."}` against the root frame — we can read directly from
-/// `actx.root_input()` without dispatching into the arena evaluator. Any
+/// `ctx.root_input()` without dispatching into the arena evaluator. Any
 /// other shape, including nested operators, falls through to `General`.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -396,13 +396,13 @@ impl IterArgKind {
 
 /// Resolve `args[0]` for an iterator op given the compile-time kind cached on
 /// the parent. Two paths only:
-///   - **Root borrow**: traverse `actx.root_input()` directly when we can —
+///   - **Root borrow**: traverse `ctx.root_input()` directly when we can —
 ///     the dominant pattern in real workloads, reached in one byte compare.
 ///   - **General**: dispatch through the arena evaluator (covers composition
 ///     with another arena op, expressions, primitives — the dispatcher itself
 ///     handles those branches).
 ///
-/// `actx.depth() != 0` falls through to General even when the kind is
+/// `ctx.depth() != 0` falls through to General even when the kind is
 /// `RootVarBorrow`, because a borrow at non-root depth would leak the caller's
 /// iteration frame instead of reading the rule's input.
 ///
@@ -414,16 +414,16 @@ impl IterArgKind {
 pub(crate) fn resolve_iter_input<'a>(
     arg: &'a CompiledNode,
     kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
     if let IterArgKind::RootVarBorrow {
         path_segments_empty,
     } = kind
-        && actx.depth() == 0
+        && ctx.depth() == 0
     {
-        let root = actx.root_input();
+        let root = ctx.root_input();
         let av = if path_segments_empty {
             Some(root)
         } else if let CompiledNode::CompiledVar { segments, .. } = arg {
@@ -437,7 +437,7 @@ pub(crate) fn resolve_iter_input<'a>(
         }
     }
 
-    let av = engine.evaluate_node(arg, actx, arena)?;
+    let av = engine.evaluate_node(arg, ctx, arena)?;
     Ok(value_as_iter(av))
 }
 

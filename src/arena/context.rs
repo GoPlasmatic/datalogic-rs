@@ -379,30 +379,27 @@ impl<'a> DataContextStack<'a> {
 /// On the first `step_*` call the guard pushes a frame; subsequent `step_*`
 /// calls *replace* the top frame in place (avoiding repeated push/pop). The
 /// frame is popped automatically on drop, including on the early-return paths
-/// that previously needed a manual `if pushed { actx.pop() }` epilogue.
+/// that previously needed a manual `if pushed { ctx.pop() }` epilogue.
 ///
 /// All three iteration shapes are covered: indexed (array), keyed (object),
 /// and reduce (current/accumulator).
 pub(crate) struct IterGuard<'g, 'a> {
-    actx: &'g mut DataContextStack<'a>,
+    ctx: &'g mut DataContextStack<'a>,
     pushed: bool,
 }
 
 impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
-    pub(crate) fn new(actx: &'g mut DataContextStack<'a>) -> Self {
-        Self {
-            actx,
-            pushed: false,
-        }
+    pub(crate) fn new(ctx: &'g mut DataContextStack<'a>) -> Self {
+        Self { ctx, pushed: false }
     }
 
     #[inline]
     pub(crate) fn step_indexed(&mut self, data: &'a DataValue<'a>, index: usize) {
         if self.pushed {
-            self.actx.replace_top_data(data, index);
+            self.ctx.replace_top_data(data, index);
         } else {
-            self.actx.push_with_index(data, index);
+            self.ctx.push_with_index(data, index);
             self.pushed = true;
         }
     }
@@ -410,9 +407,9 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
     pub(crate) fn step_keyed(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
         if self.pushed {
-            self.actx.replace_top_key_data(data, index, key);
+            self.ctx.replace_top_key_data(data, index, key);
         } else {
-            self.actx.push_with_key_index(data, index, key);
+            self.ctx.push_with_key_index(data, index, key);
             self.pushed = true;
         }
     }
@@ -424,9 +421,9 @@ impl<'g, 'a> IterGuard<'g, 'a> {
         accumulator: &'a DataValue<'a>,
     ) {
         if self.pushed {
-            self.actx.replace_reduce_data(current, accumulator);
+            self.ctx.replace_reduce_data(current, accumulator);
         } else {
-            self.actx.push_reduce(current, accumulator);
+            self.ctx.push_reduce(current, accumulator);
             self.pushed = true;
         }
     }
@@ -435,7 +432,7 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     /// and similar calls that take `&mut DataContextStack`.
     #[inline]
     pub(crate) fn stack(&mut self) -> &mut DataContextStack<'a> {
-        self.actx
+        self.ctx
     }
 }
 
@@ -443,7 +440,7 @@ impl Drop for IterGuard<'_, '_> {
     #[inline]
     fn drop(&mut self) {
         if self.pushed {
-            self.actx.pop();
+            self.ctx.pop();
         }
     }
 }

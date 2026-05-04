@@ -16,7 +16,7 @@ use super::helpers::{
 pub(crate) fn evaluate_filter<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -25,11 +25,11 @@ pub(crate) fn evaluate_filter<'a>(
     }
 
     // Resolve input via unified helper (root borrow OR upstream arena op).
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, actx, engine, arena)? {
+    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_empty_array()),
         ResolvedInput::Bridge(av) => {
-            return filter_arena_bridge(av, &args[1], actx, engine, arena);
+            return filter_arena_bridge(av, &args[1], ctx, engine, arena);
         }
     };
 
@@ -41,9 +41,8 @@ pub(crate) fn evaluate_filter<'a>(
 
     // Fast paths bypass `eval_iter_body` and skip tracer markers. Defer to the
     // general path when a tracer is attached.
-    if !actx.is_tracing() {
-        if let Some(result) =
-            filter_strict_eq_field_fast_path(&src, predicate, actx, engine, arena)?
+    if !ctx.is_tracing() {
+        if let Some(result) = filter_strict_eq_field_fast_path(&src, predicate, ctx, engine, arena)?
         {
             return Ok(result);
         }
@@ -53,7 +52,7 @@ pub(crate) fn evaluate_filter<'a>(
         }
     }
 
-    filter_general(&src, predicate, actx, engine, arena)
+    filter_general(&src, predicate, ctx, engine, arena)
 }
 
 /// Fast path for `filter(arr, == [{var: "field"}, invariant])` — direct field
@@ -62,7 +61,7 @@ pub(crate) fn evaluate_filter<'a>(
 fn filter_strict_eq_field_fast_path<'a>(
     src: &IterSrc<'a>,
     predicate: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<Option<&'a DataValue<'a>>> {
@@ -85,7 +84,7 @@ fn filter_strict_eq_field_fast_path<'a>(
         return Ok(None);
     };
 
-    let invariant_val = evaluate_invariant_no_push(invariant_node, actx, engine, arena)?;
+    let invariant_val = evaluate_invariant_no_push(invariant_node, ctx, engine, arena)?;
     let is_eq = matches!(opcode, OpCode::StrictEquals);
     let len = src.len();
     let mut results = bvec::<DataValue<'a>>(arena, len);
@@ -136,14 +135,14 @@ fn filter_with_fast_predicate<'a>(
 fn filter_general<'a>(
     src: &IterSrc<'a>,
     predicate: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
     let total = len as u32;
     let mut results = bvec::<DataValue<'a>>(arena, len);
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
@@ -167,13 +166,13 @@ fn filter_general<'a>(
 fn filter_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     predicate: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
-        DataValue::Object(pairs) => filter_bridge_object(pairs, predicate, actx, engine, arena),
-        DataValue::Array(items) => filter_bridge_array(items, predicate, actx, engine, arena),
+        DataValue::Object(pairs) => filter_bridge_object(pairs, predicate, ctx, engine, arena),
+        DataValue::Array(items) => filter_bridge_array(items, predicate, ctx, engine, arena),
         _ => Err(crate::constants::invalid_args()),
     }
 }
@@ -182,13 +181,13 @@ fn filter_arena_bridge<'a>(
 fn filter_bridge_object<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
     predicate: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = pairs.len() as u32;
     let mut kept = bvec::<(&'a str, DataValue<'a>)>(arena, pairs.len());
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for (i, (k, v)) in pairs.iter().enumerate() {
         // SAFETY: pairs[i].1 lives in the arena for `'a`; the slice borrow is
         // a sub-borrow of that arena, and reborrowing it as `&'a` is sound.
@@ -211,13 +210,13 @@ fn filter_bridge_object<'a>(
 fn filter_bridge_array<'a>(
     items: &'a [DataValue<'a>],
     predicate: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = items.len() as u32;
     let mut kept = bvec::<DataValue<'a>>(arena, items.len());
-    let mut guard = IterGuard::new(actx);
+    let mut guard = IterGuard::new(ctx);
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;

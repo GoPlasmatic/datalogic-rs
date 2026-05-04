@@ -17,7 +17,7 @@ use super::helpers::{
 #[inline]
 pub(crate) fn evaluate_add<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -25,14 +25,14 @@ pub(crate) fn evaluate_add<'a>(
         return Ok(alloc_number(arena, NumberValue::from_i64(0)));
     }
     if args.len() == 1 {
-        return one_arg_arith(&args[0], actx, engine, arena, ArithOp::Add);
+        return one_arg_arith(&args[0], ctx, engine, arena, ArithOp::Add);
     }
     if args.len() == 2 {
-        return add_two_arg(&args[0], &args[1], actx, engine, arena);
+        return add_two_arg(&args[0], &args[1], ctx, engine, arena);
     }
     variadic_fold(
         args,
-        actx,
+        ctx,
         engine,
         arena,
         VariadicFoldSpec {
@@ -48,12 +48,12 @@ pub(crate) fn evaluate_add<'a>(
 fn add_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, actx, arena)?;
-    let b_av = engine.evaluate_node(b, actx, arena)?;
+    let a_av = engine.evaluate_node(a, ctx, arena)?;
+    let b_av = engine.evaluate_node(b, ctx, arena)?;
 
     // Integer-preserving fast path (both native Number with i64 values).
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -102,7 +102,7 @@ fn add_two_arg<'a>(
 #[inline]
 pub(crate) fn evaluate_multiply<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -110,14 +110,14 @@ pub(crate) fn evaluate_multiply<'a>(
         return Ok(alloc_number(arena, NumberValue::from_i64(1)));
     }
     if args.len() == 1 {
-        return one_arg_arith(&args[0], actx, engine, arena, ArithOp::Multiply);
+        return one_arg_arith(&args[0], ctx, engine, arena, ArithOp::Multiply);
     }
     if args.len() == 2 {
-        return multiply_two_arg(&args[0], &args[1], actx, engine, arena);
+        return multiply_two_arg(&args[0], &args[1], ctx, engine, arena);
     }
     variadic_fold(
         args,
-        actx,
+        ctx,
         engine,
         arena,
         VariadicFoldSpec {
@@ -133,12 +133,12 @@ pub(crate) fn evaluate_multiply<'a>(
 fn multiply_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, actx, arena)?;
-    let b_av = engine.evaluate_node(b, actx, arena)?;
+    let a_av = engine.evaluate_node(a, ctx, arena)?;
+    let b_av = engine.evaluate_node(b, ctx, arena)?;
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -187,7 +187,7 @@ fn multiply_two_arg<'a>(
 #[inline]
 pub(crate) fn evaluate_subtract<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -195,22 +195,22 @@ pub(crate) fn evaluate_subtract<'a>(
         return Err(crate::constants::invalid_args());
     }
     if args.len() == 1 {
-        return subtract_one_arg(&args[0], actx, engine, arena);
+        return subtract_one_arg(&args[0], ctx, engine, arena);
     }
     if args.len() == 2 {
-        return subtract_two_arg(&args[0], &args[1], actx, engine, arena);
+        return subtract_two_arg(&args[0], &args[1], ctx, engine, arena);
     }
-    subtract_variadic(args, actx, engine, arena)
+    subtract_variadic(args, ctx, engine, arena)
 }
 
 #[inline]
 fn subtract_one_arg<'a>(
     arg: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let av = engine.evaluate_node(arg, actx, arena)?;
+    let av = engine.evaluate_node(arg, ctx, arena)?;
 
     // Array fold case: (first - second - ...).
     if let DataValue::Array(items) = av {
@@ -244,12 +244,12 @@ fn subtract_one_arg<'a>(
 fn subtract_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, actx, arena)?;
-    let b_av = engine.evaluate_node(b, actx, arena)?;
+    let a_av = engine.evaluate_node(a, ctx, arena)?;
+    let b_av = engine.evaluate_node(b, ctx, arena)?;
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -284,11 +284,11 @@ fn subtract_two_arg<'a>(
 #[inline]
 fn subtract_variadic<'a>(
     args: &'a [CompiledNode],
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let first_av = engine.evaluate_node(&args[0], actx, arena)?;
+    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
     let mut all_int =
         first_av.as_i64().is_some() || try_coerce_to_integer_cfg(first_av, engine).is_some();
     let mut int_acc: i64 = first_av
@@ -301,7 +301,7 @@ fn subtract_variadic<'a>(
     };
 
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         if all_int
             && let Some(i) = av
                 .as_i64()
@@ -342,7 +342,7 @@ fn subtract_variadic<'a>(
 /// or treat as a single-value sum/product.
 fn one_arg_arith<'a>(
     arg: &'a CompiledNode,
-    actx: &mut DataContextStack<'a>,
+    ctx: &mut DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     op: ArithOp,
@@ -367,7 +367,7 @@ fn one_arg_arith<'a>(
         };
     }
 
-    let av = engine.evaluate_node(arg, actx, arena)?;
+    let av = engine.evaluate_node(arg, ctx, arena)?;
 
     // Array result (e.g. from `var "items"`): fold all elements.
     if let DataValue::Array(items) = av {

@@ -229,8 +229,8 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
 pub(crate) fn fold_static_node(node: &CompiledNode, engine: &DataLogic) -> Option<OwnedDataValue> {
     let arena = bumpalo::Bump::new();
     let null_root: &crate::arena::DataValue<'_> = arena.alloc(crate::arena::DataValue::Null);
-    let mut actx = crate::arena::DataContextStack::new(null_root);
-    let av = engine.evaluate_node(node, &mut actx, &arena).ok()?;
+    let mut ctx = crate::arena::DataContextStack::new(null_root);
+    let av = engine.evaluate_node(node, &mut ctx, &arena).ok()?;
     Some(av.to_owned())
 }
 

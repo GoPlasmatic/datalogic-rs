@@ -6,10 +6,7 @@
 //! `serde_json::Value` and is required to register a custom op with the
 //! engine.
 
-#![allow(deprecated)]
-
 use bumpalo::Bump;
-use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
 use serde_json::json;
 
@@ -23,7 +20,7 @@ impl DataOperator for AverageOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
@@ -68,7 +65,7 @@ impl DataOperator for BetweenOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() < 3 {
@@ -98,7 +95,7 @@ impl DataOperator for FormatOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _actx: &mut DataContextStack<'a>,
+        _ctx: &mut DataContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
@@ -153,14 +150,12 @@ fn main() {
     println!("-------------------");
 
     let logic = json!({"avg": [10, 20, 30, 40, 50]});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let result = engine.evaluate_value(&logic, &json!({})).unwrap();
     println!("   avg([10, 20, 30, 40, 50]) = {}", result);
 
     let logic = json!({"avg": {"var": "scores"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({"scores": [85, 90, 78, 92, 88]});
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate_value(&logic, &data).unwrap();
     println!("   avg(scores) = {} (from data)\n", result);
 
     // Example 2: Between operator
@@ -168,14 +163,13 @@ fn main() {
     println!("-------------------");
 
     let logic = json!({"between": [{"var": "age"}, 18, 65]});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
 
     let data1 = json!({"age": 25});
-    let result1 = engine.evaluate_owned(&compiled, data1).unwrap();
+    let result1 = engine.evaluate_value(&logic, &data1).unwrap();
     println!("   age=25 between 18 and 65? {}", result1);
 
     let data2 = json!({"age": 70});
-    let result2 = engine.evaluate_owned(&compiled, data2).unwrap();
+    let result2 = engine.evaluate_value(&logic, &data2).unwrap();
     println!("   age=70 between 18 and 65? {}\n", result2);
 
     // Example 3: Format operator
@@ -184,12 +178,12 @@ fn main() {
 
     let logic =
         json!({"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
     let data = json!({"name": "Alice", "count": 5});
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result = engine.evaluate_value(&logic, &data).unwrap();
     println!("   {}\n", result);
 
-    // Example 4: Combining custom with built-in operators
+    // Example 4: Combining custom with built-in operators —
+    // compile once and reuse with `evaluate_value` for each input.
     println!("4. Combining Custom and Built-in Operators");
     println!("-------------------------------------------");
 
@@ -208,11 +202,10 @@ fn main() {
             ]}
         ]
     });
-    let compiled = engine.compile_serde_value(&logic).unwrap();
 
     for score in [95, 82, 75, 55] {
         let data = json!({"score": score});
-        let result = engine.evaluate_owned(&compiled, data).unwrap();
+        let result = engine.evaluate_value(&logic, &data).unwrap();
         println!("   Score {} -> Grade {}", score, result);
     }
 

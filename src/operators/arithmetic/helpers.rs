@@ -2,6 +2,13 @@
 //! coercion-pair helpers, the integer-checked-with-float-fallback pattern,
 //! the variadic fold spec, and the small helpers around `DataValue::Number`
 //! allocation.
+//!
+//! Coercion-pair helpers ([`coerce_pair_int`], [`coerce_pair_f64`]) are thin
+//! wrappers over the engine-config-aware coercion in
+//! [`crate::arena::coerce_to_number_cfg`] /
+//! [`crate::arena::try_coerce_to_integer_cfg`]. See the module doc on
+//! `src/arena/value/coercion.rs` for the full coercion-policy map across the
+//! crate.
 
 use crate::DataLogic;
 use crate::Result;
@@ -135,7 +142,7 @@ pub(super) struct VariadicFoldSpec {
 #[inline]
 pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],
-    actx: &mut crate::arena::DataContextStack<'a>,
+    ctx: &mut crate::arena::DataContextStack<'a>,
     engine: &DataLogic,
     arena: &'a Bump,
     spec: VariadicFoldSpec,
@@ -145,7 +152,7 @@ pub(super) fn variadic_fold<'a>(
     let mut all_int = true;
 
     for arg in args {
-        let av = engine.evaluate_node(arg, actx, arena)?;
+        let av = engine.evaluate_node(arg, ctx, arena)?;
         if all_int && let Some(i) = av.as_i64() {
             match (spec.i_combine)(int_acc, i) {
                 Some(r) => int_acc = r,
