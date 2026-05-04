@@ -190,3 +190,35 @@ fn arena_operator_inside_filter_reads_iter_item_field() {
         ])
     );
 }
+
+#[test]
+fn operator_names_lists_registered_custom_ops() {
+    let mut engine = DataLogic::new();
+    assert_eq!(engine.operator_names().count(), 0);
+
+    engine.add_operator("double", DoubleArena);
+    engine.add_operator("xcat", CatArena);
+
+    let mut names: Vec<&str> = engine.operator_names().collect();
+    names.sort();
+    assert_eq!(names, vec!["double", "xcat"]);
+}
+
+#[test]
+fn remove_operator_returns_handle_then_unregisters() {
+    let mut engine = DataLogic::new();
+    engine.add_operator("double", DoubleArena);
+    assert!(engine.has_custom_operator("double"));
+
+    let removed = engine.remove_operator("double");
+    assert!(removed.is_some(), "remove must return the boxed op");
+    assert!(!engine.has_custom_operator("double"));
+    // Calling remove again is a no-op returning None.
+    assert!(engine.remove_operator("double").is_none());
+}
+
+#[test]
+fn remove_operator_unknown_name_returns_none() {
+    let mut engine = DataLogic::new();
+    assert!(engine.remove_operator("not_registered").is_none());
+}

@@ -197,6 +197,21 @@ impl DataLogic {
         self.custom_arena_operators.contains_key(name)
     }
 
+    /// Iterator over the names of every custom operator currently registered
+    /// with this engine. Order is unspecified (HashMap iteration order).
+    /// Useful for tooling, UIs, and tests that need to introspect what's
+    /// available.
+    pub fn operator_names(&self) -> impl Iterator<Item = &str> {
+        self.custom_arena_operators.keys().map(String::as_str)
+    }
+
+    /// Remove a custom operator by name. Returns the removed operator's
+    /// boxed handle if it was registered, `None` otherwise. Built-in
+    /// operators dispatched via [`crate::OpCode`] are not affected.
+    pub fn remove_operator(&mut self, name: &str) -> Option<Box<dyn crate::DataOperator>> {
+        self.custom_arena_operators.remove(name)
+    }
+
     // ============================================================
     // V5 PUBLIC API — power users compile once + evaluate many; normal
     // users call `evaluate_str` directly.
