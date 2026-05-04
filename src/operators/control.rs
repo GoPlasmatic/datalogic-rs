@@ -88,14 +88,10 @@ pub(crate) fn evaluate_switch<'a>(
                             return engine.evaluate_node(&pair[1], actx, arena);
                         }
                     }
-                    CompiledNode::Value {
-                        lit: Some(av),
-                        ..
-                    } => {
+                    CompiledNode::Value { lit: Some(av), .. } => {
                         if let DataValue::Array(pair_av) = av.as_ref()
                             && pair_av.len() >= 2
-                            && compare_equals(disc_av, &pair_av[0], true, engine)
-                                .unwrap_or(false)
+                            && compare_equals(disc_av, &pair_av[0], true, engine).unwrap_or(false)
                         {
                             return Ok(&pair_av[1]);
                         }
@@ -104,10 +100,7 @@ pub(crate) fn evaluate_switch<'a>(
                 }
             }
         }
-        CompiledNode::Value {
-            lit: Some(av),
-            ..
-        } => {
+        CompiledNode::Value { lit: Some(av), .. } => {
             if let DataValue::Array(cases_av) = av.as_ref() {
                 for case_av in cases_av.iter() {
                     if let DataValue::Array(pair_av) = case_av

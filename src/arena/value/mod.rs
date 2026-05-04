@@ -21,11 +21,10 @@ pub use conversion::data_to_value;
 pub use conversion::value_to_data;
 pub(crate) use lookup::object_lookup_field;
 pub use strings::data_to_json_string;
-pub(crate) use strings::{is_truthy, data_to_str};
+pub(crate) use strings::{data_to_str, is_truthy};
 pub(crate) use traversal::apply_path_element;
 pub(crate) use traversal::{
-    access_path_str_ref, path_exists_segments, path_exists_str,
-    traverse_segments,
+    access_path_str_ref, path_exists_segments, path_exists_str, traverse_segments,
 };
 
 pub use datavalue::DataValue;

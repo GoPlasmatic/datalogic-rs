@@ -52,14 +52,12 @@ pub(super) fn evaluate_node_inner<'a>(
         // directly, others walk arena frame data. Result is always a
         // Bool singleton.
         #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(data) => {
-            crate::operators::variable::evaluate_compiled_exists(
-                data.scope_level,
-                &data.segments,
-                actx,
-                arena,
-            )
-        }
+        CompiledNode::CompiledExists(data) => crate::operators::variable::evaluate_compiled_exists(
+            data.scope_level,
+            &data.segments,
+            actx,
+            arena,
+        ),
 
         // Value literal: handled by the outer `evaluate_node`
         // wrapper before reaching this match.
@@ -86,13 +84,7 @@ pub(super) fn evaluate_node_inner<'a>(
             args,
             iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_filter(
-            args,
-            *iter_arg_kind,
-            actx,
-            engine,
-            arena,
-        ),
+        } => crate::operators::array::evaluate_filter(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Map,
@@ -113,31 +105,21 @@ pub(super) fn evaluate_node_inner<'a>(
             args,
             iter_arg_kind,
             ..
-        } => {
-            crate::operators::array::evaluate_some(args, *iter_arg_kind, actx, engine, arena)
-        }
+        } => crate::operators::array::evaluate_some(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::None,
             args,
             iter_arg_kind,
             ..
-        } => {
-            crate::operators::array::evaluate_none(args, *iter_arg_kind, actx, engine, arena)
-        }
+        } => crate::operators::array::evaluate_none(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Reduce,
             args,
             iter_arg_kind,
             ..
-        } => crate::operators::array::evaluate_reduce(
-            args,
-            *iter_arg_kind,
-            actx,
-            engine,
-            arena,
-        ),
+        } => crate::operators::array::evaluate_reduce(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Merge,
@@ -159,9 +141,7 @@ pub(super) fn evaluate_node_inner<'a>(
             crate::operators::missing::evaluate_compiled_missing(data, actx, engine, arena)
         }
         CompiledNode::CompiledMissingSome(data) => {
-            crate::operators::missing::evaluate_compiled_missing_some(
-                data, actx, engine, arena,
-            )
+            crate::operators::missing::evaluate_compiled_missing_some(data, actx, engine, arena)
         }
 
         #[cfg(feature = "ext-string")]
@@ -177,34 +157,20 @@ pub(super) fn evaluate_node_inner<'a>(
             args,
             iter_arg_kind,
             ..
-        } => {
-            crate::operators::array::evaluate_sort(args, *iter_arg_kind, actx, engine, arena)
-        }
+        } => crate::operators::array::evaluate_sort(args, *iter_arg_kind, actx, engine, arena),
 
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Max,
             args,
             iter_arg_kind,
             ..
-        } => crate::operators::arithmetic::evaluate_max(
-            args,
-            *iter_arg_kind,
-            actx,
-            engine,
-            arena,
-        ),
+        } => crate::operators::arithmetic::evaluate_max(args, *iter_arg_kind, actx, engine, arena),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Min,
             args,
             iter_arg_kind,
             ..
-        } => crate::operators::arithmetic::evaluate_min(
-            args,
-            *iter_arg_kind,
-            actx,
-            engine,
-            arena,
-        ),
+        } => crate::operators::arithmetic::evaluate_min(args, *iter_arg_kind, actx, engine, arena),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::Add,
             args,
@@ -236,9 +202,7 @@ pub(super) fn evaluate_node_inner<'a>(
             opcode: crate::OpCode::StrictNotEquals,
             args,
             ..
-        } => crate::operators::comparison::evaluate_strict_not_equals(
-            args, actx, engine, arena,
-        ),
+        } => crate::operators::comparison::evaluate_strict_not_equals(args, actx, engine, arena),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::GreaterThan,
             args,
@@ -248,9 +212,7 @@ pub(super) fn evaluate_node_inner<'a>(
             opcode: crate::OpCode::GreaterThanEqual,
             args,
             ..
-        } => crate::operators::comparison::evaluate_greater_than_equal(
-            args, actx, engine, arena,
-        ),
+        } => crate::operators::comparison::evaluate_greater_than_equal(args, actx, engine, arena),
         CompiledNode::BuiltinOperator {
             opcode: crate::OpCode::LessThan,
             args,
@@ -260,9 +222,7 @@ pub(super) fn evaluate_node_inner<'a>(
             opcode: crate::OpCode::LessThanEqual,
             args,
             ..
-        } => {
-            crate::operators::comparison::evaluate_less_than_equal(args, actx, engine, arena)
-        }
+        } => crate::operators::comparison::evaluate_less_than_equal(args, actx, engine, arena),
 
         // Logical
         CompiledNode::BuiltinOperator {
@@ -516,15 +476,11 @@ pub(super) fn evaluate_node_inner<'a>(
         }
 
         // Array literal: out-of-line for the same reason as StructuredObject.
-        CompiledNode::Array { nodes, .. } => {
-            evaluate_array_literal(nodes, actx, engine, arena)
-        }
+        CompiledNode::Array { nodes, .. } => evaluate_array_literal(nodes, actx, engine, arena),
 
         // Custom operator: out-of-line — HashMap lookup + bumpalo::Vec
         // for args; rare on the hot path.
-        CompiledNode::CustomOperator(data) => {
-            evaluate_custom_operator(data, actx, engine, arena)
-        }
+        CompiledNode::CustomOperator(data) => evaluate_custom_operator(data, actx, engine, arena),
 
         // No fallback — every CompiledNode shape is covered by an
         // explicit arm above. Reaching this branch is a compile-error

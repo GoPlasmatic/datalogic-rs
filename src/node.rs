@@ -83,9 +83,7 @@ fn iterates_args0(opcode: OpCode) -> bool {
 /// [`build_static_arena_value`] for the underlying invariant.
 pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bump) {
     match node {
-        CompiledNode::Value {
-            value, lit, ..
-        } => {
+        CompiledNode::Value { value, lit, .. } => {
             if lit.is_none() {
                 let av = unsafe { build_static_arena_value(value, arena) };
                 *lit = Some(Box::new(av));
@@ -453,11 +451,7 @@ impl CompiledNode {
     #[inline]
     pub fn value_with_id(id: u32, value: OwnedDataValue) -> Self {
         let lit = precompute_lit(&value);
-        CompiledNode::Value {
-            id,
-            value,
-            lit,
-        }
+        CompiledNode::Value { id, value, lit }
     }
 
     /// Returns the name of this node's top-level operator, if any.

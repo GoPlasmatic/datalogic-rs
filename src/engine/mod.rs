@@ -1,7 +1,7 @@
 #[cfg(feature = "compat")]
 use serde_json::Value;
 use std::collections::HashMap;
-#[cfg(any(feature = "compat", feature = "trace"))]
+#[cfg(feature = "trace")]
 use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
@@ -405,10 +405,7 @@ impl DataLogic {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
-        if let CompiledNode::Value {
-            value, lit, ..
-        } = node
-        {
+        if let CompiledNode::Value { value, lit, .. } = node {
             // Compiled-tree literals always have `lit` populated by
             // `populate_lits` (run during `CompiledLogic::new`), so
             // this branch covers every literal in any finalized rule.

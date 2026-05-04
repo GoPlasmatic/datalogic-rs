@@ -6,8 +6,8 @@ use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
-    FastPredicate, IterArgKind, IterSrc, ResolvedInput,
-    evaluate_invariant_no_push, resolve_iter_input, try_extract_filter_field_cmp,
+    FastPredicate, IterArgKind, IterSrc, ResolvedInput, evaluate_invariant_no_push,
+    resolve_iter_input, try_extract_filter_field_cmp,
 };
 
 /// `filter`. Fast path: input collection resolves at root scope (the dominant
@@ -197,10 +197,7 @@ fn filter_bridge_object<'a>(
         guard.step_keyed(item_av, i, key);
         let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
         if crate::arena::is_truthy(keep, engine) {
-            kept.push((
-                key,
-                *item_av,
-            ));
+            kept.push((key, *item_av));
         }
     }
     drop(guard);

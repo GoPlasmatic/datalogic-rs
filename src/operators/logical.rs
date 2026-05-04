@@ -14,9 +14,7 @@ pub(crate) fn evaluate_not<'a>(
         return Ok(crate::arena::pool::singleton_true());
     }
     let v = engine.evaluate_node(&args[0], actx, arena)?;
-    Ok(crate::arena::pool::singleton_bool(!is_truthy(
-        v, engine,
-    )))
+    Ok(crate::arena::pool::singleton_bool(!is_truthy(v, engine)))
 }
 
 #[inline]
@@ -30,9 +28,7 @@ pub(crate) fn evaluate_double_not<'a>(
         return Ok(crate::arena::pool::singleton_false());
     }
     let v = engine.evaluate_node(&args[0], actx, arena)?;
-    Ok(crate::arena::pool::singleton_bool(is_truthy(
-        v, engine,
-    )))
+    Ok(crate::arena::pool::singleton_bool(is_truthy(v, engine)))
 }
 
 #[inline]

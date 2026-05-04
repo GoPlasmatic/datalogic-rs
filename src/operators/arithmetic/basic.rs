@@ -1,16 +1,14 @@
 //! `+`, `-`, `*` — basic arithmetic with overflow promotion to `f64` and
 //! optional datetime/duration support.
 
-use crate::arena::{
-    DataContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg,
-};
+use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::value::NumberValue;
 use crate::{CompiledNode, DataLogic, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
-    ArithOp, NanAction, VariadicFoldSpec, alloc_number, variadic_fold, coerce_pair_f64,
-    coerce_pair_int, handle_nan, try_int_op,
+    ArithOp, NanAction, VariadicFoldSpec, alloc_number, coerce_pair_f64, coerce_pair_int,
+    handle_nan, try_int_op, variadic_fold,
 };
 
 /// Arena-mode `+`. Handles 0-arg (identity), 1-arg array (sum elements),
@@ -219,11 +217,10 @@ fn subtract_one_arg<'a>(
         if items.is_empty() {
             return Err(crate::constants::invalid_args());
         }
-        let mut result = coerce_to_number_cfg(&items[0], engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let mut result =
+            coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::constants::nan_error)?;
         for elem in &items[1..] {
-            let n =
-                coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
+            let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
             result -= n;
         }
         return Ok(alloc_number(arena, NumberValue::from_f64(result)));

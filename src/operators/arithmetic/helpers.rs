@@ -158,9 +158,7 @@ pub(super) fn variadic_fold<'a>(
         }
         // Try `as_f64` for native numbers first; fall back to coercion so
         // `true`/`false`/`null`/numeric strings compose into the variadic op.
-        let f_opt = av
-            .as_f64()
-            .or_else(|| coerce_to_number_cfg(av, engine));
+        let f_opt = av.as_f64().or_else(|| coerce_to_number_cfg(av, engine));
         if let Some(f) = f_opt {
             if all_int {
                 all_int = false;

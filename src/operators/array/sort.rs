@@ -94,11 +94,7 @@ fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) ->
         let cmp = compare_values(src.get(a), src.get(b));
         if ascending { cmp } else { cmp.reverse() }
     });
-    let slice = arena.alloc_slice_fill_iter(
-        indices
-            .into_iter()
-            .map(|i| *src.get(i)),
-    );
+    let slice = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| *src.get(i)));
     arena.alloc(DataValue::Array(slice))
 }
 
@@ -143,11 +139,7 @@ fn sort_fast_path_var_extractor<'a>(
         };
         if ascending { cmp } else { cmp.reverse() }
     });
-    let slice = arena.alloc_slice_fill_iter(
-        keyed
-            .into_iter()
-            .map(|(i, _)| *src.get(i)),
-    );
+    let slice = arena.alloc_slice_fill_iter(keyed.into_iter().map(|(i, _)| *src.get(i)));
     Some(arena.alloc(DataValue::Array(slice)))
 }
 
@@ -176,11 +168,7 @@ fn sort_general_extractor<'a>(
         let cmp = compare_values(&keys[a], &keys[b]);
         if ascending { cmp } else { cmp.reverse() }
     });
-    let slice = arena.alloc_slice_fill_iter(
-        indices
-            .into_iter()
-            .map(|i| *src.get(i)),
-    );
+    let slice = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| *src.get(i)));
     Ok(arena.alloc(DataValue::Array(slice)))
 }
 
@@ -216,11 +204,7 @@ fn sort_arena_from_value<'a>(
             let cmp = compare_values(&items_slice[a], &items_slice[b]);
             if ascending { cmp } else { cmp.reverse() }
         });
-        let items = arena.alloc_slice_fill_iter(
-            indices
-                .into_iter()
-                .map(|i| *&items_slice[i]),
-        );
+        let items = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| items_slice[i]));
         return Ok(arena.alloc(DataValue::Array(items)));
     }
 
@@ -242,11 +226,7 @@ fn sort_arena_from_value<'a>(
         if ascending { cmp } else { cmp.reverse() }
     });
 
-    let out = arena.alloc_slice_fill_iter(
-        indices
-            .into_iter()
-            .map(|i| *&items_slice[i]),
-    );
+    let out = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| items_slice[i]));
     Ok(arena.alloc(DataValue::Array(out)))
 }
 

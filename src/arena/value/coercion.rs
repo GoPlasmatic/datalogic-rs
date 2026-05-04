@@ -7,10 +7,7 @@ use super::DataValue;
 /// Config-aware arena-native f64 coercion. Mirrors
 /// `value_helpers::coerce_to_number` exactly — same engine config gates.
 #[inline]
-pub(crate) fn coerce_to_number_cfg(
-    v: &DataValue<'_>,
-    engine: &crate::DataLogic,
-) -> Option<f64> {
+pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::DataLogic) -> Option<f64> {
     match v {
         DataValue::Number(n) => Some(n.as_f64()),
         DataValue::String(s) => {

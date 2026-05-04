@@ -102,11 +102,7 @@ fn div_mod_two_arg<'a>(
 }
 
 #[inline]
-fn divbyzero<'a>(
-    arena: &'a Bump,
-    dividend: f64,
-    engine: &DataLogic,
-) -> Result<&'a DataValue<'a>> {
+fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &DataLogic) -> Result<&'a DataValue<'a>> {
     match engine.config().division_by_zero {
         DivisionByZeroHandling::ThrowError => Err(crate::constants::nan_error()),
         DivisionByZeroHandling::ReturnNull => Ok(crate::arena::pool::singleton_null()),
@@ -149,11 +145,10 @@ fn one_arg_div_mod<'a>(
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::constants::invalid_args());
         }
-        let mut result = coerce_to_number_cfg(&items[0], engine)
-            .ok_or_else(crate::constants::nan_error)?;
+        let mut result =
+            coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::constants::nan_error)?;
         for elem in &items[1..] {
-            let n =
-                coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
+            let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
             if n == 0.0 {
                 return Err(crate::constants::nan_error());
             }

@@ -300,8 +300,7 @@ impl<'a> DataContextStack<'a> {
 
     #[inline]
     fn push_with_key_index(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
-        self.frames
-            .push(ContextFrame::Keyed { data, index, key });
+        self.frames.push(ContextFrame::Keyed { data, index, key });
     }
 
     #[inline]

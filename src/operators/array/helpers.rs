@@ -262,9 +262,7 @@ fn value_equals_serde(av: &DataValue<'_>, v: &datavalue::OwnedDataValue) -> bool
         (DataValue::Number(a), OwnedDataValue::Number(b)) => a == b,
         (DataValue::String(s), OwnedDataValue::String(b)) => *s == b.as_str(),
         (DataValue::Array(_), OwnedDataValue::Array(_))
-        | (DataValue::Object(_), OwnedDataValue::Object(_)) => {
-            value_equals_serde_compound(av, v)
-        }
+        | (DataValue::Object(_), OwnedDataValue::Object(_)) => value_equals_serde_compound(av, v),
         _ => false,
     }
 }

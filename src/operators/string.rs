@@ -137,8 +137,7 @@ pub(crate) fn evaluate_in<'a>(
         // Array haystack — element-equality check via arena-native
         // strict-equals.
         DataValue::Array(items) => items.iter().any(|it| {
-            crate::operators::comparison::compare_equals(it, needle, true, engine)
-                .unwrap_or(false)
+            crate::operators::comparison::compare_equals(it, needle, true, engine).unwrap_or(false)
         }),
         _ => false,
     };

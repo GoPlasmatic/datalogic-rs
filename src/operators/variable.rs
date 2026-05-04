@@ -190,8 +190,7 @@ fn resolve_reduce_hint<'a>(
             // Slot must exist for the frame to be considered a reduce frame.
             // If the path traversal misses, return the var's `default_value`.
             let slot = slot?;
-            let resolved =
-                crate::arena::value::traverse_segments(slot, &segments[1..], arena);
+            let resolved = crate::arena::value::traverse_segments(slot, &segments[1..], arena);
             Some(match resolved {
                 Some(av) => Ok(av),
                 None => default_or_null(default_value, actx, engine, arena),
@@ -244,8 +243,7 @@ pub(crate) fn evaluate_compiled_exists<'a>(
     // Root scope at depth 0: walk input directly (no clone, no frame access).
     if scope_level == 0 && actx.depth() == 0 {
         let found = segments.is_empty()
-            || crate::arena::value::traverse_segments(actx.root_input(), segments, arena)
-                .is_some();
+            || crate::arena::value::traverse_segments(actx.root_input(), segments, arena).is_some();
         return Ok(crate::arena::pool::singleton_bool(found));
     }
 
@@ -289,11 +287,7 @@ fn array_len(av: &DataValue<'_>) -> Option<usize> {
 
 /// Get the i-th element of an arena array as a fresh `&'a DataValue<'a>`.
 #[inline]
-fn array_get<'a>(
-    av: &'a DataValue<'a>,
-    i: usize,
-    _arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
+fn array_get<'a>(av: &'a DataValue<'a>, i: usize, _arena: &'a Bump) -> Option<&'a DataValue<'a>> {
     match av {
         DataValue::Array(items) => items.get(i).map(|entry| {
             let av_ref: &'a DataValue<'a> = unsafe { &*(entry as *const DataValue<'a>) };
@@ -537,9 +531,7 @@ pub(crate) fn evaluate_val<'a>(
 #[inline]
 fn object_contains(av: &DataValue<'_>, key: &str) -> bool {
     match av {
-        DataValue::Object(pairs) => {
-            crate::arena::value::object_lookup_field(pairs, key).is_some()
-        }
+        DataValue::Object(pairs) => crate::arena::value::object_lookup_field(pairs, key).is_some(),
         _ => false,
     }
 }
@@ -579,9 +571,7 @@ pub(crate) fn evaluate_exists<'a>(
     if args.len() == 1 {
         let arg = engine.evaluate_node(&args[0], actx, arena)?;
         if let Some(s) = arg.as_str() {
-            return Ok(crate::arena::pool::singleton_bool(object_contains(
-                cur, s,
-            )));
+            return Ok(crate::arena::pool::singleton_bool(object_contains(cur, s)));
         }
         if let Some(arr_len) = array_len(arg) {
             if arr_len == 0 {
