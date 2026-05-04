@@ -6,8 +6,6 @@ use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
 
-#[cfg(feature = "compat")]
-use crate::Error;
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledLogic, CompiledNode, Result};
@@ -80,8 +78,10 @@ impl DataLogic {
     /// Start a [`crate::DataLogicBuilder`] for fluent construction.
     ///
     /// Replaces the 4.x `new` / `with_preserve_structure` / `with_config` /
-    /// `with_config_and_structure` constructors. The four old methods are
-    /// still reachable through `crate::compat::DataLogicLegacyExt`.
+    /// `with_config_and_structure` constructors. The old methods are still
+    /// reachable through [`crate::compat::LegacyApi`] — bring the trait into
+    /// scope (`use datalogic_rs::compat::LegacyApi;`) to opt into the legacy
+    /// surface.
     #[inline]
     pub fn builder() -> crate::DataLogicBuilder {
         crate::DataLogicBuilder::new()
@@ -131,36 +131,6 @@ impl DataLogic {
     /// ```
     pub fn new() -> Self {
         Self::new_inner(EvaluationConfig::default(), false)
-    }
-
-    /// Deprecated: use `DataLogic::builder().preserve_structure(true).build()`.
-    #[cfg(feature = "preserve")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `DataLogic::builder().preserve_structure(true).build()`; this constructor will be removed in 5.1"
-    )]
-    pub fn with_preserve_structure() -> Self {
-        Self::new_inner(EvaluationConfig::default(), true)
-    }
-
-    /// Deprecated: use `DataLogic::builder().config(...).build()`.
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `DataLogic::builder().config(...).build()`; this constructor will be removed in 5.1"
-    )]
-    pub fn with_config(config: EvaluationConfig) -> Self {
-        Self::new_inner(config, false)
-    }
-
-    /// Deprecated: use
-    /// `DataLogic::builder().config(...).preserve_structure(...).build()`.
-    #[cfg(feature = "preserve")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `DataLogic::builder().config(...).preserve_structure(...).build()`; this constructor will be removed in 5.1"
-    )]
-    pub fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
-        Self::new_inner(config, preserve_structure)
     }
 
     /// Gets a reference to the current evaluation configuration.
@@ -393,68 +363,9 @@ impl DataLogic {
         Ok(crate::arena::arena_to_value(result))
     }
 
-    // ============================================================
-    // DEPRECATED v4 COMPAT — all funnel through v5 `evaluate` /
-    // `compile_value`. Removed in 5.1.
-    // ============================================================
-
-    /// Deprecated: use [`Self::compile`] (`&str`) or
-    /// [`Self::evaluate_value`] (`&Value, &Value`) for one-shot.
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `compile(&str)` or `evaluate_value(&Value, &Value)` for one-shot"
-    )]
-    pub fn compile_serde_value(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
-        let owned = crate::value::owned_from_serde(logic);
-        Ok(Arc::new(self.compile_value(&owned)?))
-    }
-
-    /// Deprecated: use [`Self::evaluate`] (`&CompiledLogic, &DataValue, &Bump`).
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
-    )]
-    pub fn evaluate_arc_value(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
-        self.eval_to_value(compiled, &data)
-    }
-
-    /// Deprecated: use [`Self::evaluate`] or [`Self::evaluate_value`].
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
-    )]
-    pub fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
-        self.eval_to_value(compiled, data)
-    }
-
-    /// Deprecated: use [`Self::evaluate`] or [`Self::evaluate_value`].
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
-    )]
-    pub fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
-        self.eval_to_value(compiled, &data)
-    }
-
-    /// Deprecated: use [`Self::evaluate_str`] or [`Self::evaluate_value`].
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `evaluate_str(&str, &str)` or `evaluate_value(&Value, &Value)`"
-    )]
-    pub fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
-        let logic_value: Value = serde_json::from_str(logic)?;
-        let data_value: Value = serde_json::from_str(data)?;
-        self.evaluate_value(&logic_value, &data_value)
-    }
-
-    /// Internal `&Value -> Value` adapter shared by the compat eval shims.
-    /// Funnels through public [`Self::evaluate`] so the dispatch path is
-    /// identical to the v5 entry.
+    /// Internal `&Value -> Value` adapter used by the compat shims in
+    /// [`crate::compat::LegacyApi`]. Routes through the public
+    /// [`Self::evaluate`] so the dispatch path is identical to the v5 entry.
     #[cfg(feature = "compat")]
     #[doc(hidden)]
     pub(crate) fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
@@ -462,55 +373,6 @@ impl DataLogic {
         let data_av = crate::arena::value_to_arena(data, &arena);
         let result = self.evaluate(compiled, data_av, &arena)?;
         Ok(crate::arena::arena_to_value(result))
-    }
-
-    /// Deprecated: structured-error variant of the compat evaluate.
-    /// Calls `evaluate_node` directly because the structured error path
-    /// needs the [`crate::arena::DataContextStack`] after evaluation to
-    /// extract the error breadcrumb. A v5 sibling will land alongside a
-    /// dedicated structured-error API.
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `evaluate_value` — `Error` now carries `operator`/`path` directly so a separate structured variant is unnecessary"
-    )]
-    pub fn evaluate_structured(
-        &self,
-        compiled: &CompiledLogic,
-        data: Arc<Value>,
-    ) -> std::result::Result<Value, Error> {
-        let arena = bumpalo::Bump::new();
-        let data_av = crate::arena::value_to_arena(&data, &arena);
-        let mut actx = crate::arena::DataContextStack::new(arena.alloc(data_av));
-        match self.evaluate_node(&compiled.root, &mut actx, &arena) {
-            Ok(av) => Ok(crate::arena::arena_to_value(av)),
-            Err(mut e) => {
-                e = e.with_path(actx.take_error_path());
-                if let Some(name) = compiled.root.operator_name() {
-                    e = e.with_operator(name);
-                }
-                Err(e)
-            }
-        }
-    }
-
-    /// Deprecated: parse + compile + structured evaluate.
-    #[cfg(feature = "compat")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `evaluate_str` / `evaluate_value` — `Error` now carries `operator`/`path` directly"
-    )]
-    pub fn evaluate_json_structured(
-        &self,
-        logic: &str,
-        data: &str,
-    ) -> std::result::Result<Value, Error> {
-        let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
-        let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
-        #[allow(deprecated)]
-        let compiled = self.compile_serde_value(&logic_value)?;
-        #[allow(deprecated)]
-        self.evaluate_structured(&compiled, Arc::new(data_value))
     }
 
     /// Arena-mode dispatch hub. Returns `&'a DataValue<'a>` for every
@@ -592,24 +454,15 @@ impl DataLogic {
         res
     }
 
-    /// Deprecated: use [`Self::with_trace`] + [`crate::TracedSession::evaluate_str`].
+    /// Compile a `&serde_json::Value` for traced evaluation — skips static
+    /// evaluation so every operator stays in the tree as a step source.
+    /// Used by the [`crate::compat::LegacyApi`] trace shims.
     #[cfg(feature = "trace")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `engine.with_trace().evaluate_str(logic, data)` (returns TracedRun); this method will be removed in 5.1"
-    )]
-    pub fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult> {
-        let logic_value: Value = serde_json::from_str(logic)?;
-        let data_value: Value = serde_json::from_str(data)?;
-        let data_arc = Arc::new(data_value);
-        let compiled = self.compile_for_trace(&logic_value)?;
-        Ok(self.run_trace(&compiled, data_arc))
-    }
-
-    /// Compile a value tree for traced evaluation — `compile_for_trace` skips
-    /// static evaluation so every operator stays in the tree as a step source.
-    #[cfg(feature = "trace")]
-    fn compile_for_trace(&self, logic_value: &Value) -> Result<Arc<CompiledLogic>> {
+    #[doc(hidden)]
+    pub(crate) fn compile_for_trace_value(
+        &self,
+        logic_value: &Value,
+    ) -> Result<Arc<CompiledLogic>> {
         let owned = crate::value::owned_from_serde(logic_value);
         Ok(Arc::new(CompiledLogic::compile_for_trace(
             &owned,
@@ -617,11 +470,11 @@ impl DataLogic {
         )?))
     }
 
-    /// Run a traced evaluation and assemble the [`TracedResult`]. Shared
-    /// between [`evaluate_json_with_trace`] and
-    /// [`evaluate_json_with_trace_structured`].
+    /// Run a traced evaluation and assemble the [`TracedResult`]. Used by the
+    /// [`crate::compat::LegacyApi`] trace shims.
     #[cfg(feature = "trace")]
-    fn run_trace(&self, compiled: &CompiledLogic, data_arc: Arc<Value>) -> TracedResult {
+    #[doc(hidden)]
+    pub(crate) fn run_trace(&self, compiled: &CompiledLogic, data_arc: Arc<Value>) -> TracedResult {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
         let (result, error_path) = self.evaluate_with_trace(compiled, data_arc, &mut collector);
@@ -649,26 +502,6 @@ impl DataLogic {
                 }
             }
         }
-    }
-
-    /// Deprecated: use [`Self::with_trace`] + [`crate::TracedSession::evaluate_str`]
-    /// — `TracedRun.result` already carries the merged structured `Error` on
-    /// failure.
-    #[cfg(feature = "trace")]
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `engine.with_trace().evaluate_str(logic, data)`; this method will be removed in 5.1"
-    )]
-    pub fn evaluate_json_with_trace_structured(
-        &self,
-        logic: &str,
-        data: &str,
-    ) -> std::result::Result<TracedResult, Error> {
-        let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
-        let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
-        let data_arc = Arc::new(data_value);
-        let compiled = self.compile_for_trace(&logic_value)?;
-        Ok(self.run_trace(&compiled, data_arc))
     }
 
     /// Arena-mode traced evaluation. Allocates an arena, attaches the

@@ -1,5 +1,6 @@
 #![allow(deprecated)]
 
+use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::{DataLogic, Error};
 use serde_json::{Value, json};
 

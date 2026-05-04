@@ -9,6 +9,7 @@
 #![allow(deprecated)]
 
 use bumpalo::Bump;
+use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
 use serde_json::json;
 

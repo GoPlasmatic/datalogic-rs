@@ -2,6 +2,7 @@
 
 #![allow(deprecated)]
 
+use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::{
     DataLogic, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };

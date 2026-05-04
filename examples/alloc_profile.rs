@@ -3,6 +3,7 @@
 #![allow(deprecated)]
 
 use datalogic_rs::DataLogic;
+use datalogic_rs::compat::LegacyApi;
 use serde_json::Value;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Arc;

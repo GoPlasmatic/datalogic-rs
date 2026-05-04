@@ -7,6 +7,7 @@
 #![allow(deprecated)]
 
 use datalogic_rs::DataLogic;
+use datalogic_rs::compat::LegacyApi;
 use serde_json::json;
 
 fn main() {

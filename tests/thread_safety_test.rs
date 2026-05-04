@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod thread_safety_tests {
     use datalogic_rs::DataLogic;
+    use datalogic_rs::compat::LegacyApi;
     use serde_json::json;
     use std::sync::Arc;
     use std::thread;
@@ -156,6 +157,7 @@ mod thread_safety_tests {
 #[cfg(test)]
 mod async_tests {
     use datalogic_rs::DataLogic;
+    use datalogic_rs::compat::LegacyApi;
     use serde_json::json;
     use std::sync::Arc;
 

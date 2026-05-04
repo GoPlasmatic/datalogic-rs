@@ -2,6 +2,7 @@
 
 use datalogic_rs::DataLogic;
 use datalogic_rs::arena::DataValue;
+use datalogic_rs::compat::LegacyApi;
 use serde_json::Value;
 use std::env;
 use std::fs;
