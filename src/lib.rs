@@ -96,6 +96,8 @@ pub use path::PathStep;
 pub use trace::{
     ExecutionStep, ExpressionNode, TraceCollector, TracedResult, TracedRun, TracedSession,
 };
+#[cfg(feature = "compat")]
+pub use value::{owned_from_serde, owned_to_serde};
 
 // `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint`
 // were public in 4.x. They are compile-internal types — `pub(crate)` for

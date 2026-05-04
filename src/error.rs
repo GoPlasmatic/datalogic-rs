@@ -154,6 +154,22 @@ impl Error {
     pub fn custom(msg: impl Into<String>) -> Self {
         ErrorKind::Custom(msg.into()).into()
     }
+
+    /// Wrap any `impl Display` (typically a foreign error type) into an
+    /// [`ErrorKind::Custom`]. Lets custom-operator authors propagate I/O / DB
+    /// / HTTP failures via the standard `?` chain:
+    ///
+    /// ```ignore
+    /// some_io_call().map_err(Error::wrap)?;
+    /// ```
+    ///
+    /// Source error chains are not preserved (the wrapped value is captured
+    /// as a `String` via `Display`). For error-chain inspection, build a
+    /// custom `ErrorKind` variant in your application instead.
+    #[inline]
+    pub fn wrap<E: fmt::Display>(err: E) -> Self {
+        ErrorKind::Custom(err.to_string()).into()
+    }
     /// Shorthand for `ErrorKind::ParseError(msg).into()`.
     #[inline]
     pub fn parse_error(msg: impl Into<String>) -> Self {
@@ -325,3 +341,28 @@ impl<'a> fmt::Display for KindDisplay<'a> {
     note = "use `Error`; `StructuredError` is now a type alias and will be removed in 5.1"
 )]
 pub type StructuredError = Error;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_stringifies_via_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing key");
+        let err = Error::wrap(io_err);
+        assert_eq!(err.kind_tag(), "Custom");
+        assert!(err.to_string().contains("missing key"));
+    }
+
+    #[test]
+    fn wrap_threads_through_question_mark() {
+        // Smoke test for the `?` ergonomic — `Error::wrap` slots into a
+        // `map_err` chain so foreign errors flow up unchanged.
+        fn inner() -> std::result::Result<(), Error> {
+            "not_an_int".parse::<i32>().map_err(Error::wrap)?;
+            Ok(())
+        }
+        let err = inner().expect_err("parse should fail");
+        assert!(matches!(err.kind, ErrorKind::Custom(_)));
+    }
+}

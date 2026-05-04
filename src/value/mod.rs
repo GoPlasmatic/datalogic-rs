@@ -38,11 +38,15 @@ pub(crate) fn number_to_serde(n: NumberValue) -> Option<serde_json::Number> {
     }
 }
 
-/// Walk a `serde_json::Value` and produce an [`OwnedDataValue`]. Used by the
-/// compat layer (and by intermediate engine paths still working in
-/// serde_json terms) to lift a parsed JSON tree into the v5 value type.
+/// Walk a `serde_json::Value` and produce an [`OwnedDataValue`]. The fast
+/// path for callers who already hold a parsed `serde_json::Value` and want
+/// to compile or evaluate against it via the v5 `DataValue` core without
+/// stringifying first.
+///
+/// Available under `feature = "compat"` — non-compat builds have no serde_json
+/// dependency.
 #[cfg(feature = "compat")]
-pub(crate) fn owned_from_serde(v: &serde_json::Value) -> datavalue::OwnedDataValue {
+pub fn owned_from_serde(v: &serde_json::Value) -> datavalue::OwnedDataValue {
     use datavalue::OwnedDataValue;
     match v {
         serde_json::Value::Null => OwnedDataValue::Null,
@@ -61,9 +65,9 @@ pub(crate) fn owned_from_serde(v: &serde_json::Value) -> datavalue::OwnedDataVal
 }
 
 /// Inverse of [`owned_from_serde`] — walk an [`OwnedDataValue`] and produce
-/// a `serde_json::Value`. Compat-layer boundary helper.
+/// a `serde_json::Value`. Available under `feature = "compat"`.
 #[cfg(feature = "compat")]
-pub(crate) fn owned_to_serde(v: &datavalue::OwnedDataValue) -> serde_json::Value {
+pub fn owned_to_serde(v: &datavalue::OwnedDataValue) -> serde_json::Value {
     use datavalue::OwnedDataValue;
     match v {
         OwnedDataValue::Null => serde_json::Value::Null,
