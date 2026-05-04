@@ -18,7 +18,7 @@ fn main() {
     // 2. Strict boolean truthiness
     let strict_config =
         EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let strict_engine = DataLogic::with_config(strict_config);
+    let strict_engine = DataLogic::builder().config(strict_config).build();
     demonstrate_truthiness("Strict Boolean", &strict_engine);
 
     // 3. Custom truthiness - only positive numbers are truthy
@@ -31,7 +31,7 @@ fn main() {
     });
     let custom_config = EvaluationConfig::default()
         .with_truthy_evaluator(TruthyEvaluator::Custom(custom_evaluator));
-    let custom_engine = DataLogic::with_config(custom_config);
+    let custom_engine = DataLogic::builder().config(custom_config).build();
     demonstrate_truthiness("Custom (Positive Numbers)", &custom_engine);
 
     // 4. NaN handling examples
@@ -86,21 +86,21 @@ fn demonstrate_nan_handling() {
 
     // Ignore non-numeric values
     let ignore_config = EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue);
-    let ignore_engine = DataLogic::with_config(ignore_config);
+    let ignore_engine = DataLogic::builder().config(ignore_config).build();
     let compiled = ignore_engine.compile_serde_value(&logic).unwrap();
     let result = ignore_engine.evaluate_owned(&compiled, json!({})).unwrap();
     println!("IgnoreValue: {} (non-numeric ignored)", result);
 
     // Return null
     let null_config = EvaluationConfig::default().with_nan_handling(NanHandling::ReturnNull);
-    let null_engine = DataLogic::with_config(null_config);
+    let null_engine = DataLogic::builder().config(null_config).build();
     let compiled = null_engine.compile_serde_value(&logic).unwrap();
     let result = null_engine.evaluate_owned(&compiled, json!({})).unwrap();
     println!("ReturnNull: {}", result);
 
     // Coerce to zero
     let coerce_config = EvaluationConfig::default().with_nan_handling(NanHandling::CoerceToZero);
-    let coerce_engine = DataLogic::with_config(coerce_config);
+    let coerce_engine = DataLogic::builder().config(coerce_config).build();
     let compiled = coerce_engine.compile_serde_value(&logic).unwrap();
     let result = coerce_engine.evaluate_owned(&compiled, json!({})).unwrap();
     println!("CoerceToZero: {} (\"hello\" treated as 0)", result);
@@ -132,7 +132,7 @@ fn demonstrate_numeric_coercion() {
             undefined_to_zero: false,
         })
         .with_nan_handling(NanHandling::ReturnNull); // Return null instead of error
-    let strict_engine = DataLogic::with_config(strict_config);
+    let strict_engine = DataLogic::builder().config(strict_config).build();
 
     println!("\nStrict (No Coercion):");
     for (logic, desc) in &test_cases {

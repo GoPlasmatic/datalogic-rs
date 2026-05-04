@@ -30,9 +30,7 @@ fn evaluate_arena_path() {
     let compiled = engine.compile(r#"{">": [{"var": "n"}, 5]}"#).unwrap();
     let arena = Bump::new();
     let data = DataValue::from_str(r#"{"n": 42}"#, &arena).unwrap();
-    let result = engine
-        .evaluate(&compiled, arena.alloc(data), &arena)
-        .unwrap();
+    let result = engine.evaluate(&compiled, data, &arena).unwrap();
     assert_eq!(result.as_bool(), Some(true));
 }
 
@@ -42,9 +40,7 @@ fn compile_then_evaluate_str_round_trip() {
     let compiled = engine.compile(r#"{"==": [1, 1]}"#).unwrap();
     let arena = Bump::new();
     let data = DataValue::from_str("null", &arena).unwrap();
-    let result = engine
-        .evaluate(&compiled, arena.alloc(data), &arena)
-        .unwrap();
+    let result = engine.evaluate(&compiled, data, &arena).unwrap();
     assert_eq!(result.as_bool(), Some(true));
 }
 
@@ -58,9 +54,7 @@ fn compile_once_evaluate_many_arena_reuse() {
     let mut arena = Bump::new();
     for (input, expected) in [(r#"{"score": 95}"#, "pass"), (r#"{"score": 50}"#, "fail")] {
         let data = DataValue::from_str(input, &arena).unwrap();
-        let result = engine
-            .evaluate(&compiled, arena.alloc(data), &arena)
-            .unwrap();
+        let result = engine.evaluate(&compiled, data, &arena).unwrap();
         assert_eq!(result.as_str(), Some(expected));
         arena.reset();
     }

@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use crate::DataOperator;
+use crate::IntoOperatorBox;
 use crate::config::EvaluationConfig;
 use crate::engine::DataLogic;
 
@@ -58,15 +59,14 @@ impl DataLogicBuilder {
         self
     }
 
-    /// Register a custom [`DataOperator`] under `name`. Multiple calls with
-    /// the same name overwrite the prior registration.
+    /// Register a custom [`DataOperator`] under `name`. Accepts either a bare
+    /// `T: DataOperator` or a pre-boxed `Box<dyn DataOperator>` via
+    /// [`IntoOperatorBox`]. Multiple calls with the same name overwrite the
+    /// prior registration.
     #[inline]
-    pub fn add_operator(
-        mut self,
-        name: impl Into<String>,
-        operator: Box<dyn DataOperator>,
-    ) -> Self {
-        self.operators.insert(name.into(), operator);
+    pub fn add_operator(mut self, name: impl Into<String>, operator: impl IntoOperatorBox) -> Self {
+        self.operators
+            .insert(name.into(), operator.into_operator_box());
         self
     }
 

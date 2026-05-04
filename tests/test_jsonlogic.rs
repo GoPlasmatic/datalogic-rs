@@ -1,7 +1,8 @@
 // The full JSONLogic suite runner exercises every operator in `tests/suites/`
 // — including the gated ones (preserve / datetime / try-throw / ext-*). Gate
-// behind `preserve` because the runner unconditionally calls
-// `DataLogic::with_preserve_structure()` when a test case requests it; in
+// behind `preserve` because the runner unconditionally builds an engine with
+// `DataLogic::builder().preserve_structure(true).build()` when a test case
+// requests it; in
 // practice users running this runner will want `--all-features` to actually
 // exercise every suite.
 #![cfg(feature = "preserve")]
@@ -117,7 +118,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
 
         // Create engine with appropriate preserve_structure setting
         let test_engine = if preserve_structure {
-            DataLogic::with_preserve_structure()
+            DataLogic::builder().preserve_structure(true).build()
         } else {
             DataLogic::new()
         };

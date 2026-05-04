@@ -14,7 +14,7 @@ fn main() {
     println!("=================================================\n");
 
     // Create engine with preserve_structure enabled
-    let engine = DataLogic::with_preserve_structure();
+    let engine = DataLogic::builder().preserve_structure(true).build();
 
     // Example 1: Basic object template
     println!("1. Basic Object Template");
@@ -183,7 +183,7 @@ fn main() {
     println!("--------------------------------------");
 
     let standard_engine = DataLogic::new();
-    let preserve_engine = DataLogic::with_preserve_structure();
+    let preserve_engine = DataLogic::builder().preserve_structure(true).build();
 
     let template = json!({
         "result": {"var": "x"},

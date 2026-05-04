@@ -1,6 +1,7 @@
 #[cfg(feature = "compat")]
 use serde_json::Value;
 use std::collections::HashMap;
+#[cfg(any(feature = "compat", feature = "trace"))]
 use std::sync::Arc;
 
 use crate::config::EvaluationConfig;
@@ -132,98 +133,32 @@ impl DataLogic {
         Self::new_inner(EvaluationConfig::default(), false)
     }
 
-    /// Creates a new DataLogic engine with structure preservation enabled.
-    ///
-    /// When enabled, objects with unknown operators are preserved as structured
-    /// templates, allowing for dynamic object generation. Custom operators
-    /// registered via `add_operator` are recognized and evaluated properly,
-    /// even within structured objects.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use datalogic_rs::DataLogic;
-    /// use serde_json::json;
-    ///
-    /// let engine = DataLogic::with_preserve_structure();
-    /// let logic = json!({
-    ///     "name": {"var": "user.name"},
-    ///     "score": {"+": [{"var": "base"}, {"var": "bonus"}]}
-    /// });
-    /// // Returns: {"name": "Alice", "score": 95}
-    /// ```
-    ///
-    /// # Custom Operators with Preserve Structure
-    ///
-    /// Custom operators work seamlessly in preserve_structure mode:
-    ///
-    /// ```rust
-    /// use bumpalo::Bump;
-    /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
-    ///
-    /// struct UpperOperator;
-    /// impl DataOperator for UpperOperator {
-    ///     fn evaluate<'a>(
-    ///         &self,
-    ///         args: &[&'a DataValue<'a>],
-    ///         _actx: &mut DataContextStack<'a>,
-    ///         arena: &'a Bump,
-    ///     ) -> Result<&'a DataValue<'a>> {
-    ///         let s = args[0].as_str().unwrap_or("").to_uppercase();
-    ///         Ok(arena.alloc(DataValue::String(arena.alloc_str(&s))))
-    ///     }
-    /// }
-    ///
-    /// let mut engine = DataLogic::with_preserve_structure();
-    /// engine.add_operator("upper".to_string(), Box::new(UpperOperator));
-    ///
-    /// let result = engine.evaluate_str(
-    ///     r#"{"message": {"upper": {"var": "text"}}, "count": {"var": "num"}}"#,
-    ///     r#"{"text": "hello", "num": 5}"#,
-    /// ).unwrap();
-    /// // result == r#"{"message":"HELLO","count":5}"#
-    /// ```
+    /// Deprecated: use `DataLogic::builder().preserve_structure(true).build()`.
     #[cfg(feature = "preserve")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `DataLogic::builder().preserve_structure(true).build()`; this constructor will be removed in 5.1"
+    )]
     pub fn with_preserve_structure() -> Self {
         Self::new_inner(EvaluationConfig::default(), true)
     }
 
-    /// Creates a new DataLogic engine with a custom configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The evaluation configuration
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
-    ///
-    /// let config = EvaluationConfig::default()
-    ///     .with_nan_handling(NanHandling::IgnoreValue);
-    /// let engine = DataLogic::with_config(config);
-    /// ```
+    /// Deprecated: use `DataLogic::builder().config(...).build()`.
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `DataLogic::builder().config(...).build()`; this constructor will be removed in 5.1"
+    )]
     pub fn with_config(config: EvaluationConfig) -> Self {
         Self::new_inner(config, false)
     }
 
-    /// Creates a new DataLogic engine with both configuration and structure preservation.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The evaluation configuration
-    /// * `preserve_structure` - Whether to preserve object structure
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
-    ///
-    /// let config = EvaluationConfig::default()
-    ///     .with_nan_handling(NanHandling::IgnoreValue);
-    /// let engine = DataLogic::with_config_and_structure(config, true);
-    /// ```
+    /// Deprecated: use
+    /// `DataLogic::builder().config(...).preserve_structure(...).build()`.
     #[cfg(feature = "preserve")]
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `DataLogic::builder().config(...).preserve_structure(...).build()`; this constructor will be removed in 5.1"
+    )]
     pub fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
         Self::new_inner(config, preserve_structure)
     }
@@ -270,12 +205,13 @@ impl DataLogic {
     /// }
     ///
     /// let mut engine = DataLogic::new();
-    /// engine.add_operator("plus42".into(), Box::new(Plus42));
+    /// engine.add_operator("plus42", Plus42);
     /// let result = engine.evaluate_str(r#"{"plus42": 8}"#, "null").unwrap();
     /// assert_eq!(result, "50");
     /// ```
-    pub fn add_operator(&mut self, name: String, operator: Box<dyn crate::DataOperator>) {
-        self.custom_arena_operators.insert(name, operator);
+    pub fn add_operator(&mut self, name: impl Into<String>, operator: impl crate::IntoOperatorBox) {
+        self.custom_arena_operators
+            .insert(name.into(), operator.into_operator_box());
     }
 
     /// Checks if a custom operator with the given name is registered.
@@ -298,9 +234,9 @@ impl DataLogic {
 
     /// Compile a JSON logic string into reusable [`CompiledLogic`].
     ///
-    /// The canonical v5 entry point for compilation. Returns an
-    /// `Arc<CompiledLogic>` that can be reused across many evaluations and
-    /// shared across threads.
+    /// The canonical v5 entry point for compilation. Returns an owned
+    /// [`CompiledLogic`] that can be reused across many evaluations. To share
+    /// across threads, wrap with `Arc::new(...)` at the call site.
     ///
     /// # Example
     ///
@@ -310,7 +246,7 @@ impl DataLogic {
     /// let engine = DataLogic::new();
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// ```
-    pub fn compile(&self, logic: &str) -> Result<Arc<CompiledLogic>> {
+    pub fn compile(&self, logic: &str) -> Result<CompiledLogic> {
         let owned = datavalue::OwnedDataValue::from_json(logic)?;
         self.compile_value(&owned)
     }
@@ -318,12 +254,8 @@ impl DataLogic {
     /// Internal compile helper shared by [`Self::compile`] and the compat
     /// `compile_serde_value` shim. Not part of the public API.
     #[doc(hidden)]
-    pub(crate) fn compile_value(
-        &self,
-        logic: &datavalue::OwnedDataValue,
-    ) -> Result<Arc<CompiledLogic>> {
-        let compiled = CompiledLogic::compile_with_static_eval(logic, self)?;
-        Ok(Arc::new(compiled))
+    pub(crate) fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<CompiledLogic> {
+        CompiledLogic::compile_with_static_eval(logic, self)
     }
 
     /// Evaluate compiled logic against arena-resident data.
@@ -348,17 +280,22 @@ impl DataLogic {
     ///
     /// let arena = Bump::new();
     /// let data = DataValue::from_str(r#"{"x": 40}"#, &arena).unwrap();
-    /// let result = engine.evaluate(&compiled, arena.alloc(data), &arena).unwrap();
+    /// let result = engine.evaluate(&compiled, data, &arena).unwrap();
     /// assert_eq!(result.as_i64(), Some(42));
     /// ```
+    ///
+    /// `data` accepts either an owned [`DataValue<'a>`] (allocated into the
+    /// arena for you) or an already-arena-resident `&'a DataValue<'a>`
+    /// (passed through). See [`crate::IntoArenaData`].
     #[inline(always)]
-    pub fn evaluate<'a>(
+    pub fn evaluate<'a, D: crate::IntoArenaData<'a>>(
         &self,
         compiled: &'a CompiledLogic,
-        data: &'a crate::arena::DataValue<'a>,
+        data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
-        let mut actx = crate::arena::DataContextStack::new(data);
+        let data_ref = data.into_arena_data(arena);
+        let mut actx = crate::arena::DataContextStack::new(data_ref);
         self.evaluate_node(&compiled.root, &mut actx, arena)
     }
 
@@ -385,7 +322,7 @@ impl DataLogic {
         let compiled = self.compile(logic)?;
         let arena = bumpalo::Bump::new();
         let data_dv = datavalue::DataValue::from_str(data, &arena)?;
-        let result = self.evaluate(&compiled, arena.alloc(data_dv), &arena)?;
+        let result = self.evaluate(&compiled, data_dv, &arena)?;
         Ok(crate::arena::data_to_json_string(result))
     }
 
@@ -399,7 +336,7 @@ impl DataLogic {
         let compiled = self.compile_value(&logic_owned)?;
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_arena(data, &arena);
-        let result = self.evaluate(&compiled, arena.alloc(data_av), &arena)?;
+        let result = self.evaluate(&compiled, data_av, &arena)?;
         Ok(crate::arena::arena_to_value(result))
     }
 
@@ -417,7 +354,7 @@ impl DataLogic {
     )]
     pub fn compile_serde_value(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
         let owned = crate::value::owned_from_serde(logic);
-        self.compile_value(&owned)
+        Ok(Arc::new(self.compile_value(&owned)?))
     }
 
     /// Deprecated: use [`Self::evaluate`] (`&CompiledLogic, &DataValue, &Bump`).
@@ -470,7 +407,7 @@ impl DataLogic {
     pub(crate) fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_arena(data, &arena);
-        let result = self.evaluate(compiled, arena.alloc(data_av), &arena)?;
+        let result = self.evaluate(compiled, data_av, &arena)?;
         Ok(crate::arena::arena_to_value(result))
     }
 

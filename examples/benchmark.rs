@@ -60,14 +60,14 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
 
     // Warm-up — pure arena dispatch, no boundary conversion.
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
-        let _ = engine.evaluate(compiled_logic, data_av, &arena);
+        let _ = engine.evaluate(compiled_logic, *data_av, &arena);
     }
     arena.reset();
 
     let start = Instant::now();
     for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
         for _ in 0..ITERATIONS {
-            let _ = engine.evaluate(compiled_logic, data_av, &arena);
+            let _ = engine.evaluate(compiled_logic, *data_av, &arena);
             arena.reset();
         }
     }

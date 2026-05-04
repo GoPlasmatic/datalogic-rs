@@ -525,15 +525,15 @@ impl CompileCtx {
 /// use std::sync::Arc;
 ///
 /// let engine = DataLogic::new();
-/// let compiled = engine.compile(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
+/// let compiled = Arc::new(engine.compile(r#"{">": [{"var": "score"}, 90]}"#).unwrap());
 ///
-/// // Compiled logic can be cloned and sent across threads.
+/// // Compiled logic can be wrapped in `Arc` and sent across threads.
 /// let compiled_clone = Arc::clone(&compiled);
 /// std::thread::spawn(move || {
 ///     let engine = DataLogic::new();
 ///     let arena = Bump::new();
 ///     let data = DataValue::from_str(r#"{"score": 95}"#, &arena).unwrap();
-///     let _result = engine.evaluate(&compiled_clone, arena.alloc(data), &arena);
+///     let _result = engine.evaluate(&*compiled_clone, data, &arena);
 /// });
 /// ```
 pub struct CompiledLogic {

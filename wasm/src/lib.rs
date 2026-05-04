@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 /// Build a `DataLogic` engine honoring the `preserve_structure` flag.
 fn make_engine(preserve_structure: bool) -> DataLogic {
     if preserve_structure {
-        DataLogic::with_preserve_structure()
+        DataLogic::builder().preserve_structure(true).build()
     } else {
         DataLogic::new()
     }

@@ -23,7 +23,7 @@ fn test_nan_handling_throw_error() {
 fn test_nan_handling_ignore_value() {
     // Configure to ignore non-numeric values
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -36,7 +36,7 @@ fn test_nan_handling_ignore_value() {
 fn test_nan_handling_coerce_to_zero() {
     // Configure to treat non-numeric as zero
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::CoerceToZero);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -49,7 +49,7 @@ fn test_nan_handling_coerce_to_zero() {
 fn test_nan_handling_return_null() {
     // Configure to return null on non-numeric
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::ReturnNull);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -94,7 +94,7 @@ fn test_numeric_coercion_strict() {
             strict_numeric: true,
             undefined_to_zero: false,
         });
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     // Empty string not coerced
     let logic = json!({"+": ["", 5]});
@@ -129,7 +129,7 @@ fn test_loose_equality_errors_default() {
 fn test_loose_equality_errors_disabled() {
     // Disabled - returns false for incompatible types
     let config = EvaluationConfig::default().with_loose_equality_errors(false);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     let logic = json!({"==": [[], 5]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -140,7 +140,9 @@ fn test_loose_equality_errors_disabled() {
 #[test]
 fn test_safe_arithmetic_preset() {
     // Use safe arithmetic preset
-    let engine = DataLogic::with_config(EvaluationConfig::safe_arithmetic());
+    let engine = DataLogic::builder()
+        .config(EvaluationConfig::safe_arithmetic())
+        .build();
 
     // Non-numeric values ignored
     let logic = json!({"+": [1, "not_a_number", 2, [3, 4], 5]});
@@ -158,7 +160,9 @@ fn test_safe_arithmetic_preset() {
 #[test]
 fn test_strict_preset() {
     // Use strict preset
-    let engine = DataLogic::with_config(EvaluationConfig::strict());
+    let engine = DataLogic::builder()
+        .config(EvaluationConfig::strict())
+        .build();
 
     // Strict numeric parsing
     let logic = json!({"+": [true, 5]});
@@ -177,7 +181,7 @@ fn test_strict_preset() {
 fn test_thread_safety() {
     // Verify compiled logic with config can be shared across threads
     let config = EvaluationConfig::safe_arithmetic();
-    let engine = Arc::new(DataLogic::with_config(config));
+    let engine = Arc::new(DataLogic::builder().config(config).build());
 
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let compiled = Arc::new(engine.compile_serde_value(&logic).unwrap());
@@ -215,9 +219,9 @@ fn test_runtime_config_change() {
     assert!(result.is_err());
 
     // Second engine with config to ignore non-numeric values
-    let engine2 = DataLogic::with_config(
-        EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue),
-    );
+    let engine2 = DataLogic::builder()
+        .config(EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue))
+        .build();
     let compiled2 = engine2.compile_serde_value(&logic).unwrap();
     let result = engine2.evaluate_owned(&compiled2, json!({})).unwrap();
     assert_eq!(result, json!(1)); // "not_a_number" ignored
@@ -227,7 +231,7 @@ fn test_runtime_config_change() {
 fn test_subtraction_with_config() {
     // Test subtraction with different NaN handling
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     let logic = json!({"-": [10, "invalid", 3]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -239,7 +243,7 @@ fn test_subtraction_with_config() {
 fn test_multiplication_with_config() {
     // Test multiplication with NaN handling
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::CoerceToZero);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     let logic = json!({"*": [2, "invalid", 3]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -257,7 +261,7 @@ fn test_comparison_with_config() {
         strict_numeric: false,
         undefined_to_zero: false,
     });
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     // Boolean still coerced to number for comparison
     let logic = json!({">": [true, false]});
@@ -323,7 +327,7 @@ fn test_truthy_evaluator_javascript() {
 fn test_truthy_evaluator_strict_boolean() {
     // Test strict boolean truthiness
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     // Test with different values - only null and false are falsy
     let test_cases = vec![
@@ -359,7 +363,7 @@ fn test_truthy_evaluator_custom() {
 
     let config = EvaluationConfig::default()
         .with_truthy_evaluator(TruthyEvaluator::Custom(custom_evaluator));
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     // Test with different values
     let test_cases = vec![
@@ -382,7 +386,7 @@ fn test_truthy_evaluator_custom() {
 fn test_truthy_in_logical_operators() {
     // Test that logical operators also use the configured truthiness
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let engine = DataLogic::with_config(config);
+    let engine = DataLogic::builder().config(config).build();
 
     // In strict boolean mode, 0 and empty strings are truthy
     let test_cases = vec![

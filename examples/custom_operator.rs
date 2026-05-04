@@ -143,9 +143,9 @@ fn main() {
 
     // Create engine and register custom operators
     let mut engine = DataLogic::new();
-    engine.add_operator("avg".to_string(), Box::new(AverageOperator));
-    engine.add_operator("between".to_string(), Box::new(BetweenOperator));
-    engine.add_operator("format".to_string(), Box::new(FormatOperator));
+    engine.add_operator("avg", AverageOperator);
+    engine.add_operator("between", BetweenOperator);
+    engine.add_operator("format", FormatOperator);
 
     // Example 1: Average operator
     println!("1. Average Operator");

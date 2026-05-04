@@ -41,7 +41,7 @@
 //!
 //! let arena = Bump::new();
 //! let data = DataValue::from_str(r#"{"status": "active"}"#, &arena).unwrap();
-//! let result = engine.evaluate(&compiled, arena.alloc(data), &arena).unwrap();
+//! let result = engine.evaluate(&compiled, data, &arena).unwrap();
 //! assert_eq!(result.as_bool(), Some(true));
 //! ```
 //!
@@ -137,7 +137,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// }
 ///
 /// let mut engine = DataLogic::new();
-/// engine.add_operator("double".into(), Box::new(DoubleArena));
+/// engine.add_operator("double", DoubleArena);
 ///
 /// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
 /// assert_eq!(result, "42");
@@ -160,4 +160,55 @@ pub trait DataOperator: Send + Sync {
         actx: &mut DataContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
+}
+
+/// Adapter that lets [`DataLogic::add_operator`] (and the builder variant)
+/// accept either a bare `T: DataOperator` *or* a pre-boxed
+/// `Box<dyn DataOperator>`. Internal trait — you don't need to implement it.
+pub trait IntoOperatorBox {
+    /// Coerce `self` into a `Box<dyn DataOperator>` for storage on the
+    /// engine.
+    fn into_operator_box(self) -> Box<dyn DataOperator>;
+}
+
+impl<T: DataOperator + 'static> IntoOperatorBox for T {
+    #[inline]
+    fn into_operator_box(self) -> Box<dyn DataOperator> {
+        Box::new(self)
+    }
+}
+
+impl IntoOperatorBox for Box<dyn DataOperator> {
+    #[inline]
+    fn into_operator_box(self) -> Box<dyn DataOperator> {
+        self
+    }
+}
+
+/// Adapter trait that lets [`DataLogic::evaluate`] accept either an
+/// already-arena-resident `&'a DataValue<'a>` *or* a freshly-parsed
+/// `DataValue<'a>` (which it allocates into the arena for you). Internal
+/// trait — you don't need to implement it.
+///
+/// The two impls compile to identical code at the call site:
+/// - `&'a DataValue<'a>` is passed through unchanged (zero overhead).
+/// - `DataValue<'a>` becomes a single bumpalo allocation.
+pub trait IntoArenaData<'a> {
+    /// Coerce `self` into a `&'a DataValue<'a>`, allocating into `arena` if
+    /// the input is owned.
+    fn into_arena_data(self, arena: &'a bumpalo::Bump) -> &'a DataValue<'a>;
+}
+
+impl<'a> IntoArenaData<'a> for &'a DataValue<'a> {
+    #[inline]
+    fn into_arena_data(self, _arena: &'a bumpalo::Bump) -> &'a DataValue<'a> {
+        self
+    }
+}
+
+impl<'a> IntoArenaData<'a> for DataValue<'a> {
+    #[inline]
+    fn into_arena_data(self, arena: &'a bumpalo::Bump) -> &'a DataValue<'a> {
+        arena.alloc(self)
+    }
 }

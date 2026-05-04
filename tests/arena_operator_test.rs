@@ -42,7 +42,7 @@ impl DataOperator for CatArena {
 #[test]
 fn arena_operator_double_at_root() {
     let mut engine = DataLogic::new();
-    engine.add_operator("double".into(), Box::new(DoubleArena));
+    engine.add_operator("double", DoubleArena);
 
     let compiled = engine.compile_serde_value(&json!({"double": 21})).unwrap();
     let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
@@ -53,7 +53,7 @@ fn arena_operator_double_at_root() {
 fn arena_operator_inside_filter() {
     // The whole point of DataOperator: zero-clone use inside iteration.
     let mut engine = DataLogic::new();
-    engine.add_operator("double".into(), Box::new(DoubleArena));
+    engine.add_operator("double", DoubleArena);
 
     let compiled = engine
         .compile_serde_value(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
@@ -67,7 +67,7 @@ fn arena_operator_inside_filter() {
 #[test]
 fn arena_operator_string_result() {
     let mut engine = DataLogic::new();
-    engine.add_operator("xcat".into(), Box::new(CatArena));
+    engine.add_operator("xcat", CatArena);
 
     let compiled = engine
         .compile_serde_value(&json!({"xcat": ["he", "ll", "o"]}))
@@ -94,7 +94,7 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
 fn arena_operator_with_input_ref() {
     // Custom op consumes an InputRef arg (var lookup against root).
     let mut engine = DataLogic::new();
-    engine.add_operator("double".into(), Box::new(DoubleArena));
+    engine.add_operator("double", DoubleArena);
 
     let compiled = engine
         .compile_serde_value(&json!({"double": {"var": "n"}}))
@@ -128,7 +128,7 @@ impl DataOperator for ReadField {
 #[test]
 fn arena_operator_passthrough_input_ref() {
     let mut engine = DataLogic::new();
-    engine.add_operator("read_field".into(), Box::new(ReadField));
+    engine.add_operator("read_field", ReadField);
 
     let compiled = engine
         .compile_serde_value(&serde_json::json!({"read_field": {"var": "name"}}))
@@ -161,7 +161,7 @@ impl DataOperator for ReadActiveField {
 #[test]
 fn arena_operator_inside_filter_reads_iter_item_field() {
     let mut engine = DataLogic::new();
-    engine.add_operator("identity".into(), Box::new(ReadActiveField));
+    engine.add_operator("identity", ReadActiveField);
 
     // Filter passes each item to the predicate; the predicate calls
     // `identity` on `{"var": "active"}`, which the dispatcher resolves
