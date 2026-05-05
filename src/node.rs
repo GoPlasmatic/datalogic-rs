@@ -98,16 +98,16 @@ fn iterates_args0(opcode: OpCode) -> bool {
 /// least as long as the modified tree is accessible. See
 /// [`build_static_arena_value`] for the underlying invariant.
 pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bump) {
+    // Recurse into AST children first so per-variant local work below sees
+    // any populated `lit` / `precomputed_error` already in place.
+    node.visit_children_mut(&mut |child| unsafe { populate_lits(child, arena) });
+
+    // Per-variant local work that doesn't recurse.
     match node {
         CompiledNode::Value { value, lit, .. } => {
             if lit.is_none() {
                 let av = unsafe { build_static_arena_value(value, arena) };
                 *lit = Some(Box::new(av));
-            }
-        }
-        CompiledNode::Array { nodes, .. } => {
-            for n in nodes.iter_mut() {
-                unsafe { populate_lits(n, arena) };
             }
         }
         CompiledNode::BuiltinOperator {
@@ -117,9 +117,6 @@ pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bum
             iter_arg_kind,
             ..
         } => {
-            for n in args.iter_mut() {
-                unsafe { populate_lits(n, arena) };
-            }
             // Cache the fast-predicate detection result so quantifier/filter
             // operators consult `predicate_hint` instead of re-running the
             // structural detection on every iteration. Re-derive on every
@@ -141,24 +138,6 @@ pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bum
                 crate::operators::array::IterArgKind::General
             };
         }
-        CompiledNode::CustomOperator(data) => {
-            for n in data.args.iter_mut() {
-                unsafe { populate_lits(n, arena) };
-            }
-        }
-        #[cfg(feature = "preserve")]
-        CompiledNode::StructuredObject(data) => {
-            for (_, n) in data.fields.iter_mut() {
-                unsafe { populate_lits(n, arena) };
-            }
-        }
-        CompiledNode::Var { default_value, .. } => {
-            if let Some(d) = default_value {
-                unsafe { populate_lits(d, arena) };
-            }
-        }
-        #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(_) => {}
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(data) => {
             if data.precomputed_error.is_none() {
@@ -166,21 +145,8 @@ pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bum
                 data.precomputed_error = Some(Box::new(av));
             }
         }
-        CompiledNode::Missing(data) => {
-            for arg in data.args.iter_mut() {
-                if let CompiledMissingArg::Dynamic(n) = arg {
-                    unsafe { populate_lits(n, arena) };
-                }
-            }
-        }
-        CompiledNode::MissingSome(data) => {
-            if let CompiledMissingMin::Dynamic(n) = &mut data.min_present {
-                unsafe { populate_lits(n, arena) };
-            }
-            if let CompiledMissingPaths::Dynamic(n) = &mut data.paths {
-                unsafe { populate_lits(n, arena) };
-            }
-        }
+        // No local work — recursion above handled all children.
+        _ => {}
     }
 }
 
@@ -461,6 +427,126 @@ impl CompiledNode {
         }
     }
 
+    /// Invoke `f` on each AST child of `self`, in JSONLogic-positional
+    /// order, paired with the child's positional index (matching
+    /// [`crate::PathStep::arg_index`] semantics).
+    ///
+    /// Single source of truth for "what are this node's children" — the
+    /// post-compile populate pass, the static-byte estimator, and the
+    /// path resolver all defer to this rather than pattern-matching every
+    /// variant themselves.
+    pub(crate) fn visit_indexed_children<F: FnMut(u32, &CompiledNode)>(&self, f: &mut F) {
+        match self {
+            CompiledNode::Value { .. } => {}
+            CompiledNode::Array { nodes, .. } => {
+                for (i, n) in nodes.iter().enumerate() {
+                    f(i as u32, n);
+                }
+            }
+            CompiledNode::BuiltinOperator { args, .. } => {
+                for (i, n) in args.iter().enumerate() {
+                    f(i as u32, n);
+                }
+            }
+            CompiledNode::CustomOperator(data) => {
+                for (i, n) in data.args.iter().enumerate() {
+                    f(i as u32, n);
+                }
+            }
+            #[cfg(feature = "preserve")]
+            CompiledNode::StructuredObject(data) => {
+                for (i, (_, n)) in data.fields.iter().enumerate() {
+                    f(i as u32, n);
+                }
+            }
+            CompiledNode::Var { default_value, .. } => {
+                if let Some(d) = default_value {
+                    f(0, d);
+                }
+            }
+            #[cfg(feature = "ext-control")]
+            CompiledNode::Exists(_) => {}
+            #[cfg(feature = "error-handling")]
+            CompiledNode::Throw(_) => {}
+            CompiledNode::Missing(data) => {
+                for (i, arg) in data.args.iter().enumerate() {
+                    if let CompiledMissingArg::Dynamic(n) = arg {
+                        f(i as u32, n);
+                    }
+                }
+            }
+            CompiledNode::MissingSome(data) => {
+                if let CompiledMissingMin::Dynamic(n) = &data.min_present {
+                    f(0, n);
+                }
+                if let CompiledMissingPaths::Dynamic(n) = &data.paths {
+                    f(1, n);
+                }
+            }
+        }
+    }
+
+    /// Convenience wrapper over [`Self::visit_indexed_children`] for callers
+    /// that don't care about the positional index.
+    #[inline]
+    pub(crate) fn visit_children<F: FnMut(&CompiledNode)>(&self, f: &mut F) {
+        self.visit_indexed_children(&mut |_, child| f(child));
+    }
+
+    /// Mutable mirror of [`Self::visit_children`]. Used by the post-compile
+    /// populate pass to walk the tree once for both per-variant local work
+    /// and recursion.
+    pub(crate) fn visit_children_mut<F: FnMut(&mut CompiledNode)>(&mut self, f: &mut F) {
+        match self {
+            CompiledNode::Value { .. } => {}
+            CompiledNode::Array { nodes, .. } => {
+                for n in nodes.iter_mut() {
+                    f(n);
+                }
+            }
+            CompiledNode::BuiltinOperator { args, .. } => {
+                for n in args.iter_mut() {
+                    f(n);
+                }
+            }
+            CompiledNode::CustomOperator(data) => {
+                for n in data.args.iter_mut() {
+                    f(n);
+                }
+            }
+            #[cfg(feature = "preserve")]
+            CompiledNode::StructuredObject(data) => {
+                for (_, n) in data.fields.iter_mut() {
+                    f(n);
+                }
+            }
+            CompiledNode::Var { default_value, .. } => {
+                if let Some(d) = default_value {
+                    f(d);
+                }
+            }
+            #[cfg(feature = "ext-control")]
+            CompiledNode::Exists(_) => {}
+            #[cfg(feature = "error-handling")]
+            CompiledNode::Throw(_) => {}
+            CompiledNode::Missing(data) => {
+                for arg in data.args.iter_mut() {
+                    if let CompiledMissingArg::Dynamic(n) = arg {
+                        f(n);
+                    }
+                }
+            }
+            CompiledNode::MissingSome(data) => {
+                if let CompiledMissingMin::Dynamic(n) = &mut data.min_present {
+                    f(n);
+                }
+                if let CompiledMissingPaths::Dynamic(n) = &mut data.paths {
+                    f(n);
+                }
+            }
+        }
+    }
+
     /// Convenience constructor for a `Value` node with a [`SYNTHETIC_ID`].
     ///
     /// Used by operator fast paths that wrap runtime values back into
@@ -686,58 +772,32 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
     // a small fudge for slice headers. Add string content separately.
     const PER_NODE: usize = 48;
     let mut bytes = PER_NODE;
+
+    // Per-variant size contributions that aren't covered by recursing into
+    // AST children (literal payloads, structured-object key strings, etc.).
     match node {
         CompiledNode::Value { value, .. } => {
             bytes += estimate_value_bytes(value);
         }
-        CompiledNode::Array { nodes, .. } => {
-            for n in nodes.iter() {
-                bytes += estimate_arena_static_bytes(n);
-            }
-        }
-        CompiledNode::BuiltinOperator { args, .. } => {
-            for n in args.iter() {
-                bytes += estimate_arena_static_bytes(n);
-            }
-        }
-        CompiledNode::CustomOperator(data) => {
-            for n in data.args.iter() {
-                bytes += estimate_arena_static_bytes(n);
-            }
-        }
-        CompiledNode::Var { default_value, .. } => {
-            if let Some(d) = default_value {
-                bytes += estimate_arena_static_bytes(d);
-            }
-        }
-        #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(_) => {}
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(data) => {
             bytes += estimate_value_bytes(&data.error);
         }
         #[cfg(feature = "preserve")]
         CompiledNode::StructuredObject(data) => {
-            for (k, n) in data.fields.iter() {
-                bytes += k.len() + estimate_arena_static_bytes(n);
+            for (k, _) in data.fields.iter() {
+                bytes += k.len();
             }
         }
-        CompiledNode::Missing(data) => {
-            for arg in data.args.iter() {
-                if let CompiledMissingArg::Dynamic(n) = arg {
-                    bytes += estimate_arena_static_bytes(n);
-                }
-            }
-        }
-        CompiledNode::MissingSome(data) => {
-            if let CompiledMissingMin::Dynamic(n) = &data.min_present {
-                bytes += estimate_arena_static_bytes(n);
-            }
-            if let CompiledMissingPaths::Dynamic(n) = &data.paths {
-                bytes += estimate_arena_static_bytes(n);
-            }
-        }
+        _ => {}
     }
+
+    // Recurse into AST children via the shared visitor — single source of
+    // truth for "what are this node's children".
+    node.visit_children(&mut |child| {
+        bytes += estimate_arena_static_bytes(child);
+    });
+
     bytes
 }
 

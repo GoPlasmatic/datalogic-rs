@@ -71,6 +71,10 @@ impl Logic {
 /// Depth-first walk of a [`CompiledNode`], recording (operator, arg_index,
 /// json_pointer) for every reachable node id. `parent_op` and
 /// `parent_pointer` describe how *this* node is reached from above.
+///
+/// Recursion delegates the "what are this node's children" question to
+/// [`CompiledNode::visit_indexed_children`] so the variant match lives in
+/// exactly one place.
 fn walk(
     node: &CompiledNode,
     parent_op: Option<&str>,
@@ -90,64 +94,17 @@ fn walk(
         },
     );
 
-    // The "parent operator" passed to children is the *current* node's
-    // operator name — children's pointers are formed against it.
-    let child_parent_op = operator.as_deref();
+    // Children of an `Array` form pointers like "/<idx>"; for every other
+    // variant the current node's operator name is the pointer prefix.
+    let child_parent_op = if matches!(node, CompiledNode::Array { .. }) {
+        None
+    } else {
+        operator.as_deref()
+    };
 
-    match node {
-        CompiledNode::Value { .. } => {
-            // Leaf — nothing to recurse into.
-        }
-        CompiledNode::Array { nodes, .. } => {
-            for (i, child) in nodes.iter().enumerate() {
-                walk(child, None, Some(i as u32), &json_pointer, out);
-            }
-        }
-        CompiledNode::BuiltinOperator { args, .. } => {
-            for (i, child) in args.iter().enumerate() {
-                walk(child, child_parent_op, Some(i as u32), &json_pointer, out);
-            }
-        }
-        CompiledNode::CustomOperator(data) => {
-            for (i, child) in data.args.iter().enumerate() {
-                walk(child, child_parent_op, Some(i as u32), &json_pointer, out);
-            }
-        }
-        #[cfg(feature = "preserve")]
-        CompiledNode::StructuredObject(data) => {
-            for (i, (_key, child)) in data.fields.iter().enumerate() {
-                walk(child, child_parent_op, Some(i as u32), &json_pointer, out);
-            }
-        }
-        CompiledNode::Var { default_value, .. } => {
-            if let Some(def) = default_value {
-                walk(def, child_parent_op, Some(0), &json_pointer, out);
-            }
-        }
-        #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(_) => {
-            // Leaf — exists arguments are pre-parsed segments.
-        }
-        #[cfg(feature = "error-handling")]
-        CompiledNode::Throw(_) => {
-            // Leaf — error payload is a baked-in OwnedDataValue.
-        }
-        CompiledNode::Missing(data) => {
-            for (i, arg) in data.args.iter().enumerate() {
-                if let crate::node::CompiledMissingArg::Dynamic(child) = arg {
-                    walk(child, child_parent_op, Some(i as u32), &json_pointer, out);
-                }
-            }
-        }
-        CompiledNode::MissingSome(data) => {
-            if let crate::node::CompiledMissingMin::Dynamic(child) = &data.min_present {
-                walk(child, child_parent_op, Some(0), &json_pointer, out);
-            }
-            if let crate::node::CompiledMissingPaths::Dynamic(child) = &data.paths {
-                walk(child, child_parent_op, Some(1), &json_pointer, out);
-            }
-        }
-    }
+    node.visit_indexed_children(&mut |i, child| {
+        walk(child, child_parent_op, Some(i), &json_pointer, out);
+    });
 }
 
 #[inline]
