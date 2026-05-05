@@ -764,9 +764,15 @@ impl Logic {
 /// chunk allocation. Data-dependent allocations (filter results, map outputs)
 /// can't be predicted here.
 fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
-    // Base cost per node when promoted to DataValue: ~32 bytes for the enum +
-    // a small fudge for slice headers. Add string content separately.
-    const PER_NODE: usize = 48;
+    // Base cost per node when promoted to `DataValue`: the enum itself plus
+    // a slice-header fudge for nodes whose payload lives as `&[…]` in the
+    // arena (Array, Object, structured-object fields). The DataValue-size
+    // term tracks layout changes automatically — without datetime it's
+    // typically 24 bytes (8-byte discriminant + 16-byte fat-pointer
+    // payload), with datetime it grows to fit `DataDateTime`. String
+    // content for literals is added separately by `estimate_value_bytes`.
+    const PER_NODE: usize =
+        std::mem::size_of::<DataValue<'static>>() + std::mem::size_of::<&[u8]>();
     let mut bytes = PER_NODE;
 
     // Per-variant size contributions that aren't covered by recursing into
