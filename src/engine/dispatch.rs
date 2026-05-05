@@ -237,7 +237,7 @@ pub(super) fn evaluate_node_inner<'a>(
 
             // Logical
             Not => crate::operators::logical::evaluate_not,
-            DoubleNot => crate::operators::logical::evaluate_double_not,
+            BoolCast => crate::operators::logical::evaluate_bool_cast,
             And => crate::operators::logical::evaluate_and,
             Or => crate::operators::logical::evaluate_or,
 
@@ -250,7 +250,7 @@ pub(super) fn evaluate_node_inner<'a>(
             Switch => crate::operators::control::evaluate_switch,
 
             // String
-            Cat => crate::operators::string::evaluate_cat,
+            Concat => crate::operators::string::evaluate_concat,
             Substr => crate::operators::string::evaluate_substr,
             In => crate::operators::string::evaluate_in,
             #[cfg(feature = "ext-string")]

@@ -65,7 +65,7 @@ pub enum OpCode {
 
     // === Core: Logical Operators ===
     Not = 10,
-    DoubleNot = 11,
+    BoolCast = 11,
     And = 12,
     Or = 13,
 
@@ -82,7 +82,7 @@ pub enum OpCode {
     Min = 22,
 
     // === Core: String Operations ===
-    Cat = 23,
+    Concat = 23,
     Substr = 24,
     In = 25,
 
@@ -188,7 +188,7 @@ const OPCODE_NAMES: &[(&str, OpCode)] = &[
     ("<=", OpCode::LessThanEqual),
     // Core: logical
     ("!", OpCode::Not),
-    ("!!", OpCode::DoubleNot),
+    ("!!", OpCode::BoolCast),
     ("and", OpCode::And),
     ("or", OpCode::Or),
     // Core: control flow. `?:` is accepted as a synonym of `if` — both
@@ -205,7 +205,7 @@ const OPCODE_NAMES: &[(&str, OpCode)] = &[
     ("max", OpCode::Max),
     ("min", OpCode::Min),
     // Core: string
-    ("cat", OpCode::Cat),
+    ("cat", OpCode::Concat),
     ("substr", OpCode::Substr),
     ("in", OpCode::In),
     // Core: array

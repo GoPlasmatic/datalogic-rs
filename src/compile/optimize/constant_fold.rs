@@ -35,8 +35,8 @@ pub fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
                             Some(new) => (new, true),
                             None => (node, coerced),
                         }
-                    } else if *opcode == OpCode::Cat && args.len() >= 2 {
-                        match try_fold_cat(*id, args) {
+                    } else if *opcode == OpCode::Concat && args.len() >= 2 {
+                        match try_fold_concat(*id, args) {
                             Some(new) => (new, true),
                             None => (node, coerced),
                         }
@@ -109,7 +109,7 @@ fn try_partial_fold(
 
 /// Try to fold adjacent static strings in cat operator.
 /// `{"cat": ["hello ", "world", {"var": "x"}]}` → `{"cat": ["hello world", {"var": "x"}]}`
-fn try_fold_cat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Option<CompiledNode> {
+fn try_fold_concat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Option<CompiledNode> {
     let mut new_args: Vec<CompiledNode> = Vec::new();
     let mut current_static_str: Option<String> = None;
     let mut folded_any = false;
@@ -154,7 +154,7 @@ fn try_fold_cat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Option<
 
     Some(CompiledNode::BuiltinOperator {
         id: outer_id,
-        opcode: OpCode::Cat,
+        opcode: OpCode::Concat,
         args: new_args.into_boxed_slice(),
         predicate_hint: None,
         iter_arg_kind: crate::operators::array::IterArgKind::General,
@@ -275,7 +275,7 @@ mod tests {
     fn test_fold_cat_adjacent() {
         let engine = Engine::new();
         let node = builtin(
-            OpCode::Cat,
+            OpCode::Concat,
             vec![val(ov("\"hello \"")), val(ov("\"world\"")), var_node("x")],
         );
         let (result, _changed) = fold(node, &engine);

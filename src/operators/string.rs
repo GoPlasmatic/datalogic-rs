@@ -11,7 +11,7 @@ use crate::arena::{ContextStack, DataValue, data_to_str};
 use bumpalo::Bump;
 
 #[inline]
-pub(crate) fn evaluate_cat<'a>(
+pub(crate) fn evaluate_concat<'a>(
     args: &'a [CompiledNode],
     ctx: &mut ContextStack<'a>,
     engine: &Engine,

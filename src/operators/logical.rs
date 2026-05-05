@@ -18,7 +18,7 @@ pub(crate) fn evaluate_not<'a>(
 }
 
 #[inline]
-pub(crate) fn evaluate_double_not<'a>(
+pub(crate) fn evaluate_bool_cast<'a>(
     args: &'a [CompiledNode],
     ctx: &mut ContextStack<'a>,
     engine: &Engine,

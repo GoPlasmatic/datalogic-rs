@@ -17,7 +17,7 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
             id, opcode, args, ..
         } => match opcode {
             OpCode::Not if args.len() == 1 => {
-                // Check if inner is also Not → collapse to DoubleNot
+                // Check if inner is also Not → collapse to BoolCast
                 if let CompiledNode::BuiltinOperator {
                     opcode: OpCode::Not,
                     args: inner_args,
@@ -28,7 +28,7 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                     return (
                         CompiledNode::BuiltinOperator {
                             id: *id,
-                            opcode: OpCode::DoubleNot,
+                            opcode: OpCode::BoolCast,
                             args: inner_args.clone(),
                             predicate_hint: None,
                             iter_arg_kind: crate::operators::array::IterArgKind::General,
@@ -38,10 +38,10 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                 }
                 (node, false)
             }
-            OpCode::DoubleNot if args.len() == 1 => {
-                // Check if inner is also DoubleNot → collapse (idempotent)
+            OpCode::BoolCast if args.len() == 1 => {
+                // Check if inner is also BoolCast → collapse (idempotent)
                 if let CompiledNode::BuiltinOperator {
-                    opcode: OpCode::DoubleNot,
+                    opcode: OpCode::BoolCast,
                     args: inner_args,
                     ..
                 } = &args[0]
@@ -50,7 +50,7 @@ pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                     return (
                         CompiledNode::BuiltinOperator {
                             id: *id,
-                            opcode: OpCode::DoubleNot,
+                            opcode: OpCode::BoolCast,
                             args: inner_args.clone(),
                             predicate_hint: None,
                             iter_arg_kind: crate::operators::array::IterArgKind::General,
@@ -78,7 +78,7 @@ mod tests {
         let (result, changed) = reduce(outer);
         assert!(changed);
         if let CompiledNode::BuiltinOperator { opcode, args, .. } = &result {
-            assert_eq!(*opcode, OpCode::DoubleNot);
+            assert_eq!(*opcode, OpCode::BoolCast);
             assert_eq!(args.len(), 1);
         } else {
             panic!("expected BuiltinOperator");
@@ -87,12 +87,12 @@ mod tests {
 
     #[test]
     fn test_idempotent_double_not() {
-        let inner = builtin(OpCode::DoubleNot, vec![var_node("x")]);
-        let outer = builtin(OpCode::DoubleNot, vec![inner]);
+        let inner = builtin(OpCode::BoolCast, vec![var_node("x")]);
+        let outer = builtin(OpCode::BoolCast, vec![inner]);
         let (result, changed) = reduce(outer);
         assert!(changed);
         if let CompiledNode::BuiltinOperator { opcode, args, .. } = &result {
-            assert_eq!(*opcode, OpCode::DoubleNot);
+            assert_eq!(*opcode, OpCode::BoolCast);
             assert_eq!(args.len(), 1);
             assert!(matches!(&args[0], CompiledNode::Var { .. }));
         } else {
