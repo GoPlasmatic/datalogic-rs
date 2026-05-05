@@ -44,7 +44,7 @@ impl ExpressionNode {
     /// Every tree node inherits its compile-time id from the source
     /// [`CompiledNode::id`]. No side-table is needed: both tracing and error
     /// reporting look the id up directly on the node.
-    pub fn build_from_compiled(node: &CompiledNode) -> ExpressionNode {
+    pub(crate) fn build_from_compiled(node: &CompiledNode) -> ExpressionNode {
         Self::build_node(node)
     }
 

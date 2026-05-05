@@ -10,31 +10,8 @@ use crate::config::EvaluationConfig;
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledNode, Logic, Result};
 
-/// The main Engine engine for compiling and evaluating JSONLogic expressions.
-///
-/// The engine provides a two-phase approach to logic evaluation:
-/// 1. **Compilation**: Parse JSON logic into optimized `Logic`
-/// 2. **Evaluation**: Execute compiled logic against data
-///
-/// # Features
-///
-/// - **Thread-safe**: Compiled logic can be shared across threads with `Arc`
-/// - **Extensible**: Add custom operators via `add_operator`
-/// - **Structure preservation**: Optionally preserve object structure for templating
-/// - **OpCode dispatch**: Built-in operators use fast enum-based dispatch
-///
-/// # Example
-///
-/// ```rust
-/// use datalogic_rs::Engine;
-///
-/// let engine = Engine::new();
-/// let result = engine.evaluate_str(
-///     r#"{">": [{"var": "age"}, 18]}"#,
-///     r#"{"age": 21}"#,
-/// ).unwrap();
-/// assert_eq!(result, "true");
-/// ```
+/// JSONLogic compile/evaluate engine. See the crate-level docs for the
+/// two-phase architecture, threading model, and walk-through examples.
 pub struct Engine {
     /// Custom `CustomOperator` implementations registered with the engine.
     pub(super) custom_operators: HashMap<String, Box<dyn crate::CustomOperator>>,
@@ -166,7 +143,9 @@ impl Engine {
         &self.config
     }
 
-    /// Returns whether structure preservation is enabled.
+    /// Returns whether structure preservation is enabled. Always returns
+    /// `false` when the crate is built without `feature = "preserve"`
+    /// (the underlying field doesn't exist off-feature).
     pub fn preserve_structure(&self) -> bool {
         #[cfg(feature = "preserve")]
         {

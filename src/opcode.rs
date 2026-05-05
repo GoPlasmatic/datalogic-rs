@@ -9,8 +9,8 @@
 //!
 //! 1. **Compile-time resolution**: Operator strings are converted to `OpCode` variants
 //!    during the compilation phase, not during evaluation
-//! 2. **Direct dispatch**: The `evaluate_direct` method uses a match statement that
-//!    compiles to an efficient jump table
+//! 2. **Direct dispatch**: [`crate::engine::dispatch::dispatch_node_inner`] is a
+//!    table-driven match over `OpCode`; the compiler lowers it to a jump table
 //! 3. **No boxing or vtables**: Direct function calls without trait object overhead
 //! 4. **Cache-friendly**: The `#[repr(u8)]` attribute ensures compact memory layout
 //!

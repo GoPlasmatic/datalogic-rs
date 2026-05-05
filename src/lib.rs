@@ -124,12 +124,10 @@ pub use trace::TracedResult;
 #[cfg(feature = "compat")]
 pub use value::{owned_from_serde, owned_to_serde};
 
-// `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint`
-// were public in 4.x. They are compile-internal types — `pub(crate)` for
-// our own modules, surfaced via `crate::compat` for 4.x callers (with
-// deprecation warnings).
-#[allow(unused_imports)]
-pub(crate) use node::{CompiledNode, MetadataHint, PathSegment, ReduceHint};
+// `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint` were
+// public in 4.x. They are compile-internal in v5; consumers reach for them
+// via `crate::node::*` / `crate::opcode::*` directly.
+pub(crate) use node::CompiledNode;
 pub(crate) use opcode::OpCode;
 
 /// Result type for Engine operations

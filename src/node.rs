@@ -152,7 +152,7 @@ pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bum
 
 /// A pre-parsed path segment for compiled variable access.
 #[derive(Debug, Clone)]
-pub enum PathSegment {
+pub(crate) enum PathSegment {
     /// Object field access by key
     Field(Box<str>),
     /// Array element access by index
@@ -164,7 +164,7 @@ pub enum PathSegment {
 
 /// Hint for reduce context resolution, detected at compile time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReduceHint {
+pub(crate) enum ReduceHint {
     /// Normal path access (no reduce context)
     None,
     /// Path is exactly "current" — return reduce_current directly
@@ -179,7 +179,7 @@ pub enum ReduceHint {
 
 /// Hint for metadata access (index/key), detected at compile time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MetadataHint {
+pub(crate) enum MetadataHint {
     /// Normal data access
     None,
     /// Access frame index metadata
@@ -195,7 +195,7 @@ pub(crate) const SYNTHETIC_ID: NodeId = None;
 
 /// Data for a custom operator (boxed inside CompiledNode to reduce enum size).
 #[derive(Debug, Clone)]
-pub struct CustomOperatorData {
+pub(crate) struct CustomOperatorData {
     pub id: NodeId,
     pub name: String,
     pub args: Box<[CompiledNode]>,
@@ -204,7 +204,7 @@ pub struct CustomOperatorData {
 /// Data for a structured object template (boxed inside CompiledNode to reduce enum size).
 #[cfg(feature = "preserve")]
 #[derive(Debug, Clone)]
-pub struct StructuredObjectData {
+pub(crate) struct StructuredObjectData {
     pub id: NodeId,
     pub fields: Box<[(String, CompiledNode)]>,
 }
@@ -212,7 +212,7 @@ pub struct StructuredObjectData {
 /// Data for a pre-compiled exists check (boxed inside CompiledNode to reduce enum size).
 #[cfg(feature = "ext-control")]
 #[derive(Debug, Clone)]
-pub struct CompiledExistsData {
+pub(crate) struct CompiledExistsData {
     pub id: NodeId,
     pub scope_level: u32,
     pub segments: Box<[PathSegment]>,
@@ -224,7 +224,7 @@ pub struct CompiledExistsData {
 /// where an arg can be a literal we can pre-parse or an expression that
 /// must wait until evaluation.
 #[derive(Debug, Clone)]
-pub enum Resolved<S, D> {
+pub(crate) enum Resolved<S, D> {
     /// Compile-time value — pre-parsed / pre-computed during compilation.
     Now(S),
     /// Runtime expression — evaluate against the live context.
@@ -251,7 +251,7 @@ pub type CompiledMissingPaths = Resolved<Box<[StaticMissingPath]>, CompiledNode>
 
 /// Data for a pre-compiled `missing` operator.
 #[derive(Debug, Clone)]
-pub struct CompiledMissingData {
+pub(crate) struct CompiledMissingData {
     pub id: NodeId,
     pub args: Box<[CompiledMissingArg]>,
 }
@@ -259,7 +259,7 @@ pub struct CompiledMissingData {
 /// Data for a pre-compiled `missing_some` operator. `min_present` may be a
 /// literal integer (resolved at compile time) or a runtime expression.
 #[derive(Debug, Clone)]
-pub struct CompiledMissingSomeData {
+pub(crate) struct CompiledMissingSomeData {
     pub id: NodeId,
     pub min_present: CompiledMissingMin,
     pub paths: CompiledMissingPaths,
@@ -270,7 +270,7 @@ pub struct CompiledMissingSomeData {
 /// alongside the error payload.
 #[cfg(feature = "error-handling")]
 #[derive(Debug, Clone)]
-pub struct CompiledThrowData {
+pub(crate) struct CompiledThrowData {
     pub id: NodeId,
     pub error: OwnedDataValue,
     /// Arena-resident mirror of `error` populated post-compile by
@@ -292,7 +292,7 @@ pub struct CompiledThrowData {
 /// - **CustomOperator**: User-defined operators with dynamic dispatch
 /// - **StructuredObject**: Template objects for structure preservation
 #[derive(Debug, Clone)]
-pub enum CompiledNode {
+pub(crate) enum CompiledNode {
     /// A static JSON value that requires no evaluation.
     ///
     /// Used for literals like numbers, strings, booleans, and null.
@@ -684,7 +684,7 @@ pub struct Logic {
     /// [`Self::static_arena`]. This is only sound because both fields are
     /// owned together by the same struct; never mutate `static_arena` after
     /// construction, and never extract `root` out of `Self`.
-    pub root: CompiledNode,
+    pub(crate) root: CompiledNode,
     /// Conservative upper bound on the static portion of arena allocations
     /// this rule will need (literals, structured-object skeletons, etc.).
     /// Used to size the per-call `Bump` so the first chunk is large enough.
@@ -698,10 +698,9 @@ pub struct Logic {
     /// take `&self` and use interior mutability).
     ///
     /// Field is held purely to keep its allocations alive — the references
-    /// into it live inside `root`. Reads happen via those references, not
-    /// directly through this field, hence the `#[allow(dead_code)]`.
-    #[allow(dead_code)]
-    static_arena: bumpalo::Bump,
+    /// into it live inside `root`. The leading underscore tells the dead-code
+    /// lint that this is intentional.
+    _static_arena: bumpalo::Bump,
 }
 
 // SAFETY: `bumpalo::Bump` is `!Sync` because allocation methods like
@@ -733,7 +732,7 @@ impl Logic {
     /// # Arguments
     ///
     /// * `root` - The root node of the compiled logic tree
-    pub fn new(mut root: CompiledNode) -> Self {
+    pub(crate) fn new(mut root: CompiledNode) -> Self {
         let arena_static_bytes = estimate_arena_static_bytes(&root);
         let static_arena = bumpalo::Bump::with_capacity(arena_static_bytes);
         // SAFETY: `static_arena` is moved into `Self` together with `root`.
@@ -748,7 +747,7 @@ impl Logic {
         Self {
             root,
             arena_static_bytes,
-            static_arena,
+            _static_arena: static_arena,
         }
     }
 

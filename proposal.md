@@ -56,20 +56,18 @@ All updates flow through `compat.rs` deprecation `note` strings only — the v4 
 - ~~**B2.5**~~ — SKIPPED (intentional). Promoted to anti-findings: the opcode `Concat` is named for in-dispatcher readability; the operator string `cat` follows the JSONLogic spec.
 - **B2.6** ✅ — `evaluate_compiled_var` / `evaluate_compiled_exists` → `evaluate_val_compiled` / `evaluate_exists_compiled`.
 
-### Batch 3 — Module reshape  *(internal-only, low risk)*
+### Batch 3 — Module reshape  *(internal-only, low risk)* — ✅ resolved (1882247)
 
-Modules are `pub(crate)` after P0.4/P0.5, so renames don't break external users.
-
-- **B3.1** — **Delete `src/datetime.rs`.** Single-line re-export shim now subsumed by `pub use datavalue;` (P0.3). *(`datetime.rs:8`, `lib.rs`)*
-- **B3.2** — **Fold `constants.rs`.** Two strings + two error helpers — module is misnamed. Move into `error.rs`; tighten `pub` → `pub(crate)`. *(`constants.rs`)*
-- **B3.3** — **Three `helpers.rs` files.** Rename `operators/helpers.rs` → `truthy.rs`, `operators/arithmetic/helpers.rs` → `arith_fold.rs`, `operators/array/helpers.rs` → `iter_resolve.rs`. Greppable, tab-completion-friendly. *(do all three together)*
-- **B3.4** — **`compile::builder` rename.** Conceptually collides with the crate-root `EngineBuilder`. Rename to `compile::walker` or `compile::dispatch`. *(`compile/builder.rs`)*
-- **B3.5** — **`compile/path_parser.rs` rename.** Shares the word "path" with the unrelated root `path.rs`. Rename to `compile/path_segments.rs`. *(`compile/path_parser.rs`)*
-- **B3.6** — **Root `value/` rename or fold.** `arena/value/` and root `value/` both imply "values." Root is `OwnedDataValue ↔ serde_json::Value` compat helpers — fold into `compat.rs` (datetime sentinel goes with it; combine with **B6.4**). *(`value/mod.rs`)*
-- **B3.7** — **`try_op` / `type_op` rename.** `_op` suffix is keyword-collision avoidance only. Rename to `error_handling.rs` and `inspect.rs`, or fold into a sibling. *(`operators/try_op.rs`, `operators/type_op.rs`)*
-- **B3.8** — **Tighten `compile/optimize` modifiers.** `pub mod` / `pub fn` are dead — parent is `mod compile;`, so external code can't reach them. Drop to `pub(super)` / `pub(crate)`. *(`compile/mod.rs:12`, `compile/optimize/mod.rs:14-17,46`)*
-- **B3.9** — **Move `bvec` out of `arena/mod.rs`.** Module-declaration noise. Move to `arena/util.rs`. *(`arena/mod.rs:33`)*
-- **B3.10** — **Split `arena/pool.rs`.** Singletons (`pool.rs:47-167`) and test-only `BumpGuard` (`pool.rs:179-246`) share a file under "pool" but are unrelated. Split into `arena/singletons.rs` and `arena/bump_pool.rs`; consider deleting `BumpGuard` if no production caller remains.
+- **B3.1** ✅ — Deleted `src/datetime.rs`; 13 internal `crate::datetime::*` callers switched to `datavalue::*`.
+- **B3.2** ✅ — Folded `constants.rs` into `error.rs`. `nan_error()` / `invalid_args()` are now associated `Error::nan()` / `Error::invalid_args()`. Strings stay as `pub(crate) const` referenced as `crate::error::INVALID_ARGS` / `NAN_ERROR`.
+- **B3.3** — DEFERRED. Three `helpers.rs` files contain genuinely diverse contents (truthy + datetime extraction + sentinel check etc.). Renaming requires a content split first, scheduled with Batch 6.
+- **B3.4** ✅ — `compile/builder.rs` → `compile/walker.rs`.
+- **B3.5** ✅ — `compile/path_parser.rs` → `compile/path_segments.rs`.
+- **B3.6** — DEFERRED, pairs with B6.4.
+- **B3.7** ✅ — Folded `throw.rs` + `try_op.rs` → `error_handling.rs`; `type_op.rs` → `inspect.rs`.
+- **B3.8** ✅ — `compile/optimize` declarations dropped to `pub(super)`; `pub mod optimize` → `mod optimize`. All were dead modifiers.
+- **B3.9** ✅ — `bvec` moved to `arena/util.rs`.
+- **B3.10** ✅ — `arena/pool.rs` simplified to `arena/singletons.rs` (the test-only `BumpGuard` slot-pool had no production callers and went with it; 3 BumpGuard unit tests deleted with the struct).
 
 ### Batch 4 — Doc + dead-code cleanup
 
