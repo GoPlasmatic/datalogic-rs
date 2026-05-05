@@ -1,16 +1,16 @@
-//! Integration tests for the `Operator` trait — zero-clone custom operators.
+//! Integration tests for the `CustomOperator` trait — zero-clone custom operators.
 
 #![cfg(feature = "compat")]
 #![allow(deprecated)]
 
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{ContextStack, DataValue, Engine, Operator, Result};
+use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Result};
 use serde_json::json;
 
 /// Doubles the first numeric argument. Returns a fresh arena-allocated number.
 struct DoubleArena;
-impl Operator for DoubleArena {
+impl CustomOperator for DoubleArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
@@ -24,7 +24,7 @@ impl Operator for DoubleArena {
 
 /// Concatenates string args directly into the arena.
 struct CatArena;
-impl Operator for CatArena {
+impl CustomOperator for CatArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
@@ -111,7 +111,7 @@ fn arena_operator_with_input_ref() {
 /// Equivalent to the legacy "read_field" / "read_root" helpers; here it just
 /// inspects its first arg, which the dispatcher already evaluated for us.
 struct ReadField;
-impl Operator for ReadField {
+impl CustomOperator for ReadField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
@@ -148,7 +148,7 @@ fn arena_operator_passthrough_input_ref() {
 /// custom ops invoked inside `filter` see the iter frame's data via their
 /// pre-evaluated args.
 struct ReadActiveField;
-impl Operator for ReadActiveField {
+impl CustomOperator for ReadActiveField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],

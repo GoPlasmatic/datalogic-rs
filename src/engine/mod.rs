@@ -36,8 +36,8 @@ use crate::{CompiledNode, Logic, Result};
 /// assert_eq!(result, "true");
 /// ```
 pub struct Engine {
-    /// Custom `Operator` implementations registered with the engine.
-    pub(super) custom_operators: HashMap<String, Box<dyn crate::Operator>>,
+    /// Custom `CustomOperator` implementations registered with the engine.
+    pub(super) custom_operators: HashMap<String, Box<dyn crate::CustomOperator>>,
     /// Flag to preserve structure of objects with unknown operators
     #[cfg(feature = "preserve")]
     preserve_structure: bool,
@@ -118,7 +118,7 @@ impl Engine {
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
         _preserve_structure: bool,
-        operators: HashMap<String, Box<dyn crate::Operator>>,
+        operators: HashMap<String, Box<dyn crate::CustomOperator>>,
     ) -> Self {
         Self {
             custom_operators: operators,

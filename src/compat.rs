@@ -15,7 +15,7 @@
 //! What lives here:
 //! - **Renamed types** — `ArenaValue`, `ArenaContextStack`, `ArenaOperator`
 //!   re-exported as deprecated aliases for `DataValue`, `ContextStack`,
-//!   `Operator`.
+//!   `CustomOperator`.
 //! - **Constructors** — `with_preserve_structure`, `with_config`,
 //!   `with_config_and_structure`.
 //! - **Compile entries** — `compile(&Value)`, `compile_serde_value(&Value)`.
@@ -41,7 +41,7 @@
 //! engine.evaluate_json(rule, data)?;
 //!
 //! // Migration target:
-//! use datalogic_rs::{DataValue, Operator};
+//! use datalogic_rs::{DataValue, CustomOperator};
 //! engine.evaluate_str(rule, data)?;
 //! // Or, to keep the 4.x signatures briefly:
 //! use datalogic_rs::compat::LegacyApi;
@@ -79,12 +79,12 @@ pub type ArenaValue<'a> = crate::DataValue<'a>;
 )]
 pub type ArenaContextStack<'a> = crate::ContextStack<'a>;
 
-/// Deprecated alias for [`crate::Operator`]. The trait method
+/// Deprecated alias for [`crate::CustomOperator`]. The trait method
 /// `evaluate_arena` was renamed to `evaluate` — old impls that used the
 /// `evaluate_arena` name need a one-line rename.
 #[deprecated(
     since = "5.0.0",
-    note = "use `Operator` and rename `evaluate_arena` -> `evaluate`; the `compat` module will be removed in 5.1"
+    note = "use `CustomOperator` and rename `evaluate_arena` -> `evaluate`; the `compat` module will be removed in 5.1"
 )]
 pub trait ArenaOperator: Send + Sync {
     /// Forward to the v5 [`crate::Operator::evaluate`] signature.
@@ -96,9 +96,9 @@ pub trait ArenaOperator: Send + Sync {
     ) -> Result<&'a crate::DataValue<'a>>;
 }
 
-// Bridge: every ArenaOperator IS-A Operator (forward `evaluate_arena`
+// Bridge: every ArenaOperator IS-A CustomOperator (forward `evaluate_arena`
 // → `evaluate`). Lets old custom operators keep compiling.
-impl<T: ArenaOperator + ?Sized> crate::Operator for T {
+impl<T: ArenaOperator + ?Sized> crate::CustomOperator for T {
     #[inline]
     fn evaluate<'a>(
         &self,

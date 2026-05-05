@@ -6,16 +6,16 @@
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{ContextStack, DataValue, Engine, Error, Operator, Result};
+use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Error, Result};
 use serde_json::json;
 
 /// Custom arena operator: checks whether a datetime argument falls in the
-/// nighttime window (hours outside 7..19 UTC). Demonstrates an `Operator`
+/// nighttime window (hours outside 7..19 UTC). Demonstrates a `CustomOperator`
 /// that pulls a string out of a pre-evaluated arg without round-tripping
 /// through `serde_json::Value`.
 struct IsNightOperator;
 
-impl Operator for IsNightOperator {
+impl CustomOperator for IsNightOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],

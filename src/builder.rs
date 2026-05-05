@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 
+use crate::CustomOperator;
 use crate::IntoOperatorBox;
-use crate::Operator;
 use crate::config::EvaluationConfig;
 use crate::engine::Engine;
 
@@ -24,7 +24,7 @@ use crate::engine::Engine;
 pub struct EngineBuilder {
     config: EvaluationConfig,
     preserve_structure: bool,
-    operators: HashMap<String, Box<dyn Operator>>,
+    operators: HashMap<String, Box<dyn CustomOperator>>,
 }
 
 impl Default for EngineBuilder {
@@ -59,8 +59,8 @@ impl EngineBuilder {
         self
     }
 
-    /// Register a custom [`Operator`] under `name`. Accepts either a bare
-    /// `T: Operator` or a pre-boxed `Box<dyn Operator>` via
+    /// Register a [`CustomOperator`] under `name`. Accepts either a bare
+    /// `T: CustomOperator` or a pre-boxed `Box<dyn CustomOperator>` via
     /// [`IntoOperatorBox`]. Multiple calls with the same name overwrite the
     /// prior registration.
     ///

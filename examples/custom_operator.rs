@@ -1,6 +1,6 @@
 //! Example demonstrating how to create and use custom operators in Engine.
 //!
-//! Custom operators are implemented via the [`Operator`] trait, which
+//! Custom operators are implemented via the [`CustomOperator`] trait, which
 //! receives **pre-evaluated** arguments as `&DataValue` borrows and returns
 //! an arena-allocated `DataValue` result. This avoids per-call boundary
 //! conversion and is required to register a custom op with the engine.
@@ -10,7 +10,7 @@
 //! boundary, no `compat` feature required.
 
 use bumpalo::Bump;
-use datalogic_rs::{ContextStack, DataValue, Engine, Error, Operator, Result};
+use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Error, Result};
 
 /// Calculates the average of an array of numbers.
 ///
@@ -18,7 +18,7 @@ use datalogic_rs::{ContextStack, DataValue, Engine, Error, Operator, Result};
 /// Or:    `{"avg": {"var": "scores"}}` -> average of `scores` array
 struct AverageOperator;
 
-impl Operator for AverageOperator {
+impl CustomOperator for AverageOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
@@ -61,7 +61,7 @@ impl Operator for AverageOperator {
 /// Usage: `{"between": [value, min, max]}` -> boolean
 struct BetweenOperator;
 
-impl Operator for BetweenOperator {
+impl CustomOperator for BetweenOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
@@ -91,7 +91,7 @@ impl Operator for BetweenOperator {
 /// Usage: `{"format": ["Hello, {}!", "World"]}` -> `"Hello, World!"`
 struct FormatOperator;
 
-impl Operator for FormatOperator {
+impl CustomOperator for FormatOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],

@@ -14,7 +14,7 @@
 //! - **Thread-safe by design**: Share compiled logic across threads with `Arc`
 //! - **50+ built-in operators**: Complete JSONLogic compatibility plus extensions
 //! - **Arena-allocated evaluation**: Results live in a `bumpalo::Bump` arena and can borrow directly into caller input for zero-copy paths
-//! - **Extensible**: Add custom operators via the [`Operator`] trait
+//! - **Extensible**: Add custom operators via the [`CustomOperator`] trait
 //! - **Structured templates**: Preserve object structure for dynamic outputs
 //!
 //! ## Quick Start (one-shot)
@@ -154,11 +154,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ## Example
 ///
 /// ```rust
-/// use datalogic_rs::{ContextStack, Operator, DataValue, Engine, Result};
+/// use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Result};
 /// use bumpalo::Bump;
 ///
 /// struct DoubleArena;
-/// impl Operator for DoubleArena {
+/// impl CustomOperator for DoubleArena {
 ///     fn evaluate<'a>(
 ///         &self,
 ///         args: &[&'a DataValue<'a>],
@@ -175,7 +175,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
 /// assert_eq!(result, "42");
 /// ```
-pub trait Operator: Send + Sync {
+pub trait CustomOperator: Send + Sync {
     /// Evaluate this operator with arena-allocated args and result.
     ///
     /// # Arguments
@@ -198,30 +198,30 @@ pub trait Operator: Send + Sync {
 /// Sealed-trait scaffolding for [`IntoOperatorBox`].
 mod operator_box_sealed {
     pub trait Sealed {}
-    impl<T: crate::Operator + 'static> Sealed for T {}
-    impl Sealed for Box<dyn crate::Operator> {}
+    impl<T: crate::CustomOperator + 'static> Sealed for T {}
+    impl Sealed for Box<dyn crate::CustomOperator> {}
 }
 
 /// Adapter that lets [`EngineBuilder::add_operator`] accept either a bare
-/// `T: Operator` *or* a pre-boxed `Box<dyn Operator>`. **Sealed** — the
-/// only two impls are the blanket one for `T: Operator + 'static` and the
-/// pass-through for `Box<dyn Operator>`.
+/// `T: CustomOperator` *or* a pre-boxed `Box<dyn CustomOperator>`. **Sealed** — the
+/// only two impls are the blanket one for `T: CustomOperator + 'static` and the
+/// pass-through for `Box<dyn CustomOperator>`.
 pub trait IntoOperatorBox: operator_box_sealed::Sealed {
-    /// Coerce `self` into a `Box<dyn Operator>` for storage on the
+    /// Coerce `self` into a `Box<dyn CustomOperator>` for storage on the
     /// engine.
-    fn into_operator_box(self) -> Box<dyn Operator>;
+    fn into_operator_box(self) -> Box<dyn CustomOperator>;
 }
 
-impl<T: Operator + 'static> IntoOperatorBox for T {
+impl<T: CustomOperator + 'static> IntoOperatorBox for T {
     #[inline]
-    fn into_operator_box(self) -> Box<dyn Operator> {
+    fn into_operator_box(self) -> Box<dyn CustomOperator> {
         Box::new(self)
     }
 }
 
-impl IntoOperatorBox for Box<dyn Operator> {
+impl IntoOperatorBox for Box<dyn CustomOperator> {
     #[inline]
-    fn into_operator_box(self) -> Box<dyn Operator> {
+    fn into_operator_box(self) -> Box<dyn CustomOperator> {
         self
     }
 }
