@@ -1,4 +1,3 @@
-use super::helpers::check_invalid_args_marker;
 use crate::arena::{ContextStack, DataValue, truthy_arena};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
@@ -45,7 +44,6 @@ pub(crate) fn evaluate_and<'a>(
     if args.is_empty() {
         return Ok(crate::arena::singletons::singleton_null());
     }
-    check_invalid_args_marker(args)?;
     let mut last: &DataValue<'a> = crate::arena::singletons::singleton_true();
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;
@@ -67,7 +65,6 @@ pub(crate) fn evaluate_or<'a>(
     if args.is_empty() {
         return Ok(crate::arena::singletons::singleton_null());
     }
-    check_invalid_args_marker(args)?;
     let mut last: &DataValue<'a> = crate::arena::singletons::singleton_false();
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;

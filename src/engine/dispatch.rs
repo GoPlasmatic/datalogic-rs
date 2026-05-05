@@ -125,6 +125,10 @@ pub(super) fn dispatch_node_inner<'a>(
                 crate::operators::missing::evaluate_compiled_missing_some(data, ctx, engine, arena)
             }
 
+            // Compile-time placeholder for malformed args on
+            // `and` / `or` / `if`. Surface the canonical error directly.
+            CompiledNode::InvalidArgs { .. } => Err(crate::Error::invalid_args()),
+
             // Divide / Modulo share an impl that takes a discriminator —
             // can't fit the simple-arm shape so they stay explicit.
             CompiledNode::BuiltinOperator {

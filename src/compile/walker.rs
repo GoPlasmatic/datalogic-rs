@@ -115,7 +115,7 @@ fn compile_builtin(
         return Ok(invalid_args_marker(opcode, args_value, ctx));
     }
 
-    let args = compile_builtin_args(opcode, args_value, engine, preserve_structure, ctx)?;
+    let args = compile_args(args_value, engine, preserve_structure, ctx)?;
 
     if let Some(node) = try_specialised(op_name, opcode, &args, ctx) {
         return Ok(node);
@@ -157,17 +157,6 @@ fn compile_builtin(
     Ok(node)
 }
 
-/// Compile the `args_value` into a slice of [`CompiledNode`].
-fn compile_builtin_args(
-    _opcode: OpCode,
-    args_value: &OwnedDataValue,
-    engine: Option<&Engine>,
-    preserve_structure: bool,
-    ctx: &mut CompileCtx,
-) -> Result<Box<[CompiledNode]>> {
-    compile_args(args_value, engine, preserve_structure, ctx)
-}
-
 /// Try the operator-specific compile-time specialisations: `var`, `val`,
 /// `exists`. Returns `None` if no specialisation applies.
 ///
@@ -203,26 +192,17 @@ fn try_specialised(
     None
 }
 
-/// Build a sentinel "invalid args" node for `and`/`or`/`if` invoked with a
-/// non-array argument. The sentinel is detected at runtime to surface a
-/// helpful error.
+/// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /
+/// `if` invoked with a non-array argument. The dispatcher returns
+/// `Error::invalid_args()` when it encounters this variant, surfacing the
+/// diagnostic through the normal error breadcrumb path.
 fn invalid_args_marker(
-    opcode: OpCode,
-    args_value: &OwnedDataValue,
+    _opcode: OpCode,
+    _args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
 ) -> CompiledNode {
-    let invalid_value = OwnedDataValue::Object(vec![
-        ("__invalid_args__".to_string(), OwnedDataValue::Bool(true)),
-        ("value".to_string(), args_value.clone()),
-    ]);
-    let value_node = CompiledNode::value_with_id(Some(ctx.next_id()), invalid_value);
-    let args = vec![value_node].into_boxed_slice();
-    CompiledNode::BuiltinOperator {
+    CompiledNode::InvalidArgs {
         id: Some(ctx.next_id()),
-        opcode,
-        args,
-        predicate_hint: None,
-        iter_arg_kind: crate::operators::array::IterArgKind::General,
     }
 }
 

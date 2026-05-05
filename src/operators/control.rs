@@ -1,4 +1,3 @@
-use super::helpers::check_invalid_args_marker;
 use crate::{CompiledNode, Engine, Result};
 
 // =============================================================================
@@ -18,7 +17,6 @@ pub(crate) fn evaluate_if<'a>(
     if args.is_empty() {
         return Ok(crate::arena::singletons::singleton_null());
     }
-    check_invalid_args_marker(args)?;
 
     if args.len() == 3 {
         let cond = engine.dispatch_node(&args[0], ctx, arena)?;

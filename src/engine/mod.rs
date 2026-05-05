@@ -94,8 +94,8 @@ impl Engine {
         crate::Session::new(self)
     }
 
-    /// Internal seam used by the builder. Not part of the public API.
-    #[doc(hidden)]
+    /// Internal seam used by the builder. `pub(crate)` is enough — no
+    /// `#[doc(hidden)]` needed since it's not externally reachable.
     #[inline]
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
@@ -104,20 +104,6 @@ impl Engine {
     ) -> Self {
         Self {
             custom_operators: operators,
-            #[cfg(feature = "preserve")]
-            preserve_structure: _preserve_structure,
-            config,
-        }
-    }
-
-    /// Internal constructor — single source of truth for the four public
-    /// `new`/`with_*` variants. `_preserve_structure` is parameterised here
-    /// so non-`preserve` builds can ignore it without four near-duplicate
-    /// `Self { ... }` blocks.
-    #[inline]
-    fn new_inner(config: EvaluationConfig, _preserve_structure: bool) -> Self {
-        Self {
-            custom_operators: HashMap::new(),
             #[cfg(feature = "preserve")]
             preserve_structure: _preserve_structure,
             config,
@@ -139,7 +125,7 @@ impl Engine {
     /// let engine = Engine::new();
     /// ```
     pub fn new() -> Self {
-        Self::new_inner(EvaluationConfig::default(), false)
+        Self::from_builder_parts(EvaluationConfig::default(), false, HashMap::new())
     }
 
     /// Gets a reference to the current evaluation configuration.
@@ -329,17 +315,14 @@ impl Engine {
     pub fn evaluate_serde(&self, logic: &Value, data: &Value) -> Result<Value> {
         let logic_owned = crate::value::owned_from_serde(logic);
         let compiled = Logic::compile_with(&logic_owned, self)?;
-        let arena = bumpalo::Bump::new();
-        let data_av = crate::arena::value_to_data(data, &arena);
-        let result = self.evaluate(&compiled, data_av, &arena)?;
-        Ok(crate::arena::data_to_value(result))
+        self.run_to_value(&compiled, data)
     }
 
-    /// Internal `&Value -> Value` adapter used by the compat shims in
-    /// [`crate::compat::LegacyApi`]. Routes through the public
-    /// [`Self::evaluate`] so the dispatch path is identical to the v5 entry.
+    /// Internal `&Value -> Value` adapter shared by [`Self::evaluate_serde`]
+    /// and the v4 compat shims in [`crate::compat::LegacyApi`]. Routes
+    /// through the public [`Self::evaluate`] so the dispatch path is
+    /// identical regardless of entry point.
     #[cfg(feature = "compat")]
-    #[doc(hidden)]
     pub(crate) fn run_to_value(&self, compiled: &Logic, data: &Value) -> Result<Value> {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(data, &arena);

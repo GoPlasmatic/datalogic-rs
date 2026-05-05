@@ -1,4 +1,3 @@
-use crate::CompiledNode;
 use crate::config::TruthyEvaluator;
 use datavalue::{NumberValue, OwnedDataValue};
 
@@ -82,16 +81,3 @@ pub(crate) fn extract_duration(
     }
 }
 
-/// Checks if args contain the `__invalid_args__` sentinel marker from compilation.
-/// Returns an error if the marker is present, Ok(()) otherwise.
-#[inline]
-pub(crate) fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<()> {
-    if args.len() == 1
-        && let CompiledNode::Value { value, .. } = &args[0]
-        && let Some(obj) = value.as_object()
-        && obj.iter().any(|(k, _)| k == "__invalid_args__")
-    {
-        return Err(crate::Error::invalid_args());
-    }
-    Ok(())
-}

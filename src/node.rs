@@ -385,6 +385,15 @@ pub(crate) enum CompiledNode {
     /// A pre-compiled `missing_some` operator with paths parsed into segments
     /// and (where literal) min-count resolved.
     MissingSome(Box<CompiledMissingSomeData>),
+
+    /// Compile-time placeholder for an operator invoked with malformed
+    /// args (e.g. `and` / `or` / `if` with a non-array argument). The
+    /// dispatcher returns `Error::invalid_args()` on encounter — this
+    /// variant exists so the diagnostic surfaces at runtime via the
+    /// normal error breadcrumb path rather than at compile time. The
+    /// failing operator name is recovered from the breadcrumb's parent;
+    /// no need to store it on the variant.
+    InvalidArgs { id: NodeId },
 }
 
 impl CompiledNode {
@@ -420,6 +429,7 @@ impl CompiledNode {
             CompiledNode::Throw(data) => data.id,
             CompiledNode::Missing(data) => data.id,
             CompiledNode::MissingSome(data) => data.id,
+            CompiledNode::InvalidArgs { id, .. } => *id,
         }
     }
 
@@ -479,6 +489,7 @@ impl CompiledNode {
                     f(1, n);
                 }
             }
+            CompiledNode::InvalidArgs { .. } => {}
         }
     }
 
@@ -540,6 +551,7 @@ impl CompiledNode {
                     f(n);
                 }
             }
+            CompiledNode::InvalidArgs { .. } => {}
         }
     }
 
@@ -833,6 +845,8 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
             data.fields.iter().all(|(_, node)| node_is_static(node))
         }
         CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => false,
+        // InvalidArgs is dynamic — it raises an error at runtime.
+        CompiledNode::InvalidArgs { .. } => false,
     }
 }
 

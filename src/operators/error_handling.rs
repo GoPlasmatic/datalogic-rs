@@ -49,10 +49,31 @@ pub(crate) fn evaluate_throw<'a>(
     let owned = match owned {
         OwnedDataValue::Object(_) => owned,
         OwnedDataValue::String(s) => OwnedDataValue::object([("type", s)]),
-        other => OwnedDataValue::object([("type", format!("{:?}", other))]),
+        // Scalar / array — wrap in `{type: <name>}` using stable type names
+        // (matches the `type` operator's output). `Debug` formatting was
+        // not API-stable and revealed `OwnedDataValue` variant constructors.
+        ref other => OwnedDataValue::object([("type", value_type_name(other))]),
     };
 
     Err(Error::thrown(owned))
+}
+
+/// Stable type name for a non-string, non-object thrown value. Mirrors the
+/// names produced by the `type` operator (`operators::inspect`).
+#[inline]
+fn value_type_name(v: &OwnedDataValue) -> &'static str {
+    match v {
+        OwnedDataValue::Null => "null",
+        OwnedDataValue::Bool(_) => "boolean",
+        OwnedDataValue::Number(_) => "number",
+        OwnedDataValue::String(_) => "string",
+        OwnedDataValue::Array(_) => "array",
+        OwnedDataValue::Object(_) => "object",
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::DateTime(_) => "datetime",
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::Duration(_) => "duration",
+    }
 }
 
 // ─── try ────────────────────────────────────────────────────────────────────

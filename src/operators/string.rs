@@ -114,7 +114,15 @@ pub(crate) fn evaluate_substr<'a>(
 }
 
 /// Native arena-mode `in` — checks whether a needle is contained in a
-/// haystack (string-substring, array-element).
+/// haystack.
+///
+/// The two haystack shapes intentionally use different equality:
+/// - **String**: byte-level `str::contains` — matches the JSONLogic
+///   spec's substring semantics. The needle must be a string; numeric /
+///   bool needles never match (no implicit coercion).
+/// - **Array**: per-element `compare_equals(strict=true)` — same strict
+///   equality `===` uses, so `[1] in [[1], [2]]` is `true` but
+///   `1 in ["1"]` is `false`.
 #[inline]
 pub(crate) fn evaluate_in<'a>(
     args: &'a [CompiledNode],

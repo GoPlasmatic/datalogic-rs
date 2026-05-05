@@ -94,6 +94,9 @@ impl ExpressionNode {
             CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => {
                 Self::leaf(id, Self::node_to_json_string(node))
             }
+            CompiledNode::InvalidArgs { .. } => {
+                Self::leaf(id, "{\"<invalid args>\": null}".to_string())
+            }
         }
     }
 
@@ -226,6 +229,7 @@ impl ExpressionNode {
                 };
                 format!("{{\"missing_some\": [{}, {}]}}", min_str, paths_str)
             }
+            CompiledNode::InvalidArgs { .. } => "{\"<invalid args>\": null}".to_string(),
         }
     }
 
