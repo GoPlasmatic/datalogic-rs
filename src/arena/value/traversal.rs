@@ -9,17 +9,9 @@
 
 use super::DataValue;
 use super::lookup::object_lookup_field;
+use super::reborrow_arena_value;
 use crate::node::PathSegment;
 use bumpalo::Bump;
-
-/// Reborrow an arena array entry up to the arena's `'a` lifetime. `slice.get(i)`
-/// gives `Option<&'short DataValue<'a>>` — the cast restores `'a` on the outer
-/// reference, which is sound because the slice is `&'a [DataValue<'a>]` and
-/// nothing reallocates.
-#[inline(always)]
-unsafe fn reborrow_slice_entry<'a>(entry: &DataValue<'a>) -> &'a DataValue<'a> {
-    unsafe { &*(entry as *const DataValue<'a>) }
-}
 
 /// Take one traversal step by `PathSegment`. Tight loop body — must always
 /// inline so the cross-module callers in `variable.rs` see a flat walk.
@@ -30,13 +22,13 @@ fn step_segment<'a>(cur: &'a DataValue<'a>, seg: &PathSegment) -> Option<&'a Dat
             object_lookup_field(pairs, key.as_ref())
         }
         (DataValue::Array(items), PathSegment::Index(idx)) => {
-            items.get(*idx).map(|e| unsafe { reborrow_slice_entry(e) })
+            items.get(*idx).map(|e| unsafe { reborrow_arena_value(e) })
         }
         (DataValue::Object(pairs), PathSegment::FieldOrIndex(key, _)) => {
             object_lookup_field(pairs, key.as_ref())
         }
         (DataValue::Array(items), PathSegment::FieldOrIndex(_, idx)) => {
-            items.get(*idx).map(|e| unsafe { reborrow_slice_entry(e) })
+            items.get(*idx).map(|e| unsafe { reborrow_arena_value(e) })
         }
         _ => None,
     }
@@ -51,7 +43,7 @@ fn step_str<'a>(cur: &'a DataValue<'a>, seg: &str) -> Option<&'a DataValue<'a>> 
         DataValue::Object(pairs) => object_lookup_field(pairs, seg),
         DataValue::Array(items) => {
             let idx = seg.parse::<usize>().ok()?;
-            items.get(idx).map(|e| unsafe { reborrow_slice_entry(e) })
+            items.get(idx).map(|e| unsafe { reborrow_arena_value(e) })
         }
         _ => None,
     }
@@ -182,7 +174,7 @@ pub(crate) fn apply_path_element<'a>(
         return match cur {
             DataValue::Array(items) => items
                 .get(idx)
-                .map(|entry| unsafe { reborrow_slice_entry(entry) }),
+                .map(|entry| unsafe { reborrow_arena_value(entry) }),
             DataValue::Object(_) => access_path_str_ref(cur, &i.to_string(), arena),
             _ => None,
         };

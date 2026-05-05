@@ -82,18 +82,16 @@ All updates flow through `compat.rs` deprecation `note` strings only — the v4 
 - Removed `#[allow(dead_code)]` from `Logic::_static_arena` (B4.4).
 - Kept `#![allow(deprecated)]` in `compat.rs` (module-wide — the module *defines* deprecated v4 names) and in 7 test files that exercise `LegacyApi`. All load-bearing.
 
-### Batch 5 — Internal cleanup
+### Batch 5 — Internal cleanup — ✅ resolved (5ca69a2)
 
-Maintainer-visible hygiene.
-
-- **B5.1** — **`Engine::from_builder_parts` hedged visibility.** `pub(crate)` AND `#[doc(hidden)] pub`. Pick one. *(`engine/mod.rs:117-129`)*
-- **B5.2** — **Inline `Engine::new_inner`.** Indirection to avoid two `Self { ... }` blocks under cfg. With `from_builder_parts` already there, this is a dead seam. *(`engine/mod.rs:131-143`)*
-- **B5.3** — **`run_to_value` duplicates `evaluate_serde`.** Both build the same arena, run `value_to_data`, evaluate, convert back. Have the compat shim call `evaluate_serde` directly. *(`engine/mod.rs:380,394`)*
-- **B5.4** — **`invalid_args_marker` sentinel.** Encodes errors as `OwnedDataValue::Object(vec![("__invalid_args__", true)…])` literals — stringly-typed detection at runtime. Introduce a real `CompiledNode::InvalidArgs { opcode, original }` variant. *(`compile/builder.rs:209-227`)*
-- **B5.5** — **`compile_builtin_args` pass-through.** One-line wrapper around `compile_args` taking an unused `_opcode`. Delete and inline. *(`compile/builder.rs:161-169`)*
-- **B5.6** — **`TraceCollector` raw-pointer escape hatch on `ContextStack`.** `tracer: Option<NonNull<TraceCollector>>` with manual `unsafe { ptr.as_ptr().as_mut() }`. Sound today, fragile against re-entrant futures. Introduce a lifetime `'tr` (paid only when `trace` is on) or move tracer state into a side-buffer keyed off a session id. *(`arena/context.rs:135,219,237,247`)*
-- **B5.7** — **`evaluate_throw` formats type with `{:?}`.** `Debug` output is not API-stable. Use `OwnedDataValue::type_name()`. *(`operators/throw.rs:28`)*
-- **B5.8** — **Doc-comment `in`-on-array vs `in`-on-string asymmetry.** `compare_equals` for the array case, byte `contains` for the string case. Fine asymmetry — just doc-comment it. *(`operators/string.rs:131-143`)*
+- **B5.1** ✅ — Dropped `#[doc(hidden)]` from `Engine::from_builder_parts`; `pub(crate)` already enforces non-external use.
+- **B5.2** ✅ — Inlined `Engine::new_inner`. `Engine::new` calls `from_builder_parts` directly.
+- **B5.3** ✅ — `evaluate_serde` compiles + delegates to `run_to_value`. One canonical post-compile body.
+- **B5.4** ✅ — `__invalid_args__` sentinel replaced with `CompiledNode::InvalidArgs { id }` variant; dispatcher routes to `Error::invalid_args()`. `check_invalid_args_marker` helper and call sites in `control.rs`/`logical.rs` deleted.
+- **B5.5** ✅ — Deleted `compile_builtin_args` pass-through.
+- **B5.6** — **DEFERRED.** `TraceCollector` raw-pointer refactor needs either a `'tr` lifetime parameter on `ContextStack` or a session-id-keyed side-buffer; substantive enough for a focused follow-up commit. The current `unsafe { ptr.as_ptr().as_mut() }` is sound — tracer reads happen synchronously within one `evaluate()` call.
+- **B5.7** ✅ — `evaluate_throw` switched from `format!("{:?}", ...)` to a stable `value_type_name()` helper returning canonical `"null"`/`"boolean"`/`"number"`/etc.
+- **B5.8** ✅ — Doc-commented the intentional string-substring vs array-strict-equality asymmetry on `evaluate_in`.
 
 ### Batch 6 — Operator dedup
 

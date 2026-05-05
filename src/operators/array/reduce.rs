@@ -104,8 +104,9 @@ fn reduce_arena_bridge<'a>(
             let mut acc_av: &'a DataValue<'a> = initial;
             let mut guard = IterGuard::new(ctx);
             for (i, (_k, v)) in pairs.iter().enumerate() {
-                // SAFETY: pairs[i].1 lives in the arena for `'a`.
-                let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
+                // SAFETY: see [`crate::arena::value::reborrow_arena_value`].
+                let item_av: &'a DataValue<'a> =
+                    unsafe { crate::arena::value::reborrow_arena_value(v) };
                 guard.step_reduce(item_av, acc_av);
                 acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
             }
@@ -212,7 +213,7 @@ fn try_reduce_fast_path<'a>(
         if all_int {
             return acc_i.map(|v| {
                 crate::arena::singletons::singleton_small_int(v).unwrap_or_else(|| {
-                    &*arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(v)))
+                    &*arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(v)))
                 })
             });
         }
@@ -236,7 +237,7 @@ fn try_reduce_fast_path<'a>(
         };
     }
     Some(
-        arena.alloc(DataValue::Number(crate::value::NumberValue::from_f64(
+        arena.alloc(DataValue::Number(datavalue::NumberValue::from_f64(
             acc_f,
         ))),
     )

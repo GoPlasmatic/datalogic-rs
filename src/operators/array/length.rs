@@ -31,5 +31,5 @@ pub(crate) fn evaluate_length<'a>(
     if let Some(av) = crate::arena::singletons::singleton_small_int(n) {
         return Ok(av);
     }
-    Ok(arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(n))))
+    Ok(arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(n))))
 }

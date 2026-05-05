@@ -51,9 +51,63 @@
 
 use std::sync::Arc;
 
+use datavalue::OwnedDataValue;
 use serde_json::Value;
 
 use crate::{Engine, Error, EvaluationConfig, Logic, Result};
+
+// ---- serde_json ↔ OwnedDataValue helpers --------------------------------
+//
+// Lived in `src/value/mod.rs` until v5; folded here because both helpers are
+// `compat`-feature-only — they exist purely so the v4 wrappers (and a couple
+// of internal compat-gated paths in `engine`/`error`) can move between
+// `serde_json::Value` and `OwnedDataValue` without re-implementing the
+// datetime sentinel form.
+
+/// Walk a `serde_json::Value` and produce an [`OwnedDataValue`]. Thin
+/// wrapper over `OwnedDataValue::from(&serde_json::Value)`; provided as
+/// the named entry point for the v4 compat surface.
+#[inline]
+pub fn owned_from_serde(v: &Value) -> OwnedDataValue {
+    OwnedDataValue::from(v)
+}
+
+/// Inverse of [`owned_from_serde`] — walk an [`OwnedDataValue`] and produce
+/// a `serde_json::Value`. Delegates to `datavalue` for non-datetime shapes;
+/// wraps DateTime/Duration in datalogic sentinel objects so values produced
+/// inside the engine round-trip through the v4 input boundary.
+pub fn owned_to_serde(v: &OwnedDataValue) -> Value {
+    match v {
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::DateTime(dt) => datetime_sentinel("datetime", dt.to_iso_string()),
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::Duration(d) => datetime_sentinel("timestamp", d.to_string()),
+        // Composite arms recurse manually so nested DateTime/Duration values
+        // route back through the sentinel-wrapping arms above.
+        OwnedDataValue::Array(items) => Value::Array(items.iter().map(owned_to_serde).collect()),
+        OwnedDataValue::Object(pairs) => Value::Object(
+            pairs
+                .iter()
+                .map(|(k, v)| (k.clone(), owned_to_serde(v)))
+                .collect(),
+        ),
+        // Scalars: delegate to datavalue.
+        other => other.to_serde_value(),
+    }
+}
+
+/// Wrap a datetime / duration in the datalogic sentinel-object form
+/// (`{datetime: <iso>}` or `{timestamp: <iso>}`). Shared by the
+/// `OwnedDataValue` and arena `DataValue` serializers so the wrapping
+/// stays consistent in one place. Both consumers gate the call on
+/// `cfg(feature = "datetime")`, so the helper is too.
+#[cfg(feature = "datetime")]
+#[inline]
+pub(crate) fn datetime_sentinel(key: &str, payload: String) -> Value {
+    let mut map = serde_json::Map::new();
+    map.insert(key.to_string(), Value::String(payload));
+    Value::Object(map)
+}
 
 #[cfg(feature = "trace")]
 use crate::trace::TracedResult;
@@ -286,7 +340,7 @@ impl LegacyApi for Engine {
     }
 
     fn compile_serde_value(&self, logic: &Value) -> Result<Arc<Logic>> {
-        let owned = crate::value::owned_from_serde(logic);
+        let owned = crate::compat::owned_from_serde(logic);
         Ok(Arc::new(Logic::compile_with(&owned, self)?))
     }
 
@@ -343,7 +397,7 @@ impl LegacyApi for Engine {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
         let data_arc = Arc::new(data_value);
-        let owned = crate::value::owned_from_serde(&logic_value);
+        let owned = crate::compat::owned_from_serde(&logic_value);
         let compiled = Arc::new(crate::Logic::compile_for_trace(&owned, self)?);
         Ok(self.run_trace(&compiled, data_arc))
     }
@@ -357,7 +411,7 @@ impl LegacyApi for Engine {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
         let data_arc = Arc::new(data_value);
-        let owned = crate::value::owned_from_serde(&logic_value);
+        let owned = crate::compat::owned_from_serde(&logic_value);
         let compiled = Arc::new(crate::Logic::compile_for_trace(&owned, self)?);
         Ok(self.run_trace(&compiled, data_arc))
     }

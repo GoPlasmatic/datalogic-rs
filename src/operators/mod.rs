@@ -24,7 +24,7 @@
 //! During compilation, operator names are converted to `OpCode` variants for fast
 //! runtime dispatch without string comparisons.
 
-pub(crate) mod helpers;
+pub(crate) mod truthy;
 
 // Core - always compiled
 pub(crate) mod arithmetic;

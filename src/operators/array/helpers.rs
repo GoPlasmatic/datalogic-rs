@@ -515,9 +515,8 @@ where
     let total = pairs.len() as u32;
     let mut guard = IterGuard::new(ctx);
     for (i, (k, v)) in pairs.iter().enumerate() {
-        // SAFETY: pairs[i].1 lives in the arena for `'a`; reborrowing the
-        // pair-internal `DataValue<'a>` as `&'a DataValue<'a>` is sound.
-        let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
+        // SAFETY: see [`crate::arena::value::reborrow_arena_value`].
+        let item_av: &'a DataValue<'a> = unsafe { crate::arena::value::reborrow_arena_value(v) };
         let key: &'a str = k;
         guard.step_keyed(item_av, i, key);
         let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;

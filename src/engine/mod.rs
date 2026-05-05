@@ -313,7 +313,7 @@ impl Engine {
     /// Funnels through [`Self::evaluate`] internally.
     #[cfg(feature = "compat")]
     pub fn evaluate_serde(&self, logic: &Value, data: &Value) -> Result<Value> {
-        let logic_owned = crate::value::owned_from_serde(logic);
+        let logic_owned = crate::compat::owned_from_serde(logic);
         let compiled = Logic::compile_with(&logic_owned, self)?;
         self.run_to_value(&compiled, data)
     }

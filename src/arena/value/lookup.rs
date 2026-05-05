@@ -87,8 +87,9 @@ pub(crate) fn object_lookup_field<'a>(
     if tlen == 0 {
         for (k, v) in pairs {
             if k.is_empty() {
-                let av_ref: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-                return Some(av_ref);
+                // SAFETY: `pairs` is `&'a [(&'a str, DataValue<'a>)]`; see
+                // [`super::reborrow_arena_value`].
+                return Some(unsafe { super::reborrow_arena_value(v) });
             }
         }
         return None;
@@ -105,11 +106,8 @@ pub(crate) fn object_lookup_field<'a>(
             continue;
         }
         if key_eq(k, target) {
-            // SAFETY: pairs is `&'a [(&'a str, DataValue<'a>)]`.
-            // The cast restores the 'a lifetime that `pairs.iter()` would
-            // otherwise tie to the iterator's shorter borrow.
-            let av_ref: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-            return Some(av_ref);
+            // SAFETY: see [`super::reborrow_arena_value`].
+            return Some(unsafe { super::reborrow_arena_value(v) });
         }
     }
     None

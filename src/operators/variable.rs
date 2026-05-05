@@ -29,7 +29,7 @@ fn metadata_hint_lookup<'a>(
         let i = idx as i64;
         return Some(
             crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
-                arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
+                arena.alloc(DataValue::Number(datavalue::NumberValue::Integer(i)))
             }),
         );
     }
@@ -166,7 +166,7 @@ fn resolve_metadata_hint<'a>(
         MetadataHint::Index => ctx.current().get_index().map(|idx| {
             let i = idx as i64;
             crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
-                &*arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
+                &*arena.alloc(DataValue::Number(datavalue::NumberValue::Integer(i)))
             })
         }),
         // `key` already has lifetime `'a` (object pairs live in the arena

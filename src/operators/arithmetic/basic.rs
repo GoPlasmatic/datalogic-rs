@@ -2,7 +2,7 @@
 //! optional datetime/duration support.
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
-use crate::value::NumberValue;
+use datavalue::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 

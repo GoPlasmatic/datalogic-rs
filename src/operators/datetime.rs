@@ -50,6 +50,52 @@ use datavalue::{DataDateTime, DataDuration};
 use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
+// =============================================================================
+// Sentinel-form extraction helpers (used by comparison + arithmetic ops too).
+// =============================================================================
+
+/// Arena-native datetime extraction — walks `String` / `Object` arena values
+/// directly without `Value` materialization. Recognises both ISO datetime
+/// strings and `{datetime: <iso>}` sentinel objects.
+#[inline]
+pub(crate) fn extract_datetime(av: &DataValue<'_>) -> Option<DataDateTime> {
+    match av {
+        DataValue::DateTime(dt) => Some(*dt),
+        DataValue::String(s) => DataDateTime::parse(s),
+        DataValue::Object(pairs) => {
+            for (k, v) in *pairs {
+                if *k == "datetime"
+                    && let DataValue::String(s) = v
+                {
+                    return DataDateTime::parse(s);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Arena-native duration extraction. See [`extract_datetime`].
+#[inline]
+pub(crate) fn extract_duration(av: &DataValue<'_>) -> Option<DataDuration> {
+    match av {
+        DataValue::Duration(d) => Some(*d),
+        DataValue::String(s) => DataDuration::parse(s),
+        DataValue::Object(pairs) => {
+            for (k, v) in *pairs {
+                if *k == "timestamp"
+                    && let DataValue::String(s) = v
+                {
+                    return DataDuration::parse(s);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 /// Resolve an arg as an arena string. Returns `None` if not string-like.
 #[inline]
 fn arg_as_str<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
@@ -191,7 +237,7 @@ pub(crate) fn evaluate_format_date<'a>(
     let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
 
     // Resolve the datetime — supports object form and string form.
-    let dt: Option<DataDateTime> = crate::operators::helpers::extract_datetime(dt_av);
+    let dt: Option<DataDateTime> = crate::operators::datetime::extract_datetime(dt_av);
 
     let fmt: &'a str = arg_as_str(fmt_av)
         .ok_or_else(|| Error::invalid_arguments("Failed to format date".to_string()))?;
@@ -230,7 +276,7 @@ pub(crate) fn evaluate_date_diff<'a>(
     let unit_av = engine.dispatch_node(&args[2], ctx, arena)?;
 
     let resolve_dt = |av: &'a DataValue<'a>| -> Option<DataDateTime> {
-        crate::operators::helpers::extract_datetime(av)
+        crate::operators::datetime::extract_datetime(av)
     };
     let dt1 = resolve_dt(d1_av);
     let dt2 = resolve_dt(d2_av);

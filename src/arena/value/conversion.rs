@@ -27,16 +27,10 @@ mod compat_impl {
         match v {
             #[cfg(feature = "datetime")]
             DataValue::DateTime(dt) => {
-                let mut map = serde_json::Map::new();
-                map.insert("datetime".to_string(), Value::String(dt.to_iso_string()));
-                Value::Object(map)
+                crate::compat::datetime_sentinel("datetime", dt.to_iso_string())
             }
             #[cfg(feature = "datetime")]
-            DataValue::Duration(d) => {
-                let mut map = serde_json::Map::new();
-                map.insert("timestamp".to_string(), Value::String(d.to_string()));
-                Value::Object(map)
-            }
+            DataValue::Duration(d) => crate::compat::datetime_sentinel("timestamp", d.to_string()),
             // Composite arms recurse through datavalue, but a DateTime nested
             // inside an Array/Object would lose its sentinel form. Walk
             // composites manually so the recursion routes datetimes back

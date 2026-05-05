@@ -296,7 +296,7 @@ fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Resu
         ErrorKind::Thrown(val) => {
             #[cfg(feature = "compat")]
             {
-                let json = crate::value::owned_to_serde(val);
+                let json = crate::compat::owned_to_serde(val);
                 write!(f, "Thrown: {}", json)
             }
             #[cfg(not(feature = "compat"))]

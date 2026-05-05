@@ -29,6 +29,22 @@ pub(crate) use traversal::{
 
 pub use datavalue::DataValue;
 
+/// Reborrow an arena-resident `DataValue` reference up to the arena's `'a`
+/// lifetime. Iterators over `&'a [DataValue<'a>]` (slice / pair) yield
+/// references with the iterator's *shorter* borrow lifetime; this cast
+/// restores the outer `'a` so the result composes with arena dispatch.
+///
+/// # Safety
+///
+/// `v` must point into storage that lives for `'a` (in practice, an
+/// arena-allocated `&'a [DataValue<'a>]` or `&'a [(&'a str, DataValue<'a>)]`).
+/// Nothing must reallocate or reset the arena between this call and the
+/// last use of the returned reference.
+#[inline(always)]
+pub(crate) unsafe fn reborrow_arena_value<'a>(v: &DataValue<'a>) -> &'a DataValue<'a> {
+    unsafe { &*(v as *const DataValue<'a>) }
+}
+
 /// JavaScript/Python-style default truthiness for a [`DataValue`].
 /// `truthy_arena` (config-aware) delegates here for the common
 /// truthiness modes; operators can call this directly when they need the

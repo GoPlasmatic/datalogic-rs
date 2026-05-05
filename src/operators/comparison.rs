@@ -282,7 +282,7 @@ pub(crate) fn compare_equals(
     // Datetime / duration takes precedence on string/object operands.
     #[cfg(feature = "datetime")]
     {
-        use crate::operators::helpers::{extract_datetime, extract_duration};
+        use crate::operators::datetime::{extract_datetime, extract_duration};
         let probe_dt = match (left, right) {
             (DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null, _)
             | (_, DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null) => false,
@@ -355,7 +355,7 @@ fn compare_ordered(
 
     #[cfg(feature = "datetime")]
     {
-        use crate::operators::helpers::{extract_datetime, extract_duration};
+        use crate::operators::datetime::{extract_datetime, extract_duration};
         let left_dt = extract_datetime(left);
         let right_dt = extract_datetime(right);
         if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {

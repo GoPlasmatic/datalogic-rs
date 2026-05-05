@@ -12,7 +12,7 @@
 //! covariant, so the lifetime can be shortened freely.
 
 use crate::arena::value::DataValue;
-use crate::value::NumberValue;
+use datavalue::NumberValue;
 
 static SINGLETON_NULL: DataValue<'static> = DataValue::Null;
 static SINGLETON_TRUE: DataValue<'static> = DataValue::Bool(true);

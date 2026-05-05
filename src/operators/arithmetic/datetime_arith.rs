@@ -22,7 +22,7 @@ fn extract_dt_dur(
     Option<datavalue::DataDateTime>,
     Option<datavalue::DataDuration>,
 ) {
-    use crate::operators::helpers::{extract_datetime, extract_duration};
+    use crate::operators::datetime::{extract_datetime, extract_duration};
     let dt = extract_datetime(av);
     let dur = if dt.is_none() {
         extract_duration(av)

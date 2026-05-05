@@ -100,7 +100,6 @@ mod path;
 mod session;
 #[cfg(feature = "trace")]
 mod trace;
-mod value;
 
 pub use arena::{DataValue, data_to_json_string};
 pub use builder::EngineBuilder;
@@ -121,8 +120,6 @@ pub use session::Session;
 pub use trace::TracedResult;
 #[cfg(feature = "trace")]
 pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
-#[cfg(feature = "compat")]
-pub use value::{owned_from_serde, owned_to_serde};
 
 // `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint` were
 // public in 4.x. They are compile-internal in v5; consumers reach for them

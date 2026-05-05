@@ -3,7 +3,7 @@
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
 use crate::config::DivisionByZeroHandling;
-use crate::value::NumberValue;
+use datavalue::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 

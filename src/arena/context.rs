@@ -459,12 +459,12 @@ mod tests {
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
-        let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+        let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         ctx.push_with_index(a, 0);
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current().get_index(), Some(0));
 
-        let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
+        let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(2)));
         ctx.replace_top_data(b, 1);
         assert_eq!(ctx.current().get_index(), Some(1));
 
@@ -495,9 +495,9 @@ mod tests {
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let cur: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         let acc: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(0)));
+            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
         ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
@@ -515,8 +515,8 @@ mod tests {
         let root_val = Value::Null;
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
-        let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(10)));
-        let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(20)));
+        let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(10)));
+        let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(20)));
         ctx.push_with_index(a, 0);
         ctx.push_with_index(b, 0);
         assert_eq!(ctx.depth(), 2);
@@ -538,8 +538,8 @@ mod tests {
         let mut ctx = ContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
 
-        let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
-        let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(2)));
+        let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
+        let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(2)));
 
         {
             let mut g = IterGuard::new(&mut ctx);
@@ -586,9 +586,9 @@ mod tests {
         assert_eq!(ctx.depth(), 0);
 
         let cur: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
+            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         let acc: &DataValue =
-            arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(0)));
+            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
         {
             let mut g = IterGuard::new(&mut ctx);
             g.step_reduce(cur, acc);

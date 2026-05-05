@@ -2,7 +2,7 @@
 
 use crate::Engine;
 use crate::node::CompiledNode;
-use crate::operators::helpers::truthy_owned;
+use crate::operators::truthy::truthy_owned;
 
 /// Check if a compiled node is a literal value and determine its truthiness.
 /// Returns `Some(true)` / `Some(false)` for static values, `None` for dynamic nodes.
