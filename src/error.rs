@@ -1,6 +1,25 @@
 use datavalue::OwnedDataValue;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::fmt;
+use std::sync::Arc;
+
+/// Trait-object alias for the source carried by [`ErrorKind::Custom`].
+/// Reference-counted so [`ErrorKind`] stays cheap to clone, and bounded
+/// so a single `Error` value can be sent across threads.
+pub type CustomSource = Arc<dyn std::error::Error + Send + Sync + 'static>;
+
+/// String-only custom error — used by [`Error::custom_error`] to wrap a
+/// bare message in a `dyn Error` shell.
+#[derive(Debug)]
+struct MessageError(String);
+
+impl fmt::Display for MessageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for MessageError {}
 
 /// Discriminant for [`Error`]. Stable variant tags are exposed via
 /// [`Error::kind_tag`] for matching across releases.
@@ -19,8 +38,11 @@ pub enum ErrorKind {
     TypeError(String),
     /// Arithmetic error (division by zero, overflow, etc.)
     ArithmeticError(String),
-    /// Custom error for extensions
-    Custom(String),
+    /// Custom error for extensions. Carries the underlying typed error so
+    /// callers can walk the source chain via [`std::error::Error::source`].
+    /// Constructed via [`Error::custom_error`] (string-only) or
+    /// [`Error::wrap`] (any `std::error::Error + Send + Sync + 'static`).
+    Custom(CustomSource),
     /// JSON parsing/serialization error
     ParseError(String),
     /// Thrown error from throw operator
@@ -149,26 +171,27 @@ impl Error {
     pub fn arithmetic_error(msg: impl Into<String>) -> Self {
         ErrorKind::ArithmeticError(msg.into()).into()
     }
-    /// Shorthand for `ErrorKind::Custom(msg).into()`.
+    /// Shorthand for a message-only [`ErrorKind::Custom`]. Equivalent to
+    /// [`Self::wrap`] with a string-shaped error inside.
     #[inline]
     pub fn custom(msg: impl Into<String>) -> Self {
-        ErrorKind::Custom(msg.into()).into()
+        Self::wrap(MessageError(msg.into()))
     }
 
-    /// Wrap any `impl Display` (typically a foreign error type) into an
-    /// [`ErrorKind::Custom`]. Lets custom-operator authors propagate I/O / DB
-    /// / HTTP failures via the standard `?` chain:
+    /// Wrap any `std::error::Error + Send + Sync + 'static` into an
+    /// [`ErrorKind::Custom`], preserving the source chain so consumers can
+    /// walk it via [`std::error::Error::source`]:
     ///
     /// ```ignore
     /// some_io_call().map_err(Error::wrap)?;
     /// ```
     ///
-    /// Source error chains are not preserved (the wrapped value is captured
-    /// as a `String` via `Display`). For error-chain inspection, build a
-    /// custom `ErrorKind` variant in your application instead.
+    /// The original error stays inspectable: `error.source()` returns
+    /// `Some(&original)`. Standard chain-walking via
+    /// [`std::error::Error::source`] applies all the way down.
     #[inline]
-    pub fn wrap<E: fmt::Display>(err: E) -> Self {
-        ErrorKind::Custom(err.to_string()).into()
+    pub fn wrap<E: std::error::Error + Send + Sync + 'static>(err: E) -> Self {
+        ErrorKind::Custom(Arc::new(err)).into()
     }
     /// Shorthand for `ErrorKind::ParseError(msg).into()`.
     #[inline]
@@ -220,7 +243,7 @@ fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Resu
         ErrorKind::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level),
         ErrorKind::TypeError(msg) => write!(f, "Type error: {}", msg),
         ErrorKind::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
-        ErrorKind::Custom(msg) => write!(f, "{}", msg),
+        ErrorKind::Custom(err) => write!(f, "{}", err),
         ErrorKind::ParseError(msg) => write!(f, "Parse error: {}", msg),
         ErrorKind::Thrown(val) => {
             #[cfg(feature = "compat")]
@@ -243,7 +266,14 @@ fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Resu
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            ErrorKind::Custom(err) => Some(err.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 #[cfg(feature = "compat")]
 impl From<serde_json::Error> for Error {
@@ -267,7 +297,7 @@ impl From<ErrorKind> for Error {
 
 impl Default for Error {
     fn default() -> Self {
-        Error::new(ErrorKind::Custom(String::new()))
+        Error::custom("")
     }
 }
 
@@ -316,11 +346,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wrap_stringifies_via_display() {
+    fn wrap_renders_via_display() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing key");
         let err = Error::wrap(io_err);
         assert_eq!(err.kind_tag(), "Custom");
         assert!(err.to_string().contains("missing key"));
+    }
+
+    #[test]
+    fn wrap_preserves_source_chain() {
+        use std::error::Error as _;
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing key");
+        let err = Error::wrap(io_err);
+        // `Error::source` returns the original typed error so consumers can
+        // walk the chain — the previous Display-only `wrap` lost this.
+        let src = err.source().expect("Custom should expose its source");
+        assert!(src.to_string().contains("missing key"));
+        // And the source itself can be downcast to the original type.
+        assert!(src.downcast_ref::<std::io::Error>().is_some());
     }
 
     #[test]

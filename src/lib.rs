@@ -113,7 +113,7 @@ pub use config::{
 pub use datavalue::{DataDateTime, DataDuration};
 pub use datavalue::{NumberValue, OwnedDataValue};
 pub use engine::Engine;
-pub use error::{Error, ErrorKind};
+pub use error::{CustomSource, Error, ErrorKind};
 pub use eval_data::IntoEvalData;
 pub use node::Logic;
 pub use path::PathStep;
