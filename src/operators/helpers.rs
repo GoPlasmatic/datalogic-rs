@@ -14,8 +14,7 @@ pub(crate) fn truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bo
             OwnedDataValue::Bool(b) => *b,
             _ => true,
         },
-        #[cfg(feature = "compat")]
-        TruthyEvaluator::Custom(f) => f(&crate::value::owned_to_serde(value)),
+        TruthyEvaluator::Custom(f) => f(value),
     }
 }
 

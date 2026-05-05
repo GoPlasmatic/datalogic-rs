@@ -60,7 +60,7 @@ fn main() {
     println!("   Result: {}\n", result);
 
     // Example 3: Conditional fields — compile once, evaluate against multiple
-    // payloads via the reusable `Scratch` handle.
+    // payloads via the reusable `Session` handle.
     println!("3. Conditional Fields");
     println!("---------------------");
 
@@ -81,14 +81,14 @@ fn main() {
     }"#;
 
     let compiled = engine.compile(template).unwrap();
-    let mut scratch = engine.scratch();
+    let mut session = engine.session();
 
-    let result1 = scratch
+    let result1 = session
         .evaluate_str(&compiled, r#"{"isActive": true, "points": 1500}"#)
         .unwrap();
     println!("   User with 1500 points: {}", result1);
 
-    let result2 = scratch
+    let result2 = session
         .evaluate_str(&compiled, r#"{"isActive": false, "points": 750}"#)
         .unwrap();
     println!("   User with 750 points:  {}\n", result2);

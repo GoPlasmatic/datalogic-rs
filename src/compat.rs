@@ -72,12 +72,12 @@ use crate::trace::TracedResult;
 )]
 pub type ArenaValue<'a> = crate::DataValue<'a>;
 
-/// Deprecated alias for [`crate::ContextStack`].
+/// Deprecated alias for [`crate::operator::ContextStack`].
 #[deprecated(
     since = "5.0.0",
     note = "use `ContextStack`; the `compat` module will be removed in 5.1"
 )]
-pub type ArenaContextStack<'a> = crate::ContextStack<'a>;
+pub type ArenaContextStack<'a> = crate::operator::ContextStack<'a>;
 
 /// Deprecated alias for [`crate::CustomOperator`]. The trait method
 /// `evaluate_arena` was renamed to `evaluate` — old impls that used the
@@ -91,7 +91,7 @@ pub trait ArenaOperator: Send + Sync {
     fn evaluate_arena<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        ctx: &mut crate::ContextStack<'a>,
+        ctx: &mut crate::operator::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>>;
 }
@@ -103,7 +103,7 @@ impl<T: ArenaOperator + ?Sized> crate::CustomOperator for T {
     fn evaluate<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        ctx: &mut crate::ContextStack<'a>,
+        ctx: &mut crate::operator::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>> {
         ArenaOperator::evaluate_arena(self, args, ctx, arena)

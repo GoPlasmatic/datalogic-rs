@@ -1,9 +1,9 @@
 //! Reusable evaluation handle that hides arena lifecycle from callers.
 //!
-//! [`Scratch`] owns a [`bumpalo::Bump`] and resets it at the start of every
+//! [`Session`] owns a [`bumpalo::Bump`] and resets it at the start of every
 //! call, so peak memory is bounded by the largest single evaluation while
 //! amortising allocator cost across many calls. Inputs go through
-//! [`crate::IntoEvalData`] so callers pass whatever they have on hand
+//! [`crate::EvalInput`] so callers pass whatever they have on hand
 //! (`&str`, `&OwnedDataValue`, `&serde_json::Value`, …); outputs are owned
 //! ([`OwnedDataValue`] / `String` / `serde_json::Value`) so they outlive the
 //! next reset.
@@ -16,9 +16,9 @@
 use bumpalo::Bump;
 use datavalue::OwnedDataValue;
 
-use crate::{Engine, IntoEvalData, Logic, Result};
+use crate::{Engine, EvalInput, Logic, Result};
 
-/// Reusable evaluation handle. Construct via [`Engine::scratch`].
+/// Reusable evaluation handle. Construct via [`Engine::session`].
 ///
 /// # Example
 ///
@@ -27,20 +27,20 @@ use crate::{Engine, IntoEvalData, Logic, Result};
 ///
 /// let engine = Engine::new();
 /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
-/// let mut scratch = engine.scratch();
+/// let mut session = engine.session();
 ///
 /// for x in 0..3 {
 ///     let payload = format!(r#"{{"x": {}}}"#, x);
-///     let result = scratch.evaluate_str(&compiled, &payload).unwrap();
+///     let result = session.evaluate_str(&compiled, &payload).unwrap();
 ///     assert_eq!(result, (x + 1).to_string());
 /// }
 /// ```
-pub struct Scratch<'engine> {
+pub struct Session<'engine> {
     engine: &'engine Engine,
     arena: Bump,
 }
 
-impl<'engine> Scratch<'engine> {
+impl<'engine> Session<'engine> {
     #[inline]
     pub(crate) fn new(engine: &'engine Engine) -> Self {
         Self {
@@ -62,17 +62,17 @@ impl<'engine> Scratch<'engine> {
     ///
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
-    /// let mut scratch = engine.scratch();
-    /// let result = scratch.evaluate(&compiled, r#"{"x": 1}"#).unwrap();
+    /// let mut session = engine.session();
+    /// let result = session.evaluate(&compiled, r#"{"x": 1}"#).unwrap();
     /// assert_eq!(result.as_bool(), Some(true));
     /// ```
     pub fn evaluate<'a, D>(&'a mut self, compiled: &Logic, data: D) -> Result<OwnedDataValue>
     where
-        D: IntoEvalData<'a>,
+        D: EvalInput<'a>,
     {
         self.arena.reset();
         let arena: &'a Bump = &self.arena;
-        let av = data.into_eval_data(arena)?;
+        let av = data.into_arena_value(arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
         Ok(result.to_owned())
     }
@@ -83,7 +83,7 @@ impl<'engine> Scratch<'engine> {
     pub fn evaluate_str(&mut self, compiled: &Logic, data: &str) -> Result<String> {
         self.arena.reset();
         let arena: &Bump = &self.arena;
-        let av = data.into_eval_data(arena)?;
+        let av = data.into_arena_value(arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
         Ok(crate::arena::data_to_json_string(result))
     }
@@ -99,7 +99,7 @@ impl<'engine> Scratch<'engine> {
     ) -> Result<serde_json::Value> {
         self.arena.reset();
         let arena: &Bump = &self.arena;
-        let av = data.into_eval_data(arena)?;
+        let av = data.into_arena_value(arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
         Ok(crate::arena::data_to_value(result))
     }

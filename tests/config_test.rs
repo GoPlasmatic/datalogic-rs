@@ -2,8 +2,9 @@
 
 #![cfg(feature = "compat")]
 
+use datalogic_rs::datavalue::OwnedDataValue;
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::sync::Arc;
 
 #[test]
@@ -309,7 +310,7 @@ fn test_truthy_evaluator_strict_boolean() {
 
 #[test]
 fn test_truthy_evaluator_custom() {
-    let custom_evaluator = Arc::new(|value: &Value| -> bool {
+    let custom_evaluator = Arc::new(|value: &OwnedDataValue| -> bool {
         if let Some(n) = value.as_i64() {
             n % 2 == 0
         } else {

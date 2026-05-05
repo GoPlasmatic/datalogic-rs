@@ -88,7 +88,7 @@ impl Engine {
         crate::EngineBuilder::new()
     }
 
-    /// Open a [`crate::Scratch`] handle that owns a reusable arena and
+    /// Open a [`crate::Session`] handle that owns a reusable arena and
     /// returns owned results, so callers don't need to manage a
     /// [`bumpalo::Bump`] themselves.
     ///
@@ -104,13 +104,13 @@ impl Engine {
     ///
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
-    /// let mut scratch = engine.scratch();
-    /// let result = scratch.evaluate_str(&compiled, r#"{"x": 41}"#).unwrap();
+    /// let mut session = engine.session();
+    /// let result = session.evaluate_str(&compiled, r#"{"x": 41}"#).unwrap();
     /// assert_eq!(result, "42");
     /// ```
     #[inline]
-    pub fn scratch(&self) -> crate::Scratch<'_> {
-        crate::Scratch::new(self)
+    pub fn session(&self) -> crate::Session<'_> {
+        crate::Session::new(self)
     }
 
     /// Internal seam used by the builder. Not part of the public API.
@@ -205,7 +205,7 @@ impl Engine {
     /// thread. For cross-thread sharing wrap the result yourself:
     /// `Arc::new(engine.compile(logic)?)` — `Arc<Logic>` derefs transparently
     /// into `&Logic` for [`Self::evaluate`] /
-    /// [`Scratch::evaluate`](crate::Scratch::evaluate).
+    /// [`Session::evaluate`](crate::Session::evaluate).
     ///
     /// # Example
     ///
@@ -285,19 +285,19 @@ impl Engine {
     /// assert_eq!(result.as_i64(), Some(42));
     /// ```
     ///
-    /// `data` accepts any input shape understood by [`crate::IntoEvalData`]:
+    /// `data` accepts any input shape understood by [`crate::EvalInput`]:
     /// `&'a DataValue<'a>` (zero-cost passthrough), `DataValue<'a>` (single
     /// arena alloc), `&str` (JSON-parsed), `&OwnedDataValue`
     /// (deep-borrowed), or `&serde_json::Value` (deep-converted, requires
     /// the `compat` feature).
     #[inline(always)]
-    pub fn evaluate<'a, D: crate::IntoEvalData<'a>>(
+    pub fn evaluate<'a, D: crate::EvalInput<'a>>(
         &self,
         compiled: &'a Logic,
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
-        let data_ref = data.into_eval_data(arena)?;
+        let data_ref = data.into_arena_value(arena)?;
         let mut ctx = crate::arena::ContextStack::new(data_ref);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),

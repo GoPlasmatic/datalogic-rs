@@ -3,9 +3,7 @@
 //! This module provides configuration options to customize the evaluation behavior
 //! of the Engine engine while maintaining backward compatibility.
 
-#[cfg(feature = "compat")]
-use serde_json::Value;
-#[cfg(feature = "compat")]
+use datavalue::OwnedDataValue;
 use std::sync::Arc;
 
 /// Main configuration structure for Engine evaluation behavior
@@ -71,10 +69,10 @@ pub enum TruthyEvaluator {
     /// - true: everything else
     StrictBoolean,
 
-    /// Custom truthiness evaluator (compat-only — accepts a
-    /// `serde_json::Value` for back-compat with v4 callbacks).
-    #[cfg(feature = "compat")]
-    Custom(Arc<dyn Fn(&Value) -> bool + Send + Sync>),
+    /// Custom truthiness evaluator. Receives the value as an
+    /// [`OwnedDataValue`] — the canonical v5 owned value type — so the
+    /// callback works without enabling `serde_json` interop.
+    Custom(Arc<dyn Fn(&OwnedDataValue) -> bool + Send + Sync>),
 }
 
 /// Configuration for numeric coercion behavior

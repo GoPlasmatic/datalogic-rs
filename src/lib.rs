@@ -32,7 +32,7 @@
 //!
 //! ## Reusing the arena across many evaluations
 //!
-//! For high-throughput callers, open a [`Scratch`] handle. It owns a
+//! For high-throughput callers, open a [`Session`] handle. It owns a
 //! [`bumpalo::Bump`], resets it between calls, and returns owned results so
 //! you don't have to juggle arena lifetimes:
 //!
@@ -41,11 +41,11 @@
 //!
 //! let engine = Engine::new();
 //! let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
-//! let mut scratch = engine.scratch();
+//! let mut session = engine.session();
 //!
 //! for x in 0..3 {
 //!     let payload = format!(r#"{{"x": {}}}"#, x);
-//!     let result = scratch.evaluate_str(&compiled, &payload).unwrap();
+//!     let result = session.evaluate_str(&compiled, &payload).unwrap();
 //!     assert_eq!(result, (x + 1).to_string());
 //! }
 //! ```
@@ -54,7 +54,7 @@
 //!
 //! When the result borrow can stay scoped to a caller-managed
 //! [`bumpalo::Bump`], skip the deep-clone and use [`Engine::evaluate`]
-//! directly. `evaluate` accepts any input shape via [`IntoEvalData`]:
+//! directly. `evaluate` accepts any input shape via [`EvalInput`]:
 //! `&str`, `&OwnedDataValue`, `&serde_json::Value`, an owned `DataValue<'a>`,
 //! or an existing `&'a DataValue<'a>`.
 //!
@@ -94,17 +94,18 @@ mod constants;
 mod datetime;
 mod engine;
 mod error;
-mod eval_data;
+mod eval_input;
 mod node;
 mod opcode;
+pub mod operator;
 mod operators;
 mod path;
-mod scratch;
+mod session;
 #[cfg(feature = "trace")]
 mod trace;
 mod value;
 
-pub use arena::{ContextStack, DataValue, data_to_json_string};
+pub use arena::{DataValue, data_to_json_string};
 pub use builder::EngineBuilder;
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
@@ -115,10 +116,10 @@ pub use config::{
 pub use datavalue;
 pub use engine::Engine;
 pub use error::{CustomSource, Error, ErrorKind};
-pub use eval_data::IntoEvalData;
+pub use eval_input::EvalInput;
 pub use node::Logic;
 pub use path::PathStep;
-pub use scratch::Scratch;
+pub use session::Session;
 #[cfg(feature = "trace")]
 pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
 #[cfg(all(feature = "trace", feature = "compat"))]
@@ -154,7 +155,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ## Example
 ///
 /// ```rust
-/// use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Result};
+/// use datalogic_rs::{CustomOperator, DataValue, Engine, Result, operator::ContextStack};
 /// use bumpalo::Bump;
 ///
 /// struct DoubleArena;
@@ -190,7 +191,7 @@ pub trait CustomOperator: Send + Sync {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        ctx: &mut ContextStack<'a>,
+        ctx: &mut operator::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }

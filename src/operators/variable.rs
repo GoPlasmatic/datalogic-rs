@@ -91,7 +91,7 @@ pub(crate) struct CompiledVarSpec<'n> {
     pub default_value: Option<&'n CompiledNode>,
 }
 
-/// Arena variant of `evaluate_compiled_var`. Dispatches through four
+/// Arena variant of `evaluate_val_compiled`. Dispatches through four
 /// resolution stages in order:
 ///
 /// 1. **Metadata** (`{"val": [n, "index"]}` / `"key"`) — reads the iteration
@@ -106,7 +106,7 @@ pub(crate) struct CompiledVarSpec<'n> {
 /// Each branch falls through to `default_or_null` on miss; the var's
 /// `default_value` (when present) is evaluated lazily there.
 #[inline(always)]
-pub(crate) fn evaluate_compiled_var<'a>(
+pub(crate) fn evaluate_val_compiled<'a>(
     spec: CompiledVarSpec<'a>,
     ctx: &mut ContextStack<'a>,
     engine: &crate::Engine,
@@ -256,10 +256,10 @@ fn resolve_via_context_stack<'a>(
     }
 }
 
-/// Arena variant of `evaluate_compiled_exists`. Always returns a Bool singleton.
+/// Arena variant of `evaluate_exists_compiled`. Always returns a Bool singleton.
 #[cfg(feature = "ext-control")]
 #[inline]
-pub(crate) fn evaluate_compiled_exists<'a>(
+pub(crate) fn evaluate_exists_compiled<'a>(
     scope_level: u32,
     segments: &[PathSegment],
     ctx: &mut ContextStack<'a>,

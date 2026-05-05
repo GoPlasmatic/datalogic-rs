@@ -122,7 +122,6 @@ pub(crate) fn truthy_arena(v: &DataValue<'_>, engine: &crate::Engine) -> bool {
             DataValue::Bool(b) => *b,
             _ => true,
         },
-        #[cfg(feature = "compat")]
-        TruthyEvaluator::Custom(f) => f(&super::conversion::data_to_value(v)),
+        TruthyEvaluator::Custom(f) => f(&v.to_owned()),
     }
 }

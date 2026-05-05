@@ -5,7 +5,8 @@
 
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Result};
+use datalogic_rs::operator::ContextStack;
+use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
 use serde_json::json;
 
 /// Doubles the first numeric argument. Returns a fresh arena-allocated number.

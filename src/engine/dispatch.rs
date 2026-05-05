@@ -89,7 +89,7 @@ pub(super) fn dispatch_node_inner<'a>(
                 metadata_hint,
                 default_value,
                 ..
-            } => crate::operators::variable::evaluate_compiled_var(
+            } => crate::operators::variable::evaluate_val_compiled(
                 crate::operators::variable::CompiledVarSpec {
                     scope_level: *scope_level,
                     segments,
@@ -106,7 +106,7 @@ pub(super) fn dispatch_node_inner<'a>(
             // directly, others walk arena frame data. Result is always a
             // Bool singleton.
             #[cfg(feature = "ext-control")]
-            CompiledNode::Exists(data) => crate::operators::variable::evaluate_compiled_exists(
+            CompiledNode::Exists(data) => crate::operators::variable::evaluate_exists_compiled(
                 data.scope_level,
                 &data.segments,
                 ctx,

@@ -6,7 +6,8 @@
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Error, Result};
+use datalogic_rs::operator::ContextStack;
+use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 use serde_json::json;
 
 /// Custom arena operator: checks whether a datetime argument falls in the

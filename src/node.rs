@@ -671,7 +671,7 @@ impl CompileCtx {
 /// std::thread::spawn(move || {
 ///     let engine = Engine::new();
 ///     let _result = engine
-///         .scratch()
+///         .session()
 ///         .evaluate_str(&compiled_clone, r#"{"score": 95}"#)
 ///         .unwrap();
 /// });

@@ -6,11 +6,12 @@
 //! conversion and is required to register a custom op with the engine.
 //!
 //! Uses the v5 string-based API ([`Engine::evaluate_str`] for one-shots,
-//! [`Engine::scratch`] for compile-once-evaluate-many) — no `serde_json`
+//! [`Engine::session`] for compile-once-evaluate-many) — no `serde_json`
 //! boundary, no `compat` feature required.
 
 use bumpalo::Bump;
-use datalogic_rs::{ContextStack, CustomOperator, DataValue, Engine, Error, Result};
+use datalogic_rs::operator::ContextStack;
+use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 
 /// Calculates the average of an array of numbers.
 ///
@@ -189,7 +190,7 @@ fn main() {
     println!("   {}\n", result);
 
     // Example 4: Combining custom + built-in operators — compile once,
-    // evaluate many. `Scratch` reuses the eval arena across calls.
+    // evaluate many. `Session` reuses the eval arena across calls.
     println!("4. Combining Custom and Built-in Operators");
     println!("-------------------------------------------");
 
@@ -207,11 +208,11 @@ fn main() {
     }"#;
 
     let compiled = engine.compile(grading_rule).unwrap();
-    let mut scratch = engine.scratch();
+    let mut session = engine.session();
 
     for score in [95, 82, 75, 55] {
         let data = format!(r#"{{"score": {}}}"#, score);
-        let grade = scratch.evaluate_str(&compiled, &data).unwrap();
+        let grade = session.evaluate_str(&compiled, &data).unwrap();
         println!("   Score {} -> Grade {}", score, grade);
     }
 

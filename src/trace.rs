@@ -470,7 +470,7 @@ impl<'e> TracedSession<'e> {
     /// constant sub-expressions folded by [`Engine::compile`](crate::Engine::compile)
     /// will not appear as steps. For full coverage on a one-shot run, prefer
     /// [`Self::evaluate_str`].
-    pub fn evaluate<'a, D: crate::IntoEvalData<'a>>(
+    pub fn evaluate<'a, D: crate::EvalInput<'a>>(
         &self,
         compiled: &'a crate::Logic,
         data: D,
@@ -478,7 +478,7 @@ impl<'e> TracedSession<'e> {
     ) -> TracedRun<&'a crate::DataValue<'a>> {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
-        let data_ref = match data.into_eval_data(arena) {
+        let data_ref = match data.into_arena_value(arena) {
             Ok(av) => av,
             Err(e) => {
                 return TracedRun {
