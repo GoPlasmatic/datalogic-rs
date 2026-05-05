@@ -58,7 +58,7 @@ pub(super) fn evaluate_invariant_no_push<'a>(
     if let CompiledNode::Value { value, .. } = invariant_node {
         return Ok(arena.alloc(value.to_arena(arena)));
     }
-    let null_av: &'a DataValue<'a> = crate::arena::pool::singleton_null();
+    let null_av: &'a DataValue<'a> = crate::arena::singletons::singleton_null();
     ctx.push(null_av);
     let result = engine.dispatch_node(invariant_node, ctx, arena);
     ctx.pop();

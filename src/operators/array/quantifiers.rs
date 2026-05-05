@@ -1,6 +1,6 @@
 //! Quantifier operators: `all`, `some`, `none`.
 
-use crate::arena::pool::singleton_bool;
+use crate::arena::singletons::singleton_bool;
 use crate::arena::{ContextStack, DataValue};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
@@ -56,7 +56,7 @@ fn evaluate_quantifier<'a>(
     shape: QuantifierShape,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     let predicate = &args[1];

@@ -11,10 +11,10 @@ pub(crate) fn evaluate_not<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_true());
+        return Ok(crate::arena::singletons::singleton_true());
     }
     let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::pool::singleton_bool(!truthy_arena(v, engine)))
+    Ok(crate::arena::singletons::singleton_bool(!truthy_arena(v, engine)))
 }
 
 #[inline]
@@ -25,10 +25,10 @@ pub(crate) fn evaluate_bool_cast<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_false());
+        return Ok(crate::arena::singletons::singleton_false());
     }
     let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::pool::singleton_bool(truthy_arena(v, engine)))
+    Ok(crate::arena::singletons::singleton_bool(truthy_arena(v, engine)))
 }
 
 #[inline]
@@ -39,10 +39,10 @@ pub(crate) fn evaluate_and<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_null());
+        return Ok(crate::arena::singletons::singleton_null());
     }
     check_invalid_args_marker(args)?;
-    let mut last: &DataValue<'a> = crate::arena::pool::singleton_true();
+    let mut last: &DataValue<'a> = crate::arena::singletons::singleton_true();
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;
         if !truthy_arena(v, engine) {
@@ -61,10 +61,10 @@ pub(crate) fn evaluate_or<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_null());
+        return Ok(crate::arena::singletons::singleton_null());
     }
     check_invalid_args_marker(args)?;
-    let mut last: &DataValue<'a> = crate::arena::pool::singleton_false();
+    let mut last: &DataValue<'a> = crate::arena::singletons::singleton_false();
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;
         if truthy_arena(v, engine) {

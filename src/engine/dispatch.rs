@@ -282,13 +282,13 @@ pub(super) fn dispatch_node_inner<'a>(
 
             // Type
             #[cfg(feature = "ext-control")]
-            Type => crate::operators::type_op::evaluate_type,
+            Type => crate::operators::inspect::evaluate_type,
 
             // Throw / Try
             #[cfg(feature = "error-handling")]
-            Throw => crate::operators::throw::evaluate_throw,
+            Throw => crate::operators::error_handling::evaluate_throw,
             #[cfg(feature = "error-handling")]
-            Try => crate::operators::try_op::evaluate_try,
+            Try => crate::operators::error_handling::evaluate_try,
         ],
 
         // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,
@@ -326,7 +326,7 @@ fn evaluate_structured_object<'a>(
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
     if data.fields.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_object());
+        return Ok(crate::arena::singletons::singleton_empty_object());
     }
     let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
         bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
@@ -348,7 +348,7 @@ fn evaluate_array_literal<'a>(
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
     if nodes.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
     let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);

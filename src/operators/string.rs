@@ -44,7 +44,7 @@ pub(crate) fn evaluate_substr<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_string());
+        return Ok(crate::arena::singletons::singleton_empty_string());
     }
 
     let s_av = engine.dispatch_node(&args[0], ctx, arena)?;
@@ -108,7 +108,7 @@ pub(crate) fn evaluate_substr<'a>(
     };
 
     if result_str.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_string());
+        return Ok(crate::arena::singletons::singleton_empty_string());
     }
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result_str))))
 }
@@ -123,7 +123,7 @@ pub(crate) fn evaluate_in<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Ok(crate::arena::pool::singleton_false());
+        return Ok(crate::arena::singletons::singleton_false());
     }
     let needle = engine.dispatch_node(&args[0], ctx, arena)?;
     let haystack = engine.dispatch_node(&args[1], ctx, arena)?;
@@ -141,7 +141,7 @@ pub(crate) fn evaluate_in<'a>(
         }),
         _ => false,
     };
-    Ok(crate::arena::pool::singleton_bool(result))
+    Ok(crate::arena::singletons::singleton_bool(result))
 }
 
 #[cfg(feature = "ext-string")]
@@ -153,13 +153,13 @@ pub(crate) fn evaluate_starts_with<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let s = engine.dispatch_node(&args[0], ctx, arena)?;
     let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
-    Ok(crate::arena::pool::singleton_bool(s_str.starts_with(p_str)))
+    Ok(crate::arena::singletons::singleton_bool(s_str.starts_with(p_str)))
 }
 
 #[cfg(feature = "ext-string")]
@@ -171,13 +171,13 @@ pub(crate) fn evaluate_ends_with<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let s = engine.dispatch_node(&args[0], ctx, arena)?;
     let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
-    Ok(crate::arena::pool::singleton_bool(s_str.ends_with(p_str)))
+    Ok(crate::arena::singletons::singleton_bool(s_str.ends_with(p_str)))
 }
 
 #[cfg(feature = "ext-string")]
@@ -189,7 +189,7 @@ pub(crate) fn evaluate_upper<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
@@ -205,7 +205,7 @@ pub(crate) fn evaluate_lower<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
@@ -221,7 +221,7 @@ pub(crate) fn evaluate_trim<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
@@ -239,7 +239,7 @@ pub(crate) fn evaluate_split<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let text_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let text_str: &'a str = match text_av {

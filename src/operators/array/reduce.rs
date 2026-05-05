@@ -21,14 +21,14 @@ pub(crate) fn evaluate_reduce<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 || args.len() > 3 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     let body = &args[1];
     let initial: &'a DataValue<'a> = if args.len() == 3 {
         engine.dispatch_node(&args[2], ctx, arena)?
     } else {
-        crate::arena::pool::singleton_null()
+        crate::arena::singletons::singleton_null()
     };
 
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
@@ -211,7 +211,7 @@ fn try_reduce_fast_path<'a>(
         }
         if all_int {
             return acc_i.map(|v| {
-                crate::arena::pool::singleton_small_int(v).unwrap_or_else(|| {
+                crate::arena::singletons::singleton_small_int(v).unwrap_or_else(|| {
                     &*arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(v)))
                 })
             });

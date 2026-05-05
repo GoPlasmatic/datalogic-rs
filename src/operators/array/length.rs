@@ -15,7 +15,7 @@ pub(crate) fn evaluate_length<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
@@ -25,10 +25,10 @@ pub(crate) fn evaluate_length<'a>(
     let n: i64 = match arg {
         DataValue::String(s) => s.chars().count() as i64,
         DataValue::Array(items) => items.len() as i64,
-        _ => return Err(crate::constants::invalid_args()),
+        _ => return Err(crate::Error::invalid_args()),
     };
 
-    if let Some(av) = crate::arena::pool::singleton_small_int(n) {
+    if let Some(av) = crate::arena::singletons::singleton_small_int(n) {
         return Ok(av);
     }
     Ok(arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(n))))

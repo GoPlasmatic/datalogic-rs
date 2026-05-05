@@ -11,10 +11,10 @@
 //! 3. Call the pass from `optimize()` below
 //! 4. Run `cargo test` — no changes needed in engine.rs or trace.rs
 
-pub mod constant_fold;
-pub mod dead_code;
+pub(super) mod constant_fold;
+pub(super) mod dead_code;
 mod helpers;
-pub mod strength;
+pub(super) mod strength;
 
 #[cfg(test)]
 mod test_helpers;
@@ -43,7 +43,7 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 ///
 /// Each pass returns `(node, changed)`; the loop exits as soon as all three
 /// passes in one iteration report `changed = false`.
-pub fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
+pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
     let mut node = node;
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
         let mut any_changed = false;

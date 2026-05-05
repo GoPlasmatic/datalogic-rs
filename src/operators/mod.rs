@@ -40,8 +40,6 @@ pub(crate) mod variable;
 #[cfg(feature = "datetime")]
 pub(crate) mod datetime;
 #[cfg(feature = "error-handling")]
-pub(crate) mod throw;
-#[cfg(feature = "error-handling")]
-pub(crate) mod try_op;
+pub(crate) mod error_handling;
 #[cfg(feature = "ext-control")]
-pub(crate) mod type_op;
+pub(crate) mod inspect;

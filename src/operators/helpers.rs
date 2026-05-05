@@ -39,17 +39,17 @@ fn truthy_js_owned(value: &OwnedDataValue) -> bool {
 #[inline]
 pub(crate) fn extract_datetime(
     av: &crate::arena::DataValue<'_>,
-) -> Option<crate::datetime::DataDateTime> {
+) -> Option<datavalue::DataDateTime> {
     use crate::arena::DataValue;
     match av {
         DataValue::DateTime(dt) => Some(*dt),
-        DataValue::String(s) => crate::datetime::DataDateTime::parse(s),
+        DataValue::String(s) => datavalue::DataDateTime::parse(s),
         DataValue::Object(pairs) => {
             for (k, v) in *pairs {
                 if *k == "datetime"
                     && let DataValue::String(s) = v
                 {
-                    return crate::datetime::DataDateTime::parse(s);
+                    return datavalue::DataDateTime::parse(s);
                 }
             }
             None
@@ -63,17 +63,17 @@ pub(crate) fn extract_datetime(
 #[inline]
 pub(crate) fn extract_duration(
     av: &crate::arena::DataValue<'_>,
-) -> Option<crate::datetime::DataDuration> {
+) -> Option<datavalue::DataDuration> {
     use crate::arena::DataValue;
     match av {
         DataValue::Duration(d) => Some(*d),
-        DataValue::String(s) => crate::datetime::DataDuration::parse(s),
+        DataValue::String(s) => datavalue::DataDuration::parse(s),
         DataValue::Object(pairs) => {
             for (k, v) in *pairs {
                 if *k == "timestamp"
                     && let DataValue::String(s) = v
                 {
-                    return crate::datetime::DataDuration::parse(s);
+                    return datavalue::DataDuration::parse(s);
                 }
             }
             None
@@ -91,7 +91,7 @@ pub(crate) fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<
         && let Some(obj) = value.as_object()
         && obj.iter().any(|(k, _)| k == "__invalid_args__")
     {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     Ok(())
 }

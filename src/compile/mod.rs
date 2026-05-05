@@ -3,18 +3,18 @@
 //! and (when an engine is available) optimisation + constant-folding passes.
 //!
 //! The entry points live here; the heavy lifting is split across
-//! - [`builder`] — the recursive `compile_node` dispatch.
+//! - [`walker`] — the recursive `compile_node` dispatch.
 //! - [`operator`] — `var` / `val` / `exists` specialisations.
 //! - [`missing`] — `missing` / `missing_some` static path pre-parsing.
-//! - [`path_parser`] — shared dot-path parsing.
+//! - [`path_segments`] — shared dot-path parsing.
 //! - [`optimize`] — DCE, strength reduction, constant folding.
 
-pub mod optimize;
+mod optimize;
 
-mod builder;
 mod missing;
 mod operator;
-mod path_parser;
+mod path_segments;
+mod walker;
 
 use datavalue::OwnedDataValue;
 
@@ -39,7 +39,7 @@ impl Logic {
     #[inline]
     fn compile_inner(logic: &OwnedDataValue, engine: &Engine, mut ctx: CompileCtx) -> Result<Self> {
         let root =
-            builder::compile_node(logic, Some(engine), engine.preserve_structure(), &mut ctx)?;
+            walker::compile_node(logic, Some(engine), engine.preserve_structure(), &mut ctx)?;
         Ok(Self::new(root))
     }
 }

@@ -30,7 +30,7 @@ pub(super) enum NanAction {
 #[inline]
 pub(super) fn handle_nan(engine: &Engine) -> Result<NanAction> {
     match engine.config().arithmetic_nan_handling {
-        NanHandling::ThrowError => Err(crate::constants::nan_error()),
+        NanHandling::ThrowError => Err(crate::Error::nan()),
         NanHandling::IgnoreValue | NanHandling::CoerceToZero => Ok(NanAction::Skip),
         NanHandling::ReturnNull => Ok(NanAction::ReturnNull),
     }
@@ -179,7 +179,7 @@ pub(super) fn variadic_fold<'a>(
             match handle_nan(engine)? {
                 NanAction::Skip => continue,
                 NanAction::ReturnNull => {
-                    return Ok(crate::arena::pool::singleton_null());
+                    return Ok(crate::arena::singletons::singleton_null());
                 }
             }
         }

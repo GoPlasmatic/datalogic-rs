@@ -22,13 +22,13 @@ pub(crate) fn evaluate_filter<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     // Resolve input via unified helper (root borrow OR upstream arena op).
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_empty_array()),
+        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
         ResolvedInput::Bridge(av) => {
             return filter_arena_bridge(av, &args[1], ctx, engine, arena);
         }
@@ -37,7 +37,7 @@ pub(crate) fn evaluate_filter<'a>(
     let predicate = &args[1];
     let len = src.len();
     if len == 0 {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
 
     // Fast paths bypass `run_iter_body` and skip tracer markers. Defer to the
@@ -100,7 +100,7 @@ fn filter_strict_eq_field_fast_path<'a>(
         }
     }
     if results.is_empty() {
-        return Ok(Some(crate::arena::pool::singleton_empty_array()));
+        return Ok(Some(crate::arena::singletons::singleton_empty_array()));
     }
     Ok(Some(
         arena.alloc(DataValue::Array(results.into_bump_slice())),
@@ -124,7 +124,7 @@ fn filter_with_fast_predicate<'a>(
         }
     }
     if results.is_empty() {
-        return crate::arena::pool::singleton_empty_array();
+        return crate::arena::singletons::singleton_empty_array();
     }
     arena.alloc(DataValue::Array(results.into_bump_slice()))
 }
@@ -147,7 +147,7 @@ fn filter_general<'a>(
         Ok(ControlFlow::Continue(()))
     })?;
     if results.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
@@ -167,7 +167,7 @@ fn filter_arena_bridge<'a>(
     match input {
         DataValue::Object(pairs) => filter_bridge_object(pairs, predicate, ctx, engine, arena),
         DataValue::Array(items) => filter_bridge_array(items, predicate, ctx, engine, arena),
-        _ => Err(crate::constants::invalid_args()),
+        _ => Err(crate::Error::invalid_args()),
     }
 }
 
@@ -187,7 +187,7 @@ fn filter_bridge_object<'a>(
         Ok(ControlFlow::Continue(()))
     })?;
     if kept.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_object());
+        return Ok(crate::arena::singletons::singleton_empty_object());
     }
     Ok(arena.alloc(DataValue::Object(kept.into_bump_slice())))
 }
@@ -208,7 +208,7 @@ fn filter_bridge_array<'a>(
         Ok(ControlFlow::Continue(()))
     })?;
     if kept.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
     Ok(arena.alloc(DataValue::Array(kept.into_bump_slice())))
 }

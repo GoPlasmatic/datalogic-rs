@@ -90,7 +90,7 @@ fn add_two_arg<'a>(
         } else {
             match handle_nan(engine)? {
                 NanAction::Skip => {}
-                NanAction::ReturnNull => return Ok(crate::arena::pool::singleton_null()),
+                NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
     }
@@ -175,7 +175,7 @@ fn multiply_two_arg<'a>(
         } else {
             match handle_nan(engine)? {
                 NanAction::Skip => {}
-                NanAction::ReturnNull => return Ok(crate::arena::pool::singleton_null()),
+                NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
     }
@@ -192,7 +192,7 @@ pub(crate) fn evaluate_subtract<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     if args.len() == 1 {
         return subtract_one_arg(&args[0], ctx, engine, arena);
@@ -215,12 +215,12 @@ fn subtract_one_arg<'a>(
     // Array fold case: (first - second - ...).
     if let DataValue::Array(items) = av {
         if items.is_empty() {
-            return Err(crate::constants::invalid_args());
+            return Err(crate::Error::invalid_args());
         }
         let mut result =
-            coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::constants::nan_error)?;
+            coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
         for elem in &items[1..] {
-            let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::constants::nan_error)?;
+            let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::Error::nan)?;
             result -= n;
         }
         return Ok(alloc_number(arena, NumberValue::from_f64(result)));
@@ -237,7 +237,7 @@ fn subtract_one_arg<'a>(
     if let Some(f) = coerce_to_number_cfg(av, engine) {
         return Ok(alloc_number(arena, NumberValue::from_f64(-f)));
     }
-    Err(crate::constants::nan_error())
+    Err(crate::Error::nan())
 }
 
 #[inline]
@@ -277,7 +277,7 @@ fn subtract_two_arg<'a>(
         }
     }
 
-    Err(crate::constants::nan_error())
+    Err(crate::Error::nan())
 }
 
 /// Variadic (>2) subtract: integer fast path with overflow promotion.
@@ -297,7 +297,7 @@ fn subtract_variadic<'a>(
         .unwrap_or_default();
     let mut float_acc: f64 = match coerce_to_number_cfg(first_av, engine) {
         Some(f) => f,
-        None => return Err(crate::constants::nan_error()),
+        None => return Err(crate::Error::nan()),
     };
 
     for arg in args.iter().skip(1) {
@@ -326,7 +326,7 @@ fn subtract_variadic<'a>(
         } else {
             match handle_nan(engine)? {
                 NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(crate::arena::pool::singleton_null()),
+                NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
     }
@@ -363,7 +363,7 @@ fn one_arg_arith<'a>(
                 arena,
                 NumberValue::from_i64(op.identity_int()),
             )),
-            NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+            NanAction::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
         };
     }
 
@@ -395,7 +395,7 @@ fn one_arg_arith<'a>(
             arena,
             NumberValue::from_i64(op.identity_int()),
         )),
-        NanAction::ReturnNull => Ok(crate::arena::pool::singleton_null()),
+        NanAction::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
     }
 }
 
@@ -446,7 +446,7 @@ fn one_arg_array_fold<'a>(
         } else {
             match handle_nan(engine)? {
                 NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(crate::arena::pool::singleton_null()),
+                NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
     }

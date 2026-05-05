@@ -89,9 +89,6 @@ mod builder;
 pub mod compat;
 mod compile;
 mod config;
-mod constants;
-#[cfg(feature = "datetime")]
-mod datetime;
 mod engine;
 mod error;
 mod eval_input;

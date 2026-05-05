@@ -28,7 +28,7 @@ fn metadata_hint_lookup<'a>(
         let idx = ctx.current().get_index()?;
         let i = idx as i64;
         return Some(
-            crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
+            crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
                 arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
             }),
         );
@@ -165,7 +165,7 @@ fn resolve_metadata_hint<'a>(
     match hint {
         MetadataHint::Index => ctx.current().get_index().map(|idx| {
             let i = idx as i64;
-            crate::arena::pool::singleton_small_int(i).unwrap_or_else(|| {
+            crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
                 &*arena.alloc(DataValue::Number(crate::value::NumberValue::Integer(i)))
             })
         }),
@@ -269,7 +269,7 @@ pub(crate) fn evaluate_exists_compiled<'a>(
     if scope_level == 0 && ctx.depth() == 0 {
         let found = segments.is_empty()
             || crate::arena::value::traverse_segments(ctx.root_input(), segments, arena).is_some();
-        return Ok(crate::arena::pool::singleton_bool(found));
+        return Ok(crate::arena::singletons::singleton_bool(found));
     }
 
     use crate::arena::context::ContextRef;
@@ -278,7 +278,7 @@ pub(crate) fn evaluate_exists_compiled<'a>(
     } else {
         match ctx.get_at_level(scope_level as isize) {
             Some(f) => f,
-            None => return Ok(crate::arena::pool::singleton_false()),
+            None => return Ok(crate::arena::singletons::singleton_false()),
         }
     };
     let av = match aref {
@@ -287,7 +287,7 @@ pub(crate) fn evaluate_exists_compiled<'a>(
     };
     let found = segments.is_empty()
         || crate::arena::value::traverse_segments(av, segments, arena).is_some();
-    Ok(crate::arena::pool::singleton_bool(found))
+    Ok(crate::arena::singletons::singleton_bool(found))
 }
 
 /// Read a `[level]` marker — the value-mode multi-arg `val` shape where
@@ -390,7 +390,7 @@ fn eval_val_multiarg<'a>(
             let frame_data = frame_data_at_level(ctx, level as isize, arena)
                 .ok_or(Error::invalid_context_level(level as isize))?;
             return Ok(access_path_str_ref(frame_data, &path_owned, arena)
-                .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+                .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
         }
 
         // Multi-arg path chain at a relative level.
@@ -404,7 +404,7 @@ fn eval_val_multiarg<'a>(
         for path in &paths {
             match access_path_str_ref(cur, path, arena) {
                 Some(next) => cur = next,
-                None => return Ok(crate::arena::pool::singleton_null()),
+                None => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
         return Ok(cur);
@@ -438,7 +438,7 @@ fn eval_val_multiarg<'a>(
     for elem in &evaluated[rest_start..] {
         match apply_path_element(cur, elem, arena) {
             Some(next) => cur = next,
-            None => return Ok(crate::arena::pool::singleton_null()),
+            None => return Ok(crate::arena::singletons::singleton_null()),
         }
     }
     Ok(cur)
@@ -466,7 +466,7 @@ fn eval_val_array_path<'a>(
         if let Some(level) = level_opt {
             if arr_len == 2 {
                 let second =
-                    array_get(path_av, 1).unwrap_or_else(|| crate::arena::pool::singleton_null());
+                    array_get(path_av, 1).unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let path_str = second.as_str().unwrap_or("");
                 if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
                     return Ok(av);
@@ -477,13 +477,13 @@ fn eval_val_array_path<'a>(
                 .ok_or(Error::invalid_context_level(level as isize))?;
             for i in 1..arr_len {
                 let item =
-                    array_get(path_av, i).unwrap_or_else(|| crate::arena::pool::singleton_null());
+                    array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let Some(seg) = item.as_str() else {
-                    return Ok(crate::arena::pool::singleton_null());
+                    return Ok(crate::arena::singletons::singleton_null());
                 };
                 match access_path_str_ref(cur, seg, arena) {
                     Some(next) => cur = next,
-                    None => return Ok(crate::arena::pool::singleton_null()),
+                    None => return Ok(crate::arena::singletons::singleton_null()),
                 }
             }
             return Ok(cur);
@@ -493,10 +493,10 @@ fn eval_val_array_path<'a>(
     // Plain path-chain array.
     let mut cur = current_data(ctx, arena);
     for i in 0..arr_len {
-        let elem = array_get(path_av, i).unwrap_or_else(|| crate::arena::pool::singleton_null());
+        let elem = array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
         match apply_path_element(cur, elem, arena) {
             Some(next) => cur = next,
-            None => return Ok(crate::arena::pool::singleton_null()),
+            None => return Ok(crate::arena::singletons::singleton_null()),
         }
     }
     Ok(cur)
@@ -527,13 +527,13 @@ fn eval_val_scalar_path<'a>(
             } else if let Some(rest) = s.strip_prefix("current.") {
                 if let Some(cur) = frame.get_reduce_current() {
                     return Ok(access_path_str_ref(cur, rest, arena)
-                        .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+                        .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
                 }
             } else if let Some(rest) = s.strip_prefix("accumulator.")
                 && let Some(acc) = frame.get_reduce_accumulator()
             {
                 return Ok(access_path_str_ref(acc, rest, arena)
-                    .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+                    .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
             }
         }
 
@@ -546,7 +546,7 @@ fn eval_val_scalar_path<'a>(
             return Ok(av);
         }
         return Ok(access_path_str_ref(cur, s, arena)
-            .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+            .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
     }
 
     if let Some(i) = path_av.as_i64()
@@ -555,10 +555,10 @@ fn eval_val_scalar_path<'a>(
         let cur = current_data(ctx, arena);
         let key = i.to_string();
         return Ok(access_path_str_ref(cur, &key, arena)
-            .unwrap_or_else(|| crate::arena::pool::singleton_null()));
+            .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
     }
 
-    Ok(crate::arena::pool::singleton_null())
+    Ok(crate::arena::singletons::singleton_null())
 }
 
 /// Test whether `key` exists on an arena Object. Matches the value-mode
@@ -599,7 +599,7 @@ pub(crate) fn evaluate_exists<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_false());
+        return Ok(crate::arena::singletons::singleton_false());
     }
 
     let cur = current_data(ctx, arena);
@@ -607,32 +607,32 @@ pub(crate) fn evaluate_exists<'a>(
     if args.len() == 1 {
         let arg = engine.dispatch_node(&args[0], ctx, arena)?;
         if let Some(s) = arg.as_str() {
-            return Ok(crate::arena::pool::singleton_bool(object_contains(cur, s)));
+            return Ok(crate::arena::singletons::singleton_bool(object_contains(cur, s)));
         }
         if let Some(arr_len) = array_len(arg) {
             if arr_len == 0 {
-                return Ok(crate::arena::pool::singleton_false());
+                return Ok(crate::arena::singletons::singleton_false());
             }
             let mut walk = cur;
             for i in 0..arr_len {
                 let elem = array_get(arg, i)
-                    .unwrap_or_else(|| crate::arena::pool::singleton_null());
+                    .unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let Some(seg) = elem.as_str() else {
-                    return Ok(crate::arena::pool::singleton_false());
+                    return Ok(crate::arena::singletons::singleton_false());
                 };
                 if i == arr_len - 1 {
-                    return Ok(crate::arena::pool::singleton_bool(object_contains(
+                    return Ok(crate::arena::singletons::singleton_bool(object_contains(
                         walk, seg,
                     )));
                 }
                 match object_step(walk, seg, arena) {
                     Some(next) => walk = next,
-                    None => return Ok(crate::arena::pool::singleton_false()),
+                    None => return Ok(crate::arena::singletons::singleton_false()),
                 }
             }
-            return Ok(crate::arena::pool::singleton_true());
+            return Ok(crate::arena::singletons::singleton_true());
         }
-        return Ok(crate::arena::pool::singleton_false());
+        return Ok(crate::arena::singletons::singleton_false());
     }
 
     // Multiple args — each must evaluate to a string segment.
@@ -640,7 +640,7 @@ pub(crate) fn evaluate_exists<'a>(
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
         if av.as_str().is_none() {
-            return Ok(crate::arena::pool::singleton_false());
+            return Ok(crate::arena::singletons::singleton_false());
         }
         paths.push(av);
     }
@@ -649,16 +649,16 @@ pub(crate) fn evaluate_exists<'a>(
     for (i, av) in paths.iter().enumerate() {
         let seg = av.as_str().expect("checked above");
         if i == last {
-            return Ok(crate::arena::pool::singleton_bool(object_contains(
+            return Ok(crate::arena::singletons::singleton_bool(object_contains(
                 walk, seg,
             )));
         }
         match object_step(walk, seg, arena) {
             Some(next) => walk = next,
-            None => return Ok(crate::arena::pool::singleton_false()),
+            None => return Ok(crate::arena::singletons::singleton_false()),
         }
     }
-    Ok(crate::arena::pool::singleton_true())
+    Ok(crate::arena::singletons::singleton_true())
 }
 
 #[inline]
@@ -670,6 +670,6 @@ fn default_or_null<'a>(
 ) -> Result<&'a DataValue<'a>> {
     match default_value {
         Some(node) => engine.dispatch_node(node, ctx, arena),
-        None => Ok(crate::arena::pool::singleton_null()),
+        None => Ok(crate::arena::singletons::singleton_null()),
     }
 }

@@ -59,7 +59,7 @@ pub(crate) fn unary_math<'a>(
     op: UnaryMathOp,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     let to_arena = |x: f64, arena: &'a Bump| -> &'a DataValue<'a> {
@@ -72,14 +72,14 @@ pub(crate) fn unary_math<'a>(
 
     if args.len() == 1 {
         let av = engine.dispatch_node(&args[0], ctx, arena)?;
-        let n = value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
+        let n = value_strict_f64(av).ok_or_else(crate::Error::invalid_args)?;
         return Ok(to_arena(op.apply(n), arena));
     }
 
     let mut items = bvec::<DataValue<'a>>(arena, args.len());
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        let n = value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
+        let n = value_strict_f64(av).ok_or_else(crate::Error::invalid_args)?;
         let r = to_arena(op.apply(n), arena);
         items.push(*r);
     }

@@ -43,7 +43,7 @@
 //! - Comparing a number with a non-numeric string
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
-use crate::constants::NAN_ERROR;
+use crate::error::NAN_ERROR;
 use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
@@ -233,8 +233,8 @@ impl OrdOp {
     #[inline]
     fn apply_datetime(
         self,
-        l: &crate::datetime::DataDateTime,
-        r: &crate::datetime::DataDateTime,
+        l: &datavalue::DataDateTime,
+        r: &datavalue::DataDateTime,
     ) -> bool {
         match self {
             OrdOp::Gt => l > r,
@@ -248,8 +248,8 @@ impl OrdOp {
     #[inline]
     fn apply_duration(
         self,
-        l: &crate::datetime::DataDuration,
-        r: &crate::datetime::DataDuration,
+        l: &datavalue::DataDuration,
+        r: &datavalue::DataDuration,
     ) -> bool {
         match self {
             OrdOp::Gt => l > r,
@@ -388,7 +388,7 @@ fn compare_ordered(
     let is_collection =
         |av: &DataValue<'_>| matches!(av, DataValue::Array(_) | DataValue::Object(_));
     if is_collection(left) || is_collection(right) {
-        return Err(crate::constants::nan_error());
+        return Err(crate::Error::nan());
     }
 
     // String vs String — datetime-shaped that fell through.
@@ -407,7 +407,7 @@ fn compare_ordered(
     let is_num = |av: &DataValue<'_>| matches!(av, DataValue::Number(_));
     let is_str = |av: &DataValue<'_>| matches!(av, DataValue::String(_));
     if (is_num(left) && is_str(right)) || (is_num(right) && is_str(left)) {
-        return Err(crate::constants::nan_error());
+        return Err(crate::Error::nan());
     }
 
     Ok(false)
@@ -421,16 +421,16 @@ pub(crate) fn evaluate_strict_equals<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
         if !compare_equals(first_av, cur_av, true, engine)? {
-            return Ok(crate::arena::pool::singleton_false());
+            return Ok(crate::arena::singletons::singleton_false());
         }
     }
-    Ok(crate::arena::pool::singleton_true())
+    Ok(crate::arena::singletons::singleton_true())
 }
 
 #[inline]
@@ -441,12 +441,12 @@ pub(crate) fn evaluate_strict_not_equals<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let a = engine.dispatch_node(&args[0], ctx, arena)?;
     let b = engine.dispatch_node(&args[1], ctx, arena)?;
     let eq = compare_equals(a, b, true, engine)?;
-    Ok(crate::arena::pool::singleton_bool(!eq))
+    Ok(crate::arena::singletons::singleton_bool(!eq))
 }
 
 #[inline]
@@ -457,16 +457,16 @@ pub(crate) fn evaluate_equals<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
         if !compare_equals(first_av, cur_av, false, engine)? {
-            return Ok(crate::arena::pool::singleton_false());
+            return Ok(crate::arena::singletons::singleton_false());
         }
     }
-    Ok(crate::arena::pool::singleton_true())
+    Ok(crate::arena::singletons::singleton_true())
 }
 
 #[inline]
@@ -477,12 +477,12 @@ pub(crate) fn evaluate_not_equals<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let a = engine.dispatch_node(&args[0], ctx, arena)?;
     let b = engine.dispatch_node(&args[1], ctx, arena)?;
     let eq = compare_equals(a, b, false, engine)?;
-    Ok(crate::arena::pool::singleton_bool(!eq))
+    Ok(crate::arena::singletons::singleton_bool(!eq))
 }
 
 #[inline]
@@ -494,17 +494,17 @@ fn evaluate_ord<'a>(
     op: OrdOp,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
     let mut prev_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
         if !compare_ordered(prev_av, cur_av, op, engine)? {
-            return Ok(crate::arena::pool::singleton_false());
+            return Ok(crate::arena::singletons::singleton_false());
         }
         prev_av = cur_av;
     }
-    Ok(crate::arena::pool::singleton_true())
+    Ok(crate::arena::singletons::singleton_true())
 }
 
 #[inline]

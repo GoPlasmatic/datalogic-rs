@@ -3,6 +3,14 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::fmt;
 use std::sync::Arc;
 
+/// Canonical "Invalid Arguments" error message — used wherever an
+/// operator rejects a malformed args list before evaluating.
+pub(crate) const INVALID_ARGS: &str = "Invalid Arguments";
+
+/// Canonical "NaN" string used as the `type` field of the thrown error
+/// object that arithmetic and comparison ops raise on non-numeric input.
+pub(crate) const NAN_ERROR: &str = "NaN";
+
 /// Trait-object alias for the source carried by [`ErrorKind::Custom`].
 /// Reference-counted so [`ErrorKind`] stays cheap to clone, and bounded
 /// so a single `Error` value can be sent across threads.
@@ -243,6 +251,20 @@ impl Error {
     #[inline]
     pub fn configuration_error(msg: impl Into<String>) -> Self {
         ErrorKind::ConfigurationError(msg.into()).into()
+    }
+
+    /// Canonical "Invalid Arguments" error. Used wherever an operator
+    /// rejects malformed args before evaluating.
+    #[inline]
+    pub(crate) fn invalid_args() -> Self {
+        Error::invalid_arguments(INVALID_ARGS)
+    }
+
+    /// Canonical NaN error — `{"type": "NaN"}` thrown via [`Error::thrown`].
+    /// Used by arithmetic and comparison ops on non-numeric input.
+    #[inline]
+    pub(crate) fn nan() -> Self {
+        Error::thrown(OwnedDataValue::object([("type", NAN_ERROR)]))
     }
 }
 

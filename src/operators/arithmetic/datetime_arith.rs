@@ -19,8 +19,8 @@ fn alloc_string_av<'a>(arena: &'a Bump, s: &str) -> &'a DataValue<'a> {
 fn extract_dt_dur(
     av: &DataValue<'_>,
 ) -> (
-    Option<crate::datetime::DataDateTime>,
-    Option<crate::datetime::DataDuration>,
+    Option<datavalue::DataDateTime>,
+    Option<datavalue::DataDuration>,
 ) {
     use crate::operators::helpers::{extract_datetime, extract_duration};
     let dt = extract_datetime(av);
@@ -118,7 +118,7 @@ pub(super) fn datetime_divide<'a>(
     let a_dur = a_dur?;
     let divisor = coerce_to_number(b_av)?;
     if divisor == 0.0 {
-        return Some(Err(crate::constants::nan_error()));
+        return Some(Err(crate::Error::nan()));
     }
     Some(Ok(alloc_string_av(
         arena,

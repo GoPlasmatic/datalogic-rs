@@ -26,13 +26,13 @@ pub(crate) fn evaluate_map<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     let body = &args[1];
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_empty_array()),
+        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
         ResolvedInput::Bridge(av) => {
             return map_arena_bridge(av, body, ctx, engine, arena);
         }
@@ -40,7 +40,7 @@ pub(crate) fn evaluate_map<'a>(
 
     let len = src.len();
     if len == 0 {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
 
     // Fast paths bypass `run_iter_body`, so they skip the tracer's

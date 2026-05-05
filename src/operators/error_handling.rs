@@ -1,43 +1,61 @@
-//! Error handling operator for graceful failure recovery.
+//! Error-handling operators: `throw` and `try`.
 //!
-//! The `try` operator provides exception-like error handling in JSONLogic expressions.
-//! It evaluates arguments in sequence until one succeeds, similar to try-catch in
-//! traditional programming languages.
+//! `throw` raises a structured error; `try` evaluates expressions in
+//! sequence until one succeeds (the final arm receives the caught error
+//! object as its context, so the catch body can inspect error fields via
+//! `var` / `val`).
 //!
 //! # Syntax
 //!
 //! ```json
+//! {"throw": "ErrorType"}
+//! {"throw": {"code": 404, "message": "Not found"}}
+//!
 //! {"try": [expression, fallback1, fallback2, ...]}
-//! ```
 //!
-//! # Behavior
-//!
-//! 1. Evaluates each argument in order until one succeeds
-//! 2. Returns the result of the first successful evaluation
-//! 3. If all arguments fail, returns the last error
-//! 4. The final argument can access error context via `{"var": ""}` when catching
-//!    a `throw` error
-//!
-//! # Error Context
-//!
-//! When catching a thrown error, the last fallback argument receives the error
-//! object as its context, allowing error inspection:
-//!
-//! ```json
 //! {"try": [
 //!   {"throw": {"code": 404, "message": "Not found"}},
 //!   {"cat": ["Error: ", {"var": "message"}]}
 //! ]}
 //! // Returns: "Error: Not found"
 //! ```
-//!
-//! # Related
-//!
-//! - [`throw`](super::throw) - Throw an error to be caught by `try`
+
+use datavalue::OwnedDataValue;
 
 use crate::arena::{ContextStack, DataValue};
 use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
+
+// ─── throw ──────────────────────────────────────────────────────────────────
+
+/// `throw`. Builds the error object directly from the argument's arena form.
+#[inline]
+pub(crate) fn evaluate_throw<'a>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    let owned: OwnedDataValue = if args.is_empty() {
+        OwnedDataValue::Null
+    } else if let CompiledNode::Value { value, .. } = &args[0] {
+        // Literal fast path — skip arena dispatch.
+        value.clone()
+    } else {
+        let av = engine.dispatch_node(&args[0], ctx, arena)?;
+        av.to_owned()
+    };
+
+    let owned = match owned {
+        OwnedDataValue::Object(_) => owned,
+        OwnedDataValue::String(s) => OwnedDataValue::object([("type", s)]),
+        other => OwnedDataValue::object([("type", format!("{:?}", other))]),
+    };
+
+    Err(Error::thrown(owned))
+}
+
+// ─── try ────────────────────────────────────────────────────────────────────
 
 #[inline]
 pub(crate) fn evaluate_try<'a>(
@@ -47,7 +65,7 @@ pub(crate) fn evaluate_try<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(crate::arena::pool::singleton_null());
+        return Ok(crate::arena::singletons::singleton_null());
     }
     if args.len() == 1 {
         return engine.dispatch_node(&args[0], ctx, arena);
@@ -70,7 +88,7 @@ pub(crate) fn evaluate_try<'a>(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| Error::invalid_arguments(crate::constants::INVALID_ARGS)))
+    Err(last_err.unwrap_or_else(|| Error::invalid_arguments(crate::error::INVALID_ARGS)))
 }
 
 /// Pushes the thrown error object onto the arena context stack as the

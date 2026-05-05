@@ -25,19 +25,19 @@ pub(crate) fn evaluate_sort<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     // Literal-null first arg is an error.
     if let CompiledNode::Value { value, .. } = &args[0]
         && value.is_null()
     {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::pool::singleton_null()),
+        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_null()),
         ResolvedInput::Bridge(av) => {
             return sort_arena_from_value(av, args, ctx, engine, arena);
         }
@@ -45,7 +45,7 @@ pub(crate) fn evaluate_sort<'a>(
 
     let len = src.len();
     if len == 0 {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
 
     let ascending = sort_direction(args, ctx, engine, arena)?;
@@ -186,13 +186,13 @@ fn sort_arena_from_value<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let items_slice: &'a [DataValue<'a>] = match av {
         DataValue::Null => {
-            return Ok(crate::arena::pool::singleton_null());
+            return Ok(crate::arena::singletons::singleton_null());
         }
         DataValue::Array(items) => items,
-        _ => return Err(crate::constants::invalid_args()),
+        _ => return Err(crate::Error::invalid_args()),
     };
     if items_slice.is_empty() {
-        return Ok(crate::arena::pool::singleton_empty_array());
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
 
     let ascending = sort_direction(args, ctx, engine, arena)?;

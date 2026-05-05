@@ -14,14 +14,14 @@ pub(crate) fn evaluate_slice<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(crate::constants::invalid_args());
+        return Err(crate::Error::invalid_args());
     }
 
     let coll_av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     // Null passthrough.
     if matches!(coll_av, DataValue::Null) {
-        return Ok(crate::arena::pool::singleton_null());
+        return Ok(crate::arena::singletons::singleton_null());
     }
 
     // Resolve start/end/step.
@@ -38,7 +38,7 @@ pub(crate) fn evaluate_slice<'a>(
     let step = if args.len() > 3 {
         let s = extract_opt_i64_arena(&args[3], ctx, engine, arena)?.unwrap_or(1);
         if s == 0 {
-            return Err(crate::constants::invalid_args());
+            return Err(crate::Error::invalid_args());
         }
         s
     } else {
@@ -51,7 +51,7 @@ pub(crate) fn evaluate_slice<'a>(
     if let DataValue::String(s) = coll_av {
         return Ok(slice_string(s, start, end, step, arena));
     }
-    Err(crate::constants::invalid_args())
+    Err(crate::Error::invalid_args())
 }
 
 /// Composite arena array — slice through the arena items.
@@ -66,7 +66,7 @@ fn slice_array<'a>(
     let len = items.len() as i64;
     let indices = slice_indices(len, start, end, step);
     if indices.is_empty() {
-        return crate::arena::pool::singleton_empty_array();
+        return crate::arena::singletons::singleton_empty_array();
     }
     let mut out = bvec::<DataValue<'a>>(arena, indices.len());
     for i in indices {
