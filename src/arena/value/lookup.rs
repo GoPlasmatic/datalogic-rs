@@ -20,55 +20,51 @@ pub(crate) fn key_eq(a: &str, b: &str) -> bool {
         return false;
     }
     let n = ab.len();
-    unsafe {
-        match n {
-            0 => true,
-            1 => *ab.get_unchecked(0) == *bb.get_unchecked(0),
-            2 => {
-                let x = (ab.as_ptr() as *const u16).read_unaligned();
-                let y = (bb.as_ptr() as *const u16).read_unaligned();
-                x == y
-            }
-            3 => {
-                let x = (ab.as_ptr() as *const u16).read_unaligned();
-                let y = (bb.as_ptr() as *const u16).read_unaligned();
-                x == y && *ab.get_unchecked(2) == *bb.get_unchecked(2)
-            }
-            4 => {
-                let x = (ab.as_ptr() as *const u32).read_unaligned();
-                let y = (bb.as_ptr() as *const u32).read_unaligned();
-                x == y
-            }
-            5..=7 => {
-                let x = (ab.as_ptr() as *const u32).read_unaligned();
-                let y = (bb.as_ptr() as *const u32).read_unaligned();
-                if x != y {
-                    return false;
-                }
-                // Tail: read trailing u32 from the last 4 bytes (overlaps).
-                let tail_off = n - 4;
-                let xt = (ab.as_ptr().add(tail_off) as *const u32).read_unaligned();
-                let yt = (bb.as_ptr().add(tail_off) as *const u32).read_unaligned();
-                xt == yt
-            }
-            8 => {
-                let x = (ab.as_ptr() as *const u64).read_unaligned();
-                let y = (bb.as_ptr() as *const u64).read_unaligned();
-                x == y
-            }
-            9..=16 => {
-                let x = (ab.as_ptr() as *const u64).read_unaligned();
-                let y = (bb.as_ptr() as *const u64).read_unaligned();
-                if x != y {
-                    return false;
-                }
-                let tail_off = n - 8;
-                let xt = (ab.as_ptr().add(tail_off) as *const u64).read_unaligned();
-                let yt = (bb.as_ptr().add(tail_off) as *const u64).read_unaligned();
-                xt == yt
-            }
-            _ => ab == bb,
+    match n {
+        0 => true,
+        1 => ab[0] == bb[0],
+        2 => {
+            let x = u16::from_ne_bytes(ab[..2].try_into().unwrap());
+            let y = u16::from_ne_bytes(bb[..2].try_into().unwrap());
+            x == y
         }
+        3 => {
+            let x = u16::from_ne_bytes(ab[..2].try_into().unwrap());
+            let y = u16::from_ne_bytes(bb[..2].try_into().unwrap());
+            x == y && ab[2] == bb[2]
+        }
+        4 => {
+            let x = u32::from_ne_bytes(ab[..4].try_into().unwrap());
+            let y = u32::from_ne_bytes(bb[..4].try_into().unwrap());
+            x == y
+        }
+        5..=7 => {
+            let x = u32::from_ne_bytes(ab[..4].try_into().unwrap());
+            let y = u32::from_ne_bytes(bb[..4].try_into().unwrap());
+            if x != y {
+                return false;
+            }
+            // Tail: read trailing u32 from the last 4 bytes (overlaps).
+            let xt = u32::from_ne_bytes(ab[n - 4..].try_into().unwrap());
+            let yt = u32::from_ne_bytes(bb[n - 4..].try_into().unwrap());
+            xt == yt
+        }
+        8 => {
+            let x = u64::from_ne_bytes(ab[..8].try_into().unwrap());
+            let y = u64::from_ne_bytes(bb[..8].try_into().unwrap());
+            x == y
+        }
+        9..=16 => {
+            let x = u64::from_ne_bytes(ab[..8].try_into().unwrap());
+            let y = u64::from_ne_bytes(bb[..8].try_into().unwrap());
+            if x != y {
+                return false;
+            }
+            let xt = u64::from_ne_bytes(ab[n - 8..].try_into().unwrap());
+            let yt = u64::from_ne_bytes(bb[n - 8..].try_into().unwrap());
+            xt == yt
+        }
+        _ => ab == bb,
     }
 }
 
@@ -87,27 +83,25 @@ pub(crate) fn object_lookup_field<'a>(
     if tlen == 0 {
         for (k, v) in pairs {
             if k.is_empty() {
-                // SAFETY: `pairs` is `&'a [(&'a str, DataValue<'a>)]`; see
-                // [`super::reborrow_arena_value`].
-                return Some(unsafe { super::reborrow_arena_value(v) });
+                return Some(v);
             }
         }
         return None;
     }
-    // SAFETY: tlen > 0, tb has at least 1 byte.
-    let tfirst = unsafe { *tb.get_unchecked(0) };
+    // tlen > 0 here (the empty-target branch returned above), so the
+    // bounds-checked first-byte read folds away in release.
+    let tfirst = tb[0];
     for (k, v) in pairs {
         let kb = k.as_bytes();
         if kb.len() != tlen {
             continue;
         }
-        // SAFETY: kb.len() == tlen > 0, so kb has at least 1 byte.
-        if unsafe { *kb.get_unchecked(0) } != tfirst {
+        // kb.len() == tlen > 0, so kb[0] is in bounds — bounds check elided.
+        if kb[0] != tfirst {
             continue;
         }
         if key_eq(k, target) {
-            // SAFETY: see [`super::reborrow_arena_value`].
-            return Some(unsafe { super::reborrow_arena_value(v) });
+            return Some(v);
         }
     }
     None

@@ -104,10 +104,7 @@ fn reduce_arena_bridge<'a>(
             let mut acc_av: &'a DataValue<'a> = initial;
             let mut guard = IterGuard::new(ctx);
             for (i, (_k, v)) in pairs.iter().enumerate() {
-                // SAFETY: see [`crate::arena::value::reborrow_arena_value`].
-                let item_av: &'a DataValue<'a> =
-                    unsafe { crate::arena::value::reborrow_arena_value(v) };
-                guard.step_reduce(item_av, acc_av);
+                guard.step_reduce(v, acc_av);
                 acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
             }
             drop(guard);

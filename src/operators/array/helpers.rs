@@ -514,12 +514,9 @@ where
     let total = pairs.len() as u32;
     let mut guard = IterGuard::new(ctx);
     for (i, (k, v)) in pairs.iter().enumerate() {
-        // SAFETY: see [`crate::arena::value::reborrow_arena_value`].
-        let item_av: &'a DataValue<'a> = unsafe { crate::arena::value::reborrow_arena_value(v) };
-        let key: &'a str = k;
-        guard.step_keyed(item_av, i, key);
+        guard.step_keyed(v, i, k);
         let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
-        if step_fn(i, item_av, key, av)?.is_break() {
+        if step_fn(i, v, k, av)?.is_break() {
             break;
         }
     }

@@ -9,7 +9,6 @@
 
 use super::DataValue;
 use super::lookup::object_lookup_field;
-use super::reborrow_arena_value;
 use crate::node::PathSegment;
 
 /// Take one traversal step by `PathSegment`. Tight loop body — must always
@@ -17,18 +16,14 @@ use crate::node::PathSegment;
 #[inline(always)]
 fn step_segment<'a>(cur: &'a DataValue<'a>, seg: &PathSegment) -> Option<&'a DataValue<'a>> {
     match (cur, seg) {
-        (DataValue::Object(pairs), PathSegment::Field(key)) => {
+        (&DataValue::Object(pairs), PathSegment::Field(key)) => {
             object_lookup_field(pairs, key.as_ref())
         }
-        (DataValue::Array(items), PathSegment::Index(idx)) => {
-            items.get(*idx).map(|e| unsafe { reborrow_arena_value(e) })
-        }
-        (DataValue::Object(pairs), PathSegment::FieldOrIndex(key, _)) => {
+        (&DataValue::Array(items), PathSegment::Index(idx)) => items.get(*idx),
+        (&DataValue::Object(pairs), PathSegment::FieldOrIndex(key, _)) => {
             object_lookup_field(pairs, key.as_ref())
         }
-        (DataValue::Array(items), PathSegment::FieldOrIndex(_, idx)) => {
-            items.get(*idx).map(|e| unsafe { reborrow_arena_value(e) })
-        }
+        (&DataValue::Array(items), PathSegment::FieldOrIndex(_, idx)) => items.get(*idx),
         _ => None,
     }
 }
@@ -38,11 +33,11 @@ fn step_segment<'a>(cur: &'a DataValue<'a>, seg: &PathSegment) -> Option<&'a Dat
 /// same reason as `step_segment`.
 #[inline(always)]
 fn step_str<'a>(cur: &'a DataValue<'a>, seg: &str) -> Option<&'a DataValue<'a>> {
-    match cur {
+    match *cur {
         DataValue::Object(pairs) => object_lookup_field(pairs, seg),
         DataValue::Array(items) => {
             let idx = seg.parse::<usize>().ok()?;
-            items.get(idx).map(|e| unsafe { reborrow_arena_value(e) })
+            items.get(idx)
         }
         _ => None,
     }
@@ -80,22 +75,11 @@ pub(crate) fn path_exists_segments(av: &DataValue<'_>, segments: &[PathSegment])
     // dominant `missing` / `missing_some` shape is one-segment paths.
     match segments.len() {
         0 => true,
-        1 => step_segment(
-            // SAFETY: shrink the lifetime to this function's borrow; the
-            // reference never escapes.
-            unsafe { &*(av as *const DataValue<'_>) },
-            &segments[0],
-        )
-        .is_some(),
+        1 => step_segment(av, &segments[0]).is_some(),
         _ => {
             let mut cur: &DataValue<'_> = av;
             for seg in segments {
-                match step_segment(
-                    // SAFETY: shrink the inner lifetime to the outer borrow's
-                    // lifetime; we never let the resulting reference escape.
-                    unsafe { &*(cur as *const DataValue<'_>) },
-                    seg,
-                ) {
+                match step_segment(cur, seg) {
                     Some(next) => cur = next,
                     None => return false,
                 }
@@ -127,27 +111,18 @@ pub(crate) fn access_path_str_ref<'a>(
 /// Allocation-free path-exists check on `&DataValue`. Used by `missing` /
 /// `missing_some` where the leaf value isn't consumed.
 #[inline]
-pub(crate) fn path_exists_str(av: &DataValue<'_>, path: &str) -> bool {
+pub(crate) fn path_exists_str<'a>(av: &'a DataValue<'a>, path: &str) -> bool {
     if path.is_empty() {
         return true;
     }
-    let mut cur: &DataValue<'_> = av;
-    let walk = |cur: &mut &DataValue<'_>, seg: &str| -> bool {
-        // SAFETY: identical to path_exists_segments — never escape.
-        match step_str(unsafe { &*(*cur as *const DataValue<'_>) }, seg) {
-            Some(next) => {
-                *cur = next;
-                true
-            }
-            None => false,
-        }
-    };
     if !path.contains('.') {
-        return walk(&mut cur, path);
+        return step_str(av, path).is_some();
     }
+    let mut cur: &'a DataValue<'a> = av;
     for seg in path.split('.') {
-        if !walk(&mut cur, seg) {
-            return false;
+        match step_str(cur, seg) {
+            Some(next) => cur = next,
+            None => return false,
         }
     }
     true
@@ -167,10 +142,8 @@ pub(crate) fn apply_path_element<'a>(
         && i >= 0
     {
         let idx = i as usize;
-        return match cur {
-            DataValue::Array(items) => items
-                .get(idx)
-                .map(|entry| unsafe { reborrow_arena_value(entry) }),
+        return match *cur {
+            DataValue::Array(items) => items.get(idx),
             DataValue::Object(_) => access_path_str_ref(cur, &i.to_string()),
             _ => None,
         };
