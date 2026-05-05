@@ -289,17 +289,140 @@ impl FromStr for OpCode {
 
 impl OpCode {
     /// Convert OpCode back to its canonical string form (for debugging /
-    /// display / serialization). Returns the first entry in [`OPCODE_NAMES`]
-    /// whose opcode matches `self`.
+    /// display / serialization).
+    ///
+    /// Direct `match` rather than a scan over [`OPCODE_NAMES`] — `as_str`
+    /// is on the hot path for error formatting, tracing, and
+    /// [`crate::CompiledNode::operator_name`]. The match compiles to a
+    /// jump table on the `#[repr(u8)]` discriminant.
+    ///
+    /// When adding a new variant, add the canonical name here AND an entry
+    /// to [`OPCODE_NAMES`] (the latter governs `from_str`).
     pub fn as_str(&self) -> &'static str {
-        for (name, op) in OPCODE_NAMES {
-            if *op == *self {
-                return name;
-            }
+        match self {
+            // Core: variable access. `val` is canonical; `var` is an alias.
+            OpCode::Val => "val",
+            // Core: comparison
+            OpCode::Equals => "==",
+            OpCode::StrictEquals => "===",
+            OpCode::NotEquals => "!=",
+            OpCode::StrictNotEquals => "!==",
+            OpCode::GreaterThan => ">",
+            OpCode::GreaterThanEqual => ">=",
+            OpCode::LessThan => "<",
+            OpCode::LessThanEqual => "<=",
+            // Core: logical
+            OpCode::Not => "!",
+            OpCode::BoolCast => "!!",
+            OpCode::And => "and",
+            OpCode::Or => "or",
+            // Core: control flow. `if` is canonical; `?:` is an alias.
+            OpCode::If => "if",
+            // Core: arithmetic
+            OpCode::Add => "+",
+            OpCode::Subtract => "-",
+            OpCode::Multiply => "*",
+            OpCode::Divide => "/",
+            OpCode::Modulo => "%",
+            OpCode::Max => "max",
+            OpCode::Min => "min",
+            // Core: string
+            OpCode::Concat => "cat",
+            OpCode::Substr => "substr",
+            OpCode::In => "in",
+            // Core: array
+            OpCode::Merge => "merge",
+            OpCode::Filter => "filter",
+            OpCode::Map => "map",
+            OpCode::Reduce => "reduce",
+            OpCode::All => "all",
+            OpCode::Some => "some",
+            OpCode::None => "none",
+            // Core: missing
+            OpCode::Missing => "missing",
+            OpCode::MissingSome => "missing_some",
+            // datetime
+            #[cfg(feature = "datetime")]
+            OpCode::Datetime => "datetime",
+            #[cfg(feature = "datetime")]
+            OpCode::Timestamp => "timestamp",
+            #[cfg(feature = "datetime")]
+            OpCode::ParseDate => "parse_date",
+            #[cfg(feature = "datetime")]
+            OpCode::FormatDate => "format_date",
+            #[cfg(feature = "datetime")]
+            OpCode::DateDiff => "date_diff",
+            #[cfg(feature = "datetime")]
+            OpCode::Now => "now",
+            // ext-string
+            #[cfg(feature = "ext-string")]
+            OpCode::Length => "length",
+            #[cfg(feature = "ext-string")]
+            OpCode::StartsWith => "starts_with",
+            #[cfg(feature = "ext-string")]
+            OpCode::EndsWith => "ends_with",
+            #[cfg(feature = "ext-string")]
+            OpCode::Upper => "upper",
+            #[cfg(feature = "ext-string")]
+            OpCode::Lower => "lower",
+            #[cfg(feature = "ext-string")]
+            OpCode::Trim => "trim",
+            #[cfg(feature = "ext-string")]
+            OpCode::Split => "split",
+            // ext-array
+            #[cfg(feature = "ext-array")]
+            OpCode::Sort => "sort",
+            #[cfg(feature = "ext-array")]
+            OpCode::Slice => "slice",
+            // ext-control. `switch` is canonical; `match` is an alias.
+            #[cfg(feature = "ext-control")]
+            OpCode::Exists => "exists",
+            #[cfg(feature = "ext-control")]
+            OpCode::Coalesce => "??",
+            #[cfg(feature = "ext-control")]
+            OpCode::Switch => "switch",
+            #[cfg(feature = "ext-control")]
+            OpCode::Type => "type",
+            // error-handling
+            #[cfg(feature = "error-handling")]
+            OpCode::Try => "try",
+            #[cfg(feature = "error-handling")]
+            OpCode::Throw => "throw",
+            // ext-math
+            #[cfg(feature = "ext-math")]
+            OpCode::Abs => "abs",
+            #[cfg(feature = "ext-math")]
+            OpCode::Ceil => "ceil",
+            #[cfg(feature = "ext-math")]
+            OpCode::Floor => "floor",
         }
-        // Unreachable: OPCODE_NAMES has an entry for every variant compiled
-        // in the current feature set. If you've added a variant without a
-        // name entry, `from_str` will reject it too — fix the table.
-        unreachable!("OPCODE_NAMES missing entry for {self:?}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every entry in OPCODE_NAMES must round-trip: parse the string back
+    /// to its OpCode, then `as_str()` the opcode and feed that through
+    /// `from_str` again — the second resolution must land on the same
+    /// opcode. Catches drift where `as_str` returns a name that
+    /// `from_str` doesn't recognise (a missed table edit).
+    #[test]
+    fn as_str_round_trips_through_from_str() {
+        for (name, expected) in OPCODE_NAMES {
+            let parsed = OpCode::from_str(name).expect("OPCODE_NAMES entry must parse");
+            assert_eq!(
+                parsed, *expected,
+                "OPCODE_NAMES entry {name:?} parses to {parsed:?}, expected {expected:?}"
+            );
+            let canonical = parsed.as_str();
+            let reparsed = OpCode::from_str(canonical)
+                .expect("canonical name from `as_str` must parse via `from_str`");
+            assert_eq!(
+                reparsed, *expected,
+                "canonical {canonical:?} for {expected:?} re-parses to {reparsed:?}"
+            );
+        }
     }
 }
