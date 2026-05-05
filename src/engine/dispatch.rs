@@ -9,6 +9,54 @@ use super::Engine;
 use crate::arena::ContextStack;
 use crate::{CompiledNode, Error, Result};
 
+/// Build the dispatch match. Splits the ~50 `BuiltinOperator` arms into
+/// two regular shapes plus a tail of irregular arms so the bulk of the
+/// dispatch is one tabular invocation:
+///
+/// - `simple [ Op => fn, ... ]` — `fn(args, ctx, engine, arena)`.
+/// - `iter   [ Op => fn, ... ]` — `fn(args, *iter_arg_kind, ctx, engine, arena)`,
+///   for ops that consume the cached iterator-input classification.
+/// - `other  { pat => expr, ... }` — verbatim arms (compiled `Var` /
+///   `Exists` / `Missing` / structured-object / div-or-mod / unary-math,
+///   etc.); pasted in front of the generated arms.
+///
+/// Per-arm `#[cfg(...)]` attributes attach to each `Op => fn` line.
+/// Arm ordering (other → simple → iter) doesn't affect codegen — the heavy
+/// `bumpalo::Vec`-building cases live in `#[inline(never)]` helpers, so
+/// the dispatch's stack frame is sized for the small/common arms regardless.
+macro_rules! dispatch {
+    (
+        node: $node:expr,
+        ctx: $ctx:expr,
+        engine: $engine:expr,
+        arena: $arena:expr,
+        other: { $($others:tt)* },
+        simple: [ $( $(#[$scfg:meta])* $sop:ident => $sfn:path ),* $(,)? ],
+        iter: [ $( $(#[$icfg:meta])* $iop:ident => $ifn:path ),* $(,)? ] $(,)?
+    ) => {
+        match $node {
+            $($others)*
+            $(
+                $(#[$scfg])*
+                CompiledNode::BuiltinOperator {
+                    opcode: crate::OpCode::$sop,
+                    args,
+                    ..
+                } => $sfn(args, $ctx, $engine, $arena),
+            )*
+            $(
+                $(#[$icfg])*
+                CompiledNode::BuiltinOperator {
+                    opcode: crate::OpCode::$iop,
+                    args,
+                    iter_arg_kind,
+                    ..
+                } => $ifn(args, *iter_arg_kind, $ctx, $engine, $arena),
+            )*
+        }
+    };
+}
+
 /// Inner dispatch — never called directly; reachable only via
 /// `Engine::evaluate_node` which handles the literal fast path,
 /// breadcrumb accumulation, and trace recording.
@@ -24,463 +72,244 @@ pub(super) fn evaluate_node_inner<'a>(
     ctx: &mut ContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::DataValue<'a>> {
-    match node {
-        // Compiled var: full dispatch via the arena helper. Root and
-        // frame data are both arena-resident `DataValue`s, so lookups
-        // are zero-copy borrows.
-        CompiledNode::Var {
-            scope_level,
-            segments,
-            reduce_hint,
-            metadata_hint,
-            default_value,
-            ..
-        } => crate::operators::variable::evaluate_compiled_var(
-            crate::operators::variable::CompiledVarSpec {
-                scope_level: *scope_level,
+    dispatch! {
+        node: node,
+        ctx: ctx,
+        engine: engine,
+        arena: arena,
+
+        other: {
+            // Compiled var: full dispatch via the arena helper. Root and
+            // frame data are both arena-resident `DataValue`s, so lookups
+            // are zero-copy borrows.
+            CompiledNode::Var {
+                scope_level,
                 segments,
-                reduce_hint: *reduce_hint,
-                metadata_hint: *metadata_hint,
-                default_value: default_value.as_deref(),
-            },
-            ctx,
-            engine,
-            arena,
-        ),
+                reduce_hint,
+                metadata_hint,
+                default_value,
+                ..
+            } => crate::operators::variable::evaluate_compiled_var(
+                crate::operators::variable::CompiledVarSpec {
+                    scope_level: *scope_level,
+                    segments,
+                    reduce_hint: *reduce_hint,
+                    metadata_hint: *metadata_hint,
+                    default_value: default_value.as_deref(),
+                },
+                ctx,
+                engine,
+                arena,
+            ),
 
-        // Compiled exists: full dispatch — root scope walks the input
-        // directly, others walk arena frame data. Result is always a
-        // Bool singleton.
-        #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(data) => crate::operators::variable::evaluate_compiled_exists(
-            data.scope_level,
-            &data.segments,
-            ctx,
-            arena,
-        ),
+            // Compiled exists: full dispatch — root scope walks the input
+            // directly, others walk arena frame data. Result is always a
+            // Bool singleton.
+            #[cfg(feature = "ext-control")]
+            CompiledNode::Exists(data) => crate::operators::variable::evaluate_compiled_exists(
+                data.scope_level,
+                &data.segments,
+                ctx,
+                arena,
+            ),
 
-        // Value literal: handled by the outer `evaluate_node`
-        // wrapper before reaching this match.
-        CompiledNode::Value { .. } => unreachable!("literal handled by wrapper"),
+            // Value literal: handled by the outer `evaluate_node` wrapper
+            // before reaching this match.
+            CompiledNode::Value { .. } => unreachable!("literal handled by wrapper"),
 
-        // Raw val/exists operator forms (rare — most are precompiled
-        // to CompiledVar/CompiledExists, but dynamic-path forms remain
-        // as BuiltinOperator). `var` and `val` both arrive here as
-        // OpCode::Val — see `OpCode::FromStr` for the normalization.
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Val,
-            args,
-            ..
-        } => crate::operators::variable::evaluate_val(args, ctx, engine, arena),
-        #[cfg(feature = "ext-control")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Exists,
-            args,
-            ..
-        } => crate::operators::variable::evaluate_exists(args, ctx, engine, arena),
+            // Compiled missing / missing_some — pre-parsed segments.
+            CompiledNode::Missing(data) => {
+                crate::operators::missing::evaluate_compiled_missing(data, ctx, engine, arena)
+            }
+            CompiledNode::MissingSome(data) => {
+                crate::operators::missing::evaluate_compiled_missing_some(data, ctx, engine, arena)
+            }
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Filter,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_filter(args, *iter_arg_kind, ctx, engine, arena),
+            // Divide / Modulo share an impl that takes a discriminator —
+            // can't fit the simple-arm shape so they stay explicit.
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Divide,
+                args,
+                ..
+            } => crate::operators::arithmetic::div_or_mod(
+                args,
+                ctx,
+                engine,
+                arena,
+                crate::operators::arithmetic::DivOp::Divide,
+            ),
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Modulo,
+                args,
+                ..
+            } => crate::operators::arithmetic::div_or_mod(
+                args,
+                ctx,
+                engine,
+                arena,
+                crate::operators::arithmetic::DivOp::Modulo,
+            ),
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Map,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_map(args, *iter_arg_kind, ctx, engine, arena),
+            // Unary math (abs / ceil / floor) — same pattern as div_or_mod.
+            #[cfg(feature = "ext-math")]
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Abs,
+                args,
+                ..
+            } => crate::operators::arithmetic::unary_math(
+                args,
+                ctx,
+                engine,
+                arena,
+                crate::operators::arithmetic::UnaryMathOp::Abs,
+            ),
+            #[cfg(feature = "ext-math")]
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Ceil,
+                args,
+                ..
+            } => crate::operators::arithmetic::unary_math(
+                args,
+                ctx,
+                engine,
+                arena,
+                crate::operators::arithmetic::UnaryMathOp::Ceil,
+            ),
+            #[cfg(feature = "ext-math")]
+            CompiledNode::BuiltinOperator {
+                opcode: crate::OpCode::Floor,
+                args,
+                ..
+            } => crate::operators::arithmetic::unary_math(
+                args,
+                ctx,
+                engine,
+                arena,
+                crate::operators::arithmetic::UnaryMathOp::Floor,
+            ),
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::All,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_all(args, *iter_arg_kind, ctx, engine, arena),
+            // CompiledThrow — constant-folded error literal.
+            #[cfg(feature = "error-handling")]
+            CompiledNode::Throw(data) => Err(Error::thrown(data.error.clone())),
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Some,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_some(args, *iter_arg_kind, ctx, engine, arena),
+            // Out-of-line — bumpalo::Vec construction would otherwise force
+            // a large stack frame on every dispatch arm via worst-case
+            // spill sizing. See the comments on the helpers below.
+            #[cfg(feature = "preserve")]
+            CompiledNode::StructuredObject(data) => {
+                evaluate_structured_object(data, ctx, engine, arena)
+            }
+            CompiledNode::Array { nodes, .. } => evaluate_array_literal(nodes, ctx, engine, arena),
+            CompiledNode::CustomOperator(data) => evaluate_custom_operator(data, ctx, engine, arena),
+        },
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::None,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_none(args, *iter_arg_kind, ctx, engine, arena),
+        // Standard `BuiltinOperator { opcode, args, .. } => fn(args, ctx,
+        // engine, arena)` shape.
+        simple: [
+            // Variable / context
+            Val => crate::operators::variable::evaluate_val,
+            #[cfg(feature = "ext-control")]
+            Exists => crate::operators::variable::evaluate_exists,
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Reduce,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_reduce(args, *iter_arg_kind, ctx, engine, arena),
+            // Array / collection
+            Merge => crate::operators::array::evaluate_merge,
+            Missing => crate::operators::missing::evaluate_missing,
+            MissingSome => crate::operators::missing::evaluate_missing_some,
+            #[cfg(feature = "ext-string")]
+            Length => crate::operators::array::evaluate_length,
+            #[cfg(feature = "ext-array")]
+            Slice => crate::operators::array::evaluate_slice,
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Merge,
-            args,
-            ..
-        } => crate::operators::array::evaluate_merge(args, ctx, engine, arena),
+            // Arithmetic (binary)
+            Add => crate::operators::arithmetic::evaluate_add,
+            Multiply => crate::operators::arithmetic::evaluate_multiply,
+            Subtract => crate::operators::arithmetic::evaluate_subtract,
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Missing,
-            args,
-            ..
-        } => crate::operators::missing::evaluate_missing(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::MissingSome,
-            args,
-            ..
-        } => crate::operators::missing::evaluate_missing_some(args, ctx, engine, arena),
-        CompiledNode::Missing(data) => {
-            crate::operators::missing::evaluate_compiled_missing(data, ctx, engine, arena)
-        }
-        CompiledNode::MissingSome(data) => {
-            crate::operators::missing::evaluate_compiled_missing_some(data, ctx, engine, arena)
-        }
+            // Comparison
+            Equals => crate::operators::comparison::evaluate_equals,
+            StrictEquals => crate::operators::comparison::evaluate_strict_equals,
+            NotEquals => crate::operators::comparison::evaluate_not_equals,
+            StrictNotEquals => crate::operators::comparison::evaluate_strict_not_equals,
+            GreaterThan => crate::operators::comparison::evaluate_greater_than,
+            GreaterThanEqual => crate::operators::comparison::evaluate_greater_than_equal,
+            LessThan => crate::operators::comparison::evaluate_less_than,
+            LessThanEqual => crate::operators::comparison::evaluate_less_than_equal,
 
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Length,
-            args,
-            ..
-        } => crate::operators::array::evaluate_length(args, ctx, engine, arena),
+            // Logical
+            Not => crate::operators::logical::evaluate_not,
+            DoubleNot => crate::operators::logical::evaluate_double_not,
+            And => crate::operators::logical::evaluate_and,
+            Or => crate::operators::logical::evaluate_or,
 
-        #[cfg(feature = "ext-array")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Sort,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::array::evaluate_sort(args, *iter_arg_kind, ctx, engine, arena),
+            // Control. `if` and `?:` both arrive as OpCode::If — see
+            // `OpCode::FromStr`. `evaluate_if` handles ternary identically.
+            If => crate::operators::control::evaluate_if,
+            #[cfg(feature = "ext-control")]
+            Coalesce => crate::operators::control::evaluate_coalesce,
+            #[cfg(feature = "ext-control")]
+            Switch => crate::operators::control::evaluate_switch,
 
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Max,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::arithmetic::evaluate_max(args, *iter_arg_kind, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Min,
-            args,
-            iter_arg_kind,
-            ..
-        } => crate::operators::arithmetic::evaluate_min(args, *iter_arg_kind, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Add,
-            args,
-            ..
-        } => crate::operators::arithmetic::evaluate_add(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Multiply,
-            args,
-            ..
-        } => crate::operators::arithmetic::evaluate_multiply(args, ctx, engine, arena),
+            // String
+            Cat => crate::operators::string::evaluate_cat,
+            Substr => crate::operators::string::evaluate_substr,
+            In => crate::operators::string::evaluate_in,
+            #[cfg(feature = "ext-string")]
+            StartsWith => crate::operators::string::evaluate_starts_with,
+            #[cfg(feature = "ext-string")]
+            EndsWith => crate::operators::string::evaluate_ends_with,
+            #[cfg(feature = "ext-string")]
+            Upper => crate::operators::string::evaluate_upper,
+            #[cfg(feature = "ext-string")]
+            Lower => crate::operators::string::evaluate_lower,
+            #[cfg(feature = "ext-string")]
+            Trim => crate::operators::string::evaluate_trim,
+            #[cfg(feature = "ext-string")]
+            Split => crate::operators::string::evaluate_split,
 
-        // Comparison
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Equals,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_equals(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::StrictEquals,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_strict_equals(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::NotEquals,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_not_equals(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::StrictNotEquals,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_strict_not_equals(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::GreaterThan,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_greater_than(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::GreaterThanEqual,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_greater_than_equal(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::LessThan,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_less_than(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::LessThanEqual,
-            args,
-            ..
-        } => crate::operators::comparison::evaluate_less_than_equal(args, ctx, engine, arena),
+            // DateTime
+            #[cfg(feature = "datetime")]
+            Datetime => crate::operators::datetime::evaluate_datetime,
+            #[cfg(feature = "datetime")]
+            Timestamp => crate::operators::datetime::evaluate_timestamp,
+            #[cfg(feature = "datetime")]
+            ParseDate => crate::operators::datetime::evaluate_parse_date,
+            #[cfg(feature = "datetime")]
+            FormatDate => crate::operators::datetime::evaluate_format_date,
+            #[cfg(feature = "datetime")]
+            DateDiff => crate::operators::datetime::evaluate_date_diff,
+            #[cfg(feature = "datetime")]
+            Now => crate::operators::datetime::evaluate_now,
 
-        // Logical
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Not,
-            args,
-            ..
-        } => crate::operators::logical::evaluate_not(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::DoubleNot,
-            args,
-            ..
-        } => crate::operators::logical::evaluate_double_not(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::And,
-            args,
-            ..
-        } => crate::operators::logical::evaluate_and(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Or,
-            args,
-            ..
-        } => crate::operators::logical::evaluate_or(args, ctx, engine, arena),
+            // Type
+            #[cfg(feature = "ext-control")]
+            Type => crate::operators::type_op::evaluate_type,
 
-        // Control. `if` and `?:` both arrive here as OpCode::If — see
-        // `OpCode::FromStr`. `evaluate_if` handles the 3-arg case
-        // identically to a ternary.
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::If,
-            args,
-            ..
-        } => crate::operators::control::evaluate_if(args, ctx, engine, arena),
-        #[cfg(feature = "ext-control")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Coalesce,
-            args,
-            ..
-        } => crate::operators::control::evaluate_coalesce(args, ctx, engine, arena),
-        #[cfg(feature = "ext-control")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Switch,
-            args,
-            ..
-        } => crate::operators::control::evaluate_switch(args, ctx, engine, arena),
+            // Throw / Try
+            #[cfg(feature = "error-handling")]
+            Throw => crate::operators::throw::evaluate_throw,
+            #[cfg(feature = "error-handling")]
+            Try => crate::operators::try_op::evaluate_try,
 
-        // Arithmetic binary forms
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Subtract,
-            args,
-            ..
-        } => crate::operators::arithmetic::evaluate_subtract(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Divide,
-            args,
-            ..
-        } => crate::operators::arithmetic::div_or_mod(
-            args,
-            ctx,
-            engine,
-            arena,
-            crate::operators::arithmetic::DivOp::Divide,
-        ),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Modulo,
-            args,
-            ..
-        } => crate::operators::arithmetic::div_or_mod(
-            args,
-            ctx,
-            engine,
-            arena,
-            crate::operators::arithmetic::DivOp::Modulo,
-        ),
+            // Preserve
+            #[cfg(feature = "preserve")]
+            Preserve => crate::operators::preserve::evaluate_preserve,
+        ],
 
-        // Math (unary)
-        #[cfg(feature = "ext-math")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Abs,
-            args,
-            ..
-        } => crate::operators::arithmetic::unary_math(
-            args,
-            ctx,
-            engine,
-            arena,
-            crate::operators::arithmetic::UnaryMathOp::Abs,
-        ),
-        #[cfg(feature = "ext-math")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Ceil,
-            args,
-            ..
-        } => crate::operators::arithmetic::unary_math(
-            args,
-            ctx,
-            engine,
-            arena,
-            crate::operators::arithmetic::UnaryMathOp::Ceil,
-        ),
-        #[cfg(feature = "ext-math")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Floor,
-            args,
-            ..
-        } => crate::operators::arithmetic::unary_math(
-            args,
-            ctx,
-            engine,
-            arena,
-            crate::operators::arithmetic::UnaryMathOp::Floor,
-        ),
-
-        // String
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Cat,
-            args,
-            ..
-        } => crate::operators::string::evaluate_cat(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Substr,
-            args,
-            ..
-        } => crate::operators::string::evaluate_substr(args, ctx, engine, arena),
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::In,
-            args,
-            ..
-        } => crate::operators::string::evaluate_in(args, ctx, engine, arena),
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::StartsWith,
-            args,
-            ..
-        } => crate::operators::string::evaluate_starts_with(args, ctx, engine, arena),
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::EndsWith,
-            args,
-            ..
-        } => crate::operators::string::evaluate_ends_with(args, ctx, engine, arena),
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Upper,
-            args,
-            ..
-        } => crate::operators::string::evaluate_upper(args, ctx, engine, arena),
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Lower,
-            args,
-            ..
-        } => crate::operators::string::evaluate_lower(args, ctx, engine, arena),
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Trim,
-            args,
-            ..
-        } => crate::operators::string::evaluate_trim(args, ctx, engine, arena),
-        #[cfg(feature = "ext-string")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Split,
-            args,
-            ..
-        } => crate::operators::string::evaluate_split(args, ctx, engine, arena),
-
-        // DateTime
-        #[cfg(feature = "datetime")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Datetime,
-            args,
-            ..
-        } => crate::operators::datetime::evaluate_datetime(args, ctx, engine, arena),
-        #[cfg(feature = "datetime")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Timestamp,
-            args,
-            ..
-        } => crate::operators::datetime::evaluate_timestamp(args, ctx, engine, arena),
-        #[cfg(feature = "datetime")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::ParseDate,
-            args,
-            ..
-        } => crate::operators::datetime::evaluate_parse_date(args, ctx, engine, arena),
-        #[cfg(feature = "datetime")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::FormatDate,
-            args,
-            ..
-        } => crate::operators::datetime::evaluate_format_date(args, ctx, engine, arena),
-        #[cfg(feature = "datetime")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::DateDiff,
-            args,
-            ..
-        } => crate::operators::datetime::evaluate_date_diff(args, ctx, engine, arena),
-        #[cfg(feature = "datetime")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Now,
-            args,
-            ..
-        } => crate::operators::datetime::evaluate_now(args, ctx, engine, arena),
-
-        // Type
-        #[cfg(feature = "ext-control")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Type,
-            args,
-            ..
-        } => crate::operators::type_op::evaluate_type(args, ctx, engine, arena),
-
-        // Throw / Try
-        #[cfg(feature = "error-handling")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Throw,
-            args,
-            ..
-        } => crate::operators::throw::evaluate_throw(args, ctx, engine, arena),
-        #[cfg(feature = "error-handling")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Try,
-            args,
-            ..
-        } => crate::operators::try_op::evaluate_try(args, ctx, engine, arena),
-
-        // Preserve
-        #[cfg(feature = "preserve")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Preserve,
-            args,
-            ..
-        } => crate::operators::preserve::evaluate_preserve(args, ctx, engine, arena),
-
-        // Slice
-        #[cfg(feature = "ext-array")]
-        CompiledNode::BuiltinOperator {
-            opcode: crate::OpCode::Slice,
-            args,
-            ..
-        } => crate::operators::array::evaluate_slice(args, ctx, engine, arena),
-
-        // CompiledThrow — constant-folded error literal.
-        #[cfg(feature = "error-handling")]
-        CompiledNode::Throw(data) => Err(Error::thrown(data.error.clone())),
-
-        // StructuredObject (preserve mode): out-of-line — bumpalo::Vec
-        // construction would otherwise force a large stack frame on every
-        // dispatch arm via worst-case spill sizing.
-        #[cfg(feature = "preserve")]
-        CompiledNode::StructuredObject(data) => {
-            evaluate_structured_object(data, ctx, engine, arena)
-        }
-
-        // Array literal: out-of-line for the same reason as StructuredObject.
-        CompiledNode::Array { nodes, .. } => evaluate_array_literal(nodes, ctx, engine, arena),
-
-        // Custom operator: out-of-line — HashMap lookup + bumpalo::Vec
-        // for args; rare on the hot path.
-        CompiledNode::CustomOperator(data) => evaluate_custom_operator(data, ctx, engine, arena),
+        // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,
+        // *iter_arg_kind, ctx, engine, arena)` shape — operators that
+        // consume the cached iterator-input classification.
+        iter: [
+            Filter => crate::operators::array::evaluate_filter,
+            Map => crate::operators::array::evaluate_map,
+            All => crate::operators::array::evaluate_all,
+            Some => crate::operators::array::evaluate_some,
+            None => crate::operators::array::evaluate_none,
+            Reduce => crate::operators::array::evaluate_reduce,
+            Max => crate::operators::arithmetic::evaluate_max,
+            Min => crate::operators::arithmetic::evaluate_min,
+            #[cfg(feature = "ext-array")]
+            Sort => crate::operators::array::evaluate_sort,
+        ],
     }
 }
 
