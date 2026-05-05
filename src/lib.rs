@@ -83,7 +83,7 @@
 //! repeated parsing overhead, and lets read-through operations like `var`
 //! return zero-copy borrows into the caller's input data.
 
-pub mod arena;
+mod arena;
 mod builder;
 #[cfg(feature = "compat")]
 pub mod compat;
@@ -104,14 +104,15 @@ mod scratch;
 mod trace;
 mod value;
 
-pub use arena::{ContextStack, DataValue};
+pub use arena::{ContextStack, DataValue, data_to_json_string};
 pub use builder::EngineBuilder;
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };
-#[cfg(feature = "datetime")]
-pub use datavalue::{DataDateTime, DataDuration};
-pub use datavalue::{NumberValue, OwnedDataValue};
+/// The `datavalue` crate, re-exported. `datalogic-rs` builds on `datavalue`'s
+/// owned and borrowed value types — accessing them through this module makes
+/// the dependency explicit at the use site.
+pub use datavalue;
 pub use engine::Engine;
 pub use error::{CustomSource, Error, ErrorKind};
 pub use eval_data::IntoEvalData;

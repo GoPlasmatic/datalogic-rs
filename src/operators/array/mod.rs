@@ -37,5 +37,4 @@ pub(crate) use sort::evaluate_sort;
 
 // Iterator-input infrastructure consumed by `arithmetic` (and other crate
 // callers) to compose with array results.
-pub use helpers::FastPredicate;
-pub(crate) use helpers::{IterArgKind, ResolvedInput, resolve_iter_input};
+pub(crate) use helpers::{FastPredicate, IterArgKind, ResolvedInput, resolve_iter_input};

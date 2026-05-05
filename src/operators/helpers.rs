@@ -6,7 +6,7 @@ use datavalue::{NumberValue, OwnedDataValue};
 /// runtime arena-resident form has its own [`crate::arena::truthy_arena`]
 /// in the arena helpers module.
 #[inline]
-pub fn truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bool {
+pub(crate) fn truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bool {
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript | TruthyEvaluator::Python => truthy_js_owned(value),
         TruthyEvaluator::StrictBoolean => match value {
@@ -86,7 +86,7 @@ pub(crate) fn extract_duration(
 /// Checks if args contain the `__invalid_args__` sentinel marker from compilation.
 /// Returns an error if the marker is present, Ok(()) otherwise.
 #[inline]
-pub fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<()> {
+pub(crate) fn check_invalid_args_marker(args: &[CompiledNode]) -> crate::Result<()> {
     if args.len() == 1
         && let CompiledNode::Value { value, .. } = &args[0]
         && let Some(obj) = value.as_object()

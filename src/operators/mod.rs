@@ -24,24 +24,24 @@
 //! During compilation, operator names are converted to `OpCode` variants for fast
 //! runtime dispatch without string comparisons.
 
-pub mod helpers;
+pub(crate) mod helpers;
 
 // Core - always compiled
-pub mod arithmetic;
-pub mod array;
-pub mod comparison;
-pub mod control;
-pub mod logical;
-pub mod missing;
-pub mod string;
-pub mod variable;
+pub(crate) mod arithmetic;
+pub(crate) mod array;
+pub(crate) mod comparison;
+pub(crate) mod control;
+pub(crate) mod logical;
+pub(crate) mod missing;
+pub(crate) mod string;
+pub(crate) mod variable;
 
 // Feature-gated extended operators
 #[cfg(feature = "datetime")]
-pub mod datetime;
+pub(crate) mod datetime;
 #[cfg(feature = "error-handling")]
-pub mod throw;
+pub(crate) mod throw;
 #[cfg(feature = "error-handling")]
-pub mod try_op;
+pub(crate) mod try_op;
 #[cfg(feature = "ext-control")]
-pub mod type_op;
+pub(crate) mod type_op;
