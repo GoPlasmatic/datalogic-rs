@@ -505,9 +505,7 @@ impl<'e> TracedSession<'e> {
                 Err(e)
             }
         };
-        let collector = ctx
-            .detach_tracer()
-            .expect("attach_tracer was called above");
+        let collector = ctx.detach_tracer().expect("attach_tracer was called above");
         TracedRun {
             result,
             steps: collector.into_steps(),

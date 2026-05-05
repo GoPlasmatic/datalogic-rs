@@ -89,8 +89,8 @@ pub(crate) fn populate_lits(node: &mut CompiledNode) {
         // already-populated tree gets a fresh hint matching the cloned
         // args — `Box<[PathSegment]>` and `OwnedDataValue` move on clone,
         // and the cached hint borrows nothing from them anyway.
-        *predicate_hint = crate::operators::array::FastPredicate::try_detect_owned(*opcode, args)
-            .map(Box::new);
+        *predicate_hint =
+            crate::operators::array::FastPredicate::try_detect_owned(*opcode, args).map(Box::new);
         // Cache the iterator-input classification for ops that consume
         // `args[0]` as an iterable. Read by `resolve_iter_input` so the
         // runtime shape match collapses to a byte compare. Other opcodes
