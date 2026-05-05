@@ -2,9 +2,9 @@
 //! optional datetime/duration support.
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
-use datavalue::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use datavalue::NumberValue;
 
 use super::helpers::{
     ArithOp, NanAction, VariadicFoldSpec, alloc_number, coerce_pair_f64, coerce_pair_int,

@@ -93,14 +93,13 @@ All updates flow through `compat.rs` deprecation `note` strings only — the v4 
 - **B5.7** ✅ — `evaluate_throw` switched from `format!("{:?}", ...)` to a stable `value_type_name()` helper returning canonical `"null"`/`"boolean"`/`"number"`/etc.
 - **B5.8** ✅ — Doc-commented the intentional string-substring vs array-strict-equality asymmetry on `evaluate_in`.
 
-### Batch 6 — Operator dedup
+### Batch 6 — Operator dedup + module fold — ✅ resolved (770e054)
 
-Smaller ROI than the P0 dedup work but worth doing once you're already in the file.
-
-- **B6.1** — **Three near-clone integer-fast-path-with-f64-fallback loops.** `arithmetic/basic.rs:404-458` (`one_arg_array_fold`), `arithmetic/basic.rs:285-339` (`subtract_variadic`), `arithmetic/helpers.rs:143-193` (`variadic_fold`). Thread `op.identity_int()` and `op.combine_int / combine_f` into `variadic_fold` and call from all three sites. ~150 lines saved.
-- **B6.2** — **`extract_datetime` / `is_datetime_object` / `extract_duration` / `is_duration_object` overlap.** Hoist the `pairs.iter().any(|(k, _)| *k == "datetime")` test next to `extract_datetime`. *(`operators/helpers.rs:41,65`, `operators/datetime.rs:64,70`)*
-- **B6.3** — **Last 2 `unsafe` pair-value reborrows.** `arena/value/lookup.rs:90,111`. Factor into `pub(crate) unsafe fn arena::reborrow_pair_value(...) -> &'a DataValue<'a>` shared with the helper that already exists in `array/helpers.rs::for_each_iter_object` (P0.6 moved 3 sites there). *(after this, the `unsafe` reborrow pattern lives in exactly one place crate-wide)*
-- **B6.4** — **Datetime sentinel walk duplicated.** `value/mod.rs::owned_to_serde` and `arena/value/conversion.rs::data_to_value` both hand-recurse to wrap the datetime sentinel object. Extract `datetime_sentinel(name, payload) -> Value` once. *(natural fit for B3.6 — fold `value/mod.rs` into `compat.rs` while extracting this helper)*
+- **B6.1** — **DEFERRED.** Three arithmetic fold loops (`variadic_fold`, `subtract_variadic`, `one_arg_array_fold`) differ in int-coercion strategies — `as_i64()` strict vs `try_coerce_to_integer_cfg` permissive. Unifying risks behavior changes around overflow boundaries the test suite may not cover. Slated for a focused follow-up.
+- **B6.2** — SKIPPED. The `is_datetime_object` / `is_duration_object` private helpers in `operators/datetime.rs` are 1-line key probes only used in this file; not worth a helper.
+- **B6.3** ✅ — Single `arena::value::reborrow_arena_value` SAFETY-noted helper replaces 5 open-coded `unsafe { &*(v as *const ...) }` sites (lookup.rs ×2, traversal.rs's local helper, array/helpers.rs::for_each_iter_object, array/reduce.rs::reduce_arena_bridge).
+- **B6.4 + B3.6** ✅ — `src/value/mod.rs` folded into `src/compat.rs` (the only callers were compat-feature-gated anyway). Shared `datetime_sentinel(key, payload) -> Value` helper is now used by both `compat::owned_to_serde` and `arena/value/conversion.rs::data_to_value`. `crate::value::NumberValue` references rewritten to `datavalue::NumberValue` directly.
+- **B3.3** ✅ — `operators/helpers.rs` → `operators/truthy.rs`. Datetime extract helpers (`extract_datetime` / `extract_duration`) moved into `operators/datetime.rs` (datetime-feature-gated together). The `truthy.rs` name now matches its single-purpose content.
 
 ### Batch 7 — Micro-cleanup (P2; opportunistic)
 

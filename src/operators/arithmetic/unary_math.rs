@@ -1,9 +1,9 @@
 //! `abs`, `ceil`, `floor` — unary numeric ops.
 
 use crate::arena::{ContextStack, DataValue, bvec};
-use datavalue::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use datavalue::NumberValue;
 
 use super::helpers::alloc_number;
 

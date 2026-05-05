@@ -14,8 +14,8 @@ use crate::Engine;
 use crate::Result;
 use crate::arena::{DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::NanHandling;
-use datavalue::NumberValue;
 use bumpalo::Bump;
+use datavalue::NumberValue;
 
 /// Result of NaN handling check: what the caller should do with a non-numeric value.
 pub(super) enum NanAction {

@@ -3,9 +3,9 @@
 use crate::arena::{ContextStack, DataValue, bvec};
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
 use crate::opcode::OpCode;
-use datavalue::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use datavalue::NumberValue;
 use std::ops::ControlFlow;
 
 use super::helpers::{

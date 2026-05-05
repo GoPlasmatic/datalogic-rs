@@ -494,10 +494,8 @@ mod tests {
         let root_val = Value::Null;
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
-        let cur: &DataValue =
-            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
-        let acc: &DataValue =
-            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
+        let cur: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
+        let acc: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
         ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
@@ -585,10 +583,8 @@ mod tests {
         }
         assert_eq!(ctx.depth(), 0);
 
-        let cur: &DataValue =
-            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
-        let acc: &DataValue =
-            arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
+        let cur: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
+        let acc: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
         {
             let mut g = IterGuard::new(&mut ctx);
             g.step_reduce(cur, acc);

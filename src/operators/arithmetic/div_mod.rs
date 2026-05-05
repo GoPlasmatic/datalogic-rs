@@ -3,9 +3,9 @@
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
 use crate::config::DivisionByZeroHandling;
-use datavalue::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use datavalue::NumberValue;
 
 use super::helpers::alloc_number;
 

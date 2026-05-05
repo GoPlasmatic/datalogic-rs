@@ -236,9 +236,5 @@ fn try_reduce_fast_path<'a>(
             _ => return None,
         };
     }
-    Some(
-        arena.alloc(DataValue::Number(datavalue::NumberValue::from_f64(
-            acc_f,
-        ))),
-    )
+    Some(arena.alloc(DataValue::Number(datavalue::NumberValue::from_f64(acc_f))))
 }
