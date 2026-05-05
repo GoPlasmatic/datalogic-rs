@@ -147,7 +147,7 @@ fn filter_general<'a>(
         let item = src.get(i);
         guard.step_indexed(item, i);
         let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy(keep, engine) {
+        if crate::arena::truthy_arena(keep, engine) {
             results.push(*item);
         }
     }
@@ -195,7 +195,7 @@ fn filter_bridge_object<'a>(
         let key: &'a str = k;
         guard.step_keyed(item_av, i, key);
         let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy(keep, engine) {
+        if crate::arena::truthy_arena(keep, engine) {
             kept.push((key, *item_av));
         }
     }
@@ -220,7 +220,7 @@ fn filter_bridge_array<'a>(
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
         let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy(keep, engine) {
+        if crate::arena::truthy_arena(keep, engine) {
             kept.push(*item_av);
         }
     }

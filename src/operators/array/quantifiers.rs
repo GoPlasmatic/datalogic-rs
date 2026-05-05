@@ -93,7 +93,7 @@ fn evaluate_quantifier<'a>(
         let item = src.get(i);
         guard.step_indexed(item, i);
         let av = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::is_truthy(av, engine) == shape.short_circuit_on {
+        if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
             found_short = true;
             break;
         }
@@ -127,7 +127,7 @@ fn quantifier_arena_bridge<'a>(
                 let key: &'a str = k;
                 guard.step_keyed(item_av, i, key);
                 let av = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-                if crate::arena::is_truthy(av, engine) == shape.short_circuit_on {
+                if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
                     found_short = true;
                     break;
                 }
@@ -145,7 +145,7 @@ fn quantifier_arena_bridge<'a>(
             for (i, item_av) in items.iter().enumerate() {
                 guard.step_indexed(item_av, i);
                 let av = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-                if crate::arena::is_truthy(av, engine) == shape.short_circuit_on {
+                if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
                     found_short = true;
                     break;
                 }

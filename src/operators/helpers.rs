@@ -3,12 +3,12 @@ use crate::config::TruthyEvaluator;
 use datavalue::{NumberValue, OwnedDataValue};
 
 /// Truthiness for an [`OwnedDataValue`] (compile-time literal form). The
-/// runtime arena-resident form has its own [`crate::arena::is_truthy`]
+/// runtime arena-resident form has its own [`crate::arena::truthy_arena`]
 /// in the arena helpers module.
 #[inline]
-pub fn is_truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bool {
+pub fn truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bool {
     match &engine.config().truthy_evaluator {
-        TruthyEvaluator::JavaScript | TruthyEvaluator::Python => is_truthy_owned_js(value),
+        TruthyEvaluator::JavaScript | TruthyEvaluator::Python => truthy_js_owned(value),
         TruthyEvaluator::StrictBoolean => match value {
             OwnedDataValue::Null => false,
             OwnedDataValue::Bool(b) => *b,
@@ -20,7 +20,7 @@ pub fn is_truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bool {
 }
 
 #[inline]
-fn is_truthy_owned_js(value: &OwnedDataValue) -> bool {
+fn truthy_js_owned(value: &OwnedDataValue) -> bool {
     match value {
         OwnedDataValue::Null => false,
         OwnedDataValue::Bool(b) => *b,

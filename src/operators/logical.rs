@@ -1,5 +1,5 @@
 use super::helpers::check_invalid_args_marker;
-use crate::arena::{ContextStack, DataValue, is_truthy};
+use crate::arena::{ContextStack, DataValue, truthy_arena};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
@@ -14,7 +14,7 @@ pub(crate) fn evaluate_not<'a>(
         return Ok(crate::arena::pool::singleton_true());
     }
     let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::pool::singleton_bool(!is_truthy(v, engine)))
+    Ok(crate::arena::pool::singleton_bool(!truthy_arena(v, engine)))
 }
 
 #[inline]
@@ -28,7 +28,7 @@ pub(crate) fn evaluate_bool_cast<'a>(
         return Ok(crate::arena::pool::singleton_false());
     }
     let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::pool::singleton_bool(is_truthy(v, engine)))
+    Ok(crate::arena::pool::singleton_bool(truthy_arena(v, engine)))
 }
 
 #[inline]
@@ -45,7 +45,7 @@ pub(crate) fn evaluate_and<'a>(
     let mut last: &DataValue<'a> = crate::arena::pool::singleton_true();
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;
-        if !is_truthy(v, engine) {
+        if !truthy_arena(v, engine) {
             return Ok(v);
         }
         last = v;
@@ -67,7 +67,7 @@ pub(crate) fn evaluate_or<'a>(
     let mut last: &DataValue<'a> = crate::arena::pool::singleton_false();
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;
-        if is_truthy(v, engine) {
+        if truthy_arena(v, engine) {
             return Ok(v);
         }
         last = v;

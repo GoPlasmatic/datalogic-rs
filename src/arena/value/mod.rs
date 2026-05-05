@@ -21,7 +21,7 @@ pub use conversion::data_to_value;
 pub use conversion::value_to_data;
 pub(crate) use lookup::object_lookup_field;
 pub use strings::data_to_json_string;
-pub(crate) use strings::{data_to_str, is_truthy};
+pub(crate) use strings::{data_to_str, truthy_arena};
 pub(crate) use traversal::apply_path_element;
 pub(crate) use traversal::{
     access_path_str_ref, path_exists_segments, path_exists_str, traverse_segments,
@@ -30,11 +30,11 @@ pub(crate) use traversal::{
 pub use datavalue::DataValue;
 
 /// JavaScript/Python-style default truthiness for a [`DataValue`].
-/// `is_truthy` (config-aware) delegates here for the common
+/// `truthy_arena` (config-aware) delegates here for the common
 /// truthiness modes; operators can call this directly when they need the
 /// default rules unconditionally.
 #[inline]
-pub(crate) fn is_truthy_default(v: &DataValue<'_>) -> bool {
+pub(crate) fn truthy_js_arena(v: &DataValue<'_>) -> bool {
     match v {
         DataValue::Null => false,
         DataValue::Bool(b) => *b,

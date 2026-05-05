@@ -5,7 +5,7 @@ use crate::{CompiledNode, Engine, Result};
 // Arena-mode control operators
 // =============================================================================
 
-use crate::arena::{ContextStack, DataValue, is_truthy};
+use crate::arena::{ContextStack, DataValue, truthy_arena};
 use bumpalo::Bump;
 
 #[inline]
@@ -22,7 +22,7 @@ pub(crate) fn evaluate_if<'a>(
 
     if args.len() == 3 {
         let cond = engine.dispatch_node(&args[0], ctx, arena)?;
-        let idx = if is_truthy(cond, engine) { 1 } else { 2 };
+        let idx = if truthy_arena(cond, engine) { 1 } else { 2 };
         return engine.dispatch_node(&args[idx], ctx, arena);
     }
 
@@ -32,7 +32,7 @@ pub(crate) fn evaluate_if<'a>(
             return engine.dispatch_node(&args[i], ctx, arena);
         }
         let cond = engine.dispatch_node(&args[i], ctx, arena)?;
-        if is_truthy(cond, engine) {
+        if truthy_arena(cond, engine) {
             if i + 1 < args.len() {
                 return engine.dispatch_node(&args[i + 1], ctx, arena);
             } else {

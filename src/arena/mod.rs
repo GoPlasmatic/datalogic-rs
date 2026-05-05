@@ -22,7 +22,7 @@ pub use value::data_to_json_string;
 pub use value::data_to_value;
 #[cfg(feature = "compat")]
 pub use value::value_to_data;
-pub(crate) use value::{coerce_to_number_cfg, data_to_str, is_truthy, try_coerce_to_integer_cfg};
+pub(crate) use value::{coerce_to_number_cfg, data_to_str, truthy_arena, try_coerce_to_integer_cfg};
 
 /// Allocate an empty `bumpalo::collections::Vec` with `cap` reserved slots.
 /// Thin wrapper for the `Vec::with_capacity_in(cap, arena)` boilerplate that

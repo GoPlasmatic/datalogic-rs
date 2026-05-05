@@ -2,7 +2,7 @@
 
 use crate::Engine;
 use crate::node::CompiledNode;
-use crate::operators::helpers::is_truthy_owned;
+use crate::operators::helpers::truthy_owned;
 
 /// Check if a compiled node is a literal value and determine its truthiness.
 /// Returns `Some(true)` / `Some(false)` for static values, `None` for dynamic nodes.
@@ -10,7 +10,7 @@ use crate::operators::helpers::is_truthy_owned;
 /// Uses the engine's configured truthiness evaluator (JavaScript, Python, StrictBoolean, Custom).
 pub fn is_truthy_literal(node: &CompiledNode, engine: &Engine) -> Option<bool> {
     match node {
-        CompiledNode::Value { value, .. } => Some(is_truthy_owned(value, engine)),
+        CompiledNode::Value { value, .. } => Some(truthy_owned(value, engine)),
         _ => None,
     }
 }
