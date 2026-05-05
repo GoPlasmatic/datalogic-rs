@@ -126,13 +126,16 @@ pub struct ContextStack<'a> {
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     /// Mirrors `ContextStack::error_path`.
     error_path: Vec<u32>,
-    /// Optional trace collector, set when this stack drives a traced
-    /// evaluation. Stored as a raw pointer so the stack stays free of an
-    /// extra lifetime parameter; the caller (`evaluate_*_with_trace`) keeps
-    /// a `&mut TraceCollector` live for the entire call, so dereferencing
-    /// the pointer is sound.
+    /// Optional trace collector, owned by this stack while a traced
+    /// evaluation is in flight. The trace driver moves a fresh collector
+    /// in via [`Self::attach_tracer`] before dispatch and pulls it back out
+    /// via [`Self::detach_tracer`] after. Owning (rather than borrowing)
+    /// avoids tying the tracer's lifetime to `'a`, which is constrained by
+    /// the arena reference and so can't accommodate a function-local
+    /// collector. Tracing is a dev-time debugging feature, so the move
+    /// cost is irrelevant.
     #[cfg(feature = "trace")]
-    tracer: Option<std::ptr::NonNull<crate::trace::TraceCollector>>,
+    tracer: Option<crate::trace::TraceCollector>,
 }
 
 impl<'a> ContextStack<'a> {
@@ -158,13 +161,20 @@ impl<'a> ContextStack<'a> {
         Self::new(arena.alloc(av))
     }
 
-    /// Attach a trace collector to this stack. Caller must keep the
-    /// `&mut TraceCollector` live for the duration of the evaluation that
-    /// uses this stack — the stack stores a raw pointer to it.
+    /// Move a tracer into this stack. The trace driver pulls it back out
+    /// via [`Self::detach_tracer`] after dispatch completes.
     #[cfg(feature = "trace")]
     #[inline]
-    pub(crate) fn set_tracer(&mut self, tracer: &mut crate::trace::TraceCollector) {
-        self.tracer = std::ptr::NonNull::new(tracer as *mut _);
+    pub(crate) fn attach_tracer(&mut self, tracer: crate::trace::TraceCollector) {
+        self.tracer = Some(tracer);
+    }
+
+    /// Pull the tracer back out (e.g., after a traced evaluation completes)
+    /// so the driver can extract the collected steps.
+    #[cfg(feature = "trace")]
+    #[inline]
+    pub(crate) fn detach_tracer(&mut self) -> Option<crate::trace::TraceCollector> {
+        self.tracer.take()
     }
 
     /// True iff a tracer has been attached.
@@ -175,20 +185,11 @@ impl<'a> ContextStack<'a> {
     }
 
     /// Run `f` against the attached tracer. No-op if no tracer is set.
-    /// Single SAFETY-noted unsafe site for tracer-pointer dereference; all
-    /// other tracer-touching methods route through this helper.
-    ///
-    /// SAFETY contract: `set_tracer(&mut TraceCollector)` was called by the
-    /// owning evaluate-with-trace driver, which keeps the `&mut` borrow live
-    /// for the full evaluation. No code path on `&mut ContextStack` aliases
-    /// the tracer reference (operators see `&mut ContextStack`, never the
-    /// tracer directly).
     #[cfg(feature = "trace")]
     #[inline]
     fn with_tracer<F: FnOnce(&mut crate::trace::TraceCollector)>(&mut self, f: F) {
-        if let Some(mut ptr) = self.tracer {
-            // SAFETY: see method-level contract above.
-            f(unsafe { ptr.as_mut() });
+        if let Some(tracer) = self.tracer.as_mut() {
+            f(tracer);
         }
     }
 

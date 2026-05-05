@@ -481,19 +481,18 @@ impl<'e> TracedSession<'e> {
         arena: &'a bumpalo::Bump,
     ) -> TracedRun<&'a crate::DataValue<'a>> {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
-        let mut collector = TraceCollector::new();
         let data_ref = match data.into_arena_value(arena) {
             Ok(av) => av,
             Err(e) => {
                 return TracedRun {
                     expression_tree,
-                    steps: collector.into_steps(),
+                    steps: TraceCollector::new().into_steps(),
                     result: Err(e),
                 };
             }
         };
         let mut ctx = crate::arena::ContextStack::new(data_ref);
-        ctx.set_tracer(&mut collector);
+        ctx.attach_tracer(TraceCollector::new());
 
         let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);
         let result = match outcome {
@@ -506,6 +505,9 @@ impl<'e> TracedSession<'e> {
                 Err(e)
             }
         };
+        let collector = ctx
+            .detach_tracer()
+            .expect("attach_tracer was called above");
         TracedRun {
             result,
             steps: collector.into_steps(),

@@ -458,8 +458,15 @@ impl Engine {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(&data, &arena);
         let mut ctx = crate::arena::ContextStack::new(arena.alloc(data_av));
-        ctx.set_tracer(collector);
+        // Move the caller's collector into ctx, leaving a fresh empty
+        // collector in its place; restore the populated one back to the
+        // caller's slot after dispatch.
+        let owned = std::mem::replace(collector, TraceCollector::new());
+        ctx.attach_tracer(owned);
         let result = self.dispatch_node(&compiled.root, &mut ctx, &arena);
+        *collector = ctx
+            .detach_tracer()
+            .expect("attach_tracer was called above");
         match result {
             Ok(av) => {
                 let owned = crate::arena::data_to_value(av);
