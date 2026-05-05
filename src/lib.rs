@@ -117,10 +117,10 @@ pub use eval_input::EvalInput;
 pub use node::Logic;
 pub use path::PathStep;
 pub use session::Session;
-#[cfg(feature = "trace")]
-pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
 #[cfg(all(feature = "trace", feature = "compat"))]
 pub use trace::TracedResult;
+#[cfg(feature = "trace")]
+pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
 #[cfg(feature = "compat")]
 pub use value::{owned_from_serde, owned_to_serde};
 

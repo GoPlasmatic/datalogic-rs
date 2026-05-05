@@ -38,8 +38,12 @@ fn literal_fallback<'a>(
     match value {
         OwnedDataValue::Null => crate::arena::singletons::singleton_null(),
         OwnedDataValue::Bool(b) => crate::arena::singletons::singleton_bool(*b),
-        OwnedDataValue::String(s) if s.is_empty() => crate::arena::singletons::singleton_empty_string(),
-        OwnedDataValue::Array(a) if a.is_empty() => crate::arena::singletons::singleton_empty_array(),
+        OwnedDataValue::String(s) if s.is_empty() => {
+            crate::arena::singletons::singleton_empty_string()
+        }
+        OwnedDataValue::Array(a) if a.is_empty() => {
+            crate::arena::singletons::singleton_empty_array()
+        }
         OwnedDataValue::String(s) => arena.alloc(crate::arena::DataValue::String(s.as_str())),
         _ => arena.alloc(value.to_arena(arena)),
     }

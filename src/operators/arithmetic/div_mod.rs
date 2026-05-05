@@ -145,8 +145,7 @@ fn one_arg_div_mod<'a>(
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::Error::invalid_args());
         }
-        let mut result =
-            coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
+        let mut result = coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
         for elem in &items[1..] {
             let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::Error::nan)?;
             if n == 0.0 {
@@ -191,8 +190,7 @@ fn variadic_div_mod<'a>(
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let mut result =
-        coerce_to_number_cfg(first_av, engine).ok_or_else(crate::Error::nan)?;
+    let mut result = coerce_to_number_cfg(first_av, engine).ok_or_else(crate::Error::nan)?;
     for arg in args.iter().skip(1) {
         let av = engine.dispatch_node(arg, ctx, arena)?;
         let n = coerce_to_number_cfg(av, engine).ok_or_else(crate::Error::nan)?;

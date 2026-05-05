@@ -159,7 +159,9 @@ pub(crate) fn evaluate_starts_with<'a>(
     let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
-    Ok(crate::arena::singletons::singleton_bool(s_str.starts_with(p_str)))
+    Ok(crate::arena::singletons::singleton_bool(
+        s_str.starts_with(p_str),
+    ))
 }
 
 #[cfg(feature = "ext-string")]
@@ -177,7 +179,9 @@ pub(crate) fn evaluate_ends_with<'a>(
     let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
-    Ok(crate::arena::singletons::singleton_bool(s_str.ends_with(p_str)))
+    Ok(crate::arena::singletons::singleton_bool(
+        s_str.ends_with(p_str),
+    ))
 }
 
 #[cfg(feature = "ext-string")]

@@ -465,8 +465,8 @@ fn eval_val_array_path<'a>(
         });
         if let Some(level) = level_opt {
             if arr_len == 2 {
-                let second =
-                    array_get(path_av, 1).unwrap_or_else(|| crate::arena::singletons::singleton_null());
+                let second = array_get(path_av, 1)
+                    .unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let path_str = second.as_str().unwrap_or("");
                 if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
                     return Ok(av);
@@ -476,8 +476,8 @@ fn eval_val_array_path<'a>(
             let mut cur = frame_data_at_level(ctx, level as isize, arena)
                 .ok_or(Error::invalid_context_level(level as isize))?;
             for i in 1..arr_len {
-                let item =
-                    array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
+                let item = array_get(path_av, i)
+                    .unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let Some(seg) = item.as_str() else {
                     return Ok(crate::arena::singletons::singleton_null());
                 };
@@ -493,7 +493,8 @@ fn eval_val_array_path<'a>(
     // Plain path-chain array.
     let mut cur = current_data(ctx, arena);
     for i in 0..arr_len {
-        let elem = array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
+        let elem =
+            array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
         match apply_path_element(cur, elem, arena) {
             Some(next) => cur = next,
             None => return Ok(crate::arena::singletons::singleton_null()),
@@ -607,7 +608,9 @@ pub(crate) fn evaluate_exists<'a>(
     if args.len() == 1 {
         let arg = engine.dispatch_node(&args[0], ctx, arena)?;
         if let Some(s) = arg.as_str() {
-            return Ok(crate::arena::singletons::singleton_bool(object_contains(cur, s)));
+            return Ok(crate::arena::singletons::singleton_bool(object_contains(
+                cur, s,
+            )));
         }
         if let Some(arr_len) = array_len(arg) {
             if arr_len == 0 {
@@ -615,8 +618,8 @@ pub(crate) fn evaluate_exists<'a>(
             }
             let mut walk = cur;
             for i in 0..arr_len {
-                let elem = array_get(arg, i)
-                    .unwrap_or_else(|| crate::arena::singletons::singleton_null());
+                let elem =
+                    array_get(arg, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let Some(seg) = elem.as_str() else {
                     return Ok(crate::arena::singletons::singleton_false());
                 };

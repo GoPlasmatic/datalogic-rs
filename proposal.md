@@ -69,15 +69,18 @@ All updates flow through `compat.rs` deprecation `note` strings only — the v4 
 - **B3.9** ✅ — `bvec` moved to `arena/util.rs`.
 - **B3.10** ✅ — `arena/pool.rs` simplified to `arena/singletons.rs` (the test-only `BumpGuard` slot-pool had no production callers and went with it; 3 BumpGuard unit tests deleted with the struct).
 
-### Batch 4 — Doc + dead-code cleanup
+### Batch 4 — Doc + dead-code cleanup — ✅ resolved (70ebc61)
 
-Cosmetic but cheap. Single-commit batch.
+- **B4.1** ✅ — Replaced stale `OpCode::evaluate_direct` mention with a pointer to `engine::dispatch::dispatch_node_inner`. *(`opcode.rs:12`)*
+- **B4.2** ✅ — Trimmed duplicate intro doc on `Engine`; one-line pointer to crate-level docs. *(`engine/mod.rs:13`)*
+- **B4.3** ⚠️ — REVERTED. Gating `preserve_structure()` on the feature broke an unconditional caller in `compile/mod.rs`. Kept the method always-available; doc tightened to state explicitly that it returns `false` off-feature.
+- **B4.4** ✅ — `Logic::static_arena` → `_static_arena`; dropped `#[allow(dead_code)]`. The underscore prefix carries the same intent natively.
+- **B4.5** ✅ — `MetadataHint`, `ReduceHint`, `PathSegment`, `CompiledNode` and 6 sibling structs in `node.rs` demoted to `pub(crate)`. `Logic::root` field, `Logic::new` constructor, and `ExpressionNode::build_from_compiled` likewise tightened to satisfy the visibility-mismatch lint.
 
-- **B4.1** — **`OpCode::evaluate_direct` documented but doesn't exist.** Stale doc shipping fictional API. Replace with a pointer to `engine/dispatch.rs::dispatch_node_inner`. *(`opcode.rs:12`)*
-- **B4.2** — **Duplicate intro doc** on `lib.rs` and `Engine`. Keep crate-level only. *(`lib.rs:1-84`, `engine/mod.rs:13-37`)*
-- **B4.3** — **`Engine::preserve_structure()` returns false off-feature.** Misleading without the feature. Gate the *method* on `#[cfg(feature = "preserve")]`, not just the body. *(`engine/mod.rs:169-178`)*
-- **B4.4** — **`Logic`'s `static_arena` `#[allow(dead_code)]` + four-line justification.** Rename field to `_static_arena` and drop the allow. *(`node.rs:701-704`)*
-- **B4.5** — **`MetadataHint` / `ReduceHint` `pub` enums** while only `pub(crate) use`-d at the root. Change definitions to `pub(crate) enum`. *(`node.rs:166-189`)*
+**`#[allow(...)]` audit (in addition to B4 items):**
+- Removed `#[allow(unused_imports)]` from `lib.rs:131` — the imports were genuinely unused; trimmed the re-export.
+- Removed `#[allow(dead_code)]` from `Logic::_static_arena` (B4.4).
+- Kept `#![allow(deprecated)]` in `compat.rs` (module-wide — the module *defines* deprecated v4 names) and in 7 test files that exercise `LegacyApi`. All load-bearing.
 
 ### Batch 5 — Internal cleanup
 

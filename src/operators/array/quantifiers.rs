@@ -117,13 +117,20 @@ fn quantifier_arena_bridge<'a>(
                 return Ok(singleton_bool(shape.empty_result));
             }
             let mut found_short = false;
-            for_each_iter_object(pairs, predicate, ctx, engine, arena, |_, _item, _key, av| {
-                if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
-                    found_short = true;
-                    return Ok(ControlFlow::Break(()));
-                }
-                Ok(ControlFlow::Continue(()))
-            })?;
+            for_each_iter_object(
+                pairs,
+                predicate,
+                ctx,
+                engine,
+                arena,
+                |_, _item, _key, av| {
+                    if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
+                        found_short = true;
+                        return Ok(ControlFlow::Break(()));
+                    }
+                    Ok(ControlFlow::Continue(()))
+                },
+            )?;
             Ok(singleton_bool(shape.finalize(found_short)))
         }
         DataValue::Array(items) => {

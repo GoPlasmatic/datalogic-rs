@@ -135,4 +135,3 @@ pub(crate) fn singleton_type_name<'a>(name: &'static str) -> &'a DataValue<'a> {
         _ => &SINGLETON_NULL,
     }
 }
-

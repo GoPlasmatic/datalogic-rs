@@ -150,5 +150,4 @@ impl EvaluationConfig {
             ..Default::default()
         }
     }
-
 }

@@ -40,8 +40,8 @@
 
 use chrono::Utc;
 
-use datavalue::{DataDateTime, DataDuration};
 use crate::{CompiledNode, Engine, Error, Result};
+use datavalue::{DataDateTime, DataDuration};
 
 // =============================================================================
 // Datetime operators.

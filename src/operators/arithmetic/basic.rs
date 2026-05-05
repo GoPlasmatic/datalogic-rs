@@ -217,8 +217,7 @@ fn subtract_one_arg<'a>(
         if items.is_empty() {
             return Err(crate::Error::invalid_args());
         }
-        let mut result =
-            coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
+        let mut result = coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
         for elem in &items[1..] {
             let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::Error::nan)?;
             result -= n;

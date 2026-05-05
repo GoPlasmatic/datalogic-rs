@@ -14,7 +14,9 @@ pub(crate) fn evaluate_not<'a>(
         return Ok(crate::arena::singletons::singleton_true());
     }
     let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::singletons::singleton_bool(!truthy_arena(v, engine)))
+    Ok(crate::arena::singletons::singleton_bool(!truthy_arena(
+        v, engine,
+    )))
 }
 
 #[inline]
@@ -28,7 +30,9 @@ pub(crate) fn evaluate_bool_cast<'a>(
         return Ok(crate::arena::singletons::singleton_false());
     }
     let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::singletons::singleton_bool(truthy_arena(v, engine)))
+    Ok(crate::arena::singletons::singleton_bool(truthy_arena(
+        v, engine,
+    )))
 }
 
 #[inline]

@@ -231,11 +231,7 @@ impl OrdOp {
 
     #[cfg(feature = "datetime")]
     #[inline]
-    fn apply_datetime(
-        self,
-        l: &datavalue::DataDateTime,
-        r: &datavalue::DataDateTime,
-    ) -> bool {
+    fn apply_datetime(self, l: &datavalue::DataDateTime, r: &datavalue::DataDateTime) -> bool {
         match self {
             OrdOp::Gt => l > r,
             OrdOp::Gte => l >= r,
@@ -246,11 +242,7 @@ impl OrdOp {
 
     #[cfg(feature = "datetime")]
     #[inline]
-    fn apply_duration(
-        self,
-        l: &datavalue::DataDuration,
-        r: &datavalue::DataDuration,
-    ) -> bool {
+    fn apply_duration(self, l: &datavalue::DataDuration, r: &datavalue::DataDuration) -> bool {
         match self {
             OrdOp::Gt => l > r,
             OrdOp::Gte => l >= r,

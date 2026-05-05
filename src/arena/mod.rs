@@ -19,8 +19,8 @@ pub use context::ContextStack;
 pub(crate) use context::IterGuard;
 pub(crate) use util::bvec;
 pub use value::{DataValue, data_to_json_string};
-#[cfg(feature = "compat")]
-pub(crate) use value::{data_to_value, value_to_data};
 pub(crate) use value::{
     coerce_to_number_cfg, data_to_str, truthy_arena, try_coerce_to_integer_cfg,
 };
+#[cfg(feature = "compat")]
+pub(crate) use value::{data_to_value, value_to_data};
