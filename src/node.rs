@@ -18,43 +18,24 @@ use datavalue::OwnedDataValue;
 /// `Some(ctx.next_id())` (real) and `SYNTHETIC_ID` (synthetic).
 pub(crate) type NodeId = Option<NonZeroU32>;
 
-/// Pre-build a `DataValue<'static>` for primitive literals that don't
-/// require additional storage (Numbers — inline `NumberValue`). Used at
-/// `CompiledNode::Value` construction time so the arena dispatch hot path
-/// can return a borrow without re-arena work for the most common
-/// primitive case. Other literal shapes (Null/Bool/String/Array/Object)
-/// are populated post-compile by [`populate_lits`] using the
-/// per-`Logic` static arena.
+/// Pre-build a `DataValue<'static>` for every literal whose payload either
+/// fits inline (Null, Bool, Number) or borrows static slices (empty string,
+/// empty array, empty object). Non-empty Strings/Arrays/Objects can't be
+/// pre-built without either external self-cell crates or transmute-based
+/// self-reference, so they fall through to `literal_fallback` at dispatch
+/// time and pay one bumpalo alloc (string) or a deep-convert pass
+/// (non-empty array/object) per evaluation.
 #[inline]
 fn precompute_lit(value: &OwnedDataValue) -> Option<Box<DataValue<'static>>> {
     match value {
+        OwnedDataValue::Null => Some(Box::new(DataValue::Null)),
+        OwnedDataValue::Bool(b) => Some(Box::new(DataValue::Bool(*b))),
         OwnedDataValue::Number(n) => Some(Box::new(DataValue::Number(*n))),
+        OwnedDataValue::String(s) if s.is_empty() => Some(Box::new(DataValue::String(""))),
+        OwnedDataValue::Array(a) if a.is_empty() => Some(Box::new(DataValue::Array(&[]))),
+        OwnedDataValue::Object(o) if o.is_empty() => Some(Box::new(DataValue::Object(&[]))),
         _ => None,
     }
-}
-
-/// Build an `DataValue<'a>` from an [`OwnedDataValue`] using the supplied
-/// arena, then transmute the lifetime to `'static`. Used by the post-compile
-/// populate pass: the resulting `'static` claim is upheld by the caller
-/// owning the arena alongside the references inside the same struct
-/// ([`Logic`]).
-///
-/// # Safety
-///
-/// The returned `DataValue<'static>` borrows into `arena`. The caller must
-/// ensure `arena` outlives every read of the returned value. In practice
-/// this is upheld by storing the arena and the result in the same owning
-/// struct (`Logic`) — the references can be accessed only through
-/// `&Logic`, which keeps the arena alive for the access.
-#[inline]
-unsafe fn build_static_arena_value(
-    value: &OwnedDataValue,
-    arena: &bumpalo::Bump,
-) -> DataValue<'static> {
-    let av = value.to_arena(arena);
-    // SAFETY: caller guarantees `arena` lives at least as long as any read of
-    // the returned `'static` value. Layout-identical lifetime cast.
-    unsafe { core::mem::transmute::<DataValue<'_>, DataValue<'static>>(av) }
 }
 
 /// Opcodes that consume `args[0]` as an iterator input via
@@ -82,71 +63,44 @@ fn iterates_args0(opcode: OpCode) -> bool {
     )
 }
 
-/// Walk the compiled tree and populate `lit` for every literal whose
-/// `lit` is currently `None` — this covers Null, Bool, String, Array,
-/// and Object literals that [`precompute_lit`] left out at
-/// construction time. Allocations land in the supplied `arena`, which must
-/// be moved into the owning [`Logic`] alongside the modified tree.
+/// Walk the compiled tree and cache per-operator analysis results
+/// (`predicate_hint`, `iter_arg_kind`) onto every `BuiltinOperator` node.
+/// Pure compile-time bookkeeping — no arena, no unsafe.
 ///
-/// Also populates `CompiledThrowData::precomputed_error` so the error-handling
-/// path can return arena-native values without per-throw `value_to_data`.
-///
-/// # Safety
-///
-/// The populated `lit` / `precomputed_error` values borrow from `arena`
-/// despite their `'static` type. The caller must keep `arena` alive at
-/// least as long as the modified tree is accessible. See
-/// [`build_static_arena_value`] for the underlying invariant.
-pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bump) {
-    // Recurse into AST children first so per-variant local work below sees
-    // any populated `lit` / `precomputed_error` already in place.
-    node.visit_children_mut(&mut |child| unsafe { populate_lits(child, arena) });
+/// Non-trivial literals (non-empty Strings/Arrays/Objects) are NOT
+/// pre-allocated; they fall through to `literal_fallback` at dispatch time.
+/// Trivial literals (Null/Bool/Number/empty primitives) are handled by
+/// [`precompute_lit`] at node construction.
+pub(crate) fn populate_lits(node: &mut CompiledNode) {
+    node.visit_children_mut(&mut populate_lits);
 
-    // Per-variant local work that doesn't recurse.
-    match node {
-        CompiledNode::Value { value, lit, .. } => {
-            if lit.is_none() {
-                let av = unsafe { build_static_arena_value(value, arena) };
-                *lit = Some(Box::new(av));
-            }
-        }
-        CompiledNode::BuiltinOperator {
-            opcode,
-            args,
-            predicate_hint,
-            iter_arg_kind,
-            ..
-        } => {
-            // Cache the fast-predicate detection result so quantifier/filter
-            // operators consult `predicate_hint` instead of re-running the
-            // structural detection on every iteration. Re-derive on every
-            // call (rather than guarding with `is_none`) so a clone of an
-            // already-populated tree gets a fresh hint matching the cloned
-            // args — `Box<[PathSegment]>` and `OwnedDataValue` move on clone,
-            // and the cached hint borrows nothing from them anyway.
-            *predicate_hint =
-                crate::operators::array::FastPredicate::try_detect_owned(*opcode, args)
-                    .map(Box::new);
-            // Cache the iterator-input classification for ops that consume
-            // `args[0]` as an iterable. Read by `resolve_iter_input` so the
-            // runtime shape match collapses to a byte compare. Other opcodes
-            // keep the default `General` (the populate pass overwrites on
-            // every clone).
-            *iter_arg_kind = if iterates_args0(*opcode) && !args.is_empty() {
-                crate::operators::array::IterArgKind::classify(&args[0])
-            } else {
-                crate::operators::array::IterArgKind::General
-            };
-        }
-        #[cfg(feature = "error-handling")]
-        CompiledNode::Throw(data) => {
-            if data.precomputed_error.is_none() {
-                let av = unsafe { build_static_arena_value(&data.error, arena) };
-                data.precomputed_error = Some(Box::new(av));
-            }
-        }
-        // No local work — recursion above handled all children.
-        _ => {}
+    if let CompiledNode::BuiltinOperator {
+        opcode,
+        args,
+        predicate_hint,
+        iter_arg_kind,
+        ..
+    } = node
+    {
+        // Cache the fast-predicate detection result so quantifier/filter
+        // operators consult `predicate_hint` instead of re-running the
+        // structural detection on every iteration. Re-derive on every
+        // call (rather than guarding with `is_none`) so a clone of an
+        // already-populated tree gets a fresh hint matching the cloned
+        // args — `Box<[PathSegment]>` and `OwnedDataValue` move on clone,
+        // and the cached hint borrows nothing from them anyway.
+        *predicate_hint = crate::operators::array::FastPredicate::try_detect_owned(*opcode, args)
+            .map(Box::new);
+        // Cache the iterator-input classification for ops that consume
+        // `args[0]` as an iterable. Read by `resolve_iter_input` so the
+        // runtime shape match collapses to a byte compare. Other opcodes
+        // keep the default `General` (the populate pass overwrites on
+        // every clone).
+        *iter_arg_kind = if iterates_args0(*opcode) && !args.is_empty() {
+            crate::operators::array::IterArgKind::classify(&args[0])
+        } else {
+            crate::operators::array::IterArgKind::General
+        };
     }
 }
 
@@ -273,12 +227,6 @@ pub(crate) struct CompiledMissingSomeData {
 pub(crate) struct CompiledThrowData {
     pub id: NodeId,
     pub error: OwnedDataValue,
-    /// Arena-resident mirror of `error` populated post-compile by
-    /// [`populate_lits`]. The borrowed lifetime is `'static` only
-    /// because the backing storage lives in [`Logic::static_arena`],
-    /// which is moved into the same owning struct.
-    #[doc(hidden)]
-    pub(crate) precomputed_error: Option<Box<DataValue<'static>>>,
 }
 
 /// A compiled node representing a single operation or value in the logic tree.
@@ -690,39 +638,13 @@ impl CompileCtx {
 /// ```
 pub struct Logic {
     /// The root node of the compiled logic tree.
-    ///
-    /// Some `CompiledNode::Value` and `CompiledThrowData` nodes inside this
-    /// tree carry `'static`-typed arena references that actually borrow from
-    /// [`Self::static_arena`]. This is only sound because both fields are
-    /// owned together by the same struct; never mutate `static_arena` after
-    /// construction, and never extract `root` out of `Self`.
     pub(crate) root: CompiledNode,
     /// Conservative upper bound on the static portion of arena allocations
     /// this rule will need (literals, structured-object skeletons, etc.).
     /// Used to size the per-call `Bump` so the first chunk is large enough.
     /// `pub(crate)` — internal arena infrastructure.
     pub(crate) arena_static_bytes: usize,
-    /// Per-`Logic` arena that backs `lit` storage on every
-    /// literal `CompiledNode::Value` and `CompiledThrowData::precomputed_error`
-    /// inside `root`. Allocated and populated once during construction; never
-    /// mutated afterward, which is what makes the [`Sync`] impl below sound
-    /// despite `bumpalo::Bump` itself being `!Sync` (its allocation methods
-    /// take `&self` and use interior mutability).
-    ///
-    /// Field is held purely to keep its allocations alive — the references
-    /// into it live inside `root`. The leading underscore tells the dead-code
-    /// lint that this is intentional.
-    _static_arena: bumpalo::Bump,
 }
-
-// SAFETY: `bumpalo::Bump` is `!Sync` because allocation methods like
-// `Bump::alloc` take `&self` and mutate internal chunk state. `Logic`
-// only ever allocates into `static_arena` during construction (see
-// [`Logic::new`]). After construction, no method on `&Logic`
-// reaches into `static_arena` — the arena is read-only via the existing
-// `&'static DataValue<'static>` references stored in `root`. Concurrent
-// `&Logic` readers therefore never race on `Bump`'s internal cells.
-unsafe impl Sync for Logic {}
 
 impl std::fmt::Debug for Logic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -736,30 +658,21 @@ impl std::fmt::Debug for Logic {
 impl Logic {
     /// Creates a new compiled logic from a root node.
     ///
-    /// Allocates the per-`Logic` static arena, sized to the
-    /// conservative estimate, and runs the post-compile populate pass to
-    /// fill in `lit` for every literal node and `precomputed_error` on
-    /// throw nodes. After this call, the arena is logically frozen.
+    /// Caches per-operator analysis results onto every `BuiltinOperator`
+    /// node. Trivial literals (Null/Bool/Number/empty) are pre-built by
+    /// [`precompute_lit`] at construction; non-trivial literals
+    /// (non-empty Strings/Arrays/Objects) fall through to `literal_fallback`
+    /// at dispatch time.
     ///
     /// # Arguments
     ///
     /// * `root` - The root node of the compiled logic tree
     pub(crate) fn new(mut root: CompiledNode) -> Self {
         let arena_static_bytes = estimate_arena_static_bytes(&root);
-        let static_arena = bumpalo::Bump::with_capacity(arena_static_bytes);
-        // SAFETY: `static_arena` is moved into `Self` together with `root`.
-        // The `'static`-typed references that `populate_lits` plants
-        // inside `root` actually borrow from `static_arena`; both are owned
-        // by the same struct, so the references stay valid for as long as
-        // `Self` is accessible. After this call, nothing else allocates into
-        // `static_arena`, satisfying the [`Sync`] invariant above.
-        unsafe {
-            populate_lits(&mut root, &static_arena);
-        }
+        populate_lits(&mut root);
         Self {
             root,
             arena_static_bytes,
-            _static_arena: static_arena,
         }
     }
 

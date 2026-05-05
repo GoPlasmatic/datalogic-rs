@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! # datalogic-rs
 //!
 //! A high-performance, thread-safe Rust implementation of JSONLogic.

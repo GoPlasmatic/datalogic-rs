@@ -27,9 +27,12 @@ mod dispatch;
 /// Cold fallback for `CompiledNode::Value { lit: None, .. }` — only
 /// reached by ad-hoc `synthetic_value` wrappers (test helpers, trace nodes
 /// built outside `Logic::new`). Outlined so the inliner doesn't
-/// expand it into the hot `dispatch_node` literal arm.
-#[cold]
-#[inline(never)]
+/// Convert an `OwnedDataValue` to an arena-resident `DataValue` reference.
+/// Trivial cases (Null, Bool, empties) hit shared singletons with no
+/// allocation; non-empty Strings allocate a single `DataValue` wrapper into
+/// the per-call arena (the `&str` is borrowed from the owned source);
+/// non-empty Arrays/Objects deep-convert via `value.to_arena`.
+#[inline]
 fn literal_fallback<'a>(
     value: &'a datavalue::OwnedDataValue,
     arena: &'a bumpalo::Bump,
@@ -43,6 +46,9 @@ fn literal_fallback<'a>(
         }
         OwnedDataValue::Array(a) if a.is_empty() => {
             crate::arena::singletons::singleton_empty_array()
+        }
+        OwnedDataValue::Object(o) if o.is_empty() => {
+            crate::arena::singletons::singleton_empty_object()
         }
         OwnedDataValue::String(s) => arena.alloc(crate::arena::DataValue::String(s.as_str())),
         _ => arena.alloc(value.to_arena(arena)),
@@ -346,20 +352,16 @@ impl Engine {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
         if let CompiledNode::Value { value, lit, .. } = node {
-            // Compiled-tree literals always have `lit` populated by
-            // `populate_lits` (run during `Logic::new`), so
-            // this branch covers every literal in any finalized rule.
-            // DataValue is covariant in its lifetime, so
-            // `&'a DataValue<'static>` satisfies `&'a DataValue<'a>`
-            // without unsafe.
+            // Trivial literals (Null/Bool/Number/empty primitives) are
+            // pre-built `DataValue<'static>` by `precompute_lit` at node
+            // construction; covariance lets `&'a DataValue<'static>`
+            // satisfy `&'a DataValue<'a>` directly.
             if let Some(av) = lit {
                 return Ok(av);
             }
-            // Fallback for nodes built outside the compile pipeline (test
-            // helpers in `trace.rs`, ad-hoc `synthetic_value` wrappers that
-            // never went through `Logic::new`). Outlined + cold so
-            // the literal fast path stays a single load+branch in the
-            // dispatched dominant case.
+            // Non-trivial literals (non-empty Strings/Arrays/Objects) and
+            // synthetic nodes built outside the compile pipeline fall
+            // through to per-call arena allocation here.
             return Ok(literal_fallback(value, arena));
         }
 
