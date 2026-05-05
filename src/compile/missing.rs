@@ -32,8 +32,8 @@ pub(super) fn compile_missing(args: Box<[CompiledNode]>, ctx: &mut CompileCtx) -
             _ => CompiledMissingArg::Dynamic(arg),
         })
         .collect();
-    CompiledNode::CompiledMissing(Box::new(CompiledMissingData {
-        id: ctx.next_id(),
+    CompiledNode::Missing(Box::new(CompiledMissingData {
+        id: Some(ctx.next_id()),
         args: mapped.into_boxed_slice(),
     }))
 }
@@ -84,8 +84,8 @@ pub(super) fn compile_missing_some(
         None => CompiledMissingPaths::Static(Box::new([])),
     };
 
-    CompiledNode::CompiledMissingSome(Box::new(CompiledMissingSomeData {
-        id: ctx.next_id(),
+    CompiledNode::MissingSome(Box::new(CompiledMissingSomeData {
+        id: Some(ctx.next_id()),
         min_present,
         paths,
     }))

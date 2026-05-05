@@ -9,7 +9,7 @@ use datavalue::OwnedDataValue;
 
 use crate::node::{CompileCtx, CompiledNode, node_is_static};
 use crate::opcode::OpCode;
-use crate::{DataLogic, Result};
+use crate::{Engine, Result};
 
 use super::missing::{compile_missing, compile_missing_some};
 use super::operator;
@@ -18,7 +18,7 @@ use super::optimize;
 /// Compile a single value into a [`CompiledNode`].
 pub(super) fn compile_node(
     value: &OwnedDataValue,
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -31,7 +31,7 @@ pub(super) fn compile_node(
             compile_operator_invocation(op_name, args_value, engine, preserve_structure, ctx)
         }
         OwnedDataValue::Array(arr) => compile_array(arr, engine, preserve_structure, ctx),
-        _ => Ok(CompiledNode::value_with_id(ctx.next_id(), value.clone())),
+        _ => Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value.clone())),
     }
 }
 
@@ -39,7 +39,7 @@ pub(super) fn compile_node(
 /// becomes a structured-object output template); otherwise an error.
 fn compile_multi_key_object(
     pairs: &[(String, OwnedDataValue)],
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -54,7 +54,7 @@ fn compile_multi_key_object(
             .collect::<Result<Vec<_>>>()?;
         return Ok(CompiledNode::StructuredObject(Box::new(
             crate::node::StructuredObjectData {
-                id: ctx.next_id(),
+                id: Some(ctx.next_id()),
                 fields: fields.into_boxed_slice(),
             },
         )));
@@ -71,7 +71,7 @@ fn compile_multi_key_object(
 fn compile_operator_invocation(
     op_name: &str,
     args_value: &OwnedDataValue,
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -87,7 +87,7 @@ fn compile_operator_invocation(
     let args = compile_args(args_value, engine, preserve_structure, ctx)?;
     Ok(CompiledNode::CustomOperator(Box::new(
         crate::node::CustomOperatorData {
-            id: ctx.next_id(),
+            id: Some(ctx.next_id()),
             name: op_name.to_string(),
             args,
         },
@@ -103,7 +103,7 @@ fn compile_builtin(
     op_name: &str,
     opcode: OpCode,
     args_value: &OwnedDataValue,
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -131,20 +131,23 @@ fn compile_builtin(
     }
 
     let mut node = CompiledNode::BuiltinOperator {
-        id: ctx.next_id(),
+        id: Some(ctx.next_id()),
         opcode,
         args,
         predicate_hint: None,
         iter_arg_kind: crate::operators::array::IterArgKind::General,
     };
 
-    // Optimization + static-fold passes (engine-dependent).
-    if let Some(eng) = engine {
+    // Optimization + static-fold passes (engine-dependent and gated on
+    // the compile context's `skip_fold` flag, which the trace path sets).
+    if let Some(eng) = engine
+        && !ctx.skip_fold()
+    {
         node = optimize::optimize(node, eng);
         if node_is_static(&node)
             && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
         {
-            return Ok(CompiledNode::value_with_id(ctx.next_id(), value));
+            return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
         }
     }
 
@@ -156,7 +159,7 @@ fn compile_builtin(
 fn compile_builtin_args(
     opcode: OpCode,
     args_value: &OwnedDataValue,
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<Box<[CompiledNode]>> {
@@ -165,10 +168,10 @@ fn compile_builtin_args(
         let nodes = match args_value {
             OwnedDataValue::Array(arr) => arr
                 .iter()
-                .map(|v| CompiledNode::value_with_id(ctx.next_id(), v.clone()))
+                .map(|v| CompiledNode::value_with_id(Some(ctx.next_id()), v.clone()))
                 .collect::<Vec<_>>(),
             _ => vec![CompiledNode::value_with_id(
-                ctx.next_id(),
+                Some(ctx.next_id()),
                 args_value.clone(),
             )],
         };
@@ -225,10 +228,10 @@ fn invalid_args_marker(
         ("__invalid_args__".to_string(), OwnedDataValue::Bool(true)),
         ("value".to_string(), args_value.clone()),
     ]);
-    let value_node = CompiledNode::value_with_id(ctx.next_id(), invalid_value);
+    let value_node = CompiledNode::value_with_id(Some(ctx.next_id()), invalid_value);
     let args = vec![value_node].into_boxed_slice();
     CompiledNode::BuiltinOperator {
-        id: ctx.next_id(),
+        id: Some(ctx.next_id()),
         opcode,
         args,
         predicate_hint: None,
@@ -254,9 +257,9 @@ fn try_compile_throw_literal(
     else {
         return None;
     };
-    Some(CompiledNode::CompiledThrow(Box::new(
+    Some(CompiledNode::Throw(Box::new(
         crate::node::CompiledThrowData {
-            id: ctx.next_id(),
+            id: Some(ctx.next_id()),
             error: OwnedDataValue::Object(vec![(
                 "type".to_string(),
                 OwnedDataValue::String(s.clone()),
@@ -274,7 +277,7 @@ fn try_compile_throw_literal(
 fn compile_preserve_unknown(
     op_name: &str,
     args_value: &OwnedDataValue,
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -284,7 +287,7 @@ fn compile_preserve_unknown(
         let args = compile_args(args_value, engine, preserve_structure, ctx)?;
         return Ok(CompiledNode::CustomOperator(Box::new(
             crate::node::CustomOperatorData {
-                id: ctx.next_id(),
+                id: Some(ctx.next_id()),
                 name: op_name.to_string(),
                 args,
             },
@@ -294,7 +297,7 @@ fn compile_preserve_unknown(
     let fields = vec![(op_name.to_string(), compiled_val)].into_boxed_slice();
     Ok(CompiledNode::StructuredObject(Box::new(
         crate::node::StructuredObjectData {
-            id: ctx.next_id(),
+            id: Some(ctx.next_id()),
             fields,
         },
     )))
@@ -304,7 +307,7 @@ fn compile_preserve_unknown(
 /// supplied, the whole array is constant-folded to an [`OwnedDataValue`] literal.
 fn compile_array(
     arr: &[OwnedDataValue],
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -315,15 +318,16 @@ fn compile_array(
 
     let nodes_boxed = nodes.into_boxed_slice();
     let node = CompiledNode::Array {
-        id: ctx.next_id(),
+        id: Some(ctx.next_id()),
         nodes: nodes_boxed,
     };
 
     if let Some(eng) = engine
+        && !ctx.skip_fold()
         && node_is_static(&node)
         && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
     {
-        return Ok(CompiledNode::value_with_id(ctx.next_id(), value));
+        return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
     }
 
     Ok(node)
@@ -333,7 +337,7 @@ fn compile_array(
 /// treated as a single-arg form.
 pub(super) fn compile_args(
     value: &OwnedDataValue,
-    engine: Option<&DataLogic>,
+    engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<Box<[CompiledNode]>> {

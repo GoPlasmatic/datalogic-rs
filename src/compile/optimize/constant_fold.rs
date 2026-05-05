@@ -7,7 +7,7 @@
 //!
 //! Also pre-coerces numeric string literals in arithmetic contexts.
 
-use crate::DataLogic;
+use crate::Engine;
 use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
 use crate::opcode::OpCode;
 use datavalue::{NumberValue, OwnedDataValue};
@@ -16,7 +16,7 @@ use datavalue::{NumberValue, OwnedDataValue};
 ///
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
-pub fn fold(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
+pub fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator { .. } => {
             // First: pre-coerce numeric strings in arithmetic operators
@@ -59,10 +59,10 @@ fn is_commutative(opcode: &OpCode) -> bool {
 /// Try to fold static args in a commutative operator.
 /// E.g., `{"+": [1, {"var":"x"}, 2, 3]}` → `{"+": [6, {"var":"x"}]}`
 fn try_partial_fold(
-    outer_id: u32,
+    outer_id: crate::node::NodeId,
     opcode: OpCode,
     args: &[CompiledNode],
-    engine: &DataLogic,
+    engine: &Engine,
 ) -> Option<CompiledNode> {
     let mut static_args: Vec<CompiledNode> = Vec::new();
     let mut dynamic_args: Vec<CompiledNode> = Vec::new();
@@ -109,7 +109,7 @@ fn try_partial_fold(
 
 /// Try to fold adjacent static strings in cat operator.
 /// `{"cat": ["hello ", "world", {"var": "x"}]}` → `{"cat": ["hello world", {"var": "x"}]}`
-fn try_fold_cat(outer_id: u32, args: &[CompiledNode]) -> Option<CompiledNode> {
+fn try_fold_cat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Option<CompiledNode> {
     let mut new_args: Vec<CompiledNode> = Vec::new();
     let mut current_static_str: Option<String> = None;
     let mut folded_any = false;
@@ -226,10 +226,10 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
 /// thread-local pool, since folding runs during `compile`, not the eval hot
 /// path. Returns `None` on any error (the caller falls back to leaving the
 /// node un-folded).
-pub(crate) fn fold_static_node(node: &CompiledNode, engine: &DataLogic) -> Option<OwnedDataValue> {
+pub(crate) fn fold_static_node(node: &CompiledNode, engine: &Engine) -> Option<OwnedDataValue> {
     let arena = bumpalo::Bump::new();
     let null_root: &crate::arena::DataValue<'_> = arena.alloc(crate::arena::DataValue::Null);
-    let mut ctx = crate::arena::DataContextStack::new(null_root);
+    let mut ctx = crate::arena::ContextStack::new(null_root);
     let av = engine.evaluate_node(node, &mut ctx, &arena).ok()?;
     Some(av.to_owned())
 }
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_partial_fold_add() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::Add,
             vec![val(ov("1")), val(ov("2")), var_node("x"), val(ov("3"))],
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_fold_cat_adjacent() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::Cat,
             vec![val(ov("\"hello \"")), val(ov("\"world\"")), var_node("x")],
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_precoerce_numeric_string() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(OpCode::Add, vec![val(ov("\"5\"")), var_node("x")]);
         let (result, _changed) = fold(node, &engine);
         if let CompiledNode::BuiltinOperator { args, .. } = &result

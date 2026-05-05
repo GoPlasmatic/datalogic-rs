@@ -75,25 +75,23 @@ impl ExpressionNode {
                 expression: Self::structured_to_json_string(&data.fields),
                 children: Self::op_children_from_fields(&data.fields),
             },
-            CompiledNode::CompiledVar {
+            CompiledNode::Var {
                 scope_level,
                 segments,
                 default_value,
                 ..
             } => Self::build_compiled_var(id, *scope_level, segments, default_value.as_deref()),
             #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(data) => Self::leaf(
+            CompiledNode::Exists(data) => Self::leaf(
                 id,
                 Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
             ),
             #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(_)
-            | CompiledNode::CompiledMissing(_)
-            | CompiledNode::CompiledMissingSome(_) => {
+            CompiledNode::Throw(_) | CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => {
                 Self::leaf(id, Self::node_to_json_string(node))
             }
             #[cfg(not(feature = "error-handling"))]
-            CompiledNode::CompiledMissing(_) | CompiledNode::CompiledMissingSome(_) => {
+            CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => {
                 Self::leaf(id, Self::node_to_json_string(node))
             }
         }
@@ -175,7 +173,7 @@ impl ExpressionNode {
             }
             #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => Self::structured_to_json_string(&data.fields),
-            CompiledNode::CompiledVar {
+            CompiledNode::Var {
                 scope_level,
                 segments,
                 default_value,
@@ -184,11 +182,11 @@ impl ExpressionNode {
                 Self::compiled_var_to_json_string(*scope_level, segments, default_value.as_deref())
             }
             #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(data) => {
+            CompiledNode::Exists(data) => {
                 Self::compiled_exists_to_json_string(data.scope_level, &data.segments)
             }
             #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(data) => {
+            CompiledNode::Throw(data) => {
                 if let datavalue::OwnedDataValue::Object(pairs) = &data.error
                     && let Some((_, datavalue::OwnedDataValue::String(s))) =
                         pairs.iter().find(|(k, _)| k == "type")
@@ -200,7 +198,7 @@ impl ExpressionNode {
                     serde_json::to_string(&data.error).unwrap_or_default()
                 )
             }
-            CompiledNode::CompiledMissing(data) => {
+            CompiledNode::Missing(data) => {
                 let parts: Vec<String> = data
                     .args
                     .iter()
@@ -213,7 +211,7 @@ impl ExpressionNode {
                     .collect();
                 format!("{{\"missing\": [{}]}}", parts.join(", "))
             }
-            CompiledNode::CompiledMissingSome(data) => {
+            CompiledNode::MissingSome(data) => {
                 let min_str = match &data.min_present {
                     crate::node::CompiledMissingMin::Static(n) => n.to_string(),
                     crate::node::CompiledMissingMin::Dynamic(n) => Self::node_to_json_string(n),
@@ -449,38 +447,48 @@ pub struct TracedRun<R> {
     pub expression_tree: ExpressionNode,
 }
 
-/// Trace-enabled view over a [`crate::DataLogic`] engine. Constructed via
-/// [`crate::DataLogic::with_trace`]. The session's `evaluate*` methods mirror
+/// Trace-enabled view over a [`crate::Engine`] engine. Constructed via
+/// [`crate::Engine::with_trace`]. The session's `evaluate*` methods mirror
 /// the engine's, but each call returns a [`TracedRun`] carrying the trace
 /// alongside the result.
 pub struct TracedSession<'e> {
-    engine: &'e crate::DataLogic,
+    engine: &'e crate::Engine,
 }
 
 impl<'e> TracedSession<'e> {
     /// Construct a session over `engine`. Invoked from
-    /// [`crate::DataLogic::with_trace`].
+    /// [`crate::Engine::with_trace`].
     #[inline]
-    pub(crate) fn new(engine: &'e crate::DataLogic) -> Self {
+    pub(crate) fn new(engine: &'e crate::Engine) -> Self {
         Self { engine }
     }
 
     /// Arena-mode traced evaluation. The result references the supplied arena;
     /// the trace data is owned and outlives the arena reset cycle.
     ///
-    /// Pair this with [`crate::DataLogic::compile_traceable`] for the most
-    /// faithful trace — `compile_traceable` skips the static-evaluation pass
-    /// so every operator yields a step.
-    pub fn evaluate<'a, D: crate::IntoArenaData<'a>>(
+    /// The trace surfaces only the operators that survived compilation —
+    /// constant sub-expressions folded by [`Engine::compile`](crate::Engine::compile)
+    /// will not appear as steps. For full coverage on a one-shot run, prefer
+    /// [`Self::evaluate_str`].
+    pub fn evaluate<'a, D: crate::IntoEvalData<'a>>(
         &self,
-        compiled: &'a crate::CompiledLogic,
+        compiled: &'a crate::Logic,
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> TracedRun<&'a crate::DataValue<'a>> {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
-        let data_ref = data.into_arena_data(arena);
-        let mut ctx = crate::arena::DataContextStack::new(data_ref);
+        let data_ref = match data.into_eval_data(arena) {
+            Ok(av) => av,
+            Err(e) => {
+                return TracedRun {
+                    expression_tree,
+                    steps: collector.into_steps(),
+                    result: Err(e),
+                };
+            }
+        };
+        let mut ctx = crate::arena::ContextStack::new(data_ref);
         ctx.set_tracer(&mut collector);
 
         let outcome = self.engine.evaluate_node(&compiled.root, &mut ctx, arena);
@@ -502,11 +510,14 @@ impl<'e> TracedSession<'e> {
     }
 
     /// One-shot traced evaluation with JSON-string boundary on both sides.
-    /// Compiles via [`crate::DataLogic::compile_traceable`] internally so the
-    /// trace surfaces every operator.
+    /// Compiles internally with the optimizer + constant-fold passes
+    /// disabled, so the trace surfaces every operator in the rule.
     pub fn evaluate_str(&self, logic: &str, data: &str) -> TracedRun<String> {
         // Compile failures land in `result` directly with no steps/tree.
-        let compiled = match self.engine.compile_traceable(logic) {
+        let compiled = match datavalue::OwnedDataValue::from_json(logic)
+            .map_err(crate::Error::from)
+            .and_then(|owned| crate::Logic::compile_for_trace(&owned, self.engine))
+        {
             Ok(c) => c,
             Err(e) => {
                 return TracedRun {
@@ -561,9 +572,10 @@ mod tests {
 
         let tree = ExpressionNode::build_from_compiled(&node);
 
-        // Synthetic test nodes all share SYNTHETIC_ID (0); the structural
-        // assertions below still hold.
-        assert_eq!(tree.id, crate::node::SYNTHETIC_ID);
+        // Synthetic test nodes all share SYNTHETIC_ID, which surfaces as 0
+        // through the public `ExpressionNode::id` (u32) shape; the
+        // structural assertions below still hold.
+        assert_eq!(tree.id, 0);
         assert_eq!(tree.expression, r#"{"val": "age"}"#);
         assert!(tree.children.is_empty()); // "age" is a literal, not a child
     }
@@ -597,7 +609,7 @@ mod tests {
 
         let tree = ExpressionNode::build_from_compiled(&node);
 
-        assert_eq!(tree.id, crate::node::SYNTHETIC_ID);
+        assert_eq!(tree.id, 0);
         assert!(tree.expression.contains(">="));
         assert_eq!(tree.children.len(), 1); // var node is a child
         assert!(tree.children[0].expression.contains("val"));
@@ -632,19 +644,36 @@ mod tests {
 
     #[test]
     fn traced_session_evaluate_str_smoke() {
-        let engine = crate::DataLogic::new();
+        let engine = crate::Engine::new();
         let run = engine
             .with_trace()
             .evaluate_str(r#"{"+": [1, 2, 3]}"#, "null");
         assert_eq!(run.result.unwrap(), "6");
-        // compile_traceable keeps the operator visible -> at least one step.
+        // The one-shot trace path skips static folding internally, so the
+        // `+` operator survives and produces a step.
         assert!(!run.steps.is_empty(), "expected non-empty steps");
         assert_ne!(run.expression_tree.id, 0);
     }
 
     #[test]
+    fn traced_pre_compiled_inherits_fold() {
+        // Pre-compiled trace inherits the shape from `Engine::compile`, which
+        // folds. A fully-constant rule has no surviving operator → no steps.
+        let engine = crate::Engine::new();
+        let compiled = engine.compile(r#"{"+": [1, 2]}"#).unwrap();
+        let arena = bumpalo::Bump::new();
+        let data = datavalue::DataValue::from_str("null", &arena).unwrap();
+        let run = engine.with_trace().evaluate(&compiled, data, &arena);
+        assert_eq!(run.result.as_ref().unwrap().as_i64(), Some(3));
+        assert!(
+            run.steps.is_empty(),
+            "folded rule should not produce trace steps"
+        );
+    }
+
+    #[test]
     fn traced_session_carries_error_metadata() {
-        let engine = crate::DataLogic::new();
+        let engine = crate::Engine::new();
         let run = engine
             .with_trace()
             .evaluate_str(r#"{"+": ["x", 1]}"#, "null");

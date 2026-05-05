@@ -7,7 +7,7 @@
 //! - `{"or": [true, X]}` → `true` (absorbing element)
 //! - `{"or": [false, X]}` → `X` (strip identity elements)
 
-use crate::DataLogic;
+use crate::Engine;
 use crate::node::CompiledNode;
 use crate::opcode::OpCode;
 
@@ -18,7 +18,7 @@ use super::helpers::is_truthy_literal;
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Only transforms the top-level node — recursive application
 /// is driven by the optimiser pipeline's fixpoint loop.
-pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool) {
+pub fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator {
             id, opcode, args, ..
@@ -40,7 +40,7 @@ pub fn eliminate(node: CompiledNode, engine: &DataLogic) -> (CompiledNode, bool)
 
 /// Eliminate dead branches in if/elseif/else chains.
 /// Returns `Some(new_node)` if the input was rewritten, `None` otherwise.
-fn eliminate_if(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
+fn eliminate_if(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &Engine) -> Option<CompiledNode> {
     if args.is_empty() {
         return Some(CompiledNode::synthetic_value(
             datavalue::OwnedDataValue::Null,
@@ -121,7 +121,7 @@ fn eliminate_if(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Opt
 }
 
 /// Eliminate identity/absorbing elements in `and`.
-fn eliminate_and(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
+fn eliminate_and(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &Engine) -> Option<CompiledNode> {
     if args.is_empty() {
         return None;
     }
@@ -168,7 +168,7 @@ fn eliminate_and(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Op
 }
 
 /// Eliminate identity/absorbing elements in `or`.
-fn eliminate_or(outer_id: u32, args: &[CompiledNode], engine: &DataLogic) -> Option<CompiledNode> {
+fn eliminate_or(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &Engine) -> Option<CompiledNode> {
     if args.is_empty() {
         return None;
     }
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_if_true_condition() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::If,
             vec![
@@ -230,12 +230,12 @@ mod tests {
             ],
         );
         let (result, _changed) = eliminate(node, &engine);
-        assert!(matches!(result, CompiledNode::CompiledVar { .. }));
+        assert!(matches!(result, CompiledNode::Var { .. }));
     }
 
     #[test]
     fn test_if_false_condition() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::If,
             vec![
@@ -246,23 +246,23 @@ mod tests {
         );
         let (result, _changed) = eliminate(node, &engine);
         // Should return "y" (the else branch)
-        assert!(matches!(result, CompiledNode::CompiledVar { .. }));
+        assert!(matches!(result, CompiledNode::Var { .. }));
     }
 
     #[test]
     fn test_and_with_true_prefix() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::And,
             vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x")],
         );
         let (result, _changed) = eliminate(node, &engine);
-        assert!(matches!(result, CompiledNode::CompiledVar { .. }));
+        assert!(matches!(result, CompiledNode::Var { .. }));
     }
 
     #[test]
     fn test_and_with_false() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::And,
             vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x")],
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_or_with_true() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::Or,
             vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x")],
@@ -284,20 +284,20 @@ mod tests {
 
     #[test]
     fn test_or_with_false_prefix() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::Or,
             vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x")],
         );
         let (result, _changed) = eliminate(node, &engine);
-        assert!(matches!(result, CompiledNode::CompiledVar { .. }));
+        assert!(matches!(result, CompiledNode::Var { .. }));
     }
 
     #[test]
     fn test_ternary_true() {
         // `?:` normalizes to OpCode::If at FromStr; eliminate_if handles
         // the 3-arg case identically to a ternary.
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let node = builtin(
             OpCode::If,
             vec![
@@ -307,6 +307,6 @@ mod tests {
             ],
         );
         let (result, _changed) = eliminate(node, &engine);
-        assert!(matches!(result, CompiledNode::CompiledVar { .. }));
+        assert!(matches!(result, CompiledNode::Var { .. }));
     }
 }

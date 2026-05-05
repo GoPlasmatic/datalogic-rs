@@ -1,6 +1,22 @@
+use std::num::NonZeroU32;
+
 use crate::arena::DataValue;
 use crate::opcode::OpCode;
 use datavalue::OwnedDataValue;
+
+/// Compile-time id assigned to every [`CompiledNode`].
+///
+/// `Some(n)` for nodes produced by the compile pipeline (where the counter
+/// starts at 1). `None` for synthetic nodes built outside the pipeline —
+/// test helpers, optimizer literal-replacement folds, `eager_apply` value
+/// wrappers — which are never observed by tracing or error reporting.
+///
+/// Encoding the synthetic case as `None` (rather than the previous
+/// `u32 = 0`) lets the type system catch the "forgot to bump the counter"
+/// bug at construction sites: `id: ctx.next_id()` no longer compiles
+/// against `Option<NonZeroU32>`, forcing the writer to choose between
+/// `Some(ctx.next_id())` (real) and `SYNTHETIC_ID` (synthetic).
+pub(crate) type NodeId = Option<NonZeroU32>;
 
 /// Pre-build a `DataValue<'static>` for primitive literals that don't
 /// require additional storage (Numbers — inline `NumberValue`). Used at
@@ -8,7 +24,7 @@ use datavalue::OwnedDataValue;
 /// can return a borrow without re-arena work for the most common
 /// primitive case. Other literal shapes (Null/Bool/String/Array/Object)
 /// are populated post-compile by [`populate_lits`] using the
-/// per-`CompiledLogic` static arena.
+/// per-`Logic` static arena.
 #[inline]
 fn precompute_lit(value: &OwnedDataValue) -> Option<Box<DataValue<'static>>> {
     match value {
@@ -21,15 +37,15 @@ fn precompute_lit(value: &OwnedDataValue) -> Option<Box<DataValue<'static>>> {
 /// arena, then transmute the lifetime to `'static`. Used by the post-compile
 /// populate pass: the resulting `'static` claim is upheld by the caller
 /// owning the arena alongside the references inside the same struct
-/// ([`CompiledLogic`]).
+/// ([`Logic`]).
 ///
 /// # Safety
 ///
 /// The returned `DataValue<'static>` borrows into `arena`. The caller must
 /// ensure `arena` outlives every read of the returned value. In practice
 /// this is upheld by storing the arena and the result in the same owning
-/// struct (`CompiledLogic`) — the references can be accessed only through
-/// `&CompiledLogic`, which keeps the arena alive for the access.
+/// struct (`Logic`) — the references can be accessed only through
+/// `&Logic`, which keeps the arena alive for the access.
 #[inline]
 unsafe fn build_static_arena_value(
     value: &OwnedDataValue,
@@ -70,7 +86,7 @@ fn iterates_args0(opcode: OpCode) -> bool {
 /// `lit` is currently `None` — this covers Null, Bool, String, Array,
 /// and Object literals that [`precompute_lit`] left out at
 /// construction time. Allocations land in the supplied `arena`, which must
-/// be moved into the owning [`CompiledLogic`] alongside the modified tree.
+/// be moved into the owning [`Logic`] alongside the modified tree.
 ///
 /// Also populates `CompiledThrowData::precomputed_error` so the error-handling
 /// path can return arena-native values without per-throw `value_to_data`.
@@ -136,28 +152,28 @@ pub(crate) unsafe fn populate_lits(node: &mut CompiledNode, arena: &bumpalo::Bum
                 unsafe { populate_lits(n, arena) };
             }
         }
-        CompiledNode::CompiledVar { default_value, .. } => {
+        CompiledNode::Var { default_value, .. } => {
             if let Some(d) = default_value {
                 unsafe { populate_lits(d, arena) };
             }
         }
         #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(_) => {}
+        CompiledNode::Exists(_) => {}
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(data) => {
+        CompiledNode::Throw(data) => {
             if data.precomputed_error.is_none() {
                 let av = unsafe { build_static_arena_value(&data.error, arena) };
                 data.precomputed_error = Some(Box::new(av));
             }
         }
-        CompiledNode::CompiledMissing(data) => {
+        CompiledNode::Missing(data) => {
             for arg in data.args.iter_mut() {
                 if let CompiledMissingArg::Dynamic(n) = arg {
                     unsafe { populate_lits(n, arena) };
                 }
             }
         }
-        CompiledNode::CompiledMissingSome(data) => {
+        CompiledNode::MissingSome(data) => {
             if let CompiledMissingMin::Dynamic(n) = &mut data.min_present {
                 unsafe { populate_lits(n, arena) };
             }
@@ -207,14 +223,14 @@ pub enum MetadataHint {
 }
 
 /// Sentinel id used for synthetic nodes built outside the compile pipeline
-/// (test helpers, run-time value wrappers in `eager_apply`, etc.). Real IDs
-/// are always nonzero since `CompileCtx` starts the counter at 1.
-pub(crate) const SYNTHETIC_ID: u32 = 0;
+/// (test helpers, run-time value wrappers in `eager_apply`, etc.). Real ids
+/// are `Some(NonZeroU32)` since `CompileCtx` starts the counter at 1.
+pub(crate) const SYNTHETIC_ID: NodeId = None;
 
 /// Data for a custom operator (boxed inside CompiledNode to reduce enum size).
 #[derive(Debug, Clone)]
 pub struct CustomOperatorData {
-    pub id: u32,
+    pub id: NodeId,
     pub name: String,
     pub args: Box<[CompiledNode]>,
 }
@@ -223,7 +239,7 @@ pub struct CustomOperatorData {
 #[cfg(feature = "preserve")]
 #[derive(Debug, Clone)]
 pub struct StructuredObjectData {
-    pub id: u32,
+    pub id: NodeId,
     pub fields: Box<[(String, CompiledNode)]>,
 }
 
@@ -231,7 +247,7 @@ pub struct StructuredObjectData {
 #[cfg(feature = "ext-control")]
 #[derive(Debug, Clone)]
 pub struct CompiledExistsData {
-    pub id: u32,
+    pub id: NodeId,
     pub scope_level: u32,
     pub segments: Box<[PathSegment]>,
 }
@@ -256,7 +272,7 @@ pub enum CompiledMissingArg {
 /// Data for a pre-compiled `missing` operator.
 #[derive(Debug, Clone)]
 pub struct CompiledMissingData {
-    pub id: u32,
+    pub id: NodeId,
     pub args: Box<[CompiledMissingArg]>,
 }
 
@@ -264,7 +280,7 @@ pub struct CompiledMissingData {
 /// literal integer (resolved at compile time) or a runtime expression.
 #[derive(Debug, Clone)]
 pub struct CompiledMissingSomeData {
-    pub id: u32,
+    pub id: NodeId,
     pub min_present: CompiledMissingMin,
     pub paths: CompiledMissingPaths,
 }
@@ -293,11 +309,11 @@ pub enum CompiledMissingPaths {
 #[cfg(feature = "error-handling")]
 #[derive(Debug, Clone)]
 pub struct CompiledThrowData {
-    pub id: u32,
+    pub id: NodeId,
     pub error: OwnedDataValue,
     /// Arena-resident mirror of `error` populated post-compile by
     /// [`populate_lits`]. The borrowed lifetime is `'static` only
-    /// because the backing storage lives in [`CompiledLogic::static_arena`],
+    /// because the backing storage lives in [`Logic::static_arena`],
     /// which is moved into the same owning struct.
     #[doc(hidden)]
     pub(crate) precomputed_error: Option<Box<DataValue<'static>>>,
@@ -326,9 +342,9 @@ pub enum CompiledNode {
     /// composite literals (Array/Object) and for primitives already
     /// covered by static singletons (Null/Bool/empty string/empty array).
     /// Read-only after compile — safe to share across threads via
-    /// `Arc<CompiledLogic>`.
+    /// `Arc<Logic>`.
     Value {
-        id: u32,
+        id: NodeId,
         value: OwnedDataValue,
         lit: Option<Box<DataValue<'static>>>,
     },
@@ -337,7 +353,10 @@ pub enum CompiledNode {
     ///
     /// Each node is evaluated in sequence, and the results are collected into a JSON array.
     /// Uses `Box<[CompiledNode]>` for memory efficiency.
-    Array { id: u32, nodes: Box<[CompiledNode]> },
+    Array {
+        id: NodeId,
+        nodes: Box<[CompiledNode]>,
+    },
 
     /// A built-in operator optimized with OpCode dispatch.
     ///
@@ -359,14 +378,14 @@ pub enum CompiledNode {
     /// pattern match on the iterator input's shape. Re-derived on every
     /// populate-arena-lits pass so clones stay correct.
     BuiltinOperator {
-        id: u32,
+        id: NodeId,
         opcode: OpCode,
         args: Box<[CompiledNode]>,
         predicate_hint: Option<Box<crate::operators::array::FastPredicate>>,
         iter_arg_kind: crate::operators::array::IterArgKind,
     },
 
-    /// A custom operator registered via `DataLogic::add_operator`.
+    /// A custom operator registered via `Engine::add_operator`.
     /// Boxed to reduce enum size (rare variant).
     CustomOperator(Box<CustomOperatorData>),
 
@@ -379,8 +398,8 @@ pub enum CompiledNode {
     ///
     /// scope_level 0 = current context (var-style), N = go up N levels (val with [[N], ...]).
     /// Segments are pre-parsed at compile time to avoid runtime string splitting.
-    CompiledVar {
-        id: u32,
+    Var {
+        id: NodeId,
         scope_level: u32,
         segments: Box<[PathSegment]>,
         reduce_hint: ReduceHint,
@@ -391,29 +410,40 @@ pub enum CompiledNode {
     /// A pre-compiled exists check.
     /// Boxed to reduce enum size (rare variant).
     #[cfg(feature = "ext-control")]
-    CompiledExists(Box<CompiledExistsData>),
+    Exists(Box<CompiledExistsData>),
 
     /// A pre-compiled throw with a static error object.
     /// Boxed to reduce enum size (rare variant).
     #[cfg(feature = "error-handling")]
-    CompiledThrow(Box<CompiledThrowData>),
+    Throw(Box<CompiledThrowData>),
 
     /// A pre-compiled `missing` operator with paths parsed into segments.
-    CompiledMissing(Box<CompiledMissingData>),
+    Missing(Box<CompiledMissingData>),
 
     /// A pre-compiled `missing_some` operator with paths parsed into segments
     /// and (where literal) min-count resolved.
-    CompiledMissingSome(Box<CompiledMissingSomeData>),
+    MissingSome(Box<CompiledMissingSomeData>),
 }
 
 impl CompiledNode {
-    /// Returns the unique id assigned to this node during compilation.
+    /// Returns the unique id assigned to this node during compilation, as
+    /// the public `u32` shape used by trace/error breadcrumbs (`0` for
+    /// synthetic nodes, matching the previous sentinel).
     ///
     /// IDs are shared across tracing and error breadcrumbs — one source of
     /// truth per node. Synthetic nodes built outside the compile pipeline
-    /// (test helpers, `eager_apply` value wrappers) carry [`SYNTHETIC_ID`].
+    /// (test helpers, `eager_apply` value wrappers) carry [`SYNTHETIC_ID`]
+    /// and round-trip to `0` here.
     #[inline]
     pub fn id(&self) -> u32 {
+        self.node_id().map(NonZeroU32::get).unwrap_or(0)
+    }
+
+    /// Returns the structured node id (real `Some(NonZero)` vs. synthetic
+    /// `None`). Internal callers prefer this over [`Self::id`] when they
+    /// need to distinguish the two cases.
+    #[inline]
+    pub(crate) fn node_id(&self) -> NodeId {
         match self {
             CompiledNode::Value { id, .. } => *id,
             CompiledNode::Array { id, .. } => *id,
@@ -421,13 +451,13 @@ impl CompiledNode {
             CompiledNode::CustomOperator(data) => data.id,
             #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => data.id,
-            CompiledNode::CompiledVar { id, .. } => *id,
+            CompiledNode::Var { id, .. } => *id,
             #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(data) => data.id,
+            CompiledNode::Exists(data) => data.id,
             #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(data) => data.id,
-            CompiledNode::CompiledMissing(data) => data.id,
-            CompiledNode::CompiledMissingSome(data) => data.id,
+            CompiledNode::Throw(data) => data.id,
+            CompiledNode::Missing(data) => data.id,
+            CompiledNode::MissingSome(data) => data.id,
         }
     }
 
@@ -449,7 +479,7 @@ impl CompiledNode {
     /// a new precomputable variant only requires editing
     /// [`precompute_lit`].
     #[inline]
-    pub fn value_with_id(id: u32, value: OwnedDataValue) -> Self {
+    pub fn value_with_id(id: NodeId, value: OwnedDataValue) -> Self {
         let lit = precompute_lit(&value);
         CompiledNode::Value { id, value, lit }
     }
@@ -462,45 +492,79 @@ impl CompiledNode {
         match self {
             CompiledNode::BuiltinOperator { opcode, .. } => Some(opcode.as_str().to_string()),
             CompiledNode::CustomOperator(data) => Some(data.name.clone()),
-            CompiledNode::CompiledVar { .. } => Some("var".to_string()),
+            CompiledNode::Var { .. } => Some("var".to_string()),
             #[cfg(feature = "ext-control")]
-            CompiledNode::CompiledExists(_) => Some("exists".to_string()),
+            CompiledNode::Exists(_) => Some("exists".to_string()),
             #[cfg(feature = "error-handling")]
-            CompiledNode::CompiledThrow(_) => Some("throw".to_string()),
-            CompiledNode::CompiledMissing(_) => Some("missing".to_string()),
-            CompiledNode::CompiledMissingSome(_) => Some("missing_some".to_string()),
+            CompiledNode::Throw(_) => Some("throw".to_string()),
+            CompiledNode::Missing(_) => Some("missing".to_string()),
+            CompiledNode::MissingSome(_) => Some("missing_some".to_string()),
             _ => None,
         }
     }
 }
 
-/// Compile-time context for assigning unique node ids.
+/// Compile-time context for assigning unique node ids and threading the
+/// "skip optimization" flag through the recursive descent.
 ///
-/// Threaded through `compile_node` so every node constructed during
-/// compilation gets a fresh, monotonically increasing id. The counter starts
-/// at 1 — id 0 is reserved for synthetic nodes (see [`SYNTHETIC_ID`]).
+/// `next_id` ensures every node constructed during compilation gets a fresh,
+/// monotonically increasing id. The counter is [`NonZeroU32`] starting at 1;
+/// the synthetic case is encoded as `None` (see [`SYNTHETIC_ID`]) and never
+/// flows through this counter.
+///
+/// `skip_fold` is set by the trace path so the constant-fold + optimizer
+/// passes are bypassed and every operator survives in the compiled tree.
 #[derive(Debug)]
 pub(crate) struct CompileCtx {
-    next_id: u32,
+    next_id: NonZeroU32,
+    skip_fold: bool,
 }
+
+const ID_ONE: NonZeroU32 = match NonZeroU32::new(1) {
+    Some(n) => n,
+    None => unreachable!(),
+};
 
 impl CompileCtx {
     pub(crate) fn new() -> Self {
-        Self { next_id: 1 }
+        Self {
+            next_id: ID_ONE,
+            skip_fold: false,
+        }
     }
 
-    /// Allocate a fresh node id.
+    /// Construct a context that skips the optimizer + constant-fold passes.
+    /// Used by the internal trace compile path so traced rules retain every
+    /// operator as a step source.
+    #[cfg(feature = "trace")]
+    pub(crate) fn no_fold() -> Self {
+        Self {
+            next_id: ID_ONE,
+            skip_fold: true,
+        }
+    }
+
+    /// Allocate a fresh node id. Returns the bare [`NonZeroU32`] — callers
+    /// wrap it in `Some(...)` at the construction site, making the
+    /// real-vs-synthetic choice explicit and forcing a type error if the
+    /// id field is left unassigned.
     #[inline]
-    pub(crate) fn next_id(&mut self) -> u32 {
+    pub(crate) fn next_id(&mut self) -> NonZeroU32 {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         id
+    }
+
+    /// Whether to skip the optimizer + constant-fold passes during compile.
+    #[inline]
+    pub(crate) fn skip_fold(&self) -> bool {
+        self.skip_fold
     }
 }
 
 /// Compiled logic that can be evaluated multiple times across different data.
 ///
-/// `CompiledLogic` represents a pre-processed JSONLogic expression that has been
+/// `Logic` represents a pre-processed JSONLogic expression that has been
 /// optimized for repeated evaluation. It's thread-safe and can be shared across
 /// threads using `Arc`.
 ///
@@ -514,23 +578,23 @@ impl CompileCtx {
 /// # Example
 ///
 /// ```rust
-/// use bumpalo::Bump;
-/// use datalogic_rs::{DataLogic, DataValue};
 /// use std::sync::Arc;
+/// use datalogic_rs::Engine;
 ///
-/// let engine = DataLogic::new();
-/// let compiled = Arc::new(engine.compile(r#"{">": [{"var": "score"}, 90]}"#).unwrap());
+/// let engine = Engine::new();
+/// let compiled = engine.compile_arc(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
 ///
-/// // Compiled logic can be wrapped in `Arc` and sent across threads.
+/// // Compiled logic can be cloned cheaply (atomic refcount) and sent across threads.
 /// let compiled_clone = Arc::clone(&compiled);
 /// std::thread::spawn(move || {
-///     let engine = DataLogic::new();
-///     let arena = Bump::new();
-///     let data = DataValue::from_str(r#"{"score": 95}"#, &arena).unwrap();
-///     let _result = engine.evaluate(&*compiled_clone, data, &arena);
+///     let engine = Engine::new();
+///     let _result = engine
+///         .scratch()
+///         .eval_str(&compiled_clone, r#"{"score": 95}"#)
+///         .unwrap();
 /// });
 /// ```
-pub struct CompiledLogic {
+pub struct Logic {
     /// The root node of the compiled logic tree.
     ///
     /// Some `CompiledNode::Value` and `CompiledThrowData` nodes inside this
@@ -544,7 +608,7 @@ pub struct CompiledLogic {
     /// Used to size the per-call `Bump` so the first chunk is large enough.
     /// `pub(crate)` — internal arena infrastructure.
     pub(crate) arena_static_bytes: usize,
-    /// Per-`CompiledLogic` arena that backs `lit` storage on every
+    /// Per-`Logic` arena that backs `lit` storage on every
     /// literal `CompiledNode::Value` and `CompiledThrowData::precomputed_error`
     /// inside `root`. Allocated and populated once during construction; never
     /// mutated afterward, which is what makes the [`Sync`] impl below sound
@@ -559,27 +623,27 @@ pub struct CompiledLogic {
 }
 
 // SAFETY: `bumpalo::Bump` is `!Sync` because allocation methods like
-// `Bump::alloc` take `&self` and mutate internal chunk state. `CompiledLogic`
+// `Bump::alloc` take `&self` and mutate internal chunk state. `Logic`
 // only ever allocates into `static_arena` during construction (see
-// [`CompiledLogic::new`]). After construction, no method on `&CompiledLogic`
+// [`Logic::new`]). After construction, no method on `&Logic`
 // reaches into `static_arena` — the arena is read-only via the existing
 // `&'static DataValue<'static>` references stored in `root`. Concurrent
-// `&CompiledLogic` readers therefore never race on `Bump`'s internal cells.
-unsafe impl Sync for CompiledLogic {}
+// `&Logic` readers therefore never race on `Bump`'s internal cells.
+unsafe impl Sync for Logic {}
 
-impl std::fmt::Debug for CompiledLogic {
+impl std::fmt::Debug for Logic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompiledLogic")
+        f.debug_struct("Logic")
             .field("root", &self.root)
             .field("arena_static_bytes", &self.arena_static_bytes)
             .finish_non_exhaustive()
     }
 }
 
-impl CompiledLogic {
+impl Logic {
     /// Creates a new compiled logic from a root node.
     ///
-    /// Allocates the per-`CompiledLogic` static arena, sized to the
+    /// Allocates the per-`Logic` static arena, sized to the
     /// conservative estimate, and runs the post-compile populate pass to
     /// fill in `lit` for every literal node and `precomputed_error` on
     /// throw nodes. After this call, the arena is logically frozen.
@@ -641,15 +705,15 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
                 bytes += estimate_arena_static_bytes(n);
             }
         }
-        CompiledNode::CompiledVar { default_value, .. } => {
+        CompiledNode::Var { default_value, .. } => {
             if let Some(d) = default_value {
                 bytes += estimate_arena_static_bytes(d);
             }
         }
         #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(_) => {}
+        CompiledNode::Exists(_) => {}
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(data) => {
+        CompiledNode::Throw(data) => {
             bytes += estimate_value_bytes(&data.error);
         }
         #[cfg(feature = "preserve")]
@@ -658,14 +722,14 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
                 bytes += k.len() + estimate_arena_static_bytes(n);
             }
         }
-        CompiledNode::CompiledMissing(data) => {
+        CompiledNode::Missing(data) => {
             for arg in data.args.iter() {
                 if let CompiledMissingArg::Dynamic(n) = arg {
                     bytes += estimate_arena_static_bytes(n);
                 }
             }
         }
-        CompiledNode::CompiledMissingSome(data) => {
+        CompiledNode::MissingSome(data) => {
             if let CompiledMissingMin::Dynamic(n) = &data.min_present {
                 bytes += estimate_arena_static_bytes(n);
             }
@@ -698,16 +762,16 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Array { nodes, .. } => nodes.iter().all(node_is_static),
         CompiledNode::BuiltinOperator { opcode, args, .. } => opcode_is_static(opcode, args),
         CompiledNode::CustomOperator(_) => false,
-        CompiledNode::CompiledVar { .. } => false,
+        CompiledNode::Var { .. } => false,
         #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(_) => false,
+        CompiledNode::Exists(_) => false,
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(_) => false,
+        CompiledNode::Throw(_) => false,
         #[cfg(feature = "preserve")]
         CompiledNode::StructuredObject(data) => {
             data.fields.iter().all(|(_, node)| node_is_static(node))
         }
-        CompiledNode::CompiledMissing(_) | CompiledNode::CompiledMissingSome(_) => false,
+        CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => false,
     }
 }
 

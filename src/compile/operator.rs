@@ -13,8 +13,8 @@ use super::path_parser::{parse_path_segments, parse_var_path};
 /// Try to compile a `var` operator into a `CompiledVar` node.
 pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::CompiledVar {
-            id: ctx.next_id(),
+        return Some(CompiledNode::Var {
+            id: Some(ctx.next_id()),
             scope_level: 0,
             segments: Box::new([]),
             reduce_hint: ReduceHint::None,
@@ -48,8 +48,8 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
         None
     };
 
-    Some(CompiledNode::CompiledVar {
-        id: ctx.next_id(),
+    Some(CompiledNode::Var {
+        id: Some(ctx.next_id()),
         scope_level: 0,
         segments: segments.into_boxed_slice(),
         reduce_hint,
@@ -61,8 +61,8 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
 /// Try to compile a `val` operator into a `CompiledVar` node.
 pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::CompiledVar {
-            id: ctx.next_id(),
+        return Some(CompiledNode::Var {
+            id: Some(ctx.next_id()),
             scope_level: 0,
             segments: Box::new([]),
             reduce_hint: ReduceHint::None,
@@ -134,8 +134,8 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
     } else {
         PathSegment::Field(s.as_str().into())
     };
-    Some(CompiledNode::CompiledVar {
-        id: ctx.next_id(),
+    Some(CompiledNode::Var {
+        id: Some(ctx.next_id()),
         scope_level: 0,
         segments: vec![segment].into_boxed_slice(),
         reduce_hint,
@@ -194,8 +194,8 @@ fn try_compile_val_segments(
         segments.push(val_arg_to_segment(arg)?);
     }
 
-    Some(CompiledNode::CompiledVar {
-        id: ctx.next_id(),
+    Some(CompiledNode::Var {
+        id: Some(ctx.next_id()),
         scope_level,
         segments: segments.into_boxed_slice(),
         reduce_hint: ReduceHint::None,
@@ -214,8 +214,8 @@ fn try_collect_val_segments(
         segments.push(val_arg_to_segment(arg)?);
     }
 
-    Some(CompiledNode::CompiledVar {
-        id: ctx.next_id(),
+    Some(CompiledNode::Var {
+        id: Some(ctx.next_id()),
         scope_level: 0,
         segments: std::mem::take(segments).into_boxed_slice(),
         reduce_hint,
@@ -231,9 +231,9 @@ pub(super) fn try_compile_exists(
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::CompiledExists(Box::new(
+        return Some(CompiledNode::Exists(Box::new(
             crate::node::CompiledExistsData {
-                id: ctx.next_id(),
+                id: Some(ctx.next_id()),
                 scope_level: 0,
                 segments: Box::new([]),
             },
@@ -246,9 +246,9 @@ pub(super) fn try_compile_exists(
             ..
         } = &args[0]
         {
-            return Some(CompiledNode::CompiledExists(Box::new(
+            return Some(CompiledNode::Exists(Box::new(
                 crate::node::CompiledExistsData {
-                    id: ctx.next_id(),
+                    id: Some(ctx.next_id()),
                     scope_level: 0,
                     segments: vec![PathSegment::Field(s.as_str().into())].into_boxed_slice(),
                 },
@@ -270,9 +270,9 @@ pub(super) fn try_compile_exists(
         }
     }
 
-    Some(CompiledNode::CompiledExists(Box::new(
+    Some(CompiledNode::Exists(Box::new(
         crate::node::CompiledExistsData {
-            id: ctx.next_id(),
+            id: Some(ctx.next_id()),
             scope_level: 0,
             segments: segments.into_boxed_slice(),
         },
