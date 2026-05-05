@@ -85,7 +85,7 @@ pub(crate) fn evaluate_datetime<'a>(
             "datetime requires an argument".to_string(),
         ));
     }
-    let av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     // Datetime object passthrough.
     if is_datetime_object(av) {
@@ -118,7 +118,7 @@ pub(crate) fn evaluate_timestamp<'a>(
             "timestamp requires an argument".to_string(),
         ));
     }
-    let av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     if is_duration_object(av) {
         return Ok(av);
@@ -161,8 +161,8 @@ pub(crate) fn evaluate_parse_date<'a>(
             "parse_date requires date string and format".to_string(),
         ));
     }
-    let date_av = engine.evaluate_node(&args[0], ctx, arena)?;
-    let fmt_av = engine.evaluate_node(&args[1], ctx, arena)?;
+    let date_av = engine.dispatch_node(&args[0], ctx, arena)?;
+    let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
     if let (Some(date), Some(fmt)) = (arg_as_str(date_av), arg_as_str(fmt_av)) {
         let chrono_format = jsonlogic_to_chrono_format(fmt);
         if let Some(dt) = DataDateTime::parse_with_format(date, &chrono_format) {
@@ -187,8 +187,8 @@ pub(crate) fn evaluate_format_date<'a>(
             "format_date requires datetime and format".to_string(),
         ));
     }
-    let dt_av = engine.evaluate_node(&args[0], ctx, arena)?;
-    let fmt_av = engine.evaluate_node(&args[1], ctx, arena)?;
+    let dt_av = engine.dispatch_node(&args[0], ctx, arena)?;
+    let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
 
     // Resolve the datetime — supports object form and string form.
     let dt: Option<DataDateTime> = crate::operators::helpers::extract_datetime(dt_av);
@@ -225,9 +225,9 @@ pub(crate) fn evaluate_date_diff<'a>(
             "date_diff requires two dates and a unit".to_string(),
         ));
     }
-    let d1_av = engine.evaluate_node(&args[0], ctx, arena)?;
-    let d2_av = engine.evaluate_node(&args[1], ctx, arena)?;
-    let unit_av = engine.evaluate_node(&args[2], ctx, arena)?;
+    let d1_av = engine.dispatch_node(&args[0], ctx, arena)?;
+    let d2_av = engine.dispatch_node(&args[1], ctx, arena)?;
+    let unit_av = engine.dispatch_node(&args[2], ctx, arena)?;
 
     let resolve_dt = |av: &'a DataValue<'a>| -> Option<DataDateTime> {
         crate::operators::helpers::extract_datetime(av)

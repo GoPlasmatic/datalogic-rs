@@ -39,7 +39,7 @@ pub(crate) fn evaluate_filter<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    // Fast paths bypass `eval_iter_body` and skip tracer markers. Defer to the
+    // Fast paths bypass `run_iter_body` and skip tracer markers. Defer to the
     // general path when a tracer is attached.
     if !ctx.is_tracing() {
         if let Some(result) = filter_strict_eq_field_fast_path(&src, predicate, ctx, engine, arena)?
@@ -146,7 +146,7 @@ fn filter_general<'a>(
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
-        let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
+        let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
         if crate::arena::is_truthy(keep, engine) {
             results.push(*item);
         }
@@ -194,7 +194,7 @@ fn filter_bridge_object<'a>(
         let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
         let key: &'a str = k;
         guard.step_keyed(item_av, i, key);
-        let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
+        let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
         if crate::arena::is_truthy(keep, engine) {
             kept.push((key, *item_av));
         }
@@ -219,7 +219,7 @@ fn filter_bridge_array<'a>(
     let mut guard = IterGuard::new(ctx);
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
-        let keep = engine.eval_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
+        let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
         if crate::arena::is_truthy(keep, engine) {
             kept.push(*item_av);
         }

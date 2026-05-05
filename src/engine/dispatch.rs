@@ -1,8 +1,8 @@
 //! Arena-mode dispatch hub.
 //!
-//! [`evaluate_node_inner`] is the exhaustive `CompiledNode` match that
+//! [`dispatch_node_inner`] is the exhaustive `CompiledNode` match that
 //! routes each node shape to its operator implementation. It is invoked from
-//! `Engine::evaluate_node`, which handles the literal fast path,
+//! `Engine::dispatch_node`, which handles the literal fast path,
 //! breadcrumb accumulation, and trace recording before delegating here.
 
 use super::Engine;
@@ -58,15 +58,15 @@ macro_rules! dispatch {
 }
 
 /// Inner dispatch — never called directly; reachable only via
-/// `Engine::evaluate_node` which handles the literal fast path,
+/// `Engine::dispatch_node` which handles the literal fast path,
 /// breadcrumb accumulation, and trace recording.
 ///
 /// `#[inline(always)]` is load-bearing here: this function is the hot
-/// dispatch and the compiler inlines it into `evaluate_node` in the
+/// dispatch and the compiler inlines it into `dispatch_node` in the
 /// single-file layout. Crossing the module boundary loses that inline
 /// decision (measured ~1 ns regression on the 15 ns baseline).
 #[inline(always)]
-pub(super) fn evaluate_node_inner<'a>(
+pub(super) fn dispatch_node_inner<'a>(
     engine: &Engine,
     node: &'a CompiledNode,
     ctx: &mut ContextStack<'a>,
@@ -113,7 +113,7 @@ pub(super) fn evaluate_node_inner<'a>(
                 arena,
             ),
 
-            // Value literal: handled by the outer `evaluate_node` wrapper
+            // Value literal: handled by the outer `dispatch_node` wrapper
             // before reaching this match.
             CompiledNode::Value { .. } => unreachable!("literal handled by wrapper"),
 
@@ -318,7 +318,7 @@ pub(super) fn evaluate_node_inner<'a>(
 // (multi-word locals + drop glue) which, when inlined, forced the
 // dispatch prologue to reserve ~464 B of stack on every recursive call.
 // `#[inline(never)]` is load-bearing — see the comment on
-// `evaluate_node_inner`.
+// `dispatch_node_inner`.
 
 #[cfg(feature = "preserve")]
 #[inline(never)]
@@ -335,7 +335,7 @@ fn evaluate_structured_object<'a>(
     let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
         bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
     for (key, n) in data.fields.iter() {
-        let val_av = engine.evaluate_node(n, ctx, arena)?;
+        let val_av = engine.dispatch_node(n, ctx, arena)?;
         let val_owned = *val_av;
         let k: &'a str = arena.alloc_str(key);
         pairs.push((k, val_owned));
@@ -357,7 +357,7 @@ fn evaluate_array_literal<'a>(
     let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(nodes.len(), arena);
     for n in nodes.iter() {
-        let av = engine.evaluate_node(n, ctx, arena)?;
+        let av = engine.dispatch_node(n, ctx, arena)?;
         items.push(*av);
     }
     Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
@@ -378,7 +378,7 @@ fn evaluate_custom_operator<'a>(
     let mut args: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
     for arg in data.args.iter() {
-        args.push(engine.evaluate_node(arg, ctx, arena)?);
+        args.push(engine.dispatch_node(arg, ctx, arena)?);
     }
     op.evaluate(&args, ctx, arena)
 }

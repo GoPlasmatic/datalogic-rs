@@ -50,7 +50,7 @@ pub(crate) fn evaluate_try<'a>(
         return Ok(crate::arena::pool::singleton_null());
     }
     if args.len() == 1 {
-        return engine.evaluate_node(&args[0], ctx, arena);
+        return engine.dispatch_node(&args[0], ctx, arena);
     }
 
     // Multi-arg form: try arms in sequence; final arm receives the error
@@ -62,7 +62,7 @@ pub(crate) fn evaluate_try<'a>(
             return try_last_with_error_context(arg, &mut last_err, ctx, engine, arena);
         }
         let saved_len = ctx.error_path_len();
-        match engine.evaluate_node(arg, ctx, arena) {
+        match engine.dispatch_node(arg, ctx, arena) {
             Ok(v) => return Ok(v),
             Err(e) => {
                 ctx.truncate_error_path(saved_len);
@@ -90,10 +90,10 @@ fn try_last_with_error_context<'a>(
     {
         let av: &'a DataValue<'a> = arena.alloc(error_obj.to_arena(arena));
         ctx.push(av);
-        let result = engine.evaluate_node(arg, ctx, arena);
+        let result = engine.dispatch_node(arg, ctx, arena);
         ctx.pop();
         result
     } else {
-        engine.evaluate_node(arg, ctx, arena)
+        engine.dispatch_node(arg, ctx, arena)
     }
 }

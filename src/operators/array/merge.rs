@@ -21,7 +21,7 @@ pub(crate) fn evaluate_merge<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, args.len());
 
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         match av {
             // Direct arena Array (e.g. result of upstream arena filter/map).
             DataValue::Array(items) => {

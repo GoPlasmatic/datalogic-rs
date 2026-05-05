@@ -50,7 +50,7 @@ mod dispatch;
 /// Cold fallback for `CompiledNode::Value { lit: None, .. }` — only
 /// reached by ad-hoc `synthetic_value` wrappers (test helpers, trace nodes
 /// built outside `Logic::new`). Outlined so the inliner doesn't
-/// expand it into the hot `evaluate_node` literal arm.
+/// expand it into the hot `dispatch_node` literal arm.
 #[cold]
 #[inline(never)]
 fn literal_fallback<'a>(
@@ -387,7 +387,7 @@ impl Engine {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         let data_ref = data.into_eval_data(arena)?;
         let mut ctx = crate::arena::ContextStack::new(data_ref);
-        match self.evaluate_node(&compiled.root, &mut ctx, arena) {
+        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
             Err(mut e) => {
                 e = e.with_path(ctx.take_error_path());
@@ -445,7 +445,7 @@ impl Engine {
     /// [`Self::evaluate`] so the dispatch path is identical to the v5 entry.
     #[cfg(feature = "compat")]
     #[doc(hidden)]
-    pub(crate) fn eval_to_value(&self, compiled: &Logic, data: &Value) -> Result<Value> {
+    pub(crate) fn run_to_value(&self, compiled: &Logic, data: &Value) -> Result<Value> {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(compiled, data_av, &arena)?;
@@ -460,7 +460,7 @@ impl Engine {
     /// path. When a tracer is attached to `ctx`, records a step per
     /// non-literal node (entry context + result/error).
     #[inline(always)]
-    pub(crate) fn evaluate_node<'a>(
+    pub(crate) fn dispatch_node<'a>(
         &self,
         node: &'a CompiledNode,
         ctx: &mut crate::arena::ContextStack<'a>,
@@ -490,7 +490,7 @@ impl Engine {
         #[cfg(feature = "trace")]
         let ctx_snapshot: Option<Value> = ctx.has_tracer().then(|| ctx.current_data_as_value());
 
-        let result = dispatch::evaluate_node_inner(self, node, ctx, arena);
+        let result = dispatch::dispatch_node_inner(self, node, ctx, arena);
 
         // Accumulate the failing node's id on every Err. We always pay
         // the (single) Vec::push since errors are rare and structured-error
@@ -512,7 +512,7 @@ impl Engine {
     /// markers are no-ops when no tracer is attached, so plain-mode callers
     /// pay only one branch per iteration.
     #[inline]
-    pub(crate) fn eval_iter_body<'a>(
+    pub(crate) fn run_iter_body<'a>(
         &self,
         body: &'a CompiledNode,
         ctx: &mut crate::arena::ContextStack<'a>,
@@ -522,7 +522,7 @@ impl Engine {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         #[cfg(feature = "trace")]
         ctx.trace_push_iteration(_index, _total);
-        let res = self.evaluate_node(body, ctx, arena);
+        let res = self.dispatch_node(body, ctx, arena);
         #[cfg(feature = "trace")]
         ctx.trace_pop_iteration();
         res
@@ -535,7 +535,7 @@ impl Engine {
     pub(crate) fn run_trace(&self, compiled: &Logic, data_arc: Arc<Value>) -> TracedResult {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
-        let (result, error_path) = self.evaluate_with_trace(compiled, data_arc, &mut collector);
+        let (result, error_path) = self.run_with_trace(compiled, data_arc, &mut collector);
         let steps = collector.into_steps();
         match result {
             Ok(value) => TracedResult {
@@ -564,14 +564,14 @@ impl Engine {
 
     /// Arena-mode traced evaluation. Allocates an arena, attaches the
     /// caller's [`TraceCollector`] to the arena context, and dispatches
-    /// through [`evaluate_node`]. Returns `(result, error_path)` where
+    /// through [`dispatch_node`]. Returns `(result, error_path)` where
     /// `error_path` is the structured-error breadcrumb of node ids leading
-    /// to the failure (empty on success). Calls `evaluate_node` directly
+    /// to the failure (empty on success). Calls `dispatch_node` directly
     /// (not the public [`Self::evaluate`]) because the trace path needs the
     /// [`crate::arena::ContextStack`] both before (to attach the tracer)
     /// and after (to extract the breadcrumb) the evaluation.
     #[cfg(feature = "trace")]
-    fn evaluate_with_trace(
+    fn run_with_trace(
         &self,
         compiled: &Logic,
         data: Arc<Value>,
@@ -581,7 +581,7 @@ impl Engine {
         let data_av = crate::arena::value_to_data(&data, &arena);
         let mut ctx = crate::arena::ContextStack::new(arena.alloc(data_av));
         ctx.set_tracer(collector);
-        let result = self.evaluate_node(&compiled.root, &mut ctx, &arena);
+        let result = self.dispatch_node(&compiled.root, &mut ctx, &arena);
         match result {
             Ok(av) => {
                 let owned = crate::arena::data_to_value(av);

@@ -346,11 +346,11 @@ pub(crate) fn evaluate_val<'a>(
 
     // Multi-arg form: evaluate first to detect [[level], ...] vs path chain.
     if args.len() >= 2 {
-        let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
+        let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
         if let Some(level) = level_marker_from_array(first_av) {
             // Metadata short-circuits — only valid with exactly 2 args.
             if args.len() == 2 {
-                let path_av = engine.evaluate_node(&args[1], ctx, arena)?;
+                let path_av = engine.dispatch_node(&args[1], ctx, arena)?;
                 let path_str = path_av.as_str().unwrap_or("");
                 if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
                     return Ok(av);
@@ -366,7 +366,7 @@ pub(crate) fn evaluate_val<'a>(
             // Multi-arg path chain at a relative level.
             let mut paths: Vec<String> = Vec::with_capacity(args.len() - 1);
             for item in args.iter().skip(1) {
-                let av = engine.evaluate_node(item, ctx, arena)?;
+                let av = engine.dispatch_node(item, ctx, arena)?;
                 paths.push(path_string_from_data(av));
             }
             let mut cur = frame_data_at_level(ctx, level as isize, arena)
@@ -384,7 +384,7 @@ pub(crate) fn evaluate_val<'a>(
         let mut evaluated: Vec<&'a DataValue<'a>> = Vec::with_capacity(args.len());
         evaluated.push(first_av);
         for arg in args.iter().skip(1) {
-            evaluated.push(engine.evaluate_node(arg, ctx, arena)?);
+            evaluated.push(engine.dispatch_node(arg, ctx, arena)?);
         }
 
         // Reduce shortcut for the first segment.
@@ -415,7 +415,7 @@ pub(crate) fn evaluate_val<'a>(
     }
 
     // Single-arg form: evaluate it.
-    let path_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let path_av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     // Null path → current data (matches canonical `var` semantics for
     // `{"var": null}` and the empty-string path for `{"var": ""}`).
@@ -569,7 +569,7 @@ pub(crate) fn evaluate_exists<'a>(
     let cur = current_data(ctx, arena);
 
     if args.len() == 1 {
-        let arg = engine.evaluate_node(&args[0], ctx, arena)?;
+        let arg = engine.dispatch_node(&args[0], ctx, arena)?;
         if let Some(s) = arg.as_str() {
             return Ok(crate::arena::pool::singleton_bool(object_contains(cur, s)));
         }
@@ -602,7 +602,7 @@ pub(crate) fn evaluate_exists<'a>(
     // Multiple args — each must evaluate to a string segment.
     let mut paths: Vec<&'a DataValue<'a>> = Vec::with_capacity(args.len());
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         if av.as_str().is_none() {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -633,7 +633,7 @@ fn default_or_null<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match default_value {
-        Some(node) => engine.evaluate_node(node, ctx, arena),
+        Some(node) => engine.dispatch_node(node, ctx, arena),
         None => Ok(crate::arena::pool::singleton_null()),
     }
 }

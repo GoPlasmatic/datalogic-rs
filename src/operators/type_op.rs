@@ -54,7 +54,7 @@ pub(crate) fn evaluate_type<'a>(
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_type_name("null"));
     }
-    let av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     // Datetime/duration object detection (e.g. {"datetime": "..."}).
     #[cfg(feature = "datetime")]

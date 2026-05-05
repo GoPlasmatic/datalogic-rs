@@ -493,9 +493,9 @@ pub(crate) fn evaluate_strict_equals<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_node(arg, ctx, arena)?;
+        let cur_av = engine.dispatch_node(arg, ctx, arena)?;
         if !compare_equals(first_av, cur_av, true, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -513,8 +513,8 @@ pub(crate) fn evaluate_strict_not_equals<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let a = engine.evaluate_node(&args[0], ctx, arena)?;
-    let b = engine.evaluate_node(&args[1], ctx, arena)?;
+    let a = engine.dispatch_node(&args[0], ctx, arena)?;
+    let b = engine.dispatch_node(&args[1], ctx, arena)?;
     let eq = compare_equals(a, b, true, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -529,9 +529,9 @@ pub(crate) fn evaluate_equals<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_node(arg, ctx, arena)?;
+        let cur_av = engine.dispatch_node(arg, ctx, arena)?;
         if !compare_equals(first_av, cur_av, false, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }
@@ -549,8 +549,8 @@ pub(crate) fn evaluate_not_equals<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let a = engine.evaluate_node(&args[0], ctx, arena)?;
-    let b = engine.evaluate_node(&args[1], ctx, arena)?;
+    let a = engine.dispatch_node(&args[0], ctx, arena)?;
+    let b = engine.dispatch_node(&args[1], ctx, arena)?;
     let eq = compare_equals(a, b, false, engine)?;
     Ok(crate::arena::pool::singleton_bool(!eq))
 }
@@ -566,9 +566,9 @@ fn evaluate_ord<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let mut prev_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let mut prev_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
-        let cur_av = engine.evaluate_node(arg, ctx, arena)?;
+        let cur_av = engine.dispatch_node(arg, ctx, arena)?;
         if !compare_ordered(prev_av, cur_av, op, engine)? {
             return Ok(crate::arena::pool::singleton_false());
         }

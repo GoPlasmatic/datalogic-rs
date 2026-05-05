@@ -177,7 +177,7 @@ impl<'a> ContextStack<'a> {
     /// Cross-feature wrapper around [`has_tracer`]. Always callable; folds to
     /// `false` when the `trace` feature is off so callers don't need their own
     /// `cfg` shims. Used by iterator-op fast paths to skip optimizations that
-    /// would bypass [`eval_iter_body`]'s trace markers.
+    /// would bypass [`run_iter_body`]'s trace markers.
     #[inline]
     pub(crate) fn is_tracing(&self) -> bool {
         #[cfg(feature = "trace")]
@@ -428,7 +428,7 @@ impl<'g, 'a> IterGuard<'g, 'a> {
         }
     }
 
-    /// Mutable access to the wrapped stack — for `engine.eval_iter_body(...)`
+    /// Mutable access to the wrapped stack — for `engine.run_iter_body(...)`
     /// and similar calls that take `&mut ContextStack`.
     #[inline]
     pub(crate) fn stack(&mut self) -> &mut ContextStack<'a> {

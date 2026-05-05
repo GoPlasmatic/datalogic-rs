@@ -52,8 +52,8 @@ fn add_two_arg<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, ctx, arena)?;
-    let b_av = engine.evaluate_node(b, ctx, arena)?;
+    let a_av = engine.dispatch_node(a, ctx, arena)?;
+    let b_av = engine.dispatch_node(b, ctx, arena)?;
 
     // Integer-preserving fast path (both native Number with i64 values).
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -137,8 +137,8 @@ fn multiply_two_arg<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, ctx, arena)?;
-    let b_av = engine.evaluate_node(b, ctx, arena)?;
+    let a_av = engine.dispatch_node(a, ctx, arena)?;
+    let b_av = engine.dispatch_node(b, ctx, arena)?;
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -210,7 +210,7 @@ fn subtract_one_arg<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let av = engine.evaluate_node(arg, ctx, arena)?;
+    let av = engine.dispatch_node(arg, ctx, arena)?;
 
     // Array fold case: (first - second - ...).
     if let DataValue::Array(items) = av {
@@ -248,8 +248,8 @@ fn subtract_two_arg<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, ctx, arena)?;
-    let b_av = engine.evaluate_node(b, ctx, arena)?;
+    let a_av = engine.dispatch_node(a, ctx, arena)?;
+    let b_av = engine.dispatch_node(b, ctx, arena)?;
 
     // Integer-preserving fast path.
     if let (Some(ia), Some(ib)) = (a_av.as_i64(), b_av.as_i64()) {
@@ -288,7 +288,7 @@ fn subtract_variadic<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let mut all_int =
         first_av.as_i64().is_some() || try_coerce_to_integer_cfg(first_av, engine).is_some();
     let mut int_acc: i64 = first_av
@@ -301,7 +301,7 @@ fn subtract_variadic<'a>(
     };
 
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         if all_int
             && let Some(i) = av
                 .as_i64()
@@ -367,7 +367,7 @@ fn one_arg_arith<'a>(
         };
     }
 
-    let av = engine.evaluate_node(arg, ctx, arena)?;
+    let av = engine.dispatch_node(arg, ctx, arena)?;
 
     // Array result (e.g. from `var "items"`): fold all elements.
     if let DataValue::Array(items) = av {

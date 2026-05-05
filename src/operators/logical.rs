@@ -13,7 +13,7 @@ pub(crate) fn evaluate_not<'a>(
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_true());
     }
-    let v = engine.evaluate_node(&args[0], ctx, arena)?;
+    let v = engine.dispatch_node(&args[0], ctx, arena)?;
     Ok(crate::arena::pool::singleton_bool(!is_truthy(v, engine)))
 }
 
@@ -27,7 +27,7 @@ pub(crate) fn evaluate_bool_cast<'a>(
     if args.is_empty() {
         return Ok(crate::arena::pool::singleton_false());
     }
-    let v = engine.evaluate_node(&args[0], ctx, arena)?;
+    let v = engine.dispatch_node(&args[0], ctx, arena)?;
     Ok(crate::arena::pool::singleton_bool(is_truthy(v, engine)))
 }
 
@@ -44,7 +44,7 @@ pub(crate) fn evaluate_and<'a>(
     check_invalid_args_marker(args)?;
     let mut last: &DataValue<'a> = crate::arena::pool::singleton_true();
     for arg in args {
-        let v = engine.evaluate_node(arg, ctx, arena)?;
+        let v = engine.dispatch_node(arg, ctx, arena)?;
         if !is_truthy(v, engine) {
             return Ok(v);
         }
@@ -66,7 +66,7 @@ pub(crate) fn evaluate_or<'a>(
     check_invalid_args_marker(args)?;
     let mut last: &DataValue<'a> = crate::arena::pool::singleton_false();
     for arg in args {
-        let v = engine.evaluate_node(arg, ctx, arena)?;
+        let v = engine.dispatch_node(arg, ctx, arena)?;
         if is_truthy(v, engine) {
             return Ok(v);
         }

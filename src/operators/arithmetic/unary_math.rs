@@ -71,14 +71,14 @@ pub(crate) fn unary_math<'a>(
     };
 
     if args.len() == 1 {
-        let av = engine.evaluate_node(&args[0], ctx, arena)?;
+        let av = engine.dispatch_node(&args[0], ctx, arena)?;
         let n = value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
         return Ok(to_arena(op.apply(n), arena));
     }
 
     let mut items = bvec::<DataValue<'a>>(arena, args.len());
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         let n = value_strict_f64(av).ok_or_else(crate::constants::invalid_args)?;
         let r = to_arena(op.apply(n), arena);
         items.push(*r);

@@ -76,7 +76,7 @@ fn sort_direction<'a>(
     arena: &'a Bump,
 ) -> Result<bool> {
     if args.len() > 1 {
-        let dir = engine.evaluate_node(&args[1], ctx, arena)?;
+        let dir = engine.dispatch_node(&args[1], ctx, arena)?;
         Ok(match dir {
             DataValue::Bool(b) => *b,
             _ => true,
@@ -158,7 +158,7 @@ fn sort_general_extractor<'a>(
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
-        let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;
+        let key_av = engine.dispatch_node(extractor, guard.stack(), arena)?;
         keys.push(*key_av);
     }
     drop(guard);
@@ -215,7 +215,7 @@ fn sort_arena_from_value<'a>(
     let mut guard = IterGuard::new(ctx);
     for (i, item_av) in items_slice.iter().enumerate() {
         guard.step_indexed(item_av, i);
-        let key_av = engine.evaluate_node(extractor, guard.stack(), arena)?;
+        let key_av = engine.dispatch_node(extractor, guard.stack(), arena)?;
         keys.push(*key_av);
     }
     drop(guard);

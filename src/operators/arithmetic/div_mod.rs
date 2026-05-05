@@ -71,8 +71,8 @@ fn div_mod_two_arg<'a>(
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    let a_av = engine.evaluate_node(a, ctx, arena)?;
-    let b_av = engine.evaluate_node(b, ctx, arena)?;
+    let a_av = engine.dispatch_node(a, ctx, arena)?;
+    let b_av = engine.dispatch_node(b, ctx, arena)?;
 
     // Duration / Number — only for `/`, not `%` (modulo on durations
     // is not defined).
@@ -138,7 +138,7 @@ fn one_arg_div_mod<'a>(
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    let av = engine.evaluate_node(arg, ctx, arena)?;
+    let av = engine.dispatch_node(arg, ctx, arena)?;
 
     if let DataValue::Array(items) = av {
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
@@ -190,11 +190,11 @@ fn variadic_div_mod<'a>(
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let mut result =
         coerce_to_number_cfg(first_av, engine).ok_or_else(crate::constants::nan_error)?;
     for arg in args.iter().skip(1) {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         let n = coerce_to_number_cfg(av, engine).ok_or_else(crate::constants::nan_error)?;
         if n == 0.0 {
             return Err(crate::constants::nan_error());

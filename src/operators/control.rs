@@ -21,20 +21,20 @@ pub(crate) fn evaluate_if<'a>(
     check_invalid_args_marker(args)?;
 
     if args.len() == 3 {
-        let cond = engine.evaluate_node(&args[0], ctx, arena)?;
+        let cond = engine.dispatch_node(&args[0], ctx, arena)?;
         let idx = if is_truthy(cond, engine) { 1 } else { 2 };
-        return engine.evaluate_node(&args[idx], ctx, arena);
+        return engine.dispatch_node(&args[idx], ctx, arena);
     }
 
     let mut i = 0;
     while i < args.len() {
         if i == args.len() - 1 {
-            return engine.evaluate_node(&args[i], ctx, arena);
+            return engine.dispatch_node(&args[i], ctx, arena);
         }
-        let cond = engine.evaluate_node(&args[i], ctx, arena)?;
+        let cond = engine.dispatch_node(&args[i], ctx, arena)?;
         if is_truthy(cond, engine) {
             if i + 1 < args.len() {
-                return engine.evaluate_node(&args[i + 1], ctx, arena);
+                return engine.dispatch_node(&args[i + 1], ctx, arena);
             } else {
                 return Ok(cond);
             }
@@ -56,7 +56,7 @@ pub(crate) fn evaluate_coalesce<'a>(
         return Ok(crate::arena::pool::singleton_null());
     }
     for arg in args {
-        let v = engine.evaluate_node(arg, ctx, arena)?;
+        let v = engine.dispatch_node(arg, ctx, arena)?;
         if !matches!(v, DataValue::Null) {
             return Ok(v);
         }
@@ -76,16 +76,16 @@ pub(crate) fn evaluate_switch<'a>(
     if args.len() < 2 {
         return Ok(crate::arena::pool::singleton_null());
     }
-    let disc_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let disc_av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     match &args[1] {
         CompiledNode::Array { nodes, .. } => {
             for case_node in nodes.iter() {
                 match case_node {
                     CompiledNode::Array { nodes: pair, .. } if pair.len() >= 2 => {
-                        let cv_av = engine.evaluate_node(&pair[0], ctx, arena)?;
+                        let cv_av = engine.dispatch_node(&pair[0], ctx, arena)?;
                         if compare_equals(disc_av, cv_av, true, engine).unwrap_or(false) {
-                            return engine.evaluate_node(&pair[1], ctx, arena);
+                            return engine.dispatch_node(&pair[1], ctx, arena);
                         }
                     }
                     CompiledNode::Value { lit: Some(av), .. } => {
@@ -116,7 +116,7 @@ pub(crate) fn evaluate_switch<'a>(
     }
 
     if args.len() > 2 {
-        return engine.evaluate_node(&args[2], ctx, arena);
+        return engine.dispatch_node(&args[2], ctx, arena);
     }
     Ok(crate::arena::pool::singleton_null())
 }

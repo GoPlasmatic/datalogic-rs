@@ -45,17 +45,17 @@ pub(crate) fn evaluate_preserve<'a>(
     match args.len() {
         0 => Ok(crate::arena::pool::singleton_empty_array()),
         1 => {
-            // Literal fast path — skip evaluate_node dispatch.
+            // Literal fast path — skip dispatch_node dispatch.
             if let CompiledNode::Value { value, .. } = &args[0] {
                 return Ok(arena.alloc(value.to_arena(arena)));
             }
-            engine.evaluate_node(&args[0], ctx, arena)
+            engine.dispatch_node(&args[0], ctx, arena)
         }
         _ => {
             let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
             for arg in args {
-                let av = engine.evaluate_node(arg, ctx, arena)?;
+                let av = engine.dispatch_node(arg, ctx, arena)?;
                 items.push(*av);
             }
             Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))

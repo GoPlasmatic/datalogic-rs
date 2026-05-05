@@ -59,7 +59,7 @@ pub(super) fn evaluate_invariant_no_push<'a>(
     }
     let null_av: &'a DataValue<'a> = crate::arena::pool::singleton_null();
     ctx.push(null_av);
-    let result = engine.evaluate_node(invariant_node, ctx, arena);
+    let result = engine.dispatch_node(invariant_node, ctx, arena);
     ctx.pop();
     result
 }
@@ -437,7 +437,7 @@ pub(crate) fn resolve_iter_input<'a>(
         }
     }
 
-    let av = engine.evaluate_node(arg, ctx, arena)?;
+    let av = engine.dispatch_node(arg, ctx, arena)?;
     Ok(value_as_iter(av))
 }
 

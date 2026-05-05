@@ -152,7 +152,7 @@ pub(super) fn variadic_fold<'a>(
     let mut all_int = true;
 
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         if all_int && let Some(i) = av.as_i64() {
             match (spec.i_combine)(int_acc, i) {
                 Some(r) => int_acc = r,

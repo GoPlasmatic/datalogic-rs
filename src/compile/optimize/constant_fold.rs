@@ -230,7 +230,7 @@ pub(crate) fn fold_static_node(node: &CompiledNode, engine: &Engine) -> Option<O
     let arena = bumpalo::Bump::new();
     let null_root: &crate::arena::DataValue<'_> = arena.alloc(crate::arena::DataValue::Null);
     let mut ctx = crate::arena::ContextStack::new(null_root);
-    let av = engine.evaluate_node(node, &mut ctx, &arena).ok()?;
+    let av = engine.dispatch_node(node, &mut ctx, &arena).ok()?;
     Some(av.to_owned())
 }
 

@@ -26,7 +26,7 @@ pub(crate) fn evaluate_reduce<'a>(
 
     let body = &args[1];
     let initial: &'a DataValue<'a> = if args.len() == 3 {
-        engine.evaluate_node(&args[2], ctx, arena)?
+        engine.dispatch_node(&args[2], ctx, arena)?
     } else {
         crate::arena::pool::singleton_null()
     };
@@ -45,7 +45,7 @@ pub(crate) fn evaluate_reduce<'a>(
 
     // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} for + / - / *.
     // Skipped when a tracer is attached so per-iteration trace markers still get
-    // recorded via `eval_iter_body` in the general path.
+    // recorded via `run_iter_body` in the general path.
     if !ctx.is_tracing()
         && let CompiledNode::BuiltinOperator {
             opcode,
@@ -80,7 +80,7 @@ fn reduce_general<'a>(
     for i in 0..len {
         let item = src.get(i);
         guard.step_reduce(item, acc_av);
-        acc_av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
     }
     drop(guard);
     Ok(acc_av)
@@ -107,7 +107,7 @@ fn reduce_arena_bridge<'a>(
                 // SAFETY: pairs[i].1 lives in the arena for `'a`.
                 let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
                 guard.step_reduce(item_av, acc_av);
-                acc_av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
+                acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
             }
             drop(guard);
             Ok(acc_av)
@@ -118,7 +118,7 @@ fn reduce_arena_bridge<'a>(
             let mut guard = IterGuard::new(ctx);
             for (i, item_av) in items.iter().enumerate() {
                 guard.step_reduce(item_av, acc_av);
-                acc_av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
+                acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
             }
             drop(guard);
             Ok(acc_av)

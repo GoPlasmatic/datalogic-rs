@@ -491,7 +491,7 @@ impl<'e> TracedSession<'e> {
         let mut ctx = crate::arena::ContextStack::new(data_ref);
         ctx.set_tracer(&mut collector);
 
-        let outcome = self.engine.evaluate_node(&compiled.root, &mut ctx, arena);
+        let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);
         let result = match outcome {
             Ok(av) => Ok(av),
             Err(mut e) => {

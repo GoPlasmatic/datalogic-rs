@@ -38,7 +38,7 @@ pub(crate) fn evaluate_missing<'a>(
         bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
 
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         match av {
             DataValue::Array(items) => {
                 for it in *items {
@@ -76,10 +76,10 @@ pub(crate) fn evaluate_missing_some<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    let min_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let min_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
 
-    let paths_av = engine.evaluate_node(&args[1], ctx, arena)?;
+    let paths_av = engine.dispatch_node(&args[1], ctx, arena)?;
     let lookup = lookup_data(ctx);
 
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
@@ -153,7 +153,7 @@ pub(crate) fn evaluate_compiled_missing<'a>(
                 }
             }
             CompiledMissingArg::Later(node) => {
-                let av = engine.evaluate_node(node, ctx, arena)?;
+                let av = engine.dispatch_node(node, ctx, arena)?;
                 accumulate_dynamic_missing(av, lookup, &mut missing, arena);
             }
         }
@@ -176,7 +176,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
     let min_present = match &data.min_present {
         CompiledMissingMin::Now(n) => *n,
         CompiledMissingMin::Later(node) => {
-            let av = engine.evaluate_node(node, ctx, arena)?;
+            let av = engine.dispatch_node(node, ctx, arena)?;
             av.as_i64().unwrap_or(1).max(0) as usize
         }
     };
@@ -204,7 +204,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
             Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
         }
         CompiledMissingPaths::Later(node) => {
-            let paths_av = engine.evaluate_node(node, ctx, arena)?;
+            let paths_av = engine.dispatch_node(node, ctx, arena)?;
             let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::new_in(arena);
             let mut present = 0usize;

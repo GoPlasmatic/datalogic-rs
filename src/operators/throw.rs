@@ -18,7 +18,7 @@ pub(crate) fn evaluate_throw<'a>(
         // Literal fast path — skip arena dispatch.
         value.clone()
     } else {
-        let av = engine.evaluate_node(&args[0], ctx, arena)?;
+        let av = engine.dispatch_node(&args[0], ctx, arena)?;
         av.to_owned()
     };
 

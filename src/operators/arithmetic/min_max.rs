@@ -101,7 +101,7 @@ fn min_max_variadic<'a>(
     let mut best_f = init;
     let mut best_av: Option<&'a DataValue<'a>> = None;
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         let f = match av {
             DataValue::Number(n) => n.as_f64(),
             _ => return Err(crate::constants::invalid_args()),

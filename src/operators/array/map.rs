@@ -39,7 +39,7 @@ pub(crate) fn evaluate_map<'a>(
         return Ok(crate::arena::pool::singleton_empty_array());
     }
 
-    // Fast paths bypass `eval_iter_body`, so they skip the tracer's
+    // Fast paths bypass `run_iter_body`, so they skip the tracer's
     // per-iteration markers. Only enter them when no tracer is attached.
     if !ctx.is_tracing() {
         if let Some(result) = map_var_fast_path(&src, body, arena) {
@@ -235,7 +235,7 @@ fn map_general<'a>(
     for i in 0..len {
         let item = src.get(i);
         guard.step_indexed(item, i);
-        let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
         results.push(*av);
     }
     drop(guard);
@@ -277,7 +277,7 @@ fn map_bridge_object<'a>(
         let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
         let key: &'a str = k;
         guard.step_keyed(item_av, i, key);
-        let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
         results.push(*av);
     }
     drop(guard);
@@ -297,7 +297,7 @@ fn map_bridge_array<'a>(
     let mut guard = IterGuard::new(ctx);
     for (i, item_av) in items.iter().enumerate() {
         guard.step_indexed(item_av, i);
-        let av = engine.eval_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
         results.push(*av);
     }
     drop(guard);
@@ -314,7 +314,7 @@ fn map_bridge_single<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let item_av: &'a DataValue<'a> = input;
     ctx.push_with_index(item_av, 0);
-    let av = engine.eval_iter_body(body, ctx, arena, 0, 1)?;
+    let av = engine.run_iter_body(body, ctx, arena, 0, 1)?;
     let owned = *av;
     ctx.pop();
     let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));

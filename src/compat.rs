@@ -302,19 +302,19 @@ impl LegacyApi for Engine {
     // ---- Evaluate entries ----
 
     fn evaluate(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value> {
-        self.eval_to_value(compiled, &data)
+        self.run_to_value(compiled, &data)
     }
 
     fn evaluate_arc_value(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value> {
-        self.eval_to_value(compiled, &data)
+        self.run_to_value(compiled, &data)
     }
 
     fn evaluate_ref(&self, compiled: &Logic, data: &Value) -> Result<Value> {
-        self.eval_to_value(compiled, data)
+        self.run_to_value(compiled, data)
     }
 
     fn evaluate_owned(&self, compiled: &Logic, data: Value) -> Result<Value> {
-        self.eval_to_value(compiled, &data)
+        self.run_to_value(compiled, &data)
     }
 
     fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
@@ -330,9 +330,9 @@ impl LegacyApi for Engine {
     ) -> std::result::Result<Value, Error> {
         // Pre-merge this had a separate code path. Today every public
         // `evaluate*` already populates operator+path on failure, so this
-        // is just `eval_to_value` — same shape, error already carries the
+        // is just `run_to_value` — same shape, error already carries the
         // structured fields.
-        self.eval_to_value(compiled, &data)
+        self.run_to_value(compiled, &data)
     }
 
     fn evaluate_json_structured(

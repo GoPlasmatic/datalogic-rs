@@ -3,7 +3,7 @@ use crate::{CompiledNode, Engine, Result};
 // Arena-mode string operators
 // =============================================================================
 //
-// Pre-evaluate args via `evaluate_node` (so var lookups borrow), then
+// Pre-evaluate args via `dispatch_node` (so var lookups borrow), then
 // build the result. For string-producing ops, the result is allocated as
 // `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
 
@@ -20,7 +20,7 @@ pub(crate) fn evaluate_concat<'a>(
     // Build the concatenated string using a bumpalo String to avoid heap alloc.
     let mut buf = bumpalo::collections::String::new_in(arena);
     for arg in args {
-        let av = engine.evaluate_node(arg, ctx, arena)?;
+        let av = engine.dispatch_node(arg, ctx, arena)?;
         match av {
             // For arrays, concat each item's string form.
             DataValue::Array(items) => {
@@ -47,7 +47,7 @@ pub(crate) fn evaluate_substr<'a>(
         return Ok(crate::arena::pool::singleton_empty_string());
     }
 
-    let s_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let s_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let string = data_to_str(s_av, arena);
     let char_count = string.chars().count();
 
@@ -57,7 +57,7 @@ pub(crate) fn evaluate_substr<'a>(
             value.as_i64().unwrap_or(0)
         } else {
             engine
-                .evaluate_node(&args[1], ctx, arena)?
+                .dispatch_node(&args[1], ctx, arena)?
                 .as_i64()
                 .unwrap_or(0)
         }
@@ -70,7 +70,7 @@ pub(crate) fn evaluate_substr<'a>(
         if let CompiledNode::Value { value, .. } = &args[2] {
             value.as_i64()
         } else {
-            engine.evaluate_node(&args[2], ctx, arena)?.as_i64()
+            engine.dispatch_node(&args[2], ctx, arena)?.as_i64()
         }
     } else {
         None
@@ -125,8 +125,8 @@ pub(crate) fn evaluate_in<'a>(
     if args.len() < 2 {
         return Ok(crate::arena::pool::singleton_false());
     }
-    let needle = engine.evaluate_node(&args[0], ctx, arena)?;
-    let haystack = engine.evaluate_node(&args[1], ctx, arena)?;
+    let needle = engine.dispatch_node(&args[0], ctx, arena)?;
+    let haystack = engine.dispatch_node(&args[1], ctx, arena)?;
 
     let result = match haystack {
         // String haystack — substring check (needle must be a string).
@@ -155,8 +155,8 @@ pub(crate) fn evaluate_starts_with<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let s = engine.evaluate_node(&args[0], ctx, arena)?;
-    let p = engine.evaluate_node(&args[1], ctx, arena)?;
+    let s = engine.dispatch_node(&args[0], ctx, arena)?;
+    let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
     Ok(crate::arena::pool::singleton_bool(s_str.starts_with(p_str)))
@@ -173,8 +173,8 @@ pub(crate) fn evaluate_ends_with<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let s = engine.evaluate_node(&args[0], ctx, arena)?;
-    let p = engine.evaluate_node(&args[1], ctx, arena)?;
+    let s = engine.dispatch_node(&args[0], ctx, arena)?;
+    let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
     Ok(crate::arena::pool::singleton_bool(s_str.ends_with(p_str)))
@@ -191,7 +191,7 @@ pub(crate) fn evaluate_upper<'a>(
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
-    let av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&s.to_uppercase()))))
 }
@@ -207,7 +207,7 @@ pub(crate) fn evaluate_lower<'a>(
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
-    let av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&s.to_lowercase()))))
 }
@@ -223,7 +223,7 @@ pub(crate) fn evaluate_trim<'a>(
     if args.is_empty() {
         return Err(crate::constants::invalid_args());
     }
-    let av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
     Ok(arena.alloc(DataValue::String(arena.alloc_str(s.trim()))))
 }
@@ -241,7 +241,7 @@ pub(crate) fn evaluate_split<'a>(
     if args.len() < 2 {
         return Err(crate::constants::invalid_args());
     }
-    let text_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let text_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let text_str: &'a str = match text_av {
         DataValue::String(s) => s,
         _ => data_to_str(text_av, arena),
@@ -255,7 +255,7 @@ pub(crate) fn evaluate_split<'a>(
     {
         arena.alloc_str(s)
     } else {
-        let av = engine.evaluate_node(&args[1], ctx, arena)?;
+        let av = engine.dispatch_node(&args[1], ctx, arena)?;
         match av {
             DataValue::String(s) => s,
             _ => data_to_str(av, arena),

@@ -17,7 +17,7 @@ pub(crate) fn evaluate_slice<'a>(
         return Err(crate::constants::invalid_args());
     }
 
-    let coll_av = engine.evaluate_node(&args[0], ctx, arena)?;
+    let coll_av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     // Null passthrough.
     if matches!(coll_av, DataValue::Null) {
@@ -104,7 +104,7 @@ fn extract_opt_i64_arena<'a>(
             _ => Err(Error::invalid_arguments("NaN".to_string())),
         };
     }
-    let av = engine.evaluate_node(node, ctx, arena)?;
+    let av = engine.dispatch_node(node, ctx, arena)?;
     match av {
         DataValue::Null => Ok(None),
         _ => match av.as_i64() {

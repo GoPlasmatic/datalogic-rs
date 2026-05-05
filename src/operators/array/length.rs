@@ -20,7 +20,7 @@ pub(crate) fn evaluate_length<'a>(
 
     // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
     // stay arena-resident on the intermediate.
-    let arg = engine.evaluate_node(&args[0], ctx, arena)?;
+    let arg = engine.dispatch_node(&args[0], ctx, arena)?;
 
     let n: i64 = match arg {
         DataValue::String(s) => s.chars().count() as i64,
