@@ -19,6 +19,12 @@ categories = ["data-structures", "development-tools", "parsing"]
 # `features = ["compat"]` if you need either.
 default = []
 compat = ["dep:serde_json", "datavalue/serde_json"]
+# `preserve` enables structure-preservation (templating) mode, where
+# multi-key objects in compiled rules become output-shaping templates
+# (`Engine::builder().preserve_structure(true)`). The 4.x JSONLogic
+# `preserve` *operator* was removed in v5: literal scalars / arrays
+# work inline already, and templated objects belong in
+# preserve_structure mode.
 preserve = []
 datetime = ["datavalue/datetime", "dep:chrono"]
 trace = ["compat"]

@@ -849,7 +849,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
 /// 2. Uses iterative callbacks with changing context (`map`, `filter`, `reduce`)
 /// 3. Has side effects or error handling (`try`, `throw`)
 /// 4. Depends on runtime state (`now` for current time)
-/// 5. Needs runtime disambiguation (`preserve`, `merge`, `min`, `max`)
+/// 5. Needs runtime disambiguation (`merge`, `min`, `max`)
 ///
 /// All other operators are **static** when their arguments are static.
 fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
@@ -879,12 +879,9 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         #[cfg(feature = "datetime")]
         Now => false,
 
-        // Runtime disambiguation needed:
-        // - Preserve: Must know it was explicitly used as an operator, not inferred
-        // - Merge/Min/Max: Need to distinguish [1,2,3] literal from operator arguments
-        //   at runtime to handle nested arrays correctly
-        #[cfg(feature = "preserve")]
-        Preserve => false,
+        // Runtime disambiguation needed: Merge/Min/Max have to distinguish
+        // a [1,2,3] literal from operator arguments at runtime to handle
+        // nested arrays correctly.
         Merge | Min | Max => false,
 
         // Pure operators: Static when all arguments are static. These perform

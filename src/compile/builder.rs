@@ -95,7 +95,7 @@ fn compile_operator_invocation(
 }
 
 /// Builtin operator path: handle invalid-args sentinels for `and`/`or`/`if`,
-/// preserve-args for `Preserve`, var/val/exists specialisations,
+/// var/val/exists specialisations,
 /// missing/missing_some, throw, and fall through to a generic
 /// `BuiltinOperator` (with optimization + static-fold passes when an
 /// `engine` is supplied).
@@ -154,30 +154,14 @@ fn compile_builtin(
     Ok(node)
 }
 
-/// Compile the `args_value` into a slice of [`CompiledNode`], honoring
-/// `Preserve`'s special "raw values, not compiled logic" rule.
+/// Compile the `args_value` into a slice of [`CompiledNode`].
 fn compile_builtin_args(
-    opcode: OpCode,
+    _opcode: OpCode,
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<Box<[CompiledNode]>> {
-    #[cfg(feature = "preserve")]
-    if opcode == OpCode::Preserve {
-        let nodes = match args_value {
-            OwnedDataValue::Array(arr) => arr
-                .iter()
-                .map(|v| CompiledNode::value_with_id(Some(ctx.next_id()), v.clone()))
-                .collect::<Vec<_>>(),
-            _ => vec![CompiledNode::value_with_id(
-                Some(ctx.next_id()),
-                args_value.clone(),
-            )],
-        };
-        return Ok(nodes.into_boxed_slice());
-    }
-    let _ = opcode;
     compile_args(args_value, engine, preserve_structure, ctx)
 }
 

@@ -17,7 +17,6 @@
 //! - **Error Handling**: `try`, `throw` - Exception-like error handling
 //! - **Type**: `type` - Runtime type inspection
 //! - **Missing**: `missing`, `missing_some` - Check for missing fields
-//! - **Special**: `preserve` - Structure preservation for templating
 //!
 //! # Dispatch Mechanism
 //!
@@ -40,8 +39,6 @@ pub mod variable;
 // Feature-gated extended operators
 #[cfg(feature = "datetime")]
 pub mod datetime;
-#[cfg(feature = "preserve")]
-pub mod preserve;
 #[cfg(feature = "error-handling")]
 pub mod throw;
 #[cfg(feature = "error-handling")]

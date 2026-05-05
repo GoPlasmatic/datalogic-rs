@@ -29,7 +29,6 @@
 //!   - String: `cat`, `substr`, `in`
 //!   - Array: `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`
 //!   - Missing: `missing`, `missing_some`
-//! - **preserve**: `preserve`
 //! - **datetime**: `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now`
 //! - **ext-string**: `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`
 //! - **ext-array**: `sort`, `slice`
@@ -98,10 +97,6 @@ pub enum OpCode {
     // === Core: Missing Value Handling ===
     Missing = 33,
     MissingSome = 34,
-
-    // === preserve ===
-    #[cfg(feature = "preserve")]
-    Preserve = 52,
 
     // === datetime ===
     #[cfg(feature = "datetime")]
@@ -219,9 +214,6 @@ const OPCODE_NAMES: &[(&str, OpCode)] = &[
     // Core: missing
     ("missing", OpCode::Missing),
     ("missing_some", OpCode::MissingSome),
-    // preserve
-    #[cfg(feature = "preserve")]
-    ("preserve", OpCode::Preserve),
     // datetime
     #[cfg(feature = "datetime")]
     ("datetime", OpCode::Datetime),

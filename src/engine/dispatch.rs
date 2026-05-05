@@ -289,10 +289,6 @@ pub(super) fn dispatch_node_inner<'a>(
             Throw => crate::operators::throw::evaluate_throw,
             #[cfg(feature = "error-handling")]
             Try => crate::operators::try_op::evaluate_try,
-
-            // Preserve
-            #[cfg(feature = "preserve")]
-            Preserve => crate::operators::preserve::evaluate_preserve,
         ],
 
         // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,
