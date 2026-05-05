@@ -203,6 +203,18 @@ impl Error {
     pub fn thrown(value: OwnedDataValue) -> Self {
         ErrorKind::Thrown(value).into()
     }
+
+    /// If this is an [`ErrorKind::Thrown`], return its payload. Convenience
+    /// accessor so consumers (loggers, structured-error walkers, the test
+    /// runner) don't have to pattern-match on the kind themselves.
+    #[inline]
+    pub fn thrown_value(&self) -> Option<&OwnedDataValue> {
+        if let ErrorKind::Thrown(v) = &self.kind {
+            Some(v)
+        } else {
+            None
+        }
+    }
     /// Shorthand for `ErrorKind::FormatError(msg).into()`.
     #[inline]
     pub fn format_error(msg: impl Into<String>) -> Self {

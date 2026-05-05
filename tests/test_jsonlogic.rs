@@ -159,7 +159,7 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
                         // Check if the error matches expected error
                         if let Some(expected_error_obj) = expected_error {
                             // Extract the error type from the thrown error
-                            if let datalogic_rs::ErrorKind::Thrown(thrown_value) = &e.kind {
+                            if let Some(thrown_value) = e.thrown_value() {
                                 let thrown_as_serde = serde_json::to_value(thrown_value)
                                     .unwrap_or(serde_json::Value::Null);
                                 if &thrown_as_serde == expected_error_obj {
