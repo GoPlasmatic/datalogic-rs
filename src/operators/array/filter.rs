@@ -1,13 +1,14 @@
 //! `filter` — keep array items / object pairs whose predicate is truthy.
 
-use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
+use crate::arena::{ContextStack, DataValue, bvec};
 use crate::opcode::OpCode;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use std::ops::ControlFlow;
 
 use super::helpers::{
     FastPredicate, IterArgKind, IterSrc, ResolvedInput, evaluate_invariant_no_push,
-    resolve_iter_input, try_extract_filter_field_cmp,
+    for_each_iter_array, for_each_iter_object, resolve_iter_input, try_extract_filter_field_cmp,
 };
 
 /// `filter`. Fast path: input collection resolves at root scope (the dominant
@@ -129,8 +130,7 @@ fn filter_with_fast_predicate<'a>(
 }
 
 /// General filter path — dispatches the predicate per item via the arena
-/// context stack. `IterGuard` handles the push-on-first / replace-on-rest /
-/// pop-on-drop bookkeeping.
+/// context stack.
 #[inline]
 fn filter_general<'a>(
     src: &IterSrc<'a>,
@@ -139,19 +139,13 @@ fn filter_general<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let len = src.len();
-    let total = len as u32;
-    let mut results = bvec::<DataValue<'a>>(arena, len);
-    let mut guard = IterGuard::new(ctx);
-    for i in 0..len {
-        let item = src.get(i);
-        guard.step_indexed(item, i);
-        let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::truthy_arena(keep, engine) {
+    let mut results = bvec::<DataValue<'a>>(arena, src.len());
+    for_each_iter_array(src.0, predicate, ctx, engine, arena, |_, item, av| {
+        if crate::arena::truthy_arena(av, engine) {
             results.push(*item);
         }
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     if results.is_empty() {
         return Ok(crate::arena::pool::singleton_empty_array());
     }
@@ -185,21 +179,13 @@ fn filter_bridge_object<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let total = pairs.len() as u32;
     let mut kept = bvec::<(&'a str, DataValue<'a>)>(arena, pairs.len());
-    let mut guard = IterGuard::new(ctx);
-    for (i, (k, v)) in pairs.iter().enumerate() {
-        // SAFETY: pairs[i].1 lives in the arena for `'a`; the slice borrow is
-        // a sub-borrow of that arena, and reborrowing it as `&'a` is sound.
-        let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-        let key: &'a str = k;
-        guard.step_keyed(item_av, i, key);
-        let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::truthy_arena(keep, engine) {
-            kept.push((key, *item_av));
+    for_each_iter_object(pairs, predicate, ctx, engine, arena, |_, item, key, av| {
+        if crate::arena::truthy_arena(av, engine) {
+            kept.push((key, *item));
         }
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     if kept.is_empty() {
         return Ok(crate::arena::pool::singleton_empty_object());
     }
@@ -214,17 +200,13 @@ fn filter_bridge_array<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let total = items.len() as u32;
     let mut kept = bvec::<DataValue<'a>>(arena, items.len());
-    let mut guard = IterGuard::new(ctx);
-    for (i, item_av) in items.iter().enumerate() {
-        guard.step_indexed(item_av, i);
-        let keep = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
-        if crate::arena::truthy_arena(keep, engine) {
-            kept.push(*item_av);
+    for_each_iter_array(items, predicate, ctx, engine, arena, |_, item, av| {
+        if crate::arena::truthy_arena(av, engine) {
+            kept.push(*item);
         }
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     if kept.is_empty() {
         return Ok(crate::arena::pool::singleton_empty_array());
     }

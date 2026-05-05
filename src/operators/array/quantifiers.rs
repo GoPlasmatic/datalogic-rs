@@ -1,11 +1,15 @@
 //! Quantifier operators: `all`, `some`, `none`.
 
 use crate::arena::pool::singleton_bool;
-use crate::arena::{ContextStack, DataValue, IterGuard};
+use crate::arena::{ContextStack, DataValue};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use std::ops::ControlFlow;
 
-use super::helpers::{FastPredicate, IterArgKind, ResolvedInput, resolve_iter_input};
+use super::helpers::{
+    FastPredicate, IterArgKind, ResolvedInput, for_each_iter_array, for_each_iter_object,
+    resolve_iter_input,
+};
 
 /// Shape of a quantifier (`all` / `some` / `none`) — the three flags
 /// distinguishing them are bundled here so callers and helpers don't carry
@@ -85,20 +89,14 @@ fn evaluate_quantifier<'a>(
     }
 
     // General path: zero-clone via ContextStack.
-    let len = src.len();
-    let total = len as u32;
     let mut found_short = false;
-    let mut guard = IterGuard::new(ctx);
-    for i in 0..len {
-        let item = src.get(i);
-        guard.step_indexed(item, i);
-        let av = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
+    for_each_iter_array(src.0, predicate, ctx, engine, arena, |_, _item, av| {
         if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
             found_short = true;
-            break;
+            return Ok(ControlFlow::Break(()));
         }
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     Ok(singleton_bool(shape.finalize(found_short)))
 }
 
@@ -118,39 +116,28 @@ fn quantifier_arena_bridge<'a>(
             if pairs.is_empty() {
                 return Ok(singleton_bool(shape.empty_result));
             }
-            let total = pairs.len() as u32;
             let mut found_short = false;
-            let mut guard = IterGuard::new(ctx);
-            for (i, (k, v)) in pairs.iter().enumerate() {
-                // SAFETY: pairs[i].1 lives in the arena for `'a`.
-                let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-                let key: &'a str = k;
-                guard.step_keyed(item_av, i, key);
-                let av = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
+            for_each_iter_object(pairs, predicate, ctx, engine, arena, |_, _item, _key, av| {
                 if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
                     found_short = true;
-                    break;
+                    return Ok(ControlFlow::Break(()));
                 }
-            }
-            drop(guard);
+                Ok(ControlFlow::Continue(()))
+            })?;
             Ok(singleton_bool(shape.finalize(found_short)))
         }
         DataValue::Array(items) => {
             if items.is_empty() {
                 return Ok(singleton_bool(shape.empty_result));
             }
-            let total = items.len() as u32;
             let mut found_short = false;
-            let mut guard = IterGuard::new(ctx);
-            for (i, item_av) in items.iter().enumerate() {
-                guard.step_indexed(item_av, i);
-                let av = engine.run_iter_body(predicate, guard.stack(), arena, i as u32, total)?;
+            for_each_iter_array(items, predicate, ctx, engine, arena, |_, _item, av| {
                 if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
                     found_short = true;
-                    break;
+                    return Ok(ControlFlow::Break(()));
                 }
-            }
-            drop(guard);
+                Ok(ControlFlow::Continue(()))
+            })?;
             Ok(singleton_bool(shape.finalize(found_short)))
         }
         // Anything else — treated as empty (returns empty_result).

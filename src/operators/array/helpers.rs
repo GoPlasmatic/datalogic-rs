@@ -1,11 +1,12 @@
 //! Internal helpers shared by the array operators (filter / map / reduce /
 //! quantifiers / sort / slice / merge / length).
 
-use crate::arena::{ContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use std::ops::ControlFlow;
 
 /// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
 /// Used by filter/quantifier fast paths to detect values that can be evaluated once before the loop.
@@ -455,4 +456,75 @@ fn value_as_iter<'a>(av: &'a DataValue<'a>) -> ResolvedInput<'a> {
 #[inline]
 pub(super) fn item_is_null(av: &DataValue<'_>) -> bool {
     matches!(av, DataValue::Null)
+}
+
+// =============================================================================
+// Per-iteration body machinery (filter / map / quantifiers)
+// =============================================================================
+//
+// `for_each_iter_array` / `for_each_iter_object` factor out the common loop:
+// `IterGuard::new` + `step_indexed`/`step_keyed` + `run_iter_body`. Each call
+// site supplies a closure that consumes `(i, item, [key], body_result)` and
+// returns `ControlFlow` to support short-circuit (quantifiers); filter/map
+// always return `Continue`.
+//
+// Reduce is intentionally NOT factored through these — its `step_reduce`
+// frame shape (item + accumulator) differs from the indexed/keyed shape.
+
+/// Iterate `items` with an indexed iter frame pushed for each element.
+/// `step_fn` receives `(i, item, body_result)` and may break the loop.
+#[inline]
+pub(super) fn for_each_iter_array<'a, F>(
+    items: &'a [DataValue<'a>],
+    body: &'a CompiledNode,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    mut step_fn: F,
+) -> Result<()>
+where
+    F: FnMut(usize, &'a DataValue<'a>, &'a DataValue<'a>) -> Result<ControlFlow<()>>,
+{
+    let total = items.len() as u32;
+    let mut guard = IterGuard::new(ctx);
+    for (i, item_av) in items.iter().enumerate() {
+        guard.step_indexed(item_av, i);
+        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        if step_fn(i, item_av, av)?.is_break() {
+            break;
+        }
+    }
+    drop(guard);
+    Ok(())
+}
+
+/// Iterate object `pairs` with a keyed iter frame pushed for each (key, value).
+/// `step_fn` receives `(i, item, key, body_result)` and may break the loop.
+#[inline]
+pub(super) fn for_each_iter_object<'a, F>(
+    pairs: &'a [(&'a str, DataValue<'a>)],
+    body: &'a CompiledNode,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    mut step_fn: F,
+) -> Result<()>
+where
+    F: FnMut(usize, &'a DataValue<'a>, &'a str, &'a DataValue<'a>) -> Result<ControlFlow<()>>,
+{
+    let total = pairs.len() as u32;
+    let mut guard = IterGuard::new(ctx);
+    for (i, (k, v)) in pairs.iter().enumerate() {
+        // SAFETY: pairs[i].1 lives in the arena for `'a`; reborrowing the
+        // pair-internal `DataValue<'a>` as `&'a DataValue<'a>` is sound.
+        let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
+        let key: &'a str = k;
+        guard.step_keyed(item_av, i, key);
+        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        if step_fn(i, item_av, key, av)?.is_break() {
+            break;
+        }
+    }
+    drop(guard);
+    Ok(())
 }

@@ -1,13 +1,17 @@
 //! `map` — transform each item via a body expression.
 
-use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
+use crate::arena::{ContextStack, DataValue, bvec};
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
 use crate::opcode::OpCode;
 use crate::value::NumberValue;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use std::ops::ControlFlow;
 
-use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
+use super::helpers::{
+    IterArgKind, IterSrc, ResolvedInput, for_each_iter_array, for_each_iter_object,
+    resolve_iter_input,
+};
 
 /// `map`. Borrows input from root scope when possible. Body fast path for
 /// var/field-extract re-borrows the arena item per output entry with zero
@@ -228,17 +232,11 @@ fn map_general<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let len = src.len();
-    let total = len as u32;
-    let mut results = bvec::<DataValue<'a>>(arena, len);
-    let mut guard = IterGuard::new(ctx);
-    for i in 0..len {
-        let item = src.get(i);
-        guard.step_indexed(item, i);
-        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+    let mut results = bvec::<DataValue<'a>>(arena, src.len());
+    for_each_iter_array(src.0, body, ctx, engine, arena, |_, _item, av| {
         results.push(*av);
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
@@ -269,18 +267,11 @@ fn map_bridge_object<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let total = pairs.len() as u32;
     let mut results = bvec::<DataValue<'a>>(arena, pairs.len());
-    let mut guard = IterGuard::new(ctx);
-    for (i, (k, v)) in pairs.iter().enumerate() {
-        // SAFETY: pairs[i].1 lives in the arena for `'a`; reborrow as `&'a` is sound.
-        let item_av: &'a DataValue<'a> = unsafe { &*(v as *const DataValue<'a>) };
-        let key: &'a str = k;
-        guard.step_keyed(item_av, i, key);
-        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+    for_each_iter_object(pairs, body, ctx, engine, arena, |_, _item, _key, av| {
         results.push(*av);
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
@@ -292,15 +283,11 @@ fn map_bridge_array<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let total = items.len() as u32;
     let mut results = bvec::<DataValue<'a>>(arena, items.len());
-    let mut guard = IterGuard::new(ctx);
-    for (i, item_av) in items.iter().enumerate() {
-        guard.step_indexed(item_av, i);
-        let av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+    for_each_iter_array(items, body, ctx, engine, arena, |_, _item, av| {
         results.push(*av);
-    }
-    drop(guard);
+        Ok(ControlFlow::Continue(()))
+    })?;
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
