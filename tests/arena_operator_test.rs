@@ -1,19 +1,20 @@
-//! Integration tests for the `DataOperator` trait — zero-clone custom operators.
+//! Integration tests for the `Operator` trait — zero-clone custom operators.
 
+#![cfg(feature = "compat")]
 #![allow(deprecated)]
 
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Result};
+use datalogic_rs::{ContextStack, DataValue, Engine, Operator, Result};
 use serde_json::json;
 
 /// Doubles the first numeric argument. Returns a fresh arena-allocated number.
 struct DoubleArena;
-impl DataOperator for DoubleArena {
+impl Operator for DoubleArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -23,11 +24,11 @@ impl DataOperator for DoubleArena {
 
 /// Concatenates string args directly into the arena.
 struct CatArena;
-impl DataOperator for CatArena {
+impl Operator for CatArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let mut buf = bumpalo::collections::String::new_in(arena);
@@ -42,7 +43,7 @@ impl DataOperator for CatArena {
 
 #[test]
 fn arena_operator_double_at_root() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("double", DoubleArena);
 
     let compiled = engine.compile_serde_value(&json!({"double": 21})).unwrap();
@@ -52,8 +53,8 @@ fn arena_operator_double_at_root() {
 
 #[test]
 fn arena_operator_inside_filter() {
-    // The whole point of DataOperator: zero-clone use inside iteration.
-    let mut engine = DataLogic::new();
+    // The whole point of Operator: zero-clone use inside iteration.
+    let mut engine = Engine::new();
     engine.add_operator("double", DoubleArena);
 
     let compiled = engine
@@ -67,7 +68,7 @@ fn arena_operator_inside_filter() {
 
 #[test]
 fn arena_operator_string_result() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("xcat", CatArena);
 
     let compiled = engine
@@ -82,7 +83,7 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
     // Object input forces filter to bridge to value-mode (ResolvedInput::Bridge).
     // Inside that bridge, var lookups need to see the input — exercises that
     // bridges synthesize their own context from ctx.root_input().
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = serde_json::json!({"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]});
     let compiled = engine.compile_serde_value(&logic).unwrap();
     let result = engine
@@ -94,7 +95,7 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
 #[test]
 fn arena_operator_with_input_ref() {
     // Custom op consumes an InputRef arg (var lookup against root).
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("double", DoubleArena);
 
     let compiled = engine
@@ -108,11 +109,11 @@ fn arena_operator_with_input_ref() {
 /// Equivalent to the legacy "read_field" / "read_root" helpers; here it just
 /// inspects its first arg, which the dispatcher already evaluated for us.
 struct ReadField;
-impl DataOperator for ReadField {
+impl Operator for ReadField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         // The arg has already been evaluated through the var lookup;
@@ -128,7 +129,7 @@ impl DataOperator for ReadField {
 
 #[test]
 fn arena_operator_passthrough_input_ref() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("read_field", ReadField);
 
     let compiled = engine
@@ -144,11 +145,11 @@ fn arena_operator_passthrough_input_ref() {
 /// custom ops invoked inside `filter` see the iter frame's data via their
 /// pre-evaluated args.
 struct ReadActiveField;
-impl DataOperator for ReadActiveField {
+impl Operator for ReadActiveField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let av = args
@@ -161,7 +162,7 @@ impl DataOperator for ReadActiveField {
 
 #[test]
 fn arena_operator_inside_filter_reads_iter_item_field() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("identity", ReadActiveField);
 
     // Filter passes each item to the predicate; the predicate calls
@@ -193,7 +194,7 @@ fn arena_operator_inside_filter_reads_iter_item_field() {
 
 #[test]
 fn operator_names_lists_registered_custom_ops() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     assert_eq!(engine.operator_names().count(), 0);
 
     engine.add_operator("double", DoubleArena);
@@ -206,7 +207,7 @@ fn operator_names_lists_registered_custom_ops() {
 
 #[test]
 fn remove_operator_returns_handle_then_unregisters() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("double", DoubleArena);
     assert!(engine.has_custom_operator("double"));
 
@@ -219,6 +220,6 @@ fn remove_operator_returns_handle_then_unregisters() {
 
 #[test]
 fn remove_operator_unknown_name_returns_none() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     assert!(engine.remove_operator("not_registered").is_none());
 }

@@ -1,5 +1,4 @@
-use datalogic_rs::DataLogic;
-use datalogic_rs::arena::DataValue;
+use datalogic_rs::{DataValue, Engine};
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -21,11 +20,14 @@ struct SuiteResult {
     avg_op_ns: f64,
 }
 
-fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
+fn benchmark_suite(engine: &Engine, file_path: &str) -> Option<SuiteResult> {
     let response = fs::read_to_string(file_path).ok()?;
     let json_data: Vec<Value> = serde_json::from_str(&response).ok()?;
 
-    let mut test_cases = Vec::new();
+    // Pre-extract rule + data as JSON strings so the timing loop never touches
+    // serde_json. Compilation parses the rule string into a `Logic`; the data
+    // string is parsed once below into a persistent arena.
+    let mut prepared: Vec<(datalogic_rs::Logic, String)> = Vec::new();
     for entry in json_data {
         if entry.is_string() {
             continue;
@@ -38,22 +40,29 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
                 Ok(s) => s,
                 Err(_) => continue,
             };
+            let data_str = match serde_json::to_string(&data) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
             if let Ok(compiled) = engine.compile(&logic_str) {
-                test_cases.push((compiled, data));
+                prepared.push((compiled, data_str));
             }
         }
     }
 
-    if test_cases.is_empty() {
+    if prepared.is_empty() {
         return None;
     }
 
-    // Persistent arena holding the deep-converted input data. Never reset,
-    // so the &DataValue handles outlive every per-iteration eval-arena reset.
+    // Persistent arena holding the parsed input data. Never reset, so the
+    // &DataValue handles outlive every per-iteration eval-arena reset.
     let data_arena = bumpalo::Bump::new();
-    let arena_inputs: Vec<&DataValue<'_>> = test_cases
+    let arena_inputs: Vec<&DataValue<'_>> = prepared
         .iter()
-        .map(|(_, data)| &*data_arena.alloc(datalogic_rs::arena::value_to_data(data, &data_arena)))
+        .map(|(_, data_str)| {
+            let av = DataValue::from_str(data_str, &data_arena).expect("test data parses");
+            &*data_arena.alloc(av)
+        })
         .collect();
 
     // Eval arena: reset between iterations so the bump pointer stays at
@@ -61,26 +70,26 @@ fn benchmark_suite(engine: &DataLogic, file_path: &str) -> Option<SuiteResult> {
     let mut arena = bumpalo::Bump::with_capacity(64 * 1024);
 
     // Warm-up — pure arena dispatch, no boundary conversion.
-    for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
-        let _ = engine.evaluate(compiled_logic, *data_av, &arena);
+    for ((compiled, _), data_av) in prepared.iter().zip(arena_inputs.iter()) {
+        let _ = engine.evaluate(compiled, *data_av, &arena);
     }
     arena.reset();
 
     let start = Instant::now();
-    for ((compiled_logic, _), data_av) in test_cases.iter().zip(arena_inputs.iter()) {
+    for ((compiled, _), data_av) in prepared.iter().zip(arena_inputs.iter()) {
         for _ in 0..ITERATIONS {
-            let _ = engine.evaluate(compiled_logic, *data_av, &arena);
+            let _ = engine.evaluate(compiled, *data_av, &arena);
             arena.reset();
         }
     }
     std::hint::black_box((&arena_inputs, &data_arena));
     let total_time = start.elapsed();
-    let total_ops = ITERATIONS * test_cases.len() as u32;
+    let total_ops = ITERATIONS * prepared.len() as u32;
     let avg_op_ns = total_time.as_nanos() as f64 / total_ops as f64;
 
     Some(SuiteResult {
         name: file_path.to_string(),
-        test_count: test_cases.len(),
+        test_count: prepared.len(),
         total_ops,
         total_time,
         avg_op_ns,
@@ -91,7 +100,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let run_all = args.iter().any(|a| a == "--all");
 
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let version = env!("CARGO_PKG_VERSION");
 
     if run_all {

@@ -1,25 +1,25 @@
 //! Tests for arena custom operators against datetime / structured-object inputs.
 
-#![cfg(all(feature = "datetime", feature = "preserve"))]
+#![cfg(all(feature = "datetime", feature = "preserve", feature = "compat"))]
 #![allow(deprecated)]
 
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
+use datalogic_rs::{ContextStack, DataValue, Engine, Error, Operator, Result};
 use serde_json::json;
 
 /// Custom arena operator: checks whether a datetime argument falls in the
-/// nighttime window (hours outside 7..19 UTC). Demonstrates an `DataOperator`
+/// nighttime window (hours outside 7..19 UTC). Demonstrates an `Operator`
 /// that pulls a string out of a pre-evaluated arg without round-tripping
 /// through `serde_json::Value`.
 struct IsNightOperator;
 
-impl DataOperator for IsNightOperator {
+impl Operator for IsNightOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() != 1 {
@@ -59,7 +59,7 @@ fn parse_datetime_arena(av: &DataValue<'_>) -> Option<DateTime<chrono::Utc>> {
 
 #[test]
 fn test_is_night_nighttime() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     // 8 PM should be nighttime
@@ -83,7 +83,7 @@ fn test_is_night_nighttime() {
 
 #[test]
 fn test_is_night_daytime() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T08:00:00Z"}});
@@ -104,7 +104,7 @@ fn test_is_night_daytime() {
 
 #[test]
 fn test_is_night_boundaries() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T19:00:00Z"}});
@@ -125,7 +125,7 @@ fn test_is_night_boundaries() {
 
 #[test]
 fn test_is_night_with_string() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": "2022-07-06T21:00:00Z"});
@@ -141,7 +141,7 @@ fn test_is_night_with_string() {
 
 #[test]
 fn test_is_night_with_variable() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": {"var": "check_time"}});
@@ -157,7 +157,7 @@ fn test_is_night_with_variable() {
 
 #[test]
 fn test_is_night_with_timezone() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T22:00:00+05:00"}});
@@ -173,7 +173,7 @@ fn test_is_night_with_timezone() {
 
 #[test]
 fn test_is_night_with_preserve_structure() {
-    let mut engine = DataLogic::builder().preserve_structure(true).build();
+    let mut engine = Engine::builder().preserve_structure(true).build();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({
@@ -207,7 +207,7 @@ fn test_is_night_with_preserve_structure() {
 
 #[test]
 fn test_is_night_error_invalid_argument() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": 42});
@@ -223,7 +223,7 @@ fn test_is_night_error_invalid_argument() {
 
 #[test]
 fn test_is_night_error_argument_count() {
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({"is_night": []});
@@ -242,7 +242,7 @@ fn test_is_night_error_argument_count() {
 
 #[test]
 fn test_is_night_complex_structured_object() {
-    let mut engine = DataLogic::builder().preserve_structure(true).build();
+    let mut engine = Engine::builder().preserve_structure(true).build();
     engine.add_operator("is_night", IsNightOperator);
 
     let logic = json!({

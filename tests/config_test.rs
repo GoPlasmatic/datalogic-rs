@@ -1,14 +1,14 @@
 //! Tests for configuration options
 
-use datalogic_rs::{
-    DataLogic, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
-};
+#![cfg(feature = "compat")]
+
+use datalogic_rs::{Engine, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
 #[test]
 fn test_nan_handling_throw_error() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({"+": [1, "not_a_number"]});
     let result = engine.evaluate_value(&logic, &json!({}));
     assert!(result.is_err());
@@ -17,7 +17,7 @@ fn test_nan_handling_throw_error() {
 #[test]
 fn test_nan_handling_ignore_value() {
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -27,7 +27,7 @@ fn test_nan_handling_ignore_value() {
 #[test]
 fn test_nan_handling_coerce_to_zero() {
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::CoerceToZero);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -37,7 +37,7 @@ fn test_nan_handling_coerce_to_zero() {
 #[test]
 fn test_nan_handling_return_null() {
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::ReturnNull);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -46,7 +46,7 @@ fn test_nan_handling_return_null() {
 
 #[test]
 fn test_numeric_coercion_default() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     let logic = json!({"+": ["", 5]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -72,7 +72,7 @@ fn test_numeric_coercion_strict() {
             strict_numeric: true,
             undefined_to_zero: false,
         });
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": ["", 5]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -89,7 +89,7 @@ fn test_numeric_coercion_strict() {
 
 #[test]
 fn test_loose_equality_errors_default() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({"==": [[], 5]});
     let result = engine.evaluate_value(&logic, &json!({}));
     assert!(result.is_err());
@@ -98,7 +98,7 @@ fn test_loose_equality_errors_default() {
 #[test]
 fn test_loose_equality_errors_disabled() {
     let config = EvaluationConfig::default().with_loose_equality_errors(false);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"==": [[], 5]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -107,7 +107,7 @@ fn test_loose_equality_errors_disabled() {
 
 #[test]
 fn test_safe_arithmetic_preset() {
-    let engine = DataLogic::builder()
+    let engine = Engine::builder()
         .config(EvaluationConfig::safe_arithmetic())
         .build();
 
@@ -122,9 +122,7 @@ fn test_safe_arithmetic_preset() {
 
 #[test]
 fn test_strict_preset() {
-    let engine = DataLogic::builder()
-        .config(EvaluationConfig::strict())
-        .build();
+    let engine = Engine::builder().config(EvaluationConfig::strict()).build();
 
     let logic = json!({"+": [true, 5]});
     let result = engine.evaluate_value(&logic, &json!({}));
@@ -138,7 +136,7 @@ fn test_strict_preset() {
 #[test]
 fn test_thread_safety() {
     let config = EvaluationConfig::safe_arithmetic();
-    let engine = Arc::new(DataLogic::builder().config(config).build());
+    let engine = Arc::new(Engine::builder().config(config).build());
 
     let logic = Arc::new(json!({"+": [{"var": "a"}, {"var": "b"}]}));
 
@@ -166,11 +164,11 @@ fn test_thread_safety() {
 fn test_runtime_config_change() {
     let logic = json!({"+": [1, "not_a_number"]});
 
-    let engine1 = DataLogic::new();
+    let engine1 = Engine::new();
     let result = engine1.evaluate_value(&logic, &json!({}));
     assert!(result.is_err());
 
-    let engine2 = DataLogic::builder()
+    let engine2 = Engine::builder()
         .config(EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue))
         .build();
     let result = engine2.evaluate_value(&logic, &json!({})).unwrap();
@@ -180,7 +178,7 @@ fn test_runtime_config_change() {
 #[test]
 fn test_subtraction_with_config() {
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::IgnoreValue);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"-": [10, "invalid", 3]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -190,7 +188,7 @@ fn test_subtraction_with_config() {
 #[test]
 fn test_multiplication_with_config() {
     let config = EvaluationConfig::default().with_nan_handling(NanHandling::CoerceToZero);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({"*": [2, "invalid", 3]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -206,7 +204,7 @@ fn test_comparison_with_config() {
         strict_numeric: false,
         undefined_to_zero: false,
     });
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let logic = json!({">": [true, false]});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -219,7 +217,7 @@ fn test_comparison_with_config() {
 
 #[test]
 fn test_truthy_evaluator_javascript() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     let test_cases = vec![
         (json!({"if": [0, "truthy", "falsy"]}), json!("falsy")),
@@ -261,7 +259,7 @@ fn test_truthy_evaluator_javascript() {
 #[test]
 fn test_truthy_evaluator_strict_boolean() {
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
         (json!({"if": [0, "truthy", "falsy"]}), json!("truthy")),
@@ -292,7 +290,7 @@ fn test_truthy_evaluator_custom() {
 
     let config = EvaluationConfig::default()
         .with_truthy_evaluator(TruthyEvaluator::Custom(custom_evaluator));
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
         (json!({"if": [0, "truthy", "falsy"]}), json!("truthy")),
@@ -312,7 +310,7 @@ fn test_truthy_evaluator_custom() {
 #[test]
 fn test_truthy_in_logical_operators() {
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let engine = DataLogic::builder().config(config).build();
+    let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
         (json!({"and": [0, "result"]}), json!("result")),

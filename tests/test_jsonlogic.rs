@@ -1,14 +1,14 @@
 // The full JSONLogic suite runner exercises every operator in `tests/suites/`
 // — including the gated ones (preserve / datetime / try-throw / ext-*). Gate
 // behind `preserve` because the runner unconditionally builds an engine with
-// `DataLogic::builder().preserve_structure(true).build()` when a test case
+// `Engine::builder().preserve_structure(true).build()` when a test case
 // requests it; in
 // practice users running this runner will want `--all-features` to actually
 // exercise every suite.
-#![cfg(feature = "preserve")]
+#![cfg(all(feature = "preserve", feature = "compat"))]
 #![allow(deprecated)]
 
-use datalogic_rs::DataLogic;
+use datalogic_rs::Engine;
 use datalogic_rs::compat::LegacyApi;
 use serde_json::{Value, json};
 
@@ -119,9 +119,9 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
 
         // Create engine with appropriate preserve_structure setting
         let test_engine = if preserve_structure {
-            DataLogic::builder().preserve_structure(true).build()
+            Engine::builder().preserve_structure(true).build()
         } else {
-            DataLogic::new()
+            Engine::new()
         };
 
         // Check if this test expects an error or a result

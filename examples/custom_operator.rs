@@ -1,34 +1,34 @@
-//! Example demonstrating how to create and use custom operators in DataLogic.
+//! Example demonstrating how to create and use custom operators in Engine.
 //!
-//! Custom operators are implemented via the `DataOperator` trait, which
+//! Custom operators are implemented via the [`Operator`] trait, which
 //! receives **pre-evaluated** arguments as `&DataValue` borrows and returns
-//! an arena-allocated `DataValue` result. This avoids the per-call clone of
-//! `serde_json::Value` and is required to register a custom op with the
-//! engine.
+//! an arena-allocated `DataValue` result. This avoids per-call boundary
+//! conversion and is required to register a custom op with the engine.
+//!
+//! Uses the v5 string-based API ([`Engine::evaluate_str`] for one-shots,
+//! [`Engine::scratch`] for compile-once-evaluate-many) — no `serde_json`
+//! boundary, no `compat` feature required.
 
 use bumpalo::Bump;
-use datalogic_rs::{DataContextStack, DataLogic, DataOperator, DataValue, Error, Result};
-use serde_json::json;
+use datalogic_rs::{ContextStack, DataValue, Engine, Error, Operator, Result};
 
-/// A simple operator that calculates the average of an array of numbers.
+/// Calculates the average of an array of numbers.
 ///
-/// Usage: {"avg": [1, 2, 3, 4, 5]} -> 3
-/// Or:    {"avg": {"var": "scores"}} -> average of scores array
+/// Usage: `{"avg": [1, 2, 3, 4, 5]}` -> `3`
+/// Or:    `{"avg": {"var": "scores"}}` -> average of `scores` array
 struct AverageOperator;
 
-impl DataOperator for AverageOperator {
+impl Operator for AverageOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
             return Ok(arena.alloc(DataValue::Null));
         }
 
-        // Collect numbers from each argument. Arrays unpack into their
-        // numeric elements; primitive numbers are taken as-is.
         let mut numbers: Vec<f64> = Vec::new();
         for av in args {
             match av {
@@ -56,16 +56,16 @@ impl DataOperator for AverageOperator {
     }
 }
 
-/// An operator that checks if a value is within a range (inclusive).
+/// Checks if a value is within a range (inclusive).
 ///
-/// Usage: {"between": [value, min, max]} -> boolean
+/// Usage: `{"between": [value, min, max]}` -> boolean
 struct BetweenOperator;
 
-impl DataOperator for BetweenOperator {
+impl Operator for BetweenOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() < 3 {
@@ -86,16 +86,16 @@ impl DataOperator for BetweenOperator {
     }
 }
 
-/// An operator that formats a string with placeholders.
+/// Formats a string with `{}` placeholders.
 ///
-/// Usage: {"format": ["Hello, {}!", "World"]} -> "Hello, World!"
+/// Usage: `{"format": ["Hello, {}!", "World"]}` -> `"Hello, World!"`
 struct FormatOperator;
 
-impl DataOperator for FormatOperator {
+impl Operator for FormatOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut DataContextStack<'a>,
+        _ctx: &mut ContextStack<'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
@@ -139,8 +139,7 @@ fn main() {
     println!("Custom Operator Examples\n");
     println!("========================\n");
 
-    // Create engine and register custom operators
-    let mut engine = DataLogic::new();
+    let mut engine = Engine::new();
     engine.add_operator("avg", AverageOperator);
     engine.add_operator("between", BetweenOperator);
     engine.add_operator("format", FormatOperator);
@@ -149,64 +148,76 @@ fn main() {
     println!("1. Average Operator");
     println!("-------------------");
 
-    let logic = json!({"avg": [10, 20, 30, 40, 50]});
-    let result = engine.evaluate_value(&logic, &json!({})).unwrap();
+    let result = engine
+        .evaluate_str(r#"{"avg": [10, 20, 30, 40, 50]}"#, "{}")
+        .unwrap();
     println!("   avg([10, 20, 30, 40, 50]) = {}", result);
 
-    let logic = json!({"avg": {"var": "scores"}});
-    let data = json!({"scores": [85, 90, 78, 92, 88]});
-    let result = engine.evaluate_value(&logic, &data).unwrap();
+    let result = engine
+        .evaluate_str(
+            r#"{"avg": {"var": "scores"}}"#,
+            r#"{"scores": [85, 90, 78, 92, 88]}"#,
+        )
+        .unwrap();
     println!("   avg(scores) = {} (from data)\n", result);
 
     // Example 2: Between operator
     println!("2. Between Operator");
     println!("-------------------");
 
-    let logic = json!({"between": [{"var": "age"}, 18, 65]});
-
-    let data1 = json!({"age": 25});
-    let result1 = engine.evaluate_value(&logic, &data1).unwrap();
+    let result1 = engine
+        .evaluate_str(
+            r#"{"between": [{"var": "age"}, 18, 65]}"#,
+            r#"{"age": 25}"#,
+        )
+        .unwrap();
     println!("   age=25 between 18 and 65? {}", result1);
 
-    let data2 = json!({"age": 70});
-    let result2 = engine.evaluate_value(&logic, &data2).unwrap();
+    let result2 = engine
+        .evaluate_str(
+            r#"{"between": [{"var": "age"}, 18, 65]}"#,
+            r#"{"age": 70}"#,
+        )
+        .unwrap();
     println!("   age=70 between 18 and 65? {}\n", result2);
 
     // Example 3: Format operator
     println!("3. Format Operator");
     println!("------------------");
 
-    let logic =
-        json!({"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]});
-    let data = json!({"name": "Alice", "count": 5});
-    let result = engine.evaluate_value(&logic, &data).unwrap();
+    let result = engine
+        .evaluate_str(
+            r#"{"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]}"#,
+            r#"{"name": "Alice", "count": 5}"#,
+        )
+        .unwrap();
     println!("   {}\n", result);
 
-    // Example 4: Combining custom with built-in operators —
-    // compile once and reuse with `evaluate_value` for each input.
+    // Example 4: Combining custom + built-in operators — compile once,
+    // evaluate many. `Scratch` reuses the eval arena across calls.
     println!("4. Combining Custom and Built-in Operators");
     println!("-------------------------------------------");
 
-    let logic = json!({
+    let grading_rule = r#"{
         "if": [
-            {"between": [{"var": "score"}, 90, 100]},
-            "A",
+            {"between": [{"var": "score"}, 90, 100]}, "A",
             {"if": [
-                {"between": [{"var": "score"}, 80, 89]},
-                "B",
+                {"between": [{"var": "score"}, 80, 89]}, "B",
                 {"if": [
-                    {"between": [{"var": "score"}, 70, 79]},
-                    "C",
+                    {"between": [{"var": "score"}, 70, 79]}, "C",
                     "F"
                 ]}
             ]}
         ]
-    });
+    }"#;
+
+    let compiled = engine.compile(grading_rule).unwrap();
+    let mut scratch = engine.scratch();
 
     for score in [95, 82, 75, 55] {
-        let data = json!({"score": score});
-        let result = engine.evaluate_value(&logic, &data).unwrap();
-        println!("   Score {} -> Grade {}", score, result);
+        let data = format!(r#"{{"score": {}}}"#, score);
+        let grade = scratch.eval_str(&compiled, &data).unwrap();
+        println!("   Score {} -> Grade {}", score, grade);
     }
 
     println!("\nDone!");

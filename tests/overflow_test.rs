@@ -1,9 +1,11 @@
-use datalogic_rs::DataLogic;
+#![cfg(feature = "compat")]
+
+use datalogic_rs::Engine;
 use serde_json::json;
 
 #[test]
 fn test_substr_overflow_protection() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test with i64::MAX start index
     let logic = json!({"substr": ["test", i64::MAX, 2]});
@@ -33,7 +35,7 @@ fn test_substr_overflow_protection() {
 
 #[test]
 fn test_arithmetic_overflow_protection() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test addition overflow
     let logic = json!({"+": [i64::MAX, 1]});
@@ -70,7 +72,7 @@ fn test_arithmetic_overflow_protection() {
 #[cfg(feature = "ext-array")]
 #[test]
 fn test_array_slice_overflow_protection() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test with large negative start index
     let logic = json!({"slice": [[1, 2, 3, 4, 5], i64::MIN, null]});
@@ -98,7 +100,7 @@ fn test_array_slice_overflow_protection() {
 #[cfg(feature = "ext-array")]
 #[test]
 fn test_string_slice_overflow() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test slicing string with large indices
     let logic = json!({"slice": ["hello", i64::MAX, null]});
@@ -113,7 +115,7 @@ fn test_string_slice_overflow() {
 
 #[test]
 fn test_array_operations_with_large_indices() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test map with current element (should not overflow)
     let logic = json!({
@@ -139,7 +141,7 @@ fn test_array_operations_with_large_indices() {
 
 #[test]
 fn test_chained_arithmetic_overflow() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test chained addition that would overflow
     let logic = json!({"+": [i64::MAX / 2, i64::MAX / 2, 10]});
@@ -165,7 +167,7 @@ fn test_chained_arithmetic_overflow() {
 #[cfg(feature = "ext-array")]
 #[test]
 fn test_edge_cases() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test division by zero is handled
     let logic = json!({"/": [1, 0]});
@@ -191,7 +193,7 @@ fn test_edge_cases() {
 #[cfg(feature = "datetime")]
 #[test]
 fn test_datetime_duration_overflow() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test parsing duration with large values that would overflow
     let logic = json!({"timestamp": "9223372036854775807d"}); // i64::MAX days
@@ -238,7 +240,7 @@ fn test_datetime_duration_overflow() {
 #[cfg(feature = "datetime")]
 #[test]
 fn test_datetime_arithmetic_overflow() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test adding large duration to datetime
     let logic = json!({
@@ -284,7 +286,7 @@ fn test_datetime_arithmetic_overflow() {
 
 #[test]
 fn test_duration_parsing_overflow_protection() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test parsing with values that would overflow in calculation
     // 106751991167d is approximately i64::MAX seconds / 86400

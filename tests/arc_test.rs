@@ -1,13 +1,14 @@
+#![cfg(feature = "compat")]
 #![allow(deprecated)]
 
-use datalogic_rs::DataLogic;
+use datalogic_rs::Engine;
 use datalogic_rs::compat::LegacyApi;
 use serde_json::json;
 use std::sync::Arc;
 
 #[test]
 fn test_arc_data_sharing() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Create a large data object wrapped in Arc
     let data = Arc::new(json!({

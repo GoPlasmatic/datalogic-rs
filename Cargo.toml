@@ -13,11 +13,11 @@ keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 
 [features]
-# `compat` is on by default so existing 4.x callers compile unchanged. The
-# `compat` module bridges `serde_json::Value` to the v5 `DataValue` /
-# `OwnedDataValue` core. Drop it (`default-features = false`) for a fully
-# serde_json-free build.
-default = ["compat"]
+# Default build is serde_json-free. The `compat` feature bridges
+# `serde_json::Value` to the v5 `DataValue` / `OwnedDataValue` core and
+# provides the `LegacyApi` shims for 4.x callers; opt in with
+# `features = ["compat"]` if you need either.
+default = []
 compat = ["dep:serde_json", "datavalue/serde_json"]
 preserve = []
 datetime = ["datavalue/datetime", "dep:chrono"]
@@ -39,6 +39,7 @@ bumpalo = { version = "3", features = ["collections"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+serde_json = "1.0"
 
 # Examples that depend on opt-in features. With `default = []`, these only
 # build when the user passes the matching `--features` (or `--all-features`).

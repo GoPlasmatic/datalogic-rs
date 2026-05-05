@@ -1,7 +1,8 @@
+#![cfg(feature = "compat")]
 #![allow(deprecated)]
 
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::{DataLogic, Error};
+use datalogic_rs::{Engine, Error};
 use serde_json::{Value, json};
 
 fn to_json(err: &Error) -> Value {
@@ -181,7 +182,7 @@ fn structured_error_flattens_variant_extras() {
 #[cfg(feature = "error-handling")]
 #[test]
 fn evaluate_json_structured_reports_outer_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let err = engine
         .evaluate_json_structured(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#)
         .expect_err("throw must produce a structured error");
@@ -193,7 +194,7 @@ fn evaluate_json_structured_reports_outer_operator() {
 
 #[test]
 fn evaluate_json_structured_success_passes_through() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_structured(r#"{"+": [1, 2]}"#, r#"{}"#)
         .unwrap();
@@ -203,7 +204,7 @@ fn evaluate_json_structured_success_passes_through() {
 
 #[test]
 fn evaluate_json_structured_parse_error_has_no_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let err = engine
         .evaluate_json_structured("not json", r#"{}"#)
         .expect_err("invalid JSON should error");
@@ -214,7 +215,7 @@ fn evaluate_json_structured_parse_error_has_no_operator() {
 
 #[test]
 fn evaluate_json_structured_captures_arithmetic_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let err = engine
         .evaluate_json_structured(r#"{"/": [1, 0]}"#, "{}")
         .expect_err("division by zero must error");
@@ -225,7 +226,7 @@ fn evaluate_json_structured_captures_arithmetic_operator() {
 
 #[test]
 fn evaluate_json_structured_captures_unknown_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let err = engine
         .evaluate_json_structured(r#"{"not_a_real_op_123": [1]}"#, "{}")
         .expect_err("unknown op must error");
@@ -237,7 +238,7 @@ fn evaluate_json_structured_captures_unknown_operator() {
 
 #[test]
 fn evaluate_json_structured_captures_type_coercion_op() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let err = engine
         .evaluate_json_structured(r#"{"+": ["abc", 1]}"#, "{}")
         .expect_err("non-numeric addition must error");
@@ -248,7 +249,7 @@ fn evaluate_json_structured_captures_type_coercion_op() {
 #[cfg(feature = "trace")]
 #[test]
 fn evaluate_json_with_trace_structured_populates_error_fields() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let traced = engine
         .evaluate_json_with_trace_structured(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#)
         .unwrap();
@@ -303,7 +304,7 @@ fn display_output_snapshot() {
 
 #[test]
 fn structured_error_has_nonempty_path_on_runtime_error() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     // Nested variable access that will fail: outer wraps an unknown-var read.
     // The path should contain at least one node id (the failing node), and
     // more if the error unwinds through additional operators.
@@ -338,7 +339,7 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
 
 #[test]
 fn structured_error_empty_path_on_success() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine.evaluate_json_structured(r#"{"==": [1, 1]}"#, r#"{}"#);
     // Successful eval — no error, so there's nothing to assert about path.
     assert!(result.is_ok());
@@ -347,7 +348,7 @@ fn structured_error_empty_path_on_success() {
 #[cfg(feature = "error-handling")]
 #[test]
 fn try_catches_and_discards_inner_path() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     // Outer `try` swallows a failing inner branch; the caller should see Ok,
     // and no breadcrumb should leak into a subsequent failing evaluation
     // because try truncates on catch.
@@ -359,7 +360,7 @@ fn try_catches_and_discards_inner_path() {
 
 #[test]
 fn structured_error_path_serializes_to_json() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let err = engine
         .evaluate_json_structured(r#"{"if": [true, {"throw": "boom"}, "ok"]}"#, r#"{}"#)
         .unwrap_err();

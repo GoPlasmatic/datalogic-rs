@@ -17,15 +17,13 @@
 ## Quick Example
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::Engine;
 
-let engine = DataLogic::new();
-let logic = json!({ ">": [{ "var": "age" }, 18] });
-let compiled = engine.compile(&logic).unwrap();
-
-let result = engine.evaluate_owned(&compiled, json!({ "age": 21 })).unwrap();
-assert_eq!(result, json!(true));
+let engine = Engine::new();
+let result = engine
+    .evaluate_str(r#"{">": [{"var": "age"}, 18]}"#, r#"{"age": 21}"#)
+    .unwrap();
+assert_eq!(result, "true");
 ```
 
 ## Packages
@@ -90,21 +88,24 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 
 ## Debugging Rules
 
-When a rule returns something unexpected, use the `trace` feature (enabled
-by default) to see every evaluation step — which branches were taken,
-which sub-expressions short-circuited, and what each one returned.
+When a rule returns something unexpected, enable the `trace` feature
+(`features = ["trace"]`) to see every evaluation step — which branches
+were taken, which sub-expressions short-circuited, and what each one
+returned.
 
 From Rust:
 
 ```rust
-let engine = DataLogic::new();
-let traced = engine.evaluate_json_with_trace(
-    r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
-    r#"{"age": 21}"#,
-)?;
+let engine = Engine::new();
+let run = engine
+    .with_trace()
+    .evaluate_str(
+        r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
+        r#"{"age": 21}"#,
+    );
 
-println!("result: {}", traced.result);        // "adult"
-println!("{} steps recorded", traced.steps.len());
+println!("result: {}", run.result.unwrap());   // "adult"
+println!("{} steps recorded", run.steps.len());
 ```
 
 From JavaScript / TypeScript:

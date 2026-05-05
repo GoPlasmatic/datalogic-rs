@@ -1,9 +1,11 @@
-use datalogic_rs::DataLogic;
+#![cfg(feature = "compat")]
+
+use datalogic_rs::Engine;
 use serde_json::json;
 
 #[test]
 fn test_basic_equality() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({"==": [1, 1]});
     let data = json!({});
     let result = engine.evaluate_value(&logic, &data).unwrap();
@@ -12,7 +14,7 @@ fn test_basic_equality() {
 
 #[test]
 fn test_variable_access() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({"var": "name"});
     let data = json!({"name": "Alice"});
     let result = engine.evaluate_value(&logic, &data).unwrap();
@@ -21,7 +23,7 @@ fn test_variable_access() {
 
 #[test]
 fn test_if_then_else() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({
         "if": [
             {"==": [{"var": "temp"}, 100]},
@@ -43,7 +45,7 @@ fn test_if_then_else() {
 #[cfg(feature = "ext-control")]
 #[test]
 fn test_map_with_context() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({
         "map": [
             [1, 2, 3],
@@ -58,7 +60,7 @@ fn test_map_with_context() {
 #[test]
 fn test_now_operator() {
     use chrono::DateTime;
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     let logic = json!({"now": []});
     let result = engine.evaluate_value(&logic, &json!({})).unwrap();
@@ -83,7 +85,7 @@ fn test_now_operator() {
 
 #[test]
 fn test_evaluate_value_api() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 3, "b": 4});
     let result = engine.evaluate_value(&logic, &data).unwrap();
@@ -93,7 +95,7 @@ fn test_evaluate_value_api() {
 #[cfg(feature = "ext-string")]
 #[test]
 fn test_evaluate_with_arena_dispatch() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     // A rule that triggers arena dispatch (filter + length).
     let logic = json!({"length": {"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]}});
     let data = json!({"items": [1, 2, 3, 4, 5]});

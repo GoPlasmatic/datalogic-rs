@@ -1,8 +1,9 @@
+#![cfg(feature = "compat")]
 #![allow(deprecated)]
 
 #[cfg(test)]
 mod thread_safety_tests {
-    use datalogic_rs::DataLogic;
+    use datalogic_rs::Engine;
     use datalogic_rs::compat::LegacyApi;
     use serde_json::json;
     use std::sync::Arc;
@@ -10,23 +11,23 @@ mod thread_safety_tests {
 
     #[test]
     fn test_compiled_logic_is_send_sync() {
-        // This test verifies at compile time that CompiledLogic implements Send + Sync
+        // This test verifies at compile time that Logic implements Send + Sync
         fn assert_send_sync<T: Send + Sync>() {}
 
-        let engine = DataLogic::new();
+        let engine = Engine::new();
         let logic = json!({"==": [1, 1]});
         let compiled = engine.compile_serde_value(&logic).unwrap();
 
-        // This will fail to compile if CompiledLogic doesn't implement Send + Sync
-        assert_send_sync::<datalogic_rs::CompiledLogic>();
+        // This will fail to compile if Logic doesn't implement Send + Sync
+        assert_send_sync::<datalogic_rs::Logic>();
 
-        // The compile method already returns Arc<CompiledLogic>
+        // The compile method already returns Arc<Logic>
         let _arc_compiled = compiled;
     }
 
     #[test]
     fn test_parallel_evaluation_with_threads() {
-        let engine = Arc::new(DataLogic::new());
+        let engine = Arc::new(Engine::new());
 
         // Compile some logic
         let logic = json!({
@@ -79,7 +80,7 @@ mod thread_safety_tests {
         let handles: Vec<_> = (0..5)
             .map(|i| {
                 thread::spawn(move || {
-                    let engine = DataLogic::new();
+                    let engine = Engine::new();
                     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
                     let data = json!({"a": i, "b": i * 2});
                     let data = Arc::new(data);
@@ -99,7 +100,7 @@ mod thread_safety_tests {
 
     #[test]
     fn test_shared_compiled_logic_across_threads() {
-        let engine = DataLogic::new();
+        let engine = Engine::new();
 
         // Complex logic with nested operations
         let logic = json!({
@@ -132,7 +133,7 @@ mod thread_safety_tests {
 
                 thread::spawn(move || {
                     // Each thread creates its own engine
-                    let engine = DataLogic::new();
+                    let engine = Engine::new();
                     let result = engine.evaluate_arc_value(&compiled, data).unwrap();
 
                     // Verify results based on thread index (multiply by 2)
@@ -156,7 +157,7 @@ mod thread_safety_tests {
 // Async tests with Tokio
 #[cfg(test)]
 mod async_tests {
-    use datalogic_rs::DataLogic;
+    use datalogic_rs::Engine;
     use datalogic_rs::compat::LegacyApi;
     use serde_json::json;
     use std::sync::Arc;
@@ -167,7 +168,7 @@ mod async_tests {
 
     #[tokio::test]
     async fn test_async_evaluation_with_tokio() {
-        let engine = Arc::new(DataLogic::new());
+        let engine = Arc::new(Engine::new());
 
         let logic = json!({
             "filter": [
@@ -216,7 +217,7 @@ mod async_tests {
     #[tokio::test]
     async fn test_concurrent_evaluation_with_shared_engine() {
         // Single shared engine across all tasks
-        let engine = Arc::new(DataLogic::new());
+        let engine = Arc::new(Engine::new());
 
         // Multiple different logic patterns
         let logics = vec![
@@ -253,7 +254,7 @@ mod async_tests {
 
     #[tokio::test]
     async fn test_blocking_evaluation_in_spawn_blocking() {
-        let engine = Arc::new(DataLogic::new());
+        let engine = Arc::new(Engine::new());
 
         let logic = json!({
             "reduce": [
