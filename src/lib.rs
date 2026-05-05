@@ -120,9 +120,9 @@ pub use node::Logic;
 pub use path::PathStep;
 pub use scratch::Scratch;
 #[cfg(feature = "trace")]
-pub use trace::{
-    ExecutionStep, ExpressionNode, TraceCollector, TracedResult, TracedRun, TracedSession,
-};
+pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
+#[cfg(all(feature = "trace", feature = "compat"))]
+pub use trace::TracedResult;
 #[cfg(feature = "compat")]
 pub use value::{owned_from_serde, owned_to_serde};
 

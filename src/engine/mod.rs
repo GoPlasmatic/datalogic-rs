@@ -77,11 +77,12 @@ impl Default for Engine {
 impl Engine {
     /// Start a [`crate::EngineBuilder`] for fluent construction.
     ///
-    /// Replaces the 4.x `new` / `with_preserve_structure` / `with_config` /
-    /// `with_config_and_structure` constructors. The old methods are still
-    /// reachable through [`crate::compat::LegacyApi`] — bring the trait into
-    /// scope (`use datalogic_rs::compat::LegacyApi;`) to opt into the legacy
-    /// surface.
+    /// Use the builder when you need a non-default [`EvaluationConfig`],
+    /// structure-preservation mode, or pre-registered custom operators.
+    /// For a stock engine, [`Self::new`] is shorter. The 4.x
+    /// `with_preserve_structure` / `with_config` / `with_config_and_structure`
+    /// constructors are still reachable through [`crate::compat::LegacyApi`]
+    /// (`use datalogic_rs::compat::LegacyApi;`).
     #[inline]
     pub fn builder() -> crate::EngineBuilder {
         crate::EngineBuilder::new()
@@ -200,10 +201,11 @@ impl Engine {
     /// Compile a JSON logic string into reusable [`Logic`].
     ///
     /// The canonical v5 entry point for compilation. Returns an owned
-    /// [`Logic`] that can be reused across many evaluations on a
-    /// single thread. For cross-thread sharing use [`Self::compile_arc`]
-    /// instead — it wraps the result in [`std::sync::Arc`] so clones are
-    /// `O(1)`.
+    /// [`Logic`] that can be reused across many evaluations on a single
+    /// thread. For cross-thread sharing wrap the result yourself:
+    /// `Arc::new(engine.compile(logic)?)` — `Arc<Logic>` derefs transparently
+    /// into `&Logic` for [`Self::evaluate`] /
+    /// [`Scratch::evaluate`](crate::Scratch::evaluate).
     ///
     /// # Example
     ///
@@ -216,42 +218,6 @@ impl Engine {
     pub fn compile(&self, logic: &str) -> Result<Logic> {
         let owned = datavalue::OwnedDataValue::from_json(logic)?;
         Logic::compile_with(&owned, self)
-    }
-
-    /// Compile a JSON logic string and wrap it in [`std::sync::Arc`] for
-    /// cross-thread sharing.
-    ///
-    /// Equivalent to `Arc::new(engine.compile(logic)?)` but saves the
-    /// boilerplate at every call site. The returned `Arc<Logic>`
-    /// derefs transparently into `&Logic`, so it slots into
-    /// [`Self::evaluate`] / [`Scratch::evaluate`](crate::Scratch::evaluate) without
-    /// any additional adaptation.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use std::sync::Arc;
-    /// use std::thread;
-    /// use datalogic_rs::Engine;
-    ///
-    /// let engine = Engine::new();
-    /// let compiled = engine.compile_arc(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
-    ///
-    /// let handles: Vec<_> = (0..3)
-    ///     .map(|i| {
-    ///         let compiled = Arc::clone(&compiled);
-    ///         thread::spawn(move || {
-    ///             let engine = Engine::new();
-    ///             let payload = format!(r#"{{"score": {}}}"#, 80 + i * 5);
-    ///             engine.scratch().evaluate_str(&compiled, &payload).unwrap()
-    ///         })
-    ///     })
-    ///     .collect();
-    /// for h in handles { let _ = h.join(); }
-    /// ```
-    #[inline]
-    pub fn compile_arc(&self, logic: &str) -> Result<std::sync::Arc<Logic>> {
-        Ok(std::sync::Arc::new(self.compile(logic)?))
     }
 
     /// Open a [`crate::TracedSession`] over this engine. Calls made through

@@ -153,33 +153,4 @@ impl EvaluationConfig {
         }
     }
 
-    /// Builder method to set NaN handling
-    pub fn with_nan_handling(mut self, handling: NanHandling) -> Self {
-        self.arithmetic_nan_handling = handling;
-        self
-    }
-
-    /// Builder method to set division by zero handling
-    pub fn with_division_by_zero(mut self, handling: DivisionByZeroHandling) -> Self {
-        self.division_by_zero = handling;
-        self
-    }
-
-    /// Builder method to set loose equality error behavior
-    pub fn with_loose_equality_errors(mut self, throw_errors: bool) -> Self {
-        self.loose_equality_errors = throw_errors;
-        self
-    }
-
-    /// Builder method to set truthy evaluator
-    pub fn with_truthy_evaluator(mut self, evaluator: TruthyEvaluator) -> Self {
-        self.truthy_evaluator = evaluator;
-        self
-    }
-
-    /// Builder method to set numeric coercion config
-    pub fn with_numeric_coercion(mut self, config: NumericCoercionConfig) -> Self {
-        self.numeric_coercion = config;
-        self
-    }
 }

@@ -12,7 +12,6 @@ use crate::node::CompiledNode;
 /// One node along the path from the root of a compiled rule down to the
 /// failing sub-expression. Returned root-to-leaf by
 /// [`crate::Logic::resolve_path`] / [`crate::Error::resolved_path`].
-#[non_exhaustive]
 #[derive(Debug, Clone, Serialize)]
 pub struct PathStep {
     /// Compile-time node id, matching [`crate::Error::path`].

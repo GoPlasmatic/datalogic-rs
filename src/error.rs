@@ -189,8 +189,22 @@ impl Error {
     /// The original error stays inspectable: `error.source()` returns
     /// `Some(&original)`. Standard chain-walking via
     /// [`std::error::Error::source`] applies all the way down.
+    ///
+    /// Wrapping an existing [`Error`] is a no-op — the input is returned
+    /// unchanged rather than producing `Custom(Custom(...))`.
     #[inline]
     pub fn wrap<E: std::error::Error + Send + Sync + 'static>(err: E) -> Self {
+        // No-op when E is already `Error`. We hold `err` inside an `Option`
+        // and downcast that — `TypeId::of::<Option<E>>() == TypeId::of::<Option<Error>>()`
+        // iff `E == Error`, so the downcast succeeds exactly when we'd
+        // otherwise double-wrap.
+        let mut slot: Option<E> = Some(err);
+        if let Some(slot_as_error) =
+            (&mut slot as &mut dyn std::any::Any).downcast_mut::<Option<Error>>()
+        {
+            return slot_as_error.take().expect("just stored `Some`");
+        }
+        let err = slot.take().expect("just stored `Some`");
         ErrorKind::Custom(Arc::new(err)).into()
     }
     /// Shorthand for `ErrorKind::ParseError(msg).into()`.
@@ -307,12 +321,6 @@ impl From<ErrorKind> for Error {
     }
 }
 
-impl Default for Error {
-    fn default() -> Self {
-        Error::custom("")
-    }
-}
-
 impl Serialize for Error {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // Shape:
@@ -388,5 +396,20 @@ mod tests {
         }
         let err = inner().expect_err("parse should fail");
         assert!(matches!(err.kind, ErrorKind::Custom(_)));
+    }
+
+    #[test]
+    fn wrap_of_existing_error_is_noop() {
+        // `Error::wrap(some_error)` would otherwise produce `Custom(Custom(...))`
+        // — the no-op short-circuit returns the input unchanged.
+        let inner = Error::variable_not_found("x");
+        let wrapped = Error::wrap(inner.clone());
+        assert_eq!(wrapped.kind_tag(), "VariableNotFound");
+        assert!(matches!(wrapped.kind, ErrorKind::VariableNotFound(ref name) if name == "x"));
+        // operator/path metadata round-trips too.
+        let with_meta = inner.with_operator("var").with_path(vec![1, 2, 3]);
+        let wrapped = Error::wrap(with_meta);
+        assert_eq!(wrapped.operator.as_deref(), Some("var"));
+        assert_eq!(wrapped.path, vec![1, 2, 3]);
     }
 }

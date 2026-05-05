@@ -664,7 +664,7 @@ impl CompileCtx {
 /// use datalogic_rs::Engine;
 ///
 /// let engine = Engine::new();
-/// let compiled = engine.compile_arc(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
+/// let compiled = Arc::new(engine.compile(r#"{">": [{"var": "score"}, 90]}"#).unwrap());
 ///
 /// // Compiled logic can be cloned cheaply (atomic refcount) and sent across threads.
 /// let compiled_clone = Arc::clone(&compiled);

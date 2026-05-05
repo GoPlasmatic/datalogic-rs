@@ -348,7 +348,7 @@ pub struct ExecutionStep {
 }
 
 /// Collector for execution steps during traced evaluation.
-pub struct TraceCollector {
+pub(crate) struct TraceCollector {
     /// Recorded execution steps
     steps: Vec<ExecutionStep>,
     /// Counter for generating step IDs
