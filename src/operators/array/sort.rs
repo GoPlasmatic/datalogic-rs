@@ -126,7 +126,7 @@ fn sort_fast_path_var_extractor<'a>(
         .map(|i| {
             (
                 i,
-                crate::arena::value::traverse_segments(src.get(i), segments, arena),
+                crate::arena::value::traverse_segments(src.get(i), segments),
             )
         })
         .collect();

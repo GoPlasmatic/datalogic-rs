@@ -81,7 +81,7 @@ fn evaluate_quantifier<'a>(
     {
         let len = src.len();
         for i in 0..len {
-            if fast_pred.evaluate(src.get(i), arena) == shape.short_circuit_on {
+            if fast_pred.evaluate(src.get(i)) == shape.short_circuit_on {
                 return Ok(singleton_bool(shape.finalize(true)));
             }
         }

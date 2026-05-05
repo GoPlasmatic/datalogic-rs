@@ -91,7 +91,7 @@ fn filter_strict_eq_field_fast_path<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
-        let matches = match crate::arena::value::traverse_segments(item, segments, arena) {
+        let matches = match crate::arena::value::traverse_segments(item, segments) {
             Some(av) => av == invariant_val,
             None => false,
         };
@@ -119,7 +119,7 @@ fn filter_with_fast_predicate<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
-        if fast_pred.evaluate(item, arena) {
+        if fast_pred.evaluate(item) {
             results.push(*item);
         }
     }

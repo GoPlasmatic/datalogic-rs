@@ -133,7 +133,7 @@ pub(crate) fn evaluate_val_compiled<'a>(
         let resolved = if segments.is_empty() {
             Some(root_av)
         } else {
-            crate::arena::value::traverse_segments(root_av, segments, arena)
+            crate::arena::value::traverse_segments(root_av, segments)
         };
         return match resolved {
             Some(av) => Ok(av),
@@ -215,7 +215,7 @@ fn resolve_reduce_hint<'a>(
             // Slot must exist for the frame to be considered a reduce frame.
             // If the path traversal misses, return the var's `default_value`.
             let slot = slot?;
-            let resolved = crate::arena::value::traverse_segments(slot, &segments[1..], arena);
+            let resolved = crate::arena::value::traverse_segments(slot, &segments[1..]);
             Some(match resolved {
                 Some(av) => Ok(av),
                 None => default_or_null(default_value, ctx, engine, arena),
@@ -250,7 +250,7 @@ fn resolve_via_context_stack<'a>(
     if segments.is_empty() {
         return Ok(av);
     }
-    match crate::arena::value::traverse_segments(av, segments, arena) {
+    match crate::arena::value::traverse_segments(av, segments) {
         Some(child) => Ok(child),
         None => default_or_null(default_value, ctx, engine, arena),
     }
@@ -263,12 +263,11 @@ pub(crate) fn evaluate_exists_compiled<'a>(
     scope_level: u32,
     segments: &[PathSegment],
     ctx: &mut ContextStack<'a>,
-    arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // Root scope at depth 0: walk input directly (no clone, no frame access).
     if scope_level == 0 && ctx.depth() == 0 {
         let found = segments.is_empty()
-            || crate::arena::value::traverse_segments(ctx.root_input(), segments, arena).is_some();
+            || crate::arena::value::traverse_segments(ctx.root_input(), segments).is_some();
         return Ok(crate::arena::singletons::singleton_bool(found));
     }
 
@@ -285,8 +284,8 @@ pub(crate) fn evaluate_exists_compiled<'a>(
         ContextRef::Frame(f) => f.data(),
         ContextRef::Root(av) => av,
     };
-    let found = segments.is_empty()
-        || crate::arena::value::traverse_segments(av, segments, arena).is_some();
+    let found =
+        segments.is_empty() || crate::arena::value::traverse_segments(av, segments).is_some();
     Ok(crate::arena::singletons::singleton_bool(found))
 }
 
@@ -389,7 +388,7 @@ fn eval_val_multiarg<'a>(
             let path_owned = path_string_from_data(path_av);
             let frame_data = frame_data_at_level(ctx, level as isize, arena)
                 .ok_or(Error::invalid_context_level(level as isize))?;
-            return Ok(access_path_str_ref(frame_data, &path_owned, arena)
+            return Ok(access_path_str_ref(frame_data, &path_owned)
                 .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
         }
 
@@ -402,7 +401,7 @@ fn eval_val_multiarg<'a>(
         let mut cur = frame_data_at_level(ctx, level as isize, arena)
             .ok_or(Error::invalid_context_level(level as isize))?;
         for path in &paths {
-            match access_path_str_ref(cur, path, arena) {
+            match access_path_str_ref(cur, path) {
                 Some(next) => cur = next,
                 None => return Ok(crate::arena::singletons::singleton_null()),
             }
@@ -436,7 +435,7 @@ fn eval_val_multiarg<'a>(
         None => (current_data(ctx, arena), 0),
     };
     for elem in &evaluated[rest_start..] {
-        match apply_path_element(cur, elem, arena) {
+        match apply_path_element(cur, elem) {
             Some(next) => cur = next,
             None => return Ok(crate::arena::singletons::singleton_null()),
         }
@@ -481,7 +480,7 @@ fn eval_val_array_path<'a>(
                 let Some(seg) = item.as_str() else {
                     return Ok(crate::arena::singletons::singleton_null());
                 };
-                match access_path_str_ref(cur, seg, arena) {
+                match access_path_str_ref(cur, seg) {
                     Some(next) => cur = next,
                     None => return Ok(crate::arena::singletons::singleton_null()),
                 }
@@ -495,7 +494,7 @@ fn eval_val_array_path<'a>(
     for i in 0..arr_len {
         let elem =
             array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
-        match apply_path_element(cur, elem, arena) {
+        match apply_path_element(cur, elem) {
             Some(next) => cur = next,
             None => return Ok(crate::arena::singletons::singleton_null()),
         }
@@ -527,13 +526,13 @@ fn eval_val_scalar_path<'a>(
                 }
             } else if let Some(rest) = s.strip_prefix("current.") {
                 if let Some(cur) = frame.get_reduce_current() {
-                    return Ok(access_path_str_ref(cur, rest, arena)
+                    return Ok(access_path_str_ref(cur, rest)
                         .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
                 }
             } else if let Some(rest) = s.strip_prefix("accumulator.")
                 && let Some(acc) = frame.get_reduce_accumulator()
             {
-                return Ok(access_path_str_ref(acc, rest, arena)
+                return Ok(access_path_str_ref(acc, rest)
                     .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
             }
         }
@@ -546,7 +545,7 @@ fn eval_val_scalar_path<'a>(
         {
             return Ok(av);
         }
-        return Ok(access_path_str_ref(cur, s, arena)
+        return Ok(access_path_str_ref(cur, s)
             .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
     }
 
@@ -555,7 +554,7 @@ fn eval_val_scalar_path<'a>(
     {
         let cur = current_data(ctx, arena);
         let key = i.to_string();
-        return Ok(access_path_str_ref(cur, &key, arena)
+        return Ok(access_path_str_ref(cur, &key)
             .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
     }
 

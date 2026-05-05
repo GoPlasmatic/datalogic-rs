@@ -128,7 +128,7 @@ fn map_arith_var_lit_fast_path<'a>(
         let val = if var_segs.is_empty() {
             item
         } else {
-            crate::arena::value::traverse_segments(item, var_segs, arena)?
+            crate::arena::value::traverse_segments(item, var_segs)?
         };
         let item_f = val.as_f64()?;
         let (a, b) = if var_is_lhs {
@@ -166,7 +166,7 @@ fn map_arith_var_lit_int<'a>(
         let val = if var_segs.is_empty() {
             item
         } else {
-            crate::arena::value::traverse_segments(item, var_segs, arena)?
+            crate::arena::value::traverse_segments(item, var_segs)?
         };
         let item_i = val.as_i64()?;
         let (a, b) = if var_is_lhs {
@@ -214,7 +214,7 @@ fn map_var_fast_path<'a>(
     } else {
         for i in 0..len {
             let item = src.get(i);
-            match crate::arena::value::traverse_segments(item, segments, arena) {
+            match crate::arena::value::traverse_segments(item, segments) {
                 Some(v) => results.push(*v),
                 None => results.push(DataValue::Null),
             }

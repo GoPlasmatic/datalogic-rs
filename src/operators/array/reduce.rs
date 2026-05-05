@@ -195,7 +195,7 @@ fn try_reduce_fast_path<'a>(
             let current_val = if current_segments.is_empty() {
                 item
             } else {
-                crate::arena::value::traverse_segments(item, current_segments, arena)?
+                crate::arena::value::traverse_segments(item, current_segments)?
             };
             if let Some(cur_i) = current_val.as_i64() {
                 let a = acc_i.unwrap();
@@ -226,7 +226,7 @@ fn try_reduce_fast_path<'a>(
         let current_val = if current_segments.is_empty() {
             item
         } else {
-            crate::arena::value::traverse_segments(item, current_segments, arena)?
+            crate::arena::value::traverse_segments(item, current_segments)?
         };
         let cur_f = current_val.as_f64()?;
         acc_f = match opcode {

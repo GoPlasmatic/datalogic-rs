@@ -11,7 +11,6 @@ use super::DataValue;
 use super::lookup::object_lookup_field;
 use super::reborrow_arena_value;
 use crate::node::PathSegment;
-use bumpalo::Bump;
 
 /// Take one traversal step by `PathSegment`. Tight loop body — must always
 /// inline so the cross-module callers in `variable.rs` see a flat walk.
@@ -56,7 +55,6 @@ fn step_str<'a>(cur: &'a DataValue<'a>, seg: &str) -> Option<&'a DataValue<'a>> 
 pub(crate) fn traverse_segments<'a>(
     av: &'a DataValue<'a>,
     segments: &[PathSegment],
-    _arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     // Single-segment fast path: 76% of paths in real workloads are length-1
     // (`{var: "x"}`-style). Avoids the loop's range bookkeeping and lets
@@ -112,7 +110,6 @@ pub(crate) fn path_exists_segments(av: &DataValue<'_>, segments: &[PathSegment])
 pub(crate) fn access_path_str_ref<'a>(
     av: &'a DataValue<'a>,
     path: &str,
-    _arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     if path.is_empty() {
         return Some(av);
@@ -162,10 +159,9 @@ pub(crate) fn path_exists_str(av: &DataValue<'_>, path: &str) -> bool {
 pub(crate) fn apply_path_element<'a>(
     cur: &'a DataValue<'a>,
     elem: &DataValue<'_>,
-    arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     if let Some(s) = elem.as_str() {
-        return access_path_str_ref(cur, s, arena);
+        return access_path_str_ref(cur, s);
     }
     if let Some(i) = elem.as_i64()
         && i >= 0
@@ -175,7 +171,7 @@ pub(crate) fn apply_path_element<'a>(
             DataValue::Array(items) => items
                 .get(idx)
                 .map(|entry| unsafe { reborrow_arena_value(entry) }),
-            DataValue::Object(_) => access_path_str_ref(cur, &i.to_string(), arena),
+            DataValue::Object(_) => access_path_str_ref(cur, &i.to_string()),
             _ => None,
         };
     }

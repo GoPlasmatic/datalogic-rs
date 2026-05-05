@@ -179,12 +179,11 @@ impl FastPredicate {
     fn resolve_value<'b>(
         segments: &[crate::node::PathSegment],
         item: &'b DataValue<'b>,
-        arena: &'b Bump,
     ) -> Option<&'b DataValue<'b>> {
         if segments.is_empty() {
             Some(item)
         } else {
-            crate::arena::value::traverse_segments(item, segments, arena)
+            crate::arena::value::traverse_segments(item, segments)
         }
     }
 
@@ -194,14 +193,14 @@ impl FastPredicate {
     /// quantifier/filter fast path — the per-call overhead of an outlined
     /// version dominates the actual comparison work for scalar predicates.
     #[inline(always)]
-    pub(super) fn evaluate<'b>(&self, item: &'b DataValue<'b>, arena: &'b Bump) -> bool {
+    pub(super) fn evaluate<'b>(&self, item: &'b DataValue<'b>) -> bool {
         match self {
             FastPredicate::StrictEq {
                 var_path,
                 literal,
                 negate,
             } => {
-                let matches = match Self::resolve_value(var_path, item, arena) {
+                let matches = match Self::resolve_value(var_path, item) {
                     Some(av) => value_equals_serde(av, literal),
                     None => false,
                 };
@@ -213,7 +212,7 @@ impl FastPredicate {
                 opcode,
                 var_is_lhs,
             } => {
-                if let Some(val) = Self::resolve_value(var_path, item, arena)
+                if let Some(val) = Self::resolve_value(var_path, item)
                     && let Some(val_f) = val.as_f64()
                 {
                     let (lhs, rhs) = if *var_is_lhs {
@@ -231,7 +230,7 @@ impl FastPredicate {
                 literal_f,
                 negate,
             } => {
-                let matches = if let Some(val) = Self::resolve_value(var_path, item, arena)
+                let matches = if let Some(val) = Self::resolve_value(var_path, item)
                     && let Some(val_f) = val.as_f64()
                 {
                     val_f == *literal_f
@@ -428,7 +427,7 @@ pub(crate) fn resolve_iter_input<'a>(
         let av = if path_segments_empty {
             Some(root)
         } else if let CompiledNode::Var { segments, .. } = arg {
-            crate::arena::value::traverse_segments(root, segments, arena)
+            crate::arena::value::traverse_segments(root, segments)
         } else {
             // Compile-time invariant violated; fall through to General path.
             None

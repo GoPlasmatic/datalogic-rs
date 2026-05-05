@@ -10,20 +10,23 @@ use crate::arena::ContextStack;
 use crate::{CompiledNode, Error, Result};
 
 /// Build the dispatch match. Splits the ~50 `BuiltinOperator` arms into
-/// two regular shapes plus a tail of irregular arms so the bulk of the
+/// three regular shapes plus a tail of irregular arms so the bulk of the
 /// dispatch is one tabular invocation:
 ///
-/// - `simple [ Op => fn, ... ]` — `fn(args, ctx, engine, arena)`.
-/// - `iter   [ Op => fn, ... ]` — `fn(args, *iter_arg_kind, ctx, engine, arena)`,
+/// - `simple    [ Op => fn, ... ]` — `fn(args, ctx, engine, arena)`.
+/// - `iter      [ Op => fn, ... ]` — `fn(args, *iter_arg_kind, ctx, engine, arena)`,
 ///   for ops that consume the cached iterator-input classification.
+/// - `with_kind [ Op => fn(kind_expr), ... ]` — `fn(args, ctx, engine, arena, kind_expr)`,
+///   for ops that share an impl behind a discriminator (Divide/Modulo,
+///   Abs/Ceil/Floor).
 /// - `other  { pat => expr, ... }` — verbatim arms (compiled `Var` /
-///   `Exists` / `Missing` / structured-object / div-or-mod / unary-math,
-///   etc.); pasted in front of the generated arms.
+///   `Exists` / `Missing` / structured-object, etc.); pasted in front of
+///   the generated arms.
 ///
 /// Per-arm `#[cfg(...)]` attributes attach to each `Op => fn` line.
-/// Arm ordering (other → simple → iter) doesn't affect codegen — the heavy
-/// `bumpalo::Vec`-building cases live in `#[inline(never)]` helpers, so
-/// the dispatch's stack frame is sized for the small/common arms regardless.
+/// Arm ordering doesn't affect codegen — the heavy `bumpalo::Vec`-building
+/// cases live in `#[inline(never)]` helpers, so the dispatch's stack frame
+/// is sized for the small/common arms regardless.
 macro_rules! dispatch {
     (
         node: $node:expr,
@@ -32,7 +35,8 @@ macro_rules! dispatch {
         arena: $arena:expr,
         other: { $($others:tt)* },
         simple: [ $( $(#[$scfg:meta])* $sop:ident => $sfn:path ),* $(,)? ],
-        iter: [ $( $(#[$icfg:meta])* $iop:ident => $ifn:path ),* $(,)? ] $(,)?
+        iter: [ $( $(#[$icfg:meta])* $iop:ident => $ifn:path ),* $(,)? ],
+        with_kind: [ $( $(#[$kcfg:meta])* $kop:ident => ($kfn:path, $kkind:expr) ),* $(,)? ] $(,)?
     ) => {
         match $node {
             $($others)*
@@ -52,6 +56,14 @@ macro_rules! dispatch {
                     iter_arg_kind,
                     ..
                 } => $ifn(args, *iter_arg_kind, $ctx, $engine, $arena),
+            )*
+            $(
+                $(#[$kcfg])*
+                CompiledNode::BuiltinOperator {
+                    opcode: crate::OpCode::$kop,
+                    args,
+                    ..
+                } => $kfn(args, $ctx, $engine, $arena, $kkind),
             )*
         }
     };
@@ -110,7 +122,6 @@ pub(super) fn dispatch_node_inner<'a>(
                 data.scope_level,
                 &data.segments,
                 ctx,
-                arena,
             ),
 
             // Value literal: handled by the outer `dispatch_node` wrapper
@@ -128,69 +139,6 @@ pub(super) fn dispatch_node_inner<'a>(
             // Compile-time placeholder for malformed args on
             // `and` / `or` / `if`. Surface the canonical error directly.
             CompiledNode::InvalidArgs { .. } => Err(crate::Error::invalid_args()),
-
-            // Divide / Modulo share an impl that takes a discriminator —
-            // can't fit the simple-arm shape so they stay explicit.
-            CompiledNode::BuiltinOperator {
-                opcode: crate::OpCode::Divide,
-                args,
-                ..
-            } => crate::operators::arithmetic::div_or_mod(
-                args,
-                ctx,
-                engine,
-                arena,
-                crate::operators::arithmetic::DivOp::Divide,
-            ),
-            CompiledNode::BuiltinOperator {
-                opcode: crate::OpCode::Modulo,
-                args,
-                ..
-            } => crate::operators::arithmetic::div_or_mod(
-                args,
-                ctx,
-                engine,
-                arena,
-                crate::operators::arithmetic::DivOp::Modulo,
-            ),
-
-            // Unary math (abs / ceil / floor) — same pattern as div_or_mod.
-            #[cfg(feature = "ext-math")]
-            CompiledNode::BuiltinOperator {
-                opcode: crate::OpCode::Abs,
-                args,
-                ..
-            } => crate::operators::arithmetic::unary_math(
-                args,
-                ctx,
-                engine,
-                arena,
-                crate::operators::arithmetic::UnaryMathOp::Abs,
-            ),
-            #[cfg(feature = "ext-math")]
-            CompiledNode::BuiltinOperator {
-                opcode: crate::OpCode::Ceil,
-                args,
-                ..
-            } => crate::operators::arithmetic::unary_math(
-                args,
-                ctx,
-                engine,
-                arena,
-                crate::operators::arithmetic::UnaryMathOp::Ceil,
-            ),
-            #[cfg(feature = "ext-math")]
-            CompiledNode::BuiltinOperator {
-                opcode: crate::OpCode::Floor,
-                args,
-                ..
-            } => crate::operators::arithmetic::unary_math(
-                args,
-                ctx,
-                engine,
-                arena,
-                crate::operators::arithmetic::UnaryMathOp::Floor,
-            ),
 
             // CompiledThrow — constant-folded error literal.
             #[cfg(feature = "error-handling")]
@@ -309,6 +257,20 @@ pub(super) fn dispatch_node_inner<'a>(
             Min => crate::operators::arithmetic::evaluate_min,
             #[cfg(feature = "ext-array")]
             Sort => crate::operators::array::evaluate_sort,
+        ],
+
+        // `BuiltinOperator { opcode, args, .. } => fn(args, ctx, engine,
+        // arena, kind)` shape — operators sharing one impl behind a
+        // discriminator (Divide/Modulo, Abs/Ceil/Floor).
+        with_kind: [
+            Divide => (crate::operators::arithmetic::div_or_mod, crate::operators::arithmetic::DivOp::Divide),
+            Modulo => (crate::operators::arithmetic::div_or_mod, crate::operators::arithmetic::DivOp::Modulo),
+            #[cfg(feature = "ext-math")]
+            Abs => (crate::operators::arithmetic::unary_math, crate::operators::arithmetic::UnaryMathOp::Abs),
+            #[cfg(feature = "ext-math")]
+            Ceil => (crate::operators::arithmetic::unary_math, crate::operators::arithmetic::UnaryMathOp::Ceil),
+            #[cfg(feature = "ext-math")]
+            Floor => (crate::operators::arithmetic::unary_math, crate::operators::arithmetic::UnaryMathOp::Floor),
         ],
     }
 }
