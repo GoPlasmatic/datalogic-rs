@@ -1,9 +1,9 @@
 //! `reduce` — fold an array into a single value via an accumulator.
 
-use crate::arena::{DataContextStack, DataValue, IterGuard};
+use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::ReduceHint;
 use crate::opcode::OpCode;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
@@ -16,8 +16,8 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 pub(crate) fn evaluate_reduce<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 || args.len() > 3 {
@@ -69,8 +69,8 @@ fn reduce_general<'a>(
     src: &IterSrc<'a>,
     body: &'a CompiledNode,
     initial: &'a DataValue<'a>,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
@@ -94,8 +94,8 @@ fn reduce_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     body: &'a CompiledNode,
     initial: &'a DataValue<'a>,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
@@ -142,10 +142,10 @@ fn try_reduce_fast_path<'a>(
     // Identify which arg is current and which is accumulator.
     let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
         (
-            CompiledNode::CompiledVar {
+            CompiledNode::Var {
                 reduce_hint: hint0, ..
             },
-            CompiledNode::CompiledVar {
+            CompiledNode::Var {
                 reduce_hint: hint1, ..
             },
         ) => match (hint0, hint1) {
@@ -162,7 +162,7 @@ fn try_reduce_fast_path<'a>(
         _ => return None,
     };
 
-    let current_segments = if let CompiledNode::CompiledVar {
+    let current_segments = if let CompiledNode::Var {
         segments,
         reduce_hint,
         ..

@@ -1,7 +1,7 @@
-//! `DataContextStack` — context stack used during arena-mode evaluation.
+//! `ContextStack` — context stack used during arena-mode evaluation.
 //!
 //! Frames hold `&'a DataValue<'a>`, and so does the root: callers either
-//! pass an arena-resident value directly (e.g. `DataLogic::evaluate`) or use
+//! pass an arena-resident value directly (e.g. `Engine::evaluate`) or use
 //! `from_value` to deep-convert a borrowed `&Value` into the arena.
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
@@ -120,7 +120,7 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
 /// root is `&'a DataValue<'a>` (deep-converted from `&Value` for the public
 /// API, or supplied directly by arena-native callers).
-pub struct DataContextStack<'a> {
+pub struct ContextStack<'a> {
     root: &'a DataValue<'a>,
     frames: Vec<ContextFrame<'a>>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
@@ -135,7 +135,7 @@ pub struct DataContextStack<'a> {
     tracer: Option<std::ptr::NonNull<crate::trace::TraceCollector>>,
 }
 
-impl<'a> DataContextStack<'a> {
+impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn new(root: &'a DataValue<'a>) -> Self {
         Self {
@@ -150,7 +150,7 @@ impl<'a> DataContextStack<'a> {
     /// Build a context stack from a borrowed `&serde_json::Value` by
     /// deep-converting it into an arena-resident `DataValue`. Used only by
     /// the test module below — production v5 / compat paths construct a
-    /// [`DataContextStack::new`] directly with an arena-resident value.
+    /// [`ContextStack::new`] directly with an arena-resident value.
     #[cfg(all(test, feature = "compat"))]
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
@@ -384,13 +384,13 @@ impl<'a> DataContextStack<'a> {
 /// All three iteration shapes are covered: indexed (array), keyed (object),
 /// and reduce (current/accumulator).
 pub(crate) struct IterGuard<'g, 'a> {
-    ctx: &'g mut DataContextStack<'a>,
+    ctx: &'g mut ContextStack<'a>,
     pushed: bool,
 }
 
 impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
-    pub(crate) fn new(ctx: &'g mut DataContextStack<'a>) -> Self {
+    pub(crate) fn new(ctx: &'g mut ContextStack<'a>) -> Self {
         Self { ctx, pushed: false }
     }
 
@@ -429,9 +429,9 @@ impl<'g, 'a> IterGuard<'g, 'a> {
     }
 
     /// Mutable access to the wrapped stack — for `engine.eval_iter_body(...)`
-    /// and similar calls that take `&mut DataContextStack`.
+    /// and similar calls that take `&mut ContextStack`.
     #[inline]
-    pub(crate) fn stack(&mut self) -> &mut DataContextStack<'a> {
+    pub(crate) fn stack(&mut self) -> &mut ContextStack<'a> {
         self.ctx
     }
 }
@@ -455,7 +455,7 @@ mod tests {
     fn lifecycle_indexed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
@@ -476,7 +476,7 @@ mod tests {
     fn lifecycle_keyed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let a: &DataValue = arena.alloc(DataValue::Bool(true));
         ctx.push_with_key_index(a, 0, "k1");
@@ -492,7 +492,7 @@ mod tests {
     fn lifecycle_reduce() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let cur: &DataValue =
             arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
@@ -513,7 +513,7 @@ mod tests {
     fn get_at_level_walks_up() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(10)));
         let b: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(20)));
@@ -535,7 +535,7 @@ mod tests {
     fn iter_guard_pushes_then_pops_indexed() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
 
         let a: &DataValue = arena.alloc(DataValue::Number(crate::value::NumberValue::from_i64(1)));
@@ -557,7 +557,7 @@ mod tests {
     fn iter_guard_no_push_no_pop() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
         assert_eq!(ctx.depth(), 0);
         {
             let _g = IterGuard::new(&mut ctx);
@@ -570,7 +570,7 @@ mod tests {
     fn iter_guard_keyed_and_reduce() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let a: &DataValue = arena.alloc(DataValue::Bool(true));
         let b: &DataValue = arena.alloc(DataValue::Bool(false));
@@ -603,7 +603,7 @@ mod tests {
     fn error_path_round_trip() {
         let arena = Bump::new();
         let root_val = Value::Null;
-        let mut ctx = DataContextStack::from_value(&root_val, &arena);
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         ctx.push_error_step(1);
         ctx.push_error_step(2);

@@ -14,15 +14,15 @@
 //! - **Thread-safe by design**: Share compiled logic across threads with `Arc`
 //! - **50+ built-in operators**: Complete JSONLogic compatibility plus extensions
 //! - **Arena-allocated evaluation**: Results live in a `bumpalo::Bump` arena and can borrow directly into caller input for zero-copy paths
-//! - **Extensible**: Add custom operators via the [`DataOperator`] trait
+//! - **Extensible**: Add custom operators via the [`Operator`] trait
 //! - **Structured templates**: Preserve object structure for dynamic outputs
 //!
 //! ## Quick Start (one-shot)
 //!
 //! ```rust
-//! use datalogic_rs::DataLogic;
+//! use datalogic_rs::Engine;
 //!
-//! let engine = DataLogic::new();
+//! let engine = Engine::new();
 //! let result = engine.evaluate_str(
 //!     r#"{"==": [{"var": "status"}, "active"]}"#,
 //!     r#"{"status": "active"}"#,
@@ -30,48 +30,51 @@
 //! assert_eq!(result, "true");
 //! ```
 //!
-//! ## Power-user (compile once, evaluate many)
+//! ## Reusing the arena across many evaluations
+//!
+//! For high-throughput callers, open a [`Scratch`] handle. It owns a
+//! [`bumpalo::Bump`], resets it between calls, and returns owned results so
+//! you don't have to juggle arena lifetimes:
+//!
+//! ```rust
+//! use datalogic_rs::Engine;
+//!
+//! let engine = Engine::new();
+//! let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
+//! let mut scratch = engine.scratch();
+//!
+//! for x in 0..3 {
+//!     let payload = format!(r#"{{"x": {}}}"#, x);
+//!     let result = scratch.eval_str(&compiled, &payload).unwrap();
+//!     assert_eq!(result, (x + 1).to_string());
+//! }
+//! ```
+//!
+//! ## Power-user (compile once, evaluate many, zero-copy results)
+//!
+//! When the result borrow can stay scoped to a caller-managed
+//! [`bumpalo::Bump`], skip the deep-clone and use [`Engine::evaluate`]
+//! directly. `evaluate` accepts any input shape via [`IntoEvalData`]:
+//! `&str`, `&OwnedDataValue`, `&serde_json::Value`, an owned `DataValue<'a>`,
+//! or an existing `&'a DataValue<'a>`.
 //!
 //! ```rust
 //! use bumpalo::Bump;
-//! use datalogic_rs::{DataLogic, DataValue};
+//! use datalogic_rs::Engine;
 //!
-//! let engine = DataLogic::new();
+//! let engine = Engine::new();
 //! let compiled = engine.compile(r#"{"==": [{"var": "status"}, "active"]}"#).unwrap();
 //!
 //! let arena = Bump::new();
-//! let data = DataValue::from_str(r#"{"status": "active"}"#, &arena).unwrap();
-//! let result = engine.evaluate(&compiled, data, &arena).unwrap();
+//! let result = engine.evaluate(&compiled, r#"{"status": "active"}"#, &arena).unwrap();
 //! assert_eq!(result.as_bool(), Some(true));
-//! ```
-//!
-//! ## Reusing the arena across many evaluations
-//!
-//! For high-throughput callers, allocate the arena once and `reset()` it
-//! between evaluations to keep peak memory bounded:
-//!
-//! ```rust
-//! use bumpalo::Bump;
-//! use datalogic_rs::{DataLogic, DataValue};
-//!
-//! let engine = DataLogic::new();
-//! let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
-//!
-//! let mut arena = Bump::new();
-//! for x in 0..3 {
-//!     let payload = format!(r#"{{"x": {}}}"#, x);
-//!     let data = DataValue::from_str(&payload, &arena).unwrap();
-//!     let result = engine.evaluate(&compiled, data, &arena).unwrap();
-//!     assert_eq!(result.as_i64(), Some(x + 1));
-//!     arena.reset();
-//! }
 //! ```
 //!
 //! ## Architecture
 //!
 //! The library uses a two-phase approach:
 //!
-//! 1. **Compilation**: JSON logic is parsed into `CompiledLogic` with OpCode dispatch
+//! 1. **Compilation**: JSON logic is parsed into `Logic` with OpCode dispatch
 //! 2. **Evaluation**: Compiled logic is evaluated through arena dispatch — results
 //!    are `&'a DataValue<'a>` allocated in a `bumpalo::Bump` for the duration of
 //!    one evaluate call.
@@ -91,28 +94,32 @@ mod constants;
 mod datetime;
 mod engine;
 mod error;
+mod eval_data;
 mod node;
 mod opcode;
 mod operators;
 mod path;
+mod scratch;
 #[cfg(feature = "trace")]
 mod trace;
 mod value;
 
-pub use arena::{DataContextStack, DataValue};
-pub use builder::DataLogicBuilder;
+pub use arena::{ContextStack, DataValue};
+pub use builder::EngineBuilder;
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
 };
 #[cfg(feature = "datetime")]
 pub use datavalue::{DataDateTime, DataDuration};
 pub use datavalue::{NumberValue, OwnedDataValue};
-pub use engine::DataLogic;
+pub use engine::Engine;
 #[allow(deprecated)]
 pub use error::StructuredError;
 pub use error::{Error, ErrorKind};
-pub use node::CompiledLogic;
+pub use eval_data::IntoEvalData;
+pub use node::Logic;
 pub use path::PathStep;
+pub use scratch::Scratch;
 #[cfg(feature = "trace")]
 pub use trace::{
     ExecutionStep, ExpressionNode, TraceCollector, TracedResult, TracedRun, TracedSession,
@@ -128,10 +135,10 @@ pub use value::{owned_from_serde, owned_to_serde};
 pub(crate) use node::{CompiledNode, MetadataHint, PathSegment, ReduceHint};
 pub(crate) use opcode::OpCode;
 
-/// Result type for DataLogic operations
+/// Result type for Engine operations
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Custom operator for the DataLogic engine.
+/// Custom operator hook for the [`Engine`].
 ///
 /// Implementations receive args **already evaluated** as borrowed
 /// [`DataValue`] references and return a `&'a DataValue<'a>` result
@@ -140,7 +147,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ## Lifetime
 ///
 /// `'a` is the arena lifetime, tied to the [`bumpalo::Bump`] allocator
-/// that lives for the duration of one [`DataLogic::evaluate`] call. Args
+/// that lives for the duration of one [`Engine::evaluate`] call. Args
 /// borrow from the caller's input and from prior arena allocations; the
 /// returned `&'a DataValue<'a>` must be allocated in the arena (or be a
 /// preallocated singleton) — never a stack reference.
@@ -148,15 +155,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ## Example
 ///
 /// ```rust
-/// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
+/// use datalogic_rs::{ContextStack, Operator, DataValue, Engine, Result};
 /// use bumpalo::Bump;
 ///
 /// struct DoubleArena;
-/// impl DataOperator for DoubleArena {
+/// impl Operator for DoubleArena {
 ///     fn evaluate<'a>(
 ///         &self,
 ///         args: &[&'a DataValue<'a>],
-///         _ctx: &mut DataContextStack<'a>,
+///         _ctx: &mut ContextStack<'a>,
 ///         arena: &'a Bump,
 ///     ) -> Result<&'a DataValue<'a>> {
 ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -164,13 +171,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///     }
 /// }
 ///
-/// let mut engine = DataLogic::new();
+/// let mut engine = Engine::new();
 /// engine.add_operator("double", DoubleArena);
 ///
 /// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
 /// assert_eq!(result, "42");
 /// ```
-pub trait DataOperator: Send + Sync {
+pub trait Operator: Send + Sync {
     /// Evaluate this operator with arena-allocated args and result.
     ///
     /// # Arguments
@@ -185,58 +192,30 @@ pub trait DataOperator: Send + Sync {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        ctx: &mut DataContextStack<'a>,
+        ctx: &mut ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }
 
-/// Adapter that lets [`DataLogic::add_operator`] (and the builder variant)
-/// accept either a bare `T: DataOperator` *or* a pre-boxed
-/// `Box<dyn DataOperator>`. Internal trait — you don't need to implement it.
+/// Adapter that lets [`Engine::add_operator`] (and the builder variant)
+/// accept either a bare `T: Operator` *or* a pre-boxed
+/// `Box<dyn Operator>`. Internal trait — you don't need to implement it.
 pub trait IntoOperatorBox {
-    /// Coerce `self` into a `Box<dyn DataOperator>` for storage on the
+    /// Coerce `self` into a `Box<dyn Operator>` for storage on the
     /// engine.
-    fn into_operator_box(self) -> Box<dyn DataOperator>;
+    fn into_operator_box(self) -> Box<dyn Operator>;
 }
 
-impl<T: DataOperator + 'static> IntoOperatorBox for T {
+impl<T: Operator + 'static> IntoOperatorBox for T {
     #[inline]
-    fn into_operator_box(self) -> Box<dyn DataOperator> {
+    fn into_operator_box(self) -> Box<dyn Operator> {
         Box::new(self)
     }
 }
 
-impl IntoOperatorBox for Box<dyn DataOperator> {
+impl IntoOperatorBox for Box<dyn Operator> {
     #[inline]
-    fn into_operator_box(self) -> Box<dyn DataOperator> {
+    fn into_operator_box(self) -> Box<dyn Operator> {
         self
-    }
-}
-
-/// Adapter trait that lets [`DataLogic::evaluate`] accept either an
-/// already-arena-resident `&'a DataValue<'a>` *or* a freshly-parsed
-/// `DataValue<'a>` (which it allocates into the arena for you). Internal
-/// trait — you don't need to implement it.
-///
-/// The two impls compile to identical code at the call site:
-/// - `&'a DataValue<'a>` is passed through unchanged (zero overhead).
-/// - `DataValue<'a>` becomes a single bumpalo allocation.
-pub trait IntoArenaData<'a> {
-    /// Coerce `self` into a `&'a DataValue<'a>`, allocating into `arena` if
-    /// the input is owned.
-    fn into_arena_data(self, arena: &'a bumpalo::Bump) -> &'a DataValue<'a>;
-}
-
-impl<'a> IntoArenaData<'a> for &'a DataValue<'a> {
-    #[inline]
-    fn into_arena_data(self, _arena: &'a bumpalo::Bump) -> &'a DataValue<'a> {
-        self
-    }
-}
-
-impl<'a> IntoArenaData<'a> for DataValue<'a> {
-    #[inline]
-    fn into_arena_data(self, arena: &'a bumpalo::Bump) -> &'a DataValue<'a> {
-        arena.alloc(self)
     }
 }

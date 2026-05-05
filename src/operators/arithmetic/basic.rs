@@ -1,9 +1,9 @@
 //! `+`, `-`, `*` — basic arithmetic with overflow promotion to `f64` and
 //! optional datetime/duration support.
 
-use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
+use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::value::NumberValue;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
@@ -17,8 +17,8 @@ use super::helpers::{
 #[inline]
 pub(crate) fn evaluate_add<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -48,8 +48,8 @@ pub(crate) fn evaluate_add<'a>(
 fn add_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let a_av = engine.evaluate_node(a, ctx, arena)?;
@@ -102,8 +102,8 @@ fn add_two_arg<'a>(
 #[inline]
 pub(crate) fn evaluate_multiply<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -133,8 +133,8 @@ pub(crate) fn evaluate_multiply<'a>(
 fn multiply_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let a_av = engine.evaluate_node(a, ctx, arena)?;
@@ -187,8 +187,8 @@ fn multiply_two_arg<'a>(
 #[inline]
 pub(crate) fn evaluate_subtract<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -206,8 +206,8 @@ pub(crate) fn evaluate_subtract<'a>(
 #[inline]
 fn subtract_one_arg<'a>(
     arg: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let av = engine.evaluate_node(arg, ctx, arena)?;
@@ -244,8 +244,8 @@ fn subtract_one_arg<'a>(
 fn subtract_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let a_av = engine.evaluate_node(a, ctx, arena)?;
@@ -284,8 +284,8 @@ fn subtract_two_arg<'a>(
 #[inline]
 fn subtract_variadic<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.evaluate_node(&args[0], ctx, arena)?;
@@ -342,8 +342,8 @@ fn subtract_variadic<'a>(
 /// or treat as a single-value sum/product.
 fn one_arg_arith<'a>(
     arg: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: ArithOp,
 ) -> Result<&'a DataValue<'a>> {
@@ -404,7 +404,7 @@ fn one_arg_arith<'a>(
 #[inline]
 fn one_arg_array_fold<'a>(
     items: &[DataValue<'a>],
-    engine: &DataLogic,
+    engine: &Engine,
     arena: &'a Bump,
     op: ArithOp,
 ) -> Result<&'a DataValue<'a>> {

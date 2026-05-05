@@ -94,7 +94,7 @@ mod tests {
         if let CompiledNode::BuiltinOperator { opcode, args, .. } = &result {
             assert_eq!(*opcode, OpCode::DoubleNot);
             assert_eq!(args.len(), 1);
-            assert!(matches!(&args[0], CompiledNode::CompiledVar { .. }));
+            assert!(matches!(&args[0], CompiledNode::Var { .. }));
         } else {
             panic!("expected BuiltinOperator");
         }

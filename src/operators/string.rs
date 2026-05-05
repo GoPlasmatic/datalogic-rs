@@ -1,4 +1,4 @@
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 // =============================================================================
 // Arena-mode string operators
 // =============================================================================
@@ -7,14 +7,14 @@ use crate::{CompiledNode, DataLogic, Result};
 // build the result. For string-producing ops, the result is allocated as
 // `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
 
-use crate::arena::{DataContextStack, DataValue, data_to_str};
+use crate::arena::{ContextStack, DataValue, data_to_str};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_cat<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // Build the concatenated string using a bumpalo String to avoid heap alloc.
@@ -39,8 +39,8 @@ pub(crate) fn evaluate_cat<'a>(
 #[inline]
 pub(crate) fn evaluate_substr<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -118,8 +118,8 @@ pub(crate) fn evaluate_substr<'a>(
 #[inline]
 pub(crate) fn evaluate_in<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -148,8 +148,8 @@ pub(crate) fn evaluate_in<'a>(
 #[inline]
 pub(crate) fn evaluate_starts_with<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -166,8 +166,8 @@ pub(crate) fn evaluate_starts_with<'a>(
 #[inline]
 pub(crate) fn evaluate_ends_with<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -184,8 +184,8 @@ pub(crate) fn evaluate_ends_with<'a>(
 #[inline]
 pub(crate) fn evaluate_upper<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -200,8 +200,8 @@ pub(crate) fn evaluate_upper<'a>(
 #[inline]
 pub(crate) fn evaluate_lower<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -216,8 +216,8 @@ pub(crate) fn evaluate_lower<'a>(
 #[inline]
 pub(crate) fn evaluate_trim<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -234,8 +234,8 @@ pub(crate) fn evaluate_trim<'a>(
 #[inline]
 pub(crate) fn evaluate_split<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {

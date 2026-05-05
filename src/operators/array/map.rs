@@ -1,10 +1,10 @@
 //! `map` — transform each item via a body expression.
 
-use crate::arena::{DataContextStack, DataValue, IterGuard, bvec};
+use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
 use crate::node::{MetadataHint, PathSegment, ReduceHint};
 use crate::opcode::OpCode;
 use crate::value::NumberValue;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
@@ -17,8 +17,8 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 pub(crate) fn evaluate_map<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
@@ -81,7 +81,7 @@ fn map_arith_var_lit_fast_path<'a>(
     // Detect (var(item), literal) or (literal, var(item)).
     let (var_segs, lit_value, var_is_lhs) = match (&args[0], &args[1]) {
         (
-            CompiledNode::CompiledVar {
+            CompiledNode::Var {
                 scope_level: 0,
                 segments,
                 reduce_hint: ReduceHint::None,
@@ -93,7 +93,7 @@ fn map_arith_var_lit_fast_path<'a>(
         ) => (segments.as_ref(), value, true),
         (
             CompiledNode::Value { value, .. },
-            CompiledNode::CompiledVar {
+            CompiledNode::Var {
                 scope_level: 0,
                 segments,
                 reduce_hint: ReduceHint::None,
@@ -189,7 +189,7 @@ fn map_var_fast_path<'a>(
     body: &'a CompiledNode,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let CompiledNode::CompiledVar {
+    let CompiledNode::Var {
         scope_level: 0,
         segments,
         reduce_hint: ReduceHint::None,
@@ -224,8 +224,8 @@ fn map_var_fast_path<'a>(
 fn map_general<'a>(
     src: &IterSrc<'a>,
     body: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
@@ -249,8 +249,8 @@ fn map_general<'a>(
 fn map_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     body: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
@@ -265,8 +265,8 @@ fn map_arena_bridge<'a>(
 fn map_bridge_object<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
     body: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = pairs.len() as u32;
@@ -288,8 +288,8 @@ fn map_bridge_object<'a>(
 fn map_bridge_array<'a>(
     items: &'a [DataValue<'a>],
     body: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = items.len() as u32;
@@ -308,8 +308,8 @@ fn map_bridge_array<'a>(
 fn map_bridge_single<'a>(
     input: &'a DataValue<'a>,
     body: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let item_av: &'a DataValue<'a> = input;

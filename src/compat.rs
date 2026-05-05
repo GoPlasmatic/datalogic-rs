@@ -8,14 +8,14 @@
 //! compiler keeps reminding you per call site.
 //!
 //! Every method is implemented in terms of the v5 surface (`compile`,
-//! `evaluate`, `evaluate_str`, `evaluate_value`, `with_trace`,
-//! `compile_traceable`) — there is no separate code path. The trait is purely
-//! a thin ergonomic shim that lets 4.x callers keep compiling.
+//! `evaluate`, `evaluate_str`, `evaluate_value`, `with_trace`) — there is
+//! no separate code path. The trait is purely a thin ergonomic shim that
+//! lets 4.x callers keep compiling.
 //!
 //! What lives here:
 //! - **Renamed types** — `ArenaValue`, `ArenaContextStack`, `ArenaOperator`
-//!   re-exported as deprecated aliases for `DataValue`, `DataContextStack`,
-//!   `DataOperator`.
+//!   re-exported as deprecated aliases for `DataValue`, `ContextStack`,
+//!   `Operator`.
 //! - **Constructors** — `with_preserve_structure`, `with_config`,
 //!   `with_config_and_structure`.
 //! - **Compile entries** — `compile(&Value)`, `compile_serde_value(&Value)`.
@@ -24,7 +24,7 @@
 //!   `evaluate_structured`, `evaluate_json_structured`,
 //!   `evaluate_json_with_trace`, `evaluate_json_with_trace_structured`.
 //! - **Operator registration** — `add_arena_operator` (use
-//!   `DataLogic::add_operator` / the builder).
+//!   `Engine::add_operator` / the builder).
 //!
 //! Compile-internal types (`CompiledNode`, `OpCode`, `MetadataHint`,
 //! `PathSegment`, `ReduceHint`) were public in 4.x but are intentionally not
@@ -40,7 +40,7 @@
 //! engine.evaluate_json(rule, data)?;
 //!
 //! // Migration target:
-//! use datalogic_rs::{DataValue, DataOperator};
+//! use datalogic_rs::{DataValue, Operator};
 //! engine.evaluate_str(rule, data)?;
 //! // Or, to keep the 4.x signatures briefly:
 //! use datalogic_rs::compat::LegacyApi;
@@ -52,7 +52,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::{CompiledLogic, DataLogic, Error, EvaluationConfig, Result};
+use crate::{Engine, Error, EvaluationConfig, Logic, Result};
 
 #[cfg(feature = "trace")]
 use crate::trace::TracedResult;
@@ -71,38 +71,38 @@ use crate::trace::TracedResult;
 )]
 pub type ArenaValue<'a> = crate::DataValue<'a>;
 
-/// Deprecated alias for [`crate::DataContextStack`].
+/// Deprecated alias for [`crate::ContextStack`].
 #[deprecated(
     since = "5.0.0",
-    note = "use `DataContextStack`; the `compat` module will be removed in 5.1"
+    note = "use `ContextStack`; the `compat` module will be removed in 5.1"
 )]
-pub type ArenaContextStack<'a> = crate::DataContextStack<'a>;
+pub type ArenaContextStack<'a> = crate::ContextStack<'a>;
 
-/// Deprecated alias for [`crate::DataOperator`]. The trait method
+/// Deprecated alias for [`crate::Operator`]. The trait method
 /// `evaluate_arena` was renamed to `evaluate` — old impls that used the
 /// `evaluate_arena` name need a one-line rename.
 #[deprecated(
     since = "5.0.0",
-    note = "use `DataOperator` and rename `evaluate_arena` -> `evaluate`; the `compat` module will be removed in 5.1"
+    note = "use `Operator` and rename `evaluate_arena` -> `evaluate`; the `compat` module will be removed in 5.1"
 )]
 pub trait ArenaOperator: Send + Sync {
-    /// Forward to the v5 [`crate::DataOperator::evaluate`] signature.
+    /// Forward to the v5 [`crate::Operator::evaluate`] signature.
     fn evaluate_arena<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        ctx: &mut crate::DataContextStack<'a>,
+        ctx: &mut crate::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>>;
 }
 
-// Bridge: every ArenaOperator IS-A DataOperator (forward `evaluate_arena`
+// Bridge: every ArenaOperator IS-A Operator (forward `evaluate_arena`
 // → `evaluate`). Lets old custom operators keep compiling.
-impl<T: ArenaOperator + ?Sized> crate::DataOperator for T {
+impl<T: ArenaOperator + ?Sized> crate::Operator for T {
     #[inline]
     fn evaluate<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        ctx: &mut crate::DataContextStack<'a>,
+        ctx: &mut crate::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>> {
         ArenaOperator::evaluate_arena(self, args, ctx, arena)
@@ -112,10 +112,10 @@ impl<T: ArenaOperator + ?Sized> crate::DataOperator for T {
 // ---- LegacyApi extension trait ------------------------------------------
 //
 // One-stop shop for every deprecated entry point that used to live on the
-// inherent `impl DataLogic`. Bringing this trait into scope unlocks the 4.x
+// inherent `impl Engine`. Bringing this trait into scope unlocks the 4.x
 // surface; not bringing it in scope keeps the v5 inherent API clean.
 
-/// Deprecated 4.x methods on [`DataLogic`]. Bring this trait into scope to
+/// Deprecated 4.x methods on [`Engine`]. Bring this trait into scope to
 /// access the legacy surface; remove the import to discover what you need to
 /// migrate. Every method is `#[deprecated]` and slated for removal in 5.1.
 ///
@@ -127,83 +127,80 @@ impl<T: ArenaOperator + ?Sized> crate::DataOperator for T {
 /// | `engine.evaluate_owned(&compiled, value)?`                | `engine.evaluate_value(&logic, &value)?`            |
 /// | `engine.evaluate_json_with_trace(logic, data)?`           | `engine.with_trace().evaluate_str(logic, data)`     |
 /// | `engine.evaluate_json_structured(logic, data)?`           | `engine.evaluate_str(logic, data)?` (Error is structured) |
-/// | `DataLogic::with_config(cfg)`                             | `DataLogic::builder().config(cfg).build()`          |
+/// | `Engine::with_config(cfg)`                             | `Engine::builder().config(cfg).build()`          |
 pub trait LegacyApi: Sized {
     // ---- Constructors ----
 
-    /// Deprecated: use `DataLogic::builder().preserve_structure(true).build()`.
+    /// Deprecated: use `Engine::builder().preserve_structure(true).build()`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `DataLogic::builder().preserve_structure(true).build()`"
+        note = "use `Engine::builder().preserve_structure(true).build()`"
     )]
     #[cfg(feature = "preserve")]
     fn with_preserve_structure() -> Self;
 
-    /// Deprecated: use `DataLogic::builder().config(...).build()`.
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `DataLogic::builder().config(...).build()`"
-    )]
+    /// Deprecated: use `Engine::builder().config(...).build()`.
+    #[deprecated(since = "5.0.0", note = "use `Engine::builder().config(...).build()`")]
     fn with_config(config: EvaluationConfig) -> Self;
 
-    /// Deprecated: use `DataLogic::builder().config(...).preserve_structure(...).build()`.
+    /// Deprecated: use `Engine::builder().config(...).preserve_structure(...).build()`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `DataLogic::builder().config(...).preserve_structure(...).build()`"
+        note = "use `Engine::builder().config(...).preserve_structure(...).build()`"
     )]
     #[cfg(feature = "preserve")]
     fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self;
 
     // ---- Compile entries ----
 
-    /// Deprecated: use `DataLogic::compile(&str)` for the v5 entry, or
+    /// Deprecated: use `Engine::compile(&str)` for the v5 entry, or
     /// `compile_serde_value(&Value)` for the direct serde_json boundary.
     #[deprecated(
         since = "5.0.0",
-        note = "use `DataLogic::compile(&str)` or `compile_serde_value(&Value)`"
+        note = "use `Engine::compile(&str)` or `compile_serde_value(&Value)`"
     )]
-    fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>>;
+    fn compile(&self, logic: &Value) -> Result<Arc<Logic>>;
 
-    /// Deprecated: use `DataLogic::compile(&str)` (parses to v5 types) or
+    /// Deprecated: use `Engine::compile(&str)` (parses to v5 types) or
     /// `evaluate_value(&Value, &Value)` for one-shot evaluation.
     #[deprecated(
         since = "5.0.0",
-        note = "use `DataLogic::compile(&str)` or `evaluate_value(&Value, &Value)` for one-shot"
+        note = "use `Engine::compile(&str)` or `evaluate_value(&Value, &Value)` for one-shot"
     )]
-    fn compile_serde_value(&self, logic: &Value) -> Result<Arc<CompiledLogic>>;
+    fn compile_serde_value(&self, logic: &Value) -> Result<Arc<Logic>>;
 
     // ---- Evaluate entries ----
 
-    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
+    /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
     )]
-    fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value>;
+    fn evaluate(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value>;
 
-    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
+    /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
     )]
-    fn evaluate_arc_value(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value>;
+    fn evaluate_arc_value(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value>;
 
-    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
+    /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
     )]
-    fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value>;
+    fn evaluate_ref(&self, compiled: &Logic, data: &Value) -> Result<Value>;
 
-    /// Deprecated: use `DataLogic::evaluate(&CompiledLogic, &DataValue, &Bump)`.
+    /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&CompiledLogic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_value(&Value, &Value)`"
     )]
-    fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value>;
+    fn evaluate_owned(&self, compiled: &Logic, data: Value) -> Result<Value>;
 
-    /// Deprecated: use `DataLogic::evaluate_str(&str, &str)` (returns
-    /// `String`) or `DataLogic::evaluate_value(&Value, &Value)` (returns
+    /// Deprecated: use `Engine::evaluate_str(&str, &str)` (returns
+    /// `String`) or `Engine::evaluate_value(&Value, &Value)` (returns
     /// `Value`).
     #[deprecated(
         since = "5.0.0",
@@ -219,7 +216,7 @@ pub trait LegacyApi: Sized {
     )]
     fn evaluate_structured(
         &self,
-        compiled: &CompiledLogic,
+        compiled: &Logic,
         data: Arc<Value>,
     ) -> std::result::Result<Value, Error>;
 
@@ -237,7 +234,7 @@ pub trait LegacyApi: Sized {
 
     // ---- Trace entries ----
 
-    /// Deprecated: use [`crate::DataLogic::with_trace`] +
+    /// Deprecated: use [`crate::Engine::with_trace`] +
     /// [`crate::TracedSession::evaluate_str`].
     #[cfg(feature = "trace")]
     #[deprecated(
@@ -246,7 +243,7 @@ pub trait LegacyApi: Sized {
     )]
     fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult>;
 
-    /// Deprecated: use [`crate::DataLogic::with_trace`] +
+    /// Deprecated: use [`crate::Engine::with_trace`] +
     /// [`crate::TracedSession::evaluate_str`] — `TracedRun.result` already
     /// carries the merged structured `Error` on failure.
     #[cfg(feature = "trace")]
@@ -262,30 +259,30 @@ pub trait LegacyApi: Sized {
 
     // ---- Operator registration ----
 
-    /// Deprecated: use [`crate::DataLogic::add_operator`] /
-    /// [`crate::DataLogicBuilder::add_operator`].
+    /// Deprecated: use [`crate::Engine::add_operator`] /
+    /// [`crate::EngineBuilder::add_operator`].
     #[deprecated(
         since = "5.0.0",
-        note = "use `DataLogic::add_operator(name, op)` or `DataLogic::builder().add_operator(name, op).build()`"
+        note = "use `Engine::add_operator(name, op)` or `Engine::builder().add_operator(name, op).build()`"
     )]
-    fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::DataOperator>);
+    fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::Operator>);
 }
 
-impl LegacyApi for DataLogic {
+impl LegacyApi for Engine {
     // ---- Constructors ----
 
     #[cfg(feature = "preserve")]
     fn with_preserve_structure() -> Self {
-        DataLogic::builder().preserve_structure(true).build()
+        Engine::builder().preserve_structure(true).build()
     }
 
     fn with_config(config: EvaluationConfig) -> Self {
-        DataLogic::builder().config(config).build()
+        Engine::builder().config(config).build()
     }
 
     #[cfg(feature = "preserve")]
     fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
-        DataLogic::builder()
+        Engine::builder()
             .config(config)
             .preserve_structure(preserve_structure)
             .build()
@@ -293,30 +290,30 @@ impl LegacyApi for DataLogic {
 
     // ---- Compile entries ----
 
-    fn compile(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
+    fn compile(&self, logic: &Value) -> Result<Arc<Logic>> {
         LegacyApi::compile_serde_value(self, logic)
     }
 
-    fn compile_serde_value(&self, logic: &Value) -> Result<Arc<CompiledLogic>> {
+    fn compile_serde_value(&self, logic: &Value) -> Result<Arc<Logic>> {
         let owned = crate::value::owned_from_serde(logic);
         Ok(Arc::new(self.compile_value(&owned)?))
     }
 
     // ---- Evaluate entries ----
 
-    fn evaluate(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
+    fn evaluate(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value> {
         self.eval_to_value(compiled, &data)
     }
 
-    fn evaluate_arc_value(&self, compiled: &CompiledLogic, data: Arc<Value>) -> Result<Value> {
+    fn evaluate_arc_value(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value> {
         self.eval_to_value(compiled, &data)
     }
 
-    fn evaluate_ref(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+    fn evaluate_ref(&self, compiled: &Logic, data: &Value) -> Result<Value> {
         self.eval_to_value(compiled, data)
     }
 
-    fn evaluate_owned(&self, compiled: &CompiledLogic, data: Value) -> Result<Value> {
+    fn evaluate_owned(&self, compiled: &Logic, data: Value) -> Result<Value> {
         self.eval_to_value(compiled, &data)
     }
 
@@ -328,7 +325,7 @@ impl LegacyApi for DataLogic {
 
     fn evaluate_structured(
         &self,
-        compiled: &CompiledLogic,
+        compiled: &Logic,
         data: Arc<Value>,
     ) -> std::result::Result<Value, Error> {
         // Pre-merge this had a separate code path. Today every public
@@ -355,7 +352,8 @@ impl LegacyApi for DataLogic {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
         let data_arc = Arc::new(data_value);
-        let compiled = self.compile_for_trace_value(&logic_value)?;
+        let owned = crate::value::owned_from_serde(&logic_value);
+        let compiled = Arc::new(crate::Logic::compile_for_trace(&owned, self)?);
         Ok(self.run_trace(&compiled, data_arc))
     }
 
@@ -368,13 +366,14 @@ impl LegacyApi for DataLogic {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
         let data_arc = Arc::new(data_value);
-        let compiled = self.compile_for_trace_value(&logic_value)?;
+        let owned = crate::value::owned_from_serde(&logic_value);
+        let compiled = Arc::new(crate::Logic::compile_for_trace(&owned, self)?);
         Ok(self.run_trace(&compiled, data_arc))
     }
 
     // ---- Operator registration ----
 
-    fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::DataOperator>) {
-        DataLogic::add_operator(self, name, operator)
+    fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::Operator>) {
+        Engine::add_operator(self, name, operator)
     }
 }

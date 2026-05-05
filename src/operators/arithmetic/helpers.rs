@@ -10,7 +10,7 @@
 //! `src/arena/value/coercion.rs` for the full coercion-policy map across the
 //! crate.
 
-use crate::DataLogic;
+use crate::Engine;
 use crate::Result;
 use crate::arena::{DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::NanHandling;
@@ -28,7 +28,7 @@ pub(super) enum NanAction {
 /// Check the engine's NaN handling config and return the appropriate action.
 /// Returns `Err` for `ThrowError`, `Ok(NanAction)` otherwise.
 #[inline]
-pub(super) fn handle_nan(engine: &DataLogic) -> Result<NanAction> {
+pub(super) fn handle_nan(engine: &Engine) -> Result<NanAction> {
     match engine.config().arithmetic_nan_handling {
         NanHandling::ThrowError => Err(crate::constants::nan_error()),
         NanHandling::IgnoreValue | NanHandling::CoerceToZero => Ok(NanAction::Skip),
@@ -71,7 +71,7 @@ pub(super) fn try_int_op(
 pub(super) fn coerce_pair_int(
     a: &DataValue<'_>,
     b: &DataValue<'_>,
-    engine: &DataLogic,
+    engine: &Engine,
 ) -> Option<(i64, i64)> {
     Some((
         try_coerce_to_integer_cfg(a, engine)?,
@@ -85,7 +85,7 @@ pub(super) fn coerce_pair_int(
 pub(super) fn coerce_pair_f64(
     a: &DataValue<'_>,
     b: &DataValue<'_>,
-    engine: &DataLogic,
+    engine: &Engine,
 ) -> Option<(f64, f64)> {
     Some((
         coerce_to_number_cfg(a, engine)?,
@@ -142,8 +142,8 @@ pub(super) struct VariadicFoldSpec {
 #[inline]
 pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],
-    ctx: &mut crate::arena::DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut crate::arena::ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     spec: VariadicFoldSpec,
 ) -> Result<&'a DataValue<'a>> {

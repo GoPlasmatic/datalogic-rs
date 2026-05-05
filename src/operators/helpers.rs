@@ -6,7 +6,7 @@ use datavalue::{NumberValue, OwnedDataValue};
 /// runtime arena-resident form has its own [`crate::arena::is_truthy`]
 /// in the arena helpers module.
 #[inline]
-pub fn is_truthy_owned(value: &OwnedDataValue, engine: &crate::DataLogic) -> bool {
+pub fn is_truthy_owned(value: &OwnedDataValue, engine: &crate::Engine) -> bool {
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript | TruthyEvaluator::Python => is_truthy_owned_js(value),
         TruthyEvaluator::StrictBoolean => match value {

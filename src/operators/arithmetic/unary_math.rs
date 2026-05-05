@@ -1,8 +1,8 @@
 //! `abs`, `ceil`, `floor` — unary numeric ops.
 
-use crate::arena::{DataContextStack, DataValue, bvec};
+use crate::arena::{ContextStack, DataValue, bvec};
 use crate::value::NumberValue;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::alloc_number;
@@ -53,8 +53,8 @@ impl UnaryMathOp {
 #[inline]
 pub(crate) fn unary_math<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: UnaryMathOp,
 ) -> Result<&'a DataValue<'a>> {

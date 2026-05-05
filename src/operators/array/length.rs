@@ -1,7 +1,7 @@
 //! `length` — string char count or array length.
 
-use crate::arena::{DataContextStack, DataValue};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::arena::{ContextStack, DataValue};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 /// Arena-mode `length`. Critical for the COMPOSITION test: when called as
@@ -10,8 +10,8 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_length<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 1 {

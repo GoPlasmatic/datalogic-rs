@@ -32,7 +32,7 @@
 //! {"type": "2h30m"}                     // Returns: "duration"
 //! ```
 
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 
 // =============================================================================
 // Arena-mode type operator
@@ -41,14 +41,14 @@ use crate::{CompiledNode, DataLogic, Result};
 // Evaluates the arg via arena dispatch and returns a `&'static str` from a
 // small set of type names. The string is allocated once into the arena.
 
-use crate::arena::{DataContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_type<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {

@@ -19,7 +19,7 @@ pub mod strength;
 #[cfg(test)]
 mod test_helpers;
 
-use crate::DataLogic;
+use crate::Engine;
 use crate::node::CompiledNode;
 
 /// Maximum number of fixpoint iterations for the optimiser pipeline.
@@ -43,7 +43,7 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 ///
 /// Each pass returns `(node, changed)`; the loop exits as soon as all three
 /// passes in one iteration report `changed = false`.
-pub fn optimize(node: CompiledNode, engine: &DataLogic) -> CompiledNode {
+pub fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
     let mut node = node;
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
         let mut any_changed = false;

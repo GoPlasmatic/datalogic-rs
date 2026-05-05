@@ -1,4 +1,4 @@
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 
 // =============================================================================
 // Arena-mode missing / missing_some
@@ -6,13 +6,13 @@ use crate::{CompiledNode, DataLogic, Result};
 // Path lookups walk `&DataValue` natively via `path_exists_*`.
 // =============================================================================
 
-use crate::arena::{DataContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
 /// Resolve the lookup-target for `missing` / `missing_some` — current
 /// context's data view as `&'a DataValue<'a>`.
 #[inline(always)]
-fn lookup_av<'a>(ctx: &DataContextStack<'a>) -> &'a DataValue<'a> {
+fn lookup_av<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
     if ctx.depth() > 0 {
         use crate::arena::context::ContextRef;
         match ctx.current() {
@@ -29,8 +29,8 @@ fn lookup_av<'a>(ctx: &DataContextStack<'a>) -> &'a DataValue<'a> {
 #[inline]
 pub(crate) fn evaluate_missing<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let lookup = lookup_av(ctx);
@@ -68,8 +68,8 @@ pub(crate) fn evaluate_missing<'a>(
 #[inline]
 pub(crate) fn evaluate_missing_some<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -137,8 +137,8 @@ use crate::node::{
 #[inline]
 pub(crate) fn evaluate_compiled_missing<'a>(
     data: &'a CompiledMissingData,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let lookup = lookup_av(ctx);
@@ -169,8 +169,8 @@ pub(crate) fn evaluate_compiled_missing<'a>(
 #[inline]
 pub(crate) fn evaluate_compiled_missing_some<'a>(
     data: &'a CompiledMissingSomeData,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let min_present = match &data.min_present {

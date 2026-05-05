@@ -8,12 +8,12 @@ use crate::config::EvaluationConfig;
 
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
-use crate::{CompiledLogic, CompiledNode, Result};
+use crate::{CompiledNode, Logic, Result};
 
-/// The main DataLogic engine for compiling and evaluating JSONLogic expressions.
+/// The main Engine engine for compiling and evaluating JSONLogic expressions.
 ///
 /// The engine provides a two-phase approach to logic evaluation:
-/// 1. **Compilation**: Parse JSON logic into optimized `CompiledLogic`
+/// 1. **Compilation**: Parse JSON logic into optimized `Logic`
 /// 2. **Evaluation**: Execute compiled logic against data
 ///
 /// # Features
@@ -26,18 +26,18 @@ use crate::{CompiledLogic, CompiledNode, Result};
 /// # Example
 ///
 /// ```rust
-/// use datalogic_rs::DataLogic;
+/// use datalogic_rs::Engine;
 ///
-/// let engine = DataLogic::new();
+/// let engine = Engine::new();
 /// let result = engine.evaluate_str(
 ///     r#"{">": [{"var": "age"}, 18]}"#,
 ///     r#"{"age": 21}"#,
 /// ).unwrap();
 /// assert_eq!(result, "true");
 /// ```
-pub struct DataLogic {
-    /// Custom `DataOperator` implementations registered with the engine.
-    pub(super) custom_operators: HashMap<String, Box<dyn crate::DataOperator>>,
+pub struct Engine {
+    /// Custom `Operator` implementations registered with the engine.
+    pub(super) custom_operators: HashMap<String, Box<dyn crate::Operator>>,
     /// Flag to preserve structure of objects with unknown operators
     #[cfg(feature = "preserve")]
     preserve_structure: bool,
@@ -49,7 +49,7 @@ mod dispatch;
 
 /// Cold fallback for `CompiledNode::Value { lit: None, .. }` — only
 /// reached by ad-hoc `synthetic_value` wrappers (test helpers, trace nodes
-/// built outside `CompiledLogic::new`). Outlined so the inliner doesn't
+/// built outside `Logic::new`). Outlined so the inliner doesn't
 /// expand it into the hot `evaluate_node` literal arm.
 #[cold]
 #[inline(never)]
@@ -68,14 +68,14 @@ fn literal_fallback<'a>(
     }
 }
 
-impl Default for DataLogic {
+impl Default for Engine {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DataLogic {
-    /// Start a [`crate::DataLogicBuilder`] for fluent construction.
+impl Engine {
+    /// Start a [`crate::EngineBuilder`] for fluent construction.
     ///
     /// Replaces the 4.x `new` / `with_preserve_structure` / `with_config` /
     /// `with_config_and_structure` constructors. The old methods are still
@@ -83,8 +83,33 @@ impl DataLogic {
     /// scope (`use datalogic_rs::compat::LegacyApi;`) to opt into the legacy
     /// surface.
     #[inline]
-    pub fn builder() -> crate::DataLogicBuilder {
-        crate::DataLogicBuilder::new()
+    pub fn builder() -> crate::EngineBuilder {
+        crate::EngineBuilder::new()
+    }
+
+    /// Open a [`crate::Scratch`] handle that owns a reusable arena and
+    /// returns owned results, so callers don't need to manage a
+    /// [`bumpalo::Bump`] themselves.
+    ///
+    /// Use this when you want the throughput of arena reuse without the
+    /// lifetime juggling of [`Self::evaluate`]. The arena resets at the start
+    /// of every `eval*` call; results are deep-cloned out of the arena
+    /// before returning, so they outlive the next reset.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
+    /// let mut scratch = engine.scratch();
+    /// let result = scratch.eval_str(&compiled, r#"{"x": 41}"#).unwrap();
+    /// assert_eq!(result, "42");
+    /// ```
+    #[inline]
+    pub fn scratch(&self) -> crate::Scratch<'_> {
+        crate::Scratch::new(self)
     }
 
     /// Internal seam used by the builder. Not part of the public API.
@@ -93,7 +118,7 @@ impl DataLogic {
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
         _preserve_structure: bool,
-        operators: HashMap<String, Box<dyn crate::DataOperator>>,
+        operators: HashMap<String, Box<dyn crate::Operator>>,
     ) -> Self {
         Self {
             custom_operators: operators,
@@ -117,7 +142,7 @@ impl DataLogic {
         }
     }
 
-    /// Creates a new DataLogic engine with all built-in operators.
+    /// Creates a new Engine engine with all built-in operators.
     ///
     /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
     /// Structure preservation is disabled by default. For non-default
@@ -127,9 +152,9 @@ impl DataLogic {
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::DataLogic;
+    /// use datalogic_rs::Engine;
     ///
-    /// let engine = DataLogic::new();
+    /// let engine = Engine::new();
     /// ```
     pub fn new() -> Self {
         Self::new_inner(EvaluationConfig::default(), false)
@@ -152,7 +177,7 @@ impl DataLogic {
         }
     }
 
-    /// Registers a custom [`crate::DataOperator`] with the engine.
+    /// Registers a custom [`crate::Operator`] with the engine.
     ///
     /// Implementations take pre-evaluated args as `&'a DataValue<'a>` and
     /// return an arena-allocated result.
@@ -160,15 +185,15 @@ impl DataLogic {
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::{DataContextStack, DataOperator, DataValue, DataLogic, Result};
+    /// use datalogic_rs::{ContextStack, Operator, DataValue, Engine, Result};
     /// use bumpalo::Bump;
     ///
     /// struct Plus42;
-    /// impl DataOperator for Plus42 {
+    /// impl Operator for Plus42 {
     ///     fn evaluate<'a>(
     ///         &self,
     ///         args: &[&'a DataValue<'a>],
-    ///         _ctx: &mut DataContextStack<'a>,
+    ///         _ctx: &mut ContextStack<'a>,
     ///         arena: &'a Bump,
     ///     ) -> Result<&'a DataValue<'a>> {
     ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -176,7 +201,7 @@ impl DataLogic {
     ///     }
     /// }
     ///
-    /// let mut engine = DataLogic::new();
+    /// let mut engine = Engine::new();
     /// engine.add_operator("plus42", Plus42);
     /// let result = engine.evaluate_str(r#"{"plus42": 8}"#, "null").unwrap();
     /// assert_eq!(result, "50");
@@ -210,7 +235,7 @@ impl DataLogic {
     /// Remove a custom operator by name. Returns the removed operator's
     /// boxed handle if it was registered, `None` otherwise. Built-in
     /// operators dispatched via [`crate::OpCode`] are not affected.
-    pub fn remove_operator(&mut self, name: &str) -> Option<Box<dyn crate::DataOperator>> {
+    pub fn remove_operator(&mut self, name: &str) -> Option<Box<dyn crate::Operator>> {
         self.custom_operators.remove(name)
     }
 
@@ -219,62 +244,95 @@ impl DataLogic {
     // users call `evaluate_str` directly.
     // ============================================================
 
-    /// Compile a JSON logic string into reusable [`CompiledLogic`].
+    /// Compile a JSON logic string into reusable [`Logic`].
     ///
     /// The canonical v5 entry point for compilation. Returns an owned
-    /// [`CompiledLogic`] that can be reused across many evaluations. To share
-    /// across threads, wrap with `Arc::new(...)` at the call site.
+    /// [`Logic`] that can be reused across many evaluations on a
+    /// single thread. For cross-thread sharing use [`Self::compile_arc`]
+    /// instead — it wraps the result in [`std::sync::Arc`] so clones are
+    /// `O(1)`.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::DataLogic;
+    /// use datalogic_rs::Engine;
     ///
-    /// let engine = DataLogic::new();
+    /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// ```
-    pub fn compile(&self, logic: &str) -> Result<CompiledLogic> {
+    pub fn compile(&self, logic: &str) -> Result<Logic> {
         let owned = datavalue::OwnedDataValue::from_json(logic)?;
         self.compile_value(&owned)
     }
 
-    /// Compile a JSON logic string for **traced** evaluation.
+    /// Compile a JSON logic string and wrap it in [`std::sync::Arc`] for
+    /// cross-thread sharing.
     ///
-    /// Identical to [`Self::compile`] except the static-evaluation pass is
-    /// skipped: every operator survives in the compiled tree so it can produce
-    /// a trace step. Pair with [`Self::with_trace`] when stepping through a
-    /// rule for debugging.
+    /// Equivalent to `Arc::new(engine.compile(logic)?)` but saves the
+    /// boilerplate at every call site. The returned `Arc<Logic>`
+    /// derefs transparently into `&Logic`, so it slots into
+    /// [`Self::evaluate`] / [`Scratch::eval`](crate::Scratch::eval) without
+    /// any additional adaptation.
     ///
-    /// Compiled output is *also* runnable through the regular
-    /// [`Self::evaluate`] / [`Self::evaluate_str`] paths if you don't care
-    /// about traces — you'll just pay slightly more dispatch work because
-    /// constant subtrees weren't folded.
-    #[cfg(feature = "trace")]
-    pub fn compile_traceable(&self, logic: &str) -> Result<CompiledLogic> {
-        let owned = datavalue::OwnedDataValue::from_json(logic)?;
-        CompiledLogic::compile_for_trace(&owned, self.preserve_structure())
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::sync::Arc;
+    /// use std::thread;
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile_arc(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
+    ///
+    /// let handles: Vec<_> = (0..3)
+    ///     .map(|i| {
+    ///         let compiled = Arc::clone(&compiled);
+    ///         thread::spawn(move || {
+    ///             let engine = Engine::new();
+    ///             let payload = format!(r#"{{"score": {}}}"#, 80 + i * 5);
+    ///             engine.scratch().eval_str(&compiled, &payload).unwrap()
+    ///         })
+    ///     })
+    ///     .collect();
+    /// for h in handles { let _ = h.join(); }
+    /// ```
+    #[inline]
+    pub fn compile_arc(&self, logic: &str) -> Result<std::sync::Arc<Logic>> {
+        Ok(std::sync::Arc::new(self.compile(logic)?))
     }
 
     /// Internal compile helper shared by [`Self::compile`] and the compat
     /// `compile_serde_value` shim. Not part of the public API.
     #[doc(hidden)]
-    pub(crate) fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<CompiledLogic> {
-        CompiledLogic::compile_with_static_eval(logic, self)
+    pub(crate) fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<Logic> {
+        Logic::compile_with(logic, self)
     }
 
     /// Open a [`crate::TracedSession`] over this engine. Calls made through
     /// the session collect a per-call trace; the bare `evaluate*` methods on
-    /// `DataLogic` itself are unchanged and pay no trace overhead.
+    /// `Engine` itself are unchanged and pay no trace overhead.
     ///
     /// Available only when the crate is built with `feature = "trace"`.
+    ///
+    /// # Trace coverage
+    ///
+    /// The session's one-shot [`TracedSession::evaluate_str`] compiles the
+    /// rule internally with optimization disabled, so every operator in the
+    /// rule surfaces a trace step.
+    ///
+    /// The pre-compiled paths ([`TracedSession::evaluate`] taking a `&Logic`)
+    /// inherit whatever shape that `Logic` was compiled into — constant
+    /// sub-expressions folded by [`Self::compile`] won't appear, since there
+    /// is no operator left to execute. Use `evaluate_str` for full coverage
+    /// on a one-shot run.
     ///
     /// # Example
     ///
     /// ```rust
     /// # #[cfg(feature = "trace")] {
-    /// use datalogic_rs::DataLogic;
+    /// use datalogic_rs::Engine;
     ///
-    /// let engine = DataLogic::new();
+    /// let engine = Engine::new();
     /// let run = engine
     ///     .with_trace()
     ///     .evaluate_str(r#"{"+": [1, 2]}"#, "null");
@@ -304,9 +362,9 @@ impl DataLogic {
     ///
     /// ```rust
     /// use bumpalo::Bump;
-    /// use datalogic_rs::{DataLogic, DataValue};
+    /// use datalogic_rs::{Engine, DataValue};
     ///
-    /// let engine = DataLogic::new();
+    /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 2]}"#).unwrap();
     ///
     /// let arena = Bump::new();
@@ -315,18 +373,20 @@ impl DataLogic {
     /// assert_eq!(result.as_i64(), Some(42));
     /// ```
     ///
-    /// `data` accepts either an owned [`DataValue<'a>`] (allocated into the
-    /// arena for you) or an already-arena-resident `&'a DataValue<'a>`
-    /// (passed through). See [`crate::IntoArenaData`].
+    /// `data` accepts any input shape understood by [`crate::IntoEvalData`]:
+    /// `&'a DataValue<'a>` (zero-cost passthrough), `DataValue<'a>` (single
+    /// arena alloc), `&str` (JSON-parsed), `&OwnedDataValue`
+    /// (deep-borrowed), or `&serde_json::Value` (deep-converted, requires
+    /// the `compat` feature).
     #[inline(always)]
-    pub fn evaluate<'a, D: crate::IntoArenaData<'a>>(
+    pub fn evaluate<'a, D: crate::IntoEvalData<'a>>(
         &self,
-        compiled: &'a CompiledLogic,
+        compiled: &'a Logic,
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
-        let data_ref = data.into_arena_data(arena);
-        let mut ctx = crate::arena::DataContextStack::new(data_ref);
+        let data_ref = data.into_eval_data(arena)?;
+        let mut ctx = crate::arena::ContextStack::new(data_ref);
         match self.evaluate_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
             Err(mut e) => {
@@ -349,9 +409,9 @@ impl DataLogic {
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::DataLogic;
+    /// use datalogic_rs::Engine;
     ///
-    /// let engine = DataLogic::new();
+    /// let engine = Engine::new();
     /// let result = engine.evaluate_str(
     ///     r#"{"==": [{"var": "x"}, 5]}"#,
     ///     r#"{"x": 5}"#,
@@ -385,7 +445,7 @@ impl DataLogic {
     /// [`Self::evaluate`] so the dispatch path is identical to the v5 entry.
     #[cfg(feature = "compat")]
     #[doc(hidden)]
-    pub(crate) fn eval_to_value(&self, compiled: &CompiledLogic, data: &Value) -> Result<Value> {
+    pub(crate) fn eval_to_value(&self, compiled: &Logic, data: &Value) -> Result<Value> {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(compiled, data_av, &arena)?;
@@ -403,13 +463,13 @@ impl DataLogic {
     pub(crate) fn evaluate_node<'a>(
         &self,
         node: &'a CompiledNode,
-        ctx: &mut crate::arena::DataContextStack<'a>,
+        ctx: &mut crate::arena::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
         if let CompiledNode::Value { value, lit, .. } = node {
             // Compiled-tree literals always have `lit` populated by
-            // `populate_lits` (run during `CompiledLogic::new`), so
+            // `populate_lits` (run during `Logic::new`), so
             // this branch covers every literal in any finalized rule.
             // DataValue is covariant in its lifetime, so
             // `&'a DataValue<'static>` satisfies `&'a DataValue<'a>`
@@ -419,7 +479,7 @@ impl DataLogic {
             }
             // Fallback for nodes built outside the compile pipeline (test
             // helpers in `trace.rs`, ad-hoc `synthetic_value` wrappers that
-            // never went through `CompiledLogic::new`). Outlined + cold so
+            // never went through `Logic::new`). Outlined + cold so
             // the literal fast path stays a single load+branch in the
             // dispatched dominant case.
             return Ok(literal_fallback(value, arena));
@@ -455,7 +515,7 @@ impl DataLogic {
     pub(crate) fn eval_iter_body<'a>(
         &self,
         body: &'a CompiledNode,
-        ctx: &mut crate::arena::DataContextStack<'a>,
+        ctx: &mut crate::arena::ContextStack<'a>,
         arena: &'a bumpalo::Bump,
         _index: u32,
         _total: u32,
@@ -468,27 +528,11 @@ impl DataLogic {
         res
     }
 
-    /// Compile a `&serde_json::Value` for traced evaluation — skips static
-    /// evaluation so every operator stays in the tree as a step source.
-    /// Used by the [`crate::compat::LegacyApi`] trace shims.
-    #[cfg(feature = "trace")]
-    #[doc(hidden)]
-    pub(crate) fn compile_for_trace_value(
-        &self,
-        logic_value: &Value,
-    ) -> Result<Arc<CompiledLogic>> {
-        let owned = crate::value::owned_from_serde(logic_value);
-        Ok(Arc::new(CompiledLogic::compile_for_trace(
-            &owned,
-            self.preserve_structure(),
-        )?))
-    }
-
     /// Run a traced evaluation and assemble the [`TracedResult`]. Used by the
     /// [`crate::compat::LegacyApi`] trace shims.
     #[cfg(feature = "trace")]
     #[doc(hidden)]
-    pub(crate) fn run_trace(&self, compiled: &CompiledLogic, data_arc: Arc<Value>) -> TracedResult {
+    pub(crate) fn run_trace(&self, compiled: &Logic, data_arc: Arc<Value>) -> TracedResult {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let mut collector = TraceCollector::new();
         let (result, error_path) = self.evaluate_with_trace(compiled, data_arc, &mut collector);
@@ -524,18 +568,18 @@ impl DataLogic {
     /// `error_path` is the structured-error breadcrumb of node ids leading
     /// to the failure (empty on success). Calls `evaluate_node` directly
     /// (not the public [`Self::evaluate`]) because the trace path needs the
-    /// [`crate::arena::DataContextStack`] both before (to attach the tracer)
+    /// [`crate::arena::ContextStack`] both before (to attach the tracer)
     /// and after (to extract the breadcrumb) the evaluation.
     #[cfg(feature = "trace")]
     fn evaluate_with_trace(
         &self,
-        compiled: &CompiledLogic,
+        compiled: &Logic,
         data: Arc<Value>,
         collector: &mut TraceCollector,
     ) -> (Result<Value>, Vec<u32>) {
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(&data, &arena);
-        let mut ctx = crate::arena::DataContextStack::new(arena.alloc(data_av));
+        let mut ctx = crate::arena::ContextStack::new(arena.alloc(data_av));
         ctx.set_tracer(collector);
         let result = self.evaluate_node(&compiled.root, &mut ctx, &arena);
         match result {

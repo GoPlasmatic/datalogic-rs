@@ -1,14 +1,14 @@
-//! Configuration module for customizable DataLogic behavior
+//! Configuration module for customizable Engine behavior
 //!
 //! This module provides configuration options to customize the evaluation behavior
-//! of the DataLogic engine while maintaining backward compatibility.
+//! of the Engine engine while maintaining backward compatibility.
 
 #[cfg(feature = "compat")]
 use serde_json::Value;
 #[cfg(feature = "compat")]
 use std::sync::Arc;
 
-/// Main configuration structure for DataLogic evaluation behavior
+/// Main configuration structure for Engine evaluation behavior
 #[derive(Clone)]
 pub struct EvaluationConfig {
     /// How to handle NaN (Not a Number) in arithmetic operations

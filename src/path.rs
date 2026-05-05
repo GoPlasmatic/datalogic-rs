@@ -6,12 +6,12 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::CompiledLogic;
+use crate::Logic;
 use crate::node::CompiledNode;
 
 /// One node along the path from the root of a compiled rule down to the
 /// failing sub-expression. Returned root-to-leaf by
-/// [`crate::CompiledLogic::resolve_path`] / [`crate::Error::resolved_path`].
+/// [`crate::Logic::resolve_path`] / [`crate::Error::resolved_path`].
 #[non_exhaustive]
 #[derive(Debug, Clone, Serialize)]
 pub struct PathStep {
@@ -36,7 +36,7 @@ struct NodeInfo {
     json_pointer: String,
 }
 
-impl CompiledLogic {
+impl Logic {
     /// Translate a breadcrumb of [`crate::CompiledNode`] ids into structured
     /// [`PathStep`]s, root-to-leaf.
     ///
@@ -119,27 +119,27 @@ fn walk(
                 walk(child, child_parent_op, Some(i as u32), &json_pointer, out);
             }
         }
-        CompiledNode::CompiledVar { default_value, .. } => {
+        CompiledNode::Var { default_value, .. } => {
             if let Some(def) = default_value {
                 walk(def, child_parent_op, Some(0), &json_pointer, out);
             }
         }
         #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(_) => {
+        CompiledNode::Exists(_) => {
             // Leaf — exists arguments are pre-parsed segments.
         }
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(_) => {
+        CompiledNode::Throw(_) => {
             // Leaf — error payload is a baked-in OwnedDataValue.
         }
-        CompiledNode::CompiledMissing(data) => {
+        CompiledNode::Missing(data) => {
             for (i, arg) in data.args.iter().enumerate() {
                 if let crate::node::CompiledMissingArg::Dynamic(child) = arg {
                     walk(child, child_parent_op, Some(i as u32), &json_pointer, out);
                 }
             }
         }
-        CompiledNode::CompiledMissingSome(data) => {
+        CompiledNode::MissingSome(data) => {
             if let crate::node::CompiledMissingMin::Dynamic(child) = &data.min_present {
                 walk(child, child_parent_op, Some(0), &json_pointer, out);
             }
@@ -162,8 +162,8 @@ fn build_pointer(parent_pointer: &str, parent_op: Option<&str>, arg_index: Optio
 
 #[cfg(test)]
 mod tests {
-    fn engine() -> crate::DataLogic {
-        crate::DataLogic::new()
+    fn engine() -> crate::Engine {
+        crate::Engine::new()
     }
 
     #[test]

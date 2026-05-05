@@ -1,10 +1,10 @@
 //! Internal helpers shared by the array operators (filter / map / reduce /
 //! quantifiers / sort / slice / merge / length).
 
-use crate::arena::{DataContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::opcode::OpCode;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 /// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
@@ -13,7 +13,7 @@ use bumpalo::Bump;
 pub(super) fn is_filter_invariant(node: &CompiledNode) -> bool {
     match node {
         CompiledNode::Value { .. } => true,
-        CompiledNode::CompiledVar { scope_level, .. } => *scope_level > 0,
+        CompiledNode::Var { scope_level, .. } => *scope_level > 0,
         _ => false,
     }
 }
@@ -26,7 +26,7 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
 ) -> Option<(&'a [crate::node::PathSegment], &'a CompiledNode)> {
-    if let CompiledNode::CompiledVar {
+    if let CompiledNode::Var {
         scope_level: 0,
         segments,
         reduce_hint: ReduceHint::None,
@@ -50,8 +50,8 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
 #[inline]
 pub(super) fn evaluate_invariant_no_push<'a>(
     invariant_node: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if let CompiledNode::Value { value, .. } = invariant_node {
@@ -109,7 +109,7 @@ impl FastPredicate {
         }
         // Try both orderings: (var, literal) and (literal, var)
         for (var_idx, lit_idx, var_is_lhs) in [(0, 1, true), (1, 0, false)] {
-            if let CompiledNode::CompiledVar {
+            if let CompiledNode::Var {
                 scope_level: 0,
                 segments,
                 reduce_hint: ReduceHint::None,
@@ -377,7 +377,7 @@ impl IterArgKind {
     /// [`crate::node::populate_lits`] whenever the parent
     /// `BuiltinOperator` is one of the iterator ops listed above.
     pub(crate) fn classify(arg: &CompiledNode) -> Self {
-        if let CompiledNode::CompiledVar {
+        if let CompiledNode::Var {
             scope_level: 0,
             segments,
             reduce_hint: ReduceHint::None,
@@ -414,8 +414,8 @@ impl IterArgKind {
 pub(crate) fn resolve_iter_input<'a>(
     arg: &'a CompiledNode,
     kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<ResolvedInput<'a>> {
     if let IterArgKind::RootVarBorrow {
@@ -426,7 +426,7 @@ pub(crate) fn resolve_iter_input<'a>(
         let root = ctx.root_input();
         let av = if path_segments_empty {
             Some(root)
-        } else if let CompiledNode::CompiledVar { segments, .. } = arg {
+        } else if let CompiledNode::Var { segments, .. } = arg {
             crate::arena::value::traverse_segments(root, segments, arena)
         } else {
             // Compile-time invariant violated; fall through to General path.

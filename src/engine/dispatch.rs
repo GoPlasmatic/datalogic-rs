@@ -2,15 +2,15 @@
 //!
 //! [`evaluate_node_inner`] is the exhaustive `CompiledNode` match that
 //! routes each node shape to its operator implementation. It is invoked from
-//! `DataLogic::evaluate_node`, which handles the literal fast path,
+//! `Engine::evaluate_node`, which handles the literal fast path,
 //! breadcrumb accumulation, and trace recording before delegating here.
 
-use super::DataLogic;
-use crate::arena::DataContextStack;
+use super::Engine;
+use crate::arena::ContextStack;
 use crate::{CompiledNode, Error, Result};
 
 /// Inner dispatch — never called directly; reachable only via
-/// `DataLogic::evaluate_node` which handles the literal fast path,
+/// `Engine::evaluate_node` which handles the literal fast path,
 /// breadcrumb accumulation, and trace recording.
 ///
 /// `#[inline(always)]` is load-bearing here: this function is the hot
@@ -19,16 +19,16 @@ use crate::{CompiledNode, Error, Result};
 /// decision (measured ~1 ns regression on the 15 ns baseline).
 #[inline(always)]
 pub(super) fn evaluate_node_inner<'a>(
-    engine: &DataLogic,
+    engine: &Engine,
     node: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
+    ctx: &mut ContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::DataValue<'a>> {
     match node {
         // Compiled var: full dispatch via the arena helper. Root and
         // frame data are both arena-resident `DataValue`s, so lookups
         // are zero-copy borrows.
-        CompiledNode::CompiledVar {
+        CompiledNode::Var {
             scope_level,
             segments,
             reduce_hint,
@@ -52,7 +52,7 @@ pub(super) fn evaluate_node_inner<'a>(
         // directly, others walk arena frame data. Result is always a
         // Bool singleton.
         #[cfg(feature = "ext-control")]
-        CompiledNode::CompiledExists(data) => crate::operators::variable::evaluate_compiled_exists(
+        CompiledNode::Exists(data) => crate::operators::variable::evaluate_compiled_exists(
             data.scope_level,
             &data.segments,
             ctx,
@@ -137,10 +137,10 @@ pub(super) fn evaluate_node_inner<'a>(
             args,
             ..
         } => crate::operators::missing::evaluate_missing_some(args, ctx, engine, arena),
-        CompiledNode::CompiledMissing(data) => {
+        CompiledNode::Missing(data) => {
             crate::operators::missing::evaluate_compiled_missing(data, ctx, engine, arena)
         }
-        CompiledNode::CompiledMissingSome(data) => {
+        CompiledNode::MissingSome(data) => {
             crate::operators::missing::evaluate_compiled_missing_some(data, ctx, engine, arena)
         }
 
@@ -465,7 +465,7 @@ pub(super) fn evaluate_node_inner<'a>(
 
         // CompiledThrow — constant-folded error literal.
         #[cfg(feature = "error-handling")]
-        CompiledNode::CompiledThrow(data) => Err(Error::thrown(data.error.clone())),
+        CompiledNode::Throw(data) => Err(Error::thrown(data.error.clone())),
 
         // StructuredObject (preserve mode): out-of-line — bumpalo::Vec
         // construction would otherwise force a large stack frame on every
@@ -495,8 +495,8 @@ pub(super) fn evaluate_node_inner<'a>(
 #[inline(never)]
 fn evaluate_structured_object<'a>(
     data: &'a crate::node::StructuredObjectData,
-    ctx: &mut crate::arena::DataContextStack<'a>,
-    engine: &super::DataLogic,
+    ctx: &mut crate::arena::ContextStack<'a>,
+    engine: &super::Engine,
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
@@ -517,8 +517,8 @@ fn evaluate_structured_object<'a>(
 #[inline(never)]
 fn evaluate_array_literal<'a>(
     nodes: &'a [crate::CompiledNode],
-    ctx: &mut crate::arena::DataContextStack<'a>,
-    engine: &super::DataLogic,
+    ctx: &mut crate::arena::ContextStack<'a>,
+    engine: &super::Engine,
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
@@ -537,8 +537,8 @@ fn evaluate_array_literal<'a>(
 #[inline(never)]
 fn evaluate_custom_operator<'a>(
     data: &'a crate::node::CustomOperatorData,
-    ctx: &mut crate::arena::DataContextStack<'a>,
-    engine: &super::DataLogic,
+    ctx: &mut crate::arena::ContextStack<'a>,
+    engine: &super::Engine,
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;

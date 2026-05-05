@@ -1,8 +1,8 @@
 //! Quantifier operators: `all`, `some`, `none`.
 
 use crate::arena::pool::singleton_bool;
-use crate::arena::{DataContextStack, DataValue, IterGuard};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::arena::{ContextStack, DataValue, IterGuard};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::{FastPredicate, IterArgKind, ResolvedInput, resolve_iter_input};
@@ -46,8 +46,8 @@ impl QuantifierShape {
 fn evaluate_quantifier<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     shape: QuantifierShape,
 ) -> Result<&'a DataValue<'a>> {
@@ -84,7 +84,7 @@ fn evaluate_quantifier<'a>(
         return Ok(singleton_bool(shape.finalize(false)));
     }
 
-    // General path: zero-clone via DataContextStack.
+    // General path: zero-clone via ContextStack.
     let len = src.len();
     let total = len as u32;
     let mut found_short = false;
@@ -109,8 +109,8 @@ fn quantifier_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     predicate: &'a CompiledNode,
     shape: QuantifierShape,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
@@ -163,8 +163,8 @@ fn quantifier_arena_bridge<'a>(
 pub(crate) fn evaluate_all<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // all: early-exit on false; empty array ⇒ false (matching existing impl,
@@ -188,8 +188,8 @@ pub(crate) fn evaluate_all<'a>(
 pub(crate) fn evaluate_some<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // some: early-exit on true; empty array ⇒ false.
@@ -212,8 +212,8 @@ pub(crate) fn evaluate_some<'a>(
 pub(crate) fn evaluate_none<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // none: early-exit on true (then return false); empty array ⇒ true.

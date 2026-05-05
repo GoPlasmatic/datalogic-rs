@@ -2,9 +2,9 @@
 
 use std::cmp::Ordering;
 
-use crate::arena::{DataContextStack, DataValue, IterGuard};
+use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::{MetadataHint, ReduceHint};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
@@ -20,8 +20,8 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 pub(crate) fn evaluate_sort<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -71,8 +71,8 @@ pub(crate) fn evaluate_sort<'a>(
 #[inline]
 fn sort_direction<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<bool> {
     if args.len() > 1 {
@@ -106,7 +106,7 @@ fn sort_fast_path_var_extractor<'a>(
     ascending: bool,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let CompiledNode::CompiledVar {
+    let CompiledNode::Var {
         scope_level: 0,
         segments,
         reduce_hint: ReduceHint::None,
@@ -148,8 +148,8 @@ fn sort_general_extractor<'a>(
     src: &IterSrc<'a>,
     extractor: &'a CompiledNode,
     ascending: bool,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
@@ -180,8 +180,8 @@ fn sort_general_extractor<'a>(
 fn sort_arena_from_value<'a>(
     av: &'a DataValue<'a>,
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let items_slice: &'a [DataValue<'a>] = match av {

@@ -3,14 +3,14 @@
 #![cfg(feature = "trace")]
 #![allow(deprecated)]
 
-use datalogic_rs::DataLogic;
+use datalogic_rs::Engine;
 use datalogic_rs::compat::LegacyApi;
 use serde_json::json;
 
 /// Test basic traced evaluation with a simple comparison
 #[test]
 fn test_trace_simple_comparison() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{">=": [{"var": "age"}, 18]}"#, r#"{"age": 25}"#)
         .unwrap();
@@ -33,7 +33,7 @@ fn test_trace_simple_comparison() {
 /// Test traced evaluation from the proposal example
 #[test]
 fn test_trace_proposal_example() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(
             r#"{"and": [{">=": [{"var": "age"}, 18]}, true]}"#,
@@ -54,7 +54,7 @@ fn test_trace_proposal_example() {
 /// Test traced evaluation with short-circuit behavior
 #[test]
 fn test_trace_short_circuit_and() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"and": [false, {"var": "expensive"}]}"#, r#"{}"#)
         .unwrap();
@@ -70,7 +70,7 @@ fn test_trace_short_circuit_and() {
 /// Test traced evaluation with short-circuit behavior (or)
 #[test]
 fn test_trace_short_circuit_or() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"or": [true, {"var": "expensive"}]}"#, r#"{}"#)
         .unwrap();
@@ -82,7 +82,7 @@ fn test_trace_short_circuit_or() {
 /// Test traced evaluation with map operator
 #[test]
 fn test_trace_map_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"map": [[1, 2, 3], {"*": [{"var": ""}, 2]}]}"#, r#"{}"#)
         .unwrap();
@@ -109,7 +109,7 @@ fn test_trace_map_operator() {
 /// Test traced evaluation with filter operator
 #[test]
 fn test_trace_filter_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(
             r#"{"filter": [[1, 2, 3, 4, 5], {">": [{"var": ""}, 2]}]}"#,
@@ -124,7 +124,7 @@ fn test_trace_filter_operator() {
 /// Test traced evaluation with reduce operator
 #[test]
 fn test_trace_reduce_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(
             r#"{"reduce": [[1, 2, 3, 4], {"+": [{"var": "accumulator"}, {"var": "current"}]}, 0]}"#,
@@ -139,7 +139,7 @@ fn test_trace_reduce_operator() {
 /// Test traced evaluation with if operator
 #[test]
 fn test_trace_if_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(
             r#"{"if": [{"var": "active"}, "yes", "no"]}"#,
@@ -154,7 +154,7 @@ fn test_trace_if_operator() {
 /// Test traced evaluation with nested operators
 #[test]
 fn test_trace_nested_operators() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(
             r#"{"and": [{">": [{"var": "x"}, 0]}, {"<": [{"var": "x"}, 100]}]}"#,
@@ -172,7 +172,7 @@ fn test_trace_nested_operators() {
 /// Test expression tree structure
 #[test]
 fn test_expression_tree_structure() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{">=": [{"var": "age"}, 18]}"#, r#"{"age": 25}"#)
         .unwrap();
@@ -204,7 +204,7 @@ fn test_expression_tree_structure() {
 /// Test that literal values don't generate separate steps
 #[test]
 fn test_literals_no_separate_steps() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     // Use a variable to prevent static evaluation
     let result = engine
         .evaluate_json_with_trace(r#"{"==": [{"var": "x"}, 1]}"#, r#"{"x": 1}"#)
@@ -227,7 +227,7 @@ fn test_literals_no_separate_steps() {
 /// Test step context values
 #[test]
 fn test_step_context() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"var": "name"}"#, r#"{"name": "Alice"}"#)
         .unwrap();
@@ -244,7 +244,7 @@ fn test_step_context() {
 /// Test all/some/none operators with tracing
 #[test]
 fn test_trace_quantifier_operators() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
 
     // Test all
     let result = engine
@@ -268,7 +268,7 @@ fn test_trace_quantifier_operators() {
 /// Test ternary operator with tracing
 #[test]
 fn test_trace_ternary_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"?:": [true, "yes", "no"]}"#, r#"{}"#)
         .unwrap();
@@ -280,7 +280,7 @@ fn test_trace_ternary_operator() {
 /// Test coalesce operator with tracing
 #[test]
 fn test_trace_coalesce_operator() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"??": [null, null, "found"]}"#, r#"{}"#)
         .unwrap();
@@ -292,7 +292,7 @@ fn test_trace_coalesce_operator() {
 /// Test error handling in trace
 #[test]
 fn test_trace_with_error() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(r#"{"var": "missing.path"}"#, r#"{}"#)
         .unwrap();
@@ -304,7 +304,7 @@ fn test_trace_with_error() {
 /// Test arithmetic operators with tracing
 #[test]
 fn test_trace_arithmetic() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     // Use variable to prevent static evaluation
     let result = engine
         .evaluate_json_with_trace(r#"{"+": [{"*": [{"var": "x"}, 3]}, 4]}"#, r#"{"x": 2}"#)
@@ -323,7 +323,7 @@ fn test_trace_arithmetic() {
 /// Test string operators with tracing
 #[test]
 fn test_trace_string_operators() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let result = engine
         .evaluate_json_with_trace(
             r#"{"cat": ["Hello, ", {"var": "name"}]}"#,

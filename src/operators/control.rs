@@ -1,18 +1,18 @@
 use super::helpers::check_invalid_args_marker;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 
 // =============================================================================
 // Arena-mode control operators
 // =============================================================================
 
-use crate::arena::{DataContextStack, DataValue, is_truthy};
+use crate::arena::{ContextStack, DataValue, is_truthy};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_if<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -48,8 +48,8 @@ pub(crate) fn evaluate_if<'a>(
 #[inline]
 pub(crate) fn evaluate_coalesce<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -68,8 +68,8 @@ pub(crate) fn evaluate_coalesce<'a>(
 #[inline]
 pub(crate) fn evaluate_switch<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     use crate::operators::comparison::compare_equals;

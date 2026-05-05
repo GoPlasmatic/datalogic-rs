@@ -1,7 +1,7 @@
 //! `merge` — flatten args into a single array, skipping nulls.
 
-use crate::arena::{DataContextStack, DataValue, bvec};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::arena::{ContextStack, DataValue, bvec};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::item_is_null;
@@ -11,8 +11,8 @@ use super::helpers::item_is_null;
 #[inline]
 pub(crate) fn evaluate_merge<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // Pre-size for the scalar-arg case (one push per arg). Array args may push

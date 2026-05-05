@@ -33,7 +33,7 @@ pub enum ErrorKind {
     ConfigurationError(String),
 }
 
-/// Error returned by every [`crate::DataLogic`] operation.
+/// Error returned by every [`crate::Engine`] operation.
 ///
 /// The `kind` field carries the failure category and any variant-specific
 /// payload. `operator` and `path` are populated by the public `evaluate*`
@@ -108,7 +108,7 @@ impl Error {
     /// Returns an empty vector when `self.path` is empty. Ids absent from the
     /// compiled tree (e.g. when the error came from compile-time, before
     /// evaluation populated the breadcrumb) are skipped.
-    pub fn resolved_path(&self, compiled: &crate::CompiledLogic) -> Vec<crate::PathStep> {
+    pub fn resolved_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
         compiled.resolve_path(&self.path)
     }
 
@@ -202,38 +202,46 @@ impl fmt::Display for Error {
         // Render the kind first, then optionally the operator context. Mirrors
         // the historical `StructuredError` Display so existing log output
         // shapes don't shift.
-        match &self.kind {
-            ErrorKind::InvalidOperator(op) => write!(f, "Invalid operator: {}", op)?,
-            ErrorKind::InvalidArguments(msg) => write!(f, "Invalid arguments: {}", msg)?,
-            ErrorKind::VariableNotFound(var) => write!(f, "Variable not found: {}", var)?,
-            ErrorKind::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level)?,
-            ErrorKind::TypeError(msg) => write!(f, "Type error: {}", msg)?,
-            ErrorKind::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg)?,
-            ErrorKind::Custom(msg) => write!(f, "{}", msg)?,
-            ErrorKind::ParseError(msg) => write!(f, "Parse error: {}", msg)?,
-            ErrorKind::Thrown(val) => {
-                #[cfg(feature = "compat")]
-                {
-                    let json = crate::value::owned_to_serde(val);
-                    write!(f, "Thrown: {}", json)?;
-                }
-                #[cfg(not(feature = "compat"))]
-                {
-                    write!(f, "Thrown: {:?}", val)?;
-                }
-            }
-            ErrorKind::FormatError(msg) => write!(f, "Format error: {}", msg)?,
-            ErrorKind::IndexOutOfBounds { index, length } => write!(
-                f,
-                "Index {} out of bounds for array of length {}",
-                index, length
-            )?,
-            ErrorKind::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg)?,
-        }
+        write_kind_message(f, &self.kind)?;
         if let Some(op) = &self.operator {
             write!(f, " (in operator: {})", op)?;
         }
         Ok(())
+    }
+}
+
+/// Render the `ErrorKind` portion of an error message, without the operator
+/// suffix. Single source of truth for the kind → human-readable mapping; used
+/// by `Display for Error` (which then appends the operator context) and
+/// `Error::serialize` (via `KindDisplay`).
+fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Result {
+    match kind {
+        ErrorKind::InvalidOperator(op) => write!(f, "Invalid operator: {}", op),
+        ErrorKind::InvalidArguments(msg) => write!(f, "Invalid arguments: {}", msg),
+        ErrorKind::VariableNotFound(var) => write!(f, "Variable not found: {}", var),
+        ErrorKind::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level),
+        ErrorKind::TypeError(msg) => write!(f, "Type error: {}", msg),
+        ErrorKind::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
+        ErrorKind::Custom(msg) => write!(f, "{}", msg),
+        ErrorKind::ParseError(msg) => write!(f, "Parse error: {}", msg),
+        ErrorKind::Thrown(val) => {
+            #[cfg(feature = "compat")]
+            {
+                let json = crate::value::owned_to_serde(val);
+                write!(f, "Thrown: {}", json)
+            }
+            #[cfg(not(feature = "compat"))]
+            {
+                write!(f, "Thrown: {:?}", val)
+            }
+        }
+        ErrorKind::FormatError(msg) => write!(f, "Format error: {}", msg),
+        ErrorKind::IndexOutOfBounds { index, length } => write!(
+            f,
+            "Index {} out of bounds for array of length {}",
+            index, length
+        ),
+        ErrorKind::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
     }
 }
 
@@ -301,34 +309,7 @@ struct KindDisplay<'a>(&'a ErrorKind);
 
 impl<'a> fmt::Display for KindDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            ErrorKind::InvalidOperator(op) => write!(f, "Invalid operator: {}", op),
-            ErrorKind::InvalidArguments(msg) => write!(f, "Invalid arguments: {}", msg),
-            ErrorKind::VariableNotFound(var) => write!(f, "Variable not found: {}", var),
-            ErrorKind::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level),
-            ErrorKind::TypeError(msg) => write!(f, "Type error: {}", msg),
-            ErrorKind::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
-            ErrorKind::Custom(msg) => write!(f, "{}", msg),
-            ErrorKind::ParseError(msg) => write!(f, "Parse error: {}", msg),
-            ErrorKind::Thrown(val) => {
-                #[cfg(feature = "compat")]
-                {
-                    let json = crate::value::owned_to_serde(val);
-                    write!(f, "Thrown: {}", json)
-                }
-                #[cfg(not(feature = "compat"))]
-                {
-                    write!(f, "Thrown: {:?}", val)
-                }
-            }
-            ErrorKind::FormatError(msg) => write!(f, "Format error: {}", msg),
-            ErrorKind::IndexOutOfBounds { index, length } => write!(
-                f,
-                "Index {} out of bounds for array of length {}",
-                index, length
-            ),
-            ErrorKind::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
-        }
+        write_kind_message(f, self.0)
     }
 }
 

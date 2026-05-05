@@ -1,4 +1,4 @@
-//! Builder for [`DataLogic`].
+//! Builder for [`Engine`].
 //!
 //! Replaces the four ad-hoc 4.x constructors (`new`, `with_preserve_structure`,
 //! `with_config`, `with_config_and_structure`) with a single fluent builder.
@@ -7,33 +7,33 @@
 
 use std::collections::HashMap;
 
-use crate::DataOperator;
 use crate::IntoOperatorBox;
+use crate::Operator;
 use crate::config::EvaluationConfig;
-use crate::engine::DataLogic;
+use crate::engine::Engine;
 
-/// Builder for [`DataLogic`]. Construct via [`DataLogic::builder`].
+/// Builder for [`Engine`]. Construct via [`Engine::builder`].
 ///
 /// ```
-/// use datalogic_rs::DataLogic;
+/// use datalogic_rs::Engine;
 ///
-/// let engine = DataLogic::builder().build();
+/// let engine = Engine::builder().build();
 /// # let _ = engine;
 /// ```
 #[must_use = "the builder is consumed by `.build()`"]
-pub struct DataLogicBuilder {
+pub struct EngineBuilder {
     config: EvaluationConfig,
     preserve_structure: bool,
-    operators: HashMap<String, Box<dyn DataOperator>>,
+    operators: HashMap<String, Box<dyn Operator>>,
 }
 
-impl Default for DataLogicBuilder {
+impl Default for EngineBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DataLogicBuilder {
+impl EngineBuilder {
     /// Fresh builder with default config and no custom operators.
     #[inline]
     pub fn new() -> Self {
@@ -59,13 +59,13 @@ impl DataLogicBuilder {
         self
     }
 
-    /// Register a custom [`DataOperator`] under `name`. Accepts either a bare
-    /// `T: DataOperator` or a pre-boxed `Box<dyn DataOperator>` via
+    /// Register a custom [`Operator`] under `name`. Accepts either a bare
+    /// `T: Operator` or a pre-boxed `Box<dyn Operator>` via
     /// [`IntoOperatorBox`]. Multiple calls with the same name overwrite the
     /// prior registration.
     ///
     /// Operators can also be added or removed after the engine is built via
-    /// [`DataLogic::add_operator`] and [`DataLogic::remove_operator`]; use
+    /// [`Engine::add_operator`] and [`Engine::remove_operator`]; use
     /// the builder for the static set, the post-build mutators for dynamic
     /// registration.
     #[inline]
@@ -75,8 +75,8 @@ impl DataLogicBuilder {
         self
     }
 
-    /// Finalise the builder into an immutable [`DataLogic`] engine.
-    pub fn build(self) -> DataLogic {
-        DataLogic::from_builder_parts(self.config, self.preserve_structure, self.operators)
+    /// Finalise the builder into an immutable [`Engine`] engine.
+    pub fn build(self) -> Engine {
+        Engine::from_builder_parts(self.config, self.preserve_structure, self.operators)
     }
 }

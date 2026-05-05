@@ -1,4 +1,4 @@
-//! Operator implementations for the DataLogic rule engine.
+//! Operator implementations for the Engine rule engine.
 //!
 //! This module contains all built-in operator implementations organized by category.
 //! Each operator follows a consistent pattern: a function that takes compiled arguments,

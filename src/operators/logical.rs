@@ -1,13 +1,13 @@
 use super::helpers::check_invalid_args_marker;
-use crate::arena::{DataContextStack, DataValue, is_truthy};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::arena::{ContextStack, DataValue, is_truthy};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_not<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -20,8 +20,8 @@ pub(crate) fn evaluate_not<'a>(
 #[inline]
 pub(crate) fn evaluate_double_not<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -34,8 +34,8 @@ pub(crate) fn evaluate_double_not<'a>(
 #[inline]
 pub(crate) fn evaluate_and<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -56,8 +56,8 @@ pub(crate) fn evaluate_and<'a>(
 #[inline]
 pub(crate) fn evaluate_or<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {

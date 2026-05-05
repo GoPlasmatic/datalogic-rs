@@ -9,7 +9,7 @@ pub(super) fn val(v: OwnedDataValue) -> CompiledNode {
 }
 
 pub(super) fn var_node(name: &str) -> CompiledNode {
-    CompiledNode::CompiledVar {
+    CompiledNode::Var {
         id: SYNTHETIC_ID,
         scope_level: 0,
         segments: vec![PathSegment::Field(name.into())].into_boxed_slice(),

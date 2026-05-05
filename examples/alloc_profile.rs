@@ -1,7 +1,7 @@
 //! Allocation-counting profiler — measures allocs/free/bytes per evaluate().
 //! Used to validate the arena POC measurement criteria from ARENA_RFC.md.
 
-use datalogic_rs::DataLogic;
+use datalogic_rs::Engine;
 use serde_json::Value;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -35,7 +35,7 @@ fn snapshot() -> (u64, u64, u64) {
     )
 }
 
-fn measure(name: &str, engine: &DataLogic, rule: Value, data: Value, iters: u32) {
+fn measure(name: &str, engine: &Engine, rule: Value, data: Value, iters: u32) {
     let rule_str = serde_json::to_string(&rule).unwrap();
     let compiled = engine.compile(&rule_str).unwrap();
     let data_str = serde_json::to_string(&data).unwrap();
@@ -66,7 +66,7 @@ fn measure(name: &str, engine: &DataLogic, rule: Value, data: Value, iters: u32)
 }
 
 fn main() {
-    let engine = DataLogic::new();
+    let engine = Engine::new();
     let iters = 200_000;
     println!("Allocation profile — {} iters/case", iters);
     println!(

@@ -1,10 +1,10 @@
 //! `/` and `%` — division and modulo. Shares the unified
 //! [`div_or_mod`] entry point with a [`DivOp`] discriminator.
 
-use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg};
+use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
 use crate::config::DivisionByZeroHandling;
 use crate::value::NumberValue;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::alloc_number;
@@ -45,8 +45,8 @@ impl DivOp {
 #[inline]
 pub(crate) fn div_or_mod<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
@@ -66,8 +66,8 @@ pub(crate) fn div_or_mod<'a>(
 fn div_mod_two_arg<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
@@ -102,7 +102,7 @@ fn div_mod_two_arg<'a>(
 }
 
 #[inline]
-fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &DataLogic) -> Result<&'a DataValue<'a>> {
+fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &Engine) -> Result<&'a DataValue<'a>> {
     match engine.config().division_by_zero {
         DivisionByZeroHandling::ThrowError => Err(crate::constants::nan_error()),
         DivisionByZeroHandling::ReturnNull => Ok(crate::arena::pool::singleton_null()),
@@ -133,8 +133,8 @@ fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &DataLogic) -> Result<&
 ///     non-array argument → InvalidArguments.
 fn one_arg_div_mod<'a>(
     arg: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
@@ -185,8 +185,8 @@ fn one_arg_div_mod<'a>(
 /// per-step zero-divisor check.
 fn variadic_div_mod<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {

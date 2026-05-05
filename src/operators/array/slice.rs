@@ -1,7 +1,7 @@
 //! `slice` — array and string slicing with optional start/end/step.
 
-use crate::arena::{DataContextStack, DataValue, bvec};
-use crate::{CompiledNode, DataLogic, Error, Result};
+use crate::arena::{ContextStack, DataValue, bvec};
+use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
 /// Native arena-mode `slice`. Returns array slices as views over arena items;
@@ -9,8 +9,8 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_slice<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -93,8 +93,8 @@ fn slice_string<'a>(
 #[inline]
 fn extract_opt_i64_arena<'a>(
     node: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<Option<i64>> {
     if let CompiledNode::Value { value, .. } = node {

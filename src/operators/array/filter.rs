@@ -1,8 +1,8 @@
 //! `filter` — keep array items / object pairs whose predicate is truthy.
 
-use crate::arena::{DataContextStack, DataValue, IterGuard, bvec};
+use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
 use crate::opcode::OpCode;
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 use super::helpers::{
@@ -16,8 +16,8 @@ use super::helpers::{
 pub(crate) fn evaluate_filter<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 2 {
@@ -61,8 +61,8 @@ pub(crate) fn evaluate_filter<'a>(
 fn filter_strict_eq_field_fast_path<'a>(
     src: &IterSrc<'a>,
     predicate: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<Option<&'a DataValue<'a>>> {
     let CompiledNode::BuiltinOperator {
@@ -135,8 +135,8 @@ fn filter_with_fast_predicate<'a>(
 fn filter_general<'a>(
     src: &IterSrc<'a>,
     predicate: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
@@ -166,8 +166,8 @@ fn filter_general<'a>(
 fn filter_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     predicate: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
@@ -181,8 +181,8 @@ fn filter_arena_bridge<'a>(
 fn filter_bridge_object<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
     predicate: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = pairs.len() as u32;
@@ -210,8 +210,8 @@ fn filter_bridge_object<'a>(
 fn filter_bridge_array<'a>(
     items: &'a [DataValue<'a>],
     predicate: &'a CompiledNode,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let total = items.len() as u32;

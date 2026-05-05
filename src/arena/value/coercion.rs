@@ -21,7 +21,7 @@ use super::DataValue;
 /// [`crate::EvaluationConfig::numeric_coercion`] flags
 /// (`empty_string_to_zero`, `bool_to_number`, `null_to_zero`).
 #[inline]
-pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::DataLogic) -> Option<f64> {
+pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::Engine) -> Option<f64> {
     match v {
         DataValue::Number(n) => Some(n.as_f64()),
         DataValue::String(s) => {
@@ -43,10 +43,7 @@ pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::DataLogic)
 /// `numeric_coercion` flags as [`coerce_to_number_cfg`] but bails for
 /// fractional values.
 #[inline]
-pub(crate) fn try_coerce_to_integer_cfg(
-    v: &DataValue<'_>,
-    engine: &crate::DataLogic,
-) -> Option<i64> {
+pub(crate) fn try_coerce_to_integer_cfg(v: &DataValue<'_>, engine: &crate::Engine) -> Option<i64> {
     match v {
         DataValue::Number(n) => n.as_i64(),
         DataValue::String(s) => {

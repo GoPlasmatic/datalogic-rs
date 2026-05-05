@@ -35,15 +35,15 @@
 //!
 //! - [`throw`](super::throw) - Throw an error to be caught by `try`
 
-use crate::arena::{DataContextStack, DataValue};
-use crate::{CompiledNode, DataLogic, Error, Result};
+use crate::arena::{ContextStack, DataValue};
+use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
 #[inline]
 pub(crate) fn evaluate_try<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -79,8 +79,8 @@ pub(crate) fn evaluate_try<'a>(
 fn try_last_with_error_context<'a>(
     arg: &'a CompiledNode,
     last_error: &mut Option<Error>,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if let Some(Error {

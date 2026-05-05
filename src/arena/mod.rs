@@ -1,21 +1,20 @@
 //! Arena allocation infrastructure for zero-clone evaluation.
 //!
-//! Public types ([`DataValue`], [`DataContextStack`]) are also re-exported
+//! Public types ([`DataValue`], [`ContextStack`]) are also re-exported
 //! at the crate root for ergonomics. They appear in
-//! [`crate::DataOperator::evaluate`] signatures and let users
+//! [`crate::Operator::evaluate`] signatures and let users
 //! implement custom operators that participate in arena dispatch without
 //! materializing `serde_json::Value`.
 //!
 //! The arena is acquired and released within a single
-//! [`crate::DataLogic::evaluate_ref`] / [`crate::DataLogic::evaluate`]
-//! call; the [`DataValue`] tree borrows from a [`bumpalo::Bump`] plus the
-//! caller's input `&Value`.
+//! [`crate::Engine::evaluate`] call; the [`DataValue`] tree borrows from
+//! a [`bumpalo::Bump`] plus the caller's input.
 
 pub(crate) mod context;
 pub(crate) mod pool;
 pub(crate) mod value;
 
-pub use context::DataContextStack;
+pub use context::ContextStack;
 pub(crate) use context::IterGuard;
 pub use value::DataValue;
 pub use value::data_to_json_string;

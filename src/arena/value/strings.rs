@@ -113,7 +113,7 @@ fn write_json_string(buf: &mut String, s: &str) {
 /// general path of every quantifier/filter — outlining was paying a real call
 /// per item even though the hot branch is just the JS/Python default.
 #[inline(always)]
-pub(crate) fn is_truthy(v: &DataValue<'_>, engine: &crate::DataLogic) -> bool {
+pub(crate) fn is_truthy(v: &DataValue<'_>, engine: &crate::Engine) -> bool {
     use crate::config::TruthyEvaluator;
     match &engine.config().truthy_evaluator {
         TruthyEvaluator::JavaScript | TruthyEvaluator::Python => super::is_truthy_default(v),

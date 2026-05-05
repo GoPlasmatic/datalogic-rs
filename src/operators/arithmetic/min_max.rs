@@ -9,9 +9,9 @@
 //! The multi-arg form (`max(a, b, c)`) is handled separately — it doesn't
 //! involve array iteration.
 
-use crate::arena::{DataContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue};
 use crate::operators::array::{IterArgKind, ResolvedInput, resolve_iter_input};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 /// Generic helper for max/min over an arena-iterable input. `pick_better`
@@ -20,8 +20,8 @@ use bumpalo::Bump;
 fn min_max<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
@@ -92,8 +92,8 @@ fn min_max<'a>(
 #[inline]
 fn min_max_variadic<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     init: f64,
     pick_better: fn(f64, f64) -> bool,
@@ -153,8 +153,8 @@ fn min_max_from_av<'a>(
 pub(crate) fn evaluate_max<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     min_max(
@@ -173,8 +173,8 @@ pub(crate) fn evaluate_max<'a>(
 pub(crate) fn evaluate_min<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     min_max(

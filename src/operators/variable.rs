@@ -11,7 +11,7 @@ use crate::{CompiledNode, Error, Result};
 // `OpCode::Val` (see `OpCode::FromStr`); the var-specific arg shape (path +
 // default fallback) is collapsed at compile time by `try_compile_var`.
 
-use crate::arena::{DataContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
 /// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) against
@@ -20,7 +20,7 @@ use bumpalo::Bump;
 /// [`evaluate_val`] — extracted so the branches don't drift.
 #[inline]
 fn metadata_hint_lookup<'a>(
-    ctx: &DataContextStack<'a>,
+    ctx: &ContextStack<'a>,
     path: &str,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
@@ -44,7 +44,7 @@ fn metadata_hint_lookup<'a>(
 /// branches both return their stored `&DataValue` directly — no per-call
 /// allocation.
 #[inline(always)]
-fn current_data_av<'a>(ctx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
+fn current_data_av<'a>(ctx: &ContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
     use crate::arena::context::ContextRef;
     match ctx.current() {
         ContextRef::Frame(f) => f.data(),
@@ -55,7 +55,7 @@ fn current_data_av<'a>(ctx: &DataContextStack<'a>, _arena: &'a Bump) -> &'a Data
 /// Frame data at a given level (or `None` if the level walks past the root).
 #[inline]
 fn frame_data_at_level<'a>(
-    ctx: &DataContextStack<'a>,
+    ctx: &ContextStack<'a>,
     level: isize,
     _arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
@@ -81,7 +81,7 @@ fn path_string_from_data(av: &DataValue<'_>) -> String {
 }
 
 /// Pre-compiled `var`/`val` lookup spec — the five fields stored on
-/// [`CompiledNode::CompiledVar`], bundled so the arena evaluator takes one
+/// [`CompiledNode::Var`], bundled so the arena evaluator takes one
 /// borrow instead of five loose params.
 pub(crate) struct CompiledVarSpec<'n> {
     pub scope_level: u32,
@@ -108,8 +108,8 @@ pub(crate) struct CompiledVarSpec<'n> {
 #[inline(always)]
 pub(crate) fn evaluate_compiled_var<'a>(
     spec: CompiledVarSpec<'a>,
-    ctx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let CompiledVarSpec {
@@ -159,7 +159,7 @@ pub(crate) fn evaluate_compiled_var<'a>(
 #[inline]
 fn resolve_metadata_hint<'a>(
     hint: MetadataHint,
-    ctx: &DataContextStack<'a>,
+    ctx: &ContextStack<'a>,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     match hint {
@@ -190,8 +190,8 @@ fn resolve_metadata_hint<'a>(
 fn resolve_reduce_hint<'a>(
     reduce_hint: ReduceHint,
     segments: &[PathSegment],
-    ctx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
     arena: &'a Bump,
     default_value: Option<&'a CompiledNode>,
 ) -> Option<Result<&'a DataValue<'a>>> {
@@ -231,8 +231,8 @@ fn resolve_reduce_hint<'a>(
 fn resolve_via_context_stack<'a>(
     scope_level: u32,
     segments: &[PathSegment],
-    ctx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
     arena: &'a Bump,
     default_value: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
@@ -262,7 +262,7 @@ fn resolve_via_context_stack<'a>(
 pub(crate) fn evaluate_compiled_exists<'a>(
     scope_level: u32,
     segments: &[PathSegment],
-    ctx: &mut DataContextStack<'a>,
+    ctx: &mut ContextStack<'a>,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // Root scope at depth 0: walk input directly (no clone, no frame access).
@@ -333,8 +333,8 @@ fn array_get<'a>(av: &'a DataValue<'a>, i: usize, _arena: &'a Bump) -> Option<&'
 #[inline]
 pub(crate) fn evaluate_val<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     use crate::arena::context::ContextRef;
@@ -558,8 +558,8 @@ fn object_step<'a>(
 #[inline]
 pub(crate) fn evaluate_exists<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -628,8 +628,8 @@ pub(crate) fn evaluate_exists<'a>(
 #[inline]
 fn default_or_null<'a>(
     default_value: Option<&'a CompiledNode>,
-    ctx: &mut DataContextStack<'a>,
-    engine: &crate::DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match default_value {

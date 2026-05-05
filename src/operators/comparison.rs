@@ -42,9 +42,9 @@
 //! - Comparing arrays or objects (except datetime/duration objects)
 //! - Comparing a number with a non-numeric string
 
-use crate::arena::{DataContextStack, DataValue, coerce_to_number_cfg};
+use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
 use crate::constants::NAN_ERROR;
-use crate::{CompiledNode, DataLogic, Error, Result};
+use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
 // ─── Loose equality (==/!=) ──────────────────────────────────────────────────
@@ -169,7 +169,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
 /// Compare two values with loose equality. When the engine config has
 /// `loose_equality_errors` enabled, type-incompatible operands return an
 /// error; otherwise they compare as not-equal.
-fn loose_equals(left: &DataValue<'_>, right: &DataValue<'_>, engine: &DataLogic) -> Result<bool> {
+fn loose_equals(left: &DataValue<'_>, right: &DataValue<'_>, engine: &Engine) -> Result<bool> {
     match loose_equals_core(left, right) {
         LooseEqualsResult::Equal => Ok(true),
         LooseEqualsResult::NotEqual => Ok(false),
@@ -304,7 +304,7 @@ pub(crate) fn compare_equals(
     left: &DataValue<'_>,
     right: &DataValue<'_>,
     strict: bool,
-    engine: &DataLogic,
+    engine: &Engine,
 ) -> Result<bool> {
     // Datetime / duration takes precedence on string/object operands.
     #[cfg(feature = "datetime")]
@@ -357,7 +357,7 @@ fn compare_equals_primitive(
     left: &DataValue<'_>,
     right: &DataValue<'_>,
     strict: bool,
-    engine: &DataLogic,
+    engine: &Engine,
 ) -> Option<bool> {
     let lk = kind_of(left)?;
     let rk = kind_of(right)?;
@@ -404,7 +404,7 @@ fn compare_ordered(
     left: &DataValue<'_>,
     right: &DataValue<'_>,
     op: OrdOp,
-    engine: &DataLogic,
+    engine: &Engine,
 ) -> Result<bool> {
     // Number vs Number — most common case. Both operands are guaranteed
     // numeric by the `matches!` guards, so `as_f64()` cannot return None
@@ -486,8 +486,8 @@ fn compare_ordered(
 #[inline]
 pub(crate) fn evaluate_strict_equals<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -506,8 +506,8 @@ pub(crate) fn evaluate_strict_equals<'a>(
 #[inline]
 pub(crate) fn evaluate_strict_not_equals<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -522,8 +522,8 @@ pub(crate) fn evaluate_strict_not_equals<'a>(
 #[inline]
 pub(crate) fn evaluate_equals<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -542,8 +542,8 @@ pub(crate) fn evaluate_equals<'a>(
 #[inline]
 pub(crate) fn evaluate_not_equals<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -558,8 +558,8 @@ pub(crate) fn evaluate_not_equals<'a>(
 #[inline]
 fn evaluate_ord<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
     op: OrdOp,
 ) -> Result<&'a DataValue<'a>> {
@@ -580,8 +580,8 @@ fn evaluate_ord<'a>(
 #[inline]
 pub(crate) fn evaluate_greater_than<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     evaluate_ord(args, ctx, engine, arena, OrdOp::Gt)
@@ -590,8 +590,8 @@ pub(crate) fn evaluate_greater_than<'a>(
 #[inline]
 pub(crate) fn evaluate_greater_than_equal<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     evaluate_ord(args, ctx, engine, arena, OrdOp::Gte)
@@ -600,8 +600,8 @@ pub(crate) fn evaluate_greater_than_equal<'a>(
 #[inline]
 pub(crate) fn evaluate_less_than<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     evaluate_ord(args, ctx, engine, arena, OrdOp::Lt)
@@ -610,8 +610,8 @@ pub(crate) fn evaluate_less_than<'a>(
 #[inline]
 pub(crate) fn evaluate_less_than_equal<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     evaluate_ord(args, ctx, engine, arena, OrdOp::Lte)

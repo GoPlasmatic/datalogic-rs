@@ -27,8 +27,8 @@
 //! // Output: {"name": "John", "status": "active"}
 //! ```
 
-use crate::arena::{DataContextStack, DataValue};
-use crate::{CompiledNode, DataLogic, Result};
+use crate::arena::{ContextStack, DataValue};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 /// Native arena-mode `preserve`.
@@ -38,8 +38,8 @@ use bumpalo::Bump;
 #[inline]
 pub(crate) fn evaluate_preserve<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match args.len() {

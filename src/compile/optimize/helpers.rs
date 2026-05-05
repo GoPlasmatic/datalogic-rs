@@ -1,6 +1,6 @@
 //! Shared helper functions for optimization passes.
 
-use crate::DataLogic;
+use crate::Engine;
 use crate::node::CompiledNode;
 use crate::operators::helpers::is_truthy_owned;
 
@@ -8,7 +8,7 @@ use crate::operators::helpers::is_truthy_owned;
 /// Returns `Some(true)` / `Some(false)` for static values, `None` for dynamic nodes.
 ///
 /// Uses the engine's configured truthiness evaluator (JavaScript, Python, StrictBoolean, Custom).
-pub fn is_truthy_literal(node: &CompiledNode, engine: &DataLogic) -> Option<bool> {
+pub fn is_truthy_literal(node: &CompiledNode, engine: &Engine) -> Option<bool> {
     match node {
         CompiledNode::Value { value, .. } => Some(is_truthy_owned(value, engine)),
         _ => None,

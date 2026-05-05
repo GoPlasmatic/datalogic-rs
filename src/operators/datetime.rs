@@ -41,13 +41,13 @@
 use chrono::Utc;
 
 use crate::datetime::{DataDateTime, DataDuration};
-use crate::{CompiledNode, DataLogic, Error, Result};
+use crate::{CompiledNode, Engine, Error, Result};
 
 // =============================================================================
 // Datetime operators.
 // =============================================================================
 
-use crate::arena::{DataContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
 /// Resolve an arg as an arena string. Returns `None` if not string-like.
@@ -76,8 +76,8 @@ fn is_duration_object(av: &DataValue<'_>) -> bool {
 #[inline]
 pub(crate) fn evaluate_datetime<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -109,8 +109,8 @@ pub(crate) fn evaluate_datetime<'a>(
 #[inline]
 pub(crate) fn evaluate_timestamp<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
@@ -152,8 +152,8 @@ fn jsonlogic_to_chrono_format(format: &str) -> String {
 #[inline]
 pub(crate) fn evaluate_parse_date<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -178,8 +178,8 @@ pub(crate) fn evaluate_parse_date<'a>(
 #[inline]
 pub(crate) fn evaluate_format_date<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
@@ -216,8 +216,8 @@ pub(crate) fn evaluate_format_date<'a>(
 #[inline]
 pub(crate) fn evaluate_date_diff<'a>(
     args: &'a [CompiledNode],
-    ctx: &mut DataContextStack<'a>,
-    engine: &DataLogic,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 3 {
@@ -249,8 +249,8 @@ pub(crate) fn evaluate_date_diff<'a>(
 #[inline]
 pub(crate) fn evaluate_now<'a>(
     _args: &[CompiledNode],
-    _ctx: &mut DataContextStack<'a>,
-    _engine: &DataLogic,
+    _ctx: &mut ContextStack<'a>,
+    _engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let now = Utc::now();

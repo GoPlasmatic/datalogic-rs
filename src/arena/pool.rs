@@ -17,7 +17,7 @@
 //!
 //! ## Safety properties
 //!
-//! - `DataLogic: Send + Sync` is preserved (no shared engine state added)
+//! - `Engine: Send + Sync` is preserved (no shared engine state added)
 //! - Each thread has its own pool — no cross-thread contention
 //! - Pool is bounded (4 entries) so memory is capped per thread
 //! - The guard borrow-checks: `&Bump` cannot outlive the guard, so an
