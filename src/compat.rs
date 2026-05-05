@@ -23,8 +23,9 @@
 //!   `evaluate_ref(&Value)`, `evaluate_owned(Value)`, `evaluate_json(&str)`,
 //!   `evaluate_structured`, `evaluate_json_structured`,
 //!   `evaluate_json_with_trace`, `evaluate_json_with_trace_structured`.
-//! - **Operator registration** — `add_arena_operator` (use
-//!   `Engine::add_operator` / the builder).
+//! - **Operator registration** — no shim. v5 makes operator registration
+//!   builder-only; callers must use
+//!   `Engine::builder().add_operator(name, op).build()`.
 //!
 //! Compile-internal types (`CompiledNode`, `OpCode`, `MetadataHint`,
 //! `PathSegment`, `ReduceHint`) were public in 4.x but are intentionally not
@@ -257,15 +258,6 @@ pub trait LegacyApi: Sized {
         data: &str,
     ) -> std::result::Result<TracedResult, Error>;
 
-    // ---- Operator registration ----
-
-    /// Deprecated: use [`crate::Engine::add_operator`] /
-    /// [`crate::EngineBuilder::add_operator`].
-    #[deprecated(
-        since = "5.0.0",
-        note = "use `Engine::add_operator(name, op)` or `Engine::builder().add_operator(name, op).build()`"
-    )]
-    fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::Operator>);
 }
 
 impl LegacyApi for Engine {
@@ -371,9 +363,4 @@ impl LegacyApi for Engine {
         Ok(self.run_trace(&compiled, data_arc))
     }
 
-    // ---- Operator registration ----
-
-    fn add_arena_operator(&mut self, name: String, operator: Box<dyn crate::Operator>) {
-        Engine::add_operator(self, name, operator)
-    }
 }

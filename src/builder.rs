@@ -64,14 +64,21 @@ impl EngineBuilder {
     /// [`IntoOperatorBox`]. Multiple calls with the same name overwrite the
     /// prior registration.
     ///
-    /// Operators can also be added or removed after the engine is built via
-    /// [`Engine::add_operator`] and [`Engine::remove_operator`]; use
-    /// the builder for the static set, the post-build mutators for dynamic
-    /// registration.
+    /// Operator registration is builder-only; once [`Self::build`] hands you
+    /// an [`Engine`], its operator set is frozen.
     #[inline]
     pub fn add_operator(mut self, name: impl Into<String>, operator: impl IntoOperatorBox) -> Self {
         self.operators
             .insert(name.into(), operator.into_operator_box());
+        self
+    }
+
+    /// Unregister a previously-added operator. Silently no-ops if `name`
+    /// wasn't registered. Useful when composing builders from helper
+    /// functions that pre-register more than the caller needs.
+    #[inline]
+    pub fn remove_operator(mut self, name: &str) -> Self {
+        self.operators.remove(name);
         self
     }
 

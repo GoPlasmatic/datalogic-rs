@@ -139,10 +139,11 @@ fn main() {
     println!("Custom Operator Examples\n");
     println!("========================\n");
 
-    let mut engine = Engine::new();
-    engine.add_operator("avg", AverageOperator);
-    engine.add_operator("between", BetweenOperator);
-    engine.add_operator("format", FormatOperator);
+    let engine = Engine::builder()
+        .add_operator("avg", AverageOperator)
+        .add_operator("between", BetweenOperator)
+        .add_operator("format", FormatOperator)
+        .build();
 
     // Example 1: Average operator
     println!("1. Average Operator");

@@ -43,8 +43,7 @@ impl Operator for CatArena {
 
 #[test]
 fn arena_operator_double_at_root() {
-    let mut engine = Engine::new();
-    engine.add_operator("double", DoubleArena);
+    let engine = Engine::builder().add_operator("double", DoubleArena).build();
 
     let compiled = engine.compile_serde_value(&json!({"double": 21})).unwrap();
     let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
@@ -54,8 +53,7 @@ fn arena_operator_double_at_root() {
 #[test]
 fn arena_operator_inside_filter() {
     // The whole point of Operator: zero-clone use inside iteration.
-    let mut engine = Engine::new();
-    engine.add_operator("double", DoubleArena);
+    let engine = Engine::builder().add_operator("double", DoubleArena).build();
 
     let compiled = engine
         .compile_serde_value(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
@@ -68,8 +66,7 @@ fn arena_operator_inside_filter() {
 
 #[test]
 fn arena_operator_string_result() {
-    let mut engine = Engine::new();
-    engine.add_operator("xcat", CatArena);
+    let engine = Engine::builder().add_operator("xcat", CatArena).build();
 
     let compiled = engine
         .compile_serde_value(&json!({"xcat": ["he", "ll", "o"]}))
@@ -95,8 +92,7 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
 #[test]
 fn arena_operator_with_input_ref() {
     // Custom op consumes an InputRef arg (var lookup against root).
-    let mut engine = Engine::new();
-    engine.add_operator("double", DoubleArena);
+    let engine = Engine::builder().add_operator("double", DoubleArena).build();
 
     let compiled = engine
         .compile_serde_value(&json!({"double": {"var": "n"}}))
@@ -129,8 +125,7 @@ impl Operator for ReadField {
 
 #[test]
 fn arena_operator_passthrough_input_ref() {
-    let mut engine = Engine::new();
-    engine.add_operator("read_field", ReadField);
+    let engine = Engine::builder().add_operator("read_field", ReadField).build();
 
     let compiled = engine
         .compile_serde_value(&serde_json::json!({"read_field": {"var": "name"}}))
@@ -162,8 +157,7 @@ impl Operator for ReadActiveField {
 
 #[test]
 fn arena_operator_inside_filter_reads_iter_item_field() {
-    let mut engine = Engine::new();
-    engine.add_operator("identity", ReadActiveField);
+    let engine = Engine::builder().add_operator("identity", ReadActiveField).build();
 
     // Filter passes each item to the predicate; the predicate calls
     // `identity` on `{"var": "active"}`, which the dispatcher resolves
@@ -194,11 +188,13 @@ fn arena_operator_inside_filter_reads_iter_item_field() {
 
 #[test]
 fn operator_names_lists_registered_custom_ops() {
-    let mut engine = Engine::new();
-    assert_eq!(engine.operator_names().count(), 0);
+    let empty = Engine::new();
+    assert_eq!(empty.operator_names().count(), 0);
 
-    engine.add_operator("double", DoubleArena);
-    engine.add_operator("xcat", CatArena);
+    let engine = Engine::builder()
+        .add_operator("double", DoubleArena)
+        .add_operator("xcat", CatArena)
+        .build();
 
     let mut names: Vec<&str> = engine.operator_names().collect();
     names.sort();
@@ -206,20 +202,16 @@ fn operator_names_lists_registered_custom_ops() {
 }
 
 #[test]
-fn remove_operator_returns_handle_then_unregisters() {
-    let mut engine = Engine::new();
-    engine.add_operator("double", DoubleArena);
-    assert!(engine.has_custom_operator("double"));
-
-    let removed = engine.remove_operator("double");
-    assert!(removed.is_some(), "remove must return the boxed op");
+fn builder_remove_operator_unregisters() {
+    let engine = Engine::builder()
+        .add_operator("double", DoubleArena)
+        .remove_operator("double")
+        .build();
     assert!(!engine.has_custom_operator("double"));
-    // Calling remove again is a no-op returning None.
-    assert!(engine.remove_operator("double").is_none());
 }
 
 #[test]
-fn remove_operator_unknown_name_returns_none() {
-    let mut engine = Engine::new();
-    assert!(engine.remove_operator("not_registered").is_none());
+fn builder_remove_operator_unknown_name_is_noop() {
+    let engine = Engine::builder().remove_operator("not_registered").build();
+    assert_eq!(engine.operator_names().count(), 0);
 }

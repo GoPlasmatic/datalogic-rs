@@ -177,66 +177,19 @@ impl Engine {
         }
     }
 
-    /// Registers a custom [`crate::Operator`] with the engine.
-    ///
-    /// Implementations take pre-evaluated args as `&'a DataValue<'a>` and
-    /// return an arena-allocated result.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use datalogic_rs::{ContextStack, Operator, DataValue, Engine, Result};
-    /// use bumpalo::Bump;
-    ///
-    /// struct Plus42;
-    /// impl Operator for Plus42 {
-    ///     fn evaluate<'a>(
-    ///         &self,
-    ///         args: &[&'a DataValue<'a>],
-    ///         _ctx: &mut ContextStack<'a>,
-    ///         arena: &'a Bump,
-    ///     ) -> Result<&'a DataValue<'a>> {
-    ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
-    ///         Ok(arena.alloc(DataValue::from_f64(n + 42.0)))
-    ///     }
-    /// }
-    ///
-    /// let mut engine = Engine::new();
-    /// engine.add_operator("plus42", Plus42);
-    /// let result = engine.evaluate_str(r#"{"plus42": 8}"#, "null").unwrap();
-    /// assert_eq!(result, "50");
-    /// ```
-    pub fn add_operator(&mut self, name: impl Into<String>, operator: impl crate::IntoOperatorBox) {
-        self.custom_operators
-            .insert(name.into(), operator.into_operator_box());
-    }
-
     /// Checks if a custom operator with the given name is registered.
     ///
-    /// # Arguments
-    ///
-    /// * `name` - The operator name to check
-    ///
-    /// # Returns
-    ///
-    /// `true` if the operator exists, `false` otherwise.
+    /// Operator registration is builder-only; this is a read-only check
+    /// against the frozen set produced by [`crate::EngineBuilder`].
     pub fn has_custom_operator(&self, name: &str) -> bool {
         self.custom_operators.contains_key(name)
     }
 
-    /// Iterator over the names of every custom operator currently registered
-    /// with this engine. Order is unspecified (HashMap iteration order).
-    /// Useful for tooling, UIs, and tests that need to introspect what's
-    /// available.
+    /// Iterator over the names of every custom operator registered on this
+    /// engine. Order is unspecified (HashMap iteration order). Useful for
+    /// tooling, UIs, and tests that need to introspect what's available.
     pub fn operator_names(&self) -> impl Iterator<Item = &str> {
         self.custom_operators.keys().map(String::as_str)
-    }
-
-    /// Remove a custom operator by name. Returns the removed operator's
-    /// boxed handle if it was registered, `None` otherwise. Built-in
-    /// operators dispatched via [`crate::OpCode`] are not affected.
-    pub fn remove_operator(&mut self, name: &str) -> Option<Box<dyn crate::Operator>> {
-        self.custom_operators.remove(name)
     }
 
     // ============================================================

@@ -59,8 +59,9 @@ fn parse_datetime_arena(av: &DataValue<'_>) -> Option<DateTime<chrono::Utc>> {
 
 #[test]
 fn test_is_night_nighttime() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     // 8 PM should be nighttime
     let logic = json!({"is_night": {"datetime": "2022-07-06T20:00:00Z"}});
@@ -83,8 +84,9 @@ fn test_is_night_nighttime() {
 
 #[test]
 fn test_is_night_daytime() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T08:00:00Z"}});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -104,8 +106,9 @@ fn test_is_night_daytime() {
 
 #[test]
 fn test_is_night_boundaries() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T19:00:00Z"}});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -125,8 +128,9 @@ fn test_is_night_boundaries() {
 
 #[test]
 fn test_is_night_with_string() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": "2022-07-06T21:00:00Z"});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -141,8 +145,9 @@ fn test_is_night_with_string() {
 
 #[test]
 fn test_is_night_with_variable() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": {"var": "check_time"}});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -157,8 +162,9 @@ fn test_is_night_with_variable() {
 
 #[test]
 fn test_is_night_with_timezone() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T22:00:00+05:00"}});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -173,8 +179,9 @@ fn test_is_night_with_timezone() {
 
 #[test]
 fn test_is_night_with_preserve_structure() {
-    let mut engine = Engine::builder().preserve_structure(true).build();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder().preserve_structure(true)
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({
         "get_the_garlic": {
@@ -207,8 +214,9 @@ fn test_is_night_with_preserve_structure() {
 
 #[test]
 fn test_is_night_error_invalid_argument() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": 42});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -223,8 +231,9 @@ fn test_is_night_error_invalid_argument() {
 
 #[test]
 fn test_is_night_error_argument_count() {
-    let mut engine = Engine::new();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder()
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({"is_night": []});
     let compiled = engine.compile_serde_value(&logic).unwrap();
@@ -242,8 +251,9 @@ fn test_is_night_error_argument_count() {
 
 #[test]
 fn test_is_night_complex_structured_object() {
-    let mut engine = Engine::builder().preserve_structure(true).build();
-    engine.add_operator("is_night", IsNightOperator);
+    let engine = Engine::builder().preserve_structure(true)
+        .add_operator("is_night", IsNightOperator)
+        .build();
 
     let logic = json!({
         "vampire_status": {

@@ -169,8 +169,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///     }
 /// }
 ///
-/// let mut engine = Engine::new();
-/// engine.add_operator("double", DoubleArena);
+/// let engine = Engine::builder().add_operator("double", DoubleArena).build();
 ///
 /// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
 /// assert_eq!(result, "42");
