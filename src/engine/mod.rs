@@ -215,7 +215,7 @@ impl Engine {
     /// ```
     pub fn compile(&self, logic: &str) -> Result<Logic> {
         let owned = datavalue::OwnedDataValue::from_json(logic)?;
-        self.compile_value(&owned)
+        Logic::compile_with(&owned, self)
     }
 
     /// Compile a JSON logic string and wrap it in [`std::sync::Arc`] for
@@ -252,13 +252,6 @@ impl Engine {
     #[inline]
     pub fn compile_arc(&self, logic: &str) -> Result<std::sync::Arc<Logic>> {
         Ok(std::sync::Arc::new(self.compile(logic)?))
-    }
-
-    /// Internal compile helper shared by [`Self::compile`] and the compat
-    /// `compile_serde_value` shim. Not part of the public API.
-    #[doc(hidden)]
-    pub(crate) fn compile_value(&self, logic: &datavalue::OwnedDataValue) -> Result<Logic> {
-        Logic::compile_with(logic, self)
     }
 
     /// Open a [`crate::TracedSession`] over this engine. Calls made through
@@ -386,7 +379,7 @@ impl Engine {
     #[cfg(feature = "compat")]
     pub fn evaluate_value(&self, logic: &Value, data: &Value) -> Result<Value> {
         let logic_owned = crate::value::owned_from_serde(logic);
-        let compiled = self.compile_value(&logic_owned)?;
+        let compiled = Logic::compile_with(&logic_owned, self)?;
         let arena = bumpalo::Bump::new();
         let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(&compiled, data_av, &arena)?;

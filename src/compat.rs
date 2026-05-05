@@ -287,7 +287,7 @@ impl LegacyApi for Engine {
 
     fn compile_serde_value(&self, logic: &Value) -> Result<Arc<Logic>> {
         let owned = crate::value::owned_from_serde(logic);
-        Ok(Arc::new(self.compile_value(&owned)?))
+        Ok(Arc::new(Logic::compile_with(&owned, self)?))
     }
 
     // ---- Evaluate entries ----
