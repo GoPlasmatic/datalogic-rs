@@ -1,7 +1,7 @@
 //! End-to-end smoke tests for the v5 public surface.
 //!
 //! Exercises only the v5 entry points (`EngineBuilder`, `compile`,
-//! `evaluate`, `evaluate_str`, `evaluate_value`). The 4.x compat methods
+//! `evaluate`, `evaluate_str`, `evaluate_serde`). The 4.x compat methods
 //! live behind `crate::compat` and have their own coverage in
 //! `arena_operator_test.rs` / `error_serialization.rs`.
 
@@ -71,11 +71,11 @@ fn datavalue_object_returned_as_json_string() {
 
 #[cfg(feature = "compat")]
 #[test]
-fn evaluate_value_serde_one_shot() {
+fn evaluate_serde_one_shot() {
     use serde_json::json;
     let engine = Engine::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 2, "b": 3});
-    let result = engine.evaluate_value(&logic, &data).unwrap();
+    let result = engine.evaluate_serde(&logic, &data).unwrap();
     assert_eq!(result, json!(5));
 }

@@ -31,7 +31,7 @@ use crate::{Engine, IntoEvalData, Logic, Result};
 ///
 /// for x in 0..3 {
 ///     let payload = format!(r#"{{"x": {}}}"#, x);
-///     let result = scratch.eval_str(&compiled, &payload).unwrap();
+///     let result = scratch.evaluate_str(&compiled, &payload).unwrap();
 ///     assert_eq!(result, (x + 1).to_string());
 /// }
 /// ```
@@ -63,10 +63,10 @@ impl<'engine> Scratch<'engine> {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// let mut scratch = engine.scratch();
-    /// let result = scratch.eval(&compiled, r#"{"x": 1}"#).unwrap();
+    /// let result = scratch.evaluate(&compiled, r#"{"x": 1}"#).unwrap();
     /// assert_eq!(result.as_bool(), Some(true));
     /// ```
-    pub fn eval<'a, D>(&'a mut self, compiled: &Logic, data: D) -> Result<OwnedDataValue>
+    pub fn evaluate<'a, D>(&'a mut self, compiled: &Logic, data: D) -> Result<OwnedDataValue>
     where
         D: IntoEvalData<'a>,
     {
@@ -80,7 +80,7 @@ impl<'engine> Scratch<'engine> {
     /// JSON-string convenience: evaluate `compiled` against a JSON-encoded
     /// `data` payload and serialise the result back to a JSON `String`.
     /// Mirrors [`Engine::evaluate_str`] but reuses the arena across calls.
-    pub fn eval_str(&mut self, compiled: &Logic, data: &str) -> Result<String> {
+    pub fn evaluate_str(&mut self, compiled: &Logic, data: &str) -> Result<String> {
         self.arena.reset();
         let arena: &Bump = &self.arena;
         let av = data.into_eval_data(arena)?;
@@ -90,9 +90,9 @@ impl<'engine> Scratch<'engine> {
 
     /// `serde_json::Value` convenience: evaluate `compiled` against a serde
     /// value and convert the result back to a serde value. Mirrors
-    /// [`Engine::evaluate_value`] but reuses the arena across calls.
+    /// [`Engine::evaluate_serde`] but reuses the arena across calls.
     #[cfg(feature = "compat")]
-    pub fn eval_value(
+    pub fn evaluate_serde(
         &mut self,
         compiled: &Logic,
         data: &serde_json::Value,

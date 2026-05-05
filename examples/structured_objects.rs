@@ -84,12 +84,12 @@ fn main() {
     let mut scratch = engine.scratch();
 
     let result1 = scratch
-        .eval_str(&compiled, r#"{"isActive": true, "points": 1500}"#)
+        .evaluate_str(&compiled, r#"{"isActive": true, "points": 1500}"#)
         .unwrap();
     println!("   User with 1500 points: {}", result1);
 
     let result2 = scratch
-        .eval_str(&compiled, r#"{"isActive": false, "points": 750}"#)
+        .evaluate_str(&compiled, r#"{"isActive": false, "points": 750}"#)
         .unwrap();
     println!("   User with 750 points:  {}\n", result2);
 

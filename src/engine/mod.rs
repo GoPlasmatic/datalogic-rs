@@ -104,7 +104,7 @@ impl Engine {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
     /// let mut scratch = engine.scratch();
-    /// let result = scratch.eval_str(&compiled, r#"{"x": 41}"#).unwrap();
+    /// let result = scratch.evaluate_str(&compiled, r#"{"x": 41}"#).unwrap();
     /// assert_eq!(result, "42");
     /// ```
     #[inline]
@@ -224,7 +224,7 @@ impl Engine {
     /// Equivalent to `Arc::new(engine.compile(logic)?)` but saves the
     /// boilerplate at every call site. The returned `Arc<Logic>`
     /// derefs transparently into `&Logic`, so it slots into
-    /// [`Self::evaluate`] / [`Scratch::eval`](crate::Scratch::eval) without
+    /// [`Self::evaluate`] / [`Scratch::evaluate`](crate::Scratch::evaluate) without
     /// any additional adaptation.
     ///
     /// # Example
@@ -243,7 +243,7 @@ impl Engine {
     ///         thread::spawn(move || {
     ///             let engine = Engine::new();
     ///             let payload = format!(r#"{{"score": {}}}"#, 80 + i * 5);
-    ///             engine.scratch().eval_str(&compiled, &payload).unwrap()
+    ///             engine.scratch().evaluate_str(&compiled, &payload).unwrap()
     ///         })
     ///     })
     ///     .collect();
@@ -377,7 +377,7 @@ impl Engine {
     /// Mirror of [`Self::evaluate_str`] for callers already on `serde_json`.
     /// Funnels through [`Self::evaluate`] internally.
     #[cfg(feature = "compat")]
-    pub fn evaluate_value(&self, logic: &Value, data: &Value) -> Result<Value> {
+    pub fn evaluate_serde(&self, logic: &Value, data: &Value) -> Result<Value> {
         let logic_owned = crate::value::owned_from_serde(logic);
         let compiled = Logic::compile_with(&logic_owned, self)?;
         let arena = bumpalo::Bump::new();

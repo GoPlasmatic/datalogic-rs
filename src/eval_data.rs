@@ -1,5 +1,5 @@
 //! Input adapter for [`crate::Engine::evaluate`] and
-//! [`crate::Scratch::eval`].
+//! [`crate::Scratch::evaluate`].
 //!
 //! [`IntoEvalData`] lets the evaluation entry points accept any of the input
 //! shapes a caller is likely to have on hand:

@@ -672,7 +672,7 @@ impl CompileCtx {
 ///     let engine = Engine::new();
 ///     let _result = engine
 ///         .scratch()
-///         .eval_str(&compiled_clone, r#"{"score": 95}"#)
+///         .evaluate_str(&compiled_clone, r#"{"score": 95}"#)
 ///         .unwrap();
 /// });
 /// ```

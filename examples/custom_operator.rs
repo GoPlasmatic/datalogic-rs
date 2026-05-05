@@ -211,7 +211,7 @@ fn main() {
 
     for score in [95, 82, 75, 55] {
         let data = format!(r#"{{"score": {}}}"#, score);
-        let grade = scratch.eval_str(&compiled, &data).unwrap();
+        let grade = scratch.evaluate_str(&compiled, &data).unwrap();
         println!("   Score {} -> Grade {}", score, grade);
     }
 

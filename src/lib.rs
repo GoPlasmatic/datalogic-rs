@@ -45,7 +45,7 @@
 //!
 //! for x in 0..3 {
 //!     let payload = format!(r#"{{"x": {}}}"#, x);
-//!     let result = scratch.eval_str(&compiled, &payload).unwrap();
+//!     let result = scratch.evaluate_str(&compiled, &payload).unwrap();
 //!     assert_eq!(result, (x + 1).to_string());
 //! }
 //! ```
