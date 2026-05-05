@@ -194,10 +194,18 @@ pub trait Operator: Send + Sync {
     ) -> Result<&'a DataValue<'a>>;
 }
 
-/// Adapter that lets [`Engine::add_operator`] (and the builder variant)
-/// accept either a bare `T: Operator` *or* a pre-boxed
-/// `Box<dyn Operator>`. Internal trait — you don't need to implement it.
-pub trait IntoOperatorBox {
+/// Sealed-trait scaffolding for [`IntoOperatorBox`].
+mod operator_box_sealed {
+    pub trait Sealed {}
+    impl<T: crate::Operator + 'static> Sealed for T {}
+    impl Sealed for Box<dyn crate::Operator> {}
+}
+
+/// Adapter that lets [`EngineBuilder::add_operator`] accept either a bare
+/// `T: Operator` *or* a pre-boxed `Box<dyn Operator>`. **Sealed** — the
+/// only two impls are the blanket one for `T: Operator + 'static` and the
+/// pass-through for `Box<dyn Operator>`.
+pub trait IntoOperatorBox: operator_box_sealed::Sealed {
     /// Coerce `self` into a `Box<dyn Operator>` for storage on the
     /// engine.
     fn into_operator_box(self) -> Box<dyn Operator>;

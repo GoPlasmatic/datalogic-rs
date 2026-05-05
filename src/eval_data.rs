@@ -20,10 +20,18 @@ use datavalue::OwnedDataValue;
 use crate::Result;
 use crate::arena::DataValue;
 
+/// Sealed-trait scaffolding — the [`Sealed`] super-bound lives in this
+/// private module so external crates cannot implement [`IntoEvalData`].
+/// The set of supported input shapes is a closed class defined entirely
+/// in this file.
+mod sealed {
+    pub trait Sealed {}
+}
+
 /// Adapter trait that converts a value into a `&'a DataValue<'a>` borrowed
-/// from the caller-supplied arena. Internal trait — you don't need to
-/// implement it yourself.
-pub trait IntoEvalData<'a> {
+/// from the caller-supplied arena. **Sealed** — the supported input
+/// shapes are listed in this file; external crates cannot add new ones.
+pub trait IntoEvalData<'a>: sealed::Sealed {
     /// Materialise `self` as a `&'a DataValue<'a>` in `arena`.
     ///
     /// Implementations either pass through an existing arena reference (zero
@@ -31,6 +39,7 @@ pub trait IntoEvalData<'a> {
     fn into_eval_data(self, arena: &'a Bump) -> Result<&'a DataValue<'a>>;
 }
 
+impl<'a> sealed::Sealed for &'a DataValue<'a> {}
 impl<'a> IntoEvalData<'a> for &'a DataValue<'a> {
     #[inline]
     fn into_eval_data(self, _arena: &'a Bump) -> Result<&'a DataValue<'a>> {
@@ -38,6 +47,7 @@ impl<'a> IntoEvalData<'a> for &'a DataValue<'a> {
     }
 }
 
+impl<'a> sealed::Sealed for DataValue<'a> {}
 impl<'a> IntoEvalData<'a> for DataValue<'a> {
     #[inline]
     fn into_eval_data(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
@@ -45,6 +55,7 @@ impl<'a> IntoEvalData<'a> for DataValue<'a> {
     }
 }
 
+impl sealed::Sealed for &str {}
 impl<'a> IntoEvalData<'a> for &'a str {
     #[inline]
     fn into_eval_data(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
@@ -53,6 +64,7 @@ impl<'a> IntoEvalData<'a> for &'a str {
     }
 }
 
+impl sealed::Sealed for &OwnedDataValue {}
 impl<'a> IntoEvalData<'a> for &'a OwnedDataValue {
     #[inline]
     fn into_eval_data(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
@@ -60,6 +72,8 @@ impl<'a> IntoEvalData<'a> for &'a OwnedDataValue {
     }
 }
 
+#[cfg(feature = "compat")]
+impl sealed::Sealed for &serde_json::Value {}
 #[cfg(feature = "compat")]
 impl<'a> IntoEvalData<'a> for &'a serde_json::Value {
     #[inline]
