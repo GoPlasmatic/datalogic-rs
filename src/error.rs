@@ -199,9 +199,7 @@ impl Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Render the kind first, then optionally the operator context. Mirrors
-        // the historical `StructuredError` Display so existing log output
-        // shapes don't shift.
+        // Render the kind first, then optionally the operator context.
         write_kind_message(f, &self.kind)?;
         if let Some(op) = &self.operator {
             write!(f, " (in operator: {})", op)?;
@@ -312,16 +310,6 @@ impl<'a> fmt::Display for KindDisplay<'a> {
         write_kind_message(f, self.0)
     }
 }
-
-/// Deprecated alias for [`Error`]. Pre-merge, structured-error-bearing entry
-/// points returned `Result<_, StructuredError>`; today they return
-/// `Result<_, Error>` and `Error` always carries the operator/path metadata.
-/// Kept so 4.x callers and the `compat` shims keep compiling.
-#[deprecated(
-    since = "5.0.0",
-    note = "use `Error`; `StructuredError` is now a type alias and will be removed in 5.1"
-)]
-pub type StructuredError = Error;
 
 #[cfg(test)]
 mod tests {

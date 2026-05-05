@@ -113,8 +113,6 @@ pub use config::{
 pub use datavalue::{DataDateTime, DataDuration};
 pub use datavalue::{NumberValue, OwnedDataValue};
 pub use engine::Engine;
-#[allow(deprecated)]
-pub use error::StructuredError;
 pub use error::{Error, ErrorKind};
 pub use eval_data::IntoEvalData;
 pub use node::Logic;

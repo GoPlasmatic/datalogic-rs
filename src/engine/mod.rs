@@ -456,7 +456,7 @@ impl Engine {
     /// `CompiledNode` shape — exhaustive match, no value-mode fallback.
     ///
     /// On error, accumulates the failing node's id onto the context stack's
-    /// breadcrumb so [`StructuredError`] consumers can surface the failing
+    /// breadcrumb so [`Error`] consumers can surface the failing
     /// path. When a tracer is attached to `ctx`, records a step per
     /// non-literal node (entry context + result/error).
     #[inline(always)]
