@@ -51,30 +51,10 @@ pub(crate) fn evaluate_substr<'a>(
     let string = data_to_str(s_av, arena);
     let char_count = string.chars().count();
 
-    // Read start (defaults to 0). Literal fast path skips dispatch.
-    let start: i64 = if args.len() > 1 {
-        if let CompiledNode::Value { value, .. } = &args[1] {
-            value.as_i64().unwrap_or(0)
-        } else {
-            engine
-                .dispatch_node(&args[1], ctx, arena)?
-                .as_i64()
-                .unwrap_or(0)
-        }
-    } else {
-        0
-    };
-
-    // Read optional length.
-    let length: Option<i64> = if args.len() > 2 {
-        if let CompiledNode::Value { value, .. } = &args[2] {
-            value.as_i64()
-        } else {
-            engine.dispatch_node(&args[2], ctx, arena)?.as_i64()
-        }
-    } else {
-        None
-    };
+    // `start` defaults to 0; `length` is optional. Both swallow non-numeric
+    // values silently (per substr's spec). Literal fast path skips dispatch.
+    let start: i64 = substr_arg_i64(args.get(1), ctx, engine, arena)?.unwrap_or(0);
+    let length: Option<i64> = substr_arg_i64(args.get(2), ctx, engine, arena)?;
 
     let actual_start = if start < 0 {
         let abs_start = start.saturating_abs() as usize;
@@ -111,6 +91,24 @@ pub(crate) fn evaluate_substr<'a>(
         return Ok(crate::arena::singletons::singleton_empty_string());
     }
     Ok(arena.alloc(DataValue::String(arena.alloc_str(&result_str))))
+}
+
+/// Resolve a substr `start` / `length` argument as `Option<i64>`. Literal
+/// `Value` nodes skip the dispatch hop; everything else dispatches and
+/// reads `as_i64()`. Non-numeric resolved values map to `None` (substr
+/// silently swallows them — different from `slice` which errors on NaN).
+#[inline]
+fn substr_arg_i64<'a>(
+    arg: Option<&'a CompiledNode>,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+) -> Result<Option<i64>> {
+    let Some(node) = arg else { return Ok(None) };
+    if let CompiledNode::Value { value, .. } = node {
+        return Ok(value.as_i64());
+    }
+    Ok(engine.dispatch_node(node, ctx, arena)?.as_i64())
 }
 
 /// Native arena-mode `in` — checks whether a needle is contained in a

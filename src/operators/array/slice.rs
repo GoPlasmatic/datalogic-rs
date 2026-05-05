@@ -85,7 +85,8 @@ fn slice_string<'a>(
     arena: &'a Bump,
 ) -> &'a DataValue<'a> {
     let chars: Vec<char> = s.chars().collect();
-    let result_string = slice_chars(&chars, chars.len() as i64, start, end, step);
+    let indices = slice_indices(chars.len() as i64, start, end, step);
+    let result_string: String = indices.iter().map(|&i| chars[i as usize]).collect();
     let s: &'a str = arena.alloc_str(&result_string);
     arena.alloc(DataValue::String(s))
 }
@@ -147,59 +148,6 @@ fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> V
         i += step;
     }
     out
-}
-
-#[inline]
-fn slice_chars(
-    chars: &[char],
-    len: i64,
-    start: Option<i64>,
-    end: Option<i64>,
-    step: i64,
-) -> String {
-    let mut result = String::new();
-
-    let (actual_start, actual_end) = if step > 0 {
-        let s = normalize_index(start.unwrap_or(0), len);
-        let e = normalize_index(end.unwrap_or(len), len);
-        (s, e)
-    } else {
-        let default_start = len.saturating_sub(1);
-        let s = normalize_index(start.unwrap_or(default_start), len);
-        let e = if let Some(e) = end {
-            normalize_index(e, len)
-        } else {
-            -1
-        };
-        (s, e)
-    };
-
-    if step > 0 {
-        let mut i = actual_start;
-        while i < actual_end && i < len {
-            if i >= 0 && (i as usize) < chars.len() {
-                result.push(chars[i as usize]);
-            }
-            i = i.saturating_add(step);
-            if step > 0 && i < actual_start {
-                break;
-            }
-        }
-    } else {
-        let mut i = actual_start;
-        while i > actual_end && i >= 0 && i < len {
-            if (i as usize) < chars.len() {
-                result.push(chars[i as usize]);
-            }
-            let next_i = i.saturating_add(step);
-            if step < 0 && next_i > i {
-                break;
-            }
-            i = next_i;
-        }
-    }
-
-    result
 }
 
 /// Normalize slice indices with overflow protection.

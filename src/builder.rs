@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 
 use crate::CustomOperator;
-use crate::IntoOperatorBox;
 use crate::config::EvaluationConfig;
 use crate::engine::Engine;
 
@@ -59,17 +58,32 @@ impl EngineBuilder {
         self
     }
 
-    /// Register a [`CustomOperator`] under `name`. Accepts either a bare
-    /// `T: CustomOperator` or a pre-boxed `Box<dyn CustomOperator>` via
-    /// [`IntoOperatorBox`]. Multiple calls with the same name overwrite the
-    /// prior registration.
+    /// Register a [`CustomOperator`] under `name`. Multiple calls with the
+    /// same name overwrite the prior registration.
     ///
     /// Operator registration is builder-only; once [`Self::build`] hands you
-    /// an [`Engine`], its operator set is frozen.
+    /// an [`Engine`], its operator set is frozen. For the rare case where
+    /// you already have a `Box<dyn CustomOperator>` (e.g. dynamic dispatch
+    /// from a runtime registry), use [`Self::add_operator_boxed`].
     #[inline]
-    pub fn add_operator(mut self, name: impl Into<String>, operator: impl IntoOperatorBox) -> Self {
-        self.operators
-            .insert(name.into(), operator.into_operator_box());
+    pub fn add_operator<T>(mut self, name: impl Into<String>, operator: T) -> Self
+    where
+        T: CustomOperator + 'static,
+    {
+        self.operators.insert(name.into(), Box::new(operator));
+        self
+    }
+
+    /// Register a pre-boxed [`CustomOperator`]. Use this when the operator
+    /// is already a `Box<dyn CustomOperator>` (e.g. from a runtime registry);
+    /// otherwise prefer [`Self::add_operator`].
+    #[inline]
+    pub fn add_operator_boxed(
+        mut self,
+        name: impl Into<String>,
+        operator: Box<dyn CustomOperator>,
+    ) -> Self {
+        self.operators.insert(name.into(), operator);
         self
     }
 

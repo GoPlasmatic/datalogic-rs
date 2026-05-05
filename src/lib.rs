@@ -187,34 +187,3 @@ pub trait CustomOperator: Send + Sync {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }
-
-/// Sealed-trait scaffolding for [`IntoOperatorBox`].
-mod operator_box_sealed {
-    pub trait Sealed {}
-    impl<T: crate::CustomOperator + 'static> Sealed for T {}
-    impl Sealed for Box<dyn crate::CustomOperator> {}
-}
-
-/// Adapter that lets [`EngineBuilder::add_operator`] accept either a bare
-/// `T: CustomOperator` *or* a pre-boxed `Box<dyn CustomOperator>`. **Sealed** — the
-/// only two impls are the blanket one for `T: CustomOperator + 'static` and the
-/// pass-through for `Box<dyn CustomOperator>`.
-pub trait IntoOperatorBox: operator_box_sealed::Sealed {
-    /// Coerce `self` into a `Box<dyn CustomOperator>` for storage on the
-    /// engine.
-    fn into_operator_box(self) -> Box<dyn CustomOperator>;
-}
-
-impl<T: CustomOperator + 'static> IntoOperatorBox for T {
-    #[inline]
-    fn into_operator_box(self) -> Box<dyn CustomOperator> {
-        Box::new(self)
-    }
-}
-
-impl IntoOperatorBox for Box<dyn CustomOperator> {
-    #[inline]
-    fn into_operator_box(self) -> Box<dyn CustomOperator> {
-        self
-    }
-}

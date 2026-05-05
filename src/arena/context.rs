@@ -174,6 +174,24 @@ impl<'a> ContextStack<'a> {
         self.tracer.is_some()
     }
 
+    /// Run `f` against the attached tracer. No-op if no tracer is set.
+    /// Single SAFETY-noted unsafe site for tracer-pointer dereference; all
+    /// other tracer-touching methods route through this helper.
+    ///
+    /// SAFETY contract: `set_tracer(&mut TraceCollector)` was called by the
+    /// owning evaluate-with-trace driver, which keeps the `&mut` borrow live
+    /// for the full evaluation. No code path on `&mut ContextStack` aliases
+    /// the tracer reference (operators see `&mut ContextStack`, never the
+    /// tracer directly).
+    #[cfg(feature = "trace")]
+    #[inline]
+    fn with_tracer<F: FnOnce(&mut crate::trace::TraceCollector)>(&mut self, f: F) {
+        if let Some(mut ptr) = self.tracer {
+            // SAFETY: see method-level contract above.
+            f(unsafe { ptr.as_mut() });
+        }
+    }
+
     /// Cross-feature wrapper around [`has_tracer`]. Always callable; folds to
     /// `false` when the `trace` feature is off so callers don't need their own
     /// `cfg` shims. Used by iterator-op fast paths to skip optimizations that
@@ -211,13 +229,7 @@ impl<'a> ContextStack<'a> {
         ctx_data: serde_json::Value,
         result: &crate::Result<&'a crate::arena::DataValue<'a>>,
     ) {
-        let Some(ptr) = self.tracer else {
-            return;
-        };
-        // SAFETY: the tracer pointer was set via `set_tracer(&mut TraceCollector)`
-        // and the caller keeps that mutable borrow live for the full evaluation.
-        let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
-        match result {
+        self.with_tracer(|collector| match result {
             Ok(av) => {
                 let v = crate::arena::data_to_value(av);
                 collector.record_step(node_id, ctx_data, v);
@@ -225,7 +237,7 @@ impl<'a> ContextStack<'a> {
             Err(e) => {
                 collector.record_error(node_id, ctx_data, e.to_string());
             }
-        }
+        });
     }
 
     /// Mark entry into an iteration body — drives the per-step
@@ -233,20 +245,14 @@ impl<'a> ContextStack<'a> {
     #[cfg(feature = "trace")]
     #[inline]
     pub(crate) fn trace_push_iteration(&mut self, index: u32, total: u32) {
-        if let Some(ptr) = self.tracer {
-            let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
-            collector.push_iteration(index, total);
-        }
+        self.with_tracer(|c| c.push_iteration(index, total));
     }
 
     /// Mark exit from an iteration body.
     #[cfg(feature = "trace")]
     #[inline]
     pub(crate) fn trace_pop_iteration(&mut self) {
-        if let Some(ptr) = self.tracer {
-            let collector = unsafe { ptr.as_ptr().as_mut().expect("non-null") };
-            collector.pop_iteration();
-        }
+        self.with_tracer(|c| c.pop_iteration());
     }
 
     /// Get the root input data (borrowed for the call's duration).

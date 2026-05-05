@@ -7,8 +7,8 @@ use bumpalo::Bump;
 use datavalue::NumberValue;
 
 use super::helpers::{
-    ArithOp, NanAction, VariadicFoldSpec, alloc_number, coerce_pair_f64, coerce_pair_int,
-    handle_nan, try_int_op, variadic_fold,
+    ArithOp, FoldState, FoldStepOutcome, NanAction, VariadicFoldSpec, alloc_number,
+    coerce_pair_f64, coerce_pair_int, handle_nan, try_int_op, variadic_fold,
 };
 
 /// Arena-mode `+`. Handles 0-arg (identity), 1-arg array (sum elements),
@@ -280,6 +280,12 @@ fn subtract_two_arg<'a>(
 }
 
 /// Variadic (>2) subtract: integer fast path with overflow promotion.
+///
+/// Coercion strategy: `try_coerce_to_integer_cfg` (permissive) for the int
+/// path so numeric strings stay on the int track; `coerce_to_number_cfg` for
+/// the float path. The first arg seeds the accumulator and *must* coerce —
+/// non-numeric first arg raises `NaN` immediately. Remaining args use the
+/// usual NaN-handling config.
 #[inline]
 fn subtract_variadic<'a>(
     args: &'a [CompiledNode],
@@ -288,53 +294,37 @@ fn subtract_variadic<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let mut all_int =
-        first_av.as_i64().is_some() || try_coerce_to_integer_cfg(first_av, engine).is_some();
-    let mut int_acc: i64 = first_av
+    let int_init = first_av
         .as_i64()
-        .or_else(|| try_coerce_to_integer_cfg(first_av, engine))
-        .unwrap_or_default();
-    let mut float_acc: f64 = match coerce_to_number_cfg(first_av, engine) {
+        .or_else(|| try_coerce_to_integer_cfg(first_av, engine));
+    let float_init = match coerce_to_number_cfg(first_av, engine) {
         Some(f) => f,
         None => return Err(crate::Error::nan()),
     };
+    let mut state = FoldState::new(int_init.unwrap_or_default(), float_init);
+    state.all_int = int_init.is_some();
 
     for arg in args.iter().skip(1) {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        if all_int
-            && let Some(i) = av
-                .as_i64()
-                .or_else(|| try_coerce_to_integer_cfg(av, engine))
-        {
-            match int_acc.checked_sub(i) {
-                Some(r) => int_acc = r,
-                None => {
-                    all_int = false;
-                    float_acc = int_acc as f64 - i as f64;
-                }
-            }
-            continue;
-        }
-        if let Some(f) = coerce_to_number_cfg(av, engine) {
-            if all_int {
-                all_int = false;
-                float_acc = int_acc as f64 - f;
-            } else {
-                float_acc -= f;
-            }
+        let int_opt = av
+            .as_i64()
+            .or_else(|| try_coerce_to_integer_cfg(av, engine));
+        let float_opt = if int_opt.is_some() {
+            None
         } else {
-            match handle_nan(engine)? {
-                NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
-            }
+            coerce_to_number_cfg(av, engine)
+        };
+        if let FoldStepOutcome::ReturnNull = state.step(
+            int_opt,
+            float_opt,
+            i64::checked_sub,
+            std::ops::Sub::sub,
+            engine,
+        )? {
+            return Ok(crate::arena::singletons::singleton_null());
         }
     }
-
-    if all_int {
-        Ok(alloc_number(arena, NumberValue::from_i64(int_acc)))
-    } else {
-        Ok(alloc_number(arena, NumberValue::from_f64(float_acc)))
-    }
+    Ok(state.finalize(arena))
 }
 
 /// 1-arg `+` / `*`: literal-array reject, then either array-fold the elements
@@ -400,6 +390,12 @@ fn one_arg_arith<'a>(
 
 /// Fold an arena-resident array under `op` (`+` or `*`) with integer fast
 /// path and overflow-to-f64.
+///
+/// Coercion strategy: `try_coerce_to_integer_cfg` for the int path (so
+/// numeric-string elements stay on the int track), `coerce_to_number_cfg`
+/// for the float fallback. Identical to `subtract_variadic`'s strategy
+/// except the accumulator starts at `op.identity_int()` rather than
+/// arg[0].
 #[inline]
 fn one_arg_array_fold<'a>(
     items: &[DataValue<'a>],
@@ -413,45 +409,24 @@ fn one_arg_array_fold<'a>(
             NumberValue::from_i64(op.identity_int()),
         ));
     }
-    let mut all_int = true;
-    let mut int_acc: i64 = op.identity_int();
-    let mut float_acc: f64 = op.identity_int() as f64;
+    let init = op.identity_int();
+    let mut state = FoldState::new(init, init as f64);
     for item in items.iter() {
         let int_opt = try_coerce_to_integer_cfg(item, engine);
-        let float_opt = if int_opt.is_none() {
-            coerce_to_number_cfg(item, engine)
-        } else {
+        let float_opt = if int_opt.is_some() {
             None
-        };
-        if let Some(iv) = int_opt {
-            if all_int {
-                match op.combine_int(int_acc, iv) {
-                    Some(r) => int_acc = r,
-                    None => {
-                        all_int = false;
-                        float_acc = op.combine_f(int_acc as f64, iv as f64);
-                    }
-                }
-            } else {
-                float_acc = op.combine_f(float_acc, iv as f64);
-            }
-        } else if let Some(fv) = float_opt {
-            if all_int {
-                all_int = false;
-                float_acc = op.combine_f(int_acc as f64, fv);
-            } else {
-                float_acc = op.combine_f(float_acc, fv);
-            }
         } else {
-            match handle_nan(engine)? {
-                NanAction::Skip => continue,
-                NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
-            }
+            coerce_to_number_cfg(item, engine)
+        };
+        if let FoldStepOutcome::ReturnNull = state.step(
+            int_opt,
+            float_opt,
+            |a, b| op.combine_int(a, b),
+            |a, b| op.combine_f(a, b),
+            engine,
+        )? {
+            return Ok(crate::arena::singletons::singleton_null());
         }
     }
-    if all_int {
-        Ok(alloc_number(arena, NumberValue::from_i64(int_acc)))
-    } else {
-        Ok(alloc_number(arena, NumberValue::from_f64(float_acc)))
-    }
+    Ok(state.finalize(arena))
 }

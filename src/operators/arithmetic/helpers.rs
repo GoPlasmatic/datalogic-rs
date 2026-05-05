@@ -136,9 +136,111 @@ pub(super) struct VariadicFoldSpec {
     pub(super) f_combine: fn(f64, f64) -> f64,
 }
 
+/// Running int-fast-path / f64-fallback accumulator state.
+///
+/// The three arithmetic loops (`variadic_fold`, `subtract_variadic`,
+/// `one_arg_array_fold`) used to inline the same `int_acc` /
+/// `float_acc` / `all_int` advancement. They diverge on *coercion*
+/// (whether to use `as_i64()` strict, `try_coerce_to_integer_cfg`
+/// permissive, or both) but agree on what to do once coerced — that
+/// shared portion lives here. Each caller picks its coercion strategy
+/// and feeds [`Self::step`] pre-coerced `(int_opt, float_opt)`.
+pub(super) struct FoldState {
+    pub(super) int_acc: i64,
+    pub(super) float_acc: f64,
+    pub(super) all_int: bool,
+}
+
+/// Outcome of a single fold step.
+pub(super) enum FoldStepOutcome {
+    /// Accumulator advanced; continue the loop.
+    Continue,
+    /// Operand is non-numeric AND `arithmetic_nan_handling` is `ReturnNull`.
+    /// Caller should bail out and return a Null arena value.
+    ReturnNull,
+}
+
+impl FoldState {
+    #[inline]
+    pub(super) fn new(int_init: i64, float_init: f64) -> Self {
+        Self {
+            int_acc: int_init,
+            float_acc: float_init,
+            all_int: true,
+        }
+    }
+
+    /// Advance the accumulator by one operand. `int_opt` and `float_opt`
+    /// are the caller-coerced views of the operand (caller picks
+    /// `as_i64()` / `try_coerce_to_integer_cfg` / `as_f64()` / etc.).
+    /// `int_opt.is_some()` short-circuits the f64 path on the
+    /// dominant int-only sequence; the caller pre-decides if int is the
+    /// right interpretation. When both are `None`, NaN handling kicks
+    /// in per the engine config.
+    #[inline]
+    pub(super) fn step<I, F>(
+        &mut self,
+        int_opt: Option<i64>,
+        float_opt: Option<f64>,
+        i_combine: I,
+        f_combine: F,
+        engine: &Engine,
+    ) -> Result<FoldStepOutcome>
+    where
+        I: Fn(i64, i64) -> Option<i64>,
+        F: Fn(f64, f64) -> f64,
+    {
+        if self.all_int
+            && let Some(i) = int_opt
+        {
+            match i_combine(self.int_acc, i) {
+                Some(r) => self.int_acc = r,
+                None => {
+                    self.all_int = false;
+                    self.float_acc = f_combine(self.int_acc as f64, i as f64);
+                }
+            }
+            return Ok(FoldStepOutcome::Continue);
+        }
+        // `all_int` already flipped to `false` (a previous arg was non-int)
+        // or `int_opt` is `None`. In the former case an integer arg still
+        // needs to flow through the float accumulator.
+        let float_arg = float_opt.or_else(|| int_opt.map(|i| i as f64));
+        if let Some(f) = float_arg {
+            if self.all_int {
+                self.all_int = false;
+                self.float_acc = f_combine(self.int_acc as f64, f);
+            } else {
+                self.float_acc = f_combine(self.float_acc, f);
+            }
+            return Ok(FoldStepOutcome::Continue);
+        }
+        match handle_nan(engine)? {
+            NanAction::Skip => Ok(FoldStepOutcome::Continue),
+            NanAction::ReturnNull => Ok(FoldStepOutcome::ReturnNull),
+        }
+    }
+
+    /// Materialize the final accumulator as an arena `DataValue::Number`.
+    #[inline]
+    pub(super) fn finalize<'a>(self, arena: &'a Bump) -> &'a DataValue<'a> {
+        if self.all_int {
+            alloc_number(arena, NumberValue::from_i64(self.int_acc))
+        } else {
+            alloc_number(arena, NumberValue::from_f64(self.float_acc))
+        }
+    }
+}
+
 /// Variadic fold over arena-evaluated args with integer-fast-path and
 /// overflow promotion to `f64`. Used by `+` and `*` for the 2+ arg form.
 /// Non-numeric args trigger NaN handling per engine config.
+///
+/// Coercion strategy: strict `as_i64()` for the int path; native `as_f64()`
+/// then config-aware coercion for the float path. This is intentionally
+/// stricter than `subtract_variadic` / `one_arg_array_fold` — variadic
+/// `+`/`*` are dominated by native-int-only sequences and the strict path
+/// avoids paying coercion cost on every arg.
 #[inline]
 pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],
@@ -147,47 +249,20 @@ pub(super) fn variadic_fold<'a>(
     arena: &'a Bump,
     spec: VariadicFoldSpec,
 ) -> Result<&'a DataValue<'a>> {
-    let mut int_acc: i64 = spec.int_init;
-    let mut float_acc: f64 = spec.float_init;
-    let mut all_int = true;
-
+    let mut state = FoldState::new(spec.int_init, spec.float_init);
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        if all_int && let Some(i) = av.as_i64() {
-            match (spec.i_combine)(int_acc, i) {
-                Some(r) => int_acc = r,
-                None => {
-                    all_int = false;
-                    float_acc = (spec.f_combine)(int_acc as f64, i as f64);
-                }
-            }
-            continue;
-        }
-        // Try `as_f64` for native numbers first; fall back to coercion so
-        // `true`/`false`/`null`/numeric strings compose into the variadic op.
-        let f_opt = av.as_f64().or_else(|| coerce_to_number_cfg(av, engine));
-        if let Some(f) = f_opt {
-            if all_int {
-                all_int = false;
-                float_acc = (spec.f_combine)(int_acc as f64, f);
-            } else {
-                float_acc = (spec.f_combine)(float_acc, f);
-            }
+        let int_opt = av.as_i64();
+        let float_opt = if int_opt.is_some() {
+            None
         } else {
-            // Non-numeric operand — variadic (>2) `+`/`*` treats
-            // arrays/objects/non-coercibles as NaN per `arithmetic_nan_handling`.
-            match handle_nan(engine)? {
-                NanAction::Skip => continue,
-                NanAction::ReturnNull => {
-                    return Ok(crate::arena::singletons::singleton_null());
-                }
-            }
+            av.as_f64().or_else(|| coerce_to_number_cfg(av, engine))
+        };
+        if let FoldStepOutcome::ReturnNull =
+            state.step(int_opt, float_opt, spec.i_combine, spec.f_combine, engine)?
+        {
+            return Ok(crate::arena::singletons::singleton_null());
         }
     }
-
-    if all_int {
-        Ok(alloc_number(arena, NumberValue::from_i64(int_acc)))
-    } else {
-        Ok(alloc_number(arena, NumberValue::from_f64(float_acc)))
-    }
+    Ok(state.finalize(arena))
 }
