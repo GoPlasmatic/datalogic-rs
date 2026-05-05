@@ -101,7 +101,13 @@ All updates flow through `compat.rs` deprecation `note` strings only — the v4 
 - **B6.4 + B3.6** ✅ — `src/value/mod.rs` folded into `src/compat.rs` (the only callers were compat-feature-gated anyway). Shared `datetime_sentinel(key, payload) -> Value` helper is now used by both `compat::owned_to_serde` and `arena/value/conversion.rs::data_to_value`. `crate::value::NumberValue` references rewritten to `datavalue::NumberValue` directly.
 - **B3.3** ✅ — `operators/helpers.rs` → `operators/truthy.rs`. Datetime extract helpers (`extract_datetime` / `extract_duration`) moved into `operators/datetime.rs` (datetime-feature-gated together). The `truthy.rs` name now matches its single-purpose content.
 
-### Batch 7 — Micro-cleanup (P2; opportunistic)
+### Batch 7 — Micro-cleanup (P2; opportunistic) — partially resolved (1e00d35)
+
+Two items landed (no-behavior-change subset). Eight deferred — see commit `1e00d35` for the breakdown of *why* each was skipped/deferred (perf-only changes, public API breaks, or behavior-change risks).
+
+**Done in 1e00d35:**
+- ✅ Dropped unused `_arena` param from `traverse_segments`, `access_path_str_ref`, `apply_path_element`, `evaluate_exists_compiled`, `FastPredicate::evaluate`, `FastPredicate::resolve_value` (~25 call sites).
+- ✅ `dispatch.rs` `with_kind:` macro arm collapses Divide/Modulo + Abs/Ceil/Floor into 11 lines of table entries (was 64 lines of boilerplate).
 
 Touch when you're already in the file. None individually worth a PR.
 
