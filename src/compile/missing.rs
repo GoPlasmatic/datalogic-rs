@@ -24,12 +24,9 @@ pub(super) fn compile_missing(args: Box<[CompiledNode]>, ctx: &mut CompileCtx) -
                 ..
             } => {
                 let segments = parse_path_segments(s).into_boxed_slice();
-                CompiledMissingArg::Static {
-                    path: s.clone().into_boxed_str(),
-                    segments,
-                }
+                CompiledMissingArg::Now((s.clone().into_boxed_str(), segments))
             }
-            _ => CompiledMissingArg::Dynamic(arg),
+            _ => CompiledMissingArg::Later(arg),
         })
         .collect();
     CompiledNode::Missing(Box::new(CompiledMissingData {
@@ -54,12 +51,12 @@ pub(super) fn compile_missing_some(
             value: OwnedDataValue::Number(n),
             ..
         }) => match n {
-            NumberValue::Integer(v) if v >= 0 => CompiledMissingMin::Static(v as usize),
-            NumberValue::Integer(_) => CompiledMissingMin::Static(0),
-            NumberValue::Float(f) => CompiledMissingMin::Static(f.max(0.0) as usize),
+            NumberValue::Integer(v) if v >= 0 => CompiledMissingMin::Now(v as usize),
+            NumberValue::Integer(_) => CompiledMissingMin::Now(0),
+            NumberValue::Float(f) => CompiledMissingMin::Now(f.max(0.0) as usize),
         },
-        Some(other) => CompiledMissingMin::Dynamic(other),
-        None => CompiledMissingMin::Static(1),
+        Some(other) => CompiledMissingMin::Later(other),
+        None => CompiledMissingMin::Now(1),
     };
 
     let paths = match paths_arg {
@@ -78,10 +75,10 @@ pub(super) fn compile_missing_some(
                     (s.into_boxed_str(), segments)
                 })
                 .collect();
-            CompiledMissingPaths::Static(parsed.into_boxed_slice())
+            CompiledMissingPaths::Now(parsed.into_boxed_slice())
         }
-        Some(other) => CompiledMissingPaths::Dynamic(other),
-        None => CompiledMissingPaths::Static(Box::new([])),
+        Some(other) => CompiledMissingPaths::Later(other),
+        None => CompiledMissingPaths::Now(Box::new([])),
     };
 
     CompiledNode::MissingSome(Box::new(CompiledMissingSomeData {

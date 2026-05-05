@@ -203,26 +203,26 @@ impl ExpressionNode {
                     .args
                     .iter()
                     .map(|a| match a {
-                        crate::node::CompiledMissingArg::Static { path, .. } => {
+                        crate::node::CompiledMissingArg::Now((path, _)) => {
                             format!("\"{}\"", path)
                         }
-                        crate::node::CompiledMissingArg::Dynamic(n) => Self::node_to_json_string(n),
+                        crate::node::CompiledMissingArg::Later(n) => Self::node_to_json_string(n),
                     })
                     .collect();
                 format!("{{\"missing\": [{}]}}", parts.join(", "))
             }
             CompiledNode::MissingSome(data) => {
                 let min_str = match &data.min_present {
-                    crate::node::CompiledMissingMin::Static(n) => n.to_string(),
-                    crate::node::CompiledMissingMin::Dynamic(n) => Self::node_to_json_string(n),
+                    crate::node::CompiledMissingMin::Now(n) => n.to_string(),
+                    crate::node::CompiledMissingMin::Later(n) => Self::node_to_json_string(n),
                 };
                 let paths_str = match &data.paths {
-                    crate::node::CompiledMissingPaths::Static(paths) => {
+                    crate::node::CompiledMissingPaths::Now(paths) => {
                         let items: Vec<String> =
                             paths.iter().map(|(p, _)| format!("\"{}\"", p)).collect();
                         format!("[{}]", items.join(", "))
                     }
-                    crate::node::CompiledMissingPaths::Dynamic(n) => Self::node_to_json_string(n),
+                    crate::node::CompiledMissingPaths::Later(n) => Self::node_to_json_string(n),
                 };
                 format!("{{\"missing_some\": [{}, {}]}}", min_str, paths_str)
             }

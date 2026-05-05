@@ -218,22 +218,36 @@ pub struct CompiledExistsData {
     pub segments: Box<[PathSegment]>,
 }
 
-/// One arg to a `missing` / `missing_some` operator. Static literal paths are
-/// pre-parsed into segments at compile time so the runtime walks the input
-/// data without re-splitting the string or BTreeMap-keying via a borrowed
-/// `&str` on every call.
+/// Two-stage value: either resolved at compile time (`Now(S)`) or carried
+/// as a [`CompiledNode`] (`Later(D)`) to be evaluated against the runtime
+/// context. Used by every spot in `missing` / `missing_some` compilation
+/// where an arg can be a literal we can pre-parse or an expression that
+/// must wait until evaluation.
 #[derive(Debug, Clone)]
-pub enum CompiledMissingArg {
-    /// Literal string path resolved at compile time. `path` is the original
-    /// string to emit when the lookup fails; `segments` is its parse.
-    Static {
-        path: Box<str>,
-        segments: Box<[PathSegment]>,
-    },
-    /// Anything else (literal arrays-of-strings, expressions, var lookups…) —
-    /// evaluated at runtime, results coerced to path string(s) as before.
-    Dynamic(CompiledNode),
+pub enum Resolved<S, D> {
+    /// Compile-time value — pre-parsed / pre-computed during compilation.
+    Now(S),
+    /// Runtime expression — evaluate against the live context.
+    Later(D),
 }
+
+/// Pre-parsed `(raw_path, segments)` pair — the compile-time form of a
+/// `missing` / `missing_some` path argument.
+pub type StaticMissingPath = (Box<str>, Box<[PathSegment]>);
+
+/// One arg to a `missing` / `missing_some` operator. Literal string paths
+/// are pre-parsed into segments at compile time so the runtime walks the
+/// input data without re-splitting the string or BTreeMap-keying via a
+/// borrowed `&str` on every call.
+pub type CompiledMissingArg = Resolved<StaticMissingPath, CompiledNode>;
+
+/// `missing_some` minimum-present argument. `Now(usize)` is a literal
+/// integer resolved at compile time; `Later(_)` is a runtime expression.
+pub type CompiledMissingMin = Resolved<usize, CompiledNode>;
+
+/// `missing_some` paths argument. `Now(_)` is a literal array of pre-parsed
+/// paths; `Later(_)` is a runtime expression returning an array.
+pub type CompiledMissingPaths = Resolved<Box<[StaticMissingPath]>, CompiledNode>;
 
 /// Data for a pre-compiled `missing` operator.
 #[derive(Debug, Clone)]
@@ -249,24 +263,6 @@ pub struct CompiledMissingSomeData {
     pub id: NodeId,
     pub min_present: CompiledMissingMin,
     pub paths: CompiledMissingPaths,
-}
-
-#[derive(Debug, Clone)]
-pub enum CompiledMissingMin {
-    Static(usize),
-    Dynamic(CompiledNode),
-}
-
-/// Pre-parsed `(raw_path, segments)` pair — the static form of a
-/// `missing_some` path argument.
-pub type StaticMissingPath = (Box<str>, Box<[PathSegment]>);
-
-#[derive(Debug, Clone)]
-pub enum CompiledMissingPaths {
-    /// Literal array of strings — every entry pre-parsed.
-    Static(Box<[StaticMissingPath]>),
-    /// Runtime expression returning an array.
-    Dynamic(CompiledNode),
 }
 
 /// Data for a pre-compiled throw with a static error object.
@@ -470,16 +466,16 @@ impl CompiledNode {
             CompiledNode::Throw(_) => {}
             CompiledNode::Missing(data) => {
                 for (i, arg) in data.args.iter().enumerate() {
-                    if let CompiledMissingArg::Dynamic(n) = arg {
+                    if let CompiledMissingArg::Later(n) = arg {
                         f(i as u32, n);
                     }
                 }
             }
             CompiledNode::MissingSome(data) => {
-                if let CompiledMissingMin::Dynamic(n) = &data.min_present {
+                if let CompiledMissingMin::Later(n) = &data.min_present {
                     f(0, n);
                 }
-                if let CompiledMissingPaths::Dynamic(n) = &data.paths {
+                if let CompiledMissingPaths::Later(n) = &data.paths {
                     f(1, n);
                 }
             }
@@ -531,16 +527,16 @@ impl CompiledNode {
             CompiledNode::Throw(_) => {}
             CompiledNode::Missing(data) => {
                 for arg in data.args.iter_mut() {
-                    if let CompiledMissingArg::Dynamic(n) = arg {
+                    if let CompiledMissingArg::Later(n) = arg {
                         f(n);
                     }
                 }
             }
             CompiledNode::MissingSome(data) => {
-                if let CompiledMissingMin::Dynamic(n) = &mut data.min_present {
+                if let CompiledMissingMin::Later(n) = &mut data.min_present {
                     f(n);
                 }
-                if let CompiledMissingPaths::Dynamic(n) = &mut data.paths {
+                if let CompiledMissingPaths::Later(n) = &mut data.paths {
                     f(n);
                 }
             }

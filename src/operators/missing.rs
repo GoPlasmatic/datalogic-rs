@@ -147,12 +147,12 @@ pub(crate) fn evaluate_compiled_missing<'a>(
 
     for arg in data.args.iter() {
         match arg {
-            CompiledMissingArg::Static { path, segments } => {
+            CompiledMissingArg::Now((path, segments)) => {
                 if !crate::arena::value::path_exists_segments(lookup, segments) {
                     missing.push(DataValue::String(path.as_ref()));
                 }
             }
-            CompiledMissingArg::Dynamic(node) => {
+            CompiledMissingArg::Later(node) => {
                 let av = engine.evaluate_node(node, ctx, arena)?;
                 accumulate_dynamic_missing(av, lookup, &mut missing, arena);
             }
@@ -174,8 +174,8 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let min_present = match &data.min_present {
-        CompiledMissingMin::Static(n) => *n,
-        CompiledMissingMin::Dynamic(node) => {
+        CompiledMissingMin::Now(n) => *n,
+        CompiledMissingMin::Later(node) => {
             let av = engine.evaluate_node(node, ctx, arena)?;
             av.as_i64().unwrap_or(1).max(0) as usize
         }
@@ -184,7 +184,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
     let lookup = lookup_av(ctx);
 
     match &data.paths {
-        CompiledMissingPaths::Static(paths) => {
+        CompiledMissingPaths::Now(paths) => {
             let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::with_capacity_in(paths.len(), arena);
             let mut present = 0usize;
@@ -203,7 +203,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
             }
             Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
         }
-        CompiledMissingPaths::Dynamic(node) => {
+        CompiledMissingPaths::Later(node) => {
             let paths_av = engine.evaluate_node(node, ctx, arena)?;
             let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::new_in(arena);
