@@ -179,7 +179,8 @@ fn test_is_night_with_timezone() {
 
 #[test]
 fn test_is_night_with_preserve_structure() {
-    let engine = Engine::builder().preserve_structure(true)
+    let engine = Engine::builder()
+        .preserve_structure(true)
         .add_operator("is_night", IsNightOperator)
         .build();
 
@@ -251,7 +252,8 @@ fn test_is_night_error_argument_count() {
 
 #[test]
 fn test_is_night_complex_structured_object() {
-    let engine = Engine::builder().preserve_structure(true)
+    let engine = Engine::builder()
+        .preserve_structure(true)
         .add_operator("is_night", IsNightOperator)
         .build();
 

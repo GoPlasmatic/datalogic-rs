@@ -43,7 +43,9 @@ impl Operator for CatArena {
 
 #[test]
 fn arena_operator_double_at_root() {
-    let engine = Engine::builder().add_operator("double", DoubleArena).build();
+    let engine = Engine::builder()
+        .add_operator("double", DoubleArena)
+        .build();
 
     let compiled = engine.compile_serde_value(&json!({"double": 21})).unwrap();
     let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
@@ -53,7 +55,9 @@ fn arena_operator_double_at_root() {
 #[test]
 fn arena_operator_inside_filter() {
     // The whole point of Operator: zero-clone use inside iteration.
-    let engine = Engine::builder().add_operator("double", DoubleArena).build();
+    let engine = Engine::builder()
+        .add_operator("double", DoubleArena)
+        .build();
 
     let compiled = engine
         .compile_serde_value(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
@@ -92,7 +96,9 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
 #[test]
 fn arena_operator_with_input_ref() {
     // Custom op consumes an InputRef arg (var lookup against root).
-    let engine = Engine::builder().add_operator("double", DoubleArena).build();
+    let engine = Engine::builder()
+        .add_operator("double", DoubleArena)
+        .build();
 
     let compiled = engine
         .compile_serde_value(&json!({"double": {"var": "n"}}))
@@ -125,7 +131,9 @@ impl Operator for ReadField {
 
 #[test]
 fn arena_operator_passthrough_input_ref() {
-    let engine = Engine::builder().add_operator("read_field", ReadField).build();
+    let engine = Engine::builder()
+        .add_operator("read_field", ReadField)
+        .build();
 
     let compiled = engine
         .compile_serde_value(&serde_json::json!({"read_field": {"var": "name"}}))
@@ -157,7 +165,9 @@ impl Operator for ReadActiveField {
 
 #[test]
 fn arena_operator_inside_filter_reads_iter_item_field() {
-    let engine = Engine::builder().add_operator("identity", ReadActiveField).build();
+    let engine = Engine::builder()
+        .add_operator("identity", ReadActiveField)
+        .build();
 
     // Filter passes each item to the predicate; the predicate calls
     // `identity` on `{"var": "active"}`, which the dispatcher resolves

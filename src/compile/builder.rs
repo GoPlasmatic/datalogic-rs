@@ -31,7 +31,10 @@ pub(super) fn compile_node(
             compile_operator_invocation(op_name, args_value, engine, preserve_structure, ctx)
         }
         OwnedDataValue::Array(arr) => compile_array(arr, engine, preserve_structure, ctx),
-        _ => Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value.clone())),
+        _ => Ok(CompiledNode::value_with_id(
+            Some(ctx.next_id()),
+            value.clone(),
+        )),
     }
 }
 

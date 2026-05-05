@@ -40,7 +40,11 @@ pub fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
 
 /// Eliminate dead branches in if/elseif/else chains.
 /// Returns `Some(new_node)` if the input was rewritten, `None` otherwise.
-fn eliminate_if(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &Engine) -> Option<CompiledNode> {
+fn eliminate_if(
+    outer_id: crate::node::NodeId,
+    args: &[CompiledNode],
+    engine: &Engine,
+) -> Option<CompiledNode> {
     if args.is_empty() {
         return Some(CompiledNode::synthetic_value(
             datavalue::OwnedDataValue::Null,
@@ -121,7 +125,11 @@ fn eliminate_if(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &E
 }
 
 /// Eliminate identity/absorbing elements in `and`.
-fn eliminate_and(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &Engine) -> Option<CompiledNode> {
+fn eliminate_and(
+    outer_id: crate::node::NodeId,
+    args: &[CompiledNode],
+    engine: &Engine,
+) -> Option<CompiledNode> {
     if args.is_empty() {
         return None;
     }
@@ -168,7 +176,11 @@ fn eliminate_and(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &
 }
 
 /// Eliminate identity/absorbing elements in `or`.
-fn eliminate_or(outer_id: crate::node::NodeId, args: &[CompiledNode], engine: &Engine) -> Option<CompiledNode> {
+fn eliminate_or(
+    outer_id: crate::node::NodeId,
+    args: &[CompiledNode],
+    engine: &Engine,
+) -> Option<CompiledNode> {
     if args.is_empty() {
         return None;
     }

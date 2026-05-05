@@ -167,18 +167,12 @@ fn main() {
     println!("-------------------");
 
     let result1 = engine
-        .evaluate_str(
-            r#"{"between": [{"var": "age"}, 18, 65]}"#,
-            r#"{"age": 25}"#,
-        )
+        .evaluate_str(r#"{"between": [{"var": "age"}, 18, 65]}"#, r#"{"age": 25}"#)
         .unwrap();
     println!("   age=25 between 18 and 65? {}", result1);
 
     let result2 = engine
-        .evaluate_str(
-            r#"{"between": [{"var": "age"}, 18, 65]}"#,
-            r#"{"age": 70}"#,
-        )
+        .evaluate_str(r#"{"between": [{"var": "age"}, 18, 65]}"#, r#"{"age": 70}"#)
         .unwrap();
     println!("   age=70 between 18 and 65? {}\n", result2);
 

@@ -98,7 +98,7 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "compat"))]
     #[inline]
     fn root_data(&self) -> Option<&'a DataValue<'a>> {
         match self {
@@ -107,7 +107,7 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "compat"))]
     #[inline]
     fn frame_data(&self) -> Option<&'a DataValue<'a>> {
         match self {
@@ -348,13 +348,13 @@ impl<'a> ContextStack<'a> {
         self.error_path.push(id);
     }
 
-    #[cfg(any(test, feature = "error-handling"))]
+    #[cfg(feature = "error-handling")]
     #[inline]
     pub(crate) fn error_path_len(&self) -> usize {
         self.error_path.len()
     }
 
-    #[cfg(any(test, feature = "error-handling"))]
+    #[cfg(feature = "error-handling")]
     #[inline]
     pub(crate) fn truncate_error_path(&mut self, len: usize) {
         self.error_path.truncate(len);
@@ -599,6 +599,7 @@ mod tests {
         assert_eq!(ctx.depth(), 0);
     }
 
+    #[cfg(feature = "error-handling")]
     #[test]
     fn error_path_round_trip() {
         let arena = Bump::new();

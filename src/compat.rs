@@ -257,7 +257,6 @@ pub trait LegacyApi: Sized {
         logic: &str,
         data: &str,
     ) -> std::result::Result<TracedResult, Error>;
-
 }
 
 impl LegacyApi for Engine {
@@ -362,5 +361,4 @@ impl LegacyApi for Engine {
         let compiled = Arc::new(crate::Logic::compile_for_trace(&owned, self)?);
         Ok(self.run_trace(&compiled, data_arc))
     }
-
 }
