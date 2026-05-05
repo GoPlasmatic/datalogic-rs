@@ -44,7 +44,7 @@ fn metadata_hint_lookup<'a>(
 /// branches both return their stored `&DataValue` directly — no per-call
 /// allocation.
 #[inline(always)]
-fn current_data_av<'a>(ctx: &ContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
+fn current_data<'a>(ctx: &ContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
     use crate::arena::context::ContextRef;
     match ctx.current() {
         ContextRef::Frame(f) => f.data(),
@@ -341,7 +341,7 @@ pub(crate) fn evaluate_val<'a>(
     use crate::arena::value::{access_path_str_ref, apply_path_element};
 
     if args.is_empty() {
-        return Ok(current_data_av(ctx, arena));
+        return Ok(current_data(ctx, arena));
     }
 
     // Multi-arg form: evaluate first to detect [[level], ...] vs path chain.
@@ -357,9 +357,9 @@ pub(crate) fn evaluate_val<'a>(
                 }
 
                 let path_owned = path_string_from_data(path_av);
-                let frame_av = frame_data_at_level(ctx, level as isize, arena)
+                let frame_data = frame_data_at_level(ctx, level as isize, arena)
                     .ok_or(Error::invalid_context_level(level as isize))?;
-                return Ok(access_path_str_ref(frame_av, &path_owned, arena)
+                return Ok(access_path_str_ref(frame_data, &path_owned, arena)
                     .unwrap_or_else(|| crate::arena::pool::singleton_null()));
             }
 
@@ -403,7 +403,7 @@ pub(crate) fn evaluate_val<'a>(
 
         let (mut cur, rest_start) = match start {
             Some(s) => (s, 1),
-            None => (current_data_av(ctx, arena), 0),
+            None => (current_data(ctx, arena), 0),
         };
         for elem in &evaluated[rest_start..] {
             match apply_path_element(cur, elem, arena) {
@@ -420,14 +420,14 @@ pub(crate) fn evaluate_val<'a>(
     // Null path → current data (matches canonical `var` semantics for
     // `{"var": null}` and the empty-string path for `{"var": ""}`).
     if matches!(path_av, DataValue::Null) {
-        return Ok(current_data_av(ctx, arena));
+        return Ok(current_data(ctx, arena));
     }
 
     // Array argument: either [[level], path...] or a path chain.
     if let Some(arr_len) = array_len(path_av) {
         // Empty array → current data (matches `{"var": []}` semantics).
         if arr_len == 0 {
-            return Ok(current_data_av(ctx, arena));
+            return Ok(current_data(ctx, arena));
         }
         if arr_len >= 2 {
             // Try the level form: first element is `[number, ...]`.
@@ -464,7 +464,7 @@ pub(crate) fn evaluate_val<'a>(
         }
 
         // Plain path-chain array.
-        let mut cur = current_data_av(ctx, arena);
+        let mut cur = current_data(ctx, arena);
         for i in 0..arr_len {
             let elem = array_get(path_av, i, arena)
                 .unwrap_or_else(|| crate::arena::pool::singleton_null());
@@ -501,7 +501,7 @@ pub(crate) fn evaluate_val<'a>(
             }
         }
 
-        let cur = current_data_av(ctx, arena);
+        let cur = current_data(ctx, arena);
         // Direct object key lookup beats dot-path traversal so empty keys and
         // keys containing dots resolve correctly.
         if let DataValue::Object(pairs) = cur
@@ -516,7 +516,7 @@ pub(crate) fn evaluate_val<'a>(
     if let Some(i) = path_av.as_i64()
         && i >= 0
     {
-        let cur = current_data_av(ctx, arena);
+        let cur = current_data(ctx, arena);
         let key = i.to_string();
         return Ok(access_path_str_ref(cur, &key, arena)
             .unwrap_or_else(|| crate::arena::pool::singleton_null()));
@@ -566,7 +566,7 @@ pub(crate) fn evaluate_exists<'a>(
         return Ok(crate::arena::pool::singleton_false());
     }
 
-    let cur = current_data_av(ctx, arena);
+    let cur = current_data(ctx, arena);
 
     if args.len() == 1 {
         let arg = engine.evaluate_node(&args[0], ctx, arena)?;

@@ -12,7 +12,7 @@ use bumpalo::Bump;
 /// Resolve the lookup-target for `missing` / `missing_some` — current
 /// context's data view as `&'a DataValue<'a>`.
 #[inline(always)]
-fn lookup_av<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
+fn lookup_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
     if ctx.depth() > 0 {
         use crate::arena::context::ContextRef;
         match ctx.current() {
@@ -33,7 +33,7 @@ pub(crate) fn evaluate_missing<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let lookup = lookup_av(ctx);
+    let lookup = lookup_data(ctx);
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
 
@@ -80,7 +80,7 @@ pub(crate) fn evaluate_missing_some<'a>(
     let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
 
     let paths_av = engine.evaluate_node(&args[1], ctx, arena)?;
-    let lookup = lookup_av(ctx);
+    let lookup = lookup_data(ctx);
 
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
@@ -141,7 +141,7 @@ pub(crate) fn evaluate_compiled_missing<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let lookup = lookup_av(ctx);
+    let lookup = lookup_data(ctx);
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
 
@@ -181,7 +181,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
         }
     };
 
-    let lookup = lookup_av(ctx);
+    let lookup = lookup_data(ctx);
 
     match &data.paths {
         CompiledMissingPaths::Now(paths) => {
