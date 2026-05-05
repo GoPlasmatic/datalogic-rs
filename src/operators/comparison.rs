@@ -277,28 +277,9 @@ fn value_as_str_in_op<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
     }
 }
 
-/// Tagged primitive view of an `DataValue`. Returns `None` for collections
-/// (Array/Object) and DateTime/Duration which need the slow path.
-enum PrimKind<'a> {
-    Null,
-    Bool(bool),
-    Num(f64),
-    Str(&'a str),
-}
-
-#[inline]
-fn kind_of<'a>(av: &'a DataValue<'a>) -> Option<PrimKind<'a>> {
-    match av {
-        DataValue::Null => Some(PrimKind::Null),
-        DataValue::Bool(b) => Some(PrimKind::Bool(*b)),
-        DataValue::Number(n) => Some(PrimKind::Num(n.as_f64())),
-        DataValue::String(s) => Some(PrimKind::Str(s)),
-        _ => None,
-    }
-}
-
-/// Arena-native equality. Mirrors `compare_equals` for primitive operands;
-/// collections fall back to the legacy `Value`-based helper.
+/// Arena-native equality. Loose mode goes through [`loose_equals_core`];
+/// strict mode is a direct [`PartialEq`] with one carve-out: numeric
+/// variants compare as `f64` so `Integer(1) === Float(1.0)` is `true`.
 #[inline]
 pub(crate) fn compare_equals(
     left: &DataValue<'_>,
@@ -334,68 +315,17 @@ pub(crate) fn compare_equals(
         }
     }
 
-    // Primitive arena-native fast path. Returns `None` only when one side is
-    // a collection or both can't be compared without value-mode coercion.
-    if let Some(eq) = compare_equals_primitive(left, right, strict, engine) {
-        return Ok(eq);
+    if !strict {
+        return loose_equals(left, right, engine);
     }
 
-    // Collection-vs-collection (or other unhandled combo) — fall back to
-    // the DataValue-based helpers.
-    if strict {
-        Ok(left == right)
-    } else {
-        loose_equals(left, right, engine)
+    // Strict: direct equality. Number variants compare as f64 so
+    // `Integer(1) === Float(1.0)` is `true` (matches the legacy primitive
+    // fast path; differs from the variant-aware `PartialEq` on `NumberValue`).
+    if let (DataValue::Number(a), DataValue::Number(b)) = (left, right) {
+        return Ok(a.as_f64() == b.as_f64());
     }
-}
-
-/// Arena-native primitive equality. `Some(eq)` when both operands are
-/// non-collection (Number/Bool/String/Null variants); `None` when either
-/// side is a collection or when loose-coercion needs the value-mode path.
-#[inline]
-fn compare_equals_primitive(
-    left: &DataValue<'_>,
-    right: &DataValue<'_>,
-    strict: bool,
-    engine: &Engine,
-) -> Option<bool> {
-    let lk = kind_of(left)?;
-    let rk = kind_of(right)?;
-    use PrimKind::*;
-    match (lk, rk) {
-        (Null, Null) => Some(true),
-        (Bool(a), Bool(b)) => Some(a == b),
-        (Str(a), Str(b)) => Some(a == b),
-        (Num(a), Num(b)) => Some(a == b),
-        _ if strict => Some(false),
-        // Loose coercion table — mirrors `loose_equals_core` for primitive cases.
-        // `None` from `s.parse()` defers to value-mode for Incompatible vs
-        // NotEqual semantics.
-        (Num(n), Str(s)) | (Str(s), Num(n)) => s.parse::<f64>().ok().map(|sf| sf == n),
-        (Num(n), Bool(b)) | (Bool(b), Num(n)) => Some(n == if b { 1.0 } else { 0.0 }),
-        (Str(s), Bool(b)) | (Bool(b), Str(s)) => Some(s == if b { "true" } else { "false" }),
-        (Null, Num(n)) | (Num(n), Null) => {
-            if engine.config().loose_equality_errors {
-                None
-            } else {
-                Some(n == 0.0)
-            }
-        }
-        (Null, Bool(b)) | (Bool(b), Null) => {
-            if engine.config().loose_equality_errors {
-                None
-            } else {
-                Some(!b)
-            }
-        }
-        (Null, Str(s)) | (Str(s), Null) => {
-            if engine.config().loose_equality_errors {
-                None
-            } else {
-                Some(s.is_empty())
-            }
-        }
-    }
+    Ok(left == right)
 }
 
 /// Arena-native ordered comparison. Mirrors `compare_ordered` exactly.
