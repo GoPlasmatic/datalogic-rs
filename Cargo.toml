@@ -2,7 +2,7 @@
 name = "datalogic-rs"
 version = "5.0.0"
 edition = "2024"
-exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui"]
+exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui", "/tools"]
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
@@ -52,3 +52,34 @@ serde_json = "1.0"
 [[example]]
 name = "structured_objects"
 required-features = ["preserve"]
+
+[[example]]
+name = "getting_started"
+required-features = ["preserve"]
+
+[[example]]
+name = "error_handling"
+required-features = ["error-handling"]
+
+[[example]]
+name = "tracing"
+required-features = ["trace"]
+
+[[example]]
+name = "datetime_ops"
+required-features = ["datetime"]
+
+[[example]]
+name = "migrating_from_v4"
+required-features = ["compat"]
+
+# Dev-only benchmark harness. Lives outside `examples/` so it doesn't
+# ship with the published crate. `required-features = ["compat"]` because
+# the harness reads serde_json test suites (dev-dependencies are not
+# visible to `[[bin]]` targets, but optional `[dependencies]` are once
+# enabled via a feature). Build/run locally with:
+#   cargo run --release --bin benchmark --features compat
+[[bin]]
+name = "benchmark"
+path = "tools/benchmark.rs"
+required-features = ["compat"]

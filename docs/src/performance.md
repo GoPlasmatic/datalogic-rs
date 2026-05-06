@@ -52,10 +52,10 @@ v5 optimizations:
 
 ```bash
 # Run the benchmark example
-cargo run --example benchmark --release
+cargo run --release --bin benchmark --features compat
 
 # With custom iterations
-BENCH_ITERATIONS=100000 cargo run --example benchmark --release
+BENCH_ITERATIONS=100000 cargo run --release --bin benchmark --features compat
 ```
 
 ### Creating Custom Benchmarks

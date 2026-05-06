@@ -278,10 +278,13 @@ live in a `bumpalo::Bump` arena (no per-result heap allocation), and
 read-through operators like `var` borrow zero-copy from the caller's
 input.
 
-Run the bundled benchmark:
+Run the bundled benchmark (a dev-only harness; not shipped with the
+published crate). The `compat` feature enables `serde_json` so the
+harness can read the bundled test suites:
 
 ```bash
-cargo run --release --example benchmark
+cargo run --release --bin benchmark --features compat              # one suite
+cargo run --release --bin benchmark --features compat -- --all     # all suites + JSON report
 ```
 
 ### Comparison with other JSONLogic engines
