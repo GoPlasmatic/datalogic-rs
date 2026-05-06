@@ -8,6 +8,14 @@ use super::helpers::item_is_null;
 
 /// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
 /// op) into a single array, skipping nulls.
+///
+/// The result buffer is allocated lazily on the first non-null push so
+/// "merge with all-null args" and "merge with no args" return the
+/// empty-array singleton without touching the arena. Array args may push
+/// many items and trigger growth, but profile shows scalar/single-element
+/// args dominate — pre-size the buffer to `args.len()` on first push to
+/// avoid the immediate-grow that the previous unconditional bvec was
+/// already paying for.
 #[inline]
 pub(crate) fn evaluate_merge<'a>(
     args: &'a [CompiledNode],
@@ -15,10 +23,12 @@ pub(crate) fn evaluate_merge<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    // Pre-size for the scalar-arg case (one push per arg). Array args may push
-    // more and trigger growth, but profile shows scalar/single-element args
-    // dominate — saves the first reserve_internal_or_panic in the common case.
-    let mut results = bvec::<DataValue<'a>>(arena, args.len());
+    let mut results: Option<bumpalo::collections::Vec<'a, DataValue<'a>>> = None;
+    let mut push = |item: DataValue<'a>| {
+        results
+            .get_or_insert_with(|| bvec::<DataValue<'a>>(arena, args.len().max(1)))
+            .push(item);
+    };
 
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
@@ -27,19 +37,19 @@ pub(crate) fn evaluate_merge<'a>(
             DataValue::Array(items) => {
                 for item in items.iter() {
                     if !item_is_null(item) {
-                        results.push(*item);
+                        push(*item);
                     }
                 }
             }
             // Null inputs are skipped per merge semantics.
             DataValue::Null => {}
             // Scalar / object — push as-is.
-            other => results.push(*other),
+            other => push(*other),
         }
     }
 
-    if results.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_array());
+    match results {
+        Some(v) if !v.is_empty() => Ok(arena.alloc(DataValue::Array(v.into_bump_slice()))),
+        _ => Ok(crate::arena::singletons::singleton_empty_array()),
     }
-    Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }

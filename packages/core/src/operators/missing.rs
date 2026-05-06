@@ -134,6 +134,11 @@ use crate::node::{
 /// Evaluate a `missing` op whose static literal-string paths have been
 /// pre-parsed into segments. Static paths walk via
 /// `path_exists_segments`; dynamic args use the runtime path string.
+///
+/// Defers the per-call bumpalo `Vec` allocation until the first missing
+/// path is found. The dominant case in real workloads (and in
+/// `compatible.json`) is "all paths present" → return the static
+/// empty-array singleton without touching the arena at all.
 #[inline]
 pub(crate) fn evaluate_compiled_missing<'a>(
     data: &'a CompiledMissingData,
@@ -142,26 +147,32 @@ pub(crate) fn evaluate_compiled_missing<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let lookup = lookup_data(ctx);
-    let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
-        bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
+    let mut missing: Option<bumpalo::collections::Vec<'a, DataValue<'a>>> = None;
 
     for arg in data.args.iter() {
         match arg {
             CompiledMissingArg::Now((path, segments)) => {
                 if !crate::arena::value::path_exists_segments(lookup, segments) {
-                    missing.push(DataValue::String(path.as_ref()));
+                    missing
+                        .get_or_insert_with(|| {
+                            bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena)
+                        })
+                        .push(DataValue::String(path.as_ref()));
                 }
             }
             CompiledMissingArg::Later(node) => {
                 let av = engine.dispatch_node(node, ctx, arena)?;
-                accumulate_dynamic_missing(av, lookup, &mut missing, arena);
+                let buf = missing.get_or_insert_with(|| {
+                    bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena)
+                });
+                accumulate_dynamic_missing(av, lookup, buf, arena);
             }
         }
     }
-    if missing.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_array());
+    match missing {
+        Some(v) if !v.is_empty() => Ok(arena.alloc(DataValue::Array(v.into_bump_slice()))),
+        _ => Ok(crate::arena::singletons::singleton_empty_array()),
     }
-    Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
 }
 
 /// Evaluate a `missing_some` op whose literal min-count and literal array-of-
@@ -185,8 +196,11 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
 
     match &data.paths {
         CompiledMissingPaths::Now(paths) => {
-            let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
-                bumpalo::collections::Vec::with_capacity_in(paths.len(), arena);
+            // Defer the missing-paths buffer until the first path actually
+            // misses — the dominant success case ("all paths present"
+            // hits min_present early) returns the empty-array singleton
+            // without allocating.
+            let mut missing: Option<bumpalo::collections::Vec<'a, DataValue<'a>>> = None;
             let mut present = 0usize;
             for (path, segments) in paths.iter() {
                 if crate::arena::value::path_exists_segments(lookup, segments) {
@@ -195,13 +209,19 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
                         return Ok(crate::arena::singletons::singleton_empty_array());
                     }
                 } else {
-                    missing.push(DataValue::String(path.as_ref()));
+                    missing
+                        .get_or_insert_with(|| {
+                            bumpalo::collections::Vec::with_capacity_in(paths.len(), arena)
+                        })
+                        .push(DataValue::String(path.as_ref()));
                 }
             }
-            if present >= min_present || missing.is_empty() {
-                return Ok(crate::arena::singletons::singleton_empty_array());
+            match missing {
+                Some(v) if present < min_present && !v.is_empty() => {
+                    Ok(arena.alloc(DataValue::Array(v.into_bump_slice())))
+                }
+                _ => Ok(crate::arena::singletons::singleton_empty_array()),
             }
-            Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
         }
         CompiledMissingPaths::Later(node) => {
             let paths_av = engine.dispatch_node(node, ctx, arena)?;
