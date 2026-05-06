@@ -63,9 +63,7 @@ fn compile_multi_key_object(
         )));
     }
     let _ = (pairs, engine, preserve_structure, ctx);
-    Err(crate::error::Error::invalid_operator(
-        "Unknown Operator".to_string(),
-    ))
+    Err(crate::error::Error::invalid_operator("Unknown Operator"))
 }
 
 /// Single-key object: an operator invocation. Routes to either the builtin

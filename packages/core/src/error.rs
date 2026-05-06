@@ -1,5 +1,6 @@
 use datavalue::OwnedDataValue;
 use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
@@ -110,32 +111,32 @@ impl std::error::Error for MessageError {}
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
     /// Invalid operator name
-    InvalidOperator(String),
+    InvalidOperator(Cow<'static, str>),
     /// Invalid arguments for an operator
-    InvalidArguments(String),
+    InvalidArguments(Cow<'static, str>),
     /// Variable not found in context
-    VariableNotFound(String),
+    VariableNotFound(Cow<'static, str>),
     /// Invalid context level access
     InvalidContextLevel(isize),
     /// Type conversion/coercion error
-    TypeError(String),
+    TypeError(Cow<'static, str>),
     /// Arithmetic error (division by zero, overflow, etc.)
-    ArithmeticError(String),
+    ArithmeticError(Cow<'static, str>),
     /// Custom error for extensions. Carries the underlying typed error so
     /// callers can walk the source chain via [`std::error::Error::source`].
     /// Constructed via [`Error::custom_error`] (string-only) or
     /// [`Error::wrap`] (any `std::error::Error + Send + Sync + 'static`).
     Custom(CustomSource),
     /// JSON parsing/serialization error
-    ParseError(String),
+    ParseError(Cow<'static, str>),
     /// Thrown error from throw operator
     Thrown(OwnedDataValue),
     /// Invalid format string or pattern
-    FormatError(String),
+    FormatError(Cow<'static, str>),
     /// Index out of bounds for array operations
     IndexOutOfBounds { index: isize, length: usize },
     /// Invalid operator configuration
-    ConfigurationError(String),
+    ConfigurationError(Cow<'static, str>),
 }
 
 /// Error returned by every [`crate::Engine`] operation.
@@ -160,8 +161,11 @@ pub struct Error {
     /// What went wrong. Pattern-matched by callers; stays public.
     pub kind: ErrorKind,
     /// Outermost operator that produced this error, when known.
-    /// Read via [`Self::operator`].
-    operator: Option<String>,
+    /// Read via [`Self::operator`]. Stored as `Cow<'static, str>` so
+    /// built-in op names (the dominant case) are zero-allocation
+    /// `Cow::Borrowed` references; only dynamic custom-operator names
+    /// carry an owned `String` via `Cow::Owned`.
+    operator: Option<Cow<'static, str>>,
     /// Breadcrumb of [`crate::CompiledNode`] ids from the failure site toward
     /// the root (leaf-to-root). Empty when the error came from parse/compile.
     /// Read via [`Self::path`]. Backed by an inline-4 buffer that only spills
@@ -216,7 +220,11 @@ impl Error {
     }
 
     /// Attach the outermost operator name and return self.
-    pub fn with_operator(mut self, operator: impl Into<String>) -> Self {
+    ///
+    /// Accepts anything convertible to `Cow<'static, str>` — passing a
+    /// `&'static str` literal stays zero-allocation; a `String` becomes
+    /// `Cow::Owned` (one move, no copy).
+    pub fn with_operator(mut self, operator: impl Into<Cow<'static, str>>) -> Self {
         self.operator = Some(operator.into());
         self
     }
@@ -251,17 +259,17 @@ impl Error {
 
     /// Shorthand for `ErrorKind::InvalidOperator(name).into()`.
     #[inline]
-    pub fn invalid_operator(name: impl Into<String>) -> Self {
+    pub fn invalid_operator(name: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::InvalidOperator(name.into()).into()
     }
     /// Shorthand for `ErrorKind::InvalidArguments(msg).into()`.
     #[inline]
-    pub fn invalid_arguments(msg: impl Into<String>) -> Self {
+    pub fn invalid_arguments(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::InvalidArguments(msg.into()).into()
     }
     /// Shorthand for `ErrorKind::VariableNotFound(name).into()`.
     #[inline]
-    pub fn variable_not_found(name: impl Into<String>) -> Self {
+    pub fn variable_not_found(name: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::VariableNotFound(name.into()).into()
     }
     /// Shorthand for `ErrorKind::InvalidContextLevel(level).into()`.
@@ -271,12 +279,12 @@ impl Error {
     }
     /// Shorthand for `ErrorKind::TypeError(msg).into()`.
     #[inline]
-    pub fn type_error(msg: impl Into<String>) -> Self {
+    pub fn type_error(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::TypeError(msg.into()).into()
     }
     /// Shorthand for `ErrorKind::ArithmeticError(msg).into()`.
     #[inline]
-    pub fn arithmetic_error(msg: impl Into<String>) -> Self {
+    pub fn arithmetic_error(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::ArithmeticError(msg.into()).into()
     }
     /// Shorthand for a message-only [`ErrorKind::Custom`]. Equivalent to
@@ -317,7 +325,7 @@ impl Error {
     }
     /// Shorthand for `ErrorKind::ParseError(msg).into()`.
     #[inline]
-    pub fn parse_error(msg: impl Into<String>) -> Self {
+    pub fn parse_error(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::ParseError(msg.into()).into()
     }
     /// Shorthand for `ErrorKind::Thrown(value).into()`.
@@ -339,7 +347,7 @@ impl Error {
     }
     /// Shorthand for `ErrorKind::FormatError(msg).into()`.
     #[inline]
-    pub fn format_error(msg: impl Into<String>) -> Self {
+    pub fn format_error(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::FormatError(msg.into()).into()
     }
     /// Shorthand for `ErrorKind::IndexOutOfBounds { index, length }.into()`.
@@ -349,7 +357,7 @@ impl Error {
     }
     /// Shorthand for `ErrorKind::ConfigurationError(msg).into()`.
     #[inline]
-    pub fn configuration_error(msg: impl Into<String>) -> Self {
+    pub fn configuration_error(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::ConfigurationError(msg.into()).into()
     }
 
@@ -426,13 +434,13 @@ impl std::error::Error for Error {
 #[cfg(feature = "compat")]
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
-        Error::new(ErrorKind::ParseError(err.to_string()))
+        Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
     }
 }
 
 impl From<datavalue::ParseError> for Error {
     fn from(err: datavalue::ParseError) -> Self {
-        Error::new(ErrorKind::ParseError(err.to_string()))
+        Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
     }
 }
 

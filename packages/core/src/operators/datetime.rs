@@ -128,7 +128,7 @@ pub(crate) fn evaluate_datetime<'a>(
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
         return Err(Error::invalid_arguments(
-            "datetime requires an argument".to_string(),
+            "datetime requires an argument",
         ));
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
@@ -145,9 +145,7 @@ pub(crate) fn evaluate_datetime<'a>(
         return Ok(av);
     }
 
-    Err(Error::invalid_arguments(
-        "Invalid datetime format".to_string(),
-    ))
+    Err(Error::invalid_arguments("Invalid datetime format"))
 }
 
 /// Native arena-mode `timestamp`. Returns the input unchanged if it parses
@@ -160,9 +158,7 @@ pub(crate) fn evaluate_timestamp<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(Error::invalid_arguments(
-            "timestamp requires an argument".to_string(),
-        ));
+        return Err(Error::invalid_arguments("timestamp requires an argument"));
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
 
@@ -177,9 +173,7 @@ pub(crate) fn evaluate_timestamp<'a>(
         return Ok(arena.alloc(DataValue::String(s)));
     }
 
-    Err(Error::invalid_arguments(
-        "Invalid duration format".to_string(),
-    ))
+    Err(Error::invalid_arguments("Invalid duration format"))
 }
 
 /// Convert a JSONLogic format spec ("yyyy-MM-dd HH:mm:ss") to a chrono format.
@@ -204,7 +198,7 @@ pub(crate) fn evaluate_parse_date<'a>(
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(Error::invalid_arguments(
-            "parse_date requires date string and format".to_string(),
+            "parse_date requires date string and format",
         ));
     }
     let date_av = engine.dispatch_node(&args[0], ctx, arena)?;
@@ -217,7 +211,7 @@ pub(crate) fn evaluate_parse_date<'a>(
             return Ok(arena.alloc(DataValue::String(s)));
         }
     }
-    Err(Error::invalid_arguments("Failed to parse date".to_string()))
+    Err(Error::invalid_arguments("Failed to parse date"))
 }
 
 /// Native arena-mode `format_date`.
@@ -230,7 +224,7 @@ pub(crate) fn evaluate_format_date<'a>(
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(Error::invalid_arguments(
-            "format_date requires datetime and format".to_string(),
+            "format_date requires datetime and format",
         ));
     }
     let dt_av = engine.dispatch_node(&args[0], ctx, arena)?;
@@ -240,7 +234,7 @@ pub(crate) fn evaluate_format_date<'a>(
     let dt: Option<DataDateTime> = crate::operators::datetime::extract_datetime(dt_av);
 
     let fmt: &'a str = arg_as_str(fmt_av)
-        .ok_or_else(|| Error::invalid_arguments("Failed to format date".to_string()))?;
+        .ok_or_else(|| Error::invalid_arguments("Failed to format date"))?;
 
     if let Some(datetime) = dt {
         let chrono_format = if fmt == "z" {
@@ -253,9 +247,7 @@ pub(crate) fn evaluate_format_date<'a>(
         return Ok(arena.alloc(DataValue::String(s)));
     }
 
-    Err(Error::invalid_arguments(
-        "Failed to format date".to_string(),
-    ))
+    Err(Error::invalid_arguments("Failed to format date"))
 }
 
 /// Native arena-mode `date_diff`.
@@ -268,7 +260,7 @@ pub(crate) fn evaluate_date_diff<'a>(
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 3 {
         return Err(Error::invalid_arguments(
-            "date_diff requires two dates and a unit".to_string(),
+            "date_diff requires two dates and a unit",
         ));
     }
     let d1_av = engine.dispatch_node(&args[0], ctx, arena)?;
@@ -287,7 +279,7 @@ pub(crate) fn evaluate_date_diff<'a>(
         return Ok(arena.alloc(DataValue::from_i64(diff as i64)));
     }
     Err(Error::invalid_arguments(
-        "Failed to calculate date difference".to_string(),
+        "Failed to calculate date difference",
     ))
 }
 
