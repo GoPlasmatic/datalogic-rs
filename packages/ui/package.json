@@ -21,7 +21,7 @@
     "directory": "ui"
   },
   "author": "Plasmatic",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/lib.d.ts",

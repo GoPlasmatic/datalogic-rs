@@ -14,11 +14,7 @@ use std::thread;
 
 fn main() {
     let engine = Arc::new(Engine::new());
-    let compiled = Arc::new(
-        engine
-            .compile(r#"{">": [{"var": "score"}, 50]}"#)
-            .unwrap(),
-    );
+    let compiled = Arc::new(engine.compile(r#"{">": [{"var": "score"}, 50]}"#).unwrap());
 
     let workers: Vec<_> = (1..=4)
         .map(|i| {

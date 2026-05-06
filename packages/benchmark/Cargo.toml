@@ -1,0 +1,29 @@
+[package]
+name = "datalogic-bench"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Dev-only benchmark harness for datalogic-rs (single-engine and cross-library)."
+publish = false
+
+[dependencies]
+datalogic-rs = { path = "../core", features = ["compat"] }
+serde_json = "1.0"
+bumpalo = "3"
+
+# `compare` binary subjects are gated so the default build doesn't pull in
+# every other JSONLogic crate. Add a feature per subject and wire it in
+# `src/bin/compare.rs`.
+[features]
+default = []
+# subject-jsonlogic-rs = ["dep:jsonlogic-rs"]   # example placeholder
+
+[[bin]]
+name = "self"
+path = "src/bin/self.rs"
+
+[[bin]]
+name = "compare"
+path = "src/bin/compare.rs"

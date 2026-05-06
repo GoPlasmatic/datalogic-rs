@@ -1,0 +1,41 @@
+# Examples
+
+Runnable demos for the Rust crate. Each one opens with a doc comment
+stating its goal; this README is the index. Examples that depend on
+opt-in features must be invoked with the matching `--features` flag (the
+`required-features` block in `packages/core/Cargo.toml` enforces this).
+
+| Example                    | What it shows                                                                    | Required features    |
+|----------------------------|----------------------------------------------------------------------------------|----------------------|
+| `getting_started`          | The three pillars in one file — start here                                       | `preserve`           |
+| `compile_once_evaluate_many` | Throughput patterns: shared `Logic` + reusable `Session`                       | _(none)_             |
+| `configuration`            | `EvaluationConfig` presets and per-field knobs                                   | _(none)_             |
+| `custom_operator`          | Implementing `CustomOperator` and registering it on the builder                  | _(none)_             |
+| `structured_objects`       | `preserve_structure` templating mode for response shaping                        | `preserve`           |
+| `thread_safety`            | Sharing a compiled `Logic` across threads via `Arc`                              | _(none)_             |
+| `datetime_ops`             | Parse, format, compare, and do arithmetic on dates                               | `datetime`           |
+| `tracing`                  | Recording every evaluation step for debugging                                    | `trace`              |
+| `error_handling`           | `try` / `throw`, structured `Error` shape                                        | `error-handling`     |
+| `migrating_from_v4`        | v4 → v5 cheat sheet, runnable side by side                                       | `compat`             |
+
+## Running
+
+```bash
+# A no-feature example
+cargo run -p datalogic-rs --example custom_operator
+
+# A feature-gated one
+cargo run -p datalogic-rs --example getting_started --features preserve
+cargo run -p datalogic-rs --example tracing         --features trace
+cargo run -p datalogic-rs --example datetime_ops    --features datetime
+```
+
+To run *all* examples (useful before publishing), build with every feature:
+
+```bash
+cargo build -p datalogic-rs --examples --all-features
+```
+
+If you're unsure where to start, open `getting_started.rs` first — it
+walks through `Engine::new`, `evaluate_str`, and `Session` in roughly
+sixty lines.

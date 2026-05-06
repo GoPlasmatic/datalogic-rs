@@ -23,9 +23,7 @@
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi; // brings the v4 method names back into scope
 use datalogic_rs::operator::ContextStack;
-use datalogic_rs::{
-    CustomOperator, DataValue, Engine, EvaluationConfig, NanHandling, Result,
-};
+use datalogic_rs::{CustomOperator, DataValue, Engine, EvaluationConfig, NanHandling, Result};
 use serde_json::json;
 
 fn main() {
@@ -59,7 +57,10 @@ fn main() {
     let r_v5_str = engine.evaluate_str(rule, data).unwrap();
     // v5 — serde_json boundary, when you need it (compat feature):
     let r_v5_serde = engine
-        .evaluate_serde(&json!({"+": [{"var": "a"}, {"var": "b"}]}), &json!({"a": 2, "b": 3}))
+        .evaluate_serde(
+            &json!({"+": [{"var": "a"}, {"var": "b"}]}),
+            &json!({"a": 2, "b": 3}),
+        )
         .unwrap();
 
     println!("\n[2] v4 evaluate_json:    {r_v4}");

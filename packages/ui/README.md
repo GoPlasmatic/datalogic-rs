@@ -156,11 +156,18 @@ The component respects the `data-theme` attribute on parent elements for theming
 
 ## Development
 
+This package lives at `packages/ui/` in the
+[datalogic-rs monorepo](https://github.com/GoPlasmatic/datalogic-rs). It
+depends on a locally-built `@goplasmatic/datalogic` WASM bundle — see
+[DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
+for the full link/install dance. Day-to-day, from the repo root:
+
 ```bash
-pnpm install      # Install dependencies
-pnpm dev:ui       # Start development server
-pnpm build:ui:lib # Build library for publishing
-pnpm lint:ui      # Run ESLint
+cd packages/ui
+npm install       # install dependencies
+npm run dev       # start the dev playground
+npm run build:lib # build the publishable library bundle
+npm run lint      # run ESLint
 ```
 
 ## Architecture
@@ -209,4 +216,4 @@ For complete documentation including all props, customization options, and advan
 
 ## License
 
-MIT
+Apache-2.0

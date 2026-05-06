@@ -33,16 +33,17 @@ docs/book/
 docs/src/wasm/
 
 # UI build output
-ui/dist/
-ui/dist-embed/
+packages/ui/dist/
+packages/ui/dist-embed/
 
 # Docs embed build artifacts (generated when building the UI embed bundle)
 docs/src/assets/*.js
 docs/src/assets/*.js.map
 docs/src/assets/*.css
 
-# Benchmark reports
-benchmarks/
+# Benchmark reports (output/ is committed via .gitkeep, contents are not)
+packages/benchmark/output/*
+!packages/benchmark/output/.gitkeep
 
 # cargo-flamegraph / cargo-instruments output
 flamegraph.svg

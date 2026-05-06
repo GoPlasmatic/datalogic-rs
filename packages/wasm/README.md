@@ -194,7 +194,10 @@ This library supports 59 built-in operators covering all standard JSONLogic plus
 
 **Type Operations:** `type`
 
-**Special:** `preserve` (structure preservation for templating)
+> **Templating mode:** v5 removed the `preserve` *operator*. To preserve
+> object structure for JSON templates with embedded JSONLogic, pass
+> `preserve_structure: true` to `evaluate` (or
+> `new CompiledRule(logic, true)`) — see the API Reference above.
 
 For the complete list and documentation, see the [main repository](https://github.com/GoPlasmatic/datalogic-rs).
 
@@ -224,7 +227,7 @@ rustup target add wasm32-unknown-unknown
 ### Build
 
 ```bash
-cd wasm
+cd packages/wasm
 ./build.sh
 ```
 

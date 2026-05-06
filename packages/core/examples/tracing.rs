@@ -31,10 +31,9 @@ fn main() {
     }
 
     // ----- (2) failure — error is structured ------------------------
-    let run = engine.with_trace().evaluate_str(
-        r#"{"+": [{"var": "x"}, "not-a-number"]}"#,
-        r#"{"x": 1}"#,
-    );
+    let run = engine
+        .with_trace()
+        .evaluate_str(r#"{"+": [{"var": "x"}, "not-a-number"]}"#, r#"{"x": 1}"#);
 
     let err = run.result.unwrap_err();
     println!("\n[2] failure");

@@ -21,19 +21,19 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(grep '^version = ' packages/core/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Cargo.toml version: $VERSION"
+          echo "packages/core/Cargo.toml version: $VERSION"
 
       - name: Validate tag matches version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           VERSION="${{ steps.version.outputs.version }}"
           if [ "$TAG_VERSION" != "$VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $VERSION"
+            echo "::error::Tag $GITHUB_REF_NAME does not match packages/core/Cargo.toml version $VERSION"
             exit 1
           fi
-          echo "Tag $GITHUB_REF_NAME matches Cargo.toml version $VERSION"
+          echo "Tag $GITHUB_REF_NAME matches packages/core/Cargo.toml version $VERSION"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -49,17 +49,17 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'packages/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --workspace
 
   publish-crate:
     name: Publish to crates.io
@@ -87,7 +87,7 @@ jobs:
 
       - name: Publish
         if: steps.check.outputs.skip != 'true'
-        run: cargo publish
+        run: cargo publish --manifest-path packages/core/Cargo.toml
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
@@ -118,12 +118,12 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('wasm/Cargo.toml') }}
+            packages/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/wasm/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-wasm-
 
       - name: Build WASM
-        run: cd wasm && ./build.sh
+        run: cd packages/wasm && ./build.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -145,7 +145,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd wasm/pkg && npm publish --access public
+        run: cd packages/wasm/pkg && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -153,7 +153,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wasm-pkg
-          path: wasm/pkg/
+          path: packages/wasm/pkg/
 
   publish-ui:
     name: Publish UI to npm
@@ -167,7 +167,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wasm-pkg
-          path: wasm/pkg/
+          path: packages/wasm/pkg/
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -175,10 +175,10 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Sync UI version + WASM dep from Cargo.toml
+      - name: Sync UI version + WASM dep from packages/core/Cargo.toml
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          cd ui
+          cd packages/ui
           # Bump ui's own version
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           # Pin the @goplasmatic/datalogic dep to the same version we are
@@ -188,20 +188,20 @@ jobs:
 
       # Wire the freshly-built local WASM artifact into ui/node_modules
       # BEFORE running npm install. With the symlink already present and
-      # its version matching ui/package.json's pin, `npm install` preserves
-      # it instead of fetching from the registry — important because
-      # publish-wasm may have just run and the new $VERSION may not be
-      # indexed on npm yet.
+      # its version matching packages/ui/package.json's pin, `npm install`
+      # preserves it instead of fetching from the registry — important
+      # because publish-wasm may have just run and the new $VERSION may
+      # not be indexed on npm yet.
       - name: Link local WASM package into UI
         run: |
-          cd wasm/pkg && npm link
+          cd packages/wasm/pkg && npm link
           cd ../../ui && npm link @goplasmatic/datalogic
 
       - name: Install UI dependencies
-        run: cd ui && npm install
+        run: cd packages/ui && npm install
 
       - name: Build UI library
-        run: cd ui && npm run build:lib
+        run: cd packages/ui && npm run build:lib
 
       - name: Check if version exists on npm
         id: check
@@ -217,7 +217,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd ui && npm publish --access public
+        run: cd packages/ui && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

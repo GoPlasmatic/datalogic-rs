@@ -2,7 +2,7 @@
   <img src="https://avatars.githubusercontent.com/u/207296579?s=200&v=4" alt="Plasmatic Logo" width="120" height="120">
 
 # datalogic-rs
-**A fast, production-ready Rust engine for JSONLogic.**
+**A fast, production-ready engine for JSONLogic — Rust core, WASM bindings, React debugger.**
 
   [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
   [![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
@@ -29,6 +29,21 @@ via WebAssembly, or in a React visual debugger.
   </a>
   <p><em>Try it live in the <a href="https://goplasmatic.github.io/datalogic-rs/playground/">online playground</a> — no install required.</em></p>
 </div>
+
+## Repository layout
+
+This is a monorepo. Every package lives under `packages/`:
+
+| Package                                                                                | Path                  | Language    | Install                              |
+|----------------------------------------------------------------------------------------|-----------------------|-------------|--------------------------------------|
+| [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                                | `packages/core`       | Rust        | `cargo add datalogic-rs`             |
+| [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic)       | `packages/wasm`       | Rust → WASM | `npm i @goplasmatic/datalogic`       |
+| [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `packages/ui`         | React       | `npm i @goplasmatic/datalogic-ui`    |
+| `datalogic-bench` (internal)                                                           | `packages/benchmark`  | Rust        | _dev-only, not published_            |
+
+For the cross-package design, dependency flow, and feature-flag matrix,
+see [ARCHITECTURE.md](./ARCHITECTURE.md). For local setup, build order,
+and per-package commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ## Three things you can build with it
 
@@ -126,12 +141,6 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
   data={{ x: 42 }}
 />
 ```
-
-| Package | Description | Install |
-|---------|-------------|---------|
-| [datalogic-rs](https://crates.io/crates/datalogic-rs) | Rust library | `cargo add datalogic-rs` |
-| [@goplasmatic/datalogic](https://www.npmjs.com/package/@goplasmatic/datalogic) | WASM/JavaScript | `npm i @goplasmatic/datalogic` |
-| [@goplasmatic/datalogic-ui](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | React visual debugger | `npm i @goplasmatic/datalogic-ui` |
 
 See the rule run live in your browser at the
 [online playground](https://goplasmatic.github.io/datalogic-rs/playground/).
@@ -278,14 +287,21 @@ live in a `bumpalo::Bump` arena (no per-result heap allocation), and
 read-through operators like `var` borrow zero-copy from the caller's
 input.
 
-Run the bundled benchmark (a dev-only harness; not shipped with the
-published crate). The `compat` feature enables `serde_json` so the
-harness can read the bundled test suites:
+The benchmark harness lives in its own dev-only crate,
+`datalogic-bench`, under `packages/benchmark/`. Two binaries share a
+common harness:
 
 ```bash
-cargo run --release --bin benchmark --features compat              # one suite
-cargo run --release --bin benchmark --features compat -- --all     # all suites + JSON report
+# Single-engine benchmark (datalogic-rs alone, fast arena path)
+cargo run --release -p datalogic-bench --bin self                 # one suite
+cargo run --release -p datalogic-bench --bin self -- --all        # every suite + JSON report
+
+# Cross-library comparison (only datalogic-rs ships by default; add subjects
+# behind feature flags — see packages/benchmark/README.md).
+cargo run --release -p datalogic-bench --bin compare -- --all
 ```
+
+Reports land in `packages/benchmark/output/` (gitignored).
 
 ### Comparison with other JSONLogic engines
 
@@ -318,11 +334,15 @@ keeps v4 method names compiling while you migrate.
 - [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [Rust API (docs.rs)](https://docs.rs/datalogic-rs)
 - [JSONLogic Specification](https://jsonlogic.com)
+- [Architecture overview](./ARCHITECTURE.md)
+- [Development guide](./DEVELOPMENT.md)
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, test, and PR
-guidelines. Architecture notes live in [CLAUDE.md](./CLAUDE.md).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution workflow,
+[DEVELOPMENT.md](./DEVELOPMENT.md) for local setup and per-package
+commands, and [ARCHITECTURE.md](./ARCHITECTURE.md) for the cross-package
+design.
 
 ## About Plasmatic
 

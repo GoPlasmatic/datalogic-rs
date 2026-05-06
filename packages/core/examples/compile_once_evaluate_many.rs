@@ -5,8 +5,8 @@
 //!     cargo run --example compile_once_evaluate_many
 
 use bumpalo::Bump;
-use datalogic_rs::datavalue::OwnedDataValue;
 use datalogic_rs::Engine;
+use datalogic_rs::datavalue::OwnedDataValue;
 
 fn main() {
     let engine = Engine::new();
@@ -36,12 +36,18 @@ fn main() {
     let r = engine
         .evaluate(&compiled, r#"{"score": 91}"#, &arena)
         .unwrap();
-    println!("[3] engine.evaluate: score=91 -> {}", r.as_str().unwrap_or("?"));
+    println!(
+        "[3] engine.evaluate: score=91 -> {}",
+        r.as_str().unwrap_or("?")
+    );
 
     // `Engine::evaluate` accepts any `EvalInput`: `&str` (above),
     // `&OwnedDataValue` (parse once, evaluate many), `DataValue<'a>`
     // already in the arena, or `&serde_json::Value` (with `compat`).
     let owned = OwnedDataValue::from_json(r#"{"score": 35}"#).unwrap();
     let r = engine.evaluate(&compiled, &owned, &arena).unwrap();
-    println!("[3] engine.evaluate (&OwnedDataValue) -> {}", r.as_str().unwrap_or("?"));
+    println!(
+        "[3] engine.evaluate (&OwnedDataValue) -> {}",
+        r.as_str().unwrap_or("?")
+    );
 }

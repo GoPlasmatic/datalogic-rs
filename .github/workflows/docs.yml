@@ -6,8 +6,8 @@ on:
       - main
     paths:
       - 'docs/**'
-      - 'ui/**'
-      - 'wasm/**'
+      - 'packages/ui/**'
+      - 'packages/wasm/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -53,12 +53,12 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('wasm/Cargo.lock') }}
+            packages/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/wasm/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-wasm-
 
       - name: Build WASM
-        run: cd wasm && ./build.sh
+        run: cd packages/wasm && ./build.sh
 
       # Build UI demo and embed bundle
       - name: Setup Node.js
@@ -70,41 +70,42 @@ jobs:
           # a lockfile is committed.
 
       # Pin the UI's `@goplasmatic/datalogic` dep to the version we just
-      # built in `wasm/pkg/` (extracted from the root Cargo.toml). Without
-      # this the local link below would mismatch ui/package.json's pin and
-      # `npm install` would replace the symlink with the registry copy.
-      # docs.yml doesn't publish, so this in-memory edit is build-only.
+      # built in `packages/wasm/pkg/` (extracted from
+      # `packages/core/Cargo.toml`). Without this the local link below
+      # would mismatch packages/ui/package.json's pin and `npm install`
+      # would replace the symlink with the registry copy. docs.yml doesn't
+      # publish, so this in-memory edit is build-only.
       - name: Pin UI -> WASM version to local build
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          cd ui && npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
+          VERSION=$(grep '^version = ' packages/core/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          cd packages/ui && npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
 
-      # Wire the freshly-built local WASM into ui/node_modules BEFORE
-      # `npm install`. With the symlink already present and its version
-      # matching ui/package.json's pin, `npm install` preserves it instead
-      # of fetching the registry copy.
+      # Wire the freshly-built local WASM into packages/ui/node_modules
+      # BEFORE `npm install`. With the symlink already present and its
+      # version matching packages/ui/package.json's pin, `npm install`
+      # preserves it instead of fetching the registry copy.
       - name: Link local WASM package into UI
         run: |
-          cd wasm/pkg && npm link
+          cd packages/wasm/pkg && npm link
           cd ../../ui && npm link @goplasmatic/datalogic
 
       - name: Install UI dependencies
-        run: cd ui && npm install
+        run: cd packages/ui && npm install
 
       - name: Build UI demo
-        run: cd ui && npm run build
+        run: cd packages/ui && npm run build
         env:
           GITHUB_ACTIONS: true
 
       - name: Build UI embed bundle
-        run: cd ui && npm run build:embed
+        run: cd packages/ui && npm run build:embed
 
       # Copy embed bundle to docs source assets (before mdbook build picks it up)
       - name: Copy embed bundle to docs source
         run: |
           mkdir -p docs/src/assets
-          cp ui/dist-embed/datalogic-embed.js docs/src/assets/
-          cp ui/dist-embed/datalogic-embed.css docs/src/assets/
+          cp packages/ui/dist-embed/datalogic-embed.js docs/src/assets/
+          cp packages/ui/dist-embed/datalogic-embed.css docs/src/assets/
 
       # Rebuild mdbook to include embed files
       - name: Rebuild documentation with embed bundle
@@ -114,7 +115,7 @@ jobs:
       - name: Copy UI demo to docs
         run: |
           mkdir -p docs/book/playground
-          cp -r ui/dist/* docs/book/playground/
+          cp -r packages/ui/dist/* docs/book/playground/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

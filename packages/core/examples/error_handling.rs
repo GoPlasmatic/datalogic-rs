@@ -54,10 +54,7 @@ fn main() {
     }
 
     // ----- (4) Wrap a foreign error with Error::wrap ----------------
-    let err: Error = "abc"
-        .parse::<i32>()
-        .map_err(Error::wrap)
-        .unwrap_err();
+    let err: Error = "abc".parse::<i32>().map_err(Error::wrap).unwrap_err();
     println!("\n[4] wrapped foreign error");
     println!("    kind_tag: {}", err.kind_tag());
     println!("    display:  {err}");
