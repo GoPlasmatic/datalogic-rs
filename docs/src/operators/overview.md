@@ -89,12 +89,20 @@ Boolean operators use configurable truthiness rules. By default (JavaScript-styl
 
 You can add your own operators. See [Custom Operators](../advanced/custom-operators.md) for details.
 
+In v5 operator registration is builder-only:
+
 ```rust
-engine.add_operator("myop".to_string(), Box::new(MyOperator));
+let engine = Engine::builder()
+    .add_operator("myop", MyOperator)
+    .build();
 ```
 
-Custom operators follow the same syntax:
+Custom operators follow the same syntax in rules:
 
 ```json
 { "myop": [arg1, arg2] }
 ```
+
+> **Note:** v5 removed the `preserve` operator. Wrap literals in
+> `preserve_structure` mode if you need to emit a JSON object verbatim
+> from a rule. Literal scalars and arrays already work inline.

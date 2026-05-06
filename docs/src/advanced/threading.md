@@ -4,51 +4,52 @@ datalogic-rs is designed for thread-safe, concurrent evaluation.
 
 ## Thread-Safe Design
 
-### CompiledLogic is Arc-wrapped
+### Logic is Send + Sync
 
-When you compile a rule, it's automatically wrapped in `Arc`:
+`Logic` (the v5 name for `CompiledLogic`) is `Send + Sync`. v5 does **not**
+auto-wrap it in `Arc` — wrap it yourself when you want cheap cross-thread
+sharing:
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::Engine;
+use std::sync::Arc;
 
-let engine = DataLogic::new();
-let rule = json!({ ">": [{ "var": "x" }, 10] });
+let engine = Engine::new();
+let compiled = Arc::new(
+    engine.compile(r#"{">": [{"var": "x"}, 10]}"#).unwrap(),
+);
 
-// compiled is Arc<CompiledLogic>
-let compiled = engine.compile(&rule).unwrap();
-
-// Clone is cheap (just increments reference count)
-let compiled_clone = compiled.clone();  // or Arc::clone(&compiled)
+// Cloning the Arc is cheap — just bumps the refcount.
+let compiled_clone = Arc::clone(&compiled);
 ```
+
+`Engine` itself is also `Send + Sync` once built, so wrap it in `Arc`
+the same way when sharing across threads.
 
 ### Sharing Across Threads
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::Engine;
 use std::sync::Arc;
 use std::thread;
 
-let engine = Arc::new(DataLogic::new());
-let rule = json!({ "*": [{ "var": "x" }, 2] });
-let compiled = engine.compile(&rule).unwrap();
+let engine = Arc::new(Engine::new());
+let compiled = Arc::new(engine.compile(r#"{"*": [{"var": "x"}, 2]}"#).unwrap());
 
 let handles: Vec<_> = (0..4).map(|i| {
     let engine = Arc::clone(&engine);
     let compiled = Arc::clone(&compiled);
 
     thread::spawn(move || {
-        let result = engine.evaluate_owned(
-            &compiled,
-            json!({ "x": i })
-        ).unwrap();
-        println!("Thread {}: {}", i, result);
+        let mut session = engine.session();
+        session
+            .evaluate_str(&compiled, &format!(r#"{{"x": {}}}"#, i))
+            .unwrap()
     })
 }).collect();
 
 for handle in handles {
-    handle.join().unwrap();
+    println!("{}", handle.join().unwrap());
 }
 ```
 
@@ -56,158 +57,138 @@ for handle in handles {
 
 ### With Tokio
 
+Evaluation is CPU-bound — use `spawn_blocking` to keep async runtimes
+responsive:
+
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::{Engine, Logic};
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    let engine = Arc::new(DataLogic::new());
-    let rule = json!({ "+": [{ "var": "a" }, { "var": "b" }] });
-    let compiled = engine.compile(&rule).unwrap();
+    let engine = Arc::new(Engine::new());
+    let compiled = Arc::new(engine.compile(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#).unwrap());
 
-    // Spawn multiple async tasks
     let tasks: Vec<_> = (0..10).map(|i| {
         let engine = Arc::clone(&engine);
         let compiled = Arc::clone(&compiled);
 
-        tokio::spawn(async move {
-            // Use spawn_blocking for CPU-bound evaluation
-            tokio::task::spawn_blocking(move || {
-                engine.evaluate_owned(&compiled, json!({ "a": i, "b": i * 2 }))
-            }).await.unwrap()
+        tokio::task::spawn_blocking(move || {
+            let mut session = engine.session();
+            let payload = format!(r#"{{"a": {}, "b": {}}}"#, i, i * 2);
+            session.evaluate_str(&compiled, &payload)
         })
     }).collect();
 
     for task in tasks {
         let result = task.await.unwrap().unwrap();
-        println!("Result: {}", result);
+        println!("{}", result);
     }
-}
-```
-
-### Evaluation is CPU-bound
-
-Since evaluation is CPU-bound (not I/O), use `spawn_blocking` in async contexts:
-
-```rust
-async fn evaluate_rule(
-    engine: Arc<DataLogic>,
-    compiled: Arc<CompiledLogic>,
-    data: Value,
-) -> Result<Value, Error> {
-    tokio::task::spawn_blocking(move || {
-        engine.evaluate_owned(&compiled, data)
-    }).await.unwrap()
 }
 ```
 
 ## Thread Pool Pattern
 
-For high-throughput scenarios, use a thread pool:
+For high-throughput scenarios, use a thread pool — each worker keeps its own
+`Session` so the arena is reused across calls without contention:
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
-use std::sync::Arc;
+use datalogic_rs::Engine;
 use rayon::prelude::*;
+use std::sync::Arc;
 
-let engine = Arc::new(DataLogic::new());
-let rule = json!({ "filter": [
-    { "var": "items" },
-    { ">": [{ "var": "value" }, 50] }
-]});
-let compiled = engine.compile(&rule).unwrap();
+let engine = Arc::new(Engine::new());
+let compiled = Arc::new(
+    engine.compile(r#"{"filter": [{"var": "items"}, {">": [{"var": ".value"}, 50]}]}"#).unwrap(),
+);
 
-// Process many data sets in parallel
-let datasets: Vec<Value> = (0..1000)
-    .map(|i| json!({
-        "items": (0..100).map(|j| json!({ "value": (i + j) % 100 })).collect::<Vec<_>>()
-    }))
+let datasets: Vec<String> = (0..1000)
+    .map(|i| format!(r#"{{"items": [{{"value": {}}}, {{"value": {}}}]}}"#, i % 100, (i + 1) % 100))
     .collect();
 
 let results: Vec<_> = datasets
-    .par_iter()  // Rayon parallel iterator
-    .map(|data| {
-        engine.evaluate(&compiled, data).unwrap()
-    })
+    .par_iter()
+    .map_init(
+        || engine.session(),
+        |session, data| session.evaluate_str(&compiled, data),
+    )
     .collect();
 ```
+
+> **Tip:** `Session::evaluate_str` resets the arena between calls, so peak
+> memory tracks the largest single evaluation rather than the lifetime sum.
 
 ## Shared Engine vs Per-Thread Engine
 
 ### Shared Engine (Recommended)
 
-Share one engine across threads when using the same custom operators:
+Build the engine once with all custom operators, then share via `Arc`:
 
 ```rust
 use std::sync::Arc;
+use datalogic_rs::Engine;
 
-let mut engine = DataLogic::new();
-engine.add_operator("custom".to_string(), Box::new(MyOperator));
-let engine = Arc::new(engine);
+let engine = Arc::new(
+    Engine::builder()
+        .add_operator("custom", MyOperator)
+        .build(),
+);
 
-// Share across threads
 for _ in 0..4 {
     let engine = Arc::clone(&engine);
-    thread::spawn(move || {
-        // Use shared engine
+    std::thread::spawn(move || {
+        let mut session = engine.session();
+        // Use shared engine.
     });
 }
 ```
 
 ### Per-Thread Engine
 
-Create separate engines when you need thread-local state:
+Use when you genuinely need thread-local engine state:
 
 ```rust
 thread_local! {
-    static ENGINE: DataLogic = {
-        let mut engine = DataLogic::new();
-        // Thread-local configuration
-        engine
-    };
+    static ENGINE: datalogic_rs::Engine = datalogic_rs::Engine::new();
 }
 
-// Use in each thread
 ENGINE.with(|engine| {
-    let compiled = engine.compile(&rule).unwrap();
-    engine.evaluate_owned(&compiled, data)
+    let compiled = engine.compile(r#"{"==": [1, 1]}"#).unwrap();
+    let mut session = engine.session();
+    session.evaluate_str(&compiled, r#"{}"#)
 });
 ```
 
 ## Custom Operator Thread Safety
 
-Custom operators must implement `Send + Sync`:
+`CustomOperator` is `Send + Sync`. For shared mutable state, use the usual
+synchronisation primitives:
 
 ```rust
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
+use datalogic_rs::operator::ContextStack;
 
-// Thread-safe custom operator
 struct CounterOperator {
     counter: Arc<AtomicUsize>,
 }
 
-impl Operator for CounterOperator {
-    fn evaluate(
+impl CustomOperator for CounterOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        let count = self.counter.fetch_add(1, Ordering::SeqCst);
-        Ok(json!(count))
+        _args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        let count = self.counter.fetch_add(1, Ordering::SeqCst) as i64;
+        Ok(arena.alloc(DataValue::from_i64(count)))
     }
 }
 
-// Create shared counter
 let counter = Arc::new(AtomicUsize::new(0));
-
-let mut engine = DataLogic::new();
-engine.add_operator("count".to_string(), Box::new(CounterOperator {
-    counter: Arc::clone(&counter),
-}));
+let engine = Engine::builder()
+    .add_operator("count", CounterOperator { counter: Arc::clone(&counter) })
+    .build();
 ```
 
 ## Performance Considerations
@@ -215,67 +196,55 @@ engine.add_operator("count".to_string(), Box::new(CounterOperator {
 ### Compile Once, Evaluate Many
 
 ```rust
-// GOOD: Compile once
-let compiled = engine.compile(&rule).unwrap();
+// Good
+let compiled = engine.compile(rule).unwrap();
+let mut session = engine.session();
 for data in datasets {
-    engine.evaluate(&compiled, &data);
+    session.evaluate_str(&compiled, data)?;
 }
 
-// BAD: Compiling in a loop
+// Bad — recompiles every iteration
 for data in datasets {
-    let compiled = engine.compile(&rule).unwrap();  // Unnecessary!
-    engine.evaluate(&compiled, &data);
+    let compiled = engine.compile(rule).unwrap();
+    engine.evaluate_str(rule, data)?;
 }
 ```
 
-### Minimize Cloning
+### Reuse the Arena
 
-```rust
-// GOOD: Use references where possible
-let result = engine.evaluate(&compiled, &data)?;
+`Session` resets the arena between calls — peak memory tracks the largest
+single evaluation rather than the sum. For zero-copy `&DataValue<'a>`
+results, manage the `bumpalo::Bump` yourself and call `Engine::evaluate`
+directly.
 
-// Use owned version only when you don't need the data afterwards
-let result = engine.evaluate_owned(&compiled, data)?;
-```
+### Short-Circuit Evaluation
 
-### Batch Processing
-
-```rust
-// Process in batches to balance parallelism overhead
-let batch_size = 100;
-for chunk in datasets.chunks(batch_size) {
-    let results: Vec<_> = chunk.par_iter()
-        .map(|data| engine.evaluate(&compiled, data))
-        .collect();
-    // Process results
-}
-```
+`and`, `or`, `if`, `?:`, and `??` short-circuit. Order conditions so that
+the cheapest / most-likely-to-decide ones come first.
 
 ## Error Handling in Threads
 
 ```rust
+use datalogic_rs::{Engine, Error};
+use std::sync::Arc;
 use std::thread;
 
-let handles: Vec<_> = datasets.into_iter().map(|data| {
+let engine = Arc::new(Engine::new());
+let compiled = Arc::new(engine.compile(r#"{"+": [1, 1]}"#).unwrap());
+
+let handles: Vec<_> = (0..4).map(|_| {
     let engine = Arc::clone(&engine);
     let compiled = Arc::clone(&compiled);
-
-    thread::spawn(move || -> Result<Value, Error> {
-        engine.evaluate_owned(&compiled, data)
+    thread::spawn(move || -> Result<String, Error> {
+        let mut session = engine.session();
+        session.evaluate_str(&compiled, r#"{}"#)
     })
 }).collect();
 
-// Collect results, handling errors
-let results: Vec<Result<Value, Error>> = handles
-    .into_iter()
-    .map(|h| h.join().expect("Thread panicked"))
-    .collect();
-
-// Process results
-for (i, result) in results.into_iter().enumerate() {
-    match result {
-        Ok(value) => println!("Result {}: {}", i, value),
-        Err(e) => eprintln!("Error {}: {}", i, e),
+for h in handles {
+    match h.join().expect("thread panicked") {
+        Ok(value) => println!("{}", value),
+        Err(e) => eprintln!("error: {} (operator: {:?}, path: {:?})", e, e.operator, e.path),
     }
 }
 ```

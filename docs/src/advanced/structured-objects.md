@@ -2,21 +2,28 @@
 
 Use JSONLogic as a templating engine with structure preservation mode.
 
+> Requires `feature = "preserve"`. The mode is off by default.
+
 ## Enabling Structure Preservation
 
 ```rust
-use datalogic_rs::DataLogic;
+use datalogic_rs::Engine;
 
 // Enable structure preservation
-let engine = DataLogic::with_preserve_structure();
+let engine = Engine::builder().preserve_structure(true).build();
 
-// Or combine with configuration
-let engine = DataLogic::with_config_and_structure(config, true);
+// Combine with custom configuration
+let engine = Engine::builder()
+    .config(my_config)
+    .preserve_structure(true)
+    .build();
 ```
 
 ## How It Works
 
-In normal mode, unknown keys in a JSON object are treated as errors (or custom operators). With structure preservation enabled, unknown keys become literal output fields.
+In normal mode, unknown keys in a JSON object are treated as errors (or as
+custom operators when one is registered). With structure preservation
+enabled, unknown keys become literal output fields.
 
 **Normal mode:**
 ```json
@@ -28,35 +35,23 @@ In normal mode, unknown keys in a JSON object are treated as errors (or custom o
 ```json
 { "user": { "var": "name" } }
 // Result: { "user": "Alice" }
-// "user" is preserved as an output key
 ```
 
 ## Basic Templating
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::Engine;
 
-let engine = DataLogic::with_preserve_structure();
+let engine = Engine::builder().preserve_structure(true).build();
 
-let template = json!({
-    "greeting": { "cat": ["Hello, ", { "var": "name" }, "!"] },
-    "timestamp": { "now": [] },
-    "isAdmin": { "==": [{ "var": "role" }, "admin"] }
-});
+let template = r#"{
+    "greeting": {"cat": ["Hello, ", {"var": "name"}, "!"]},
+    "isAdmin": {"==": [{"var": "role"}, "admin"]}
+}"#;
+let data = r#"{"name": "Alice", "role": "admin"}"#;
 
-let compiled = engine.compile(&template).unwrap();
-let result = engine.evaluate_owned(&compiled, json!({
-    "name": "Alice",
-    "role": "admin"
-})).unwrap();
-
-// Result:
-// {
-//     "greeting": "Hello, Alice!",
-//     "timestamp": 1704067200000,
-//     "isAdmin": true
-// }
+let result = engine.evaluate_str(template, data).unwrap();
+// {"greeting":"Hello, Alice!","isAdmin":true}
 ```
 
 ## Nested Structures
@@ -64,48 +59,30 @@ let result = engine.evaluate_owned(&compiled, json!({
 Structure preservation works at any depth:
 
 ```rust
-let template = json!({
+let template = r#"{
     "user": {
         "profile": {
-            "displayName": { "var": "firstName" },
-            "email": { "var": "userEmail" },
+            "displayName": {"var": "firstName"},
+            "email": {"var": "userEmail"},
             "verified": true
         },
         "settings": {
-            "theme": { "??": [{ "var": "preferredTheme" }, "light"] },
-            "notifications": { "var": "notificationsEnabled" }
+            "theme": {"??": [{"var": "preferredTheme"}, "light"]},
+            "notifications": {"var": "notificationsEnabled"}
         }
     },
     "metadata": {
-        "generatedAt": { "now": [] },
         "version": "1.0"
     }
-});
+}"#;
 
-let result = engine.evaluate_owned(&compiled, json!({
+let data = r#"{
     "firstName": "Bob",
     "userEmail": "bob@example.com",
     "notificationsEnabled": true
-})).unwrap();
+}"#;
 
-// Result:
-// {
-//     "user": {
-//         "profile": {
-//             "displayName": "Bob",
-//             "email": "bob@example.com",
-//             "verified": true
-//         },
-//         "settings": {
-//             "theme": "light",
-//             "notifications": true
-//         }
-//     },
-//     "metadata": {
-//         "generatedAt": 1704067200000,
-//         "version": "1.0"
-//     }
-// }
+let result = engine.evaluate_str(template, data).unwrap();
 ```
 
 ## Arrays in Templates
@@ -113,27 +90,17 @@ let result = engine.evaluate_owned(&compiled, json!({
 Arrays are processed element by element:
 
 ```rust
-let template = json!({
+let template = r#"{
     "items": [
-        { "name": "Item 1", "price": { "var": "price1" } },
-        { "name": "Item 2", "price": { "var": "price2" } }
+        {"name": "Item 1", "price": {"var": "price1"}},
+        {"name": "Item 2", "price": {"var": "price2"}}
     ],
-    "total": { "+": [{ "var": "price1" }, { "var": "price2" }] }
-});
+    "total": {"+": [{"var": "price1"}, {"var": "price2"}]}
+}"#;
 
-let result = engine.evaluate_owned(&compiled, json!({
-    "price1": 10,
-    "price2": 20
-})).unwrap();
+let data = r#"{"price1": 10, "price2": 20}"#;
 
-// Result:
-// {
-//     "items": [
-//         { "name": "Item 1", "price": 10 },
-//         { "name": "Item 2", "price": 20 }
-//     ],
-//     "total": 30
-// }
+let result = engine.evaluate_str(template, data).unwrap();
 ```
 
 ## Dynamic Arrays with Map
@@ -141,135 +108,119 @@ let result = engine.evaluate_owned(&compiled, json!({
 Generate arrays dynamically using `map`:
 
 ```rust
-let template = json!({
+let template = r#"{
     "users": {
         "map": [
-            { "var": "userList" },
+            {"var": "userList"},
             {
-                "id": { "var": "id" },
-                "name": { "var": "name" },
-                "isActive": { "var": "active" }
+                "id": {"var": ".id"},
+                "name": {"var": ".name"},
+                "isActive": {"var": ".active"}
             }
         ]
     }
-});
+}"#;
 
-let result = engine.evaluate_owned(&compiled, json!({
+let data = r#"{
     "userList": [
-        { "id": 1, "name": "Alice", "active": true },
-        { "id": 2, "name": "Bob", "active": false }
+        {"id": 1, "name": "Alice", "active": true},
+        {"id": 2, "name": "Bob", "active": false}
     ]
-})).unwrap();
+}"#;
 
-// Result:
-// {
-//     "users": [
-//         { "id": 1, "name": "Alice", "isActive": true },
-//         { "id": 2, "name": "Bob", "isActive": false }
-//     ]
-// }
+let result = engine.evaluate_str(template, data).unwrap();
 ```
 
-## The preserve Operator
+## The `preserve` Operator Was Removed
 
-Use the `preserve` operator to explicitly preserve a value without evaluation:
-
-```rust
-let template = json!({
-    "data": { "var": "input" },
-    "literal": { "preserve": { "var": "this is literal" } }
-});
-
-// Result:
-// {
-//     "data": <value of input>,
-//     "literal": { "var": "this is literal" }
-// }
-```
+In v4 there was an explicit `preserve` operator that wrapped a value to
+prevent further evaluation. **v5 removed it.** Wrap-as-output is exactly
+what `preserve_structure` mode already does for objects, and literal scalars
+/ arrays already pass through inline. If you need to emit a JSON object
+verbatim from a rule, enable `preserve_structure` and write the object
+directly.
 
 ## Use Cases
 
 ### API Response Transformation
 
 ```rust
-let template = json!({
+let template = r#"{
     "success": true,
     "data": {
         "user": {
-            "id": { "var": "userId" },
+            "id": {"var": "userId"},
             "profile": {
-                "name": { "cat": [{ "var": "firstName" }, " ", { "var": "lastName" }] },
-                "avatar": { "cat": ["https://cdn.example.com/", { "var": "avatarId" }, ".jpg"] }
+                "name": {"cat": [{"var": "firstName"}, " ", {"var": "lastName"}]},
+                "avatar": {"cat": ["https://cdn.example.com/", {"var": "avatarId"}, ".jpg"]}
             }
         }
-    },
-    "timestamp": { "now": [] }
-});
+    }
+}"#;
 ```
 
 ### Document Generation
 
 ```rust
-let template = json!({
+let template = r#"{
     "invoice": {
-        "number": { "cat": ["INV-", { "var": "invoiceId" }] },
-        "date": { "format_date": [{ "now": [] }, "%Y-%m-%d"] },
+        "number": {"cat": ["INV-", {"var": "invoiceId"}]},
         "customer": {
-            "name": { "var": "customerName" },
-            "address": { "var": "customerAddress" }
+            "name": {"var": "customerName"},
+            "address": {"var": "customerAddress"}
         },
-        "items": { "var": "lineItems" },
+        "items": {"var": "lineItems"},
         "total": {
             "reduce": [
-                { "var": "lineItems" },
-                { "+": [{ "var": "accumulator" }, { "var": "current.amount" }] },
+                {"var": "lineItems"},
+                {"+": [{"var": "accumulator"}, {"var": "current.amount"}]},
                 0
             ]
         }
     }
-});
+}"#;
 ```
 
 ### Configuration Templating
 
 ```rust
-let template = json!({
+let template = r#"{
     "database": {
-        "host": { "??": [{ "var": "DB_HOST" }, "localhost"] },
-        "port": { "??": [{ "var": "DB_PORT" }, 5432] },
-        "name": { "var": "DB_NAME" },
-        "ssl": { "==": [{ "var": "ENV" }, "production"] }
+        "host": {"??": [{"var": "DB_HOST"}, "localhost"]},
+        "port": {"??": [{"var": "DB_PORT"}, 5432]},
+        "name": {"var": "DB_NAME"},
+        "ssl": {"==": [{"var": "ENV"}, "production"]}
     },
     "cache": {
-        "enabled": { "var": "CACHE_ENABLED" },
-        "ttl": { "if": [
-            { "==": [{ "var": "ENV" }, "development"] },
+        "enabled": {"var": "CACHE_ENABLED"},
+        "ttl": {"if": [
+            {"==": [{"var": "ENV"}, "development"]},
             60,
             3600
         ]}
     }
-});
+}"#;
 ```
 
 ### Dynamic Forms
 
 ```rust
-let template = json!({
+let template = r#"{
     "form": {
-        "title": { "var": "formTitle" },
+        "title": {"var": "formTitle"},
         "fields": {
             "map": [
-                { "var": "fieldDefinitions" },
+                {"var": "fieldDefinitions"},
                 {
-                    "name": { "var": "name" },
-                    "type": { "var": "type" },
-                    "required": { "var": "required" },
-                    "label": { "cat": [{ "var": "name" }, { "if": [{ "var": "required" }, " *", ""] }] }
+                    "name": {"var": ".name"},
+                    "type": {"var": ".type"},
+                    "required": {"var": ".required"},
+                    "label": {"cat": [{"var": ".name"}, {"if": [{"var": ".required"}, " *", ""]}]}
                 }
             ]
         }
     }
-});
+}"#;
 ```
 
 ## Mixing Operators and Structure
@@ -277,29 +228,26 @@ let template = json!({
 You can mix operators and structure freely:
 
 ```rust
-let template = json!({
-    // Static structure
+let template = r#"{
     "type": "response",
     "version": "2.0",
 
-    // Conditional structure
-    "status": { "if": [
-        { "var": "success" },
+    "status": {"if": [
+        {"var": "success"},
         "ok",
         "error"
     ]},
 
-    // Dynamic content
-    "data": { "if": [
-        { "var": "success" },
+    "data": {"if": [
+        {"var": "success"},
         {
-            "result": { "var": "data" },
-            "count": { "length": { "var": "data" } }
+            "result": {"var": "data"},
+            "count": {"length": {"var": "data"}}
         },
         {
-            "error": { "var": "errorMessage" },
-            "code": { "var": "errorCode" }
+            "error": {"var": "errorMessage"},
+            "code": {"var": "errorCode"}
         }
     ]}
-});
+}"#;
 ```

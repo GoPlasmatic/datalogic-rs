@@ -1,22 +1,45 @@
 # Configuration
 
-Customize evaluation behavior with `EvaluationConfig`.
+Customize evaluation behavior with `EvaluationConfig` and the
+`EngineBuilder`.
 
 ## Creating a Configured Engine
 
 ```rust
-use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
+use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
 // Default configuration
-let engine = DataLogic::new();
+let engine = Engine::new();
 
 // Custom configuration
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::IgnoreValue);
-let engine = DataLogic::with_config(config);
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::IgnoreValue,
+    ..Default::default()
+};
+let engine = Engine::builder().config(config).build();
 ```
 
+> v5 dropped the `with_config` / `with_preserve_structure` /
+> `with_config_and_structure` constructors in favour of the builder. The
+> old constructors are still reachable through the `compat` feature's
+> [`LegacyApi`](../migration.md#legacyapi-and-the-compat-feature) trait
+> for migration purposes.
+
 ## Configuration Options
+
+`EvaluationConfig` is a plain struct — set fields directly with struct
+update syntax:
+
+```rust
+use datalogic_rs::{EvaluationConfig, NanHandling, DivisionByZeroHandling};
+
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::IgnoreValue,
+    division_by_zero: DivisionByZeroHandling::ReturnNull,
+    loose_equality_errors: false,
+    ..Default::default()
+};
+```
 
 ### NaN Handling
 
@@ -25,97 +48,69 @@ Control how non-numeric values are handled in arithmetic operations.
 ```rust
 use datalogic_rs::{EvaluationConfig, NanHandling};
 
-// Option 1: Throw an error (default)
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::ThrowError);
-
-// Option 2: Ignore non-numeric values
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::IgnoreValue);
-
-// Option 3: Coerce to zero
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::CoerceToZero);
+// ThrowError (default), IgnoreValue, CoerceToZero, ReturnNull
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::IgnoreValue,
+    ..Default::default()
+};
 ```
 
-**Behavior comparison:**
+**Behavior comparison** for `{"+": [1, "text", 2]}`:
 
-```rust
-let rule = json!({ "+": [1, "text", 2] });
-
-// NanHandling::ThrowError
-// Result: Error
-
-// NanHandling::IgnoreValue
-// Result: 3 (ignores "text")
-
-// NanHandling::CoerceToZero
-// Result: 3 ("text" becomes 0)
-```
+| Setting | Result |
+|---------|--------|
+| `ThrowError` (default) | `Err(Thrown { type: "NaN" })` |
+| `IgnoreValue` | `3` (skips `"text"`) |
+| `CoerceToZero` | `3` (`"text"` → `0`) |
+| `ReturnNull` | `null` |
 
 ### Division by Zero
 
-Control how division by zero is handled.
-
 ```rust
-use datalogic_rs::{EvaluationConfig, DivisionByZero};
+use datalogic_rs::{EvaluationConfig, DivisionByZeroHandling};
 
-// Option 1: Return Infinity/-Infinity (default)
-let config = EvaluationConfig::default()
-    .with_division_by_zero(DivisionByZero::ReturnBounds);
-
-// Option 2: Throw an error
-let config = EvaluationConfig::default()
-    .with_division_by_zero(DivisionByZero::ThrowError);
-
-// Option 3: Return null
-let config = EvaluationConfig::default()
-    .with_division_by_zero(DivisionByZero::ReturnNull);
+// ReturnBounds (default), ThrowError, ReturnNull, ReturnInfinity
+let config = EvaluationConfig {
+    division_by_zero: DivisionByZeroHandling::ThrowError,
+    ..Default::default()
+};
 ```
 
-**Behavior comparison:**
+**Behavior comparison** for `{"/": [10, 0]}`:
 
-```rust
-let rule = json!({ "/": [10, 0] });
-
-// DivisionByZero::ReturnBounds
-// Result: Infinity
-
-// DivisionByZero::ThrowError
-// Result: Error
-
-// DivisionByZero::ReturnNull
-// Result: null
-```
+| Setting | Result |
+|---------|--------|
+| `ReturnBounds` (default) | `f64::MAX` (sign of dividend) |
+| `ThrowError` | `Err(Thrown { type: "NaN" })` |
+| `ReturnNull` | `null` |
+| `ReturnInfinity` | `Infinity` (sign of dividend) |
 
 ### Truthiness Evaluation
 
-Control how values are evaluated for truthiness in boolean contexts.
-
 ```rust
-use datalogic_rs::{EvaluationConfig, TruthyEvaluator};
 use std::sync::Arc;
+use datalogic_rs::{EvaluationConfig, TruthyEvaluator};
+use datalogic_rs::datavalue::OwnedDataValue;
 
-// Option 1: JavaScript-style (default)
-let config = EvaluationConfig::default()
-    .with_truthy_evaluator(TruthyEvaluator::JavaScript);
+// JavaScript (default), Python, StrictBoolean, Custom
+let config = EvaluationConfig {
+    truthy_evaluator: TruthyEvaluator::Python,
+    ..Default::default()
+};
 
-// Option 2: Python-style
-let config = EvaluationConfig::default()
-    .with_truthy_evaluator(TruthyEvaluator::Python);
-
-// Option 3: Strict boolean (only true/false)
-let config = EvaluationConfig::default()
-    .with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-
-// Option 4: Custom evaluator
-let custom = Arc::new(|value: &serde_json::Value| -> bool {
-    // Custom logic: only positive numbers are truthy
+// Custom truthy: receives an OwnedDataValue (no serde_json required)
+let custom = Arc::new(|value: &OwnedDataValue| -> bool {
     value.as_f64().map_or(false, |n| n > 0.0)
 });
-let config = EvaluationConfig::default()
-    .with_truthy_evaluator(TruthyEvaluator::Custom(custom));
+let config = EvaluationConfig {
+    truthy_evaluator: TruthyEvaluator::Custom(custom),
+    ..Default::default()
+};
 ```
+
+> **v5 change:** `TruthyEvaluator::Custom` now takes
+> `Arc<dyn Fn(&OwnedDataValue) -> bool + Send + Sync>` (the canonical owned
+> value type). v4 used `&serde_json::Value`.
 
 **Truthiness comparison:**
 
@@ -123,123 +118,128 @@ let config = EvaluationConfig::default()
 |-------|-----------|--------|---------------|
 | `true` | truthy | truthy | truthy |
 | `false` | falsy | falsy | falsy |
-| `1` | truthy | truthy | error/falsy |
-| `0` | falsy | falsy | error/falsy |
-| `""` | falsy | falsy | error/falsy |
-| `"0"` | truthy | truthy | error/falsy |
-| `[]` | falsy | falsy | error/falsy |
-| `[0]` | truthy | truthy | error/falsy |
-| `null` | falsy | falsy | error/falsy |
+| `1` | truthy | truthy | falsy |
+| `0` | falsy | falsy | falsy |
+| `""` | falsy | falsy | falsy |
+| `"0"` | truthy | truthy | falsy |
+| `[]` | falsy | falsy | falsy |
+| `[0]` | truthy | truthy | falsy |
+| `null` | falsy | falsy | falsy |
 
 ### Loose Equality Errors
 
-Control whether loose equality (`==`) throws errors for incompatible types.
+Control whether loose equality (`==`) raises errors for incompatible types.
 
 ```rust
-let config = EvaluationConfig::default()
-    .with_loose_equality_throws_errors(true);  // default
-// or
-let config = EvaluationConfig::default()
-    .with_loose_equality_throws_errors(false);
+let config = EvaluationConfig {
+    loose_equality_errors: true,   // default
+    ..Default::default()
+};
+```
+
+### Numeric Coercion
+
+```rust
+use datalogic_rs::{EvaluationConfig, NumericCoercionConfig};
+
+let config = EvaluationConfig {
+    numeric_coercion: NumericCoercionConfig {
+        empty_string_to_zero: false,
+        null_to_zero: false,
+        bool_to_number: false,
+        strict_numeric: true,
+        undefined_to_zero: false,
+    },
+    ..Default::default()
+};
 ```
 
 ## Configuration Presets
 
-### Safe Arithmetic
-
-Ignores invalid values in arithmetic operations:
-
 ```rust
-let engine = DataLogic::with_config(EvaluationConfig::safe_arithmetic());
+use datalogic_rs::{Engine, EvaluationConfig};
 
-// Equivalent to:
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::IgnoreValue)
-    .with_division_by_zero(DivisionByZero::ReturnNull);
-```
+// Lenient arithmetic — IgnoreValue + ReturnNull divide-by-zero
+let engine = Engine::builder()
+    .config(EvaluationConfig::safe_arithmetic())
+    .build();
 
-### Strict Mode
-
-Throws errors for any type mismatches:
-
-```rust
-let engine = DataLogic::with_config(EvaluationConfig::strict());
-
-// Equivalent to:
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::ThrowError)
-    .with_division_by_zero(DivisionByZero::ThrowError)
-    .with_loose_equality_throws_errors(true);
+// Strict — errors for any type mismatch and no numeric coercion
+let engine = Engine::builder()
+    .config(EvaluationConfig::strict())
+    .build();
 ```
 
 ## Combining with Structure Preservation
 
-Use both configuration and structure preservation:
+Use both configuration and structure preservation (requires
+`feature = "preserve"`):
 
 ```rust
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::CoerceToZero);
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::CoerceToZero,
+    ..Default::default()
+};
 
-let engine = DataLogic::with_config_and_structure(config, true);
+let engine = Engine::builder()
+    .config(config)
+    .preserve_structure(true)
+    .build();
 ```
 
 ## Configuration Examples
 
 ### Lenient Data Processing
 
-For processing potentially messy data:
-
 ```rust
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::IgnoreValue)
-    .with_division_by_zero(DivisionByZero::ReturnNull);
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::IgnoreValue,
+    division_by_zero: DivisionByZeroHandling::ReturnNull,
+    ..Default::default()
+};
 
-let engine = DataLogic::with_config(config);
+let engine = Engine::builder().config(config).build();
 
-// This won't error even with bad data
-let rule = json!({ "+": [1, "not a number", null, 2] });
-let result = engine.evaluate_json(&rule.to_string(), "{}").unwrap();
-// Result: 3 (ignores non-numeric values)
+let r = engine.evaluate_str(
+    r#"{"+": [1, "not a number", null, 2]}"#,
+    r#"{}"#,
+).unwrap();
+// "3" (ignores non-numeric values)
 ```
 
 ### Strict Validation
 
-For scenarios requiring precise type handling:
-
 ```rust
-let config = EvaluationConfig::strict();
-let engine = DataLogic::with_config(config);
+let engine = Engine::builder()
+    .config(EvaluationConfig::strict())
+    .build();
 
-// This will error on type mismatches
-let rule = json!({ "+": [1, "2"] });
-let result = engine.evaluate_json(&rule.to_string(), "{}");
-// Result: Error (strict mode doesn't coerce "2" to number)
+let result = engine.evaluate_str(r#"{"+": [1, "2"]}"#, r#"{}"#);
+// Err(...) — strict mode does not coerce "2" to a number
 ```
 
 ### Custom Business Logic Truthiness
 
-For domain-specific truth evaluation:
-
 ```rust
 use std::sync::Arc;
+use datalogic_rs::datavalue::OwnedDataValue;
 
-// Only non-empty strings and positive numbers are truthy
-let custom_truthy = Arc::new(|value: &serde_json::Value| -> bool {
+let custom_truthy = Arc::new(|value: &OwnedDataValue| -> bool {
     match value {
-        serde_json::Value::Bool(b) => *b,
-        serde_json::Value::Number(n) => n.as_f64().map_or(false, |n| n > 0.0),
-        serde_json::Value::String(s) => !s.is_empty(),
+        OwnedDataValue::Bool(b) => *b,
+        OwnedDataValue::Number(_) => value.as_f64().map_or(false, |n| n > 0.0),
+        OwnedDataValue::String(s) => !s.is_empty(),
         _ => false,
     }
 });
 
-let config = EvaluationConfig::default()
-    .with_truthy_evaluator(TruthyEvaluator::Custom(custom_truthy));
+let config = EvaluationConfig {
+    truthy_evaluator: TruthyEvaluator::Custom(custom_truthy),
+    ..Default::default()
+};
 
-let engine = DataLogic::with_config(config);
-
-// With this config:
-// { "if": [0, "yes", "no"] } => "no" (0 is not positive)
-// { "if": [-5, "yes", "no"] } => "no" (-5 is not positive)
-// { "if": [1, "yes", "no"] } => "yes" (1 is positive)
+let engine = Engine::builder().config(config).build();
+// {"if": [0,  "yes", "no"]}  ⇒ "no"
+// {"if": [-5, "yes", "no"]}  ⇒ "no"
+// {"if": [1,  "yes", "no"]}  ⇒ "yes"
 ```

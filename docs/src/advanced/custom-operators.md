@@ -2,177 +2,185 @@
 
 Extend datalogic-rs with your own operators to implement domain-specific logic.
 
-## Basic Custom Operator
+> **v5 changes:** Custom operators receive **pre-evaluated** `&DataValue<'a>`
+> arguments and return arena-allocated values. The old "args are unevaluated;
+> call `evaluator.evaluate()`" model is gone, and so is the `Evaluator` trait.
+> The trait is named `CustomOperator`, and registration is **builder-only**.
 
-Custom operators implement the `Operator` trait:
+## The CustomOperator Trait
 
 ```rust
-use datalogic_rs::{DataLogic, Operator, ContextStack, Evaluator, Result, Error};
-use serde_json::{json, Value};
+use bumpalo::Bump;
+use datalogic_rs::operator::ContextStack;
+use datalogic_rs::{CustomOperator, DataValue, Result};
+
+pub trait CustomOperator: Send + Sync {
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        ctx: &mut ContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>>;
+}
+```
+
+| Parameter | What it is |
+|-----------|------------|
+| `args` | The operator's arguments **already evaluated** by the engine. Each `&'a DataValue<'a>` borrows from caller input or from earlier arena allocations. |
+| `ctx` | The arena-backed context stack. Most operators ignore it; iterating operators (analogous to `map`/`filter`) push their own frames. |
+| `arena` | The `bumpalo::Bump` allocator for the current call. Use `arena.alloc(...)` for `DataValue`s and `arena.alloc_str(...)` for strings. |
+
+The return value must live in the arena (or be a preallocated singleton like
+`DataValue::Null`). Never return a stack reference.
+
+## Basic Custom Operator
+
+```rust
+use bumpalo::Bump;
+use datalogic_rs::operator::ContextStack;
+use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 
 struct DoubleOperator;
 
-impl Operator for DoubleOperator {
-    fn evaluate(
+impl CustomOperator for DoubleOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Arguments are unevaluated - must call evaluate() first!
-        let value = evaluator.evaluate(
-            args.first().unwrap_or(&Value::Null),
-            context
-        )?;
-
-        match value.as_f64() {
-            Some(n) => Ok(json!(n * 2.0)),
-            None => Err(Error::InvalidArguments("Expected number".to_string()))
-        }
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        let n = args
+            .first()
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| Error::invalid_arguments("expected number"))?;
+        Ok(arena.alloc(DataValue::from_f64(n * 2.0)))
     }
 }
 ```
 
 ## Registering Custom Operators
 
-Add custom operators to the engine before compiling rules:
+Operator registration is builder-only. Once `build()` is called the engine's
+operator set is frozen:
 
 ```rust
-let mut engine = DataLogic::new();
-engine.add_operator("double".to_string(), Box::new(DoubleOperator));
+let engine = Engine::builder()
+    .add_operator("double", DoubleOperator)
+    .build();
 
-// Now use it in rules
-let rule = json!({ "double": 21 });
-let compiled = engine.compile(&rule).unwrap();
-let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
-assert_eq!(result, json!(42.0));
+let result = engine.evaluate_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
+assert_eq!(result, "42");
 ```
 
-## Important: Evaluating Arguments
+`add_operator` accepts any `T: CustomOperator + 'static`. If you already
+hold a `Box<dyn CustomOperator>` (e.g. from a runtime registry), use
+`add_operator_boxed` instead.
 
-**Arguments passed to custom operators are unevaluated.** You must call `evaluator.evaluate()` to resolve them:
+You can also `remove_operator(name)` on the builder to unregister something
+a helper added.
+
+## Reading Argument Types
+
+`DataValue<'a>` is the arena-resident value tree, re-exported from the
+[`datavalue`](https://docs.rs/datavalue-rs) crate. Common accessors:
 
 ```rust
-impl Operator for MyOperator {
-    fn evaluate(
-        &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // WRONG: Using args directly
-        // let value = args[0].as_f64();
-
-        // CORRECT: Evaluate first
-        let value = evaluator.evaluate(&args[0], context)?;
-        let num = value.as_f64();
-
-        // Now work with the evaluated value
-        // ...
+match args[0] {
+    DataValue::Null => { /* ... */ }
+    DataValue::Bool(b) => { /* ... */ }
+    DataValue::Number(_) => {
+        let n: Option<f64> = args[0].as_f64();
+        let i: Option<i64> = args[0].as_i64();
     }
+    DataValue::String(s) => { /* &str */ }
+    DataValue::Array(items) => { /* &[DataValue<'a>] */ }
+    DataValue::Object(pairs) => { /* &[(&str, DataValue<'a>)] */ }
+    _ => {}
 }
-```
-
-This allows your operator to work with both literals and expressions:
-
-```json
-// Works with literals
-{ "double": 21 }
-
-// Also works with variables
-{ "double": { "var": "x" } }
-
-// And nested expressions
-{ "double": { "+": [10, 5] } }
 ```
 
 ## Example: Average Operator
 
-An operator that calculates the average of numbers:
-
 ```rust
+use bumpalo::Bump;
+use datalogic_rs::operator::ContextStack;
+use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
+
 struct AverageOperator;
 
-impl Operator for AverageOperator {
-    fn evaluate(
+impl CustomOperator for AverageOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Evaluate the argument (should be an array)
-        let value = evaluator.evaluate(
-            args.first().unwrap_or(&Value::Null),
-            context
-        )?;
-
-        let arr = value.as_array()
-            .ok_or_else(|| Error::InvalidArguments("Expected array".to_string()))?;
-
-        if arr.is_empty() {
-            return Ok(Value::Null);
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        let mut numbers: Vec<f64> = Vec::new();
+        for av in args {
+            match av {
+                DataValue::Array(items) => {
+                    for it in items.iter() {
+                        if let Some(n) = it.as_f64() {
+                            numbers.push(n);
+                        }
+                    }
+                }
+                other => {
+                    if let Some(n) = other.as_f64() {
+                        numbers.push(n);
+                    }
+                }
+            }
         }
 
-        let sum: f64 = arr.iter()
-            .filter_map(|v| v.as_f64())
-            .sum();
+        if numbers.is_empty() {
+            return Ok(arena.alloc(DataValue::Null));
+        }
 
-        let count = arr.len() as f64;
-        Ok(json!(sum / count))
+        let avg = numbers.iter().sum::<f64>() / numbers.len() as f64;
+        Ok(arena.alloc(DataValue::from_f64(avg)))
     }
 }
 
-// Usage
-engine.add_operator("avg".to_string(), Box::new(AverageOperator));
+let engine = Engine::builder().add_operator("avg", AverageOperator).build();
 
-let rule = json!({ "avg": { "var": "scores" } });
-let compiled = engine.compile(&rule).unwrap();
-let result = engine.evaluate_owned(&compiled, json!({
-    "scores": [80, 90, 85, 95]
-})).unwrap();
-assert_eq!(result, json!(87.5));
+let result = engine.evaluate_str(
+    r#"{"avg": {"var": "scores"}}"#,
+    r#"{"scores": [80, 90, 85, 95]}"#,
+).unwrap();
+assert_eq!(result, "87.5");
 ```
 
 ## Example: Range Check Operator
 
-An operator that checks if a value is within a range:
-
 ```rust
 struct InRangeOperator;
 
-impl Operator for InRangeOperator {
-    fn evaluate(
+impl CustomOperator for InRangeOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
         if args.len() != 3 {
-            return Err(Error::InvalidArguments(
-                "inRange requires 3 arguments: value, min, max".to_string()
+            return Err(Error::invalid_arguments(
+                "in_range requires 3 arguments: value, min, max",
             ));
         }
-
-        let value = evaluator.evaluate(&args[0], context)?
-            .as_f64()
-            .ok_or_else(|| Error::InvalidArguments("Expected number".to_string()))?;
-
-        let min = evaluator.evaluate(&args[1], context)?
-            .as_f64()
-            .ok_or_else(|| Error::InvalidArguments("Expected number".to_string()))?;
-
-        let max = evaluator.evaluate(&args[2], context)?
-            .as_f64()
-            .ok_or_else(|| Error::InvalidArguments("Expected number".to_string()))?;
-
-        Ok(json!(value >= min && value <= max))
+        let v = args[0].as_f64()
+            .ok_or_else(|| Error::invalid_arguments("value must be a number"))?;
+        let lo = args[1].as_f64()
+            .ok_or_else(|| Error::invalid_arguments("min must be a number"))?;
+        let hi = args[2].as_f64()
+            .ok_or_else(|| Error::invalid_arguments("max must be a number"))?;
+        Ok(arena.alloc(DataValue::Bool(v >= lo && v <= hi)))
     }
 }
 
-// Usage
-engine.add_operator("inRange".to_string(), Box::new(InRangeOperator));
-
-let rule = json!({ "inRange": [{ "var": "age" }, 18, 65] });
+let engine = Engine::builder()
+    .add_operator("in_range", InRangeOperator)
+    .build();
 ```
 
 ## Example: String Formatting Operator
@@ -180,71 +188,70 @@ let rule = json!({ "inRange": [{ "var": "age" }, 18, 65] });
 ```rust
 struct FormatOperator;
 
-impl Operator for FormatOperator {
-    fn evaluate(
+impl CustomOperator for FormatOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        let template = evaluator.evaluate(
-            args.first().unwrap_or(&Value::Null),
-            context
-        )?;
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        let template = args
+            .first()
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::invalid_arguments("expected string template"))?;
 
-        let template_str = template.as_str()
-            .ok_or_else(|| Error::InvalidArguments("Expected string template".to_string()))?;
-
-        // Replace {0}, {1}, etc. with arguments
-        let mut result = template_str.to_string();
-        for (i, arg) in args.iter().skip(1).enumerate() {
-            let value = evaluator.evaluate(arg, context)?;
-            let value_str = match &value {
-                Value::String(s) => s.clone(),
-                v => v.to_string(),
-            };
-            result = result.replace(&format!("{{{}}}", i), &value_str);
+        let mut out = template.to_string();
+        for av in args.iter().skip(1) {
+            if let Some(pos) = out.find("{}") {
+                let replacement = match av {
+                    DataValue::String(s) => (*s).to_string(),
+                    DataValue::Bool(b) => b.to_string(),
+                    DataValue::Null => "null".to_string(),
+                    DataValue::Number(_) => av.as_f64()
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
+                    _ => "<value>".to_string(),
+                };
+                out.replace_range(pos..pos + 2, &replacement);
+            }
         }
 
-        Ok(json!(result))
+        // Allocate the rendered string in the arena and wrap it.
+        let s = arena.alloc_str(&out);
+        Ok(arena.alloc(DataValue::String(s)))
     }
 }
 
-// Usage
-engine.add_operator("format".to_string(), Box::new(FormatOperator));
+let engine = Engine::builder()
+    .add_operator("format", FormatOperator)
+    .build();
 
-let rule = json!({
-    "format": ["Hello, {0}! You have {1} messages.", { "var": "name" }, { "var": "count" }]
-});
-// Data: { "name": "Alice", "count": 5 }
-// Result: "Hello, Alice! You have 5 messages."
+let r = engine.evaluate_str(
+    r#"{"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]}"#,
+    r#"{"name": "Alice", "count": 5}"#,
+).unwrap();
+// "Hello, Alice! You have 5 messages."
 ```
 
 ## Thread Safety Requirements
 
-Custom operators must be `Send + Sync` for thread-safe usage:
+`CustomOperator` is `Send + Sync`. For shared mutable state, use the usual
+synchronisation primitives:
 
 ```rust
-// This is automatically satisfied for most operators
-struct MyOperator {
-    // Use Arc for shared state
-    config: Arc<Config>,
-}
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
-// For mutable state, use synchronization primitives
-struct StatefulOperator {
-    counter: Arc<AtomicUsize>,
-}
+struct CounterOperator { counter: Arc<AtomicUsize> }
 
-impl Operator for StatefulOperator {
-    fn evaluate(
+impl CustomOperator for CounterOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        let count = self.counter.fetch_add(1, Ordering::SeqCst);
-        Ok(json!(count))
+        _args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        let count = self.counter.fetch_add(1, Ordering::SeqCst) as i64;
+        Ok(arena.alloc(DataValue::from_i64(count)))
     }
 }
 ```
@@ -254,58 +261,60 @@ impl Operator for StatefulOperator {
 Return appropriate errors for invalid inputs:
 
 ```rust
-impl Operator for MyOperator {
-    fn evaluate(
+impl CustomOperator for MyOperator {
+    fn evaluate<'a>(
         &self,
-        args: &[Value],
-        context: &mut ContextStack,
-        evaluator: &dyn Evaluator,
-    ) -> Result<Value> {
-        // Check argument count
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut ContextStack<'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
-            return Err(Error::InvalidArguments(
-                "myop requires at least one argument".to_string()
+            return Err(Error::invalid_arguments(
+                "myop requires at least one argument",
             ));
         }
 
-        // Check argument types
-        let value = evaluator.evaluate(&args[0], context)?;
-        let num = value.as_f64().ok_or_else(|| {
-            Error::InvalidArguments(format!(
-                "Expected number, got {}",
-                value_type_name(&value)
-            ))
+        let num = args[0].as_f64().ok_or_else(|| {
+            Error::type_error(format!("expected number, got {}", value_type_name(args[0])))
         })?;
 
-        // Business logic errors
         if num < 0.0 {
-            return Err(Error::Custom(
-                "Value must be non-negative".to_string()
-            ));
+            return Err(Error::custom("value must be non-negative"));
         }
 
-        Ok(json!(num.sqrt()))
+        Ok(arena.alloc(DataValue::from_f64(num.sqrt())))
     }
 }
 
-fn value_type_name(v: &Value) -> &'static str {
+fn value_type_name(v: &DataValue<'_>) -> &'static str {
     match v {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
+        DataValue::Null => "null",
+        DataValue::Bool(_) => "boolean",
+        DataValue::Number(_) => "number",
+        DataValue::String(_) => "string",
+        DataValue::Array(_) => "array",
+        DataValue::Object(_) => "object",
+        _ => "other",
     }
 }
 ```
 
+The `Error` type is structured: `kind_tag()` returns a stable variant tag,
+and the `operator` / `path` fields are populated automatically by the engine
+when a custom operator returns an error.
+
+To wrap a foreign error type into `Error`, use `Error::wrap`:
+
+```rust
+"not_a_number".parse::<i32>().map_err(Error::wrap)?;
+// `error.source()` returns the original `ParseIntError`.
+```
+
 ## Best Practices
 
-1. **Always evaluate arguments** before using them
-2. **Validate argument count and types** early
-3. **Return meaningful error messages**
-4. **Keep operators focused** - one responsibility per operator
-5. **Document the expected syntax** for each operator
-6. **Use `Arc` for shared configuration** to maintain thread safety
-7. **Test with both literals and expressions** as arguments
+1. **Validate argument count and types early.**
+2. **Allocate results in the arena** (`arena.alloc(...)` / `arena.alloc_str(...)`).
+3. **Return meaningful errors** — `Error::invalid_arguments`, `Error::type_error`, `Error::custom`.
+4. **Keep operators focused** — one responsibility per operator.
+5. **Use `Arc` for shared configuration** to maintain `Send + Sync`.
+6. **Test with literals, variables, and nested expressions** — the engine evaluates each before calling you.

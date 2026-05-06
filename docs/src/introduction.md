@@ -24,49 +24,59 @@
 
 **datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a fast, memory-efficient, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
 
+> **v5 is here.** v5 is a breaking release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based, switches custom operators to a pre-evaluated arena API, and removes the implicit `serde_json` dependency from the default build. See the [Migration Guide](migration.md) for the full v4 → v5 walkthrough.
+
 ## Why datalogic-rs?
 
-- **Fast**: Uses OpCode-based dispatch with compile-time optimization for maximum performance
-- **Thread-Safe**: Compile once, evaluate anywhere with zero-copy `Arc` sharing
-- **Intuitive**: Works seamlessly with `serde_json::Value`
-- **Extensible**: Add custom operators with a simple trait
-- **Feature-Rich**: 59 built-in operators including datetime, regex, and error handling
-- **Fully Compliant**: Passes the official JSONLogic test suite
+- **Fast** - OpCode-based dispatch with compile-time optimization, plus arena allocation for zero-copy reads
+- **Thread-Safe** - Wrap `Logic` in `Arc` and share across threads
+- **Zero `unsafe`** - The crate enforces `#![forbid(unsafe_code)]`
+- **serde_json-free by default** - The string-based API needs no `serde_json` dependency; opt into the `compat` feature only when you need the JSON value boundary
+- **Extensible** - Register custom operators on an `EngineBuilder`
+- **Feature-Rich** - 59 built-in operators including datetime, regex, and error handling
+- **Fully Compliant** - Passes the official JSONLogic test suite
 
 ## How It Works
 
 datalogic-rs uses a two-phase approach:
 
-1. **Compilation**: Your JSON logic is parsed and compiled into an optimized `CompiledLogic` structure. This phase:
+1. **Compilation**: Your JSON logic is parsed and compiled into a reusable `Logic`. This phase:
    - Assigns OpCodes to built-in operators for fast dispatch
    - Pre-evaluates constant expressions
    - Analyzes structure for templating mode
 
 2. **Evaluation**: The compiled logic is evaluated against your data with:
    - Direct OpCode dispatch (no string lookups at runtime)
-   - Context stack for nested operations (map, filter, reduce)
-   - Efficient value passing with minimal allocations
+   - Arena-allocated `&DataValue<'a>` results that can borrow zero-copy from the input
+   - Context stack for nested operations (`map`, `filter`, `reduce`)
 
 ## Quick Example
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::Engine;
 
-let engine = DataLogic::new();
+let engine = Engine::new();
 
-// Define a rule: is the user's age greater than 18?
-let rule = json!({ ">": [{ "var": "age" }, 18] });
+// One-shot evaluation: returns a JSON string.
+let result = engine
+    .evaluate_str(r#"{">": [{"var": "age"}, 18]}"#, r#"{"age": 21}"#)
+    .unwrap();
+assert_eq!(result, "true");
+```
 
-// Compile once
-let compiled = engine.compile(&rule).unwrap();
+For repeated evaluation, compile once and reuse:
 
-// Evaluate against different data
-let result = engine.evaluate_owned(&compiled, json!({ "age": 21 })).unwrap();
-assert_eq!(result, json!(true));
+```rust
+use datalogic_rs::Engine;
 
-let result = engine.evaluate_owned(&compiled, json!({ "age": 16 })).unwrap();
-assert_eq!(result, json!(false));
+let engine = Engine::new();
+let compiled = engine.compile(r#"{">": [{"var": "age"}, 18]}"#).unwrap();
+let mut session = engine.session();
+
+let r1 = session.evaluate_str(&compiled, r#"{"age": 21}"#).unwrap();
+let r2 = session.evaluate_str(&compiled, r#"{"age": 16}"#).unwrap();
+assert_eq!(r1, "true");
+assert_eq!(r2, "false");
 ```
 
 ## What is JSONLogic?
@@ -100,4 +110,5 @@ This rule checks if `age > 18` AND `country == "US"`.
 
 - [Installation](getting-started/installation.md) - Add datalogic-rs to your project
 - [Quick Start](getting-started/quick-start.md) - Get up and running in minutes
+- [Migration Guide](migration.md) - Move from v4 to v5
 - [Operators](operators/overview.md) - Explore all 59 built-in operators
