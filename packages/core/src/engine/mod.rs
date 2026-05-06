@@ -307,7 +307,9 @@ impl Engine {
     /// ```
     pub fn evaluate_str(&self, logic: &str, data: &str) -> Result<String> {
         let compiled = self.compile(logic)?;
-        let arena = bumpalo::Bump::new();
+        // 4 KB initial capacity covers typical small-rule evaluations without
+        // bumpalo's first-chunk grow path. Larger inputs grow as usual.
+        let arena = bumpalo::Bump::with_capacity(4096);
         let data_dv = datavalue::DataValue::from_str(data, &arena)?;
         let result = self.evaluate(&compiled, data_dv, &arena)?;
         Ok(crate::arena::data_to_json_string(result))
@@ -330,7 +332,7 @@ impl Engine {
     /// identical regardless of entry point.
     #[cfg(feature = "compat")]
     pub(crate) fn run_to_value(&self, compiled: &Logic, data: &Value) -> Result<Value> {
-        let arena = bumpalo::Bump::new();
+        let arena = bumpalo::Bump::with_capacity(4096);
         let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(compiled, data_av, &arena)?;
         Ok(crate::arena::data_to_value(result))

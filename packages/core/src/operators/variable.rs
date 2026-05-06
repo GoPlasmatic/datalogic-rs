@@ -80,6 +80,21 @@ fn path_string_from_data(av: &DataValue<'_>) -> String {
     String::new()
 }
 
+/// Arena-borrowing variant of [`path_string_from_data`]. Strings already
+/// resident in the arena are re-borrowed without copying; numeric paths
+/// pay one `arena.alloc_str` per arg. Used by the multi-arg `val`/`exists`
+/// hot loops so the per-arg path collection no longer needs heap `String`s.
+#[inline]
+fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
+    if let Some(s) = av.as_str() {
+        return s;
+    }
+    if let DataValue::Number(n) = av {
+        return arena.alloc_str(&n.to_string());
+    }
+    ""
+}
+
 /// Pre-compiled `var`/`val` lookup spec — the five fields stored on
 /// [`CompiledNode::Var`], bundled so the arena evaluator takes one
 /// borrow instead of five loose params.
@@ -393,14 +408,15 @@ fn eval_val_multiarg<'a>(
         }
 
         // Multi-arg path chain at a relative level.
-        let mut paths: Vec<String> = Vec::with_capacity(args.len() - 1);
+        let mut paths: bumpalo::collections::Vec<'a, &'a str> =
+            bumpalo::collections::Vec::with_capacity_in(args.len() - 1, arena);
         for item in args.iter().skip(1) {
             let av = engine.dispatch_node(item, ctx, arena)?;
-            paths.push(path_string_from_data(av));
+            paths.push(path_str_from_data(av, arena));
         }
         let mut cur = frame_data_at_level(ctx, level as isize, arena)
             .ok_or(Error::invalid_context_level(level as isize))?;
-        for path in &paths {
+        for path in paths.iter() {
             match access_path_str_ref(cur, path) {
                 Some(next) => cur = next,
                 None => return Ok(crate::arena::singletons::singleton_null()),
@@ -410,7 +426,8 @@ fn eval_val_multiarg<'a>(
     }
 
     // Non-level multi-arg path chain: pre-eval all args.
-    let mut evaluated: Vec<&'a DataValue<'a>> = Vec::with_capacity(args.len());
+    let mut evaluated: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
     evaluated.push(first_av);
     for arg in args.iter().skip(1) {
         evaluated.push(engine.dispatch_node(arg, ctx, arena)?);
@@ -638,7 +655,8 @@ pub(crate) fn evaluate_exists<'a>(
     }
 
     // Multiple args — each must evaluate to a string segment.
-    let mut paths: Vec<&'a DataValue<'a>> = Vec::with_capacity(args.len());
+    let mut paths: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
+        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
         if av.as_str().is_none() {

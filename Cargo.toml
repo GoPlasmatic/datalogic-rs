@@ -18,3 +18,18 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
+
+# `lto = "fat"` + `codegen-units = 1` lets the compiler propagate the
+# load-bearing `#[inline(always)]` decisions across crate/CGU boundaries
+# in the dispatch hot path. The WASM workspace defines its own
+# `[profile.release]` so it is unaffected.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+# Line tables let cargo-flamegraph / samply / Instruments resolve frame
+# names without bloating the binary much. Comment out for a strip-only
+# release build.
+debug = "line-tables-only"
+
+[profile.bench]
+inherits = "release"

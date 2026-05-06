@@ -1,0 +1,11 @@
+# Benchmark-local Cargo overrides. Scoped to packages/benchmark/ — does NOT
+# apply to `cargo build -p datalogic-rs` from the workspace root, so the
+# published crate's release build remains portable.
+#
+# `target-cpu=native` lets the benchmark binary use every instruction the
+# host CPU supports (AVX-512, BMI2, etc.). The resulting numbers are not
+# comparable across machines; treat the on-host run as a relative baseline,
+# not an absolute number to publish.
+
+[build]
+rustflags = ["-C", "target-cpu=native"]

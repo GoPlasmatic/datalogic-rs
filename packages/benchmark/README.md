@@ -26,6 +26,21 @@ cargo run --release -p datalogic-bench --bin self -- --all
 cargo run --release -p datalogic-bench --bin compare -- --all
 ```
 
+### Native-CPU build (optional, host-only numbers)
+
+A `.cargo/config.toml` inside `packages/benchmark/` adds
+`-C target-cpu=native`. Cargo only picks this up when the cwd is at or below
+the benchmark crate, so it's opt-in by location:
+
+```bash
+cd packages/benchmark
+cargo run --release --bin self -- --all
+```
+
+Numbers from a native build are not portable across machines — keep them as
+a relative baseline, not an absolute publishable figure. Builds invoked
+from the repo root remain portable.
+
 ## Adding another subject to `compare`
 
 `compare.rs` defines a `Subject` trait with a single method:
