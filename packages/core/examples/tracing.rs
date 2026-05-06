@@ -38,6 +38,6 @@ fn main() {
     let err = run.result.unwrap_err();
     println!("\n[2] failure");
     println!("    kind_tag: {}", err.kind_tag());
-    println!("    operator: {:?}", err.operator);
+    println!("    operator: {:?}", err.operator());
     println!("    steps:    {} recorded before failure", run.steps.len());
 }

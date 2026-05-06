@@ -319,21 +319,21 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
         .expect_err("throw should fail");
 
     // Breadcrumb should be populated, leaf-first (deepest failure first).
-    assert!(!err.path.is_empty(), "expected breadcrumb path, got empty");
+    assert!(!err.path().is_empty(), "expected breadcrumb path, got empty");
     // All ids should be nonzero (SYNTHETIC_ID=0 is reserved).
-    for id in &err.path {
+    for id in err.path() {
         assert!(
             *id > 0,
             "synthetic id leaked into breadcrumb: {:?}",
-            err.path
+            err.path()
         );
     }
     // Should have at least 2 ids — the throw itself plus the wrapping if,
     // since the if's dynamic condition prevents dead-code elimination.
     assert!(
-        err.path.len() >= 2,
+        err.path().len() >= 2,
         "expected at least 2 ids in path, got {:?}",
-        err.path
+        err.path()
     );
 }
 

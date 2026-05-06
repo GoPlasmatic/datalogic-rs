@@ -682,7 +682,7 @@ mod tests {
             .with_trace()
             .evaluate_str(r#"{"+": ["x", 1]}"#, "null");
         let err = run.result.expect_err("string-arith should fail");
-        assert_eq!(err.operator.as_deref(), Some("+"));
-        assert!(!err.path.is_empty(), "expected populated breadcrumb");
+        assert_eq!(err.operator(), Some("+"));
+        assert!(!err.path().is_empty(), "expected populated breadcrumb");
     }
 }

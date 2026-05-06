@@ -20,8 +20,8 @@ fn main() {
         .unwrap_err();
     println!("[1] failed evaluation");
     println!("    kind_tag: {}", err.kind_tag());
-    println!("    operator: {:?}", err.operator);
-    println!("    path:     {:?}", err.path);
+    println!("    operator: {:?}", err.operator());
+    println!("    path:     {:?}", err.path());
     println!("    display:  {err}");
 
     // ----- (2) Throw + read the payload (feature = error-handling) --

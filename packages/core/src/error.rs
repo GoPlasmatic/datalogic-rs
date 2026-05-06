@@ -11,6 +11,81 @@ pub(crate) const INVALID_ARGS: &str = "Invalid Arguments";
 /// object that arithmetic and comparison ops raise on non-numeric input.
 pub(crate) const NAN_ERROR: &str = "NaN";
 
+/// Opaque wrapper around the breadcrumb storage for [`Error.path`].
+/// The current implementation is a thin `Vec<u32>` newtype — same
+/// representation and per-error cost as the field's previous `Vec<u32>`
+/// shape, just hidden from the public surface. Wrapping the storage now
+/// lets us tweak the layout (inline buffer, smallvec, deferred-grow) in
+/// future without another round of API churn.
+///
+/// `pub` for the `Error::with_path(impl Into<ErrorPath>)` bound, but
+/// `#[doc(hidden)]` so outside callers construct it implicitly through
+/// the `From<Vec<u32>>` / `From<&[u32]>` impls rather than naming it
+/// directly.
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct ErrorPath {
+    inner: Vec<u32>,
+}
+
+impl ErrorPath {
+    #[inline]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[u32] {
+        &self.inner
+    }
+
+    #[inline]
+    pub fn push(&mut self, id: u32) {
+        self.inner.push(id);
+    }
+}
+
+impl From<Vec<u32>> for ErrorPath {
+    #[inline]
+    fn from(inner: Vec<u32>) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<&[u32]> for ErrorPath {
+    #[inline]
+    fn from(s: &[u32]) -> Self {
+        Self {
+            inner: s.to_vec(),
+        }
+    }
+}
+
+impl PartialEq for ErrorPath {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for ErrorPath {}
+
+impl Serialize for ErrorPath {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.inner.serialize(serializer)
+    }
+}
+
 /// Trait-object alias for the source carried by [`ErrorKind::Custom`].
 /// Reference-counted so [`ErrorKind`] stays cheap to clone, and bounded
 /// so a single `Error` value can be sent across threads.
@@ -82,13 +157,16 @@ pub enum ErrorKind {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct Error {
-    /// What went wrong.
+    /// What went wrong. Pattern-matched by callers; stays public.
     pub kind: ErrorKind,
     /// Outermost operator that produced this error, when known.
-    pub operator: Option<String>,
+    /// Read via [`Self::operator`].
+    operator: Option<String>,
     /// Breadcrumb of [`crate::CompiledNode`] ids from the failure site toward
     /// the root (leaf-to-root). Empty when the error came from parse/compile.
-    pub path: Vec<u32>,
+    /// Read via [`Self::path`]. Backed by an inline-4 buffer that only spills
+    /// to the heap when the path exceeds 4 entries.
+    path: ErrorPath,
 }
 
 impl Error {
@@ -98,8 +176,25 @@ impl Error {
         Self {
             kind,
             operator: None,
-            path: Vec::new(),
+            path: ErrorPath::new(),
         }
+    }
+
+    /// Outermost operator that produced this error, when known.
+    /// Returns `None` for parse/compile errors and for raw constructor sites
+    /// that didn't call [`Self::with_operator`].
+    #[inline]
+    pub fn operator(&self) -> Option<&str> {
+        self.operator.as_deref()
+    }
+
+    /// Breadcrumb of [`crate::CompiledNode`] ids from the failure site toward
+    /// the root (leaf-to-root). Returns an empty slice when the error came
+    /// from parse/compile or wasn't routed through the public `evaluate*`
+    /// path. Use [`Self::resolved_path`] to convert ids into named steps.
+    #[inline]
+    pub fn path(&self) -> &[u32] {
+        self.path.as_slice()
     }
 
     /// Get a stable string tag for the error kind. Stable across releases.
@@ -127,8 +222,13 @@ impl Error {
     }
 
     /// Attach the breadcrumb path and return self.
-    pub fn with_path(mut self, path: Vec<u32>) -> Self {
-        self.path = path;
+    ///
+    /// Accepts anything that converts into the internal `ErrorPath` buffer
+    /// — most callers pass `Vec<u32>` and the `From<Vec<u32>>` impl handles
+    /// the conversion. The internal storage uses an inline-4 buffer with
+    /// heap spill, so paths up to 4 deep cost zero heap allocations.
+    pub fn with_path(mut self, path: impl Into<ErrorPath>) -> Self {
+        self.path = path.into();
         self
     }
 
@@ -139,7 +239,7 @@ impl Error {
     /// compiled tree (e.g. when the error came from compile-time, before
     /// evaluation populated the breadcrumb) are skipped.
     pub fn resolved_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
-        compiled.resolve_path(&self.path)
+        compiled.resolve_path(self.path.as_slice())
     }
 
     // ---- 4.x convenience constructors ----
@@ -431,7 +531,26 @@ mod tests {
         // operator/path metadata round-trips too.
         let with_meta = inner.with_operator("var").with_path(vec![1, 2, 3]);
         let wrapped = Error::wrap(with_meta);
-        assert_eq!(wrapped.operator.as_deref(), Some("var"));
-        assert_eq!(wrapped.path, vec![1, 2, 3]);
+        assert_eq!(wrapped.operator(), Some("var"));
+        assert_eq!(wrapped.path(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn error_path_basic_ops() {
+        let mut p = ErrorPath::new();
+        assert!(p.is_empty());
+        p.push(1);
+        p.push(2);
+        p.push(3);
+        assert_eq!(p.len(), 3);
+        assert_eq!(p.as_slice(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn error_path_from_vec_round_trips() {
+        let p: ErrorPath = vec![10, 20, 30].into();
+        assert_eq!(p.as_slice(), &[10, 20, 30]);
+        let p2: ErrorPath = (&[5u32, 6, 7] as &[u32]).into();
+        assert_eq!(p2.as_slice(), &[5, 6, 7]);
     }
 }
