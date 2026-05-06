@@ -127,9 +127,7 @@ pub(crate) fn evaluate_datetime<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Err(Error::invalid_arguments(
-            "datetime requires an argument",
-        ));
+        return Err(Error::invalid_arguments("datetime requires an argument"));
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
 
@@ -233,8 +231,8 @@ pub(crate) fn evaluate_format_date<'a>(
     // Resolve the datetime — supports object form and string form.
     let dt: Option<DataDateTime> = crate::operators::datetime::extract_datetime(dt_av);
 
-    let fmt: &'a str = arg_as_str(fmt_av)
-        .ok_or_else(|| Error::invalid_arguments("Failed to format date"))?;
+    let fmt: &'a str =
+        arg_as_str(fmt_av).ok_or_else(|| Error::invalid_arguments("Failed to format date"))?;
 
     if let Some(datetime) = dt {
         let chrono_format = if fmt == "z" {

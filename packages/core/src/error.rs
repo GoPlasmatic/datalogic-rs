@@ -66,9 +66,7 @@ impl From<Vec<u32>> for ErrorPath {
 impl From<&[u32]> for ErrorPath {
     #[inline]
     fn from(s: &[u32]) -> Self {
-        Self {
-            inner: s.to_vec(),
-        }
+        Self { inner: s.to_vec() }
     }
 }
 

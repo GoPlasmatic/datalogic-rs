@@ -319,7 +319,10 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
         .expect_err("throw should fail");
 
     // Breadcrumb should be populated, leaf-first (deepest failure first).
-    assert!(!err.path().is_empty(), "expected breadcrumb path, got empty");
+    assert!(
+        !err.path().is_empty(),
+        "expected breadcrumb path, got empty"
+    );
     // All ids should be nonzero (SYNTHETIC_ID=0 is reserved).
     for id in err.path() {
         assert!(
