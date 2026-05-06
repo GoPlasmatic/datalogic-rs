@@ -278,7 +278,7 @@ impl Engine {
             Ok(av) => Ok(av),
             Err(mut e) => {
                 e = e.with_path(ctx.take_error_path());
-                if let Some(name) = compiled.root.operator_name() {
+                if let Some(name) = compiled.root_op_name.clone() {
                     e = e.with_operator(name);
                 }
                 Err(e)
@@ -430,7 +430,7 @@ impl Engine {
             Err(mut e) => {
                 let message = e.to_string();
                 e = e.with_path(error_path);
-                if let Some(name) = compiled.root.operator_name() {
+                if let Some(name) = compiled.root_op_name.clone() {
                     e = e.with_operator(name);
                 }
                 TracedResult {

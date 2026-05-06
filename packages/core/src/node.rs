@@ -644,6 +644,13 @@ pub struct Logic {
     /// Used to size the per-call `Bump` so the first chunk is large enough.
     /// `pub(crate)` — internal arena infrastructure.
     pub(crate) arena_static_bytes: usize,
+    /// Pre-resolved operator name for the root node, attached to every
+    /// `Error` returned from the public `evaluate*` API. Cached at compile
+    /// time so the error-unwind path does no tree walk. `Cow::Borrowed`
+    /// for built-ins (zero alloc on attach), `Cow::Owned` for
+    /// `CustomOperator` (one alloc per compile, amortised over many
+    /// evaluations), `None` for `Value` literals.
+    pub(crate) root_op_name: Option<std::borrow::Cow<'static, str>>,
 }
 
 impl std::fmt::Debug for Logic {
@@ -651,7 +658,31 @@ impl std::fmt::Debug for Logic {
         f.debug_struct("Logic")
             .field("root", &self.root)
             .field("arena_static_bytes", &self.arena_static_bytes)
+            .field("root_op_name", &self.root_op_name)
             .finish_non_exhaustive()
+    }
+}
+
+/// Static operator-name lookup for the root node. Returns `Cow::Borrowed`
+/// for built-ins and the named compiled-node forms (`var`, `missing`,
+/// etc.) — these never allocate at compile time. `CustomOperator`
+/// returns `Cow::Owned` (one allocation per compile, then re-cloneable as
+/// many times as the rule errors). `Value` literals have no operator and
+/// return `None`.
+#[inline]
+fn root_op_name(node: &CompiledNode) -> Option<std::borrow::Cow<'static, str>> {
+    use std::borrow::Cow;
+    match node {
+        CompiledNode::BuiltinOperator { opcode, .. } => Some(Cow::Borrowed(opcode.as_str())),
+        CompiledNode::Var { .. } => Some(Cow::Borrowed("var")),
+        CompiledNode::Missing(_) => Some(Cow::Borrowed("missing")),
+        CompiledNode::MissingSome(_) => Some(Cow::Borrowed("missing_some")),
+        #[cfg(feature = "ext-control")]
+        CompiledNode::Exists(_) => Some(Cow::Borrowed("exists")),
+        #[cfg(feature = "error-handling")]
+        CompiledNode::Throw(_) => Some(Cow::Borrowed("throw")),
+        CompiledNode::CustomOperator(data) => Some(Cow::Owned(data.name.clone())),
+        _ => None,
     }
 }
 
@@ -670,9 +701,11 @@ impl Logic {
     pub(crate) fn new(mut root: CompiledNode) -> Self {
         let arena_static_bytes = estimate_arena_static_bytes(&root);
         populate_lits(&mut root);
+        let root_op_name = root_op_name(&root);
         Self {
             root,
             arena_static_bytes,
+            root_op_name,
         }
     }
 
