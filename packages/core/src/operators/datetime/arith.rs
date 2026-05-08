@@ -5,11 +5,24 @@
 use crate::arena::DataValue;
 use crate::arena::value::coerce_to_number;
 use bumpalo::Bump;
+use std::fmt::Display;
 
-/// Wrap an owned string into an arena-resident `DataValue::String`.
+/// Format a `Display` value directly into an arena-backed `DataValue::String`,
+/// skipping the intermediate heap `String` that `value.to_string()` would
+/// allocate. The `bumpalo::collections::String` writes through the arena, so
+/// the only allocation is the destination buffer plus the `DataValue` wrapper.
+///
+/// `Display` impls that internally allocate (e.g. `DataDateTime::fmt` calls
+/// `to_iso_string`) still pay that intermediate string upstream — the savings
+/// only land for streaming `Display` impls like `DataDuration::fmt`.
 #[inline]
-fn alloc_string_av<'a>(arena: &'a Bump, s: &str) -> &'a DataValue<'a> {
-    arena.alloc(DataValue::String(arena.alloc_str(s)))
+fn write_into_arena<'a>(arena: &'a Bump, value: impl Display) -> &'a DataValue<'a> {
+    use std::fmt::Write;
+    let mut buf = bumpalo::collections::String::new_in(arena);
+    // `bumpalo::collections::String` writes never fail; `expect` rather than
+    // `unwrap_or_default` so a future bug in bumpalo surfaces loudly.
+    write!(&mut buf, "{}", value).expect("bumpalo String write is infallible");
+    arena.alloc(DataValue::String(buf.into_bump_str()))
 }
 
 /// Extract `(DateTime, Duration)` slots from an arena value. The two slots
@@ -22,7 +35,7 @@ fn extract_dt_dur(
     Option<datavalue::DataDateTime>,
     Option<datavalue::DataDuration>,
 ) {
-    use crate::operators::datetime::{extract_datetime, extract_duration};
+    use super::{extract_datetime, extract_duration};
     let dt = extract_datetime(av);
     let dur = if dt.is_none() {
         extract_duration(av)
@@ -37,7 +50,7 @@ fn extract_dt_dur(
 /// - DateTime − Duration → DateTime ISO string.
 /// - Duration − Duration → Duration string.
 #[inline]
-pub(super) fn datetime_subtract<'a>(
+pub(crate) fn datetime_subtract<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
     arena: &'a Bump,
@@ -46,13 +59,13 @@ pub(super) fn datetime_subtract<'a>(
     let (b_dt, b_dur) = extract_dt_dur(b_av);
 
     if let (Some(d1), Some(d2)) = (&a_dt, &b_dt) {
-        return Some(alloc_string_av(arena, &d1.diff(d2).to_string()));
+        return Some(write_into_arena(arena, d1.diff(d2)));
     }
     if let (Some(d), Some(dur)) = (&a_dt, &b_dur) {
-        return Some(alloc_string_av(arena, &d.sub_duration(dur).to_iso_string()));
+        return Some(write_into_arena(arena, d.sub_duration(dur)));
     }
     if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
-        return Some(alloc_string_av(arena, &d1.sub(d2).to_string()));
+        return Some(write_into_arena(arena, d1.sub(d2)));
     }
     None
 }
@@ -61,7 +74,7 @@ pub(super) fn datetime_subtract<'a>(
 /// - DateTime + Duration → DateTime ISO string.
 /// - Duration + Duration → Duration string.
 #[inline]
-pub(super) fn datetime_add<'a>(
+pub(crate) fn datetime_add<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
     arena: &'a Bump,
@@ -70,13 +83,10 @@ pub(super) fn datetime_add<'a>(
     let (_b_dt, b_dur) = extract_dt_dur(b_av);
 
     if let (Some(dt), Some(dur)) = (&a_dt, &b_dur) {
-        return Some(alloc_string_av(
-            arena,
-            &dt.add_duration(dur).to_iso_string(),
-        ));
+        return Some(write_into_arena(arena, dt.add_duration(dur)));
     }
     if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
-        return Some(alloc_string_av(arena, &d1.add(d2).to_string()));
+        return Some(write_into_arena(arena, d1.add(d2)));
     }
     None
 }
@@ -85,7 +95,7 @@ pub(super) fn datetime_add<'a>(
 /// - Duration × scalar → Duration string.
 /// - scalar × Duration → Duration string.
 #[inline]
-pub(super) fn datetime_multiply<'a>(
+pub(crate) fn datetime_multiply<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
     arena: &'a Bump,
@@ -96,12 +106,12 @@ pub(super) fn datetime_multiply<'a>(
     if let (Some(dur), None) = (&a_dur, &b_dur)
         && let Some(factor) = coerce_to_number(b_av)
     {
-        return Some(alloc_string_av(arena, &dur.multiply(factor).to_string()));
+        return Some(write_into_arena(arena, dur.multiply(factor)));
     }
     if let (None, Some(dur)) = (&a_dur, &b_dur)
         && let Some(factor) = coerce_to_number(a_av)
     {
-        return Some(alloc_string_av(arena, &dur.multiply(factor).to_string()));
+        return Some(write_into_arena(arena, dur.multiply(factor)));
     }
     None
 }
@@ -109,7 +119,7 @@ pub(super) fn datetime_multiply<'a>(
 /// `Duration / Number` → scaled `Duration`. Returns `None` for non-duration
 /// LHS so the generic numeric path handles regular division.
 #[inline]
-pub(super) fn datetime_divide<'a>(
+pub(crate) fn datetime_divide<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
     arena: &'a Bump,
@@ -120,8 +130,5 @@ pub(super) fn datetime_divide<'a>(
     if divisor == 0.0 {
         return Some(Err(crate::Error::nan()));
     }
-    Some(Ok(alloc_string_av(
-        arena,
-        &a_dur.divide(divisor).to_string(),
-    )))
+    Some(Ok(write_into_arena(arena, a_dur.divide(divisor))))
 }

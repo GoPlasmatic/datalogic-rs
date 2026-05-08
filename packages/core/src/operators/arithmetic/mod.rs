@@ -5,8 +5,11 @@
 //! - [`div_mod`] — `/` and `%` with config-aware divbyzero handling.
 //! - [`min_max`] — `min` and `max` (array reduction + variadic).
 //! - [`unary_math`] — `abs` / `ceil` / `floor` (gated on `ext-math`).
-//! - [`datetime_arith`] — datetime/duration arithmetic (gated on `datetime`).
 //! - [`helpers`] — shared NaN handling, coercion-pair, integer/float fold.
+//!
+//! Datetime/duration arithmetic moved to `crate::operators::datetime::arith`
+//! (consolidated under the `datetime/` tree); arithmetic ops reach into it
+//! via `crate::operators::datetime` for the gated `+`/`-`/`*`/`/`/`%` cases.
 //!
 //! ## Overflow handling
 //!
@@ -33,8 +36,6 @@ mod div_mod;
 mod helpers;
 mod min_max;
 
-#[cfg(feature = "datetime")]
-mod datetime_arith;
 #[cfg(feature = "ext-math")]
 mod unary_math;
 

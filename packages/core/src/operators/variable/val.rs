@@ -1,97 +1,20 @@
-use crate::node::{MetadataHint, PathSegment, ReduceHint};
-use crate::{CompiledNode, Error, Result};
+//! Arena-mode `val` / `var` evaluation.
+//!
+//! Both source ops normalise to `OpCode::Val`; the var-specific arg shape
+//! (path + default fallback) is collapsed at compile time by
+//! `compile::operator::try_compile_var`. This module owns the runtime side:
+//! the compiled fast path (`evaluate_val_compiled`) and the dynamic-arg form
+//! (`evaluate_val`).
 
-// =============================================================================
-// Arena-mode variable access
-// =============================================================================
-//
-// Arena variants for val / exists. The raw forms (`evaluate_val` /
-// `evaluate_exists`) handle dynamic-path expressions natively against
-// the arena context stack. Both `var` and `val` operator names normalize to
-// `OpCode::Val` (see `OpCode::FromStr`); the var-specific arg shape (path +
-// default fallback) is collapsed at compile time by `try_compile_var`.
-
-use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
-/// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) against
-/// the current frame, returning the singleton/string handle if it matches.
-/// Used by both the multi-arg and single-arg array branches of
-/// [`evaluate_val`] — extracted so the branches don't drift.
-#[inline]
-fn metadata_hint_lookup<'a>(
-    ctx: &ContextStack<'a>,
-    path: &str,
-    arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    if path == "index" {
-        let idx = ctx.current().get_index()?;
-        let i = idx as i64;
-        return Some(
-            crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
-                arena.alloc(DataValue::Number(datavalue::NumberValue::Integer(i)))
-            }),
-        );
-    }
-    if path == "key" {
-        let key = ctx.current().get_key()?;
-        return Some(arena.alloc(DataValue::String(key)));
-    }
-    None
-}
-
-/// Return the current frame's data as an `&'a DataValue<'a>`. Root and frame
-/// branches both return their stored `&DataValue` directly — no per-call
-/// allocation.
-#[inline(always)]
-fn current_data<'a>(ctx: &ContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
-    use crate::arena::context::ContextRef;
-    match ctx.current() {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    }
-}
-
-/// Frame data at a given level (or `None` if the level walks past the root).
-#[inline]
-fn frame_data_at_level<'a>(
-    ctx: &ContextStack<'a>,
-    level: isize,
-    _arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    use crate::arena::context::ContextRef;
-    let aref = ctx.get_at_level(level)?;
-    Some(match aref {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    })
-}
-
-/// Coerce an evaluated arena value into a path `&str`. Strings already
-/// resident in the arena are re-borrowed without copying; numeric paths
-/// pay one `arena.alloc_str` per call. Single arena-allocating helper used
-/// by every `val`/`exists` lookup site that needs a path string.
-#[inline]
-fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
-    if let Some(s) = av.as_str() {
-        return s;
-    }
-    if let DataValue::Number(n) = av {
-        return arena.alloc_str(&n.to_string());
-    }
-    ""
-}
-
-/// Pre-compiled `var`/`val` lookup spec — the five fields stored on
-/// [`CompiledNode::Var`], bundled so the arena evaluator takes one
-/// borrow instead of five loose params.
-pub(crate) struct CompiledVarSpec<'n> {
-    pub scope_level: u32,
-    pub segments: &'n [PathSegment],
-    pub reduce_hint: ReduceHint,
-    pub metadata_hint: MetadataHint,
-    pub default_value: Option<&'n CompiledNode>,
-}
+use super::{
+    CompiledVarSpec, array_get, array_len, current_data, default_or_null, frame_data_at_level,
+    level_marker_from_array, metadata_hint_lookup, path_str_from_data,
+};
+use crate::arena::{ContextStack, DataValue};
+use crate::node::{MetadataHint, PathSegment, ReduceHint};
+use crate::{CompiledNode, Error, Result};
 
 /// Arena variant of `evaluate_val_compiled`. Dispatches through four
 /// resolution stages in order:
@@ -256,72 +179,6 @@ fn resolve_via_context_stack<'a>(
         Some(child) => Ok(child),
         None => default_or_null(default_value, ctx, engine, arena),
     }
-}
-
-/// Arena variant of `evaluate_exists_compiled`. Always returns a Bool singleton.
-#[cfg(feature = "ext-control")]
-#[inline]
-pub(crate) fn evaluate_exists_compiled<'a>(
-    scope_level: u32,
-    segments: &[PathSegment],
-    ctx: &mut ContextStack<'a>,
-) -> Result<&'a DataValue<'a>> {
-    // Root scope at depth 0: walk input directly (no clone, no frame access).
-    if scope_level == 0 && ctx.depth() == 0 {
-        let found = segments.is_empty()
-            || crate::arena::value::traverse_segments(ctx.root_input(), segments).is_some();
-        return Ok(crate::arena::singletons::singleton_bool(found));
-    }
-
-    use crate::arena::context::ContextRef;
-    let aref = if scope_level == 0 {
-        ctx.current()
-    } else {
-        match ctx.get_at_level(scope_level as isize) {
-            Some(f) => f,
-            None => return Ok(crate::arena::singletons::singleton_false()),
-        }
-    };
-    let av = match aref {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    };
-    let found =
-        segments.is_empty() || crate::arena::value::traverse_segments(av, segments).is_some();
-    Ok(crate::arena::singletons::singleton_bool(found))
-}
-
-/// Read a `[level]` marker — the value-mode multi-arg `val` shape where
-/// `args[0]` evaluates to a one-element numeric array. Returns the `i64`
-/// level on a hit, `None` otherwise.
-#[inline]
-fn level_marker_from_array(av: &DataValue<'_>) -> Option<i64> {
-    match av {
-        DataValue::Array(items) if !items.is_empty() => items[0].as_i64(),
-        _ => None,
-    }
-}
-
-/// Length of an arena array, or `None` if not array-shaped.
-#[inline]
-fn array_len(av: &DataValue<'_>) -> Option<usize> {
-    match av {
-        DataValue::Array(items) => Some(items.len()),
-        _ => None,
-    }
-}
-
-/// Get the i-th element of an arena array.
-///
-/// Safe access: `items` is bound as `&&'a [DataValue<'a>]` by the pattern
-/// (default-bind-by-ref), and `*items` copies the inner `&'a [...]` via
-/// `&T: Copy` — the slice's `.get` then preserves the `'a` element lifetime.
-#[inline]
-fn array_get<'a>(av: &'a DataValue<'a>, i: usize) -> Option<&'a DataValue<'a>> {
-    let DataValue::Array(items) = av else {
-        return None;
-    };
-    items.get(i)
 }
 
 /// Arena-native `val` operator. Mirrors the value-mode shape (level access,
@@ -563,120 +420,4 @@ fn eval_val_scalar_path<'a>(
     }
 
     Ok(crate::arena::singletons::singleton_null())
-}
-
-/// Test whether `key` exists on an arena Object. Matches the value-mode
-/// `obj.contains_key` semantics — Null values still count as present.
-#[cfg(feature = "ext-control")]
-#[inline]
-fn object_contains(av: &DataValue<'_>, key: &str) -> bool {
-    match av {
-        DataValue::Object(pairs) => crate::arena::value::object_lookup_field(pairs, key).is_some(),
-        _ => false,
-    }
-}
-
-/// Step into an arena Object at `key`. Returns `None` for non-objects or
-/// missing keys.
-#[cfg(feature = "ext-control")]
-#[inline]
-fn object_step<'a>(
-    av: &'a DataValue<'a>,
-    key: &str,
-    _arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    match av {
-        DataValue::Object(pairs) => crate::arena::value::object_lookup_field(pairs, key),
-        _ => None,
-    }
-}
-
-/// Arena-native `exists` operator (raw form). Mirrors value-mode semantics:
-/// only Object types resolve, the final segment is a `contains_key` probe so
-/// keys with `null` values still report as present.
-#[cfg(feature = "ext-control")]
-#[inline]
-pub(crate) fn evaluate_exists<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &crate::Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_false());
-    }
-
-    let cur = current_data(ctx, arena);
-
-    if args.len() == 1 {
-        let arg = engine.dispatch_node(&args[0], ctx, arena)?;
-        if let Some(s) = arg.as_str() {
-            return Ok(crate::arena::singletons::singleton_bool(object_contains(
-                cur, s,
-            )));
-        }
-        if let Some(arr_len) = array_len(arg) {
-            if arr_len == 0 {
-                return Ok(crate::arena::singletons::singleton_false());
-            }
-            let mut walk = cur;
-            for i in 0..arr_len {
-                let elem =
-                    array_get(arg, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
-                let Some(seg) = elem.as_str() else {
-                    return Ok(crate::arena::singletons::singleton_false());
-                };
-                if i == arr_len - 1 {
-                    return Ok(crate::arena::singletons::singleton_bool(object_contains(
-                        walk, seg,
-                    )));
-                }
-                match object_step(walk, seg, arena) {
-                    Some(next) => walk = next,
-                    None => return Ok(crate::arena::singletons::singleton_false()),
-                }
-            }
-            return Ok(crate::arena::singletons::singleton_true());
-        }
-        return Ok(crate::arena::singletons::singleton_false());
-    }
-
-    // Multiple args — each must evaluate to a string segment.
-    let mut paths: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
-        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
-    for arg in args {
-        let av = engine.dispatch_node(arg, ctx, arena)?;
-        if av.as_str().is_none() {
-            return Ok(crate::arena::singletons::singleton_false());
-        }
-        paths.push(av);
-    }
-    let mut walk = cur;
-    let last = paths.len() - 1;
-    for (i, av) in paths.iter().enumerate() {
-        let seg = av.as_str().expect("checked above");
-        if i == last {
-            return Ok(crate::arena::singletons::singleton_bool(object_contains(
-                walk, seg,
-            )));
-        }
-        match object_step(walk, seg, arena) {
-            Some(next) => walk = next,
-            None => return Ok(crate::arena::singletons::singleton_false()),
-        }
-    }
-    Ok(crate::arena::singletons::singleton_true())
-}
-
-#[inline]
-fn default_or_null<'a>(
-    default_value: Option<&'a CompiledNode>,
-    ctx: &mut ContextStack<'a>,
-    engine: &crate::Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    match default_value {
-        Some(node) => engine.dispatch_node(node, ctx, arena),
-        None => Ok(crate::arena::singletons::singleton_null()),
-    }
 }

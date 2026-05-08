@@ -77,7 +77,7 @@ fn add_two_arg<'a>(
     // Datetime / duration arithmetic.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = super::datetime_arith::datetime_add(a_av, b_av, arena) {
+        if let Some(av) = crate::operators::datetime::arith::datetime_add(a_av, b_av, arena) {
             return Ok(av);
         }
     }
@@ -152,7 +152,7 @@ fn multiply_two_arg<'a>(
     // inputs aren't coerced to None and lost.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = super::datetime_arith::datetime_multiply(a_av, b_av, arena) {
+        if let Some(av) = crate::operators::datetime::arith::datetime_multiply(a_av, b_av, arena) {
             return Ok(av);
         }
     }
@@ -271,7 +271,7 @@ fn subtract_two_arg<'a>(
     // Datetime / duration arithmetic.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = super::datetime_arith::datetime_subtract(a_av, b_av, arena) {
+        if let Some(av) = crate::operators::datetime::arith::datetime_subtract(a_av, b_av, arena) {
             return Ok(av);
         }
     }

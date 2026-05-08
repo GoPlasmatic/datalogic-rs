@@ -124,9 +124,12 @@ pub(super) fn dispatch_node_inner<'a>(
                 ctx,
             ),
 
-            // Value literal: handled by the outer `dispatch_node` wrapper
-            // before reaching this match.
-            CompiledNode::Value { .. } => unreachable!("literal handled by wrapper"),
+            // Value literal: the outer `dispatch_node` wrapper already
+            // routes `Value` through `literal_fallback`, so this arm is
+            // unreachable in normal flow. Defensive fallback — degrades
+            // gracefully to a fresh arena alloc if a future code path
+            // ever calls the inner dispatcher directly with a literal.
+            CompiledNode::Value { value, .. } => Ok(super::literal_fallback(value, arena)),
 
             // Compiled missing / missing_some — pre-parsed segments.
             CompiledNode::Missing(data) => {

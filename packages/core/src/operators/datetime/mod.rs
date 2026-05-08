@@ -3,6 +3,12 @@
 //! This module provides operators for working with dates, times, and durations in JSONLogic.
 //! It supports ISO 8601 datetime strings and duration formats.
 //!
+//! # Submodules
+//!
+//! - [`arith`] — `+` / `-` / `*` / `/` / `%` cases that involve datetime or
+//!   duration operands. Called from `operators::arithmetic::*` when the
+//!   generic numeric path detects a datetime-shaped operand.
+//!
 //! # Supported Operators
 //!
 //! - `datetime` - Parse or validate a datetime value
@@ -37,6 +43,8 @@
 //! // Calculate days between two dates
 //! {"date_diff": [{"var": "start"}, {"var": "end"}, "days"]}
 //! ```
+
+pub(crate) mod arith;
 
 use chrono::Utc;
 
