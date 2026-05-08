@@ -414,6 +414,12 @@ fn eval_val_scalar_path<'a>(
         && i >= 0
     {
         let cur = current_data(ctx, arena);
+        // Common small indices (0..100) hit the static `&'static str`
+        // cache; only larger keys pay the heap `String` allocation.
+        if let Some(static_key) = super::small_int_str(i) {
+            return Ok(access_path_str_ref(cur, static_key)
+                .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+        }
         let key = i.to_string();
         return Ok(access_path_str_ref(cur, &key)
             .unwrap_or_else(|| crate::arena::singletons::singleton_null()));

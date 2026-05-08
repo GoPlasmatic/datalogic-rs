@@ -79,16 +79,54 @@ fn frame_data_at_level<'a>(
     })
 }
 
+/// Stringified small integers, indexed by their value. Returned as
+/// `&'static str` from [`small_int_str`] so common small-index numeric
+/// path segments (the dominant case for array indexing) skip the
+/// per-call `arena.alloc_str` + heap `String` round trip.
+#[rustfmt::skip]
+static SMALL_INT_STRS: [&str; 100] = [
+    "0",  "1",  "2",  "3",  "4",  "5",  "6",  "7",  "8",  "9",
+    "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
+    "20", "21", "22", "23", "24", "25", "26", "27", "28", "29",
+    "30", "31", "32", "33", "34", "35", "36", "37", "38", "39",
+    "40", "41", "42", "43", "44", "45", "46", "47", "48", "49",
+    "50", "51", "52", "53", "54", "55", "56", "57", "58", "59",
+    "60", "61", "62", "63", "64", "65", "66", "67", "68", "69",
+    "70", "71", "72", "73", "74", "75", "76", "77", "78", "79",
+    "80", "81", "82", "83", "84", "85", "86", "87", "88", "89",
+    "90", "91", "92", "93", "94", "95", "96", "97", "98", "99",
+];
+
+/// Static-string lookup for small integer path segments. Returns
+/// `Some(&'static str)` when `i` is in `0..100` (the dominant range for
+/// array indices in real workloads), `None` otherwise — callers fall
+/// back to per-call stringification for larger values.
+#[inline]
+pub(super) fn small_int_str(i: i64) -> Option<&'static str> {
+    if (0..100).contains(&i) {
+        Some(SMALL_INT_STRS[i as usize])
+    } else {
+        None
+    }
+}
+
 /// Coerce an evaluated arena value into a path `&str`. Strings already
-/// resident in the arena are re-borrowed without copying; numeric paths
-/// pay one `arena.alloc_str` per call. Single arena-allocating helper used
-/// by every `val`/`exists` lookup site that needs a path string.
+/// resident in the arena are re-borrowed without copying; integer paths
+/// in `0..100` return a `&'static str` from [`small_int_str`]; everything
+/// else pays one `arena.alloc_str` per call. Single arena-allocating
+/// helper used by every `val`/`exists` lookup site that needs a path
+/// string.
 #[inline]
 fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
     if let Some(s) = av.as_str() {
         return s;
     }
     if let DataValue::Number(n) = av {
+        if let Some(i) = n.as_i64()
+            && let Some(s) = small_int_str(i)
+        {
+            return s;
+        }
         return arena.alloc_str(&n.to_string());
     }
     ""
