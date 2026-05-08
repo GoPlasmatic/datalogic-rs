@@ -27,7 +27,8 @@ use crate::node::CompiledNode;
 /// Three passes (dead code / constant fold / strength reduction) can feed each
 /// other: folding exposes new dead branches; strength reduction can expose new
 /// constants. A small cap is enough to catch the compounds we've seen in practice
-/// (2–3 iterations) while bounding worst-case compile time.
+/// (1–2 iterations after the per-iteration cleanup pass below) while bounding
+/// worst-case compile time.
 const MAX_FIXPOINT_ITERATIONS: usize = 4;
 
 /// Run all optimization passes on a compiled node tree until a fixpoint.
@@ -35,13 +36,18 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 /// This is the main entry point for the optimization pipeline.
 /// Called from `compile_node` when an engine is provided (i.e., not in trace mode).
 ///
-/// Passes are applied in order until no pass reports a change or
-/// [`MAX_FIXPOINT_ITERATIONS`] is reached:
+/// Passes are applied in order until none report a change or
+/// [`MAX_FIXPOINT_ITERATIONS`] is reached. Per iteration:
 /// 1. Dead code elimination (remove unreachable branches)
 /// 2. Constant folding (fold static args in commutative ops, pre-coerce numeric strings)
 /// 3. Strength reduction (double negation collapse, etc.)
+/// 4. Dead code elimination (cleanup pass — catches branches that
+///    became unreachable from the strength-reduction output, so the
+///    fixpoint converges in one iteration instead of two for compound
+///    cases like `!!!x → BoolCast(!x)` whose new shape exposes a
+///    constant predicate to a surrounding `if`).
 ///
-/// Each pass returns `(node, changed)`; the loop exits as soon as all three
+/// Each pass returns `(node, changed)`; the loop exits as soon as all
 /// passes in one iteration report `changed = false`.
 pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
     let mut node = node;
@@ -57,6 +63,13 @@ pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
         any_changed |= changed;
 
         let (n, changed) = strength::reduce(node);
+        node = n;
+        any_changed |= changed;
+
+        // Cleanup pass — collapse anything strength produced before
+        // exiting the iteration, instead of leaving it to the next
+        // round.
+        let (n, changed) = dead_code::eliminate(node, engine);
         node = n;
         any_changed |= changed;
 
