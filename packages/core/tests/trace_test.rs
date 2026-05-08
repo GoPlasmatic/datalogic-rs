@@ -334,3 +334,62 @@ fn test_trace_string_operators() {
     // Result should be "Hello, World"
     assert_eq!(result.result, json!("Hello, World"));
 }
+
+/// Test that an error returned from a `CustomOperator` propagates through
+/// the trace path with its operator name and message preserved, and that
+/// the trace still records steps up to the failure point.
+#[test]
+fn test_trace_custom_operator_error_propagation() {
+    use bumpalo::Bump;
+    use datalogic_rs::operator::EvalContext;
+    use datalogic_rs::{CustomOperator, DataValue, Error, Result as DLResult};
+
+    struct FailOp;
+    impl CustomOperator for FailOp {
+        fn evaluate<'a>(
+            &self,
+            _args: &[&'a DataValue<'a>],
+            _ctx: &mut EvalContext<'_, 'a>,
+            _arena: &'a Bump,
+        ) -> DLResult<&'a DataValue<'a>> {
+            Err(Error::custom("boom"))
+        }
+    }
+
+    let engine = Engine::builder().add_operator("fail_op", FailOp).build();
+    let run = engine
+        .with_trace()
+        .evaluate_str(r#"{"fail_op": []}"#, "null");
+
+    // The user's `Error::custom("boom")` propagates back as an Err.
+    let err = run.result.expect_err("FailOp returned Err");
+
+    // The boundary sets `operator` from the root op name (the custom op
+    // sits at root, so root_op_name resolves to "fail_op").
+    assert_eq!(err.operator(), Some("fail_op"));
+
+    // The Custom error variant carries the user's message; Display
+    // renders it as part of the full error string.
+    assert!(
+        err.to_string().contains("boom"),
+        "error display should contain 'boom', got: {err}",
+    );
+
+    // The trace must record at least one step — the custom-op
+    // invocation that failed. Some compile-time tree shapes record an
+    // error step explicitly, others just emit the eval step that
+    // returned `Err`; we just assert non-emptiness here so the test
+    // doesn't depend on which shape the trace collector uses today.
+    assert!(
+        !run.steps.is_empty(),
+        "trace should record at least one step before the failure",
+    );
+
+    // The expression tree always contains the root op name regardless
+    // of success or failure.
+    assert!(
+        run.expression_tree.expression.contains("fail_op"),
+        "expression tree should mention 'fail_op': {:?}",
+        run.expression_tree
+    );
+}
