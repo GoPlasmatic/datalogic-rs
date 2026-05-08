@@ -379,4 +379,64 @@ fn structured_error_path_serializes_to_json() {
     for id in path {
         assert!(id.is_u64());
     }
+    // No PathStep cache field is serialized — wire format is the
+    // baseline `{type, message, ?operator, ?path}` shape.
+    assert!(json.get("path_steps").is_none());
+    assert!(json.get("resolved").is_none());
+}
+
+/// Compile a rule that throws at runtime (NaN from string arithmetic) and
+/// return the resulting Error along with its compiled Logic.
+fn nan_error(engine: &Engine) -> (datalogic_rs::Logic, Error) {
+    let compiled = engine.compile(r#"{"+": ["x", 1]}"#).unwrap();
+    let mut session = engine.session();
+    let err = session
+        .evaluate_serde(&compiled, &json!(null))
+        .expect_err("arithmetic on string must fail");
+    (compiled, err)
+}
+
+#[test]
+fn engine_errors_carry_raw_path_for_on_demand_resolution() {
+    // Engine evaluation attaches raw compiled-node ids only — resolving
+    // those into PathSteps is paid at the catch site via
+    // `error.resolved_path(&compiled)`. Doing the walk on every
+    // boundary crossing inflates error-heavy workloads ~17×; the
+    // resolve-on-demand contract puts the cost where the caller
+    // actually needs the data.
+    let engine = Engine::new();
+    let (compiled, err) = nan_error(&engine);
+
+    assert!(
+        !err.path().is_empty(),
+        "engine errors must arrive with raw breadcrumb ids, got {:?}",
+        err
+    );
+    // Resolve on demand against the original Logic.
+    let steps = err.resolved_path(&compiled);
+    assert!(!steps.is_empty(), "resolved_path must produce steps");
+    assert_eq!(steps[0].operator.as_deref(), Some("+"));
+}
+
+#[test]
+fn with_path_replaces_prior_path() {
+    // `with_path` is a plain setter — replacing the inline `Vec<u32>`
+    // wholesale.
+    let err = Error::invalid_arguments("nope")
+        .with_path(vec![1, 2, 3])
+        .with_path(vec![999]);
+    assert_eq!(err.path(), &[999]);
+}
+
+#[test]
+fn wrap_preserves_path_metadata() {
+    // `Error::wrap(some_error)` is a no-op when given an existing Error;
+    // the raw path round-trips alongside operator metadata.
+    let engine = Engine::new();
+    let (_compiled, err) = nan_error(&engine);
+    let original_path = err.path().to_vec();
+    assert!(!original_path.is_empty());
+
+    let wrapped = Error::wrap(err);
+    assert_eq!(wrapped.path(), original_path.as_slice());
 }

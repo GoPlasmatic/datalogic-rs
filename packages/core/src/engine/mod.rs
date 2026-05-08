@@ -94,6 +94,14 @@ impl Drop for DepthGuard {
 ///
 /// # Choosing an evaluate method
 ///
+/// **Start here.** Use [`Self::evaluate_str`] for one-shot calls. Switch
+/// to [`crate::Session`] once you're evaluating the same compiled rule
+/// many times — it reuses one arena instead of allocating per call. Drop
+/// down to [`Self::evaluate`] only when you're managing your own
+/// `bumpalo::Bump` (custom pools, integration with arena-aware downstream
+/// code). The table below is the full comparison; the three-line summary
+/// above covers the dominant choice.
+///
 /// Three tiers, in order of caller control:
 ///
 /// | Method | Arena ownership | Result type | When to use |
@@ -394,18 +402,7 @@ impl Engine {
         let mut ctx = crate::arena::ContextStack::new(data_ref);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
-            Err(mut e) => {
-                e = e.with_path(ctx.take_error_path());
-                // Only attach the root op name if a deeper site (e.g. the
-                // `InvalidArgs` dispatch arm) didn't already name a more
-                // specific failing op.
-                if e.operator().is_none()
-                    && let Some(name) = compiled.root_op_name.clone()
-                {
-                    e = e.with_operator(name);
-                }
-                Err(e)
-            }
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
         }
     }
 
@@ -596,17 +593,9 @@ impl Engine {
                 error: None,
                 error_structured: None,
             },
-            Err(mut e) => {
+            Err(e) => {
                 let message = e.to_string();
-                e = e.with_path(error_path);
-                // Only attach the root op name if a deeper site (e.g. the
-                // `InvalidArgs` dispatch arm) didn't already name a more
-                // specific failing op.
-                if e.operator().is_none()
-                    && let Some(name) = compiled.root_op_name.clone()
-                {
-                    e = e.with_operator(name);
-                }
+                let e = e.decorated(error_path, compiled, true);
                 TracedResult {
                     result: Value::Null,
                     expression_tree,

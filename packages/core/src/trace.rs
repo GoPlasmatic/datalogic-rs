@@ -352,13 +352,7 @@ impl<'e> TracedSession<'e> {
         let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);
         let result = match outcome {
             Ok(av) => Ok(av),
-            Err(mut e) => {
-                e = e.with_path(ctx.take_error_path());
-                if let Some(name) = compiled.root_op_name.clone() {
-                    e = e.with_operator(name);
-                }
-                Err(e)
-            }
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, false)),
         };
         let collector = ctx.detach_tracer().expect("attach_tracer was called above");
         TracedRun {

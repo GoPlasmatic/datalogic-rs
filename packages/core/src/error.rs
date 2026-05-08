@@ -15,8 +15,6 @@ pub(crate) const NAN_ERROR: &str = "NaN";
 /// Internal storage for the breadcrumb on [`Error`]. Hidden from the public
 /// surface so the layout (currently a plain `Vec<u32>`) can evolve
 /// (smallvec, inline buffer, deferred-grow) without an API change.
-///
-/// Constructed at the boundary from `Vec<u32>`; users never name this type.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ErrorPath {
     inner: Vec<u32>,
@@ -149,9 +147,11 @@ pub struct Error {
     /// carry an owned `String` via `Cow::Owned`.
     operator: Option<Cow<'static, str>>,
     /// Breadcrumb of compiled-node ids from the failure site toward the
-    /// root (leaf-to-root). Empty when the error came from parse/compile.
-    /// Read via [`Self::path`]. Backed by a plain `Vec<u32>` today; may
-    /// switch to an inline-N buffer in a future release.
+    /// root (leaf-to-root). Empty when the error came from parse/compile
+    /// or wasn't routed through the public `evaluate*` path. Stored
+    /// inline (no `Box`) so attaching a path at the boundary is just a
+    /// move — heap-allocating per error showed up as a +30% regression
+    /// on error-heavy suites (try/throw/datetime/string).
     path: ErrorPath,
 }
 
@@ -229,6 +229,15 @@ impl Error {
     /// Returns an empty vector when `self.path` is empty. Ids absent from the
     /// compiled tree (e.g. when the error came from compile-time, before
     /// evaluation populated the breadcrumb) are skipped.
+    ///
+    /// **Why on demand**: an earlier design eagerly cached the resolved
+    /// steps on `Error` so callers could read them without holding the
+    /// `Logic`. That walk allocates a HashMap of every node + a `String`
+    /// JSON pointer per node, and paying it on every boundary error
+    /// inflated error-heavy benchmark suites by 17×. Resolving on demand
+    /// at the catch site puts the cost where the caller actually needs
+    /// the data — and most callers either inspect raw [`Self::path`]
+    /// only, or already hold the compiled `Logic` at the catch site.
     pub fn resolved_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
         compiled.resolve_path(self.path.as_slice())
     }
@@ -349,6 +358,46 @@ impl Error {
     #[inline]
     pub(crate) fn invalid_args() -> Self {
         Error::invalid_arguments(INVALID_ARGS)
+    }
+
+    /// Decorate an error from a public `evaluate*` boundary with the
+    /// breadcrumb path (raw ids only — see below) and the outermost
+    /// operator name. Marked `#[cold]` + `#[inline(never)]` so the
+    /// dispatch caller's `Err` arm shrinks to a single call instruction,
+    /// keeping the hot `Ok` arm's I-cache footprint tight.
+    ///
+    /// **Lazy path resolution.** The boundary attaches raw compiled-node
+    /// ids only — it does *not* call `Logic::resolve_path` here. That
+    /// walk allocates a HashMap of every node + a `String` JSON pointer
+    /// per node and was measured to balloon try.json from 51 ns/op to
+    /// 898 ns/op (17×) and arithmetic/plus.json from 22 to 84 ns
+    /// (4×) on error-heavy suites where every iteration constructs an
+    /// Error. Consumers that need structured steps call
+    /// [`Self::resolved_path`] (takes a `&Logic`) on demand, which is
+    /// the same cost paid once at the catch site rather than at every
+    /// boundary crossing.
+    ///
+    /// `prefer_existing_op` controls whether to fall back to
+    /// `compiled.root_op_name` when no operator was already attached:
+    /// the `Engine::evaluate*` sites pass `true` (only attach if a
+    /// deeper site didn't name a more specific failing op);
+    /// `TracedSession` passes `false` to preserve its prior
+    /// unconditional-overwrite behavior.
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn decorated(
+        mut self,
+        path: Vec<u32>,
+        compiled: &crate::Logic,
+        prefer_existing_op: bool,
+    ) -> Self {
+        self = self.with_path(path);
+        if !prefer_existing_op || self.operator.is_none() {
+            if let Some(name) = compiled.root_op_name.clone() {
+                self.operator = Some(name);
+            }
+        }
+        self
     }
 
     /// Canonical NaN error — `{"type": "NaN"}` thrown via [`Error::thrown`].
@@ -559,5 +608,13 @@ mod tests {
     fn error_path_from_vec_round_trips() {
         let p: ErrorPath = vec![10, 20, 30].into();
         assert_eq!(p.as_slice(), &[10, 20, 30]);
+    }
+
+    #[test]
+    fn with_path_stores_inline_no_box() {
+        // Engine boundary calls `with_path` once per error; storage is
+        // inline `Vec<u32>` so this is just a move, not a heap alloc.
+        let err = Error::invalid_arguments("x").with_path(vec![1, 2, 3]);
+        assert_eq!(err.path(), &[1, 2, 3]);
     }
 }
