@@ -32,8 +32,10 @@ provides one-release-cycle shims for the most common 4.x entry points.
   `Result<&'a DataValue<'a>>` allocated in a `bumpalo::Bump`. The legacy
   `ArenaOperator` trait remains as a deprecated bridge for one release.
 - **Operator registration is builder-only.** `Engine` itself no longer has
-  `add_operator` / `remove_operator`; they live on `EngineBuilder`. Once
-  `build()` returns, the operator set is frozen.
+  `add_operator`; it lives on `EngineBuilder` (also `add_operator_box`
+  for pre-boxed `Box<dyn CustomOperator>`). Once `build()` returns, the
+  operator set is frozen. The 4.x `remove_operator` is gone — registration
+  is single-direction; rebuild the builder if you need a different set.
 - **Internal types are no longer public.** `CompiledNode`, `OpCode`,
   `MetadataHint`, `PathSegment`, `ReduceHint` were public in 4.x and are
   now `pub(crate)`. They were never reachable through any documented

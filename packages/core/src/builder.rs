@@ -66,7 +66,7 @@ impl EngineBuilder {
     /// Operator registration is builder-only; once [`Self::build`] hands you
     /// an [`Engine`], its operator set is frozen. For the rare case where
     /// you already have a `Box<dyn CustomOperator>` (e.g. dynamic dispatch
-    /// from a runtime registry), use [`Self::add_operator_boxed`].
+    /// from a runtime registry), use [`Self::add_operator_box`].
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn add_operator<T>(mut self, name: impl Into<String>, operator: T) -> Self
@@ -82,22 +82,12 @@ impl EngineBuilder {
     /// otherwise prefer [`Self::add_operator`].
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
-    pub fn add_operator_boxed(
+    pub fn add_operator_box(
         mut self,
         name: impl Into<String>,
         operator: Box<dyn CustomOperator>,
     ) -> Self {
         self.operators.insert(name.into(), operator);
-        self
-    }
-
-    /// Unregister a previously-added operator. Silently no-ops if `name`
-    /// wasn't registered. Useful when composing builders from helper
-    /// functions that pre-register more than the caller needs.
-    #[inline]
-    #[must_use = "builder methods return a new builder; chain into `.build()`"]
-    pub fn remove_operator(mut self, name: &str) -> Self {
-        self.operators.remove(name);
         self
     }
 

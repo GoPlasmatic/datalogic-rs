@@ -211,18 +211,3 @@ fn operator_names_lists_registered_custom_ops() {
     names.sort();
     assert_eq!(names, vec!["double", "xcat"]);
 }
-
-#[test]
-fn builder_remove_operator_unregisters() {
-    let engine = Engine::builder()
-        .add_operator("double", DoubleArena)
-        .remove_operator("double")
-        .build();
-    assert!(!engine.has_custom_operator("double"));
-}
-
-#[test]
-fn builder_remove_operator_unknown_name_is_noop() {
-    let engine = Engine::builder().remove_operator("not_registered").build();
-    assert_eq!(engine.operator_names().count(), 0);
-}

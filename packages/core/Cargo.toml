@@ -2,10 +2,15 @@
 name = "datalogic-rs"
 version = "5.0.0"
 edition.workspace = true
+# Floor matches edition 2024 (stable in 1.85). Bump deliberately when a
+# newer language feature is actually needed; downstream pinning depends on
+# this staying conservative.
+rust-version = "1.85"
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage = "https://github.com/GoPlasmatic/datalogic-rs"
+documentation = "https://docs.rs/datalogic-rs"
 description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
 readme = "README.md"
 keywords = ["rules", "engine", "json", "logic"]
@@ -13,10 +18,12 @@ categories = ["data-structures", "development-tools", "parsing"]
 exclude = [".DS_Store"]
 
 [features]
-# Default build is serde_json-free. The `compat` feature bridges
-# `serde_json::Value` to the v5 `DataValue` / `OwnedDataValue` core and
-# provides the `LegacyApi` shims for 4.x callers; opt in with
-# `features = ["compat"]` if you need either.
+# Empty default: the crate is `serde_json`-free out of the box. Opt-in
+# features below add interop, optional operators, or templating — see
+# `compat`, `preserve`, `datetime`, `trace`, `error-handling`,
+# `ext-string`, `ext-array`, `ext-control`, `ext-math`, `wasm`. Keeping
+# `default = []` means a minimal build pulls only the JSONLogic baseline
+# operators and no optional dependencies.
 default = []
 compat = ["dep:serde_json", "datavalue/serde_json"]
 # `preserve` enables structure-preservation (templating) mode, where
