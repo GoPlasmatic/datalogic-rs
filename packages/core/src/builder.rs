@@ -67,6 +67,12 @@ impl EngineBuilder {
     /// an [`Engine`], its operator set is frozen. For the rare case where
     /// you already have a `Box<dyn CustomOperator>` (e.g. dynamic dispatch
     /// from a runtime registry), use [`Self::add_operator_box`].
+    ///
+    /// **Built-ins always win.** If `name` collides with a built-in
+    /// JSONLogic operator (`+`, `if`, `var`, `map`, …), the built-in is
+    /// dispatched and the registered custom op is never reached. To
+    /// extend the operator set, choose a name that doesn't parse as a
+    /// built-in.
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn add_operator<T>(mut self, name: impl Into<String>, operator: T) -> Self

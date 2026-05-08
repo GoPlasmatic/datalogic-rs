@@ -152,3 +152,41 @@ fn evaluate_serde_one_shot() {
     let result = engine.evaluate_serde(&logic, &data).unwrap();
     assert_eq!(result, json!(5));
 }
+
+/// Built-in operators always win against a custom registration with the
+/// same name. The compile path checks `op_name.parse::<OpCode>()` first
+/// (`compile/walker.rs:79`) and routes through the built-in dispatcher
+/// before consulting the engine's custom-operator registry — so a
+/// `CustomOperator` registered as `"+"` is silently shadowed and never
+/// reached at runtime.
+///
+/// This test pins that contract. If a future change wants custom
+/// operators to override built-ins, that's a deliberate behaviour change
+/// that would flip this test.
+#[test]
+fn builtin_shadows_custom_operator_with_same_name() {
+    use datalogic_rs::operator::EvalContext;
+    use datalogic_rs::{CustomOperator, Result as DLResult};
+
+    /// A custom op named `"+"` that, if reached, would return -1 — chosen
+    /// to be impossible from the real `+` operator on any natural-number
+    /// input, so we can tell which path actually ran.
+    struct AdditiveImposter;
+    impl CustomOperator for AdditiveImposter {
+        fn evaluate<'a>(
+            &self,
+            _args: &[&'a DataValue<'a>],
+            _ctx: &mut EvalContext<'_, 'a>,
+            arena: &'a Bump,
+        ) -> DLResult<&'a DataValue<'a>> {
+            Ok(arena.alloc(DataValue::from_f64(-1.0)))
+        }
+    }
+
+    let engine = Engine::builder()
+        .add_operator("+", AdditiveImposter)
+        .build();
+    let result = engine.evaluate_str(r#"{"+": [1, 2]}"#, "null").unwrap();
+    // Built-in `+` ran (3), not the imposter (-1).
+    assert_eq!(result, "3");
+}
