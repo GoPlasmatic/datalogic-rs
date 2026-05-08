@@ -7,7 +7,7 @@ use datavalue::OwnedDataValue;
 use std::sync::Arc;
 
 /// Main configuration structure for Engine evaluation behavior
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EvaluationConfig {
     /// How to handle NaN (Not a Number) in arithmetic operations
     pub arithmetic_nan_handling: NanHandling,
@@ -72,7 +72,23 @@ pub enum TruthyEvaluator {
     /// Custom truthiness evaluator. Receives the value as an
     /// [`OwnedDataValue`] — the canonical v5 owned value type — so the
     /// callback works without enabling `serde_json` interop.
+    ///
+    /// Note: this variant cannot participate in `PartialEq` or in a
+    /// derived [`Debug`] (the closure is opaque). The hand-rolled `Debug`
+    /// impl prints `Custom(<fn>)` so the surrounding [`EvaluationConfig`]
+    /// stays debug-printable.
     Custom(Arc<dyn Fn(&OwnedDataValue) -> bool + Send + Sync>),
+}
+
+impl std::fmt::Debug for TruthyEvaluator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::JavaScript => f.write_str("JavaScript"),
+            Self::Python => f.write_str("Python"),
+            Self::StrictBoolean => f.write_str("StrictBoolean"),
+            Self::Custom(_) => f.write_str("Custom(<fn>)"),
+        }
+    }
 }
 
 /// Configuration for numeric coercion behavior

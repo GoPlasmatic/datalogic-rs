@@ -95,6 +95,7 @@ mod engine;
 mod error;
 mod eval_input;
 mod node;
+mod node_serialize;
 mod opcode;
 pub mod operator;
 mod operators;
@@ -149,7 +150,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ## Example
 ///
 /// ```rust
-/// use datalogic_rs::{CustomOperator, DataValue, Engine, Result, operator::ContextStack};
+/// use datalogic_rs::{CustomOperator, DataValue, Engine, Result, operator::EvalContext};
 /// use bumpalo::Bump;
 ///
 /// struct DoubleArena;
@@ -157,7 +158,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///     fn evaluate<'a>(
 ///         &self,
 ///         args: &[&'a DataValue<'a>],
-///         _ctx: &mut ContextStack<'a>,
+///         _ctx: &mut EvalContext<'_, 'a>,
 ///         arena: &'a Bump,
 ///     ) -> Result<&'a DataValue<'a>> {
 ///         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -170,6 +171,21 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
 /// assert_eq!(result, "42");
 /// ```
+///
+/// ## Stability
+///
+/// This trait is the headline extension point of the crate and is
+/// intentionally not sealed. Within the **5.x series** the only changes
+/// that will be made to this trait are *default-method additions* — no
+/// new required methods, no signature changes to [`Self::evaluate`], no
+/// lifetime restructuring. Implementations written against 5.0 will
+/// compile against every 5.x release without modification. Any breaking
+/// change here requires a 6.0 bump.
+///
+/// The opaque types in the signature ([`crate::DataValue`],
+/// [`operator::EvalContext`], [`bumpalo::Bump`]) may evolve internally
+/// without breaking this contract, since their public surface is the
+/// stable boundary.
 pub trait CustomOperator: Send + Sync {
     /// Evaluate this operator with arena-allocated args and result.
     ///
@@ -177,15 +193,16 @@ pub trait CustomOperator: Send + Sync {
     ///
     /// * `args` — pre-evaluated args as `&'a DataValue<'a>`. The arena
     ///   dispatcher has already recursed into each arg's expression tree.
-    /// * `ctx` — the arena context stack. Most operators won't touch
-    ///   this; it's needed only when the operator iterates and pushes
-    ///   its own frames (analogous to `filter` / `map`).
+    /// * `ctx` — opaque view into the engine's evaluation context. Most
+    ///   operators ignore this; it exposes [`operator::EvalContext::root_input`]
+    ///   and [`operator::EvalContext::depth`] for the rare case where an
+    ///   operator's behaviour depends on the surrounding context.
     /// * `arena` — the [`bumpalo::Bump`] allocator. Use `arena.alloc(...)`
     ///   for arena values, `arena.alloc_str(...)` for strings.
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        ctx: &mut operator::ContextStack<'a>,
+        ctx: &mut operator::EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }

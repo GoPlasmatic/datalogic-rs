@@ -7,7 +7,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{CompiledNode, Error, OpCode};
+use crate::node_serialize;
+use crate::{CompiledNode, Error};
 
 /// The result of a traced evaluation, containing both the result and execution trace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,28 +52,26 @@ impl ExpressionNode {
     fn build_node(node: &CompiledNode) -> ExpressionNode {
         let id = node.id();
         match node {
-            CompiledNode::Value { value, .. } => {
-                Self::leaf(id, serde_json::to_string(value).unwrap_or_default())
-            }
+            CompiledNode::Value { value, .. } => Self::leaf(id, value.to_json_string()),
             CompiledNode::Array { nodes, .. } => ExpressionNode {
                 id,
-                expression: Self::node_to_json_string(node),
+                expression: node_serialize::node_to_json_string(node),
                 children: Self::op_children(nodes),
             },
             CompiledNode::BuiltinOperator { opcode, args, .. } => ExpressionNode {
                 id,
-                expression: Self::builtin_to_json_string(opcode, args),
+                expression: node_serialize::builtin_to_json_string(opcode, args),
                 children: Self::op_children(args),
             },
             CompiledNode::CustomOperator(data) => ExpressionNode {
                 id,
-                expression: Self::custom_to_json_string(&data.name, &data.args),
+                expression: node_serialize::custom_to_json_string(&data.name, &data.args),
                 children: Self::op_children(&data.args),
             },
             #[cfg(feature = "preserve")]
             CompiledNode::StructuredObject(data) => ExpressionNode {
                 id,
-                expression: Self::structured_to_json_string(&data.fields),
+                expression: node_serialize::structured_to_json_string(&data.fields),
                 children: Self::op_children_from_fields(&data.fields),
             },
             CompiledNode::Var {
@@ -84,15 +83,15 @@ impl ExpressionNode {
             #[cfg(feature = "ext-control")]
             CompiledNode::Exists(data) => Self::leaf(
                 id,
-                Self::compiled_exists_to_json_string(data.scope_level, &data.segments),
+                node_serialize::compiled_exists_to_json_string(&data.segments),
             ),
             #[cfg(feature = "error-handling")]
             CompiledNode::Throw(_) | CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => {
-                Self::leaf(id, Self::node_to_json_string(node))
+                Self::leaf(id, node_serialize::node_to_json_string(node))
             }
             #[cfg(not(feature = "error-handling"))]
             CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => {
-                Self::leaf(id, Self::node_to_json_string(node))
+                Self::leaf(id, node_serialize::node_to_json_string(node))
             }
             CompiledNode::InvalidArgs { .. } => {
                 Self::leaf(id, "{\"<invalid args>\": null}".to_string())
@@ -150,7 +149,11 @@ impl ExpressionNode {
         }
         ExpressionNode {
             id,
-            expression: Self::compiled_var_to_json_string(scope_level, segments, default_value),
+            expression: node_serialize::compiled_var_to_json_string(
+                scope_level,
+                segments,
+                default_value,
+            ),
             children,
         }
     }
@@ -158,175 +161,6 @@ impl ExpressionNode {
     /// Check if a node is an operator (not a literal value)
     fn is_operator_node(node: &CompiledNode) -> bool {
         !matches!(node, CompiledNode::Value { .. })
-    }
-
-    /// Convert a CompiledNode to its JSON string representation
-    fn node_to_json_string(node: &CompiledNode) -> String {
-        match node {
-            CompiledNode::Value { value, .. } => serde_json::to_string(value).unwrap_or_default(),
-            CompiledNode::Array { nodes, .. } => {
-                let items: Vec<String> = nodes.iter().map(Self::node_to_json_string).collect();
-                format!("[{}]", items.join(", "))
-            }
-            CompiledNode::BuiltinOperator { opcode, args, .. } => {
-                Self::builtin_to_json_string(opcode, args)
-            }
-            CompiledNode::CustomOperator(data) => {
-                Self::custom_to_json_string(&data.name, &data.args)
-            }
-            #[cfg(feature = "preserve")]
-            CompiledNode::StructuredObject(data) => Self::structured_to_json_string(&data.fields),
-            CompiledNode::Var {
-                scope_level,
-                segments,
-                default_value,
-                ..
-            } => {
-                Self::compiled_var_to_json_string(*scope_level, segments, default_value.as_deref())
-            }
-            #[cfg(feature = "ext-control")]
-            CompiledNode::Exists(data) => {
-                Self::compiled_exists_to_json_string(data.scope_level, &data.segments)
-            }
-            #[cfg(feature = "error-handling")]
-            CompiledNode::Throw(data) => {
-                if let datavalue::OwnedDataValue::Object(pairs) = &data.error
-                    && let Some((_, datavalue::OwnedDataValue::String(s))) =
-                        pairs.iter().find(|(k, _)| k == "type")
-                {
-                    return format!("{{\"throw\": \"{}\"}}", s);
-                }
-                format!(
-                    "{{\"throw\": {}}}",
-                    serde_json::to_string(&data.error).unwrap_or_default()
-                )
-            }
-            CompiledNode::Missing(data) => {
-                let parts: Vec<String> = data
-                    .args
-                    .iter()
-                    .map(|a| match a {
-                        crate::node::CompiledMissingArg::Now((path, _)) => {
-                            format!("\"{}\"", path)
-                        }
-                        crate::node::CompiledMissingArg::Later(n) => Self::node_to_json_string(n),
-                    })
-                    .collect();
-                format!("{{\"missing\": [{}]}}", parts.join(", "))
-            }
-            CompiledNode::MissingSome(data) => {
-                let min_str = match &data.min_present {
-                    crate::node::CompiledMissingMin::Now(n) => n.to_string(),
-                    crate::node::CompiledMissingMin::Later(n) => Self::node_to_json_string(n),
-                };
-                let paths_str = match &data.paths {
-                    crate::node::CompiledMissingPaths::Now(paths) => {
-                        let items: Vec<String> =
-                            paths.iter().map(|(p, _)| format!("\"{}\"", p)).collect();
-                        format!("[{}]", items.join(", "))
-                    }
-                    crate::node::CompiledMissingPaths::Later(n) => Self::node_to_json_string(n),
-                };
-                format!("{{\"missing_some\": [{}, {}]}}", min_str, paths_str)
-            }
-            CompiledNode::InvalidArgs { .. } => "{\"<invalid args>\": null}".to_string(),
-        }
-    }
-
-    fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> String {
-        let op_str = opcode.as_str();
-        let args_str = if args.len() == 1 {
-            Self::node_to_json_string(&args[0])
-        } else {
-            let items: Vec<String> = args.iter().map(Self::node_to_json_string).collect();
-            format!("[{}]", items.join(", "))
-        };
-        format!("{{\"{}\": {}}}", op_str, args_str)
-    }
-
-    fn custom_to_json_string(name: &str, args: &[CompiledNode]) -> String {
-        let args_str = if args.len() == 1 {
-            Self::node_to_json_string(&args[0])
-        } else {
-            let items: Vec<String> = args.iter().map(Self::node_to_json_string).collect();
-            format!("[{}]", items.join(", "))
-        };
-        format!("{{\"{}\": {}}}", name, args_str)
-    }
-
-    #[cfg(feature = "preserve")]
-    fn structured_to_json_string(fields: &[(String, CompiledNode)]) -> String {
-        let items: Vec<String> = fields
-            .iter()
-            .map(|(key, node)| format!("\"{}\": {}", key, Self::node_to_json_string(node)))
-            .collect();
-        format!("{{{}}}", items.join(", "))
-    }
-
-    fn compiled_var_to_json_string(
-        scope_level: u32,
-        segments: &[crate::node::PathSegment],
-        default_value: Option<&CompiledNode>,
-    ) -> String {
-        use crate::node::PathSegment;
-        if scope_level == 0 {
-            let path: String = segments
-                .iter()
-                .map(|seg| match seg {
-                    PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s.to_string(),
-                    PathSegment::Index(i) => i.to_string(),
-                })
-                .collect::<Vec<_>>()
-                .join(".");
-            match default_value {
-                Some(def) => {
-                    format!(
-                        "{{\"var\": [\"{}\", {}]}}",
-                        path,
-                        Self::node_to_json_string(def)
-                    )
-                }
-                None => format!("{{\"var\": \"{}\"}}", path),
-            }
-        } else {
-            let mut parts = vec![format!("[{}]", scope_level)];
-            for seg in segments {
-                match seg {
-                    PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
-                        parts.push(format!("\"{}\"", s))
-                    }
-                    PathSegment::Index(i) => parts.push(i.to_string()),
-                }
-            }
-            format!("{{\"val\": [{}]}}", parts.join(", "))
-        }
-    }
-
-    #[cfg(feature = "ext-control")]
-    fn compiled_exists_to_json_string(
-        _scope_level: u32,
-        segments: &[crate::node::PathSegment],
-    ) -> String {
-        use crate::node::PathSegment;
-        if segments.len() == 1 {
-            match &segments[0] {
-                PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
-                    format!("{{\"exists\": \"{}\"}}", s)
-                }
-                PathSegment::Index(i) => format!("{{\"exists\": {}}}", i),
-            }
-        } else {
-            let parts: Vec<String> = segments
-                .iter()
-                .map(|seg| match seg {
-                    PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
-                        format!("\"{}\"", s)
-                    }
-                    PathSegment::Index(i) => i.to_string(),
-                })
-                .collect();
-            format!("{{\"exists\": [{}]}}", parts.join(", "))
-        }
     }
 }
 

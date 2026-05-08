@@ -2,7 +2,7 @@
 //!
 //! The crate-root re-exports surface what users need: [`crate::DataValue`],
 //! [`crate::operator::ContextStack`], and [`crate::data_to_json_string`]. They appear
-//! in [`crate::Operator::evaluate`] signatures and let users implement custom
+//! in [`crate::CustomOperator::evaluate`] signatures and let users implement custom
 //! operators that participate in arena dispatch without materializing
 //! `serde_json::Value`.
 //!

@@ -69,6 +69,79 @@ fn datavalue_object_returned_as_json_string() {
     assert_eq!(result, "[1,2,3,4]");
 }
 
+#[test]
+fn engine_and_session_are_debug_printable() {
+    // Engine carries a Box<dyn CustomOperator> map; Session carries a
+    // bumpalo::Bump. Both need hand-rolled Debug impls so users can
+    // `dbg!()` them without compile errors.
+    let engine = Engine::new();
+    let rendered = format!("{:?}", engine);
+    assert!(rendered.contains("Engine"));
+    assert!(rendered.contains("custom_operators"));
+
+    let session = engine.session();
+    let rendered = format!("{:?}", session);
+    assert!(rendered.contains("Session"));
+    assert!(rendered.contains("arena_allocated_bytes"));
+}
+
+#[test]
+fn logic_clone_evaluates_independently() {
+    // `Logic: Clone` lets callers stash an independently-owned copy without
+    // wrapping in `Arc`. The clone must produce identical results.
+    let engine = Engine::new();
+    let original = engine.compile(r#"{"*": [{"var": "x"}, 2]}"#).unwrap();
+    let cloned = original.clone();
+
+    let arena = Bump::new();
+    let data = DataValue::from_str(r#"{"x": 21}"#, &arena).unwrap();
+
+    let r1 = engine.evaluate(&original, data, &arena).unwrap();
+    let r2 = engine.evaluate(&cloned, data, &arena).unwrap();
+    assert_eq!(r1.as_i64(), Some(42));
+    assert_eq!(r2.as_i64(), Some(42));
+}
+
+#[test]
+fn logic_to_json_round_trip_evaluates_identically() {
+    // The reverse-compilation form should re-compile to a Logic that
+    // evaluates to the same result. The string form may not be
+    // byte-identical to the input (literals canonicalise, var paths use
+    // the canonical "var"/"val" forms), so we compare evaluation outputs.
+    let engine = Engine::new();
+    let original_rule = r#"{">": [{"var": "score"}, 90]}"#;
+    let compiled = engine.compile(original_rule).unwrap();
+
+    let serialised = compiled.to_json();
+    assert!(serialised.contains("var"));
+    assert!(serialised.contains("score"));
+
+    // Display calls to_json.
+    assert_eq!(format!("{}", compiled), serialised);
+
+    let recompiled = engine.compile(&serialised).unwrap();
+    let arena = Bump::new();
+    let data = DataValue::from_str(r#"{"score": 95}"#, &arena).unwrap();
+    let r1 = engine.evaluate(&compiled, data, &arena).unwrap();
+    let r2 = engine.evaluate(&recompiled, data, &arena).unwrap();
+    assert_eq!(r1.as_bool(), r2.as_bool());
+    assert_eq!(r1.as_bool(), Some(true));
+}
+
+#[test]
+fn logic_to_json_handles_constant_folded_subtree() {
+    // Constant-folded sub-expressions become literals in the round-trip.
+    // The semantics stay identical, even though the string form differs.
+    let engine = Engine::new();
+    let compiled = engine.compile(r#"{"+": [1, {"+": [2, 3]}]}"#).unwrap();
+    let serialised = compiled.to_json();
+    let recompiled = engine.compile(&serialised).unwrap();
+    let arena = Bump::new();
+    let data = DataValue::from_str("null", &arena).unwrap();
+    let result = engine.evaluate(&recompiled, data, &arena).unwrap();
+    assert_eq!(result.as_i64(), Some(6));
+}
+
 #[cfg(feature = "compat")]
 #[test]
 fn evaluate_serde_one_shot() {

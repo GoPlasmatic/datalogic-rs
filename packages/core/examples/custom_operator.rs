@@ -10,7 +10,7 @@
 //! boundary, no `compat` feature required.
 
 use bumpalo::Bump;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 
 /// Calculates the average of an array of numbers.
@@ -23,7 +23,7 @@ impl CustomOperator for AverageOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
@@ -66,7 +66,7 @@ impl CustomOperator for BetweenOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() < 3 {
@@ -96,7 +96,7 @@ impl CustomOperator for FormatOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {

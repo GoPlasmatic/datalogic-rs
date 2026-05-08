@@ -22,7 +22,7 @@
 
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi; // brings the v4 method names back into scope
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, EvaluationConfig, NanHandling, Result};
 use serde_json::json;
 
@@ -85,7 +85,7 @@ impl CustomOperator for Double {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);

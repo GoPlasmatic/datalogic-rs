@@ -45,6 +45,7 @@ impl EngineBuilder {
 
     /// Set the evaluation config.
     #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn config(mut self, config: EvaluationConfig) -> Self {
         self.config = config;
         self
@@ -53,6 +54,7 @@ impl EngineBuilder {
     /// Toggle structure-preservation mode (templating). Only effective when
     /// the crate is built with `feature = "preserve"`.
     #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn preserve_structure(mut self, on: bool) -> Self {
         self.preserve_structure = on;
         self
@@ -66,6 +68,7 @@ impl EngineBuilder {
     /// you already have a `Box<dyn CustomOperator>` (e.g. dynamic dispatch
     /// from a runtime registry), use [`Self::add_operator_boxed`].
     #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn add_operator<T>(mut self, name: impl Into<String>, operator: T) -> Self
     where
         T: CustomOperator + 'static,
@@ -78,6 +81,7 @@ impl EngineBuilder {
     /// is already a `Box<dyn CustomOperator>` (e.g. from a runtime registry);
     /// otherwise prefer [`Self::add_operator`].
     #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn add_operator_boxed(
         mut self,
         name: impl Into<String>,
@@ -91,6 +95,7 @@ impl EngineBuilder {
     /// wasn't registered. Useful when composing builders from helper
     /// functions that pre-register more than the caller needs.
     #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn remove_operator(mut self, name: &str) -> Self {
         self.operators.remove(name);
         self

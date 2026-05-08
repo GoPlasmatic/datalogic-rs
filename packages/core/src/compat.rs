@@ -141,7 +141,7 @@ pub type ArenaContextStack<'a> = crate::operator::ContextStack<'a>;
     note = "use `CustomOperator` and rename `evaluate_arena` -> `evaluate`; the `compat` module will be removed in 5.1"
 )]
 pub trait ArenaOperator: Send + Sync {
-    /// Forward to the v5 [`crate::Operator::evaluate`] signature.
+    /// Forward to the v5 [`crate::CustomOperator::evaluate`] signature.
     fn evaluate_arena<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
@@ -151,16 +151,18 @@ pub trait ArenaOperator: Send + Sync {
 }
 
 // Bridge: every ArenaOperator IS-A CustomOperator (forward `evaluate_arena`
-// → `evaluate`). Lets old custom operators keep compiling.
+// → `evaluate`). Lets old custom operators keep compiling. The v5 trait now
+// passes an opaque `EvalContext`, so we extract the inner stack via the
+// crate-private `stack_mut` accessor before forwarding.
 impl<T: ArenaOperator + ?Sized> crate::CustomOperator for T {
     #[inline]
     fn evaluate<'a>(
         &self,
         args: &[&'a crate::DataValue<'a>],
-        ctx: &mut crate::operator::ContextStack<'a>,
+        ctx: &mut crate::operator::EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::DataValue<'a>> {
-        ArenaOperator::evaluate_arena(self, args, ctx, arena)
+        ArenaOperator::evaluate_arena(self, args, ctx.stack_mut(), arena)
     }
 }
 

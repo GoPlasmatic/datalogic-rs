@@ -61,6 +61,21 @@ impl Default for Engine {
     }
 }
 
+impl std::fmt::Debug for Engine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Print the operator *count* rather than names: names are user
+        // registration data, and `Engine::operator_names()` exposes them
+        // already for callers who want them. The trait objects themselves
+        // can't render a meaningful Debug.
+        let mut s = f.debug_struct("Engine");
+        s.field("custom_operators", &self.custom_operators.len());
+        #[cfg(feature = "preserve")]
+        s.field("preserve_structure", &self.preserve_structure);
+        s.field("config", &self.config);
+        s.finish_non_exhaustive()
+    }
+}
+
 impl Engine {
     /// Start a [`crate::EngineBuilder`] for fluent construction.
     ///
@@ -68,7 +83,8 @@ impl Engine {
     /// structure-preservation mode, or pre-registered custom operators.
     /// For a stock engine, [`Self::new`] is shorter. The 4.x
     /// `with_preserve_structure` / `with_config` / `with_config_and_structure`
-    /// constructors are still reachable through [`crate::compat::LegacyApi`]
+    /// constructors are still reachable through `compat::LegacyApi` when the
+    /// crate is built with `feature = "compat"`
     /// (`use datalogic_rs::compat::LegacyApi;`).
     #[inline]
     pub fn builder() -> crate::EngineBuilder {
@@ -203,11 +219,11 @@ impl Engine {
     ///
     /// # Trace coverage
     ///
-    /// The session's one-shot [`TracedSession::evaluate_str`] compiles the
-    /// rule internally with optimization disabled, so every operator in the
+    /// The session's one-shot [`crate::TracedSession::evaluate_str`] compiles
+    /// the rule internally with optimization disabled, so every operator in the
     /// rule surfaces a trace step.
     ///
-    /// The pre-compiled paths ([`TracedSession::evaluate`] taking a `&Logic`)
+    /// The pre-compiled paths ([`crate::TracedSession::evaluate`] taking a `&Logic`)
     /// inherit whatever shape that `Logic` was compiled into — constant
     /// sub-expressions folded by [`Self::compile`] won't appear, since there
     /// is no operator left to execute. Use `evaluate_str` for full coverage

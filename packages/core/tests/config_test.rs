@@ -363,3 +363,34 @@ fn test_truthy_in_logical_operators() {
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
 }
+
+#[test]
+fn debug_format_covers_all_truthy_variants() {
+    // Each variant must produce a stable, lossless Debug rendering so
+    // EvaluationConfig can derive Debug without choking on the Custom
+    // closure variant.
+    let variants: Vec<(TruthyEvaluator, &str)> = vec![
+        (TruthyEvaluator::JavaScript, "JavaScript"),
+        (TruthyEvaluator::Python, "Python"),
+        (TruthyEvaluator::StrictBoolean, "StrictBoolean"),
+        (
+            TruthyEvaluator::Custom(Arc::new(|_: &OwnedDataValue| true)),
+            "Custom(<fn>)",
+        ),
+    ];
+    for (variant, expected) in variants {
+        assert_eq!(format!("{:?}", variant), expected);
+    }
+}
+
+#[test]
+fn debug_format_works_for_evaluation_config() {
+    // Custom truthy evaluator must not block EvaluationConfig::Debug.
+    let config = EvaluationConfig {
+        truthy_evaluator: TruthyEvaluator::Custom(Arc::new(|_| false)),
+        ..Default::default()
+    };
+    let rendered = format!("{:?}", config);
+    assert!(rendered.contains("EvaluationConfig"));
+    assert!(rendered.contains("Custom(<fn>)"));
+}

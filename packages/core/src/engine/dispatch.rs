@@ -342,5 +342,6 @@ fn evaluate_custom_operator<'a>(
     for arg in data.args.iter() {
         args.push(engine.dispatch_node(arg, ctx, arena)?);
     }
-    op.evaluate(&args, ctx, arena)
+    let mut wrapped = crate::operator::EvalContext::new(ctx);
+    op.evaluate(&args, &mut wrapped, arena)
 }

@@ -6,7 +6,7 @@
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 use serde_json::json;
 
@@ -20,7 +20,7 @@ impl CustomOperator for IsNightOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() != 1 {

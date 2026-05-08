@@ -1,10 +1,68 @@
 //! Public scaffolding for user-supplied operators.
 //!
-//! Today this re-exports just [`ContextStack`] — the internal evaluation
-//! stack threaded through [`crate::CustomOperator::evaluate`]. Users never
-//! construct one; the type lives here only because it appears in the trait
-//! method signature, and grouping it under `operator::` keeps the crate
-//! root focused on the dominant entry points (`Engine`, `Logic`, `Error`,
-//! `DataValue`, …).
+//! Custom operators implement [`crate::CustomOperator`] and receive an
+//! [`EvalContext`] handle alongside the pre-evaluated arguments and arena.
+//! The handle is opaque: it exposes the read-only context observations a
+//! custom operator may legitimately need ([`EvalContext::root_input`],
+//! [`EvalContext::depth`]) and hides the internal evaluation stack so its
+//! layout can evolve without breaking the trait contract.
 
+/// Opaque view into the engine's evaluation context, passed to
+/// [`crate::CustomOperator::evaluate`].
+///
+/// `'a` is the arena lifetime — the same `'a` that scopes the borrowed
+/// `&'a DataValue<'a>` arguments and the `&'a Bump` allocator. `'ctx`
+/// scopes the underlying `&mut` borrow into the engine's stack and is
+/// elided in user code (write `EvalContext<'_, 'a>` and Rust fills in the
+/// outer lifetime).
+///
+/// Custom operators rarely need to inspect the context; the dominant
+/// reason to take `ctx` at all is so the trait signature can grow new
+/// observations in future 5.x releases without breaking existing impls.
+pub struct EvalContext<'ctx, 'a> {
+    inner: &'ctx mut crate::arena::ContextStack<'a>,
+}
+
+impl<'ctx, 'a> EvalContext<'ctx, 'a> {
+    /// The root input passed to [`crate::Engine::evaluate`]. Stable across
+    /// the entire evaluation — does not change as iteration frames are
+    /// pushed/popped by enclosing operators.
+    #[inline]
+    pub fn root_input(&self) -> &'a crate::DataValue<'a> {
+        self.inner.root_input()
+    }
+
+    /// Number of iteration frames currently pushed by enclosing operators.
+    /// Zero at the top level. Useful when an operator's behaviour depends
+    /// on whether it's being invoked inside a `filter` / `map` / `reduce`.
+    #[inline]
+    pub fn depth(&self) -> usize {
+        self.inner.depth()
+    }
+
+    /// Engine-internal constructor. Used by the dispatcher when invoking a
+    /// custom operator's `evaluate` method.
+    #[inline]
+    pub(crate) fn new(inner: &'ctx mut crate::arena::ContextStack<'a>) -> Self {
+        Self { inner }
+    }
+
+    /// Engine-internal accessor used by the deprecated `compat::ArenaOperator`
+    /// bridge to forward to the legacy `&mut ContextStack<'a>` signature.
+    #[cfg(feature = "compat")]
+    #[inline]
+    pub(crate) fn stack_mut(&mut self) -> &mut crate::arena::ContextStack<'a> {
+        self.inner
+    }
+}
+
+/// Deprecated alias for the engine's internal evaluation stack. Kept under
+/// `feature = "compat"` only because `compat::ArenaOperator` still references
+/// it; new code should take an [`EvalContext`] instead. Will be removed in
+/// 5.1 alongside the rest of the `compat` module.
+#[cfg(feature = "compat")]
+#[deprecated(
+    since = "5.0.0",
+    note = "use `EvalContext` in `CustomOperator::evaluate`; `ContextStack` is removed in 5.1"
+)]
 pub use crate::arena::ContextStack;

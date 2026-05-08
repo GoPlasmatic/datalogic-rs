@@ -40,6 +40,18 @@ pub struct Session<'engine> {
     arena: Bump,
 }
 
+impl std::fmt::Debug for Session<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Print the engine handle plus the arena's currently-allocated byte
+        // count — useful for tracking high-water marks across resets without
+        // dumping every chunk's raw bytes.
+        f.debug_struct("Session")
+            .field("engine", &self.engine)
+            .field("arena_allocated_bytes", &self.arena.allocated_bytes())
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'engine> Session<'engine> {
     #[inline]
     pub(crate) fn new(engine: &'engine Engine) -> Self {

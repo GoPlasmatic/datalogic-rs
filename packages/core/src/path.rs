@@ -36,7 +36,7 @@ struct NodeInfo {
 }
 
 impl Logic {
-    /// Translate a breadcrumb of [`crate::CompiledNode`] ids into structured
+    /// Translate a breadcrumb of compiled-node ids into structured
     /// [`PathStep`]s, root-to-leaf.
     ///
     /// Input is the leaf-to-root breadcrumb stored on [`crate::Error::path`].

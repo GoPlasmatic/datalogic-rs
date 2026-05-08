@@ -636,6 +636,13 @@ impl CompileCtx {
 ///         .unwrap();
 /// });
 /// ```
+///
+/// `Logic` is `Clone` (deep-clones the compiled tree). Cloning is the right
+/// choice when a caller needs an independently mutable copy or wants to
+/// store the rule by value; for sharing the *same* compiled rule across
+/// threads or evaluations, prefer `Arc<Logic>` — the `Arc::clone` is a
+/// single atomic refcount bump rather than a tree walk.
+#[derive(Clone)]
 pub struct Logic {
     /// The root node of the compiled logic tree.
     pub(crate) root: CompiledNode,
@@ -712,6 +719,46 @@ impl Logic {
     /// Check if this compiled logic is static (can be evaluated without context)
     pub fn is_static(&self) -> bool {
         node_is_static(&self.root)
+    }
+
+    /// Reconstruct a JSONLogic string from this compiled tree.
+    ///
+    /// Reflects the *compiled* shape — constant-folded sub-expressions
+    /// appear as literals, since the original operator is gone by then.
+    /// Re-parsing the output through [`crate::Engine::compile`] yields a
+    /// `Logic` that evaluates identically. Useful for caching keys, identity
+    /// checks across compiled rules, debug logging, and tooling.
+    ///
+    /// `Var` nodes serialise to `{"var": "..."}` for `scope_level == 0`
+    /// and to `{"val": [[<level>], ...]}` for `scope_level > 0` — that's
+    /// the shape the compiler accepts on round-trip.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{">": [{"var": "score"}, 90]}"#).unwrap();
+    /// let json = compiled.to_json();
+    /// assert!(json.contains(r#""var": "score""#));
+    ///
+    /// // Round-trip: re-compiling the output produces an equivalent rule.
+    /// let recompiled = engine.compile(&json).unwrap();
+    /// assert_eq!(
+    ///     engine.evaluate_str(&json, r#"{"score": 95}"#).unwrap(),
+    ///     "true",
+    /// );
+    /// # let _ = (compiled, recompiled);
+    /// ```
+    pub fn to_json(&self) -> String {
+        crate::node_serialize::node_to_json_string(&self.root)
+    }
+}
+
+impl std::fmt::Display for Logic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.to_json())
     }
 }
 

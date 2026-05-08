@@ -5,7 +5,7 @@
 
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
 use serde_json::json;
 
@@ -15,7 +15,7 @@ impl CustomOperator for DoubleArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -29,7 +29,7 @@ impl CustomOperator for CatArena {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let mut buf = bumpalo::collections::String::new_in(arena);
@@ -116,7 +116,7 @@ impl CustomOperator for ReadField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         // The arg has already been evaluated through the var lookup;
@@ -153,7 +153,7 @@ impl CustomOperator for ReadActiveField {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let av = args
