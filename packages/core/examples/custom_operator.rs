@@ -11,7 +11,7 @@
 
 use bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
-use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
+use datalogic_rs::{ArenaExt, CustomOperator, DataValue, Engine, Error, Result};
 
 /// Calculates the average of an array of numbers.
 ///
@@ -27,7 +27,7 @@ impl CustomOperator for AverageOperator {
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {
-            return Ok(arena.alloc(DataValue::Null));
+            return Ok(arena.null());
         }
 
         let mut numbers: Vec<f64> = Vec::new();
@@ -49,11 +49,11 @@ impl CustomOperator for AverageOperator {
         }
 
         if numbers.is_empty() {
-            return Ok(arena.alloc(DataValue::Null));
+            return Ok(arena.null());
         }
 
         let avg = numbers.iter().sum::<f64>() / numbers.len() as f64;
-        Ok(arena.alloc(DataValue::from_f64(avg)))
+        Ok(arena.f64(avg))
     }
 }
 
@@ -83,7 +83,7 @@ impl CustomOperator for BetweenOperator {
         let hi = args[2]
             .as_f64()
             .ok_or_else(|| Error::invalid_arguments("max must be a number"))?;
-        Ok(arena.alloc(DataValue::Bool(v >= lo && v <= hi)))
+        Ok(arena.bool(v >= lo && v <= hi))
     }
 }
 
@@ -131,8 +131,7 @@ impl CustomOperator for FormatOperator {
             }
         }
 
-        let s = arena.alloc_str(&result);
-        Ok(arena.alloc(DataValue::String(s)))
+        Ok(arena.string(&result))
     }
 }
 

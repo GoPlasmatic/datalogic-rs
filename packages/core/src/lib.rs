@@ -89,6 +89,7 @@
 //! return zero-copy borrows into the caller's input data.
 
 mod arena;
+mod arena_ext;
 mod builder;
 #[cfg(feature = "compat")]
 pub mod compat;
@@ -108,6 +109,7 @@ mod session;
 mod trace;
 
 pub use arena::{DataValue, data_to_json_string};
+pub use arena_ext::ArenaExt;
 pub use builder::EngineBuilder;
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,

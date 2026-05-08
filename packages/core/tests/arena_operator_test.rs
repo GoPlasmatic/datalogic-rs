@@ -6,7 +6,7 @@
 use bumpalo::Bump;
 use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::operator::EvalContext;
-use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
+use datalogic_rs::{ArenaExt, CustomOperator, DataValue, Engine, Result};
 use serde_json::json;
 
 /// Doubles the first numeric argument. Returns a fresh arena-allocated number.
@@ -195,6 +195,83 @@ fn arena_operator_inside_filter_reads_iter_item_field() {
             {"id": 3, "active": true}
         ])
     );
+}
+
+/// Returns an `Object` with one key per `ArenaExt` helper, allowing one
+/// custom-operator round-trip to exercise every method end-to-end.
+struct ArenaExtSampler;
+impl CustomOperator for ArenaExtSampler {
+    fn evaluate<'a>(
+        &self,
+        _args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        // Build an Array via the helper, then nest it (and one of every
+        // primitive helper) into an Object.
+        let arr_items = [*arena.i64(7), *arena.f64(2.5), *arena.bool(true)];
+        let arr = arena.array(&arr_items);
+
+        let pairs: [(&str, DataValue<'_>); 6] = [
+            ("null", *arena.null()),
+            ("bool", *arena.bool(false)),
+            ("small_int", *arena.i64(5)),   // singleton path
+            ("big_int", *arena.i64(1_000)), // arena-allocated path
+            ("float", *arena.f64(1.5)),
+            ("string", *arena.string("hi")),
+        ];
+        let mut all_pairs = Vec::with_capacity(pairs.len() + 2);
+        all_pairs.extend_from_slice(&pairs);
+        all_pairs.push(("array", *arr));
+        all_pairs.push(("empty_str", *arena.string(""))); // empty -> singleton
+        Ok(arena.object(&all_pairs))
+    }
+}
+
+#[test]
+fn arena_ext_helpers_round_trip_through_custom_op() {
+    let engine = Engine::builder()
+        .add_operator("sample", ArenaExtSampler)
+        .build();
+
+    let result = engine
+        .evaluate_serde(&json!({"sample": []}), &json!({}))
+        .unwrap();
+    assert_eq!(
+        result,
+        json!({
+            "null": null,
+            "bool": false,
+            "small_int": 5,
+            "big_int": 1000,
+            "float": 1.5,
+            "string": "hi",
+            "array": [7, 2.5, true],
+            "empty_str": "",
+        })
+    );
+}
+
+#[test]
+fn arena_ext_singletons_avoid_arena_writes() {
+    // Repeated singleton lookups must be cheap and stable; running them
+    // many times in the same scope should not blow the arena.
+    let arena = Bump::new();
+    for _ in 0..1_000 {
+        let n = ArenaExt::null(&arena);
+        assert!(matches!(n, DataValue::Null));
+        let t = ArenaExt::bool(&arena, true);
+        assert!(matches!(t, DataValue::Bool(true)));
+        let zero = ArenaExt::i64(&arena, 0);
+        assert_eq!(zero.as_i64(), Some(0));
+        let empty = ArenaExt::string(&arena, "");
+        assert_eq!(empty.as_str(), Some(""));
+    }
+    // Singletons should not have grown the arena meaningfully — the
+    // exact bytes_allocated value is implementation-defined, but a
+    // 1k-iteration loop hitting only singletons must stay well under
+    // what 4 × 1000 fresh DataValue allocations would consume.
+    assert!(arena.allocated_bytes() < 256);
 }
 
 #[test]
