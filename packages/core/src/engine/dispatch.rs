@@ -137,8 +137,13 @@ pub(super) fn dispatch_node_inner<'a>(
             }
 
             // Compile-time placeholder for malformed args on
-            // `and` / `or` / `if`. Surface the canonical error directly.
-            CompiledNode::InvalidArgs { .. } => Err(crate::Error::invalid_args()),
+            // `and` / `or` / `if`. Keep the canonical "Invalid Arguments"
+            // message (the JSONLogic suite uses it as the error tag) but
+            // attach the captured op name to the operator field so nested
+            // failures still identify the misused op.
+            CompiledNode::InvalidArgs { op_name, .. } => {
+                Err(crate::Error::invalid_args().with_operator(*op_name))
+            }
 
             // CompiledThrow — constant-folded error literal.
             #[cfg(feature = "error-handling")]

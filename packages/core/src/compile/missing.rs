@@ -10,6 +10,15 @@ use crate::node::{
 
 use super::path_segments::parse_path_segments;
 
+/// Pre-parse a literal-string path arg into the `(path, segments)` shape
+/// that `missing` / `missing_some` store on their compiled forms. Single
+/// source of truth for the conversion so the two compile sites can't drift.
+#[inline]
+fn parse_missing_arg(s: &str) -> (Box<str>, Box<[PathSegment]>) {
+    let segments = parse_path_segments(s).into_boxed_slice();
+    (s.into(), segments)
+}
+
 /// Build a `CompiledMissing` from raw operator args. Each arg that is a
 /// literal string is pre-parsed; everything else (including literal arrays
 /// of strings, var lookups, computed expressions) goes through the runtime
@@ -22,10 +31,7 @@ pub(super) fn compile_missing(args: Box<[CompiledNode]>, ctx: &mut CompileCtx) -
             CompiledNode::Value {
                 value: OwnedDataValue::String(s),
                 ..
-            } => {
-                let segments = parse_path_segments(s).into_boxed_slice();
-                CompiledMissingArg::Now((s.clone().into_boxed_str(), segments))
-            }
+            } => CompiledMissingArg::Now(parse_missing_arg(s)),
             _ => CompiledMissingArg::Later(arg),
         })
         .collect();
@@ -66,13 +72,9 @@ pub(super) fn compile_missing_some(
         }) if arr.iter().all(|v| matches!(v, OwnedDataValue::String(_))) => {
             let parsed: Vec<(Box<str>, Box<[PathSegment]>)> = arr
                 .into_iter()
-                .map(|v| {
-                    let s = match v {
-                        OwnedDataValue::String(s) => s,
-                        _ => unreachable!(),
-                    };
-                    let segments = parse_path_segments(&s).into_boxed_slice();
-                    (s.into_boxed_str(), segments)
+                .map(|v| match v {
+                    OwnedDataValue::String(s) => parse_missing_arg(&s),
+                    _ => unreachable!(),
                 })
                 .collect();
             CompiledMissingPaths::Now(parsed.into_boxed_slice())

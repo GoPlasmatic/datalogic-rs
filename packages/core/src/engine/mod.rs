@@ -294,7 +294,12 @@ impl Engine {
             Ok(av) => Ok(av),
             Err(mut e) => {
                 e = e.with_path(ctx.take_error_path());
-                if let Some(name) = compiled.root_op_name.clone() {
+                // Only attach the root op name if a deeper site (e.g. the
+                // `InvalidArgs` dispatch arm) didn't already name a more
+                // specific failing op.
+                if e.operator().is_none()
+                    && let Some(name) = compiled.root_op_name.clone()
+                {
                     e = e.with_operator(name);
                 }
                 Err(e)
@@ -446,7 +451,12 @@ impl Engine {
             Err(mut e) => {
                 let message = e.to_string();
                 e = e.with_path(error_path);
-                if let Some(name) = compiled.root_op_name.clone() {
+                // Only attach the root op name if a deeper site (e.g. the
+                // `InvalidArgs` dispatch arm) didn't already name a more
+                // specific failing op.
+                if e.operator().is_none()
+                    && let Some(name) = compiled.root_op_name.clone()
+                {
                     e = e.with_operator(name);
                 }
                 TracedResult {

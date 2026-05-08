@@ -336,12 +336,13 @@ pub(crate) enum CompiledNode {
 
     /// Compile-time placeholder for an operator invoked with malformed
     /// args (e.g. `and` / `or` / `if` with a non-array argument). The
-    /// dispatcher returns `Error::invalid_args()` on encounter — this
+    /// dispatcher raises an `InvalidArguments` error on encounter — this
     /// variant exists so the diagnostic surfaces at runtime via the
     /// normal error breadcrumb path rather than at compile time. The
-    /// failing operator name is recovered from the breadcrumb's parent;
-    /// no need to store it on the variant.
-    InvalidArgs { id: NodeId },
+    /// `op_name` is captured from the source-text op so the runtime error
+    /// names *which* op was misused (e.g. "Invalid arguments: if") even
+    /// when the failure is nested inside an outer op.
+    InvalidArgs { id: NodeId, op_name: &'static str },
 }
 
 impl CompiledNode {
@@ -689,6 +690,7 @@ fn root_op_name(node: &CompiledNode) -> Option<std::borrow::Cow<'static, str>> {
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(_) => Some(Cow::Borrowed("throw")),
         CompiledNode::CustomOperator(data) => Some(Cow::Owned(data.name.clone())),
+        CompiledNode::InvalidArgs { op_name, .. } => Some(Cow::Borrowed(op_name)),
         _ => None,
     }
 }

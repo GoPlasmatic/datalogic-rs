@@ -67,23 +67,10 @@ fn frame_data_at_level<'a>(
     })
 }
 
-/// Coerce an evaluated arena value into a path string. Mirrors the
-/// value-mode `match &path_arg { String, Number, _ => "" }` branch.
-#[inline]
-fn path_string_from_data(av: &DataValue<'_>) -> String {
-    if let Some(s) = av.as_str() {
-        return s.to_string();
-    }
-    if let DataValue::Number(n) = av {
-        return n.to_string();
-    }
-    String::new()
-}
-
-/// Arena-borrowing variant of [`path_string_from_data`]. Strings already
+/// Coerce an evaluated arena value into a path `&str`. Strings already
 /// resident in the arena are re-borrowed without copying; numeric paths
-/// pay one `arena.alloc_str` per arg. Used by the multi-arg `val`/`exists`
-/// hot loops so the per-arg path collection no longer needs heap `String`s.
+/// pay one `arena.alloc_str` per call. Single arena-allocating helper used
+/// by every `val`/`exists` lookup site that needs a path string.
 #[inline]
 fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
     if let Some(s) = av.as_str() {
@@ -400,10 +387,10 @@ fn eval_val_multiarg<'a>(
                 return Ok(av);
             }
 
-            let path_owned = path_string_from_data(path_av);
+            let path_str = path_str_from_data(path_av, arena);
             let frame_data = frame_data_at_level(ctx, level as isize, arena)
                 .ok_or(Error::invalid_context_level(level as isize))?;
-            return Ok(access_path_str_ref(frame_data, &path_owned)
+            return Ok(access_path_str_ref(frame_data, path_str)
                 .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
         }
 

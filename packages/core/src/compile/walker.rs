@@ -158,49 +158,45 @@ fn compile_builtin(
 /// Try the operator-specific compile-time specialisations: `var`, `val`,
 /// `exists`. Returns `None` if no specialisation applies.
 ///
-/// `var` and `val` both compile to `CompiledVar`, but with different arg
-/// shape semantics — `var`'s second arg is a default fallback, `val`'s
-/// is a path-chain segment. We dispatch on the source operator name to
-/// keep those semantics distinct, even though both map to `OpCode::Val`.
+/// We've already paid for `op_name -> OpCode` upstream, so dispatch on the
+/// opcode first and skip the per-call string compares for the (common)
+/// non-specialised path. `var` and `val` both compile to `OpCode::Val`,
+/// but with different arg-shape semantics — `var`'s second arg is a
+/// default fallback, `val`'s is a path-chain segment — so the inner split
+/// on `op_name` stays.
 fn try_specialised(
     op_name: &str,
     opcode: OpCode,
     args: &[CompiledNode],
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
-    if op_name == "var"
-        && let Some(node) = operator::try_compile_var(args, ctx)
-    {
-        return Some(node);
-    }
-    if op_name == "val"
-        && let Some(node) = operator::try_compile_val(args, ctx)
-    {
-        return Some(node);
-    }
-    #[cfg(feature = "ext-control")]
-    {
-        if opcode == OpCode::Exists
-            && let Some(node) = operator::try_compile_exists(args, ctx)
-        {
-            return Some(node);
+    match opcode {
+        OpCode::Val => {
+            // Only "var" / "val" map to `OpCode::Val` (see `OpCode::FromStr`).
+            if op_name == "var" {
+                operator::try_compile_var(args, ctx)
+            } else {
+                operator::try_compile_val(args, ctx)
+            }
         }
+        #[cfg(feature = "ext-control")]
+        OpCode::Exists => operator::try_compile_exists(args, ctx),
+        _ => None,
     }
-    let _ = opcode;
-    None
 }
 
 /// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /
-/// `if` invoked with a non-array argument. The dispatcher returns
-/// `Error::invalid_args()` when it encounters this variant, surfacing the
-/// diagnostic through the normal error breadcrumb path.
+/// `if` invoked with a non-array argument. Carries the op name forward so
+/// the dispatcher can produce an error that names the failing op rather
+/// than a generic "Invalid Arguments".
 fn invalid_args_marker(
-    _opcode: OpCode,
+    opcode: OpCode,
     _args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
 ) -> CompiledNode {
     CompiledNode::InvalidArgs {
         id: Some(ctx.next_id()),
+        op_name: opcode.as_str(),
     }
 }
 
