@@ -35,9 +35,69 @@ let result = engine
 assert_eq!(result, "6");
 ```
 
-For repeated evaluation, compile once and reuse a `Session` (resettable
-arena, no per-call heap churn). For zero-copy `&DataValue<'a>` results,
-call `Engine::evaluate` directly with a caller-managed `bumpalo::Bump`.
+**Which evaluate method should I use?** Start with `evaluate_str` for
+one-shot calls. Switch to `Session` once you're evaluating the same
+compiled rule many times — it reuses one arena instead of allocating
+per call. Drop down to `Engine::evaluate` only when you're managing
+your own `bumpalo::Bump` (custom pools, integration with arena-aware
+downstream code). The full comparison table is in the
+[Performance](#performance) section below.
+
+## Input shapes
+
+Both `Engine::evaluate` and `Session::evaluate*` accept any of the
+input shapes a caller is likely to have on hand, via the sealed
+[`EvalInput`] trait — all five resolve to `&'a DataValue<'a>` inside
+the engine. Per-call cost differs:
+
+| Shape | Cost per call |
+|---|---|
+| `&str` (JSON literal) | parse + arena alloc |
+| `&serde_json::Value` (`compat` feature) | deep-convert into the arena |
+| `&OwnedDataValue` | deep-clone into the arena |
+| `DataValue<'a>` (by value) | one arena alloc for the top node |
+| `&'a DataValue<'a>` (by reference) | **zero** — pass-through |
+
+If you're evaluating the same input against many rules, or feeding
+input from an upstream stage that already lives in the arena, prefer
+the `&'a DataValue<'a>` path — it's genuinely allocation-free for the
+input. See `examples/zero_copy_input.rs` for the five paths side by
+side, including a runtime arena-bytes measurement that proves the
+zero-copy claim.
+
+[`EvalInput`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/trait.EvalInput.html
+
+## Working with `DataValue`
+
+Evaluation returns `&'a DataValue<'a>` — an arena-allocated, borrowed
+JSON-shaped value tree. The type lives in the sibling `datavalue` crate
+(re-exported here at the crate root and as `datalogic_rs::datavalue`).
+Most callers only need a handful of accessors:
+
+```rust
+use datalogic_rs::Engine;
+
+let engine = Engine::new();
+let compiled = engine.compile(r#"{"var": "user.score"}"#).unwrap();
+let mut session = engine.session();
+let result = session.evaluate_ref(&compiled, r#"{"user": {"score": 42}}"#).unwrap();
+
+assert_eq!(result.as_i64(), Some(42));
+// Other accessors: .as_f64(), .as_str(), .as_bool(), .as_array(), .as_object().
+```
+
+Conversion to other shapes:
+
+- **To a JSON string:** `data_to_json_string(value)` — re-exported at
+  the crate root, called internally by `evaluate_str`.
+- **To `serde_json::Value`** (requires `compat` feature): the
+  `Session::evaluate_serde` and `Engine::evaluate_serde` entry points
+  return `serde_json::Value` directly.
+- **Owned vs borrowed:** `DataValue<'a>` borrows from a `Bump`;
+  `OwnedDataValue` is the heap-owned counterpart for crossing arena
+  lifetimes (cache an evaluation result, send across an `await`, etc.).
+  Convert via `.to_owned()` (borrowed → owned) and `.to_arena(&bump)`
+  (owned → borrowed).
 
 ## Performance
 

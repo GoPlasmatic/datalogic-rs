@@ -82,3 +82,9 @@ name = "migrating_from_v4"
 # `preserve` is needed for the v4 `preserve` operator → `preserve_structure`
 # mode walkthrough at the end of the file.
 required-features = ["compat", "preserve"]
+
+[[example]]
+name = "zero_copy_input"
+# `compat` enables the `&serde_json::Value` shape; the example shows all
+# input shapes side by side so it needs the gated impl too.
+required-features = ["compat"]

@@ -117,6 +117,40 @@ pub use config::{
 /// The `datavalue` crate, re-exported. `datalogic-rs` builds on `datavalue`'s
 /// owned and borrowed value types — accessing them through this module makes
 /// the dependency explicit at the use site.
+///
+/// # Working with `DataValue`
+///
+/// Evaluation returns [`DataValue`] (re-exported at the crate root and
+/// also reachable as `datalogic_rs::datavalue::DataValue`). It's an
+/// arena-allocated JSON-shaped value tree borrowed from a
+/// [`bumpalo::Bump`]. The accessors most callers reach for live in this
+/// re-exported crate:
+///
+/// - **Type predicates** — `.is_null()`, `.is_bool()`, `.is_number()`,
+///   `.is_string()`, `.is_array()`, `.is_object()`.
+/// - **Owned readers** — `.as_bool()`, `.as_i64()`, `.as_f64()`,
+///   `.as_str()`, `.as_array()`, `.as_object()`. Each returns
+///   `Option<…>`; the `None` case is "wrong variant," not a runtime error.
+/// - **Indexing** — `value["key"]` / `value[idx]` returns `&DataValue`
+///   (or the `Null` singleton on miss, matching `serde_json::Value`).
+///
+/// # Owned vs borrowed
+///
+/// [`DataValue<'a>`](datavalue::DataValue) borrows from a `Bump`;
+/// [`OwnedDataValue`](datavalue::OwnedDataValue) is the heap-owned
+/// counterpart. Use the owned form when you need to outlive the arena —
+/// caching a result, returning across an `await`, sending across a
+/// channel. Convert via `borrowed.to_owned()` and `owned.to_arena(&bump)`.
+///
+/// # Crossing the `serde_json` boundary
+///
+/// Conversions to / from `serde_json::Value` are gated behind the
+/// `compat` feature (kept off by default so the crate has zero external
+/// dependencies in the minimal build). With `compat` enabled, use
+/// [`Engine::evaluate_serde`] / [`Session::evaluate_serde`] to take and
+/// return `serde_json::Value` directly, or
+/// [`data_to_json_string`] for the `DataValue → String` path that
+/// `evaluate_str` uses internally.
 pub use datavalue;
 pub use engine::Engine;
 pub use error::{CustomSource, Error, ErrorKind};

@@ -11,22 +11,64 @@ use crate::{CompiledNode, Error, Result};
 
 /// Build the dispatch match. Splits the ~50 `BuiltinOperator` arms into
 /// three regular shapes plus a tail of irregular arms so the bulk of the
-/// dispatch is one tabular invocation:
+/// dispatch is one tabular invocation. The compiler lowers the resulting
+/// `match` to a jump table over the `OpCode` discriminant.
 ///
-/// - `simple    [ Op => fn, ... ]` — `fn(args, ctx, engine, arena)`.
-/// - `iter      [ Op => fn, ... ]` — `fn(args, *iter_arg_kind, ctx, engine, arena)`,
-///   for ops that consume the cached iterator-input classification.
-/// - `with_kind [ Op => fn(kind_expr), ... ]` — `fn(args, ctx, engine, arena, kind_expr)`,
-///   for ops that share an impl behind a discriminator (Divide/Modulo,
-///   Abs/Ceil/Floor).
-/// - `other  { pat => expr, ... }` — verbatim arms (compiled `Var` /
-///   `Exists` / `Missing` / structured-object, etc.); pasted in front of
-///   the generated arms.
+/// # Picking a shape (when adding an operator)
 ///
-/// Per-arm `#[cfg(...)]` attributes attach to each `Op => fn` line.
-/// Arm ordering doesn't affect codegen — the heavy `bumpalo::Vec`-building
-/// cases live in `#[inline(never)]` helpers, so the dispatch's stack frame
-/// is sized for the small/common arms regardless.
+/// 1. **Does your operator share an implementation with another op,
+///    differing only by a kind tag?** → use `with_kind`. Pattern: one
+///    function takes a discriminator enum value as its last argument.
+///    Existing examples — `Divide`/`Modulo` both call
+///    [`crate::operators::arithmetic::div_or_mod`] passing
+///    `DivOp::Divide` / `DivOp::Modulo`; `Abs`/`Ceil`/`Floor` call
+///    `unary_math` with their own `UnaryMathOp::*` variant.
+/// 2. **Is your operator iterating an array source whose classification
+///    the compiler cached on `iter_arg_kind`?** → use `iter`. The
+///    dispatcher dereferences `*iter_arg_kind` and threads it in front of
+///    `ctx`. This covers `filter`, `map`, `all`, `some`, `none`,
+///    `reduce`, `max`, `min`, `sort`. The `IterArgKind` value tells the
+///    op whether the source is an array, an arena-allocated array, an
+///    inline literal, etc., letting it skip work it has already done.
+/// 3. **Does your operator just take `(args, ctx, engine, arena)`?** →
+///    use `simple`. This is the dominant shape — most builtins land
+///    here (`Add`, `Equals`, `Concat`, `If`, the comparison family, the
+///    `ext-string` family, …).
+/// 4. **Anything else** — compiled-form variants (`Var`, `Exists`,
+///    `Missing`), the literal-value defensive arm, `InvalidArgs`,
+///    `Throw`, `Array`, `StructuredObject`, `CustomOperator` — goes in
+///    `other`, where the arm pattern and right-hand side are written
+///    verbatim. Use this whenever the arm needs to destructure
+///    something other than the standard `BuiltinOperator { opcode,
+///    args, .. }` shape.
+///
+/// Each shape lowers to:
+/// - `simple    Op => fn` ⟶ `BuiltinOperator { opcode: OpCode::Op, args, .. } => fn(args, ctx, engine, arena)`
+/// - `iter      Op => fn` ⟶ `BuiltinOperator { opcode: OpCode::Op, args, iter_arg_kind, .. } => fn(args, *iter_arg_kind, ctx, engine, arena)`
+/// - `with_kind Op => (fn, KindEnum::Variant)` ⟶ `BuiltinOperator { opcode: OpCode::Op, args, .. } => fn(args, ctx, engine, arena, KindEnum::Variant)`
+/// - `other     Pat => Expr` ⟶ pasted verbatim before the generated arms
+///
+/// # Operational details
+///
+/// Per-arm `#[cfg(...)]` attributes attach to each `Op => fn` line, so
+/// feature-gated operators (`ext-string`, `datetime`, `error-handling`,
+/// `ext-control`, `ext-array`, `ext-math`) compile out cleanly when the
+/// feature is off — no separate gate at the OpCode level.
+///
+/// Arm ordering doesn't affect codegen because the match becomes a jump
+/// table. The heavy `bumpalo::Vec`-building cases (`Array`,
+/// `StructuredObject`, `CustomOperator`) live in `#[inline(never)]`
+/// helpers below, so the dispatch's stack frame is sized for the
+/// small/common arms regardless of which arm fires.
+///
+/// # Cross-references for new contributors
+///
+/// Adding an operator touches three files in lockstep:
+/// `packages/core/src/opcode.rs` (OpCode variant + `OPCODE_NAMES` entry),
+/// the implementation file under `packages/core/src/operators/`, and one
+/// arm here. The OpCode round-trip test at `opcode.rs:412` catches name
+/// drift; missing dispatch arms surface as a non-exhaustive match
+/// (compile error).
 macro_rules! dispatch {
     (
         node: $node:expr,

@@ -17,6 +17,7 @@ opt-in features must be invoked with the matching `--features` flag (the
 | `tracing`                  | Recording every evaluation step for debugging                                    | `trace`              |
 | `error_handling`           | `try` / `throw`, structured `Error` shape                                        | `error-handling`     |
 | `migrating_from_v4`        | v4 → v5 cheat sheet, runnable side by side                                       | `compat`             |
+| `zero_copy_input`          | The five `EvalInput` shapes side by side, with per-call cost commentary          | `compat`             |
 
 ## Running
 

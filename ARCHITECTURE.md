@@ -108,3 +108,87 @@ The `datalogic-bench` crate enables `compat` because it reads the
 | Benchmark harness              | `packages/benchmark/src/`                         |
 
 For day-to-day commands (build, test, run, link), see [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+## Compile-time optimizations
+
+The compile pipeline (`packages/core/src/compile/optimize/`) runs three
+passes to a fixpoint: constant folding, dead-code elimination, and
+strength reduction. Each pass is a pure tree transform with its own
+test suite, and adding another is a matter of dropping a file in the
+directory and registering it from `optimize/mod.rs`.
+
+### What runs today
+
+| Pass             | What it does                                                          | Where                     |
+|------------------|-----------------------------------------------------------------------|---------------------------|
+| `constant_fold`  | Pre-evaluates subtrees with no `Var` / `Missing` dependency           | `optimize/constant_fold.rs` |
+| `dead_code`      | Elides unreachable arms (`if` with constant condition, etc.)          | `optimize/dead_code.rs`     |
+| `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
+
+The runtime side has its own fast paths that don't need a compile-time
+pass to fire — notably:
+
+- `FastPredicate::from_node` in array operators detects predicate
+  shapes that can run without pushing a context frame per item.
+- `filter_strict_eq_field_fast_path` recognises
+  `filter(arr, == [{var: "field"}, invariant])` and evaluates the
+  invariant once outside the loop.
+- `evaluate_invariant_no_push` short-circuits any predicate-side node
+  that doesn't reference the iteration scope.
+- `dispatch_node` (`packages/core/src/engine/mod.rs`) carries a
+  literal fast path: trivial `Value` nodes (`Null`, `Bool`, numbers,
+  empty primitives) return their precomputed `&'static DataValue<'static>`
+  directly without entering the dispatch match.
+
+### Deferred work
+
+Optimizations the team has discussed but not built. Captured here so
+future contributors don't redo the analysis.
+
+#### Compile-time predicate hoisting in filter / map / reduce
+
+Today, loop-invariant detection in array operators happens at runtime
+via the helpers above and only catches specific shapes (the strict-eq
+fast path; literal/parent-scope-var leaves). A general compile-time
+pass would walk the predicate of any iterating op, identify
+sub-expressions that don't reference the current iteration scope (no
+`scope_level == 0` `Var`, no nested iterating frames), and rewrite the
+tree so those subtrees evaluate once before the loop and the result
+is fed in as a literal.
+
+**Why deferred.** The runtime fast paths cover the dominant shapes the
+benchmark suite hits today (equality filters, "field equals
+constant"). Building a general hoisting pass would mean: a free-variable
+analysis on `CompiledNode` (cheap), a rewrite that introduces let-bound
+nodes or pre-evaluation slots (changes the node taxonomy), and a
+correctness story for predicates that reference outer iteration scopes
+(`scope_level > 0`). Worth doing once a perf profile shows non-trivial
+time spent re-evaluating an invariant subtree per iteration in a real
+workload.
+
+#### Single-operator-tree inlining beyond literals
+
+The literal fast path skips dispatch for `Null` / `Bool` / numbers /
+empty primitives. A natural extension: when the entire compiled tree
+is a single `Var` (the dominant template-rule shape), let
+`Engine::evaluate` short-circuit to `evaluate_val_compiled` directly
+without the `dispatch_node` wrapper.
+
+**Why deferred.** Saves one match dispatch (~1 ns on the 15 ns
+baseline). Detectable as a single-operator program at compile time,
+but the win is small and the code path adds a special case that the
+trace-collector and breadcrumb code would need to learn about.
+Postponed until a workload shows the dispatch overhead matters.
+
+#### Reduce-output sizing hints
+
+`reduce` allocates a `bumpalo::Vec` for each accumulator-typed result.
+For numeric / bool accumulators the vec capacity isn't useful — but
+for array-output reductions the input length is a known upper bound
+on the output. A `metadata_hint` on the compiled `Reduce` node could
+carry this and let the runtime pre-size.
+
+**Why deferred.** Speculative — no benchmark currently shows reduce
+allocation as a hotspot, and the wins compound only for accumulators
+that build composite values. Picked as the third item only because it
+came up in design discussion; deprioritise unless evidence appears.

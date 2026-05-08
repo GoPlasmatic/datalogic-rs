@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+
+- **The entire `compat` module is on a one-release-cycle horizon.** Every
+  item it re-exports is `#[deprecated(since = "5.0.0")]` already, with a
+  per-item note pointing at its v5 replacement; this entry just elevates
+  the planned-removal version to the top of the changelog so it's
+  scannable. The `compat` module — `LegacyApi` trait, `ArenaValue` /
+  `ArenaContextStack` / `ArenaOperator` aliases, and the v4 constructors
+  (`with_preserve_structure`, `with_config`, `with_config_and_structure`) —
+  is **scheduled for removal in 5.1**. Migrate to the v5 surface
+  (`Engine::builder()`, `Engine::evaluate_str` / `evaluate` /
+  `evaluate_serde`, the `CustomOperator` trait) before then. To surface
+  every remaining call site that depends on the shim, drop `compat`
+  from your dependency's feature list and rebuild — the deleted symbols
+  will fail to compile.
+
 ## [5.0.0] - Pre-release
 
 v5 is a significant rework of the public API and the evaluation engine.
