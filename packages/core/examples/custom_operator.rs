@@ -214,6 +214,9 @@ fn main() {
         let data = format!(r#"{{"score": {}}}"#, score);
         let grade = session.evaluate_str(&compiled, &data).unwrap();
         println!("   Score {} -> Grade {}", score, grade);
+        // Session does not auto-reset — caller bounds peak memory by
+        // resetting between iterations.
+        session.reset();
     }
 
     println!("\nDone!");

@@ -29,6 +29,9 @@ fn main() {
         let payload = format!(r#"{{"score": {score}}}"#);
         let r = session.evaluate_str(&compiled, &payload).unwrap();
         println!("[2] session.evaluate_str: score={score:>3} -> {r}");
+        // Session does not auto-reset — caller bounds peak memory by
+        // resetting between iterations (constant-time, reuses chunks).
+        session.reset();
     }
 
     // ----- (3) Engine::evaluate: caller-managed Bump, zero-copy result
