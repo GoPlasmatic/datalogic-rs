@@ -53,3 +53,11 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+      - name: Build examples (all features)
+        # Catches example drift on any feature-gated example
+        # (compat / preserve / datetime / trace / error-handling).
+        # Each `[[example]]` in packages/core/Cargo.toml has
+        # `required-features = [...]`, so only `--all-features` reaches
+        # every example.
+        run: cargo build -p datalogic-rs --examples --all-features
