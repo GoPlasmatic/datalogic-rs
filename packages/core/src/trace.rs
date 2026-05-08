@@ -315,6 +315,18 @@ impl<'e> TracedSession<'e> {
         arena: &'a bumpalo::Bump,
     ) -> TracedRun<&'a crate::DataValue<'a>> {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
+        // Same recursion guard as `Engine::evaluate` so a custom op that
+        // re-enters via the trace path is also caught.
+        let _depth_guard = match self.engine.enter_dispatch_boundary() {
+            Ok(g) => g,
+            Err(e) => {
+                return TracedRun {
+                    expression_tree,
+                    steps: TraceCollector::new().into_steps(),
+                    result: Err(e),
+                };
+            }
+        };
         let data_ref = match data.into_arena_value(arena) {
             Ok(av) => av,
             Err(e) => {

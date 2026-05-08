@@ -1,5 +1,6 @@
 #[cfg(feature = "compat")]
 use serde_json::Value;
+use std::cell::Cell;
 use std::collections::HashMap;
 #[cfg(feature = "trace")]
 use std::sync::Arc;
@@ -9,6 +10,50 @@ use crate::config::EvaluationConfig;
 #[cfg(feature = "trace")]
 use crate::trace::{ExpressionNode, TraceCollector, TracedResult};
 use crate::{CompiledNode, Logic, Result};
+
+thread_local! {
+    /// Per-thread `dispatch_node` recursion counter. Incremented at the
+    /// top of `dispatch_node` (after the literal fast path) and decremented
+    /// on the way out, so the value reflects the current sync call-stack
+    /// depth across nested `Engine::evaluate(...)` invocations.
+    ///
+    /// Why thread-local rather than a `ContextStack` field: a custom
+    /// operator can hold `Arc<Engine>` and call `engine.evaluate(...)`
+    /// recursively from inside its own `evaluate(...)` — each top-level
+    /// call constructs a fresh `ContextStack` (depth resets to 0) but
+    /// the C call stack keeps growing. A thread-local survives across
+    /// those boundaries and catches the runaway recursion before stack
+    /// overflow.
+    ///
+    /// Tokio safety: `dispatch_node` is sync, so a task can't `.await`
+    /// while holding the counter raised. Between dispatch calls the
+    /// value returns to zero, so cross-thread task migration starts
+    /// fresh on whatever thread it lands.
+    static DISPATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Restores [`DISPATCH_DEPTH`] to its prior value on drop. Used by
+/// the boundary entry points (`Engine::evaluate`, `TracedSession::evaluate`)
+/// so early returns and panics leave the counter consistent.
+///
+/// `DepthGuard(u32::MAX)` is a no-op sentinel — used when the engine has
+/// no custom operators registered, so cross-evaluate recursion is
+/// impossible and the boundary skips the TLS bookkeeping entirely. The
+/// drop check makes the guard zero-cost in that case.
+pub(crate) struct DepthGuard(u32);
+
+impl DepthGuard {
+    const NOOP: u32 = u32::MAX;
+}
+
+impl Drop for DepthGuard {
+    #[inline]
+    fn drop(&mut self) {
+        if self.0 != Self::NOOP {
+            DISPATCH_DEPTH.with(|d| d.set(self.0));
+        }
+    }
+}
 
 /// JSONLogic compile/evaluate engine. See the crate-level docs for the
 /// two-phase architecture, threading model, and walk-through examples.
@@ -288,6 +333,7 @@ impl Engine {
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
+        let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_value(arena)?;
         let mut ctx = crate::arena::ContextStack::new(data_ref);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
@@ -357,6 +403,52 @@ impl Engine {
         let data_av = crate::arena::value_to_data(data, &arena);
         let result = self.evaluate(compiled, data_av, &arena)?;
         Ok(crate::arena::data_to_value(result))
+    }
+
+    /// Bump the per-thread dispatch-boundary depth counter, bailing with
+    /// `ConfigurationError` if the configured cap is reached. Returns a
+    /// guard that decrements the counter on drop (covers `?` early returns
+    /// and panics).
+    ///
+    /// Called from every public boundary entry point (`Engine::evaluate`,
+    /// `TracedSession::evaluate`, …). The counter is thread-local rather
+    /// than per-`ContextStack` so it survives across nested
+    /// `engine.evaluate(...)` calls — the scenario a `CustomOperator`
+    /// holding `Arc<Engine>` creates by re-entering the engine from inside
+    /// its own `evaluate(...)`.
+    ///
+    /// Tokio safety: dispatch is sync, so a task cannot `.await` while the
+    /// counter is raised; between dispatches the value is restored to its
+    /// prior level (zero at the outermost call). Cross-thread task migration
+    /// thus starts fresh on whatever thread the task lands on.
+    #[inline(always)]
+    pub(crate) fn enter_dispatch_boundary(&self) -> Result<DepthGuard> {
+        // Built-in operators can't re-enter `Engine::evaluate` (only a
+        // `CustomOperator` holding `Arc<Engine>` can); when the registry
+        // is empty, cross-evaluate recursion is impossible and we skip
+        // the TLS bookkeeping. The pure-built-in benchmarks pay zero.
+        if self.custom_operators.is_empty() {
+            return Ok(DepthGuard(DepthGuard::NOOP));
+        }
+        self.enter_dispatch_boundary_checked()
+    }
+
+    /// Slow path of [`Self::enter_dispatch_boundary`] — hit only when
+    /// the engine has at least one custom operator registered. Marked
+    /// `#[cold]` and `#[inline(never)]` so the hot fast-path stays
+    /// inline-friendly.
+    #[cold]
+    #[inline(never)]
+    fn enter_dispatch_boundary_checked(&self) -> Result<DepthGuard> {
+        let prev_depth = DISPATCH_DEPTH.with(Cell::get);
+        if prev_depth >= self.config.max_recursion_depth {
+            return Err(crate::Error::configuration_error(format!(
+                "max recursion depth exceeded ({})",
+                self.config.max_recursion_depth
+            )));
+        }
+        DISPATCH_DEPTH.with(|d| d.set(prev_depth + 1));
+        Ok(DepthGuard(prev_depth))
     }
 
     /// Arena-mode dispatch hub. Returns `&'a DataValue<'a>` for every

@@ -153,6 +153,83 @@ fn evaluate_serde_one_shot() {
     assert_eq!(result, json!(5));
 }
 
+/// `EvaluationConfig::max_recursion_depth` bails gracefully when a
+/// `CustomOperator` re-enters the engine recursively. Without the cap,
+/// this would blow the C call stack with no recoverable error; the
+/// per-thread depth counter catches it and surfaces a
+/// `ConfigurationError` instead.
+#[test]
+fn max_recursion_depth_catches_custom_operator_reentry() {
+    use datalogic_rs::operator::EvalContext;
+    use datalogic_rs::{CustomOperator, ErrorKind, EvaluationConfig, Result as DLResult};
+    use std::sync::{Arc, OnceLock};
+
+    /// A custom op that re-enters the engine on every call, recursing
+    /// indefinitely. Holds an `OnceLock<Arc<Engine>>` so the engine can
+    /// be set after `Engine::builder().build()` (chicken-and-egg with
+    /// the engine instance owning the operator).
+    struct Recurse {
+        engine: Arc<OnceLock<Engine>>,
+    }
+
+    impl CustomOperator for Recurse {
+        fn evaluate<'a>(
+            &self,
+            _args: &[&'a DataValue<'a>],
+            _ctx: &mut EvalContext<'_, 'a>,
+            _arena: &'a Bump,
+        ) -> DLResult<&'a DataValue<'a>> {
+            // Pull the engine out of the OnceLock and re-enter; this is
+            // the documented footgun the recursion cap defends against.
+            let engine = self.engine.get().expect("engine wired up");
+            // We don't care about the inner result — the cap fires
+            // before we ever come back, so the inner Result is the
+            // ConfigurationError that bubbles up.
+            engine.evaluate_str(r#"{"recurse": []}"#, "null")?;
+            // Unreachable in practice (the recurse always errors
+            // before returning) but kept to satisfy the type.
+            Err(datalogic_rs::Error::custom("unreachable"))
+        }
+    }
+
+    // Build an engine with a tight cap so the test runs fast without
+    // approaching real-stack territory. 4 is well below the default
+    // 256 but enough to verify the cap fires.
+    let engine_lock = Arc::new(OnceLock::new());
+    let recurse = Recurse {
+        engine: Arc::clone(&engine_lock),
+    };
+
+    let config = EvaluationConfig {
+        max_recursion_depth: 4,
+        ..Default::default()
+    };
+
+    let engine = Engine::builder()
+        .config(config)
+        .add_operator("recurse", recurse)
+        .build();
+
+    engine_lock.set(engine).expect("set once");
+    let engine = engine_lock.get().unwrap();
+
+    // Top-level call. Each `recurse` invocation increments
+    // `DISPATCH_DEPTH` once for the dispatcher and once for the inner
+    // re-entered `evaluate_str` → at depth 4 we bail.
+    let result = engine.evaluate_str(r#"{"recurse": []}"#, "null");
+    let err = result.expect_err("recursion cap should fire");
+
+    assert!(
+        matches!(err.kind, ErrorKind::ConfigurationError(_)),
+        "expected ConfigurationError, got: {:?}",
+        err.kind,
+    );
+    assert!(
+        err.to_string().contains("max recursion depth exceeded"),
+        "error should name the cap; got: {err}",
+    );
+}
+
 /// Built-in operators always win against a custom registration with the
 /// same name. The compile path checks `op_name.parse::<OpCode>()` first
 /// (`compile/walker.rs:79`) and routes through the built-in dispatcher

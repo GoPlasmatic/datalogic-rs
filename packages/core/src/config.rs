@@ -23,6 +23,15 @@ pub struct EvaluationConfig {
 
     /// Configuration for numeric coercion behavior
     pub numeric_coercion: NumericCoercionConfig,
+
+    /// Maximum number of nested `dispatch_node` calls before the engine
+    /// bails with a `ConfigurationError`. Tracked per-thread, so it
+    /// catches both deep-nested rules *and* `CustomOperator` impls that
+    /// hold an `Arc<Engine>` and re-enter via `engine.evaluate(...)`
+    /// from inside their `evaluate(...)`. Default: 256 — generous for
+    /// legitimate nested rules, tight enough to bail well before a
+    /// stack overflow on typical platforms.
+    pub max_recursion_depth: u32,
 }
 
 /// Defines how to handle NaN (Not a Number) scenarios in arithmetic operations
@@ -118,6 +127,7 @@ impl Default for EvaluationConfig {
             loose_equality_errors: true,
             truthy_evaluator: TruthyEvaluator::JavaScript,
             numeric_coercion: NumericCoercionConfig::default(),
+            max_recursion_depth: 256,
         }
     }
 }
