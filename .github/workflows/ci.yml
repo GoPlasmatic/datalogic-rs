@@ -49,10 +49,18 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # `--all-features` mirrors the test/example steps so feature-gated
+        # paths (compat, preserve, datetime, trace, error-handling, the
+        # ext-* operators) get linted. Without it, clippy silently skips
+        # gated code and a regression in those paths can land unnoticed.
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        # `--all-features` is required to exercise the gated integration
+        # tests: most live behind `compat`, and the JSONLogic suite runner
+        # additionally needs `preserve`. Without these flags, those tests
+        # silently skip and the CI step succeeds without exercising them.
+        run: cargo test --workspace --all-features
 
       - name: Build examples (all features)
         # Catches example drift on any feature-gated example
@@ -61,3 +69,30 @@ jobs:
         # `required-features = [...]`, so only `--all-features` reaches
         # every example.
         run: cargo build -p datalogic-rs --examples --all-features
+
+  msrv:
+    name: MSRV (Rust 1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust 1.85 (matches `rust-version` in Cargo.toml)
+        uses: dtolnay/rust-toolchain@1.85
+
+      - name: Cache cargo (separate from stable to avoid toolchain mix)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'packages/benchmark/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-msrv-
+
+      # Build only — test infra (proc-macros, tooling) often outgrows MSRV
+      # without the library code itself doing so. We want to catch the
+      # library-code regression, not chase tooling churn.
+      - name: Build (all features)
+        run: cargo build --workspace --all-features
