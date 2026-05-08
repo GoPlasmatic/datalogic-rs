@@ -27,17 +27,24 @@ use std::sync::Arc;
 /// ```rust
 /// use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 ///
-/// // Tweak just the NaN handling; everything else stays at defaults.
-/// let config = EvaluationConfig {
-///     arithmetic_nan_handling: NanHandling::IgnoreValue,
-///     ..Default::default()
-/// };
+/// // Chainable setters — only one import needed beyond the enum value.
+/// let config = EvaluationConfig::default()
+///     .with_arithmetic_nan_handling(NanHandling::IgnoreValue);
 /// let engine = Engine::builder().config(config).build();
 ///
 /// // "skipped" can't coerce to a number; with `IgnoreValue` the
 /// // arithmetic continues with the remaining operands.
 /// let result = engine.evaluate_str(r#"{"+": [1, "skipped", 2]}"#, "null").unwrap();
 /// assert_eq!(result, "3");
+/// ```
+///
+/// Struct-update syntax also works for callers that prefer it:
+/// ```rust
+/// # use datalogic_rs::{EvaluationConfig, NanHandling};
+/// let config = EvaluationConfig {
+///     arithmetic_nan_handling: NanHandling::IgnoreValue,
+///     ..Default::default()
+/// };
 /// ```
 #[derive(Clone, Debug)]
 pub struct EvaluationConfig {
@@ -173,6 +180,40 @@ impl std::fmt::Debug for TruthyEvaluator {
     }
 }
 
+impl TruthyEvaluator {
+    /// Wrap a closure as a custom truthiness evaluator without typing
+    /// `Arc::new(...)` at the call site.
+    ///
+    /// The `Arc` wrapping on [`TruthyEvaluator::Custom`] is structurally
+    /// required (it keeps [`EvaluationConfig`] `Clone`), so this helper
+    /// is purely ergonomic — the `Custom` variant remains public for
+    /// callers that already hold an `Arc`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{Engine, EvaluationConfig, TruthyEvaluator};
+    /// use datalogic_rs::datavalue::OwnedDataValue;
+    ///
+    /// // Even integers are truthy.
+    /// let config = EvaluationConfig {
+    ///     truthy_evaluator: TruthyEvaluator::custom(|v: &OwnedDataValue| {
+    ///         v.as_i64().map(|n| n % 2 == 0).unwrap_or(false)
+    ///     }),
+    ///     ..Default::default()
+    /// };
+    /// let engine = Engine::builder().config(config).build();
+    /// let result = engine.evaluate_str(r#"{"if": [2, "even", "odd"]}"#, "null").unwrap();
+    /// assert_eq!(result, "\"even\"");
+    /// ```
+    pub fn custom<F>(f: F) -> Self
+    where
+        F: Fn(&OwnedDataValue) -> bool + Send + Sync + 'static,
+    {
+        Self::Custom(Arc::new(f))
+    }
+}
+
 /// Knobs for the implicit value→number coercions arithmetic and
 /// comparison perform on non-numeric arguments.
 ///
@@ -234,6 +275,48 @@ impl EvaluationConfig {
     /// Create a new configuration with default settings
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set [`Self::arithmetic_nan_handling`].
+    #[must_use]
+    pub fn with_arithmetic_nan_handling(mut self, value: NanHandling) -> Self {
+        self.arithmetic_nan_handling = value;
+        self
+    }
+
+    /// Set [`Self::division_by_zero`].
+    #[must_use]
+    pub fn with_division_by_zero(mut self, value: DivisionByZeroHandling) -> Self {
+        self.division_by_zero = value;
+        self
+    }
+
+    /// Set [`Self::loose_equality_errors`].
+    #[must_use]
+    pub fn with_loose_equality_errors(mut self, value: bool) -> Self {
+        self.loose_equality_errors = value;
+        self
+    }
+
+    /// Set [`Self::truthy_evaluator`].
+    #[must_use]
+    pub fn with_truthy_evaluator(mut self, value: TruthyEvaluator) -> Self {
+        self.truthy_evaluator = value;
+        self
+    }
+
+    /// Set [`Self::numeric_coercion`].
+    #[must_use]
+    pub fn with_numeric_coercion(mut self, value: NumericCoercionConfig) -> Self {
+        self.numeric_coercion = value;
+        self
+    }
+
+    /// Set [`Self::max_recursion_depth`].
+    #[must_use]
+    pub fn with_max_recursion_depth(mut self, value: u32) -> Self {
+        self.max_recursion_depth = value;
+        self
     }
 
     /// Create a configuration with safe arithmetic (ignores non-numeric values)

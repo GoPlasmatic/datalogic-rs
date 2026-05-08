@@ -3,7 +3,10 @@
 #![cfg(feature = "compat")]
 
 use datalogic_rs::datavalue::OwnedDataValue;
-use datalogic_rs::{Engine, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator};
+use datalogic_rs::{
+    DivisionByZeroHandling, Engine, EvaluationConfig, NanHandling, NumericCoercionConfig,
+    TruthyEvaluator,
+};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -340,6 +343,32 @@ fn test_truthy_evaluator_custom() {
 }
 
 #[test]
+fn test_truthy_evaluator_custom_constructor() {
+    // Same predicate as test_truthy_evaluator_custom, built via the
+    // ergonomic `TruthyEvaluator::custom` constructor instead of
+    // `TruthyEvaluator::Custom(Arc::new(...))`.
+    let config = EvaluationConfig {
+        truthy_evaluator: TruthyEvaluator::custom(|value: &OwnedDataValue| {
+            value.as_i64().map(|n| n % 2 == 0).unwrap_or(false)
+        }),
+        ..Default::default()
+    };
+    let engine = Engine::builder().config(config).build();
+
+    let test_cases = vec![
+        (json!({"if": [0, "truthy", "falsy"]}), json!("truthy")),
+        (json!({"if": [1, "truthy", "falsy"]}), json!("falsy")),
+        (json!({"if": [2, "truthy", "falsy"]}), json!("truthy")),
+        (json!({"if": ["text", "truthy", "falsy"]}), json!("falsy")),
+    ];
+
+    for (logic, expected) in test_cases {
+        let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+        assert_eq!(result, expected, "Failed for logic: {:?}", logic);
+    }
+}
+
+#[test]
 fn test_truthy_in_logical_operators() {
     let config = EvaluationConfig {
         truthy_evaluator: TruthyEvaluator::StrictBoolean,
@@ -393,4 +422,40 @@ fn debug_format_works_for_evaluation_config() {
     let rendered = format!("{:?}", config);
     assert!(rendered.contains("EvaluationConfig"));
     assert!(rendered.contains("Custom(<fn>)"));
+}
+
+#[test]
+fn test_evaluation_config_fluent_setters() {
+    // Chained setters compose the same config that struct-update syntax would.
+    let config = EvaluationConfig::default()
+        .with_arithmetic_nan_handling(NanHandling::IgnoreValue)
+        .with_division_by_zero(DivisionByZeroHandling::ReturnNull)
+        .with_loose_equality_errors(false)
+        .with_truthy_evaluator(TruthyEvaluator::StrictBoolean)
+        .with_numeric_coercion(NumericCoercionConfig {
+            empty_string_to_zero: false,
+            null_to_zero: false,
+            bool_to_number: false,
+            strict_numeric: true,
+            undefined_to_zero: false,
+        })
+        .with_max_recursion_depth(64);
+
+    assert_eq!(config.arithmetic_nan_handling, NanHandling::IgnoreValue);
+    assert_eq!(config.division_by_zero, DivisionByZeroHandling::ReturnNull);
+    assert!(!config.loose_equality_errors);
+    assert!(matches!(
+        config.truthy_evaluator,
+        TruthyEvaluator::StrictBoolean
+    ));
+    assert!(config.numeric_coercion.strict_numeric);
+    assert_eq!(config.max_recursion_depth, 64);
+
+    // Engine-level smoke check: the chained config drives evaluation as
+    // expected — `IgnoreValue` lets arithmetic skip the bad operand.
+    let engine = Engine::builder().config(config).build();
+    let result = engine
+        .evaluate_serde(&json!({"+": [1, "skip", 2]}), &json!({}))
+        .unwrap();
+    assert_eq!(result, json!(3));
 }
