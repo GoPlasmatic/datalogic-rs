@@ -129,6 +129,14 @@ pub enum ErrorKind {
 /// `{"type": <kind tag>, "message": <Display>, ...kind-extras, "operator"?, "path"?}`.
 /// `operator` is omitted when `None`; `path` is omitted when empty. JS
 /// consumers can `JSON.parse(err)` and switch on `err.type`.
+///
+/// # Source chains
+///
+/// `std::error::Error::source` returns `Some` only for [`ErrorKind::Custom`]
+/// — the variant produced by [`Error::wrap`]. Every other variant carries
+/// a flat string or structured payload, not a typed cause. To attach a
+/// typed source error, wrap it via `Error::wrap` instead of constructing
+/// e.g. `Error::invalid_arguments("...")` directly.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct Error {
@@ -398,6 +406,28 @@ fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Resu
 }
 
 impl std::error::Error for Error {
+    /// Returns the wrapped source error, but only for [`ErrorKind::Custom`].
+    ///
+    /// All other [`ErrorKind`] variants carry a flat `Cow<'static, str>`
+    /// payload (or a structured value, in `Thrown` / `IndexOutOfBounds`)
+    /// rather than a typed cause, so they have no `dyn Error` to chain to.
+    /// To attach a typed source, wrap your error via [`Error::wrap`] —
+    /// that produces an `ErrorKind::Custom` whose `source()` returns
+    /// `Some(&original)` and whose `Display` matches the original.
+    ///
+    /// ```rust
+    /// use datalogic_rs::Error;
+    /// use std::error::Error as _;
+    ///
+    /// fn read_config() -> std::io::Result<String> {
+    ///     Err(std::io::Error::other("disk fell off the cliff"))
+    /// }
+    ///
+    /// let err = read_config().map_err(Error::wrap).unwrap_err();
+    /// // The original io::Error survives the wrap and can be walked.
+    /// let source = err.source().unwrap();
+    /// assert!(source.to_string().contains("disk"));
+    /// ```
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             ErrorKind::Custom(err) => Some(err.as_ref()),

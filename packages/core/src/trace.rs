@@ -3,6 +3,15 @@
 //! This module provides execution tracing capabilities for debugging JSONLogic
 //! expressions. It generates an expression tree with unique IDs and records
 //! each evaluation step for replay in the Web UI.
+//!
+//! # Feature gating
+//!
+//! Gated on `feature = "trace"`. Trace transitively pulls in
+//! `feature = "compat"` (the `Cargo.toml` declares `trace = ["compat"]`)
+//! because the per-step expression tree and recorded values are
+//! `serde_json::Value`-shaped — the structured-trace consumers (the Web
+//! UI, JSON exporters) need the `compat` JSON↔arena bridge to render
+//! steps. If you `--features trace` you implicitly get `--features compat`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

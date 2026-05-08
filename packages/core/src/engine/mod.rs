@@ -55,8 +55,64 @@ impl Drop for DepthGuard {
     }
 }
 
-/// JSONLogic compile/evaluate engine. See the crate-level docs for the
-/// two-phase architecture, threading model, and walk-through examples.
+/// JSONLogic compile/evaluate engine.
+///
+/// Holds the immutable engine state — registered [`crate::CustomOperator`]
+/// implementations, the [`EvaluationConfig`], the optional
+/// preserve-structure flag — and exposes the public surface for parsing
+/// rules ([`Self::compile`]), evaluating them ([`Self::evaluate`],
+/// [`Self::evaluate_str`], [`Self::evaluate_serde`]), and opening
+/// hot-loop / traced sessions ([`Self::session`], [`Self::with_trace`]).
+///
+/// `Engine` is `Send + Sync` (every field is); the typical pattern is to
+/// build one at startup, wrap it in `Arc<Engine>`, and clone the `Arc`
+/// across threads or async tasks.
+///
+/// # Example
+///
+/// ```rust
+/// use datalogic_rs::Engine;
+///
+/// // 1. Build the engine.
+/// let engine = Engine::new();
+///
+/// // 2. Compile a rule once.
+/// let logic = engine
+///     .compile(r#"{"if": [{">=": [{"var": "age"}, 18]}, "adult", "minor"]}"#)
+///     .unwrap();
+///
+/// // 3. Evaluate against many inputs (here via the convenience `evaluate_str`;
+/// //    use `Session::evaluate*` or `Engine::evaluate` for hot-loop variants).
+/// let mut session = engine.session();
+/// for age in [12, 18, 42] {
+///     let payload = format!(r#"{{"age": {age}}}"#);
+///     let result = session.evaluate_str(&logic, &payload).unwrap();
+///     assert!(result == "\"adult\"" || result == "\"minor\"");
+///     session.reset();
+/// }
+/// ```
+///
+/// # Choosing an evaluate method
+///
+/// Three tiers, in order of caller control:
+///
+/// | Method | Arena ownership | Result type | When to use |
+/// |---|---|---|---|
+/// | [`Self::evaluate_str`] | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` (JSON) | One-shot. CLI scripts, "I want JSON in and JSON out", any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
+/// | [`crate::Session::evaluate`] / [`crate::Session::evaluate_ref`] / [`crate::Session::evaluate_str`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned (`OwnedDataValue` / `String`) or borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
+/// | [`Self::evaluate`] | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, custom pool/allocator strategies, integration with arena-aware downstream code. |
+/// | [`Self::evaluate_serde`] (gated on `compat`) | engine creates a fresh `Bump::with_capacity(4096)` per call | `serde_json::Value` | Drop-in for v4 callers and any path that needs the `serde_json::Value` boundary on both sides. |
+///
+/// All four route through the same dispatcher; the only differences are
+/// who owns the arena, what the result type looks like, and whether the
+/// boundary parses / serialises JSON for you. There is no perf
+/// difference between the arena-aware paths once the bump is warm —
+/// pick the one whose ergonomics fit your call site.
+///
+/// See the crate-level docs for the two-phase architecture, threading
+/// model, and walk-through examples; see the `Session` and
+/// `EvaluationConfig` rustdoc for arena-management and behaviour-tuning
+/// options respectively.
 pub struct Engine {
     /// Custom `CustomOperator` implementations registered with the engine.
     pub(super) custom_operators: HashMap<String, Box<dyn crate::CustomOperator>>,

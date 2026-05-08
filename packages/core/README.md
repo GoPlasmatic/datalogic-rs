@@ -39,6 +39,35 @@ For repeated evaluation, compile once and reuse a `Session` (resettable
 arena, no per-call heap churn). For zero-copy `&DataValue<'a>` results,
 call `Engine::evaluate` directly with a caller-managed `bumpalo::Bump`.
 
+## Performance
+
+Three evaluation tiers, in order of caller control:
+
+| API | Arena | Result | When to use |
+|---|---|---|---|
+| `Engine::evaluate_str(rule, data)` | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` (JSON) | One-shot. CLI-style use, scripts, "I want JSON in and JSON out." |
+| `Session::evaluate(&logic, data)` | session-owned `Bump`, caller calls `session.reset()` between batches | `OwnedDataValue` | Hot loop with a long-lived engine. Per-task in tokio, per-message in dataflow-style pipelines. |
+| `Engine::evaluate(&logic, data, &arena)` | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, pool-managed arenas, custom allocators. |
+
+`Session` adds two extras for hot loops:
+
+- `Session::evaluate_ref(...)` returns the same borrowed `&DataValue<'a>`
+  shape as `Engine::evaluate` but with the bump owned by the session,
+  so you skip the `OwnedDataValue::to_owned` deep-clone when the result
+  is consumed before the next session call.
+- `Session::reset_with_capacity(bytes)` drops the current chunks and
+  allocates one fresh chunk of the given size — combine with
+  `Session::allocated_bytes()` to capture a steady-state high-water
+  mark from a warm-up pass and pre-size for the hot loop. The bench at
+  `packages/benchmark/src/bin/self.rs` shows the pattern end-to-end.
+
+The tokio-friendly idiom: `Arc<Engine>` shared across worker threads
+(it's `Send + Sync`), one `Session` per task (it's `Send + !Sync`,
+moves with the task across `.await` points). `Session::compile` is not
+yet exposed because compile-time scratch isn't a hot path for any
+known consumer; the existing `Engine::compile(rule)` allocates a small
+internal bump and is called once at startup in typical service shapes.
+
 ## Feature flags
 
 | Feature           | Effect                                                            |

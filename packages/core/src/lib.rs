@@ -49,6 +49,9 @@
 //!     let payload = format!(r#"{{"x": {}}}"#, x);
 //!     let result = session.evaluate_str(&compiled, &payload).unwrap();
 //!     assert_eq!(result, (x + 1).to_string());
+//!     // The session does not auto-reset; bound peak memory by
+//!     // resetting between iterations (constant-time, reuses chunks).
+//!     session.reset();
 //! }
 //! ```
 //!

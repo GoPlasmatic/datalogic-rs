@@ -78,4 +78,7 @@ required-features = ["datetime"]
 
 [[example]]
 name = "migrating_from_v4"
-required-features = ["compat"]
+# `compat` brings the v4 LegacyApi entry points (the migration target);
+# `preserve` is needed for the v4 `preserve` operator → `preserve_structure`
+# mode walkthrough at the end of the file.
+required-features = ["compat", "preserve"]

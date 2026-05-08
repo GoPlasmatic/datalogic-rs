@@ -1,10 +1,19 @@
 //! Array operators: filter / map / reduce / merge / quantifiers / sort /
 //! slice / length.
 //!
-//! Each operator lives in its own submodule. `helpers` carries the shared
-//! infrastructure: `IterSrc`, `ResolvedInput`, `resolve_iter_input` (used by
-//! every iterator op), `FastPredicate` (filter/quantifier fast paths), and
-//! a few small comparison helpers.
+//! # File map
+//!
+//! - [`filter`] — `filter` (predicate-based array selection).
+//! - [`map`] — `map` (per-element transformation).
+//! - [`merge`] — `merge` (variadic array concatenation, flattening one level).
+//! - [`quantifiers`] — `all`, `some`, `none` (predicate scan with short-circuit).
+//! - [`reduce`] — `reduce` (fold over an array with `accumulator` / `current` slots).
+//! - [`length`] — `length` of strings/arrays (gated on `feature = "ext-string"`).
+//! - [`slice`] — Python-style `slice` (gated on `feature = "ext-array"`).
+//! - [`sort`] — `sort` (key-based ordering, gated on `feature = "ext-array"`).
+//! - [`helpers`] — shared infrastructure: `IterSrc`, `ResolvedInput`,
+//!   `resolve_iter_input` (used by every iterator op), `FastPredicate`
+//!   (filter / quantifier fast paths), and a few small comparison helpers.
 
 mod helpers;
 

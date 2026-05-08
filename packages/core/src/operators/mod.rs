@@ -4,6 +4,29 @@
 //! Each operator follows a consistent pattern: a function that takes compiled arguments,
 //! a context stack, and the engine reference, returning a `Result<Value>`.
 //!
+//! # Operator → required feature
+//!
+//! The default build (`features = []`) carries the JSONLogic baseline.
+//! Extra operators live behind opt-in features; rules that use them
+//! against an engine compiled without the feature error out at compile
+//! time as `InvalidOperator("…")`.
+//!
+//! | Operator(s) | Required feature |
+//! |---|---|
+//! | `var`, `val`, `exists` (path forms) | *baseline* (always available) |
+//! | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=` | *baseline* |
+//! | `and`, `or`, `!`, `!!`, `if`, `?:`, `??` | *baseline* |
+//! | `+`, `-`, `*`, `/`, `%`, `min`, `max` | *baseline* |
+//! | `cat`, `substr`, `in` | *baseline* |
+//! | `map`, `filter`, `reduce`, `merge`, `all`, `some`, `none` | *baseline* |
+//! | `missing`, `missing_some`, `type` | *baseline* |
+//! | `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` | `ext-string` |
+//! | `sort`, `slice` | `ext-array` |
+//! | `abs`, `ceil`, `floor` | `ext-math` |
+//! | `try`, `throw` | `error-handling` |
+//! | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | `datetime` |
+//! | `exists` (raw / multi-arg form) | `ext-control` |
+//!
 //! # Operator Categories
 //!
 //! - **Variable Access**: `var`, `val`, `exists` - Access data from context
