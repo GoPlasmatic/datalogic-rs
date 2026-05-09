@@ -82,6 +82,14 @@ provides one-release-cycle shims for the most common 4.x entry points.
   names exactly; pair with the new `with_division_by_zero`,
   `with_loose_equality_errors`, `with_truthy_evaluator`,
   `with_numeric_coercion`, and `with_max_recursion_depth`.
+- **`EvaluationConfig` and `NumericCoercionConfig` are `#[non_exhaustive]`.**
+  External callers can no longer use struct-expression construction —
+  including struct-update syntax (`Config { ..Default::default() }`).
+  Use `Config::default()` (or the presets `EvaluationConfig::strict()` /
+  `safe_arithmetic()`) followed by the `with_*` fluent setters. Fields
+  remain `pub` for direct mutation: `let mut c = Config::default(); c.foo = bar;`
+  also works. This is the v5 lock-in moment — adding fields to either
+  struct in 5.x will be non-breaking for downstream from now on.
 
 ### Added
 

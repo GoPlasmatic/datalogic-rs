@@ -14,19 +14,13 @@ fn main() {
 
     // 2. Python-style truthiness
     let python_engine = Engine::builder()
-        .config(EvaluationConfig {
-            truthy_evaluator: TruthyEvaluator::Python,
-            ..Default::default()
-        })
+        .config(EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::Python))
         .build();
     demonstrate_truthiness("Python", &python_engine);
 
     // 3. Strict boolean truthiness
     let strict_engine = Engine::builder()
-        .config(EvaluationConfig {
-            truthy_evaluator: TruthyEvaluator::StrictBoolean,
-            ..Default::default()
-        })
+        .config(EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean))
         .build();
     demonstrate_truthiness("Strict Boolean", &strict_engine);
 
@@ -75,30 +69,21 @@ fn demonstrate_nan_handling() {
 
     // Ignore non-numeric values
     let ignore_engine = Engine::builder()
-        .config(EvaluationConfig {
-            arithmetic_nan_handling: NanHandling::IgnoreValue,
-            ..Default::default()
-        })
+        .config(EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue))
         .build();
     let result = ignore_engine.evaluate_str(logic, data).unwrap();
     println!("IgnoreValue: {} (non-numeric ignored)", result);
 
     // Return null
     let null_engine = Engine::builder()
-        .config(EvaluationConfig {
-            arithmetic_nan_handling: NanHandling::ReturnNull,
-            ..Default::default()
-        })
+        .config(EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::ReturnNull))
         .build();
     let result = null_engine.evaluate_str(logic, data).unwrap();
     println!("ReturnNull: {}", result);
 
     // Coerce to zero
     let coerce_engine = Engine::builder()
-        .config(EvaluationConfig {
-            arithmetic_nan_handling: NanHandling::CoerceToZero,
-            ..Default::default()
-        })
+        .config(EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero))
         .build();
     let result = coerce_engine.evaluate_str(logic, data).unwrap();
     println!("CoerceToZero: {} (\"hello\" treated as 0)", result);
@@ -121,17 +106,17 @@ fn demonstrate_numeric_coercion() {
 
     // Strict: no coercion (return null on NaN instead of erroring)
     let strict_engine = Engine::builder()
-        .config(EvaluationConfig {
-            arithmetic_nan_handling: NanHandling::ReturnNull,
-            numeric_coercion: NumericCoercionConfig {
-                empty_string_to_zero: false,
-                null_to_zero: false,
-                bool_to_number: false,
-                strict_numeric: true,
-                undefined_to_zero: false,
-            },
-            ..Default::default()
-        })
+        .config(
+            EvaluationConfig::default()
+                .with_arithmetic_nan_handling(NanHandling::ReturnNull)
+                .with_numeric_coercion(
+                    NumericCoercionConfig::default()
+                        .with_empty_string_to_zero(false)
+                        .with_null_to_zero(false)
+                        .with_bool_to_number(false)
+                        .with_strict_numeric(true),
+                ),
+        )
         .build();
 
     println!("\nStrict (No Coercion):");

@@ -30,10 +30,7 @@ fn main() {
     // ============================================================
     // 1. Construct & configure
     // ============================================================
-    let cfg = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::IgnoreValue,
-        ..Default::default()
-    };
+    let cfg = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
 
     // v4 — LegacyApi associated fn (deprecated):
     let v4 = Engine::with_config(cfg.clone());

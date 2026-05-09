@@ -20,10 +20,7 @@ fn test_nan_handling_throw_error() {
 
 #[test]
 fn test_nan_handling_ignore_value() {
-    let config = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::IgnoreValue,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
@@ -33,10 +30,8 @@ fn test_nan_handling_ignore_value() {
 
 #[test]
 fn test_nan_handling_coerce_to_zero() {
-    let config = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::CoerceToZero,
-        ..Default::default()
-    };
+    let config =
+        EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero);
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
@@ -46,10 +41,7 @@ fn test_nan_handling_coerce_to_zero() {
 
 #[test]
 fn test_nan_handling_return_null() {
-    let config = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::ReturnNull,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::ReturnNull);
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
@@ -76,17 +68,15 @@ fn test_numeric_coercion_default() {
 
 #[test]
 fn test_numeric_coercion_strict() {
-    let config = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::IgnoreValue,
-        numeric_coercion: NumericCoercionConfig {
-            empty_string_to_zero: false,
-            null_to_zero: false,
-            bool_to_number: false,
-            strict_numeric: true,
-            undefined_to_zero: false,
-        },
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default()
+        .with_arithmetic_nan_handling(NanHandling::IgnoreValue)
+        .with_numeric_coercion(
+            NumericCoercionConfig::default()
+                .with_empty_string_to_zero(false)
+                .with_null_to_zero(false)
+                .with_bool_to_number(false)
+                .with_strict_numeric(true),
+        );
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": ["", 5]});
@@ -112,10 +102,7 @@ fn test_loose_equality_errors_default() {
 
 #[test]
 fn test_loose_equality_errors_disabled() {
-    let config = EvaluationConfig {
-        loose_equality_errors: false,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_loose_equality_errors(false);
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"==": [[], 5]});
@@ -187,10 +174,7 @@ fn test_runtime_config_change() {
     assert!(result.is_err());
 
     let engine2 = Engine::builder()
-        .config(EvaluationConfig {
-            arithmetic_nan_handling: NanHandling::IgnoreValue,
-            ..Default::default()
-        })
+        .config(EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue))
         .build();
     let result = engine2.evaluate_serde(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(1));
@@ -198,10 +182,7 @@ fn test_runtime_config_change() {
 
 #[test]
 fn test_subtraction_with_config() {
-    let config = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::IgnoreValue,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"-": [10, "invalid", 3]});
@@ -211,10 +192,8 @@ fn test_subtraction_with_config() {
 
 #[test]
 fn test_multiplication_with_config() {
-    let config = EvaluationConfig {
-        arithmetic_nan_handling: NanHandling::CoerceToZero,
-        ..Default::default()
-    };
+    let config =
+        EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero);
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"*": [2, "invalid", 3]});
@@ -224,16 +203,11 @@ fn test_multiplication_with_config() {
 
 #[test]
 fn test_comparison_with_config() {
-    let config = EvaluationConfig {
-        numeric_coercion: NumericCoercionConfig {
-            empty_string_to_zero: false,
-            null_to_zero: false,
-            bool_to_number: true,
-            strict_numeric: false,
-            undefined_to_zero: false,
-        },
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_numeric_coercion(
+        NumericCoercionConfig::default()
+            .with_empty_string_to_zero(false)
+            .with_null_to_zero(false),
+    );
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({">": [true, false]});
@@ -288,10 +262,7 @@ fn test_truthy_evaluator_javascript() {
 
 #[test]
 fn test_truthy_evaluator_strict_boolean() {
-    let config = EvaluationConfig {
-        truthy_evaluator: TruthyEvaluator::StrictBoolean,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
     let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
@@ -321,10 +292,8 @@ fn test_truthy_evaluator_custom() {
         }
     });
 
-    let config = EvaluationConfig {
-        truthy_evaluator: TruthyEvaluator::Custom(custom_evaluator),
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default()
+        .with_truthy_evaluator(TruthyEvaluator::Custom(custom_evaluator));
     let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
@@ -347,12 +316,9 @@ fn test_truthy_evaluator_custom_constructor() {
     // Same predicate as test_truthy_evaluator_custom, built via the
     // ergonomic `TruthyEvaluator::custom` constructor instead of
     // `TruthyEvaluator::Custom(Arc::new(...))`.
-    let config = EvaluationConfig {
-        truthy_evaluator: TruthyEvaluator::custom(|value: &OwnedDataValue| {
-            value.as_i64().map(|n| n % 2 == 0).unwrap_or(false)
-        }),
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::custom(
+        |value: &OwnedDataValue| value.as_i64().map(|n| n % 2 == 0).unwrap_or(false),
+    ));
     let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
@@ -370,10 +336,7 @@ fn test_truthy_evaluator_custom_constructor() {
 
 #[test]
 fn test_truthy_in_logical_operators() {
-    let config = EvaluationConfig {
-        truthy_evaluator: TruthyEvaluator::StrictBoolean,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
     let engine = Engine::builder().config(config).build();
 
     let test_cases = vec![
@@ -415,10 +378,8 @@ fn debug_format_covers_all_truthy_variants() {
 #[test]
 fn debug_format_works_for_evaluation_config() {
     // Custom truthy evaluator must not block EvaluationConfig::Debug.
-    let config = EvaluationConfig {
-        truthy_evaluator: TruthyEvaluator::Custom(Arc::new(|_| false)),
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default()
+        .with_truthy_evaluator(TruthyEvaluator::Custom(Arc::new(|_| false)));
     let rendered = format!("{:?}", config);
     assert!(rendered.contains("EvaluationConfig"));
     assert!(rendered.contains("Custom(<fn>)"));
@@ -432,13 +393,13 @@ fn test_evaluation_config_fluent_setters() {
         .with_division_by_zero(DivisionByZeroHandling::ReturnNull)
         .with_loose_equality_errors(false)
         .with_truthy_evaluator(TruthyEvaluator::StrictBoolean)
-        .with_numeric_coercion(NumericCoercionConfig {
-            empty_string_to_zero: false,
-            null_to_zero: false,
-            bool_to_number: false,
-            strict_numeric: true,
-            undefined_to_zero: false,
-        })
+        .with_numeric_coercion(
+            NumericCoercionConfig::default()
+                .with_empty_string_to_zero(false)
+                .with_null_to_zero(false)
+                .with_bool_to_number(false)
+                .with_strict_numeric(true),
+        )
         .with_max_recursion_depth(64);
 
     assert_eq!(config.arithmetic_nan_handling, NanHandling::IgnoreValue);

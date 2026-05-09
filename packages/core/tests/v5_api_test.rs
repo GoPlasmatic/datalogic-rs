@@ -200,10 +200,7 @@ fn max_recursion_depth_catches_custom_operator_reentry() {
         engine: Arc::clone(&engine_lock),
     };
 
-    let config = EvaluationConfig {
-        max_recursion_depth: 4,
-        ..Default::default()
-    };
+    let config = EvaluationConfig::default().with_max_recursion_depth(4);
 
     let engine = Engine::builder()
         .config(config)

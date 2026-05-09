@@ -38,15 +38,12 @@ use std::sync::Arc;
 /// assert_eq!(result, "3");
 /// ```
 ///
-/// Struct-update syntax also works for callers that prefer it:
-/// ```rust
-/// # use datalogic_rs::{EvaluationConfig, NanHandling};
-/// let config = EvaluationConfig {
-///     arithmetic_nan_handling: NanHandling::IgnoreValue,
-///     ..Default::default()
-/// };
-/// ```
+/// The struct is `#[non_exhaustive]` — fields can be added in 5.x
+/// without breaking downstream. Use [`Self::default`] (or the presets)
+/// followed by the `with_*` setters; struct-literal construction from
+/// outside the crate is intentionally not supported.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct EvaluationConfig {
     /// What `+` / `-` / `*` / `/` / `%` (and the variadic `min` / `max`)
     /// do when an argument can't be coerced to a number. Default:
@@ -196,12 +193,11 @@ impl TruthyEvaluator {
     /// use datalogic_rs::datavalue::OwnedDataValue;
     ///
     /// // Even integers are truthy.
-    /// let config = EvaluationConfig {
-    ///     truthy_evaluator: TruthyEvaluator::custom(|v: &OwnedDataValue| {
+    /// let config = EvaluationConfig::default().with_truthy_evaluator(
+    ///     TruthyEvaluator::custom(|v: &OwnedDataValue| {
     ///         v.as_i64().map(|n| n % 2 == 0).unwrap_or(false)
     ///     }),
-    ///     ..Default::default()
-    /// };
+    /// );
     /// let engine = Engine::builder().config(config).build();
     /// let result = engine.evaluate_str(r#"{"if": [2, "even", "odd"]}"#, "null").unwrap();
     /// assert_eq!(result, "\"even\"");
@@ -222,6 +218,7 @@ impl TruthyEvaluator {
 /// answer: `strict_numeric` overrides everything else; the rest are
 /// type-disjoint so they don't conflict in practice).
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct NumericCoercionConfig {
     /// `""` → `0` in numeric context. Default: `true`. Disable to make
     /// `{"+": ["", 1]}` fail with a NaN error instead of returning `1`.
@@ -268,6 +265,45 @@ impl Default for NumericCoercionConfig {
             strict_numeric: false,
             undefined_to_zero: false,
         }
+    }
+}
+
+impl NumericCoercionConfig {
+    /// Set [`Self::empty_string_to_zero`].
+    #[must_use]
+    pub fn with_empty_string_to_zero(mut self, value: bool) -> Self {
+        self.empty_string_to_zero = value;
+        self
+    }
+
+    /// Set [`Self::null_to_zero`].
+    #[must_use]
+    pub fn with_null_to_zero(mut self, value: bool) -> Self {
+        self.null_to_zero = value;
+        self
+    }
+
+    /// Set [`Self::bool_to_number`].
+    #[must_use]
+    pub fn with_bool_to_number(mut self, value: bool) -> Self {
+        self.bool_to_number = value;
+        self
+    }
+
+    /// Set [`Self::strict_numeric`]. When `true`, this flag overrides every
+    /// other flag — empty strings, nulls, and booleans all raise rather
+    /// than coerce.
+    #[must_use]
+    pub fn with_strict_numeric(mut self, value: bool) -> Self {
+        self.strict_numeric = value;
+        self
+    }
+
+    /// Set [`Self::undefined_to_zero`].
+    #[must_use]
+    pub fn with_undefined_to_zero(mut self, value: bool) -> Self {
+        self.undefined_to_zero = value;
+        self
     }
 }
 
