@@ -17,6 +17,17 @@ keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
 exclude = [".DS_Store"]
 
+# docs.rs builds with the default feature set unless told otherwise. Our
+# `default = []` means a vanilla docs.rs build would hide `compat`,
+# `preserve`, `datetime`, `trace`, and the `ext-*` operator surface, so we
+# turn everything on. The `--cfg docsrs` flag pairs with the
+# `cfg_attr(docsrs, doc(cfg(...)))` annotations on feature-gated public
+# items in `lib.rs` — that gives each item a "Available on crate feature
+# X only" badge in the rendered docs.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 # Empty default: the crate is `serde_json`-free out of the box. Opt-in
 # features below add interop, optional operators, or templating — see

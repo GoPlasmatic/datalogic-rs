@@ -354,6 +354,7 @@ impl Engine {
     /// # }
     /// ```
     #[cfg(feature = "trace")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
     #[inline]
     pub fn with_trace(&self) -> crate::trace::TracedSession<'_> {
         crate::trace::TracedSession::new(self)
@@ -440,6 +441,7 @@ impl Engine {
     /// Mirror of [`Self::evaluate_str`] for callers already on `serde_json`.
     /// Funnels through [`Self::evaluate`] internally.
     #[cfg(feature = "compat")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
     pub fn evaluate_serde(&self, logic: &Value, data: &Value) -> Result<Value> {
         let logic_owned = crate::compat::owned_from_serde(logic);
         let compiled = Logic::compile_with(&logic_owned, self)?;

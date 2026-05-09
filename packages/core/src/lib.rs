@@ -1,4 +1,9 @@
 #![forbid(unsafe_code)]
+// Enable the `#[doc(cfg(...))]` attribute on docs.rs builds so feature-gated
+// public items render with a "Available on crate feature X only" badge. The
+// matching `--cfg docsrs` is passed by `[package.metadata.docs.rs]` in
+// Cargo.toml; on a regular stable build this attribute is inert.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! # datalogic-rs
 //!
@@ -92,6 +97,7 @@ mod arena;
 mod arena_ext;
 mod builder;
 #[cfg(feature = "compat")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
 pub mod compat;
 mod compile;
 mod config;
@@ -159,8 +165,10 @@ pub use node::Logic;
 pub use path::PathStep;
 pub use session::Session;
 #[cfg(all(feature = "trace", feature = "compat"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "trace", feature = "compat"))))]
 pub use trace::TracedResult;
 #[cfg(feature = "trace")]
+#[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
 
 // `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint` were

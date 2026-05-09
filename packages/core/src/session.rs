@@ -200,6 +200,7 @@ impl<'engine> Session<'engine> {
     /// [`Engine::evaluate_serde`] but reuses the arena across calls.
     /// Does not reset the arena — see [`Self::reset`].
     #[cfg(feature = "compat")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
     pub fn evaluate_serde(
         &mut self,
         compiled: &Logic,

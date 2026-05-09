@@ -486,6 +486,7 @@ impl std::error::Error for Error {
 }
 
 #[cfg(feature = "compat")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
