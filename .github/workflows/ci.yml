@@ -70,6 +70,16 @@ jobs:
         # every example.
         run: cargo build -p datalogic-rs --examples --all-features
 
+      - name: Build docs (deny warnings)
+        # Treat broken intra-doc links and missing-docs warnings as
+        # errors so docs.rs builds (which run with the same effective
+        # settings via `[package.metadata.docs.rs]`) don't regress.
+        # `--no-deps` keeps the run scoped to our crate; transitive
+        # dep warnings are not our problem.
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc -p datalogic-rs --all-features --no-deps
+
   msrv:
     name: MSRV (Rust 1.85)
     runs-on: ubuntu-latest
