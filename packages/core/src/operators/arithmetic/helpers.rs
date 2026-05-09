@@ -190,17 +190,17 @@ impl FoldState {
         I: Fn(i64, i64) -> Option<i64>,
         F: Fn(f64, f64) -> f64,
     {
-        if self.all_int
-            && let Some(i) = int_opt
-        {
-            match i_combine(self.int_acc, i) {
-                Some(r) => self.int_acc = r,
-                None => {
-                    self.all_int = false;
-                    self.float_acc = f_combine(self.int_acc as f64, i as f64);
+        if self.all_int {
+            if let Some(i) = int_opt {
+                match i_combine(self.int_acc, i) {
+                    Some(r) => self.int_acc = r,
+                    None => {
+                        self.all_int = false;
+                        self.float_acc = f_combine(self.int_acc as f64, i as f64);
+                    }
                 }
+                return Ok(FoldStepOutcome::Continue);
             }
-            return Ok(FoldStepOutcome::Continue);
         }
         // `all_int` already flipped to `false` (a previous arg was non-int)
         // or `int_opt` is `None`. In the former case an integer arg still

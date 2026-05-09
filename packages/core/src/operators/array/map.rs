@@ -115,10 +115,10 @@ fn map_arith_var_lit_fast_path<'a>(
 
     // Integer fast path. Aborts (without committing results) on the first
     // overflow or non-integer input — caller falls through to f64.
-    if let Some(li) = lit_i
-        && let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena)
-    {
-        return Some(av);
+    if let Some(li) = lit_i {
+        if let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena) {
+            return Some(av);
+        }
     }
 
     // f64 path.

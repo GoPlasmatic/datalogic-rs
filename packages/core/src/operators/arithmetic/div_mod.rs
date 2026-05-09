@@ -77,10 +77,10 @@ fn div_mod_two_arg<'a>(
     // Duration / Number — only for `/`, not `%` (modulo on durations
     // is not defined).
     #[cfg(feature = "datetime")]
-    if !op.is_modulo()
-        && let Some(r) = crate::operators::datetime::arith::datetime_divide(a_av, b_av, arena)
-    {
-        return r;
+    if !op.is_modulo() {
+        if let Some(r) = crate::operators::datetime::arith::datetime_divide(a_av, b_av, arena) {
+            return r;
+        }
     }
 
     let af = coerce_to_number_cfg(a_av, engine).ok_or_else(crate::Error::nan)?;

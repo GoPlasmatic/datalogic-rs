@@ -343,10 +343,10 @@ fn compare_ordered(
 
     // String vs String (non-datetime fast path).
     #[cfg(feature = "datetime")]
-    if let (Some(l), Some(r)) = (value_as_str_in_op(left), value_as_str_in_op(right))
-        && (!could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r))
-    {
-        return Ok(op.apply_str(l, r));
+    if let (Some(l), Some(r)) = (value_as_str_in_op(left), value_as_str_in_op(right)) {
+        if !could_be_datetime_or_duration(l) || !could_be_datetime_or_duration(r) {
+            return Ok(op.apply_str(l, r));
+        }
     }
     #[cfg(not(feature = "datetime"))]
     if let (Some(l), Some(r)) = (value_as_str_in_op(left), value_as_str_in_op(right)) {

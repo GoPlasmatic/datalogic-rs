@@ -103,15 +103,15 @@ pub(crate) fn datetime_multiply<'a>(
     let (_, a_dur) = extract_dt_dur(a_av);
     let (_, b_dur) = extract_dt_dur(b_av);
 
-    if let (Some(dur), None) = (&a_dur, &b_dur)
-        && let Some(factor) = coerce_to_number(b_av)
-    {
-        return Some(write_into_arena(arena, dur.multiply(factor)));
+    if let (Some(dur), None) = (&a_dur, &b_dur) {
+        if let Some(factor) = coerce_to_number(b_av) {
+            return Some(write_into_arena(arena, dur.multiply(factor)));
+        }
     }
-    if let (None, Some(dur)) = (&a_dur, &b_dur)
-        && let Some(factor) = coerce_to_number(a_av)
-    {
-        return Some(write_into_arena(arena, dur.multiply(factor)));
+    if let (None, Some(dur)) = (&a_dur, &b_dur) {
+        if let Some(factor) = coerce_to_number(a_av) {
+            return Some(write_into_arena(arena, dur.multiply(factor)));
+        }
     }
     None
 }

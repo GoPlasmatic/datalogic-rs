@@ -151,10 +151,10 @@ impl ExpressionNode {
         default_value: Option<&CompiledNode>,
     ) -> ExpressionNode {
         let mut children = Vec::new();
-        if let Some(def) = default_value
-            && Self::is_operator_node(def)
-        {
-            children.push(Self::build_node(def));
+        if let Some(def) = default_value {
+            if Self::is_operator_node(def) {
+                children.push(Self::build_node(def));
+            }
         }
         ExpressionNode {
             id,

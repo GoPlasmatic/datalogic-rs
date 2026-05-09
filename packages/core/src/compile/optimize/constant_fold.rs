@@ -292,10 +292,10 @@ mod tests {
         let engine = Engine::new();
         let node = builtin(OpCode::Add, vec![val(ov("\"5\"")), var_node("x")]);
         let (result, _changed) = fold(node, &engine);
-        if let CompiledNode::BuiltinOperator { args, .. } = &result
-            && let CompiledNode::Value { value, .. } = &args[0]
-        {
-            assert_eq!(value.as_i64(), Some(5));
+        if let CompiledNode::BuiltinOperator { args, .. } = &result {
+            if let CompiledNode::Value { value, .. } = &args[0] {
+                assert_eq!(value.as_i64(), Some(5));
+            }
         }
     }
 }

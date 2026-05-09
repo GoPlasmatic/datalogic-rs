@@ -42,10 +42,10 @@ pub(crate) fn evaluate_missing<'a>(
         match av {
             DataValue::Array(items) => {
                 for it in *items {
-                    if let Some(path) = value_as_str(it)
-                        && !crate::arena::value::path_exists_str(lookup, path)
-                    {
-                        missing.push(DataValue::String(arena.alloc_str(path)));
+                    if let Some(path) = value_as_str(it) {
+                        if !crate::arena::value::path_exists_str(lookup, path) {
+                            missing.push(DataValue::String(arena.alloc_str(path)));
+                        }
                     }
                 }
             }
@@ -274,10 +274,10 @@ fn accumulate_dynamic_missing<'a>(
     match av {
         DataValue::Array(items) => {
             for it in *items {
-                if let Some(path) = value_as_str(it)
-                    && !crate::arena::value::path_exists_str(lookup, path)
-                {
-                    missing.push(DataValue::String(arena.alloc_str(path)));
+                if let Some(path) = value_as_str(it) {
+                    if !crate::arena::value::path_exists_str(lookup, path) {
+                        missing.push(DataValue::String(arena.alloc_str(path)));
+                    }
                 }
             }
         }

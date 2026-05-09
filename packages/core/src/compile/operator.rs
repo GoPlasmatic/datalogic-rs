@@ -79,12 +79,14 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
         value: datavalue::OwnedDataValue::Array(level_arr),
         ..
     } = &args[0]
-        && let Some(datavalue::OwnedDataValue::Number(level_num)) = level_arr.first()
-        && let Some(level) = level_num.as_i64()
     {
-        let scope_level = level.unsigned_abs() as u32;
-        let metadata_hint = scope_level_metadata_hint(args);
-        return try_compile_val_segments(&args[1..], scope_level, metadata_hint, ctx);
+        if let Some(datavalue::OwnedDataValue::Number(level_num)) = level_arr.first() {
+            if let Some(level) = level_num.as_i64() {
+                let scope_level = level.unsigned_abs() as u32;
+                let metadata_hint = scope_level_metadata_hint(args);
+                return try_compile_val_segments(&args[1..], scope_level, metadata_hint, ctx);
+            }
+        }
     }
 
     if let Some(first_seg) = val_arg_to_segment(&args[0]) {
@@ -145,16 +147,17 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
 }
 
 fn scope_level_metadata_hint(args: &[CompiledNode]) -> MetadataHint {
-    if args.len() == 2
-        && let CompiledNode::Value {
+    if args.len() == 2 {
+        if let CompiledNode::Value {
             value: datavalue::OwnedDataValue::String(s),
             ..
         } = &args[1]
-    {
-        if s == "index" {
-            return MetadataHint::Index;
-        } else if s == "key" {
-            return MetadataHint::Key;
+        {
+            if s == "index" {
+                return MetadataHint::Index;
+            } else if s == "key" {
+                return MetadataHint::Key;
+            }
         }
     }
     MetadataHint::None

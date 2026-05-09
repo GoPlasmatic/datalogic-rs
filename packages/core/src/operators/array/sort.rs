@@ -29,10 +29,10 @@ pub(crate) fn evaluate_sort<'a>(
     }
 
     // Literal-null first arg is an error.
-    if let CompiledNode::Value { value, .. } = &args[0]
-        && value.is_null()
-    {
-        return Err(crate::Error::invalid_args());
+    if let CompiledNode::Value { value, .. } = &args[0] {
+        if value.is_null() {
+            return Err(crate::Error::invalid_args());
+        }
     }
 
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {

@@ -72,10 +72,10 @@ pub(crate) fn extract_datetime(av: &DataValue<'_>) -> Option<DataDateTime> {
         DataValue::String(s) => DataDateTime::parse(s),
         DataValue::Object(pairs) => {
             for (k, v) in *pairs {
-                if *k == "datetime"
-                    && let DataValue::String(s) = v
-                {
-                    return DataDateTime::parse(s);
+                if *k == "datetime" {
+                    if let DataValue::String(s) = v {
+                        return DataDateTime::parse(s);
+                    }
                 }
             }
             None
@@ -92,10 +92,10 @@ pub(crate) fn extract_duration(av: &DataValue<'_>) -> Option<DataDuration> {
         DataValue::String(s) => DataDuration::parse(s),
         DataValue::Object(pairs) => {
             for (k, v) in *pairs {
-                if *k == "timestamp"
-                    && let DataValue::String(s) = v
-                {
-                    return DataDuration::parse(s);
+                if *k == "timestamp" {
+                    if let DataValue::String(s) = v {
+                        return DataDuration::parse(s);
+                    }
                 }
             }
             None
@@ -145,10 +145,10 @@ pub(crate) fn evaluate_datetime<'a>(
     }
 
     // String parses as datetime → return as-is to preserve timezone info.
-    if let Some(s) = arg_as_str(av)
-        && DataDateTime::parse(s).is_some()
-    {
-        return Ok(av);
+    if let Some(s) = arg_as_str(av) {
+        if DataDateTime::parse(s).is_some() {
+            return Ok(av);
+        }
     }
 
     Err(Error::invalid_arguments("Invalid datetime format"))
@@ -172,11 +172,11 @@ pub(crate) fn evaluate_timestamp<'a>(
         return Ok(av);
     }
 
-    if let Some(s) = arg_as_str(av)
-        && let Some(duration) = DataDuration::parse(s)
-    {
-        let s: &'a str = arena.alloc_str(&duration.to_string());
-        return Ok(arena.alloc(DataValue::String(s)));
+    if let Some(s) = arg_as_str(av) {
+        if let Some(duration) = DataDuration::parse(s) {
+            let s: &'a str = arena.alloc_str(&duration.to_string());
+            return Ok(arena.alloc(DataValue::String(s)));
+        }
     }
 
     Err(Error::invalid_arguments("Invalid duration format"))

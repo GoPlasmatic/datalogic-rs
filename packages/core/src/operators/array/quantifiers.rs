@@ -76,16 +76,16 @@ fn evaluate_quantifier<'a>(
     // hoisted to compile time and cached on the predicate node, so we
     // pull it from there instead of pattern-matching every call. Skipped
     // when a tracer is attached so iteration markers still get recorded.
-    if !ctx.is_tracing()
-        && let Some(fast_pred) = FastPredicate::from_node(predicate)
-    {
-        let len = src.len();
-        for i in 0..len {
-            if fast_pred.evaluate(src.get(i)) == shape.short_circuit_on {
-                return Ok(singleton_bool(shape.finalize(true)));
+    if !ctx.is_tracing() {
+        if let Some(fast_pred) = FastPredicate::from_node(predicate) {
+            let len = src.len();
+            for i in 0..len {
+                if fast_pred.evaluate(src.get(i)) == shape.short_circuit_on {
+                    return Ok(singleton_bool(shape.finalize(true)));
+                }
             }
+            return Ok(singleton_bool(shape.finalize(false)));
         }
-        return Ok(singleton_bool(shape.finalize(false)));
     }
 
     // General path: zero-clone via ContextStack.

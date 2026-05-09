@@ -141,14 +141,14 @@ fn compile_builtin(
 
     // Optimization + static-fold passes (engine-dependent and gated on
     // the compile context's `skip_fold` flag, which the trace path sets).
-    if let Some(eng) = engine
-        && !ctx.skip_fold()
-    {
-        node = optimize::optimize(node, eng);
-        if node_is_static(&node)
-            && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
-        {
-            return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+    if let Some(eng) = engine {
+        if !ctx.skip_fold() {
+            node = optimize::optimize(node, eng);
+            if node_is_static(&node) {
+                if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
+                    return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+                }
+            }
         }
     }
 
@@ -241,17 +241,17 @@ fn compile_preserve_unknown(
     preserve_structure: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    if let Some(eng) = engine
-        && eng.has_custom_operator(op_name)
-    {
-        let args = compile_args(args_value, engine, preserve_structure, ctx)?;
-        return Ok(CompiledNode::CustomOperator(Box::new(
-            crate::node::CustomOperatorData {
-                id: Some(ctx.next_id()),
-                name: op_name.to_string(),
-                args,
-            },
-        )));
+    if let Some(eng) = engine {
+        if eng.has_custom_operator(op_name) {
+            let args = compile_args(args_value, engine, preserve_structure, ctx)?;
+            return Ok(CompiledNode::CustomOperator(Box::new(
+                crate::node::CustomOperatorData {
+                    id: Some(ctx.next_id()),
+                    name: op_name.to_string(),
+                    args,
+                },
+            )));
+        }
     }
     let compiled_val = compile_node(args_value, engine, preserve_structure, ctx)?;
     let fields = vec![(op_name.to_string(), compiled_val)].into_boxed_slice();
@@ -282,12 +282,12 @@ fn compile_array(
         nodes: nodes_boxed,
     };
 
-    if let Some(eng) = engine
-        && !ctx.skip_fold()
-        && node_is_static(&node)
-        && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
-    {
-        return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+    if let Some(eng) = engine {
+        if !ctx.skip_fold() && node_is_static(&node) {
+            if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
+                return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+            }
+        }
     }
 
     Ok(node)

@@ -279,16 +279,16 @@ fn eval_val_multiarg<'a>(
 
     // Reduce shortcut for the first segment.
     let mut start: Option<&'a DataValue<'a>> = None;
-    if let ContextRef::Frame(frame) = ctx.current()
-        && let Some(s) = evaluated[0].as_str()
-    {
-        start = if s == "current" {
-            frame.get_reduce_current()
-        } else if s == "accumulator" {
-            frame.get_reduce_accumulator()
-        } else {
-            None
-        };
+    if let ContextRef::Frame(frame) = ctx.current() {
+        if let Some(s) = evaluated[0].as_str() {
+            start = if s == "current" {
+                frame.get_reduce_current()
+            } else if s == "accumulator" {
+                frame.get_reduce_accumulator()
+            } else {
+                None
+            };
+        }
     }
 
     let (mut cur, rest_start) = match start {
@@ -390,39 +390,39 @@ fn eval_val_scalar_path<'a>(
                     return Ok(access_path_str_ref(cur, rest)
                         .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
                 }
-            } else if let Some(rest) = s.strip_prefix("accumulator.")
-                && let Some(acc) = frame.get_reduce_accumulator()
-            {
-                return Ok(access_path_str_ref(acc, rest)
-                    .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+            } else if let Some(rest) = s.strip_prefix("accumulator.") {
+                if let Some(acc) = frame.get_reduce_accumulator() {
+                    return Ok(access_path_str_ref(acc, rest)
+                        .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+                }
             }
         }
 
         let cur = current_data(ctx, arena);
         // Direct object key lookup beats dot-path traversal so empty keys and
         // keys containing dots resolve correctly.
-        if let DataValue::Object(pairs) = cur
-            && let Some(av) = crate::arena::value::object_lookup_field(pairs, s)
-        {
-            return Ok(av);
+        if let DataValue::Object(pairs) = cur {
+            if let Some(av) = crate::arena::value::object_lookup_field(pairs, s) {
+                return Ok(av);
+            }
         }
         return Ok(access_path_str_ref(cur, s)
             .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
     }
 
-    if let Some(i) = path_av.as_i64()
-        && i >= 0
-    {
-        let cur = current_data(ctx, arena);
-        // Common small indices (0..100) hit the static `&'static str`
-        // cache; only larger keys pay the heap `String` allocation.
-        if let Some(static_key) = super::small_int_str(i) {
-            return Ok(access_path_str_ref(cur, static_key)
+    if let Some(i) = path_av.as_i64() {
+        if i >= 0 {
+            let cur = current_data(ctx, arena);
+            // Common small indices (0..100) hit the static `&'static str`
+            // cache; only larger keys pay the heap `String` allocation.
+            if let Some(static_key) = super::small_int_str(i) {
+                return Ok(access_path_str_ref(cur, static_key)
+                    .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+            }
+            let key = i.to_string();
+            return Ok(access_path_str_ref(cur, &key)
                 .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
         }
-        let key = i.to_string();
-        return Ok(access_path_str_ref(cur, &key)
-            .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
     }
 
     Ok(crate::arena::singletons::singleton_null())

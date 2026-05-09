@@ -34,11 +34,12 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
         CompiledNode::Exists(data) => compiled_exists_to_json_string(&data.segments),
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(data) => {
-            if let datavalue::OwnedDataValue::Object(pairs) = &data.error
-                && let Some((_, datavalue::OwnedDataValue::String(s))) =
+            if let datavalue::OwnedDataValue::Object(pairs) = &data.error {
+                if let Some((_, datavalue::OwnedDataValue::String(s))) =
                     pairs.iter().find(|(k, _)| k == "type")
-            {
-                return format!("{{\"throw\": \"{}\"}}", s);
+                {
+                    return format!("{{\"throw\": \"{}\"}}", s);
+                }
             }
             format!("{{\"throw\": {}}}", data.error.to_json_string())
         }

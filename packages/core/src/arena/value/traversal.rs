@@ -138,15 +138,15 @@ pub(crate) fn apply_path_element<'a>(
     if let Some(s) = elem.as_str() {
         return access_path_str_ref(cur, s);
     }
-    if let Some(i) = elem.as_i64()
-        && i >= 0
-    {
-        let idx = i as usize;
-        return match *cur {
-            DataValue::Array(items) => items.get(idx),
-            DataValue::Object(_) => access_path_str_ref(cur, &i.to_string()),
-            _ => None,
-        };
+    if let Some(i) = elem.as_i64() {
+        if i >= 0 {
+            let idx = i as usize;
+            return match *cur {
+                DataValue::Array(items) => items.get(idx),
+                DataValue::Object(_) => access_path_str_ref(cur, &i.to_string()),
+                _ => None,
+            };
+        }
     }
     None
 }

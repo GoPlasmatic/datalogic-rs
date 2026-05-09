@@ -122,10 +122,10 @@ fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
         return s;
     }
     if let DataValue::Number(n) = av {
-        if let Some(i) = n.as_i64()
-            && let Some(s) = small_int_str(i)
-        {
-            return s;
+        if let Some(i) = n.as_i64() {
+            if let Some(s) = small_int_str(i) {
+                return s;
+            }
         }
         return arena.alloc_str(&n.to_string());
     }

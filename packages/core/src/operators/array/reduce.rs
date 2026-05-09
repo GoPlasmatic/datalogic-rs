@@ -46,17 +46,22 @@ pub(crate) fn evaluate_reduce<'a>(
     // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} for + / - / *.
     // Skipped when a tracer is attached so per-iteration trace markers still get
     // recorded via `run_iter_body` in the general path.
-    if !ctx.is_tracing()
-        && let CompiledNode::BuiltinOperator {
+    if !ctx.is_tracing() {
+        if let CompiledNode::BuiltinOperator {
             opcode,
             args: body_args,
             ..
         } = body
-        && body_args.len() == 2
-        && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
-        && let Some(result) = try_reduce_fast_path(&src, initial, body_args, *opcode, arena)
-    {
-        return Ok(result);
+        {
+            if body_args.len() == 2
+                && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
+            {
+                if let Some(result) = try_reduce_fast_path(&src, initial, body_args, *opcode, arena)
+                {
+                    return Ok(result);
+                }
+            }
+        }
     }
 
     reduce_general(&src, body, initial, ctx, engine, arena)
