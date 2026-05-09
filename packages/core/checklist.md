@@ -203,14 +203,54 @@ explicitly before 5.0.0 ships (each is hard to change post-release).
 
 ## 4. Release Mechanics
 
-- [ ] Bump no version (already `5.0.0` in `Cargo.toml`). Confirm.
-- [ ] Final `cargo fmt --check && cargo clippy --workspace --all-features --all-targets -- -D warnings && cargo test --workspace --all-features` on a clean checkout.
-- [ ] Tag `v5.0.0` and write release notes from `CHANGELOG.md` (Breaking →
-      Added → Performance → Deprecated, in that order).
-- [ ] `cargo publish -p datalogic-rs` (after dry-run succeeds).
-- [ ] Verify the docs.rs build succeeds (~30 min after publish) with all
-      features visible.
-- [ ] Announce: README badge for crates.io version, link to migration example.
+These are the user-driven steps. Everything above this section is done;
+this section is the actual ship.
+
+- [x] **Version is `5.0.0`** in `packages/core/Cargo.toml`. Confirmed.
+- [x] **Pre-release sanity sweep is green.** `cargo fmt --check`,
+      `cargo clippy --workspace --all-features --all-targets -- -D warnings`,
+      `cargo test --workspace --all-features` (192 tests, 0 fail),
+      `cargo +1.85.0 build --workspace --all-features`,
+      `RUSTDOCFLAGS="-D warnings" cargo doc -p datalogic-rs --all-features --no-deps`
+      all clean. Re-run on a clean checkout right before tagging.
+- [ ] **Tag `v5.0.0`.** Write release notes from `CHANGELOG.md` (Breaking →
+      Added → Performance → Deprecated, in that order). Optional: paste the
+      `cargo semver-checks --release-type minor` summary into the notes
+      (full report at `/tmp/semver-report.log` from this session).
+- [ ] **`cargo publish -p datalogic-rs`** (dry-run already succeeded —
+      151 files / 1009.6 KiB raw / 201.2 KiB compressed). Re-run dry-run
+      first if anything has shifted.
+- [ ] **Verify docs.rs build** (~30 min after publish) — confirm the
+      "Available on crate feature X only" badges render on the gated items
+      and feature flags are listed in the sidebar.
+- [ ] **Publish `datavalue-rs 0.2.1`** to crates.io if not already done
+      (already done per the user's update during this session).
+- [ ] **Announce.** Update README badge for crates.io version (already
+      points at the badge endpoint, will auto-resolve to `5.0.0` once
+      published). Link to migration example. Optional: x.com / r/rust /
+      Reddit announcement post.
+
+---
+
+## Session log
+
+Implementation took ~9 commits on this branch ahead of `origin/v5`:
+
+| Commit  | Subject |
+|---------|---------|
+| `4a4fa6f` | docs(core): docs.rs all-features metadata + doc(cfg) badges |
+| `f8562ea` | refactor(core): drop let-chains for MSRV 1.85; bump datavalue-rs to 0.2.1 |
+| `1c80135` | ci: deny rustdoc warnings on the check job |
+| `bb32c1c` | docs(changelog): document UnwindSafe loss and with_nan_handling rename |
+| `1ea59e2` | feat(config): #[non_exhaustive] on EvaluationConfig and NumericCoercionConfig |
+| `a828697` | feat(api): re-export bumpalo + lock PathStep as #[non_exhaustive] + Deserialize |
+| `00c5def` | docs(release): v5 migration notes + WASM dep version |
+| `ec86d76` | chore(release): track v5 release checklist locally; exclude from package |
+| `867213a` | ci: minimal-versions job + bump dep floors to known-good minimums |
+| `66301f7` | style: rustfmt sort of bumpalo re-export |
+
+Plus upstream changes pushed by the user to `datavalue-rs 0.2.1` (the
+let-chain refactor of `parser.rs` + `datetime.rs`).
 
 ---
 
