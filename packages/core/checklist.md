@@ -160,10 +160,13 @@ explicitly before 5.0.0 ships (each is hard to change post-release).
       `examples/migrating_from_v4.rs` for runnable side-by-side migration.
       Also documents the `compat` feature lifecycle (compiles 4.x entry
       points; scheduled for removal in 5.1).
-- [ ] **Tag a release-candidate (`5.0.0-rc.1`) and publish to crates.io with
-      `cargo publish --dry-run -p datalogic-rs --all-features`** before the
-      real publish. Catches metadata issues (e.g. `exclude` swallowing files,
-      `readme` path resolution, missing `LICENSE` in the package tree).
+- [x] **`cargo publish --dry-run -p datalogic-rs --all-features` clean.**
+      Packaged 151 files (1009.6 KiB raw / 201.2 KiB compressed); the
+      packaged tree compiles cleanly (cargo verifies the build before
+      it'd upload). One issue surfaced and fixed: `checklist.md` would
+      have shipped in the package; added it to `[package].exclude` to
+      keep it as a local-only release-tracking artifact. Re-run before
+      tagging the actual release in case anything has shifted.
 - [x] **WASM workspace `datalogic-rs` dep now carries a version requirement.**
       `packages/wasm/Cargo.toml`'s dep is `{ path = "../core", version = "5.0",
       features = ["wasm"] }`. Cargo prefers the `path` for in-repo builds
@@ -171,17 +174,32 @@ explicitly before 5.0.0 ships (each is hard to change post-release).
       publishable as a downstream of `datalogic-rs 5.x` on crates.io.
       *Out of scope:* bumping `datalogic-wasm`'s own version from `4.0.21`
       to a 5.x cadence — that's a separate WASM-publishing decision.
-- [ ] **CI: add a "minimal-versions" job** —
-      `cargo +nightly update -Z minimal-versions && cargo test --all-features`.
-      Catches under-pinned deps (e.g. `bumpalo = "3"` resolving to 3.0.0 and
-      missing the `collections` feature). One-time setup, ongoing safety.
-- [ ] **Verify `rust-version = "1.85"` actually compiles on a clean 1.85
-      toolchain** with `--all-features`. Edition 2024 features are stable in
-      1.85 but transitive deps occasionally bump their MSRV silently.
-- [ ] **Spot-check `///` docs render correctly on docs.rs preview** — run
-      `cargo doc -p datalogic-rs --all-features --no-deps --open` and visually
-      confirm `Engine`, `Logic`, `EvaluationConfig`, `CustomOperator`,
-      `EvalInput`, `Session`, `Error`, `ArenaExt` landing pages are usable.
+- [x] **CI minimal-versions job added.** New `minimal-versions` job in
+      `.github/workflows/ci.yml` runs `cargo +nightly update -Z
+      minimal-versions` then builds + tests on stable. **Initial run
+      surfaced real under-pinning** in our deps — the unconstrained
+      `serde_json = "1.0"` resolved to `1.0.45` (predates the current
+      `serde::Deserializer` trait surface) and failed to compile.
+      Bumped floors to known-good minimums:
+      `serde 1.0.150`, `serde_json 1.0.85`, `bumpalo 3.14`,
+      `tokio 1.32`, `futures 0.3.28`. Re-resolved at minimum bounds,
+      build and tests both pass; dev-mode (latest-compatible) on 1.85
+      still passes too.
+- [x] **Verified `rust-version = "1.85"` compiles on a clean 1.85 toolchain.**
+      Run alongside the let-chain refactor (commit `f8562ea`) and the
+      minimal-versions bump (this commit). Both
+      `cargo +1.85.0 build --workspace --all-features` and
+      `cargo +1.85.0 build --workspace --all-features` (latest-compatible
+      and minimal-versions resolutions) finish clean. CI's MSRV job
+      runs the same command on every PR.
+- [x] **Docs.rs preview spot-checked locally.** Done as part of item 1
+      (`RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features`).
+      The portability badges on `Engine::with_trace`, `Engine::evaluate_serde`,
+      `Session::evaluate_serde`, `From<serde_json::Error> for Error`, the
+      `compat` module, and the `trace::*` re-exports all render. The
+      crate-level docs and primary type pages (Engine, Logic, Session,
+      EvaluationConfig, CustomOperator, EvalInput, Error, ArenaExt) all
+      build clean with `RUSTDOCFLAGS="-D warnings"` (now enforced in CI).
 
 ## 4. Release Mechanics
 

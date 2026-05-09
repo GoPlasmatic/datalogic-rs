@@ -106,3 +106,32 @@ jobs:
       # library-code regression, not chase tooling churn.
       - name: Build (all features)
         run: cargo build --workspace --all-features
+
+  minimal-versions:
+    name: Minimal-versions resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # `-Z minimal-versions` is a nightly-only resolver mode that picks
+      # the lowest version that satisfies each dep's `^X.Y` requirement,
+      # rather than the latest. Catches under-pinned semver-incompatible
+      # deps (e.g. a `bumpalo = "3"` requirement that secretly needs a
+      # 3.x feature added in 3.4 — we'd want `bumpalo = "3.4"`).
+      - name: Setup nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      # Install a *stable* toolchain too — the actual build runs on
+      # stable; nightly is only used to *resolve* the lockfile.
+      - name: Setup stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve with minimal versions
+        run: cargo +nightly update -Z minimal-versions
+
+      - name: Build with minimal versions
+        run: cargo +stable build --workspace --all-features
+
+      - name: Test with minimal versions
+        run: cargo +stable test --workspace --all-features
