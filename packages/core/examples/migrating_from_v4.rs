@@ -109,6 +109,42 @@ fn main() {
         )
         .unwrap();
     println!("\n[4] v5 preserve_structure -> {templated}");
+
+    // ============================================================
+    // 5. Configuration: struct literals → fluent setters
+    // ============================================================
+    // v5 marks `EvaluationConfig` and `NumericCoercionConfig` as
+    // `#[non_exhaustive]` so future field adds in 5.x stay non-breaking.
+    // External struct-expression construction is rejected, including
+    // `..Default::default()`. Two paths work for callers:
+    //
+    //   (a) `Config::default()` + chained `with_*` setters (preferred —
+    //       reads cleanly when only a few fields differ from defaults).
+    //   (b) `Config::default()` + direct field mutation (fields stay
+    //       `pub`, so `cfg.foo = bar` continues to compile).
+    //
+    // The setter on `EvaluationConfig` was also renamed in v5:
+    // `with_nan_handling` → `with_arithmetic_nan_handling` so the
+    // method name matches the field name. Same rename pattern across
+    // all the new `with_*` setters.
+    //
+    // v4-style (broken in v5):
+    //   let cfg = EvaluationConfig {
+    //       arithmetic_nan_handling: NanHandling::IgnoreValue,
+    //       ..Default::default()
+    //   };
+    //
+    // v5 — fluent:
+    let cfg_fluent =
+        EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
+    let _engine = Engine::builder().config(cfg_fluent).build();
+
+    // v5 — direct mutation (fields stay pub):
+    let mut cfg_mut = EvaluationConfig::default();
+    cfg_mut.arithmetic_nan_handling = NanHandling::IgnoreValue;
+    let _engine = Engine::builder().config(cfg_mut).build();
+
+    println!("\n[5] config: fluent + direct-mutation paths both work");
 }
 
 struct Double;

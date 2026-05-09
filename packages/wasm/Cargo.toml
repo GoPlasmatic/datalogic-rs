@@ -20,7 +20,13 @@ wasm-opt = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-datalogic-rs = { path = "../core", features = ["wasm"] }
+# `path` resolves locally for in-repo builds; `version` resolves against
+# crates.io once `datalogic-rs 5.x` is published. Cargo prefers the path
+# when both are set, so this keeps developer builds against the local
+# tree while making the WASM crate publishable as a downstream of the
+# released core. Bump the requirement deliberately when the core API
+# breaks (i.e. on each major).
+datalogic-rs = { path = "../core", version = "5.0", features = ["wasm"] }
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
