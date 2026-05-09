@@ -269,7 +269,7 @@ pub trait CustomOperator: Send + Sync {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        ctx: &mut operator::ContextStack<'a>,
+        ctx: &mut operator::EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }
@@ -278,7 +278,7 @@ pub trait CustomOperator: Send + Sync {
 | Parameter | Notes |
 |-----------|-------|
 | `args` | **Pre-evaluated** arguments. The engine has already recursed into each arg's expression tree. |
-| `ctx` | Arena-backed context stack. Untouched by most operators. |
+| `ctx` | Opaque view into the engine's evaluation context. Untouched by most operators. |
 | `arena` | Allocator for the current call. Use `arena.alloc(...)` for `DataValue` and `arena.alloc_str(...)` for strings. |
 
 > **v4 → v5:** the trait was renamed from `Operator` to `CustomOperator`.
@@ -287,11 +287,15 @@ pub trait CustomOperator: Send + Sync {
 
 ---
 
-## ContextStack
+## EvalContext
 
-`operator::ContextStack<'a>` manages variable scope during evaluation. Most
-custom operators don't need to interact with it — only iterating operators
-that push their own frames (analogous to `map` / `filter`) do.
+`operator::EvalContext<'_, 'a>` is an opaque view into the engine's
+evaluation context, passed to `CustomOperator::evaluate`. Most custom
+operators don't need to inspect it; the read-only accessors
+`root_input()` (the input passed to `Engine::evaluate`) and `depth()`
+(number of iteration frames currently pushed) cover the rare cases where
+behaviour depends on the surrounding context. The internal stack layout
+is hidden so it can evolve without breaking the trait contract.
 
 ---
 

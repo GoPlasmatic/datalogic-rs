@@ -19,6 +19,10 @@
 /// Custom operators rarely need to inspect the context; the dominant
 /// reason to take `ctx` at all is so the trait signature can grow new
 /// observations in future 5.x releases without breaking existing impls.
+/// The internals of this type are deliberately hidden behind the
+/// accessors below so the layout can evolve without breaking the
+/// [`crate::CustomOperator`] contract — see that trait's *Stability*
+/// section for the full forward-compat commitment.
 pub struct EvalContext<'ctx, 'a> {
     inner: &'ctx mut crate::arena::ContextStack<'a>,
 }

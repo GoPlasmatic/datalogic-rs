@@ -167,7 +167,7 @@ synchronisation primitives:
 ```rust
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 
 struct CounterOperator {
     counter: Arc<AtomicUsize>,
@@ -177,7 +177,7 @@ impl CustomOperator for CounterOperator {
     fn evaluate<'a>(
         &self,
         _args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>> {
         let count = self.counter.fetch_add(1, Ordering::SeqCst) as i64;

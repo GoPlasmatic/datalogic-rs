@@ -19,6 +19,25 @@ use crate::engine::Engine;
 /// let engine = Engine::builder().build();
 /// # let _ = engine;
 /// ```
+///
+/// # Defaults
+///
+/// `Engine::builder().build()` produces the same engine as
+/// [`Engine::new`] / [`Engine::default`]:
+///
+/// - **`config`** — [`EvaluationConfig::default`]: JavaScript-flavoured
+///   truthiness, NaN errors on bad arithmetic input, `±f64::MAX` on
+///   division by zero, `loose_equality_errors = true`,
+///   `max_recursion_depth = 256`, and the implicit `null`/`bool`/
+///   `""` → 0 numeric coercions enabled. Override with [`Self::config`];
+///   [`EvaluationConfig::safe_arithmetic`] / [`EvaluationConfig::strict`]
+///   are alternative starting points.
+/// - **`preserve_structure`** — `false` (templating mode off). Set with
+///   [`Self::preserve_structure`]; only effective when the crate is
+///   built with `feature = "preserve"`.
+/// - **`operators`** — empty. Add custom operators with
+///   [`Self::add_operator`] / [`Self::add_operator_box`] before
+///   [`Self::build`] freezes the set.
 #[must_use = "the builder is consumed by `.build()`"]
 pub struct EngineBuilder {
     config: EvaluationConfig,

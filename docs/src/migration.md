@@ -79,7 +79,7 @@ v4 surface.
 | `Operator` (trait) | `CustomOperator` |
 | `Evaluator` (trait) | _Removed — args are pre-evaluated_ |
 | `ArenaValue<'a>` | `DataValue<'a>` |
-| `ArenaContextStack<'a>` | `operator::ContextStack<'a>` |
+| `ArenaContextStack<'a>` | `operator::EvalContext<'_, 'a>` |
 | `ArenaOperator` | `CustomOperator` (with method renamed `evaluate_arena` → `evaluate`) |
 | `Arc<CompiledLogic>` (auto-wrapped) | `Logic` (wrap in `Arc` yourself) |
 
@@ -198,7 +198,7 @@ impl Operator for DoubleOperator {
 
 // v5
 use bumpalo::Bump;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Error, Result};
 
 struct DoubleOperator;
@@ -206,7 +206,7 @@ impl CustomOperator for DoubleOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         // args are already evaluated — no Evaluator call.
@@ -391,7 +391,7 @@ will keep nudging you per call site. Plan to drop the feature in 5.1+.
    - `CompiledLogic` → `Logic`
    - `Operator` (trait) → `CustomOperator`
    - `ArenaValue` → `DataValue`
-   - `ArenaContextStack` → `operator::ContextStack`
+   - `ArenaContextStack` → `operator::EvalContext`
 
 3. **Replace constructors** with the builder:
    - `DataLogic::with_config(c)` → `Engine::builder().config(c).build()`

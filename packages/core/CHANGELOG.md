@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from your dependency's feature list and rebuild — the deleted symbols
   will fail to compile.
 
-## [5.0.0] - Pre-release
+## [5.0.0] - 2026-05-09
 
 v5 is a significant rework of the public API and the evaluation engine.
 Compiled rules now flow through a single arena-based dispatch path; the

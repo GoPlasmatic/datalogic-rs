@@ -253,7 +253,13 @@ pub trait CustomOperator: Send + Sync {
     ///   and [`operator::EvalContext::depth`] for the rare case where an
     ///   operator's behaviour depends on the surrounding context.
     /// * `arena` — the [`bumpalo::Bump`] allocator. Use `arena.alloc(...)`
-    ///   for arena values, `arena.alloc_str(...)` for strings.
+    ///   for arena values, `arena.alloc_str(...)` for strings. For the
+    ///   common case of returning a typed `DataValue` result, prefer the
+    ///   one-call helpers on [`ArenaExt`] (`arena.f64(n)`,
+    ///   `arena.string(s)`, `arena.bool(b)`, …) — they are zero-cost
+    ///   over the manual form and short-circuit to preallocated
+    ///   singletons for `null`, booleans, small ints, and empty
+    ///   string/array/object.
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],

@@ -11,14 +11,14 @@ Extend datalogic-rs with your own operators to implement domain-specific logic.
 
 ```rust
 use bumpalo::Bump;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Result};
 
 pub trait CustomOperator: Send + Sync {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        ctx: &mut ContextStack<'a>,
+        ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>>;
 }
@@ -27,7 +27,7 @@ pub trait CustomOperator: Send + Sync {
 | Parameter | What it is |
 |-----------|------------|
 | `args` | The operator's arguments **already evaluated** by the engine. Each `&'a DataValue<'a>` borrows from caller input or from earlier arena allocations. |
-| `ctx` | The arena-backed context stack. Most operators ignore it; iterating operators (analogous to `map`/`filter`) push their own frames. |
+| `ctx` | Opaque view into the engine's evaluation context. Most operators ignore it; the read-only observations [`EvalContext::root_input`] and [`EvalContext::depth`] cover the rare cases where behaviour depends on the surrounding context. |
 | `arena` | The `bumpalo::Bump` allocator for the current call. Use `arena.alloc(...)` for `DataValue`s and `arena.alloc_str(...)` for strings. |
 
 The return value must live in the arena (or be a preallocated singleton like
@@ -37,7 +37,7 @@ The return value must live in the arena (or be a preallocated singleton like
 
 ```rust
 use bumpalo::Bump;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 
 struct DoubleOperator;
@@ -46,7 +46,7 @@ impl CustomOperator for DoubleOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let n = args
@@ -103,7 +103,7 @@ match args[0] {
 
 ```rust
 use bumpalo::Bump;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
 
 struct AverageOperator;
@@ -112,7 +112,7 @@ impl CustomOperator for AverageOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let mut numbers: Vec<f64> = Vec::new();
@@ -160,7 +160,7 @@ impl CustomOperator for InRangeOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.len() != 3 {
@@ -192,7 +192,7 @@ impl CustomOperator for FormatOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>> {
         let template = args
@@ -247,7 +247,7 @@ impl CustomOperator for CounterOperator {
     fn evaluate<'a>(
         &self,
         _args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>> {
         let count = self.counter.fetch_add(1, Ordering::SeqCst) as i64;
@@ -265,7 +265,7 @@ impl CustomOperator for MyOperator {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>> {
         if args.is_empty() {

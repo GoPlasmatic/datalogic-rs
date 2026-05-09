@@ -114,7 +114,7 @@ let engine = Engine::builder().preserve_structure(true).build();
 #     fn evaluate<'a>(
 #         &self,
 #         _args: &[&'a datalogic_rs::DataValue<'a>],
-#         _ctx: &mut datalogic_rs::operator::ContextStack<'a>,
+#         _ctx: &mut datalogic_rs::operator::EvalContext<'_, 'a>,
 #         arena: &'a bumpalo::Bump,
 #     ) -> datalogic_rs::Result<&'a datalogic_rs::DataValue<'a>> {
 #         Ok(arena.alloc(datalogic_rs::DataValue::Null))
