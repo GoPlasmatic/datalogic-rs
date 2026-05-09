@@ -71,6 +71,17 @@ provides one-release-cycle shims for the most common 4.x entry points.
 - **`Error::operator` and `Error::path` are private fields** with public
   accessors `operator()` / `path()`. Construct via
   `Error::with_operator(...).with_path(...)`.
+- **`Error` and `TracedResult` no longer implement `UnwindSafe` /
+  `RefUnwindSafe`.** Caused by the new
+  `ErrorKind::Custom(Arc<dyn std::error::Error + Send + Sync>)` variant —
+  the trait object is not unwind-safe by default. Downstream code that
+  wraps `Engine::evaluate*` in `std::panic::catch_unwind` will need to
+  use `AssertUnwindSafe` (or restructure to avoid the catch).
+- **`EvaluationConfig::with_nan_handling` renamed** to
+  `with_arithmetic_nan_handling`. The fluent setters now mirror the field
+  names exactly; pair with the new `with_division_by_zero`,
+  `with_loose_equality_errors`, `with_truthy_evaluator`,
+  `with_numeric_coercion`, and `with_max_recursion_depth`.
 
 ### Added
 
