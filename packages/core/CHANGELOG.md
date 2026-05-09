@@ -82,6 +82,11 @@ provides one-release-cycle shims for the most common 4.x entry points.
   names exactly; pair with the new `with_division_by_zero`,
   `with_loose_equality_errors`, `with_truthy_evaluator`,
   `with_numeric_coercion`, and `with_max_recursion_depth`.
+- **`PathStep` is `#[non_exhaustive]`.** The fields are output-only (every
+  `PathStep` is produced by `Logic::resolve_path` / `Error::resolved_path`),
+  so locking it now means future field adds in 5.x are non-breaking.
+  Now derives `Deserialize` alongside the existing `Serialize`, so
+  external tooling can JSON-roundtrip resolved paths.
 - **`EvaluationConfig` and `NumericCoercionConfig` are `#[non_exhaustive]`.**
   External callers can no longer use struct-expression construction —
   including struct-update syntax (`Config { ..Default::default() }`).
@@ -117,6 +122,17 @@ provides one-release-cycle shims for the most common 4.x entry points.
   every operator surfaces a trace step.
 - **`#![forbid(unsafe_code)]`** — the crate is now unsafe-free, enforced
   at build time.
+- **`pub use bumpalo;`** — `bumpalo` is now re-exported at the crate root.
+  Use `datalogic_rs::bumpalo::Bump` instead of pulling in `bumpalo` as
+  a separate dependency, so `Engine::evaluate` / `CustomOperator::evaluate`
+  arena lifetimes resolve against the same major version that
+  `datalogic-rs` itself uses.
+- **`PathStep: Deserialize`.** Pair with the existing `Serialize` to
+  JSON-roundtrip resolved paths.
+- **`with_*` setters on `NumericCoercionConfig`.** Mirrors the
+  `EvaluationConfig` fluent API: `with_empty_string_to_zero`,
+  `with_null_to_zero`, `with_bool_to_number`, `with_strict_numeric`,
+  `with_undefined_to_zero`. All `#[must_use]`, all return `Self`.
 
 ### Deprecated
 

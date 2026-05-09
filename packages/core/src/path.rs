@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::Logic;
 use crate::node::CompiledNode;
@@ -12,7 +12,14 @@ use crate::node::CompiledNode;
 /// One node along the path from the root of a compiled rule down to the
 /// failing sub-expression. Returned root-to-leaf by
 /// [`crate::Logic::resolve_path`] / [`crate::Error::resolved_path`].
-#[derive(Debug, Clone, Serialize)]
+///
+/// `#[non_exhaustive]` so future fields can be added in 5.x without
+/// breaking downstream — external code reads fields freely but cannot
+/// construct via struct literal. UI tooling that consumes this type
+/// over the wire can roundtrip via the derived `Serialize` /
+/// `Deserialize`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct PathStep {
     /// Compile-time node id, matching [`crate::Error::path`].
     pub node_id: u32,

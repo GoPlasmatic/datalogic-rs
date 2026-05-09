@@ -116,6 +116,14 @@ mod trace;
 
 pub use arena::{DataValue, data_to_json_string};
 pub use arena_ext::ArenaExt;
+/// The [`bumpalo`] arena allocator, re-exported.
+///
+/// `Engine::evaluate` and the [`CustomOperator`] trait both take a
+/// `&'a bumpalo::Bump` parameter, so callers need a way to construct
+/// arenas. Re-exporting locks the major version of `bumpalo` to whatever
+/// `datalogic-rs` itself depends on — pair with `use datalogic_rs::bumpalo`
+/// instead of an independent `bumpalo` dep to avoid major-version skew.
+pub use bumpalo;
 pub use builder::EngineBuilder;
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
