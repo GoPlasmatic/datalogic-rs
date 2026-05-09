@@ -16,7 +16,7 @@ description = "A fast, type-safe Rust implementation of JSONLogic for evaluating
 readme = "README.md"
 keywords = ["rules", "engine", "json", "logic"]
 categories = ["data-structures", "development-tools", "parsing"]
-exclude = [".DS_Store", "checklist.md"]
+exclude = [".DS_Store"]
 
 # docs.rs builds with the default feature set unless told otherwise. Our
 # `default = []` means a vanilla docs.rs build would hide `compat`,
