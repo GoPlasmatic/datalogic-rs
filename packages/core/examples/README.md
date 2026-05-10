@@ -16,8 +16,7 @@ opt-in features must be invoked with the matching `--features` flag (the
 | `datetime_ops`             | Parse, format, compare, and do arithmetic on dates                               | `datetime`           |
 | `tracing`                  | Recording every evaluation step for debugging                                    | `trace`              |
 | `error_handling`           | `try` / `throw`, structured `Error` shape                                        | `error-handling`     |
-| `migrating_from_v4`        | v4 → v5 cheat sheet, runnable side by side                                       | `compat`             |
-| `zero_copy_input`          | The five `EvalInput` shapes side by side, with per-call cost commentary          | `compat`             |
+| `zero_copy_input`          | The `EvalInput` shapes side by side, with per-call cost commentary               | `serde_json`         |
 
 ## Running
 
@@ -38,5 +37,5 @@ cargo build -p datalogic-rs --examples --all-features
 ```
 
 If you're unsure where to start, open `getting_started.rs` first — it
-walks through `Engine::new`, `evaluate_str`, and `Session` in roughly
+walks through `Engine::new`, `eval_str`, and `Session` in roughly
 sixty lines.

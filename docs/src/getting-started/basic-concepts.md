@@ -62,13 +62,14 @@ When you evaluate, the engine:
 3. **Returns** an arena-resident `&DataValue<'a>` (or an owned `String` /
    `OwnedDataValue` / `serde_json::Value` depending on the entry point)
 
-There are three evaluation entry points, picked by what the caller has on
-hand and how much arena lifetime they want to manage:
+There are four entry points, picked by what the caller has on hand and
+how much arena lifetime they want to manage:
 
 | Entry point | When to use | Returns |
 |-------------|-------------|---------|
-| `Engine::evaluate_str(logic, data)` | One-shot. Inputs and output are JSON strings. | `String` |
-| `Engine::session().evaluate*` | Repeated calls — the session owns a reusable arena and resets it between calls. | `String` / `OwnedDataValue` / `serde_json::Value` |
+| `datalogic_rs::eval_str(rule, data)` (and `eval` / `eval_into` / `compile`) | One-shot, no engine config needed. Uses a shared default engine internally. | `String` (or `OwnedDataValue` / `T`) |
+| `Engine::eval_str(rule, data)` (and `eval` / `eval_into`) | One-shot through a configured engine — custom operators, non-default config, templating. | `String` (or `OwnedDataValue` / `T`) |
+| `Engine::session().eval*` | Repeated calls — the session owns a reusable arena. Caller calls `session.reset()` between batches. | `String` / `OwnedDataValue` / `T` / borrowed `&DataValue<'a>` (`eval_borrowed`) |
 | `Engine::evaluate(logic, data, &arena)` | Hot path. You own the `bumpalo::Bump` and want zero-copy `&DataValue<'a>` results. | `&DataValue<'a>` |
 
 ```rust
@@ -78,9 +79,10 @@ use datalogic_rs::Engine;
 let engine = Engine::new();
 let compiled = engine.compile(r#"{">": [{"var": "x"}, 10]}"#).unwrap();
 
-// Reusable session — arena resets between calls.
+// Reusable session — caller resets between batches.
 let mut session = engine.session();
-let _ = session.evaluate_str(&compiled, r#"{"x": 42}"#).unwrap();
+let _ = session.eval_str(&compiled, r#"{"x": 42}"#).unwrap();
+session.reset();
 
 // Or manage the arena yourself for zero-copy results.
 let arena = Bump::new();
@@ -140,7 +142,7 @@ important for array operations like `map`, `filter`, and `reduce`.
 
 ```rust
 // In a filter operation, "" refers to the current element
-let r = engine.evaluate_str(
+let r = datalogic_rs::eval_str(
     r#"{"filter": [[1, 2, 3, 4, 5], {">": [{"var": ""}, 3]}]}"#,
     r#"{}"#,
 ).unwrap();
@@ -182,14 +184,14 @@ use std::sync::Arc;
 use std::thread;
 
 let engine = Arc::new(Engine::new());
-let compiled = Arc::new(engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap());
+let compiled = engine.compile_arc(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
 
 let handles: Vec<_> = (0..4).map(|i| {
     let engine = Arc::clone(&engine);
     let compiled = Arc::clone(&compiled);
     thread::spawn(move || {
         let mut session = engine.session();
-        session.evaluate_str(&compiled, &format!(r#"{{"x": {}}}"#, i)).unwrap()
+        session.eval_str(&compiled, &format!(r#"{{"x": {}}}"#, i)).unwrap()
     })
 }).collect();
 

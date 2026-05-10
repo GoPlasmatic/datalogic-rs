@@ -21,7 +21,7 @@ let compiled = engine.compile(rule_json).unwrap();
 
 let mut session = engine.session();
 for data in datasets {
-    session.evaluate_str(&compiled, data)?;
+    session.eval_str(&compiled, data)?;
 }
 ```
 
@@ -40,8 +40,9 @@ v5 optimizations:
 - **Arena allocation** — `&DataValue<'a>` results live in a `bumpalo::Bump`
   for one evaluation. Read-through ops like `var` borrow zero-copy from the
   caller's input.
-- **Reusable arenas** — `Session` resets its `Bump` between calls so peak
-  memory tracks the largest single evaluation rather than the sum.
+- **Reusable arenas** — `Session` reuses one `Bump` across calls; the caller
+  calls `session.reset()` between batches so peak memory tracks the largest
+  single evaluation rather than the sum.
 - **Pre-built literal singletons** — trivial literals (`Null`, `Bool`,
   empty primitives) are static and incur no per-call allocation.
 - **`Arc<Logic>`** — cheap clone for cross-thread sharing.
@@ -80,7 +81,7 @@ fn main() {
     let start = Instant::now();
 
     for _ in 0..iterations {
-        let _ = session.evaluate_str(&compiled, r#"{"x": 1}"#);
+        let _ = session.eval_str(&compiled, r#"{"x": 1}"#);
     }
 
     let elapsed = start.elapsed();
@@ -109,13 +110,14 @@ let result = engine.evaluate(&compiled, r#"{"x": 1}"#, &arena).unwrap();
 // Good
 let compiled = engine.compile(rule).unwrap();
 for data in datasets {
-    session.evaluate_str(&compiled, data)?;
+    session.eval_str(&compiled, data)?;
 }
 
 // Bad — recompiles every iteration
 for data in datasets {
     let compiled = engine.compile(rule).unwrap();
-    engine.evaluate_str(rule, data)?;
+    engine.eval_str(rule, data)?;
+    let _ = compiled;
 }
 ```
 
@@ -123,10 +125,12 @@ for data in datasets {
 
 | Caller has on hand | Best entry point |
 |--------------------|------------------|
-| JSON strings (one-shot) | `Engine::evaluate_str(rule, data)` |
-| JSON strings (many runs) | `Session::evaluate_str(&compiled, data)` |
-| `OwnedDataValue` (many runs) | `Session::evaluate(&compiled, &owned)` → `OwnedDataValue` |
-| `serde_json::Value` (legacy boundary) | `Engine::evaluate_json_value` / `Session::evaluate_json_value` (`compat`) |
+| JSON strings, no engine config | `datalogic_rs::eval_str(rule, data)` |
+| JSON strings (one-shot via configured engine) | `Engine::eval_str(rule, data)` |
+| JSON strings (many runs) | `Session::eval_str(&compiled, data)` |
+| `OwnedDataValue` (many runs) | `Session::eval(&compiled, &owned)` → `OwnedDataValue` |
+| Typed `T` from `serde_json` (`feature = "serde_json"`) | `Session::eval_into::<T, _>(&compiled, data)` |
+| Borrowed result, session-owned arena | `Session::eval_borrowed(&compiled, data)` |
 | Hot path, owns the `Bump` | `Engine::evaluate(&compiled, data, &arena)` |
 
 ### 3. Short-Circuit Evaluation
@@ -218,13 +222,13 @@ cargo instruments --release -t "CPU Profiler"
 
 ### Tracing for Bottlenecks
 
-Enable the `trace` feature and call `engine.trace().evaluate_str(...)`
+Enable the `trace` feature and call `engine.trace().eval_str(...)`
 to inspect every executed node.
 
 ```rust
 #[cfg(feature = "trace")]
 {
-    let run = engine.trace().evaluate_str(rule, data);
+    let run = engine.trace().eval_str(rule, data);
     for step in &run.steps {
         // step.node_id, step.expression, step.context, step.result, ...
     }
@@ -255,7 +259,7 @@ impl RuleEngine {
         let mut rules = HashMap::new();
 
         for (name, logic) in load_rules() {
-            let compiled = Arc::new(engine.compile(&logic).unwrap());
+            let compiled = engine.compile_arc(&logic).unwrap();
             rules.insert(name, compiled);
         }
 
@@ -266,7 +270,9 @@ impl RuleEngine {
         let compiled = self.rules.get(rule_name)
             .ok_or_else(|| datalogic_rs::Error::custom_message(format!("unknown rule: {rule_name}")))?;
         let mut session = self.engine.session();
-        session.evaluate_str(compiled, data)
+        let result = session.eval_str(compiled, data);
+        session.reset();
+        result
     }
 }
 # fn load_rules() -> Vec<(String, String)> { Vec::new() }

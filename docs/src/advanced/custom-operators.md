@@ -68,7 +68,7 @@ let engine = Engine::builder()
     .add_operator("double", DoubleOperator)
     .build();
 
-let result = engine.evaluate_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
+let result = engine.eval_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
 assert_eq!(result, "42");
 ```
 
@@ -146,7 +146,7 @@ impl CustomOperator for AverageOperator {
 
 let engine = Engine::builder().add_operator("avg", AverageOperator).build();
 
-let result = engine.evaluate_str(
+let result = engine.eval_str(
     r#"{"avg": {"var": "scores"}}"#,
     r#"{"scores": [80, 90, 85, 95]}"#,
 ).unwrap();
@@ -228,7 +228,7 @@ let engine = Engine::builder()
     .add_operator("format", FormatOperator)
     .build();
 
-let r = engine.evaluate_str(
+let r = engine.eval_str(
     r#"{"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]}"#,
     r#"{"name": "Alice", "count": 5}"#,
 ).unwrap();

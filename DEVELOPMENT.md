@@ -26,8 +26,8 @@ The packages have a strict build order. From a fresh clone:
 
 ```bash
 # 1. Rust workspace — runs core unit/integration tests and the bench crate's checks.
-# Most integration tests are gated behind feature = "compat"; the JSONLogic
-# runner additionally needs feature = "preserve". --all-features unlocks both.
+# Most integration tests are gated behind feature = "serde_json"; the JSONLogic
+# runner additionally needs feature = "templating". --all-features unlocks both.
 cargo test --workspace --all-features
 
 # 2. WASM bindings — produces packages/wasm/pkg/{web,bundler,nodejs}.

@@ -104,5 +104,6 @@ Custom operators follow the same syntax in rules:
 ```
 
 > **Note:** v5 removed the `preserve` operator. Wrap literals in
-> `preserve_structure` mode if you need to emit a JSON object verbatim
-> from a rule. Literal scalars and arrays already work inline.
+> templating mode (`Engine::builder().with_templating(true).build()`,
+> requires `feature = "templating"`) if you need to emit a JSON object
+> verbatim from a rule. Literal scalars and arrays already work inline.

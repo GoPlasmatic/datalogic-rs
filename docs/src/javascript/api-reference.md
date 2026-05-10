@@ -83,7 +83,7 @@ function evaluate_with_trace(logic: string, data: string, preserve_structure: bo
 
 **Parameters:** Same as `evaluate()`
 
-**Returns:** JSON string containing `TracedResult`:
+**Returns:** JSON string containing a `TracedResult`:
 
 ```typescript
 interface TracedResult {
@@ -104,6 +104,11 @@ interface Step {
   context: any;
 }
 ```
+
+> The `TracedResult` JSON layout is the JavaScript-side wire shape and is
+> stable across the v4 → v5 cutover. On the Rust side it is produced from
+> a `datalogic_rs::TracedRun<String>` (see the
+> [Rust API reference](../api/reference.md#tracedrunr-feature--trace)).
 
 **Example:**
 ```javascript

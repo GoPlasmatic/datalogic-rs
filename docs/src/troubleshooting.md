@@ -12,8 +12,8 @@ Common issues and solutions for datalogic-rs.
 
 1. Check the operator name spelling (operators are case-sensitive).
 2. Register a custom operator on the builder.
-3. Enable `preserve_structure` mode for templating
-   (requires `feature = "preserve"`).
+3. Enable templating mode (requires `feature = "templating"`) — unknown
+   keys then become literal output fields.
 
 ```rust
 // Option 1: Fix spelling
@@ -24,9 +24,9 @@ let engine = datalogic_rs::Engine::builder()
     .add_operator("xyz", XyzOperator)
     .build();
 
-// Option 3: Templating mode (feature = "preserve")
-# #[cfg(feature = "preserve")]
-let engine = datalogic_rs::Engine::builder().preserve_structure(true).build();
+// Option 3: Templating mode (feature = "templating")
+# #[cfg(feature = "templating")]
+let engine = datalogic_rs::Engine::builder().with_templating(true).build();
 ```
 
 ### "Variable not found"
@@ -75,21 +75,21 @@ operator state — wrap shared state in `Arc<Mutex<_>>` or atomics.
 ### v4 method calls fail to compile in v5
 
 **Cause:** v5 renamed the public surface (`DataLogic` → `Engine`,
-`CompiledLogic` → `Logic`, `Operator` → `CustomOperator`, etc.).
+`CompiledLogic` → `Logic`, `Operator` → `CustomOperator`,
+`evaluate_*` → `eval_*`, etc.) and removed the pre-release `compat`
+shim. v5 is a hard cliff — there is no transitional feature flag.
 
 **Solutions:**
 
-- For a quick rollout, enable `features = ["compat"]` and import the
-  legacy methods via the `LegacyApi` trait:
-
-  ```rust
-  use datalogic_rs::compat::LegacyApi;
-  ```
-
-  Each shimmed method is `#[deprecated]` so the compiler points you at the
-  v5 replacement.
-
-- For a clean migration, follow the [Migration Guide](migration.md).
+- Follow the conceptual overview in the [Migration Guide](migration.md)
+  and the per-call cookbook in the repo-root `MIGRATION.md`.
+- Common mappings:
+  - `DataLogic::with_config(c)` → `Engine::builder().with_config(c).build()`
+  - `engine.evaluate_str(rule, data)` → `engine.eval_str(rule, data)`
+    (or `datalogic_rs::eval_str(rule, data)` for the zero-config path)
+  - `engine.evaluate_json_value(&rule, &data)` → `engine.eval_into::<Value, _, _>(&rule, &data)`
+    (requires `feature = "serde_json"`)
+  - `engine.evaluate_json_with_trace(rule, data)` → `engine.trace().eval_str(rule, data)` returning `TracedRun<String>`
 
 ### Slow compilation
 
@@ -105,7 +105,8 @@ operator state — wrap shared state in `Arc<Mutex<_>>` or atomics.
 let compiled = engine.compile(rule).unwrap();
 let mut session = engine.session();
 for data in dataset {
-    session.evaluate_str(&compiled, data)?;
+    session.eval_str(&compiled, data)?;
+    session.reset();
 }
 ```
 

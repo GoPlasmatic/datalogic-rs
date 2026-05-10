@@ -37,7 +37,7 @@ git clone https://github.com/GoPlasmatic/datalogic-rs.git
 cd datalogic-rs
 
 # Rust-only workflow (--all-features unlocks the full test surface; without
-# it most integration tests skip silently because they require feature = "compat")
+# it most integration tests skip silently because they require feature = "serde_json")
 cargo test --workspace --all-features
 
 # Full workflow (Rust → WASM → UI), see DEVELOPMENT.md for the npm link step
@@ -122,7 +122,7 @@ The `trace` feature records every evaluation step:
 use datalogic_rs::Engine;
 
 let engine = Engine::new();
-let run = engine.trace().evaluate_str(
+let run = engine.trace().eval_str(
     r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
     r#"{"age": 21}"#,
 );

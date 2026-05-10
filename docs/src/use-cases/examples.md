@@ -9,10 +9,6 @@ Control feature availability based on user attributes.
 ### Basic Feature Flag
 
 ```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-
 // Feature available to premium users in US
 let rule = r#"{
     "and": [
@@ -25,13 +21,14 @@ let user_data = r#"{
     "user": {"plan": "premium", "country": "US"}
 }"#;
 
-let enabled = engine.evaluate_str(rule, user_data).unwrap();
+let enabled = datalogic_rs::eval_str(rule, user_data).unwrap();
 assert_eq!(enabled, "true");
 ```
 
 > The examples below show JSONLogic rules and data as JSON. Wire them
-> through `Engine::evaluate_str` (one-shot) or compile once and reuse with
-> `Engine::session()`.
+> through `datalogic_rs::eval_str` (zero-config one-shot),
+> `Engine::eval_str` (one-shot through a configured engine), or compile
+> once and reuse with `Engine::session()`.
 
 ### Percentage Rollout
 
@@ -149,7 +146,7 @@ let rule = json!({
 ### Field Constraints
 
 ```rust
-let engine = Engine::builder().preserve_structure(true).build();
+let engine = Engine::builder().with_templating(true).build();
 
 let rule = json!({
     "valid": { "and": [
@@ -333,7 +330,7 @@ Transform and reshape data.
 ### API Response Mapping
 
 ```rust
-let engine = Engine::builder().preserve_structure(true).build();
+let engine = Engine::builder().with_templating(true).build();
 
 let template = json!({
     "users": {

@@ -24,14 +24,15 @@
 
 **datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a fast, memory-efficient, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
 
-> **v5 is here.** v5 is a breaking release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based, switches custom operators to a pre-evaluated arena API, and removes the implicit `serde_json` dependency from the default build. See the [Migration Guide](migration.md) for the full v4 → v5 walkthrough.
+> **v5 is here.** v5 is a breaking release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based, switches custom operators to a pre-evaluated arena API, and removes the implicit `serde_json` dependency from the default build. v5 is a hard cliff — there is no compatibility shim. See the [Migration Guide](migration.md) for the conceptual overview and the repo-root `MIGRATION.md` for the full v4 → v5 cookbook.
 
 ## Why datalogic-rs?
 
 - **Fast** - OpCode-based dispatch with compile-time optimization, plus arena allocation for zero-copy reads
-- **Thread-Safe** - Wrap `Logic` in `Arc` and share across threads
+- **Thread-Safe** - Wrap `Logic` in `Arc` and share across threads (or use `Engine::compile_arc` to do it in one step)
 - **Zero `unsafe`** - The crate enforces `#![forbid(unsafe_code)]`
-- **serde_json-free by default** - The string-based API needs no `serde_json` dependency; opt into the `compat` feature only when you need the JSON value boundary
+- **serde_json-free by default** - The string-based API needs no `serde_json` dependency; opt into the `serde_json` feature when you need `serde_json::Value` interop or the typed `eval_into::<T>` paths
+- **Three tiers, one mental model** - module-level helpers (`datalogic_rs::eval_str`, …) for one-shot, `Engine` for configured workloads, `Session` for compile-once-evaluate-many hot loops
 - **Extensible** - Register custom operators on an `EngineBuilder`
 - **Feature-Rich** - 59 built-in operators including datetime, regex, and error handling
 - **Fully Compliant** - Passes the official JSONLogic test suite
@@ -53,18 +54,15 @@ datalogic-rs uses a two-phase approach:
 ## Quick Example
 
 ```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-
 // One-shot evaluation: returns a JSON string.
-let result = engine
-    .evaluate_str(r#"{">": [{"var": "age"}, 18]}"#, r#"{"age": 21}"#)
-    .unwrap();
+let result = datalogic_rs::eval_str(
+    r#"{">": [{"var": "age"}, 18]}"#,
+    r#"{"age": 21}"#,
+).unwrap();
 assert_eq!(result, "true");
 ```
 
-For repeated evaluation, compile once and reuse:
+For repeated evaluation, compile once and reuse via a session:
 
 ```rust
 use datalogic_rs::Engine;
@@ -73,10 +71,11 @@ let engine = Engine::new();
 let compiled = engine.compile(r#"{">": [{"var": "age"}, 18]}"#).unwrap();
 let mut session = engine.session();
 
-let r1 = session.evaluate_str(&compiled, r#"{"age": 21}"#).unwrap();
-let r2 = session.evaluate_str(&compiled, r#"{"age": 16}"#).unwrap();
+let r1 = session.eval_str(&compiled, r#"{"age": 21}"#).unwrap();
+let r2 = session.eval_str(&compiled, r#"{"age": 16}"#).unwrap();
 assert_eq!(r1, "true");
 assert_eq!(r2, "false");
+session.reset();
 ```
 
 ## What is JSONLogic?

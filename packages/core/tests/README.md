@@ -10,18 +10,18 @@ Two layers:
 ## Running
 
 All commands assume you're at the repo root. Most integration tests are
-gated behind `feature = "compat"` (they use `serde_json::json!`); the
-JSONLogic suite runner additionally needs `feature = "templating"`. Use
-`--all-features` to run everything.
+gated behind `feature = "serde_json"` (they use `serde_json::json!`);
+the JSONLogic suite runner additionally needs `feature = "templating"`.
+Use `--all-features` to run everything.
 
 ```bash
 # Everything (recommended)
 cargo test -p datalogic-rs --all-features
 
-# Single Rust file (most files require at least --features compat)
+# Single Rust file (most files require at least --features serde_json)
 cargo test -p datalogic-rs --all-features --test basic_test
 
-# Just the JSONLogic suite (reads suites/index.json — needs preserve + compat)
+# Just the JSONLogic suite (reads suites/index.json — needs templating + serde_json)
 cargo test -p datalogic-rs --all-features --test test_jsonlogic
 
 # A specific JSON suite, with output. Path is relative to packages/core

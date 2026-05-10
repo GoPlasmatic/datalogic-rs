@@ -1,8 +1,8 @@
 # Structured Objects (Templating)
 
-Use JSONLogic as a templating engine with structure preservation mode.
+Use JSONLogic as a templating engine with templating mode.
 
-> Requires `feature = "preserve"`. The mode is off by default.
+> Requires `feature = "templating"`. The mode is off by default.
 
 ## Enabling Structure Preservation
 
@@ -42,7 +42,7 @@ enabled, unknown keys become literal output fields.
 ```rust
 use datalogic_rs::Engine;
 
-let engine = Engine::builder().preserve_structure(true).build();
+let engine = Engine::builder().with_templating(true).build();
 
 let template = r#"{
     "greeting": {"cat": ["Hello, ", {"var": "name"}, "!"]},
@@ -50,7 +50,7 @@ let template = r#"{
 }"#;
 let data = r#"{"name": "Alice", "role": "admin"}"#;
 
-let result = engine.evaluate_str(template, data).unwrap();
+let result = engine.eval_str(template, data).unwrap();
 // {"greeting":"Hello, Alice!","isAdmin":true}
 ```
 
@@ -82,7 +82,7 @@ let data = r#"{
     "notificationsEnabled": true
 }"#;
 
-let result = engine.evaluate_str(template, data).unwrap();
+let result = engine.eval_str(template, data).unwrap();
 ```
 
 ## Arrays in Templates
@@ -100,7 +100,7 @@ let template = r#"{
 
 let data = r#"{"price1": 10, "price2": 20}"#;
 
-let result = engine.evaluate_str(template, data).unwrap();
+let result = engine.eval_str(template, data).unwrap();
 ```
 
 ## Dynamic Arrays with Map
@@ -128,16 +128,16 @@ let data = r#"{
     ]
 }"#;
 
-let result = engine.evaluate_str(template, data).unwrap();
+let result = engine.eval_str(template, data).unwrap();
 ```
 
 ## The `preserve` Operator Was Removed
 
 In v4 there was an explicit `preserve` operator that wrapped a value to
 prevent further evaluation. **v5 removed it.** Wrap-as-output is exactly
-what `preserve_structure` mode already does for objects, and literal scalars
+what templating mode already does for objects, and literal scalars
 / arrays already pass through inline. If you need to emit a JSON object
-verbatim from a rule, enable `preserve_structure` and write the object
+verbatim from a rule, enable `with_templating(true)` and write the object
 directly.
 
 ## Use Cases

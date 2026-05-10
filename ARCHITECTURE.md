@@ -76,18 +76,19 @@ rule can be shared across threads with no extra setup.
 Features are declared on `datalogic-rs` (the core crate). Other crates
 opt in via their dependency line.
 
-| Feature           | Effect                                                      | Used by                        |
-|-------------------|-------------------------------------------------------------|--------------------------------|
-| `compat`          | Enables `serde_json` bridging + 4.x `LegacyApi` shims       | `benchmark`, integration tests |
-| `preserve`        | Enables structure-preservation (templating) mode            | examples, WASM                 |
-| `datetime`        | Date/time operators (pulls in `chrono`)                     | WASM, `datetime_ops` example   |
-| `trace`           | Execution-step recording for the debugger (implies `compat`)| WASM, `tracing` example        |
-| `error-handling`  | `try` / `throw` operators                                   | `error_handling` example       |
-| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families     | opt-in per consumer            |
-| `wasm`            | Convenience meta-feature: `datetime + trace + preserve`     | `packages/wasm` only           |
+| Feature           | Effect                                                            | Used by                        |
+|-------------------|-------------------------------------------------------------------|--------------------------------|
+| `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | `benchmark`, integration tests |
+| `templating`      | Structure-preservation (templating) mode                          | examples, WASM                 |
+| `datetime`        | Date/time operators (pulls in `chrono`)                           | WASM, `datetime_ops` example   |
+| `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, `tracing` example        |
+| `error-handling`  | `try` / `throw` operators                                         | `error_handling` example       |
+| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | opt-in per consumer            |
+| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `packages/wasm` only           |
 
-The `datalogic-bench` crate enables `compat` because it reads the
-`serde_json` test-suite files; it does not need `wasm` or `preserve`.
+The `datalogic-bench` crate enables `serde_json` because it reads the
+JSON test-suite files via `serde_json::Value`; it does not need `wasm`
+or `templating`.
 
 ## Where things live
 

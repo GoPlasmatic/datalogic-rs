@@ -8,16 +8,21 @@ datalogic-rs is designed for thread-safe, concurrent evaluation.
 
 `Logic` (the v5 name for `CompiledLogic`) is `Send + Sync`. v5 does **not**
 auto-wrap it in `Arc` — wrap it yourself when you want cheap cross-thread
-sharing:
+sharing, or use `Engine::compile_arc` to do it in one step:
 
 ```rust
 use datalogic_rs::Engine;
 use std::sync::Arc;
 
 let engine = Engine::new();
+
+// Manual:
 let compiled = Arc::new(
     engine.compile(r#"{">": [{"var": "x"}, 10]}"#).unwrap(),
 );
+
+// Or in one step (equivalent to `Arc::new(engine.compile(rule)?)`):
+let compiled = engine.compile_arc(r#"{">": [{"var": "x"}, 10]}"#).unwrap();
 
 // Cloning the Arc is cheap — just bumps the refcount.
 let compiled_clone = Arc::clone(&compiled);
@@ -34,7 +39,7 @@ use std::sync::Arc;
 use std::thread;
 
 let engine = Arc::new(Engine::new());
-let compiled = Arc::new(engine.compile(r#"{"*": [{"var": "x"}, 2]}"#).unwrap());
+let compiled = engine.compile_arc(r#"{"*": [{"var": "x"}, 2]}"#).unwrap();
 
 let handles: Vec<_> = (0..4).map(|i| {
     let engine = Arc::clone(&engine);
@@ -43,7 +48,7 @@ let handles: Vec<_> = (0..4).map(|i| {
     thread::spawn(move || {
         let mut session = engine.session();
         session
-            .evaluate_str(&compiled, &format!(r#"{{"x": {}}}"#, i))
+            .eval_str(&compiled, &format!(r#"{{"x": {}}}"#, i))
             .unwrap()
     })
 }).collect();
@@ -67,7 +72,7 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() {
     let engine = Arc::new(Engine::new());
-    let compiled = Arc::new(engine.compile(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#).unwrap());
+    let compiled = engine.compile_arc(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#).unwrap();
 
     let tasks: Vec<_> = (0..10).map(|i| {
         let engine = Arc::clone(&engine);
@@ -76,7 +81,7 @@ async fn main() {
         tokio::task::spawn_blocking(move || {
             let mut session = engine.session();
             let payload = format!(r#"{{"a": {}, "b": {}}}"#, i, i * 2);
-            session.evaluate_str(&compiled, &payload)
+            session.eval_str(&compiled, &payload)
         })
     }).collect();
 
@@ -98,9 +103,9 @@ use rayon::prelude::*;
 use std::sync::Arc;
 
 let engine = Arc::new(Engine::new());
-let compiled = Arc::new(
-    engine.compile(r#"{"filter": [{"var": "items"}, {">": [{"var": ".value"}, 50]}]}"#).unwrap(),
-);
+let compiled = engine
+    .compile_arc(r#"{"filter": [{"var": "items"}, {">": [{"var": ".value"}, 50]}]}"#)
+    .unwrap();
 
 let datasets: Vec<String> = (0..1000)
     .map(|i| format!(r#"{{"items": [{{"value": {}}}, {{"value": {}}}]}}"#, i % 100, (i + 1) % 100))
@@ -110,13 +115,18 @@ let results: Vec<_> = datasets
     .par_iter()
     .map_init(
         || engine.session(),
-        |session, data| session.evaluate_str(&compiled, data),
+        |session, data| {
+            let r = session.eval_str(&compiled, data);
+            session.reset();
+            r
+        },
     )
     .collect();
 ```
 
-> **Tip:** `Session::evaluate_str` resets the arena between calls, so peak
-> memory tracks the largest single evaluation rather than the lifetime sum.
+> **Tip:** `Session` does **not** auto-reset. Call `session.reset()` between
+> batches (as above) to keep peak memory tracking the largest single
+> evaluation rather than the lifetime sum.
 
 ## Shared Engine vs Per-Thread Engine
 
@@ -155,7 +165,7 @@ thread_local! {
 ENGINE.with(|engine| {
     let compiled = engine.compile(r#"{"==": [1, 1]}"#).unwrap();
     let mut session = engine.session();
-    session.evaluate_str(&compiled, r#"{}"#)
+    session.eval_str(&compiled, r#"{}"#)
 });
 ```
 
@@ -200,19 +210,21 @@ let engine = Engine::builder()
 let compiled = engine.compile(rule).unwrap();
 let mut session = engine.session();
 for data in datasets {
-    session.evaluate_str(&compiled, data)?;
+    session.eval_str(&compiled, data)?;
+    session.reset();
 }
 
 // Bad — recompiles every iteration
 for data in datasets {
     let compiled = engine.compile(rule).unwrap();
-    engine.evaluate_str(rule, data)?;
+    engine.eval_str(rule, data)?;
 }
 ```
 
 ### Reuse the Arena
 
-`Session` resets the arena between calls — peak memory tracks the largest
+`Session` reuses one `bumpalo::Bump` across calls; the caller calls
+`session.reset()` between batches so peak memory tracks the largest
 single evaluation rather than the sum. For zero-copy `&DataValue<'a>`
 results, manage the `bumpalo::Bump` yourself and call `Engine::evaluate`
 directly.
@@ -230,14 +242,14 @@ use std::sync::Arc;
 use std::thread;
 
 let engine = Arc::new(Engine::new());
-let compiled = Arc::new(engine.compile(r#"{"+": [1, 1]}"#).unwrap());
+let compiled = engine.compile_arc(r#"{"+": [1, 1]}"#).unwrap();
 
 let handles: Vec<_> = (0..4).map(|_| {
     let engine = Arc::clone(&engine);
     let compiled = Arc::clone(&compiled);
     thread::spawn(move || -> Result<String, Error> {
         let mut session = engine.session();
-        session.evaluate_str(&compiled, r#"{}"#)
+        session.eval_str(&compiled, r#"{}"#)
     })
 }).collect();
 

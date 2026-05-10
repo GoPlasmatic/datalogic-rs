@@ -2,9 +2,48 @@
 
 Core types and methods in datalogic-rs v5.
 
+## Public surface at a glance
+
+v5 exposes three non-overlapping tiers, in order of caller control:
+
+| Tier | What it is | Use when |
+|---|---|---|
+| **Module-level helpers** (`datalogic_rs::eval`, `eval_str`, `eval_into`, `compile`) | Zero-config, default engine, one call site. | One-shot evaluations with no custom operators or configuration. |
+| **`Engine`** (configured / raw arena power tier) | Builder-constructed engine; ergonomic one-shot methods plus the raw `evaluate` path with caller-owned `&Bump`. | You need custom operators, a non-default `EvaluationConfig`, templating mode, traced runs, or zero-copy borrowed results. |
+| **`Session`** (compile-once, evaluate-many) | Engine handle that owns a reusable `bumpalo::Bump`. | Hot loops where you reuse the same compiled `Logic` across many inputs and want to amortise arena allocation. |
+
+`TracedSession` mirrors `Session` 1:1 under `feature = "trace"` — every
+`eval*` returns a [`TracedRun<R>`](#tracedrunr-feature--trace) carrying
+the steps and expression tree alongside the result.
+
+## Module-level helpers
+
+For the simplest cases, skip the engine entirely:
+
+```rust
+let result = datalogic_rs::eval_str(
+    r#"{"==": [{"var": "x"}, 1]}"#,
+    r#"{"x": 1}"#,
+).unwrap();
+assert_eq!(result, "true");
+```
+
+```rust
+pub fn compile<R: IntoLogic>(rule: R) -> Result<Logic>;
+pub fn eval<R, D>(rule: R, data: D) -> Result<OwnedDataValue>;
+pub fn eval_str<R, D>(rule: R, data: D) -> Result<String>;
+
+#[cfg(feature = "serde_json")]
+pub fn eval_into<T, R, D>(rule: R, data: D) -> Result<T>;
+```
+
+These delegate to a shared default engine (lazy `OnceLock<Engine>`).
+Escalate to a real `Engine` when you need custom operators, a non-default
+config, templating, or a long-lived `Session`.
+
 ## Engine
 
-The main engine for compiling and evaluating JSONLogic rules.
+The configured engine. Compiles rules and evaluates them.
 
 ### Creating an Engine
 
@@ -19,31 +58,66 @@ let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .with_templating(true)           // requires feature = "templating"
     .add_operator("my_op", MyOperator)
+    .with_constant_folding(true)     // default; pass false to keep every operator visible in the compiled tree
     .build();
 ```
 
-> v5 makes operator registration **builder-only**. The `Engine` produced by
-> `build()` has a frozen operator set. The v4
-> `with_config` / `with_preserve_structure` / `with_config_and_structure`
-> constructors live on the [`compat::LegacyApi`](../migration.md#legacyapi-and-the-compat-feature)
-> trait.
+> v5 makes operator registration **builder-only**. The `Engine` produced
+> by `build()` has a frozen operator set.
 
 ### Methods
 
 #### `compile`
 
-Compile a JSONLogic rule string into a reusable `Logic`.
+Compile a JSONLogic rule into reusable [`Logic`](#logic).
 
 ```rust
-pub fn compile(&self, logic: &str) -> Result<Logic>
+pub fn compile<R: IntoLogic>(&self, rule: R) -> Result<Logic>;
+pub fn compile_arc<R: IntoLogic>(&self, rule: R) -> Result<Arc<Logic>>;
 ```
 
-The returned `Logic` is owned. Wrap in `Arc` to share across threads.
+`R: IntoLogic` accepts `&str` (JSON-parsed), `&String`,
+`&OwnedDataValue` / `OwnedDataValue`, and `&serde_json::Value` (gated
+on `feature = "serde_json"`). Use `compile_arc` for the dominant
+cross-thread sharing pattern (equivalent to
+`Arc::new(engine.compile(rule)?)`).
 
-#### `evaluate`
+#### `eval` / `eval_str` / `eval_into` (one-shot)
+
+Engine-owned arena per call. The differences are only in the result
+type:
+
+```rust
+pub fn eval<R, D>(&self, rule: R, data: D) -> Result<OwnedDataValue>;
+pub fn eval_str<R, D>(&self, rule: R, data: D) -> Result<String>;
+
+#[cfg(feature = "serde_json")]
+pub fn eval_into<T, R, D>(&self, rule: R, data: D) -> Result<T>;
+```
+
+`R: IntoLogic` and `D: OwnedInput` — `data` accepts `&str`, `String`,
+`&OwnedDataValue` / `OwnedDataValue`, and `&serde_json::Value` (gated on
+`serde_json`). For `eval_into`, `T: DeserializeOwned`; the typical
+choices are `serde_json::Value` (JSON-shaped boundary) or your own
+domain struct.
+
+```rust
+let result = engine.eval_str(
+    r#"{"+": [{"var": "x"}, 1]}"#,
+    r#"{"x": 41}"#,
+)?;
+assert_eq!(result, "42");
+
+let value: serde_json::Value = engine.eval_into(
+    r#"{"+": [{"var": "x"}, 1]}"#,
+    r#"{"x": 41}"#,
+)?;
+```
+
+#### `evaluate` (raw tier)
 
 Hot-path evaluation against arena-resident data. The caller owns the
-`bumpalo::Bump` and the result borrows from it.
+`bumpalo::Bump`; the result borrows from it.
 
 ```rust
 pub fn evaluate<'a, D: EvalInput<'a>>(
@@ -51,11 +125,12 @@ pub fn evaluate<'a, D: EvalInput<'a>>(
     compiled: &'a Logic,
     data: D,
     arena: &'a bumpalo::Bump,
-) -> Result<&'a DataValue<'a>>
+) -> Result<&'a DataValue<'a>>;
 ```
 
 `D` accepts any of: `&'a DataValue<'a>`, `DataValue<'a>`, `&'a str`,
-`&OwnedDataValue`, or `&serde_json::Value` (under `feature = "compat"`).
+`&OwnedDataValue`, or `&serde_json::Value` (under
+`feature = "serde_json"`).
 
 ```rust
 use bumpalo::Bump;
@@ -68,40 +143,24 @@ let result = engine.evaluate(&compiled, r#"{"x": 1}"#, &arena).unwrap();
 assert_eq!(result.as_bool(), Some(true));
 ```
 
-#### `evaluate_str`
-
-One-shot string-in / string-out evaluation. Allocates a fresh
-`bumpalo::Bump` internally.
-
-```rust
-pub fn evaluate_str(&self, logic: &str, data: &str) -> Result<String>
-```
-
-#### `evaluate_json_value` (feature = "compat")
-
-`serde_json::Value` boundary on both sides, mirroring `evaluate_str`.
-
-```rust
-#[cfg(feature = "compat")]
-pub fn evaluate_json_value(&self, logic: &serde_json::Value, data: &serde_json::Value) -> Result<serde_json::Value>
-```
-
 #### `session`
 
-Open a `Session` that owns a reusable arena.
+Open a [`Session`](#session) that owns a reusable arena.
 
 ```rust
-pub fn session(&self) -> Session<'_>
+pub fn session(&self) -> Session<'_>;
 ```
 
 #### `trace` (feature = "trace")
 
-Open a `TracedSession` whose `evaluate*` calls record execution steps.
-Mirrors `session()` — both open a handle that delegates back to the engine.
+Open a [`TracedSession`](#tracedsession-feature--trace) that records
+execution steps. Mirrors `session()` 1:1 — every `eval*` returns a
+`TracedRun<R>` carrying the result, steps, and compile-time expression
+tree.
 
 ```rust
 #[cfg(feature = "trace")]
-pub fn trace(&self) -> TracedSession<'_>
+pub fn trace(&self) -> TracedSession<'_>;
 ```
 
 #### Introspection helpers
@@ -121,11 +180,17 @@ Fluent constructor for `Engine`. Returned by `Engine::builder()`.
 ```rust
 EngineBuilder::new()
     .with_config(EvaluationConfig::default())
-    .with_templating(true)                 // feature = "templating"
-    .add_operator("name", MyOp)            // typed operator
-    .add_operator("dyn", boxed_op)         // also accepts Box<dyn CustomOperator>
+    .with_templating(true)                  // feature = "templating"
+    .with_constant_folding(true)            // default; disable to keep every operator visible
+    .add_operator("name", MyOp)             // typed operator
+    .add_operator("dyn", boxed_op)          // also accepts Box<dyn CustomOperator>
     .build();
 ```
+
+`with_constant_folding(false)` is useful for tooling that walks the
+compiled tree and would be surprised by `{"+": [1, 2]}` collapsing to a
+literal `3`. The trace surface always disables folding internally
+regardless of this setting.
 
 ---
 
@@ -133,7 +198,8 @@ EngineBuilder::new()
 
 The compiled, reusable rule tree. Output of `Engine::compile`.
 
-- `Send + Sync` — wrap in `Arc` to share across threads.
+- `Send + Sync` — wrap in `Arc` to share across threads (or use
+  `Engine::compile_arc` to do it in one step).
 - Immutable after construction.
 - `resolve_node_ids(&self, ids: &[u32]) -> Vec<PathStep>` — translate
   the breadcrumb of a structured `Error` into the source path of the
@@ -143,25 +209,39 @@ The compiled, reusable rule tree. Output of `Engine::compile`.
 
 ## Session
 
-Reusable evaluation handle that owns a `bumpalo::Bump` and resets it
-between calls. Construct via `Engine::session()`.
+Reusable evaluation handle that owns a `bumpalo::Bump`. The session
+**never** auto-resets — the caller decides when to release arena memory
+back to the start-of-chunk position. Construct via `Engine::session()`.
 
 ```rust
 let mut session = engine.session();
-let result_str: String = session.evaluate_str(&compiled, data_json)?;
-let result_owned: datalogic_rs::datavalue::OwnedDataValue = session.evaluate(&compiled, data)?;
+let result_str: String = session.eval_str(&compiled, data_json)?;
+let result_owned: datalogic_rs::datavalue::OwnedDataValue =
+    session.eval(&compiled, data)?;
 
-#[cfg(feature = "compat")]
-let result_value: serde_json::Value = session.evaluate_json_value(&compiled, &serde_data)?;
+#[cfg(feature = "serde_json")]
+let value: serde_json::Value = session.eval_into(&compiled, &serde_data)?;
+
+// Zero-copy borrowed result; lives until the next &mut self call.
+let view: &datalogic_rs::DataValue<'_> = session.eval_borrowed(&compiled, data)?;
+
+session.reset();                       // bound peak memory between batches
+session.reset_with_capacity(64 * 1024);
+let bytes = session.allocated_bytes();
 ```
 
-`Session::evaluate` accepts any `EvalInput<'_>`.
+`Session::eval` / `eval_str` / `eval_into` accept any `EvalInput<'_>`.
+`eval_borrowed` returns a `&'a DataValue<'a>` that borrows from the
+session's arena — Rust's borrow checker enforces that the next
+`&mut self` call invalidates it.
 
 ---
 
 ## EvalInput
 
-Sealed input adapter trait used by `Engine::evaluate` and `Session::evaluate`.
+Sealed input adapter trait used by `Engine::evaluate`,
+`Session::eval_borrowed`, and the `OwnedInput` cousin used by the owned
+entry points.
 
 | Implementor | Cost |
 |-------------|------|
@@ -169,7 +249,7 @@ Sealed input adapter trait used by `Engine::evaluate` and `Session::evaluate`.
 | `DataValue<'a>` | One arena alloc. |
 | `&'a str` | JSON parse via `DataValue::from_str`. |
 | `&OwnedDataValue` | Deep-borrow into the arena. |
-| `&serde_json::Value` (`compat`) | Deep-convert into the arena. |
+| `&serde_json::Value` (`feature = "serde_json"`) | Deep-convert into the arena. |
 
 The trait is sealed — external crates cannot add new shapes.
 
@@ -196,7 +276,8 @@ enum DataValue<'a> {
 Both `DataValue` and `OwnedDataValue` are re-exported from the
 [`datavalue`](https://docs.rs/datavalue-rs) crate. Use `arena.alloc(...)` to
 return values from custom operators; use `OwnedDataValue` when you need a
-heap-allocated owned tree (e.g. as `Session::evaluate`'s return).
+heap-allocated owned tree (e.g. as the return of `Engine::eval` /
+`Session::eval`).
 
 ---
 
@@ -256,7 +337,7 @@ pub enum TruthyEvaluator {
 }
 ```
 
-> **v5 change:** the `Custom` callback receives an `&OwnedDataValue` (not
+> The `Custom` callback receives an `&OwnedDataValue` (not
 > `&serde_json::Value`).
 
 ---
@@ -279,10 +360,6 @@ pub trait CustomOperator: Send + Sync {
 | `args` | **Pre-evaluated** arguments. The engine has already recursed into each arg's expression tree. |
 | `ctx` | Opaque view into the engine's evaluation context. Untouched by most operators. |
 | `arena` | Allocator for the current call. Use `arena.alloc(...)` for `DataValue` and `arena.alloc_str(...)` for strings. |
-
-> **v4 → v5:** the trait was renamed from `Operator` to `CustomOperator`.
-> Args are now pre-evaluated and arena-resident; the `Evaluator` trait was
-> removed. There is no longer a value-mode entry point.
 
 ---
 
@@ -386,36 +463,44 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 ## Trace API (feature = "trace")
 
-```rust
-pub struct TracedRun {
-    pub result: Result<String>,
-    pub steps: Vec<ExecutionStep>,
-    pub expression_tree: ExpressionNode,
-}
+### TracedSession
 
-pub struct ExecutionStep { /* per-node entry / result / error */ }
-pub struct ExpressionNode { /* compile-time tree shape with stable ids */ }
-```
-
-Open a traced session and call `evaluate_str` (or `evaluate` against a
-pre-compiled `Logic`):
+Open via `engine.trace()`. Mirrors [`Session`](#session) 1:1 — every
+`eval*` returns a [`TracedRun<R>`](#tracedrunr-feature--trace).
 
 ```rust
 #[cfg(feature = "trace")]
 {
     let engine = datalogic_rs::Engine::new();
-    let run = engine.trace().evaluate_str(r#"{"+": [1, 2]}"#, r#"{}"#);
+    let run = engine.trace().eval_str(r#"{"+": [1, 2]}"#, r#"{}"#);
     println!("{}", run.result.unwrap());
     println!("{} steps", run.steps.len());
 }
 ```
 
-> The pre-compiled paths inherit whatever shape `Engine::compile` produced
-> (constant folding can hide some operators). For full coverage on a
-> single rule, prefer `trace().evaluate_str(rule, data)`.
+The pre-compiled paths inherit whatever shape `Engine::compile` produced
+(constant folding can hide some operators). For full coverage on a
+single rule, prefer `engine.trace().eval_str(rule, data)` — the
+one-shot path compiles internally with folding disabled.
 
-The deprecated `TracedResult` (returned by the v4 `evaluate_json_with_trace`
-shim) lives behind `compat`.
+### TracedRun&lt;R&gt; (feature = "trace")
+
+```rust
+pub struct TracedRun<R> {
+    pub result: Result<R, Error>,        // success and failure share one field
+    pub steps: Vec<ExecutionStep>,
+    pub expression_tree: ExpressionNode,
+}
+```
+
+`R` is the same shape that `Session::eval*` would return:
+`OwnedDataValue` for `eval`, `String` for `eval_str`, `T` for
+`eval_into::<T>`, `&'a DataValue<'a>` for `eval_borrowed`.
+
+```rust
+pub struct ExecutionStep { /* per-node entry / result / error */ }
+pub struct ExpressionNode { /* compile-time tree shape with stable ids */ }
+```
 
 ---
 
@@ -423,26 +508,24 @@ shim) lives behind `compat`.
 
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
-use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let engine = Arc::new(
-        Engine::builder()
-            .with_config(EvaluationConfig {
-                arithmetic_nan_handling: NanHandling::IgnoreValue,
-                ..Default::default()
-            })
-            .build(),
-    );
+    let engine = Engine::builder()
+        .with_config(EvaluationConfig {
+            arithmetic_nan_handling: NanHandling::IgnoreValue,
+            ..Default::default()
+        })
+        .build();
 
-    let compiled = Arc::new(engine.compile(
+    let compiled = engine.compile_arc(
         r#"{"if": [{">=": [{"var": "score"}, 60]}, "pass", "fail"]}"#,
-    )?);
+    )?;
 
     let mut session = engine.session();
     for score in [85, 45, 60] {
-        let r = session.evaluate_str(&compiled, &format!(r#"{{"score": {}}}"#, score))?;
+        let r = session.eval_str(&compiled, &format!(r#"{{"score": {}}}"#, score))?;
         println!("{} -> {}", score, r);
+        session.reset();
     }
 
     Ok(())

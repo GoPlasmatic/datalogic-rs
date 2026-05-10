@@ -54,10 +54,7 @@ data — store them in a database, send them over an API, change them
 without redeploys.
 
 ```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let result = engine.evaluate_str(
+let result = datalogic_rs::eval_str(
     r#"{"and": [{">=": [{"var": "age"}, 18]}, {"==": [{"var": "status"}, "active"]}]}"#,
     r#"{"age": 25, "status": "active"}"#,
 ).unwrap();
@@ -66,17 +63,16 @@ assert_eq!(result, "true");
 
 ### 2. JSON templates
 
-Shape one JSON payload into another. With
-`preserve_structure` mode, object keys flow through to the output and
-operator values become computed fields — the template's structure
-mirrors the response you want.
+Shape one JSON payload into another. With templating mode, object keys
+flow through to the output and operator values become computed fields —
+the template's structure mirrors the response you want.
 
 ```rust
-// Cargo.toml: datalogic-rs = { version = "5", features = ["preserve"] }
+// Cargo.toml: datalogic-rs = { version = "5", features = ["templating"] }
 use datalogic_rs::Engine;
 
-let engine = Engine::builder().preserve_structure(true).build();
-let result = engine.evaluate_str(
+let engine = Engine::builder().with_templating(true).build();
+let result = engine.eval_str(
     r#"{"greeting": {"cat": ["Hello ", {"var": "name"}]},
         "isAdult": {">=": [{"var": "age"}, 18]}}"#,
     r#"{"name": "Jane", "age": 25}"#,
@@ -90,10 +86,7 @@ Let users author formulas; evaluate them safely without `eval()`.
 Arithmetic, comparisons, and array reductions are all built in.
 
 ```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let result = engine.evaluate_str(
+let result = datalogic_rs::eval_str(
     r#"{"+": [{"var": "subtotal"}, {"var": "tax"}, {"var": "shipping"}]}"#,
     r#"{"subtotal": 100, "tax": 8.5, "shipping": 5}"#,
 ).unwrap();
@@ -112,12 +105,10 @@ inside a visual editor.
 **Rust** — server-side, native:
 
 ```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let result = engine
-    .evaluate_str(r#"{">": [{"var": "x"}, 10]}"#, r#"{"x": 42}"#)
-    .unwrap();
+let result = datalogic_rs::eval_str(
+    r#"{">": [{"var": "x"}, 10]}"#,
+    r#"{"x": 42}"#,
+).unwrap();
 // "true"
 ```
 
@@ -152,20 +143,18 @@ cargo add datalogic-rs
 ```
 
 ```rust
-use datalogic_rs::Engine;
-
 fn main() {
-    let engine = Engine::new();
-    let result = engine
-        .evaluate_str(r#"{"+": [1, 2, 3]}"#, r#"{}"#)
-        .unwrap();
+    let result = datalogic_rs::eval_str(r#"{"+": [1, 2, 3]}"#, r#"{}"#).unwrap();
     println!("{}", result); // 6
 }
 ```
 
-That's it. `evaluate_str` parses the rule, parses the data, evaluates,
-and hands you back a JSON string. For repeated evaluation, see
-[Compile once, evaluate many](#compile-once-evaluate-many) below.
+That's it. `eval_str` parses the rule, parses the data, evaluates, and
+hands you back a JSON string. For typed results use `eval_into::<T>`;
+for repeated evaluation see [Compile once, evaluate many](#compile-once-evaluate-many)
+below. The `datalogic_rs::` module functions wrap a default `Engine` —
+construct one explicitly when you need custom operators, non-default
+config, or templating.
 
 ## Highlights
 
@@ -194,8 +183,9 @@ let mut session = engine.session();
 
 for x in 0..3 {
     let payload = format!(r#"{{"x": {}}}"#, x);
-    let result = session.evaluate_str(&compiled, &payload).unwrap();
+    let result = session.eval_str(&compiled, &payload).unwrap();
     assert_eq!(result, (x + 1).to_string());
+    session.reset();
 }
 ```
 
@@ -211,7 +201,7 @@ into the arena.
 
 ```rust
 use bumpalo::Bump;
-use datalogic_rs::operator::ContextStack;
+use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
 
 struct Double;
@@ -219,7 +209,7 @@ impl CustomOperator for Double {
     fn evaluate<'a>(
         &self,
         args: &[&'a DataValue<'a>],
-        _ctx: &mut ContextStack<'a>,
+        _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
         let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -228,7 +218,7 @@ impl CustomOperator for Double {
 }
 
 let engine = Engine::builder().add_operator("double", Double).build();
-let result = engine.evaluate_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
+let result = engine.eval_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
 assert_eq!(result, "42");
 ```
 
@@ -256,7 +246,7 @@ use datalogic_rs::Engine;
 let engine = Engine::new();
 let run = engine
     .trace()
-    .evaluate_str(
+    .eval_str(
         r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
         r#"{"age": 21}"#,
     );
@@ -318,15 +308,17 @@ Reports land in `packages/benchmark/output/` (gitignored).
 
 ## Migrating from v4
 
-v5 is a breaking release. Headline changes: `DataLogic` → `Engine`,
-`CompiledLogic` → `Logic`, `Operator` → `CustomOperator`; one-shot
-evaluation is now string-based (`evaluate_str`); custom operators
-receive **pre-evaluated** `&DataValue<'a>` args; operator registration
-is builder-only; `serde_json` moved behind the `compat` feature.
+v5 is a breaking release with a hard cliff: no `compat` feature, no
+deprecated method shims inside the v5 crate. Headline changes:
+`DataLogic` → `Engine`, `CompiledLogic` → `Logic`, `Operator` →
+`CustomOperator`; one-shot evaluation is now `eval_str` (returns
+`String`) or `eval_into::<T>` (returns a typed value); custom operators
+receive **pre-evaluated** `&DataValue<'a>` args and an `EvalContext`;
+operator registration is builder-only; `serde_json` lives behind the
+`serde_json` feature.
 
-See [docs/src/migration.md](./docs/src/migration.md) for the full
-walkthrough — including a transitional `compat::LegacyApi` trait that
-keeps v4 method names compiling while you migrate.
+See [MIGRATION.md](./MIGRATION.md) for the full v4 → v5 cookbook with
+side-by-side method translations and code examples.
 
 ## Resources
 

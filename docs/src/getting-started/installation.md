@@ -16,9 +16,10 @@ cargo add datalogic-rs
 ```
 
 > **Note:** v5 does **not** require `serde_json` by default — the canonical
-> entry points (`Engine::evaluate_str`, `Engine::compile(&str)`) are
-> string-based. Add `serde_json` only if you opt into the `compat` feature
-> below.
+> entry points (`Engine::eval_str`, `Engine::compile(&str)`,
+> `datalogic_rs::eval_str`) are string-based. Add the `serde_json` feature
+> only if you need `serde_json::Value` interop or the typed
+> `eval_into::<T>` paths.
 
 ## Feature Flags
 
@@ -26,29 +27,28 @@ v5 splits the surface into a small core plus opt-in features:
 
 | Feature | Default | What it adds |
 |---------|---------|-------------|
-| `compat` | off | `serde_json::Value` boundary (`evaluate_json_value`, `compile_serde_value`), the v4 `LegacyApi` shims, and `serde_json` as a runtime dependency. |
+| `serde_json` | off | `&serde_json::Value` interop (as `EvalInput` / `IntoLogic`) and the typed `eval_into::<T>` paths on `Engine`, `Session`, and the module-level helpers. Pulls in `serde_json` as a runtime dependency. |
 | `templating` | off | Templating mode — `Engine::builder().with_templating(true).build()`. |
 | `datetime` | off | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` operators (pulls in `chrono`). |
-| `trace` | off | Per-evaluation execution tracing (`engine.trace()…`). Implies `compat`. |
+| `trace` | off | Per-evaluation execution tracing (`engine.trace()…`). Transitively enables `serde_json`. |
 | `ext-string` | off | Extended string operators. |
 | `ext-array` | off | Extended array operators (e.g. `sort`). |
 | `ext-control` | off | Extended control-flow operators (e.g. `inspect`). |
 | `error-handling` | off | `try` / `throw` operators. |
 | `ext-math` | off | Extended math operators. |
-| `wasm` | off | Bundle convenience for WASM builds (= `datetime` + `trace` + `preserve`). |
+| `wasm` | off | Bundle convenience for WASM builds (= `datetime` + `trace` + `templating`). |
 
-Example — opt into the v4-compatible `serde_json` boundary plus structure
-preservation:
+Example — opt into `serde_json::Value` interop plus templating:
 
 ```toml
 [dependencies]
-datalogic-rs = { version = "5.0", features = ["compat", "preserve"] }
+datalogic-rs = { version = "5.0", features = ["serde_json", "templating"] }
 serde_json = "1.0"
 ```
 
 ## Version Selection
 
-- **v5.x** (current): canonical string-based API, opt-in `serde_json`, builder-only operator registration.
+- **v5.x** (current): canonical string-based API, opt-in `serde_json`, builder-only operator registration. v5 is a hard cliff — no `compat` shim — so plan a single cutover.
 - **v4.x**: `DataLogic` engine, `serde_json::Value`-first API. Still functional but no longer the active line.
 - **v3.x**: Arena-based allocation, predates the v4 simplification. Bug-fix only.
 
@@ -79,13 +79,8 @@ required. The crate is built with `#![forbid(unsafe_code)]`.
 Create a simple test:
 
 ```rust
-use datalogic_rs::Engine;
-
 fn main() {
-    let engine = Engine::new();
-    let result = engine
-        .evaluate_str(r#"{"+": [1, 2]}"#, r#"{}"#)
-        .unwrap();
+    let result = datalogic_rs::eval_str(r#"{"+": [1, 2]}"#, r#"{}"#).unwrap();
 
     println!("1 + 2 = {}", result);
     assert_eq!(result, "3");

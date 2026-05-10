@@ -27,61 +27,59 @@ cargo add datalogic-rs
 ## Quick start
 
 ```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let result = engine
-    .evaluate_str(r#"{"+": [1, 2, 3]}"#, r#"{}"#)
-    .unwrap();
+let result = datalogic_rs::eval_str(r#"{"+": [1, 2, 3]}"#, r#"{}"#).unwrap();
 assert_eq!(result, "6");
 ```
 
-**Which evaluate method should I use?** Start with `evaluate_str` for
-one-shot calls. Switch to `Session` once you're evaluating the same
-compiled rule many times — it reuses one arena instead of allocating
-per call. Drop down to `Engine::evaluate` only when you're managing
-your own `bumpalo::Bump` (custom pools, integration with arena-aware
-downstream code). The full comparison table is in the
-[Performance](#performance) section below.
+**Three categories, one purpose each.** `datalogic::` for zero-config
+one-shots (no construction, no arena). `Engine` when you need a
+configured engine (custom operators, non-default config, templating)
+or the raw `evaluate(&Bump)` arena tier. `Session` for compile-once
+hot loops. Result shape comes from the suffix: `eval_str` → `String`,
+`eval_into::<T>` → typed `T`, default → `OwnedDataValue`. The full
+comparison table is in the [Performance](#performance) section.
 
 ## Migrating from 4.x
 
-v5 reshapes the public API around a single arena-based dispatch path
-and trims the surface to a small, documented set of types. Headline
-renames: `DataLogic` → `Engine`, `evaluate_json` → `evaluate_str`,
-`Operator` → `CustomOperator`, `with_config(...)` →
-`Engine::builder().with_config(...).build()`. The full breakage list and
-each replacement live in [`CHANGELOG.md`](CHANGELOG.md); a runnable
-side-by-side cheat sheet is in
-[`examples/migrating_from_v4.rs`](examples/migrating_from_v4.rs)
-(`cargo run --example migrating_from_v4 --features compat,templating`).
-The `compat` feature keeps the 4.x entry points compiling for one
-release cycle (each is `#[deprecated]` with a `note` pointing at its
-v5 replacement); the `compat` module is scheduled for removal in 5.1.
+v5 is a breaking release with a hard cliff: no `compat` feature, no
+deprecated method shims inside the v5 crate. Headline renames:
+`DataLogic` → `Engine`, `evaluate_json` → `eval_str` (returns
+`String`) or `eval_into::<T>` (returns a typed value), `Operator` →
+`CustomOperator` (with `&mut EvalContext` instead of `&mut ContextStack`),
+`with_config(...)` → `Engine::builder().with_config(...).build()`. See
+[`MIGRATION.md`](../../MIGRATION.md) for the full v4 → v5 cookbook;
+[`CHANGELOG.md`](CHANGELOG.md) lists the breakage in chronological
+order.
 
 ## Input shapes
 
-Both `Engine::evaluate` and `Session::evaluate*` accept any of the
+`Engine::evaluate` and `Session::eval_borrowed` accept any of the
 input shapes a caller is likely to have on hand, via the sealed
-[`EvalInput`] trait — all five resolve to `&'a DataValue<'a>` inside
-the engine. Per-call cost differs:
+[`EvalInput`] trait — all resolve to `&'a DataValue<'a>` inside the
+engine. Per-call cost differs:
 
 | Shape | Cost per call |
 |---|---|
 | `&str` (JSON literal) | parse + arena alloc |
-| `&serde_json::Value` (`compat` feature) | deep-convert into the arena |
-| `&OwnedDataValue` | deep-clone into the arena |
+| `&serde_json::Value` (`serde_json` feature) | deep-convert into the arena |
+| `&OwnedDataValue` | deep-borrow into the arena |
 | `DataValue<'a>` (by value) | one arena alloc for the top node |
 | `&'a DataValue<'a>` (by reference) | **zero** — pass-through |
 
 If you're evaluating the same input against many rules, or feeding
 input from an upstream stage that already lives in the arena, prefer
 the `&'a DataValue<'a>` path — it's genuinely allocation-free for the
-input. See `examples/zero_copy_input.rs` for the five paths side by
-side, including a runtime arena-bytes measurement that proves the
-zero-copy claim.
+input. See `examples/zero_copy_input.rs` for the paths side by side,
+including a runtime arena-bytes measurement that proves the zero-copy
+claim.
+
+The one-shot tier (`Engine::eval` / `eval_str` / `eval_into` and the
+`datalogic::` module functions) accepts a similar set via the
+[`OwnedInput`] trait, which omits the `DataValue<'a>` shapes (they
+have no caller arena to borrow from).
 
 [`EvalInput`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/trait.EvalInput.html
+[`OwnedInput`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/trait.OwnedInput.html
 
 ## Working with `DataValue`
 
@@ -96,7 +94,7 @@ use datalogic_rs::Engine;
 let engine = Engine::new();
 let compiled = engine.compile(r#"{"var": "user.score"}"#).unwrap();
 let mut session = engine.session();
-let result = session.evaluate_borrowed(&compiled, r#"{"user": {"score": 42}}"#).unwrap();
+let result = session.eval_borrowed(&compiled, r#"{"user": {"score": 42}}"#).unwrap();
 
 assert_eq!(result.as_i64(), Some(42));
 // Other accessors: .as_f64(), .as_str(), .as_bool(), .as_array(), .as_object().
@@ -107,9 +105,11 @@ Conversion to other shapes:
 - **To a JSON string:** `value.to_string()` — `DataValue` and
   `OwnedDataValue` both implement `Display` (via `datavalue`'s native
   emitter), so the standard `ToString` works.
-- **To `serde_json::Value`** (requires `compat` feature): the
-  `Session::evaluate_json_value` and `Engine::evaluate_json_value` entry points
-  return `serde_json::Value` directly.
+- **To `serde_json::Value`** (requires `serde_json` feature): use
+  `eval_into::<serde_json::Value>(...)` on `Engine` / `Session` /
+  `datalogic::` — same dispatch path, value-typed boundary.
+- **To a typed Rust struct** (requires `serde_json` feature): use
+  `eval_into::<T>(...)` where `T: DeserializeOwned`.
 - **Owned vs borrowed:** `DataValue<'a>` borrows from a `Bump`;
   `OwnedDataValue` is the heap-owned counterpart for crossing arena
   lifetimes (cache an evaluation result, send across an `await`, etc.).
@@ -122,13 +122,13 @@ Three evaluation tiers, in order of caller control:
 
 | API | Arena | Result | When to use |
 |---|---|---|---|
-| `Engine::evaluate_str(rule, data)` | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` (JSON) | One-shot. CLI-style use, scripts, "I want JSON in and JSON out." |
-| `Session::evaluate(&logic, data)` | session-owned `Bump`, caller calls `session.reset()` between batches | `OwnedDataValue` | Hot loop with a long-lived engine. Per-task in tokio, per-message in dataflow-style pipelines. |
+| `Engine::eval_str(rule, data)` (and `eval` / `eval_into`) | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` / `OwnedDataValue` / `T` | One-shot. CLI-style use, scripts, "I want JSON in and JSON out." |
+| `Session::eval(&logic, data)` (and `eval_str` / `eval_into` / `eval_borrowed`) | session-owned `Bump`, caller calls `session.reset()` between batches | `OwnedDataValue` / `String` / `T` / `&DataValue<'a>` | Hot loop with a long-lived engine. Per-task in tokio, per-message in dataflow-style pipelines. |
 | `Engine::evaluate(&logic, data, &arena)` | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, pool-managed arenas, custom allocators. |
 
 `Session` adds two extras for hot loops:
 
-- `Session::evaluate_borrowed(...)` returns the same borrowed `&DataValue<'a>`
+- `Session::eval_borrowed(...)` returns the same borrowed `&DataValue<'a>`
   shape as `Engine::evaluate` but with the bump owned by the session,
   so you skip the `OwnedDataValue::to_owned` deep-clone when the result
   is consumed before the next session call.
@@ -147,16 +147,16 @@ internal bump and is called once at startup in typical service shapes.
 
 ## Feature flags
 
-| Feature           | Effect                                                            |
-|-------------------|-------------------------------------------------------------------|
-| `compat`          | `serde_json` bridging + 4.x `LegacyApi` shims                     |
-| `preserve`        | Structure-preservation (templating) mode                          |
-| `datetime`        | Date / time operators (pulls in `chrono`)                         |
-| `trace`           | Execution-step recording for the debugger (implies `compat`)      |
-| `error-handling`  | `try` / `throw` operators                                         |
-| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families     |
+| Feature           | Effect                                                                    |
+|-------------------|---------------------------------------------------------------------------|
+| `serde_json`      | `&serde_json::Value` interop and `eval_into::<T>` typed deserialisation    |
+| `templating`      | Structure-preservation (templating) mode                                  |
+| `datetime`        | Date / time operators (pulls in `chrono`)                                 |
+| `trace`           | Execution-step recording for the debugger (implies `serde_json`)          |
+| `error-handling`  | `try` / `throw` operators                                                 |
+| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families             |
 
-Default build is `serde_json`-free; opt in via `features = ["compat"]`
+Default build is `serde_json`-free; opt in via `features = ["serde_json"]`
 when you need the value boundary.
 
 ## Learn more

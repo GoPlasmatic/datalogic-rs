@@ -33,9 +33,9 @@ also includes additional operators that extend the specification.
 not pull in `serde_json`, and the arena evaluation path is exposed
 directly. See the [Migration Guide](migration.md) for the move from v4.
 
-If you're already on v4 and need a slow rollout, enable `features = ["compat"]`
-to keep the v4 entry points available (every method is `#[deprecated]` so
-the compiler will guide you through the rename).
+v5 is a hard cliff — there is no compatibility shim, so plan a single
+cutover when upgrading from v4. The repo-root `MIGRATION.md` has the
+per-call cookbook.
 
 ### How do I share compiled rules across threads?
 
@@ -46,12 +46,12 @@ use datalogic_rs::Engine;
 use std::sync::Arc;
 
 let engine = Arc::new(Engine::new());
-let compiled = Arc::new(engine.compile(rule).unwrap());
+let compiled = engine.compile_arc(rule).unwrap();
 
 let compiled_clone = Arc::clone(&compiled);
 std::thread::spawn(move || {
     let mut session = engine.session();
-    session.evaluate_str(&compiled_clone, data)
+    session.eval_str(&compiled_clone, data)
 });
 ```
 
@@ -67,15 +67,18 @@ If you need lazy / short-circuit semantics like `and` / `or`, that lives in
 built-in operators today (none of the v5 short-circuit operators are
 exposed through the public custom-operator surface).
 
-### What's the difference between `evaluate`, `evaluate_str`, `session.evaluate*`, and `evaluate_json_value`?
+### What's the difference between `eval`, `eval_str`, `eval_into`, and `evaluate`?
 
 | Method | Input | Output | Notes |
 |--------|-------|--------|-------|
-| `Engine::evaluate_str` | `&str`, `&str` | `String` | One-shot. Allocates a fresh arena internally. |
-| `Engine::evaluate` | any `EvalInput` + `&Bump` | `&DataValue<'a>` | Hot path. Caller owns the arena, result borrows from it. |
-| `Session::evaluate_str` | `&str` | `String` | Reuses the session's arena across calls. |
-| `Session::evaluate` | any `EvalInput` | `OwnedDataValue` | Owned tree that survives the next reset. |
-| `Engine::evaluate_json_value` (`compat`) | `&serde_json::Value` × 2 | `serde_json::Value` | Mirror of `evaluate_str` for callers on `serde_json`. |
+| `datalogic_rs::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | Module-level helper backed by a default engine. Use when you don't need custom operators or non-default config. |
+| `Engine::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | One-shot through a configured engine. Allocates a fresh arena internally. |
+| `Engine::evaluate` | `&Logic`, any `EvalInput`, `&Bump` | `&'a DataValue<'a>` | Hot path. Caller owns the arena, result borrows from it. |
+| `Session::eval_str` (and `eval` / `eval_into`) | `&Logic`, `D: EvalInput` | `String` (or `OwnedDataValue` / `T`) | Reuses the session's arena across calls. Caller calls `session.reset()` between batches. |
+| `Session::eval_borrowed` | `&Logic`, `D: EvalInput` | `&'a DataValue<'a>` | Zero-copy result; valid until the next `&mut self` call. |
+
+The typed `eval_into::<T>` paths (and the `serde_json::Value` boundary
+on `EvalInput` / `IntoLogic`) require `feature = "serde_json"`.
 
 ---
 
@@ -188,9 +191,9 @@ Or use default values with `var`:
 ### What happened to the `preserve` operator?
 
 It was removed in v5. Literal scalars and arrays already pass through
-inline, and templated objects belong in `preserve_structure` mode
-(`Engine::builder().preserve_structure(true).build()`, requires
-`feature = "preserve"`).
+inline, and templated objects belong in templating mode
+(`Engine::builder().with_templating(true).build()`, requires
+`feature = "templating"`).
 
 ---
 
@@ -236,7 +239,7 @@ In standard mode, unrecognized keys are treated as errors. Either:
 
 1. Fix the operator name (operators are case-sensitive)
 2. Register a custom operator on the builder
-3. Enable `preserve_structure` mode for templating (`feature = "preserve"`)
+3. Enable templating mode (`feature = "templating"`) — `Engine::builder().with_templating(true).build()`
 
 ### Performance issues with large expressions
 

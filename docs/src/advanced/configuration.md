@@ -19,11 +19,10 @@ let config = EvaluationConfig {
 let engine = Engine::builder().with_config(config).build();
 ```
 
-> v5 dropped the `with_config` / `with_preserve_structure` /
-> `with_config_and_structure` constructors in favour of the builder. The
-> old constructors are still reachable through the `compat` feature's
-> [`LegacyApi`](../migration.md#legacyapi-and-the-compat-feature) trait
-> for migration purposes.
+> v5 dropped the inherent `Engine::with_config` /
+> `with_preserve_structure` / `with_config_and_structure` constructors —
+> use the builder. There is no compatibility shim. See the
+> [Migration Guide](../migration.md) for the v4 → v5 mapping.
 
 ## Configuration Options
 
@@ -170,10 +169,10 @@ let engine = Engine::builder()
     .build();
 ```
 
-## Combining with Structure Preservation
+## Combining with Templating Mode
 
-Use both configuration and structure preservation (requires
-`feature = "preserve"`):
+Use both configuration and templating mode (requires
+`feature = "templating"`):
 
 ```rust
 let config = EvaluationConfig {
@@ -183,7 +182,7 @@ let config = EvaluationConfig {
 
 let engine = Engine::builder()
     .with_config(config)
-    .preserve_structure(true)
+    .with_templating(true)
     .build();
 ```
 
@@ -200,7 +199,7 @@ let config = EvaluationConfig {
 
 let engine = Engine::builder().with_config(config).build();
 
-let r = engine.evaluate_str(
+let r = engine.eval_str(
     r#"{"+": [1, "not a number", null, 2]}"#,
     r#"{}"#,
 ).unwrap();
@@ -214,7 +213,7 @@ let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .build();
 
-let result = engine.evaluate_str(r#"{"+": [1, "2"]}"#, r#"{}"#);
+let result = engine.eval_str(r#"{"+": [1, "2"]}"#, r#"{}"#);
 // Err(...) — strict mode does not coerce "2" to a number
 ```
 
