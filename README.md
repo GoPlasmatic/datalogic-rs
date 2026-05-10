@@ -45,6 +45,13 @@ For the cross-package design, dependency flow, and feature-flag matrix,
 see [ARCHITECTURE.md](./ARCHITECTURE.md). For local setup, build order,
 and per-package commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
+## Which package do I want?
+
+- **JSONLogic in a Rust app** → `packages/core` (`cargo add datalogic-rs`)
+- **JSONLogic in Node.js or the browser** → `packages/wasm` (`npm i @goplasmatic/datalogic`)
+- **Visual rule editor / debugger in a React app** → `packages/ui` (`npm i @goplasmatic/datalogic-ui`)
+- **Compare engines or measure performance** → `packages/benchmark` (dev-only, not published)
+
 ## Three things you can build with it
 
 ### 1. Business rules
@@ -170,104 +177,41 @@ config, or templating.
 
 ## Compile once, evaluate many
 
-For high-throughput callers, compile the rule once and reuse a
-`Session` — it owns a reusable arena and resets it between calls so
-peak memory tracks the largest single evaluation.
-
-```rust
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
-let mut session = engine.session();
-
-for x in 0..3 {
-    let payload = format!(r#"{{"x": {}}}"#, x);
-    let result = session.eval_str(&compiled, &payload).unwrap();
-    assert_eq!(result, (x + 1).to_string());
-    session.reset();
-}
-```
-
+For high-throughput callers, compile the rule once and reuse a `Session` —
+it owns a reusable arena and resets it between calls, so peak memory
+tracks the largest single evaluation. The full pattern (with `Engine`,
+`compile`, `session`, and `reset`) lives in
+[`examples/compile_once_evaluate_many.rs`](./packages/core/examples/compile_once_evaluate_many.rs).
 Power users who want zero-copy `&DataValue<'a>` results can call
 `Engine::evaluate` directly with a caller-managed `bumpalo::Bump`.
 
 ## Custom operators
 
-Register your own operators on an `EngineBuilder` and call them from
-rules just like the built-ins. Arguments arrive pre-evaluated as
-arena-resident `&DataValue<'a>` borrows; you allocate the result back
-into the arena.
-
-```rust
-use bumpalo::Bump;
-use datalogic_rs::operator::EvalContext;
-use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
-
-struct Double;
-impl CustomOperator for Double {
-    fn evaluate<'a>(
-        &self,
-        args: &[&'a DataValue<'a>],
-        _ctx: &mut EvalContext<'_, 'a>,
-        arena: &'a Bump,
-    ) -> Result<&'a DataValue<'a>> {
-        let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
-        Ok(arena.alloc(DataValue::from_f64(n * 2.0)))
-    }
-}
-
-let engine = Engine::builder().add_operator("double", Double).build();
-let result = engine.eval_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
-assert_eq!(result, "42");
-```
-
-See [Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html) in the docs for the full guide.
+Register your own operators on `Engine::builder().add_operator(...)` and
+call them from rules just like the built-ins. Arguments arrive
+pre-evaluated as arena-resident `&DataValue<'a>` borrows; you allocate
+the result back into the arena. Runnable example:
+[`examples/custom_operator.rs`](./packages/core/examples/custom_operator.rs).
+Full guide:
+[Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
 
 ## Configuration
 
-`EvaluationConfig` controls behaviour for edge cases — how arithmetic
-treats non-numeric values, what division-by-zero returns, which
-truthiness model `if`/`and`/`or` use, and how aggressively numeric
-coercion runs. See the
+`EvaluationConfig` controls edge-case behaviour — non-numeric arithmetic,
+division by zero, truthiness model, numeric coercion. See the
 [Configuration guide](https://goplasmatic.github.io/datalogic-rs/advanced/configuration.html)
 for presets (`safe_arithmetic`, `strict`) and per-field options.
 
 ## Debugging with traces
 
-When a rule returns something unexpected, enable the `trace` feature
-to see every evaluation step — which branches were taken, which
-sub-expressions short-circuited, and what each one returned.
-
-```rust
-// Cargo.toml: datalogic-rs = { version = "5", features = ["trace"] }
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let run = engine
-    .trace()
-    .eval_str(
-        r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
-        r#"{"age": 21}"#,
-    );
-
-println!("result: {}", run.result.unwrap());   // "adult"
-println!("{} steps recorded", run.steps.len());
-```
-
-From JavaScript / TypeScript:
-
-```javascript
-import init, { evaluate_with_trace } from '@goplasmatic/datalogic';
-
-await init();
-const traced = JSON.parse(evaluate_with_trace(logic, data));
-console.log(traced.result, traced.steps);
-```
-
-For an interactive view of the trace, drop in the React debugger
-(`@goplasmatic/datalogic-ui`) or use the
+Enable the `trace` feature to record every evaluation step. From Rust,
+`engine.trace().eval_str(rule, data)` returns a `TracedRun` with
+`result` + `steps`. From JavaScript / TypeScript, call
+`evaluate_with_trace(logic, data)` from `@goplasmatic/datalogic`. For an
+interactive trace view, drop in the React debugger or use the
 [online playground](https://goplasmatic.github.io/datalogic-rs/playground/).
+See [`examples/tracing.rs`](./packages/core/examples/tracing.rs) for the
+full Rust pattern.
 
 ## Performance & Benchmarks
 

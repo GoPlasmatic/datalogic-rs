@@ -10,6 +10,11 @@ This package provides WebAssembly bindings for [datalogic-rs](https://github.com
 npm install @goplasmatic/datalogic
 ```
 
+> **Building from source instead?** You'll need [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
+> and the `wasm32-unknown-unknown` Rust target. See
+> [Building from Source](#building-from-source) below. The published
+> npm package above is pre-built — no toolchain required to consume it.
+
 ## Quick Start
 
 ```javascript

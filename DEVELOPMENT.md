@@ -161,19 +161,12 @@ JSONLogic implementation as a comparison subject, see
 
 ## Adding a custom operator (your own application)
 
-Implement `CustomOperator` and register on the builder:
-
-```rust
-let engine = Engine::builder()
-    .add_operator("my_op", MyOp)
-    .build();
-```
-
-Args arrive *pre-evaluated* as `&'a DataValue<'a>`. Allocate the result
-into the supplied arena. See
-[`packages/core/examples/custom_operator.rs`](./packages/core/examples/custom_operator.rs)
-for a complete example, and the `CustomOperator` rustdoc for lifetime
-notes.
+Custom operators (extending the engine from your application code) are
+covered in the
+[Custom Operators guide](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html)
+on the docs site, with a runnable
+[`custom_operator` example](./packages/core/examples/custom_operator.rs)
+in the core crate.
 
 ## Documentation site (`docs/`)
 

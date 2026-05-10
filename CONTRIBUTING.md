@@ -84,55 +84,22 @@ Error cases use `"error": { "type": "NaN" }` instead of `"result"`. See
 [packages/core/tests/README.md](./packages/core/tests/README.md) for the
 full schema.
 
-## Adding a built-in operator
+## Adding an operator
 
-Built-in operators use a fast OpCode dispatch path. Adding one requires
-edits in three places:
-
-1. `packages/core/src/opcode.rs` — add an `OpCode` variant, plus entries
-   in the `FromStr` and `as_str()` implementations, plus a dispatch arm
-   in `OpCode::evaluate_direct()`.
-2. `packages/core/src/operators/<category>.rs` — implement
-   `pub(crate) fn evaluate_<op><'a>(args, ctx, engine, arena) -> Result<&'a DataValue<'a>>`.
-3. Add a JSON suite under `packages/core/tests/suites/<category>/`
-   covering the happy path and at least one error case. Register the
-   suite in `packages/core/tests/suites/index.json`.
-
-If your operator is domain-specific, prefer a **custom operator** via the
-`CustomOperator` trait instead — see
-[`packages/core/examples/custom_operator.rs`](./packages/core/examples/custom_operator.rs).
-
-## Adding a custom operator (user-facing extension)
-
-If you are extending datalogic-rs in your own application, implement the
-`CustomOperator` trait and register on the builder
-(`Engine::builder().add_operator(...)`). Args arrive **pre-evaluated** as
-arena-resident `&'a DataValue<'a>` borrows; allocate the result back into
-the supplied arena. See the trait docs in `lib.rs` and the example for
-patterns.
-
----
+- **Built-in operator** (ships in the crate, gets an `OpCode`): canonical
+  step-by-step is in
+  [DEVELOPMENT.md → Adding a built-in operator](./DEVELOPMENT.md#adding-a-built-in-operator).
+- **Custom operator** (your own application extends the engine): implement
+  `CustomOperator`, register on `Engine::builder().add_operator(...)`. See
+  the [`custom_operator` example](./packages/core/examples/custom_operator.rs)
+  and [Custom Operators in the docs site](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
 
 ## Debugging rules
 
-The `trace` feature records every evaluation step:
-
-```rust
-// Cargo.toml: datalogic-rs = { version = "5", features = ["trace"] }
-use datalogic_rs::Engine;
-
-let engine = Engine::new();
-let run = engine.trace().eval_str(
-    r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
-    r#"{"age": 21}"#,
-);
-
-println!("result: {}", run.result.unwrap());   // "adult"
-println!("{} steps recorded", run.steps.len());
-```
-
-From JavaScript, call `evaluate_with_trace` from `@goplasmatic/datalogic`
-or drop the `@goplasmatic/datalogic-ui` debugger into your app.
+Enable the `trace` feature to record every evaluation step, then inspect
+the trace programmatically (Rust) or visually (the React debugger). See
+the [Debugging with traces](./README.md#debugging-with-traces) section in
+the README for a full Rust + JS example.
 
 ---
 
