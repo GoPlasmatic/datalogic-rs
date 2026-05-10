@@ -19,18 +19,18 @@ use super::optimize;
 pub(super) fn compile_node(
     value: &OwnedDataValue,
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     match value {
         OwnedDataValue::Object(pairs) if pairs.len() > 1 => {
-            compile_multi_key_object(pairs, engine, preserve_structure, ctx)
+            compile_multi_key_object(pairs, engine, templating, ctx)
         }
         OwnedDataValue::Object(pairs) if pairs.len() == 1 => {
             let (op_name, args_value) = &pairs[0];
-            compile_operator_invocation(op_name, args_value, engine, preserve_structure, ctx)
+            compile_operator_invocation(op_name, args_value, engine, templating, ctx)
         }
-        OwnedDataValue::Array(arr) => compile_array(arr, engine, preserve_structure, ctx),
+        OwnedDataValue::Array(arr) => compile_array(arr, engine, templating, ctx),
         _ => Ok(CompiledNode::value_with_id(
             Some(ctx.next_id()),
             value.clone(),
@@ -38,20 +38,20 @@ pub(super) fn compile_node(
     }
 }
 
-/// Multi-key object — only valid in `preserve_structure` mode (where it
+/// Multi-key object — only valid in `templating` mode (where it
 /// becomes a structured-object output template); otherwise an error.
 fn compile_multi_key_object(
     pairs: &[(String, OwnedDataValue)],
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    #[cfg(feature = "preserve")]
-    if preserve_structure {
+    #[cfg(feature = "templating")]
+    if templating {
         let fields: Vec<_> = pairs
             .iter()
             .map(|(key, val)| {
-                compile_node(val, engine, preserve_structure, ctx)
+                compile_node(val, engine, templating, ctx)
                     .map(|compiled_val| (key.clone(), compiled_val))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -62,30 +62,30 @@ fn compile_multi_key_object(
             },
         )));
     }
-    let _ = (pairs, engine, preserve_structure, ctx);
+    let _ = (pairs, engine, templating, ctx);
     Err(crate::error::Error::invalid_operator("Unknown Operator"))
 }
 
 /// Single-key object: an operator invocation. Routes to either the builtin
 /// path (when the key parses as an `OpCode`) or the custom-operator /
-/// preserve-structure path.
+/// templating-mode path.
 fn compile_operator_invocation(
     op_name: &str,
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     if let Ok(opcode) = op_name.parse::<OpCode>() {
-        return compile_builtin(op_name, opcode, args_value, engine, preserve_structure, ctx);
+        return compile_builtin(op_name, opcode, args_value, engine, templating, ctx);
     }
 
-    #[cfg(feature = "preserve")]
-    if preserve_structure {
-        return compile_preserve_unknown(op_name, args_value, engine, preserve_structure, ctx);
+    #[cfg(feature = "templating")]
+    if templating {
+        return compile_templating_unknown(op_name, args_value, engine, templating, ctx);
     }
 
-    let args = compile_args(args_value, engine, preserve_structure, ctx)?;
+    let args = compile_args(args_value, engine, templating, ctx)?;
     Ok(CompiledNode::CustomOperator(Box::new(
         crate::node::CustomOperatorData {
             id: Some(ctx.next_id()),
@@ -105,7 +105,7 @@ fn compile_builtin(
     opcode: OpCode,
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
@@ -113,7 +113,7 @@ fn compile_builtin(
         return Ok(invalid_args_marker(opcode, args_value, ctx));
     }
 
-    let args = compile_args(args_value, engine, preserve_structure, ctx)?;
+    let args = compile_args(args_value, engine, templating, ctx)?;
 
     if let Some(node) = try_specialised(op_name, opcode, &args, ctx) {
         return Ok(node);
@@ -229,21 +229,21 @@ fn try_compile_throw_literal(
     )))
 }
 
-/// Unknown-operator handling under `preserve_structure` mode. Custom
+/// Unknown-operator handling under `templating` mode. Custom
 /// operators registered on the engine compile to a `CustomOperator`;
 /// otherwise the key/value pair becomes a single-field structured-object
 /// output template.
-#[cfg(feature = "preserve")]
-fn compile_preserve_unknown(
+#[cfg(feature = "templating")]
+fn compile_templating_unknown(
     op_name: &str,
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     if let Some(eng) = engine {
         if eng.has_custom_operator(op_name) {
-            let args = compile_args(args_value, engine, preserve_structure, ctx)?;
+            let args = compile_args(args_value, engine, templating, ctx)?;
             return Ok(CompiledNode::CustomOperator(Box::new(
                 crate::node::CustomOperatorData {
                     id: Some(ctx.next_id()),
@@ -253,7 +253,7 @@ fn compile_preserve_unknown(
             )));
         }
     }
-    let compiled_val = compile_node(args_value, engine, preserve_structure, ctx)?;
+    let compiled_val = compile_node(args_value, engine, templating, ctx)?;
     let fields = vec![(op_name.to_string(), compiled_val)].into_boxed_slice();
     Ok(CompiledNode::StructuredObject(Box::new(
         crate::node::StructuredObjectData {
@@ -268,12 +268,12 @@ fn compile_preserve_unknown(
 fn compile_array(
     arr: &[OwnedDataValue],
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     let nodes = arr
         .iter()
-        .map(|v| compile_node(v, engine, preserve_structure, ctx))
+        .map(|v| compile_node(v, engine, templating, ctx))
         .collect::<Result<Vec<_>>>()?;
 
     let nodes_boxed = nodes.into_boxed_slice();
@@ -298,15 +298,15 @@ fn compile_array(
 pub(super) fn compile_args(
     value: &OwnedDataValue,
     engine: Option<&Engine>,
-    preserve_structure: bool,
+    templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<Box<[CompiledNode]>> {
     match value {
         OwnedDataValue::Array(arr) => arr
             .iter()
-            .map(|v| compile_node(v, engine, preserve_structure, ctx))
+            .map(|v| compile_node(v, engine, templating, ctx))
             .collect::<Result<Vec<_>>>()
             .map(Vec::into_boxed_slice),
-        _ => Ok(vec![compile_node(value, engine, preserve_structure, ctx)?].into_boxed_slice()),
+        _ => Ok(vec![compile_node(value, engine, templating, ctx)?].into_boxed_slice()),
     }
 }

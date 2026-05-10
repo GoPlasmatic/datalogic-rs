@@ -58,8 +58,8 @@ provides one-release-cycle shims for the most common 4.x entry points.
   workflow; if you were importing them, file an issue with your use case.
 - **The `preserve` *operator* is removed.** Literal scalars and arrays
   pass through inline, so the operator served no purpose.
-  Object templating moves to `Engine::builder().preserve_structure(true)`
-  (the `preserve` *mode*, gated by `feature = "preserve"`).
+  Object templating moves to `Engine::builder().with_templating(true)`
+  (templating mode, gated by `feature = "templating"`).
 - **`evaluate*` verbs unified.** What 4.x called `evaluate_value` is now
   `evaluate_serde` (compat-only). The new entry points are
   `Engine::evaluate_str` (one-shot, JSON in / JSON out) and
@@ -99,7 +99,7 @@ provides one-release-cycle shims for the most common 4.x entry points.
 ### Added
 
 - **`EngineBuilder`** — fluent construction of `Engine` with config,
-  preserve-structure mode, and pre-registered custom operators.
+  templating mode, and pre-registered custom operators.
 - **`Session`** — handle that owns a reusable `bumpalo::Bump` and resets
   it between calls. Returns owned (`OwnedDataValue` / `String` /
   `serde_json::Value`) results so callers don't manage arena lifetimes.
@@ -166,14 +166,15 @@ provides one-release-cycle shims for the most common 4.x entry points.
 
 - `compat` — `serde_json::Value` interop and `LegacyApi` shims for 4.x
   callers.
-- `preserve` — structure-preservation (templating) mode on the builder.
+- `templating` — templating mode on the builder (multi-key objects compile
+  to output-shaping templates; unknown operator keys pass through).
 - `datetime` — `now`, `parse_date`, `format_date`, datetime arithmetic.
 - `trace` — execution tracing (transitively requires `compat`).
 - `error-handling` — `try` / `throw` operators.
 - `ext-string`, `ext-array`, `ext-control`, `ext-math` — opt-in operator
   groups beyond the JSONLogic baseline.
 - `wasm` — convenience bundle for the `@goplasmatic/datalogic` WASM
-  package (enables `datetime`, `trace`, `preserve`).
+  package (enables `datetime`, `trace`, `templating`).
 
 See `examples/migrating_from_v4.rs` for a side-by-side migration walkthrough.
 

@@ -10,7 +10,7 @@ Each `*.json` file in this tree is a list of test cases consumed by
 |---|---|
 | `compatible.json` | The shared JSONLogic baseline — every conforming engine should pass these. The reference cases come from <https://jsonlogic.com/tests.json>. |
 | `*.extra.json` (e.g. `try.extra.json`, `val.extra.json`, `iterators.extra.json`) | v5-only extensions to the baseline operator (extra error cases, extra arg shapes, etc.). Other JSONLogic engines won't run these. |
-| `structured-objects.json` | Cases for `preserve_structure` mode (object templating). Gated on `feature = "preserve"` in the test runner. |
+| `structured-objects.json` | Cases for templating mode (object templating). Gated on `feature = "templating"` in the test runner. |
 | `unknown-operators.json` | Behaviour when a rule uses an operator name the engine doesn't know. |
 | `additional.json` / `chained.json` / `coalesce.json` / `truthiness.json` / `scopes.json` / `empty-objects.json` / `type.json` | Catch-alls for cross-cutting behaviour that doesn't belong to one operator. |
 | `val.json` / `val-compat.json` / `val.extra.json` / `exists.json` | The `val` / `var` / `exists` family — path-resolution semantics, scope walking, reduce shortcuts. |
@@ -47,7 +47,7 @@ Required fields:
 
 Optional fields:
 
-- `preserve_structure` — set to `true` for cases that need the templating mode (the runner enables it on the engine for that case only).
+- `templating` — set to `true` for cases that need templating mode (the runner enables it on the engine for that case only).
 
 ## Running
 

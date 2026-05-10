@@ -98,14 +98,14 @@ import { evaluate } from '@goplasmatic/datalogic/nodejs';
 
 ## API Reference
 
-### `evaluate(logic: string, data: string, preserve_structure: boolean): string`
+### `evaluate(logic: string, data: string, templating: boolean): string`
 
 Evaluate a JSONLogic expression against data.
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
 - `data` - JSON string containing the data to evaluate against
-- `preserve_structure` - If `true`, preserves object structure for JSON templates with embedded JSONLogic (templating mode)
+- `templating` - If `true`, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 
 **Returns:** JSON string result
 
@@ -116,19 +116,19 @@ evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}', false); // "true"
 evaluate('{"+": [1, 2, 3]}', '{}', false); // "6"
 evaluate('{"map": [[1,2,3], {"+": [{"var": ""}, 1]}]}', '{}', false); // "[2,3,4]"
 
-// With preserve_structure for templating
+// With templating mode for JSON templates
 evaluate('{"name": {"var": "user"}, "active": true}', '{"user": "Alice"}', true);
 // '{"name":"Alice","active":true}'
 ```
 
-### `evaluate_with_trace(logic: string, data: string, preserve_structure: boolean): string`
+### `evaluate_with_trace(logic: string, data: string, templating: boolean): string`
 
 Evaluate with execution trace for debugging. Returns detailed step-by-step information about how the expression was evaluated.
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
 - `data` - JSON string containing the data to evaluate against
-- `preserve_structure` - If `true`, preserves object structure for JSON templates with embedded JSONLogic (templating mode)
+- `templating` - If `true`, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 
 **Returns:** JSON string containing `TracedResult` with:
 - `result` - The evaluation result
@@ -149,13 +149,13 @@ console.log(JSON.parse(trace));
 
 A compiled JSONLogic rule for repeated evaluation. Pre-compiling rules provides better performance when evaluating the same logic against different data.
 
-#### `new CompiledRule(logic: string, preserve_structure: boolean)`
+#### `new CompiledRule(logic: string, templating: boolean)`
 
 Create a new compiled rule.
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
-- `preserve_structure` - If `true`, preserves object structure for JSON templates with embedded JSONLogic (templating mode)
+- `templating` - If `true`, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 
 ```javascript
 const rule = new CompiledRule('{">=": [{"var": "age"}, 18]}', false);
@@ -194,10 +194,11 @@ This library supports 59 built-in operators covering all standard JSONLogic plus
 
 **Type Operations:** `type`
 
-> **Templating mode:** v5 removed the `preserve` *operator*. To preserve
-> object structure for JSON templates with embedded JSONLogic, pass
-> `preserve_structure: true` to `evaluate` (or
-> `new CompiledRule(logic, true)`) — see the API Reference above.
+> **Templating mode:** v5 removed the `preserve` *operator*. To enable
+> templating (JSON templates with embedded JSONLogic, where multi-key
+> objects compile to output-shaping templates), pass `templating: true`
+> to `evaluate` (or `new CompiledRule(logic, true)`) — see the API
+> Reference above.
 
 For the complete list and documentation, see the [main repository](https://github.com/GoPlasmatic/datalogic-rs).
 

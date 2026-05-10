@@ -77,7 +77,7 @@ impl ExpressionNode {
                 expression: node_serialize::custom_to_json_string(&data.name, &data.args),
                 children: Self::op_children(&data.args),
             },
-            #[cfg(feature = "preserve")]
+            #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => ExpressionNode {
                 id,
                 expression: node_serialize::structured_to_json_string(&data.fields),
@@ -131,7 +131,7 @@ impl ExpressionNode {
 
     /// `op_children` for the `(name, CompiledNode)` shape used by structured
     /// object fields.
-    #[cfg(feature = "preserve")]
+    #[cfg(feature = "templating")]
     #[inline]
     fn op_children_from_fields(fields: &[(String, CompiledNode)]) -> Vec<ExpressionNode> {
         fields

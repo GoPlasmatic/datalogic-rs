@@ -188,24 +188,24 @@ impl<T: ArenaOperator + ?Sized> crate::CustomOperator for T {
 pub trait LegacyApi: Sized {
     // ---- Constructors ----
 
-    /// Deprecated: use `Engine::builder().preserve_structure(true).build()`.
+    /// Deprecated: use `Engine::builder().with_templating(true).build()`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `Engine::builder().preserve_structure(true).build()`"
+        note = "use `Engine::builder().with_templating(true).build()`"
     )]
-    #[cfg(feature = "preserve")]
+    #[cfg(feature = "templating")]
     fn with_preserve_structure() -> Self;
 
     /// Deprecated: use `Engine::builder().config(...).build()`.
     #[deprecated(since = "5.0.0", note = "use `Engine::builder().config(...).build()`")]
     fn with_config(config: EvaluationConfig) -> Self;
 
-    /// Deprecated: use `Engine::builder().config(...).preserve_structure(...).build()`.
+    /// Deprecated: use `Engine::builder().config(...).with_templating(...).build()`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `Engine::builder().config(...).preserve_structure(...).build()`"
+        note = "use `Engine::builder().config(...).with_templating(...).build()`"
     )]
-    #[cfg(feature = "preserve")]
+    #[cfg(feature = "templating")]
     fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self;
 
     // ---- Compile entries ----
@@ -318,20 +318,20 @@ pub trait LegacyApi: Sized {
 impl LegacyApi for Engine {
     // ---- Constructors ----
 
-    #[cfg(feature = "preserve")]
+    #[cfg(feature = "templating")]
     fn with_preserve_structure() -> Self {
-        Engine::builder().preserve_structure(true).build()
+        Engine::builder().with_templating(true).build()
     }
 
     fn with_config(config: EvaluationConfig) -> Self {
         Engine::builder().config(config).build()
     }
 
-    #[cfg(feature = "preserve")]
+    #[cfg(feature = "templating")]
     fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
         Engine::builder()
             .config(config)
-            .preserve_structure(preserve_structure)
+            .with_templating(preserve_structure)
             .build()
     }
 

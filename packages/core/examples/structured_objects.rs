@@ -1,6 +1,6 @@
-//! Example demonstrating the structured objects (`preserve_structure`) feature.
+//! Example demonstrating the structured-objects (templating) feature.
 //!
-//! When `preserve_structure` mode is enabled, Engine treats unknown keys as
+//! When templating mode is enabled, Engine treats unknown keys as
 //! literal output fields rather than operators. This enables JSON templating
 //! where the output structure mirrors the input template.
 //!
@@ -10,10 +10,10 @@
 use datalogic_rs::Engine;
 
 fn main() {
-    println!("Structured Objects (preserve_structure) Examples\n");
-    println!("=================================================\n");
+    println!("Structured Objects (templating) Examples\n");
+    println!("=========================================\n");
 
-    let engine = Engine::builder().preserve_structure(true).build();
+    let engine = Engine::builder().with_templating(true).build();
 
     // Example 1: Basic object template
     println!("1. Basic Object Template");
@@ -156,12 +156,12 @@ fn main() {
     let result = engine.evaluate_str(template, data).unwrap();
     println!("   Result: {}\n", result);
 
-    // Example 6: Comparing with vs without preserve_structure
-    println!("6. With vs Without preserve_structure");
-    println!("--------------------------------------");
+    // Example 6: Comparing with vs without templating
+    println!("6. With vs Without templating");
+    println!("------------------------------");
 
     let standard_engine = Engine::new();
-    let preserve_engine = Engine::builder().preserve_structure(true).build();
+    let templating_engine = Engine::builder().with_templating(true).build();
 
     let template = r#"{
         "result": {"var": "x"},
@@ -175,8 +175,8 @@ fn main() {
         standard_result.err().map(|e| e.to_string())
     );
 
-    let preserve_result = preserve_engine.evaluate_str(template, data).unwrap();
-    println!("   Preserve engine: {}", preserve_result);
+    let templating_result = templating_engine.evaluate_str(template, data).unwrap();
+    println!("   Templating engine: {}", templating_result);
 
     println!("\nDone!");
 }

@@ -38,8 +38,12 @@ impl Logic {
 
     #[inline]
     fn compile_inner(logic: &OwnedDataValue, engine: &Engine, mut ctx: CompileCtx) -> Result<Self> {
-        let root =
-            walker::compile_node(logic, Some(engine), engine.preserve_structure(), &mut ctx)?;
+        let root = walker::compile_node(
+            logic,
+            Some(engine),
+            engine.is_templating_enabled(),
+            &mut ctx,
+        )?;
         Ok(Self::new(root))
     }
 }

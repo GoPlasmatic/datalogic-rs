@@ -76,7 +76,7 @@ fn main() {
     println!("\n[3] custom op double(21) -> {r}");
 
     // ============================================================
-    // 4. The v4 `preserve` operator → `preserve_structure` mode
+    // 4. The v4 `preserve` operator → templating mode
     // ============================================================
     // v4: a `{"preserve": {...}}` operator that returned its arg
     //     unchanged. Used as a way to embed object literals in rules
@@ -85,13 +85,13 @@ fn main() {
     // v5: that operator is removed. Literal scalars and arrays pass
     //     through inline already. Multi-key objects are an error by
     //     default — opt into the templating behaviour at the engine
-    //     level via `Engine::builder().preserve_structure(true)` and
+    //     level via `Engine::builder().with_templating(true)` and
     //     drop the `preserve` wrapper from your rules.
     //
     // Equivalent rules:
     //
     //   v4: { "preserve": { "name": "Jane", "age": 25 } }
-    //   v5: enable `preserve_structure(true)` and use the object
+    //   v5: enable `with_templating(true)` and use the object
     //       directly: { "name": "Jane", "age": 25 }
     //
     // Operator values inside that object are still computed, so
@@ -101,14 +101,14 @@ fn main() {
     //
     // See `examples/structured_objects.rs` and the proposal's D8 for
     // the full walkthrough.
-    let engine = Engine::builder().preserve_structure(true).build();
+    let engine = Engine::builder().with_templating(true).build();
     let templated = engine
         .evaluate_str(
             r#"{"name": "Jane", "isAdult": {">=": [{"var": "age"}, 18]}}"#,
             r#"{"age": 25}"#,
         )
         .unwrap();
-    println!("\n[4] v5 preserve_structure -> {templated}");
+    println!("\n[4] v5 templating -> {templated}");
 
     // ============================================================
     // 5. Configuration: struct literals → fluent setters

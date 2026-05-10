@@ -22,7 +22,7 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
         }
         CompiledNode::BuiltinOperator { opcode, args, .. } => builtin_to_json_string(opcode, args),
         CompiledNode::CustomOperator(data) => custom_to_json_string(&data.name, &data.args),
-        #[cfg(feature = "preserve")]
+        #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => structured_to_json_string(&data.fields),
         CompiledNode::Var {
             scope_level,
@@ -94,7 +94,7 @@ pub(crate) fn custom_to_json_string(name: &str, args: &[CompiledNode]) -> String
     format!("{{\"{}\": {}}}", name, args_str)
 }
 
-#[cfg(feature = "preserve")]
+#[cfg(feature = "templating")]
 pub(crate) fn structured_to_json_string(fields: &[(String, CompiledNode)]) -> String {
     let items: Vec<String> = fields
         .iter()

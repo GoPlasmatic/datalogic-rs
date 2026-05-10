@@ -115,7 +115,7 @@
         "result": true
     },
 
-    "# IsNight with preserve_structure for conditional structured objects",
+    "# IsNight with templating for conditional structured objects",
     {
         "description": "Conditional logic in structured object - is_night returns true",
         "rule": {
@@ -133,7 +133,7 @@
                 "should_i": "yes"
             }
         },
-        "preserve_structure": true
+        "templating": true
     },
     {
         "description": "Conditional logic in structured object - is_night returns false",
@@ -152,7 +152,7 @@
                 "should_i": "nah"
             }
         },
-        "preserve_structure": true
+        "templating": true
     },
 
     "# Error cases",

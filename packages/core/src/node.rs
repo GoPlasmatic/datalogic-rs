@@ -156,7 +156,7 @@ pub(crate) struct CustomOperatorData {
 }
 
 /// Data for a structured object template (boxed inside CompiledNode to reduce enum size).
-#[cfg(feature = "preserve")]
+#[cfg(feature = "templating")]
 #[derive(Debug, Clone)]
 pub(crate) struct StructuredObjectData {
     pub id: NodeId,
@@ -299,9 +299,9 @@ pub(crate) enum CompiledNode {
     /// Boxed to reduce enum size (rare variant).
     CustomOperator(Box<CustomOperatorData>),
 
-    /// A structured object template for preserve_structure mode.
+    /// A structured object template for templating mode.
     /// Boxed to reduce enum size (rare variant).
-    #[cfg(feature = "preserve")]
+    #[cfg(feature = "templating")]
     StructuredObject(Box<StructuredObjectData>),
 
     /// A pre-compiled variable access (unified var/val).
@@ -369,7 +369,7 @@ impl CompiledNode {
             CompiledNode::Array { id, .. } => *id,
             CompiledNode::BuiltinOperator { id, .. } => *id,
             CompiledNode::CustomOperator(data) => data.id,
-            #[cfg(feature = "preserve")]
+            #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => data.id,
             CompiledNode::Var { id, .. } => *id,
             #[cfg(feature = "ext-control")]
@@ -408,7 +408,7 @@ impl CompiledNode {
                     f(i as u32, n);
                 }
             }
-            #[cfg(feature = "preserve")]
+            #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => {
                 for (i, (_, n)) in data.fields.iter().enumerate() {
                     f(i as u32, n);
@@ -470,7 +470,7 @@ impl CompiledNode {
                     f(n);
                 }
             }
-            #[cfg(feature = "preserve")]
+            #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => {
                 for (_, n) in data.fields.iter_mut() {
                     f(n);
@@ -791,7 +791,7 @@ fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
         CompiledNode::Throw(data) => {
             bytes += estimate_value_bytes(&data.error);
         }
-        #[cfg(feature = "preserve")]
+        #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => {
             for (k, _) in data.fields.iter() {
                 bytes += k.len();
@@ -835,7 +835,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Exists(_) => false,
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(_) => false,
-        #[cfg(feature = "preserve")]
+        #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => {
             data.fields.iter().all(|(_, node)| node_is_static(node))
         }

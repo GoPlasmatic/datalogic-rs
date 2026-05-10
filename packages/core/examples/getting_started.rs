@@ -24,18 +24,17 @@ fn main() {
     println!("[1] business rule: allowed = {allowed}");
 
     // ============================================================
-    // 2. JSON TEMPLATES — preserve_structure mode lets object keys
-    //    flow through to the output; operator values become computed
-    //    fields.
+    // 2. JSON TEMPLATES — templating mode lets object keys flow through
+    //    to the output; operator values become computed fields.
     //
-    //    `preserve_structure(true)` is the v5 replacement for the old
+    //    `with_templating(true)` is the v5 replacement for the old
     //    v4 `{"preserve": ...}` operator and the heuristic templating
     //    behaviour. It must be enabled on the builder; without it,
     //    multi-key objects in a rule are treated as a parse error
     //    ("Unknown Operator"). For a deeper walkthrough see the
     //    `structured_objects` example.
     // ============================================================
-    let engine = Engine::builder().preserve_structure(true).build();
+    let engine = Engine::builder().with_templating(true).build();
 
     let shaped = engine
         .evaluate_str(

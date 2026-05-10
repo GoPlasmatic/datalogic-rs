@@ -32,16 +32,16 @@ use crate::engine::Engine;
 ///   `""` → 0 numeric coercions enabled. Override with [`Self::config`];
 ///   [`EvaluationConfig::safe_arithmetic`] / [`EvaluationConfig::strict`]
 ///   are alternative starting points.
-/// - **`preserve_structure`** — `false` (templating mode off). Set with
-///   [`Self::preserve_structure`]; only effective when the crate is
-///   built with `feature = "preserve"`.
+/// - **`templating`** — `false` (templating mode off). Set with
+///   [`Self::with_templating`]; only effective when the crate is
+///   built with `feature = "templating"`.
 /// - **`operators`** — empty. Add custom operators with
 ///   [`Self::add_operator`] / [`Self::add_operator_box`] before
 ///   [`Self::build`] freezes the set.
 #[must_use = "the builder is consumed by `.build()`"]
 pub struct EngineBuilder {
     config: EvaluationConfig,
-    preserve_structure: bool,
+    templating: bool,
     operators: HashMap<String, Box<dyn CustomOperator>>,
 }
 
@@ -57,7 +57,7 @@ impl EngineBuilder {
     pub fn new() -> Self {
         Self {
             config: EvaluationConfig::default(),
-            preserve_structure: false,
+            templating: false,
             operators: HashMap::new(),
         }
     }
@@ -70,12 +70,13 @@ impl EngineBuilder {
         self
     }
 
-    /// Toggle structure-preservation mode (templating). Only effective when
-    /// the crate is built with `feature = "preserve"`.
+    /// Toggle templating mode (multi-key objects compile to output-shaping
+    /// templates; unknown operator keys pass through verbatim). Only
+    /// effective when the crate is built with `feature = "templating"`.
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
-    pub fn preserve_structure(mut self, on: bool) -> Self {
-        self.preserve_structure = on;
+    pub fn with_templating(mut self, on: bool) -> Self {
+        self.templating = on;
         self
     }
 
@@ -118,6 +119,6 @@ impl EngineBuilder {
 
     /// Finalise the builder into an immutable [`Engine`] engine.
     pub fn build(self) -> Engine {
-        Engine::from_builder_parts(self.config, self.preserve_structure, self.operators)
+        Engine::from_builder_parts(self.config, self.templating, self.operators)
     }
 }

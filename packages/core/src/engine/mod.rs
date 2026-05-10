@@ -123,9 +123,10 @@ impl Drop for DepthGuard {
 pub struct Engine {
     /// Custom `CustomOperator` implementations registered with the engine.
     pub(super) custom_operators: HashMap<String, Box<dyn crate::CustomOperator>>,
-    /// Flag to preserve structure of objects with unknown operators
-    #[cfg(feature = "preserve")]
-    preserve_structure: bool,
+    /// Whether templating mode is enabled — multi-key objects compile
+    /// to output-shaping templates and unknown operator keys pass through.
+    #[cfg(feature = "templating")]
+    templating: bool,
     /// Configuration for evaluation behavior
     config: EvaluationConfig,
 }
@@ -177,8 +178,8 @@ impl std::fmt::Debug for Engine {
         // can't render a meaningful Debug.
         let mut s = f.debug_struct("Engine");
         s.field("custom_operators", &self.custom_operators.len());
-        #[cfg(feature = "preserve")]
-        s.field("preserve_structure", &self.preserve_structure);
+        #[cfg(feature = "templating")]
+        s.field("templating", &self.templating);
         s.field("config", &self.config);
         s.finish_non_exhaustive()
     }
@@ -188,7 +189,7 @@ impl Engine {
     /// Start a [`crate::EngineBuilder`] for fluent construction.
     ///
     /// Use the builder when you need a non-default [`EvaluationConfig`],
-    /// structure-preservation mode, or pre-registered custom operators.
+    /// templating mode, or pre-registered custom operators.
     /// For a stock engine, [`Self::new`] is shorter. The 4.x
     /// `with_preserve_structure` / `with_config` / `with_config_and_structure`
     /// constructors are still reachable through `compat::LegacyApi` when the
@@ -229,13 +230,13 @@ impl Engine {
     #[inline]
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
-        _preserve_structure: bool,
+        _templating: bool,
         operators: HashMap<String, Box<dyn crate::CustomOperator>>,
     ) -> Self {
         Self {
             custom_operators: operators,
-            #[cfg(feature = "preserve")]
-            preserve_structure: _preserve_structure,
+            #[cfg(feature = "templating")]
+            templating: _templating,
             config,
         }
     }
@@ -243,8 +244,8 @@ impl Engine {
     /// Creates a new Engine engine with all built-in operators.
     ///
     /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
-    /// Structure preservation is disabled by default. For non-default
-    /// configuration (custom [`EvaluationConfig`], structure preservation,
+    /// Templating mode is disabled by default. For non-default
+    /// configuration (custom [`EvaluationConfig`], templating mode,
     /// pre-registered custom operators) prefer [`Self::builder`].
     ///
     /// # Example
@@ -263,15 +264,17 @@ impl Engine {
         &self.config
     }
 
-    /// Returns whether structure preservation is enabled. Always returns
-    /// `false` when the crate is built without `feature = "preserve"`
-    /// (the underlying field doesn't exist off-feature).
-    pub fn preserve_structure(&self) -> bool {
-        #[cfg(feature = "preserve")]
+    /// Internal: whether templating mode is on. Always returns `false`
+    /// when the crate is built without `feature = "templating"` (the
+    /// underlying field doesn't exist off-feature). Folded here so the
+    /// single call site in `compile/` doesn't repeat the `#[cfg]` ceremony.
+    #[inline]
+    pub(crate) fn is_templating_enabled(&self) -> bool {
+        #[cfg(feature = "templating")]
         {
-            self.preserve_structure
+            self.templating
         }
-        #[cfg(not(feature = "preserve"))]
+        #[cfg(not(feature = "templating"))]
         {
             false
         }

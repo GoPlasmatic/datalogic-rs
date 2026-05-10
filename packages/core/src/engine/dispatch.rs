@@ -197,7 +197,7 @@ pub(super) fn dispatch_node_inner<'a>(
             // Out-of-line — bumpalo::Vec construction would otherwise force
             // a large stack frame on every dispatch arm via worst-case
             // spill sizing. See the comments on the helpers below.
-            #[cfg(feature = "preserve")]
+            #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => {
                 evaluate_structured_object(data, ctx, engine, arena)
             }
@@ -332,7 +332,7 @@ pub(super) fn dispatch_node_inner<'a>(
 // `#[inline(never)]` is load-bearing — see the comment on
 // `dispatch_node_inner`.
 
-#[cfg(feature = "preserve")]
+#[cfg(feature = "templating")]
 #[inline(never)]
 fn evaluate_structured_object<'a>(
     data: &'a crate::node::StructuredObjectData,

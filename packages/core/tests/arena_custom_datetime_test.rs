@@ -1,6 +1,6 @@
 //! Tests for arena custom operators against datetime / structured-object inputs.
 
-#![cfg(all(feature = "datetime", feature = "preserve", feature = "compat"))]
+#![cfg(all(feature = "datetime", feature = "templating", feature = "compat"))]
 #![allow(deprecated)]
 
 use bumpalo::Bump;
@@ -179,9 +179,9 @@ fn test_is_night_with_timezone() {
 }
 
 #[test]
-fn test_is_night_with_preserve_structure() {
+fn test_is_night_with_templating() {
     let engine = Engine::builder()
-        .preserve_structure(true)
+        .with_templating(true)
         .add_operator("is_night", IsNightOperator)
         .build();
 
@@ -254,7 +254,7 @@ fn test_is_night_error_argument_count() {
 #[test]
 fn test_is_night_complex_structured_object() {
     let engine = Engine::builder()
-        .preserve_structure(true)
+        .with_templating(true)
         .add_operator("is_night", IsNightOperator)
         .build();
 

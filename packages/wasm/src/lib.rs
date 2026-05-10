@@ -4,10 +4,10 @@ use datalogic_rs::{CompiledLogic, DataLogic, DataValue, Error};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-/// Build a `DataLogic` engine honoring the `preserve_structure` flag.
-fn make_engine(preserve_structure: bool) -> DataLogic {
-    if preserve_structure {
-        DataLogic::builder().preserve_structure(true).build()
+/// Build a `DataLogic` engine honoring the `templating` flag.
+fn make_engine(templating: bool) -> DataLogic {
+    if templating {
+        DataLogic::builder().with_templating(true).build()
     } else {
         DataLogic::new()
     }
@@ -50,13 +50,13 @@ pub fn init() {
 /// # Arguments
 /// * `logic` - JSON string containing the JSONLogic expression
 /// * `data` - JSON string containing the data to evaluate against
-/// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
+/// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 ///
 /// # Returns
 /// JSON string result, or the merged structured `Error` JSON on failure.
 #[wasm_bindgen]
-pub fn evaluate(logic: &str, data: &str, preserve_structure: bool) -> Result<String, String> {
-    make_engine(preserve_structure)
+pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, String> {
+    make_engine(templating)
         .evaluate_str(logic, data)
         .map_err(|e| err_to_json(&e))
 }
@@ -70,19 +70,15 @@ pub fn evaluate(logic: &str, data: &str, preserve_structure: bool) -> Result<Str
 /// # Arguments
 /// * `logic` - JSON string containing the JSONLogic expression
 /// * `data` - JSON string containing the data to evaluate against
-/// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
+/// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 ///
 /// # Returns
 /// JSON string of the form `{ result, steps, expression_tree, error? }`. On
 /// runtime failure the `error` field carries the merged structured `Error`
 /// JSON (`type`, `message`, variant extras, optional `operator`/`path`).
 #[wasm_bindgen]
-pub fn evaluate_with_trace(
-    logic: &str,
-    data: &str,
-    preserve_structure: bool,
-) -> Result<String, String> {
-    let engine = make_engine(preserve_structure);
+pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, String> {
+    let engine = make_engine(templating);
     let run = engine.with_trace().evaluate_str(logic, data);
     Ok(traced_run_to_json(&run))
 }
@@ -144,10 +140,10 @@ impl CompiledRule {
     ///
     /// # Arguments
     /// * `logic` - JSON string containing the JSONLogic expression
-    /// * `preserve_structure` - If true, preserves object structure for JSON templates with embedded JSONLogic
+    /// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
     #[wasm_bindgen(constructor)]
-    pub fn new(logic: &str, preserve_structure: bool) -> Result<CompiledRule, String> {
-        let engine = make_engine(preserve_structure);
+    pub fn new(logic: &str, templating: bool) -> Result<CompiledRule, String> {
+        let engine = make_engine(templating);
         let compiled = engine.compile(logic).map_err(|e| err_to_json(&e))?;
         Ok(CompiledRule {
             engine,
@@ -190,12 +186,8 @@ impl CompiledRule {
 /// `path`. The function is kept as a separate JS export for back-compat with
 /// callers binding `evaluateStructured`.
 #[wasm_bindgen(js_name = evaluateStructured)]
-pub fn evaluate_structured(
-    logic: &str,
-    data: &str,
-    preserve_structure: bool,
-) -> Result<String, String> {
-    evaluate(logic, data, preserve_structure)
+pub fn evaluate_structured(logic: &str, data: &str, templating: bool) -> Result<String, String> {
+    evaluate(logic, data, templating)
 }
 
 /// Evaluate a JSONLogic expression with execution trace and structured errors.
@@ -207,7 +199,7 @@ pub fn evaluate_structured(
 pub fn evaluate_with_trace_structured(
     logic: &str,
     data: &str,
-    preserve_structure: bool,
+    templating: bool,
 ) -> Result<String, String> {
-    evaluate_with_trace(logic, data, preserve_structure)
+    evaluate_with_trace(logic, data, templating)
 }

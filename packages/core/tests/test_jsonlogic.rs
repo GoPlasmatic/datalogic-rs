@@ -1,11 +1,11 @@
 // The full JSONLogic suite runner exercises every operator in `tests/suites/`
-// — including the gated ones (preserve / datetime / try-throw / ext-*). Gate
-// behind `preserve` because the runner unconditionally builds an engine with
-// `Engine::builder().preserve_structure(true).build()` when a test case
+// — including the gated ones (templating / datetime / try-throw / ext-*). Gate
+// behind `templating` because the runner unconditionally builds an engine with
+// `Engine::builder().with_templating(true).build()` when a test case
 // requests it; in
 // practice users running this runner will want `--all-features` to actually
 // exercise every suite.
-#![cfg(all(feature = "preserve", feature = "compat"))]
+#![cfg(all(feature = "templating", feature = "compat"))]
 #![allow(deprecated)]
 
 use datalogic_rs::Engine;
@@ -111,15 +111,15 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
         let data_arc = std::sync::Arc::new(data);
 
-        // Check for preserve_structure flag
-        let preserve_structure = test_obj
-            .get("preserve_structure")
+        // Check for templating flag
+        let templating = test_obj
+            .get("templating")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        // Create engine with appropriate preserve_structure setting
-        let test_engine = if preserve_structure {
-            Engine::builder().preserve_structure(true).build()
+        // Create engine with appropriate templating setting
+        let test_engine = if templating {
+            Engine::builder().with_templating(true).build()
         } else {
             Engine::new()
         };

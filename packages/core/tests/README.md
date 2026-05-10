@@ -11,7 +11,7 @@ Two layers:
 
 All commands assume you're at the repo root. Most integration tests are
 gated behind `feature = "compat"` (they use `serde_json::json!`); the
-JSONLogic suite runner additionally needs `feature = "preserve"`. Use
+JSONLogic suite runner additionally needs `feature = "templating"`. Use
 `--all-features` to run everything.
 
 ```bash
@@ -63,7 +63,7 @@ Test case fields:
 | `data`               | yes      | Input data (object or `null`).                                       |
 | `result`             | one of   | Expected output value. Mutually exclusive with `error`.              |
 | `error`              | one of   | Expected error object, e.g. `{"type": "NaN"}`.                       |
-| `preserve_structure` | no       | When `true`, evaluate in templating mode (unknown keys preserved).   |
+| `templating`         | no       | When `true`, evaluate in templating mode (unknown keys preserved).   |
 
 `suites/index.json` lists every file the harness should run; new
 suites must be added there.
