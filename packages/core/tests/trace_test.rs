@@ -9,10 +9,9 @@ use serde_json::json;
 #[test]
 fn test_trace_simple_comparison() {
     let engine = Engine::new();
-    let run = engine.trace().eval_into::<serde_json::Value, _, _>(
-        r#"{">=": [{"var": "age"}, 18]}"#,
-        r#"{"age": 25}"#,
-    );
+    let run = engine
+        .trace()
+        .eval_into::<serde_json::Value, _, _>(r#"{">=": [{"var": "age"}, 18]}"#, r#"{"age": 25}"#);
 
     // Result should be true
     assert_eq!(run.result.as_ref().unwrap(), &json!(true));
@@ -52,10 +51,9 @@ fn test_trace_proposal_example() {
 #[test]
 fn test_trace_short_circuit_and() {
     let engine = Engine::new();
-    let run = engine.trace().eval_into::<serde_json::Value, _, _>(
-        r#"{"and": [false, {"var": "expensive"}]}"#,
-        r#"{}"#,
-    );
+    let run = engine
+        .trace()
+        .eval_into::<serde_json::Value, _, _>(r#"{"and": [false, {"var": "expensive"}]}"#, r#"{}"#);
 
     // Result should be false
     assert_eq!(run.result.as_ref().unwrap(), &json!(false));
@@ -69,10 +67,9 @@ fn test_trace_short_circuit_and() {
 #[test]
 fn test_trace_short_circuit_or() {
     let engine = Engine::new();
-    let run = engine.trace().eval_into::<serde_json::Value, _, _>(
-        r#"{"or": [true, {"var": "expensive"}]}"#,
-        r#"{}"#,
-    );
+    let run = engine
+        .trace()
+        .eval_into::<serde_json::Value, _, _>(r#"{"or": [true, {"var": "expensive"}]}"#, r#"{}"#);
 
     // Result should be true
     assert_eq!(run.result.as_ref().unwrap(), &json!(true));
@@ -165,10 +162,9 @@ fn test_trace_nested_operators() {
 #[test]
 fn test_expression_tree_structure() {
     let engine = Engine::new();
-    let run = engine.trace().eval_into::<serde_json::Value, _, _>(
-        r#"{">=": [{"var": "age"}, 18]}"#,
-        r#"{"age": 25}"#,
-    );
+    let run = engine
+        .trace()
+        .eval_into::<serde_json::Value, _, _>(r#"{">=": [{"var": "age"}, 18]}"#, r#"{"age": 25}"#);
 
     // Root should have a nonzero compile-time id (0 is the synthetic sentinel)
     assert!(run.expression_tree.id > 0);
@@ -192,10 +188,9 @@ fn test_expression_tree_structure() {
 fn test_literals_no_separate_steps() {
     let engine = Engine::new();
     // Use a variable to prevent static evaluation
-    let run = engine.trace().eval_into::<serde_json::Value, _, _>(
-        r#"{"==": [{"var": "x"}, 1]}"#,
-        r#"{"x": 1}"#,
-    );
+    let run = engine
+        .trace()
+        .eval_into::<serde_json::Value, _, _>(r#"{"==": [{"var": "x"}, 1]}"#, r#"{"x": 1}"#);
 
     // Result should be true
     assert_eq!(run.result.as_ref().unwrap(), &json!(true));

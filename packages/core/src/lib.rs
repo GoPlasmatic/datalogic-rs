@@ -178,10 +178,10 @@ pub use node::Logic;
 pub use path::PathStep;
 pub use result_output::FromDataValue;
 pub use session::Session;
-pub use top_level::{compile, eval, eval_str};
 #[cfg(feature = "serde_json")]
 #[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
 pub use top_level::eval_into;
+pub use top_level::{compile, eval, eval_str};
 #[cfg(feature = "trace")]
 #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};

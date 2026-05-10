@@ -58,8 +58,7 @@ trait Subject {
     /// loop hitting roughly `target_wall_time`, run [`SAMPLES_PER_CELL`]
     /// samples, return the median. `None` = subject can't run this
     /// suite (precompile failed, runtime missing, etc).
-    fn run_suite(&mut self, cases: &[SuiteCase], target_wall_time: Duration)
-        -> Option<SubjectRun>;
+    fn run_suite(&mut self, cases: &[SuiteCase], target_wall_time: Duration) -> Option<SubjectRun>;
 }
 
 /// Compute a sane iteration count from the warm-up duration.
@@ -328,11 +327,7 @@ impl Subject for NodeSubject {
             .spawn()
             .ok()?;
 
-        child
-            .stdin
-            .as_mut()?
-            .write_all(&payload_bytes)
-            .ok()?;
+        child.stdin.as_mut()?.write_all(&payload_bytes).ok()?;
         // Close stdin so the runner reads EOF.
         drop(child.stdin.take());
 
@@ -400,7 +395,11 @@ fn build_subjects() -> SubjectAvailability {
             "@goplasmatic/datalogic",
         ),
         ("json-logic-js", "json-logic-js", "json-logic-js"),
-        ("json-logic-engine", "json-logic-engine", "json-logic-engine"),
+        (
+            "json-logic-engine",
+            "json-logic-engine",
+            "json-logic-engine",
+        ),
         (
             "json-logic-engine:compiled",
             "json-logic-engine-compiled",
@@ -422,10 +421,7 @@ fn build_subjects() -> SubjectAvailability {
 // Matrix runner
 // ============================================================
 
-fn run_one_suite(
-    subjects: &mut [Box<dyn Subject>],
-    suite_name: &str,
-) -> Option<MatrixRow> {
+fn run_one_suite(subjects: &mut [Box<dyn Subject>], suite_name: &str) -> Option<MatrixRow> {
     let path = suites_root().join(suite_name);
     let cases = load_suite_for_compare(&path)?;
     let test_count = cases.len();
@@ -578,10 +574,5 @@ fn main() {
         std::process::exit(1);
     }
 
-    render_matrix(
-        &subject_names,
-        &rows,
-        TARGET_MS_PER_CELL,
-        SAMPLES_PER_CELL,
-    );
+    render_matrix(&subject_names, &rows, TARGET_MS_PER_CELL, SAMPLES_PER_CELL);
 }

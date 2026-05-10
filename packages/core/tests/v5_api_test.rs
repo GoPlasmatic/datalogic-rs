@@ -157,9 +157,7 @@ fn with_constant_folding_off_preserves_operators() {
     );
 
     let unfolded = Engine::builder().with_constant_folding(false).build();
-    let unfolded_logic = unfolded
-        .compile(r#"{"+": [1, {"+": [2, 3]}]}"#)
-        .unwrap();
+    let unfolded_logic = unfolded.compile(r#"{"+": [1, {"+": [2, 3]}]}"#).unwrap();
     let unfolded_json = unfolded_logic.to_json();
     // Unfolded form keeps both `+` operators visible in the round-trip.
     assert!(
@@ -171,7 +169,10 @@ fn with_constant_folding_off_preserves_operators() {
     let arena = Bump::new();
     let data = DataValue::from_str("null", &arena).unwrap();
     assert_eq!(
-        folded.evaluate(&folded_logic, data, &arena).unwrap().as_i64(),
+        folded
+            .evaluate(&folded_logic, data, &arena)
+            .unwrap()
+            .as_i64(),
         Some(6),
     );
     let arena2 = Bump::new();
@@ -192,7 +193,9 @@ fn evaluate_json_value_one_shot() {
     let engine = Engine::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 2, "b": 3});
-    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &data).unwrap();
+    let result = engine
+        .eval_into::<serde_json::Value, _, _>(&logic, &data)
+        .unwrap();
     assert_eq!(result, json!(5));
 }
 

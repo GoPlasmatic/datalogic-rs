@@ -31,7 +31,9 @@ mod serde_impl {
                 crate::serde_bridge::datetime_sentinel("datetime", dt.to_iso_string())
             }
             #[cfg(feature = "datetime")]
-            DataValue::Duration(d) => crate::serde_bridge::datetime_sentinel("timestamp", d.to_string()),
+            DataValue::Duration(d) => {
+                crate::serde_bridge::datetime_sentinel("timestamp", d.to_string())
+            }
             // Composite arms recurse through datavalue, but a DateTime nested
             // inside an Array/Object would lose its sentinel form. Walk
             // composites manually so the recursion routes datetimes back

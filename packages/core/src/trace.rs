@@ -303,11 +303,7 @@ impl<'e> TracedSession<'e> {
     /// operators that survived compilation — constant sub-expressions
     /// folded by [`crate::Engine::compile`] won't appear as steps. For
     /// full coverage on a one-shot run, prefer [`Self::eval_str`].
-    pub fn eval<D>(
-        &self,
-        compiled: &crate::Logic,
-        data: D,
-    ) -> TracedRun<datavalue::OwnedDataValue>
+    pub fn eval<D>(&self, compiled: &crate::Logic, data: D) -> TracedRun<datavalue::OwnedDataValue>
     where
         D: crate::OwnedInput,
     {

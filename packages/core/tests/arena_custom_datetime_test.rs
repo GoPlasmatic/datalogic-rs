@@ -220,12 +220,16 @@ fn test_is_night_error_invalid_argument() {
 
     let logic = json!({"is_night": 42});
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
+    let result = engine
+        .session()
+        .eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 
     let logic = json!({"is_night": "not a date"});
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
+    let result = engine
+        .session()
+        .eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 }
 
@@ -237,7 +241,9 @@ fn test_is_night_error_argument_count() {
 
     let logic = json!({"is_night": []});
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
+    let result = engine
+        .session()
+        .eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 
     let logic = json!({"is_night": [
@@ -245,7 +251,9 @@ fn test_is_night_error_argument_count() {
         {"datetime": "2022-07-07T20:00:00Z"}
     ]});
     let compiled = engine.compile(&logic).unwrap();
-    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
+    let result = engine
+        .session()
+        .eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 }
 

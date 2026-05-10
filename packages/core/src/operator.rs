@@ -50,5 +50,4 @@ impl<'ctx, 'a> EvalContext<'ctx, 'a> {
     pub(crate) fn new(inner: &'ctx mut crate::arena::ContextStack<'a>) -> Self {
         Self { inner }
     }
-
 }

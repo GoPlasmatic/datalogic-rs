@@ -72,9 +72,7 @@ fn arena_operator_inside_filter() {
 fn arena_operator_string_result() {
     let engine = Engine::builder().add_operator("xcat", CatArena).build();
 
-    let compiled = engine
-        .compile(&json!({"xcat": ["he", "ll", "o"]}))
-        .unwrap();
+    let compiled = engine.compile(&json!({"xcat": ["he", "ll", "o"]})).unwrap();
     let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!("hello"));
 }
@@ -101,9 +99,7 @@ fn arena_operator_with_input_ref() {
         .add_operator("double", DoubleArena)
         .build();
 
-    let compiled = engine
-        .compile(&json!({"double": {"var": "n"}}))
-        .unwrap();
+    let compiled = engine.compile(&json!({"double": {"var": "n"}})).unwrap();
     let result: serde_json::Value = engine
         .session()
         .eval_into(&compiled, &json!({"n": 5}))
