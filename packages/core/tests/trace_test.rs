@@ -352,14 +352,14 @@ fn test_trace_custom_operator_error_propagation() {
             _ctx: &mut EvalContext<'_, 'a>,
             _arena: &'a Bump,
         ) -> DLResult<&'a DataValue<'a>> {
-            Err(Error::custom("boom"))
+            Err(Error::custom_message("boom"))
         }
     }
 
     let engine = Engine::builder().add_operator("fail_op", FailOp).build();
     let run = engine.trace().evaluate_str(r#"{"fail_op": []}"#, "null");
 
-    // The user's `Error::custom("boom")` propagates back as an Err.
+    // The user's `Error::custom_message("boom")` propagates back as an Err.
     let err = run.result.expect_err("FailOp returned Err");
 
     // The boundary sets `operator` from the root op name (the custom op

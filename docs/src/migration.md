@@ -236,11 +236,13 @@ let engine = Engine::builder()
     .build();
 ```
 
-If you already hold a `Box<dyn CustomOperator>`:
+If you already hold a `Box<dyn CustomOperator>`, the same `add_operator`
+entry point accepts it (the box delegates `CustomOperator` to its
+contents):
 
 ```rust
 let engine = Engine::builder()
-    .add_operator_boxed("double", boxed_op)
+    .add_operator("double", boxed_op)
     .build();
 ```
 
@@ -285,7 +287,7 @@ Construct errors with the named shorthands:
 ```rust
 Error::invalid_arguments("expected number")
 Error::type_error("...")
-Error::custom("...")
+Error::custom_message("...")
 Error::wrap(some_io_error)   // any std::error::Error + Send + Sync + 'static
 ```
 
@@ -415,8 +417,8 @@ will keep nudging you per call site. Plan to drop the feature in 5.1+.
 7. **Update error handling:**
    - Match on `err.kind` / `ErrorKind::*` instead of `Error::*`
    - Construct via `Error::invalid_arguments(...)` etc.
-   - Drop `Error::Custom(string)` in favour of `Error::custom(...)` /
-     `Error::wrap(...)`
+   - Drop `Error::Custom(string)` in favour of `Error::custom_message(...)`
+     / `Error::wrap(...)`
 
 8. **Remove uses of the `preserve` operator.** Rebuild the engine with
    `preserve_structure(true)` and rely on object-level templating.

@@ -188,7 +188,7 @@ fn max_recursion_depth_catches_custom_operator_reentry() {
             engine.evaluate_str(r#"{"recurse": []}"#, "null")?;
             // Unreachable in practice (the recurse always errors
             // before returning) but kept to satisfy the type.
-            Err(datalogic_rs::Error::custom("unreachable"))
+            Err(datalogic_rs::Error::custom_message("unreachable"))
         }
     }
 

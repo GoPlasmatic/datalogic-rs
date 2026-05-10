@@ -264,7 +264,7 @@ impl RuleEngine {
 
     pub fn evaluate(&self, rule_name: &str, data: &str) -> datalogic_rs::Result<String> {
         let compiled = self.rules.get(rule_name)
-            .ok_or_else(|| datalogic_rs::Error::custom(format!("unknown rule: {rule_name}")))?;
+            .ok_or_else(|| datalogic_rs::Error::custom_message(format!("unknown rule: {rule_name}")))?;
         let mut session = self.engine.session();
         session.evaluate_str(compiled, data)
     }

@@ -7,7 +7,7 @@
 //! Inputs go through [`crate::EvalInput`] so callers pass whatever they have
 //! on hand (`&str`, `&OwnedDataValue`, `&serde_json::Value`, …); outputs are
 //! either owned ([`OwnedDataValue`] / `String` / `serde_json::Value`) or
-//! borrowed from the arena ([`Self::evaluate_ref`]) — borrowed results are
+//! borrowed from the arena ([`Self::evaluate_borrowed`]) — borrowed results are
 //! invalidated by the next `&mut self` call (Rust's borrow checker enforces).
 //!
 //! For a one-shot evaluation that owns and drops its arena per call, use
@@ -76,7 +76,7 @@ impl<'engine> Session<'engine> {
     /// free list's start-of-chunk position without freeing OS memory.
     ///
     /// Call this between logical batches to bound peak memory. After reset,
-    /// any borrowed reference previously returned by [`Self::evaluate_ref`]
+    /// any borrowed reference previously returned by [`Self::evaluate_borrowed`]
     /// is invalidated — the borrow checker enforces this for the common case
     /// (the result borrow ends with the previous `&mut self` borrow).
     ///
@@ -99,7 +99,7 @@ impl<'engine> Session<'engine> {
     /// Unlike [`Self::reset`], which keeps the existing chunks and only
     /// rewinds the bump pointer, this drops the chunks entirely and
     /// allocates one new chunk of the requested capacity. Any reference
-    /// previously returned by [`Self::evaluate_ref`] is invalidated; the
+    /// previously returned by [`Self::evaluate_borrowed`] is invalidated; the
     /// `&mut self` signature lets the borrow checker enforce this.
     pub fn reset_with_capacity(&mut self, capacity: usize) {
         self.arena = Bump::with_capacity(capacity);
@@ -168,10 +168,10 @@ impl<'engine> Session<'engine> {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
     /// let mut session = engine.session();
-    /// let result = session.evaluate_ref(&compiled, r#"{"x": 5}"#).unwrap();
+    /// let result = session.evaluate_borrowed(&compiled, r#"{"x": 5}"#).unwrap();
     /// assert_eq!(result.as_i64(), Some(6));
     /// ```
-    pub fn evaluate_ref<'a, D>(
+    pub fn evaluate_borrowed<'a, D>(
         &'a mut self,
         compiled: &'a Logic,
         data: D,

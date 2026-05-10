@@ -267,3 +267,22 @@ pub trait CustomOperator: Send + Sync {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
 }
+
+// `Box<dyn CustomOperator>` itself implements `CustomOperator` by
+// delegating to the inner trait object. This collapses what used to be
+// two separate registration methods on `EngineBuilder` (`add_operator`
+// for typed operators, `add_operator_box` for pre-boxed trait objects)
+// into a single entry point: `EngineBuilder::add_operator(name, op)`
+// accepts either a typed `T: CustomOperator + 'static` or a
+// `Box<dyn CustomOperator>` produced by a runtime registry.
+impl CustomOperator for Box<dyn CustomOperator> {
+    #[inline]
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        ctx: &mut operator::EvalContext<'_, 'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        (**self).evaluate(args, ctx, arena)
+    }
+}

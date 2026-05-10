@@ -73,7 +73,7 @@ fn serialize_arithmetic_error() {
 
 #[test]
 fn serialize_custom() {
-    let err = Error::custom("user-defined");
+    let err = Error::custom_message("user-defined");
     assert_eq!(
         to_json(&err),
         json!({"type": "Custom", "message": "user-defined"})
@@ -277,7 +277,7 @@ fn display_output_snapshot() {
         ),
         (Error::type_error("x"), "Type error: x"),
         (Error::arithmetic_error("x"), "Arithmetic error: x"),
-        (Error::custom("raw"), "raw"),
+        (Error::custom_message("raw"), "raw"),
         (Error::parse_error("x"), "Parse error: x"),
         (
             Error::thrown(datavalue::OwnedDataValue::Object(vec![(

@@ -96,7 +96,7 @@ use datalogic_rs::Engine;
 let engine = Engine::new();
 let compiled = engine.compile(r#"{"var": "user.score"}"#).unwrap();
 let mut session = engine.session();
-let result = session.evaluate_ref(&compiled, r#"{"user": {"score": 42}}"#).unwrap();
+let result = session.evaluate_borrowed(&compiled, r#"{"user": {"score": 42}}"#).unwrap();
 
 assert_eq!(result.as_i64(), Some(42));
 // Other accessors: .as_f64(), .as_str(), .as_bool(), .as_array(), .as_object().
@@ -127,7 +127,7 @@ Three evaluation tiers, in order of caller control:
 
 `Session` adds two extras for hot loops:
 
-- `Session::evaluate_ref(...)` returns the same borrowed `&DataValue<'a>`
+- `Session::evaluate_borrowed(...)` returns the same borrowed `&DataValue<'a>`
   shape as `Engine::evaluate` but with the bump owned by the session,
   so you skip the `OwnedDataValue::to_owned` deep-clone when the result
   is consumed before the next session call.

@@ -122,8 +122,8 @@ Fluent constructor for `Engine`. Returned by `Engine::builder()`.
 EngineBuilder::new()
     .with_config(EvaluationConfig::default())
     .with_templating(true)                 // feature = "templating"
-    .add_operator("name", MyOp)
-    .add_operator_box("dyn", boxed_op)     // when you already have Box<dyn CustomOperator>
+    .add_operator("name", MyOp)            // typed operator
+    .add_operator("dyn", boxed_op)         // also accepts Box<dyn CustomOperator>
     .build();
 ```
 
@@ -357,7 +357,7 @@ Error::invalid_arguments(msg)
 Error::variable_not_found(name)
 Error::type_error(msg)
 Error::arithmetic_error(msg)
-Error::custom(msg)            // string-only
+Error::custom_message(msg)    // string-only
 Error::wrap(err)              // any Error + Send + Sync + 'static
 Error::parse_error(msg)
 Error::thrown(value)

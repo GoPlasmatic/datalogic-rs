@@ -106,7 +106,7 @@ impl Drop for DepthGuard {
 /// | Method | Arena ownership | Result type | When to use |
 /// |---|---|---|---|
 /// | [`Self::evaluate_str`] | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` (JSON) | One-shot. CLI scripts, "I want JSON in and JSON out", any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
-/// | [`crate::Session::evaluate`] / [`crate::Session::evaluate_ref`] / [`crate::Session::evaluate_str`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned (`OwnedDataValue` / `String`) or borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
+/// | [`crate::Session::evaluate`] / [`crate::Session::evaluate_borrowed`] / [`crate::Session::evaluate_str`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned (`OwnedDataValue` / `String`) or borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
 /// | [`Self::evaluate`] | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, custom pool/allocator strategies, integration with arena-aware downstream code. |
 /// | [`Self::evaluate_json_value`] (gated on `compat`) | engine creates a fresh `Bump::with_capacity(4096)` per call | `serde_json::Value` | Drop-in for v4 callers and any path that needs the `serde_json::Value` boundary on both sides. |
 ///

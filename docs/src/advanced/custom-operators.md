@@ -72,12 +72,14 @@ let result = engine.evaluate_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
 assert_eq!(result, "42");
 ```
 
-`add_operator` accepts any `T: CustomOperator + 'static`. If you already
-hold a `Box<dyn CustomOperator>` (e.g. from a runtime registry), use
-`add_operator_boxed` instead.
+`add_operator` accepts both typed operators (`T: CustomOperator + 'static`)
+and pre-boxed trait objects (`Box<dyn CustomOperator>`) — the box
+itself implements `CustomOperator` by delegating to its contents, so
+the same entry point covers both shapes.
 
-You can also `remove_operator(name)` on the builder to unregister something
-a helper added.
+The builder is consumed by `.build()`; the operator set is then frozen.
+There is no `remove_operator` in v5 — rebuild the builder if you need a
+different set.
 
 ## Reading Argument Types
 
@@ -279,7 +281,7 @@ impl CustomOperator for MyOperator {
         })?;
 
         if num < 0.0 {
-            return Err(Error::custom("value must be non-negative"));
+            return Err(Error::custom_message("value must be non-negative"));
         }
 
         Ok(arena.alloc(DataValue::from_f64(num.sqrt())))
@@ -314,7 +316,7 @@ To wrap a foreign error type into `Error`, use `Error::wrap`:
 
 1. **Validate argument count and types early.**
 2. **Allocate results in the arena** (`arena.alloc(...)` / `arena.alloc_str(...)`).
-3. **Return meaningful errors** — `Error::invalid_arguments`, `Error::type_error`, `Error::custom`.
+3. **Return meaningful errors** — `Error::invalid_arguments`, `Error::type_error`, `Error::custom_message`, `Error::wrap`.
 4. **Keep operators focused** — one responsibility per operator.
 5. **Use `Arc` for shared configuration** to maintain `Send + Sync`.
 6. **Test with literals, variables, and nested expressions** — the engine evaluates each before calling you.

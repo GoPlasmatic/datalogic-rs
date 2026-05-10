@@ -312,11 +312,6 @@ impl NumericCoercionConfig {
 }
 
 impl EvaluationConfig {
-    /// Create a new configuration with default settings
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Set [`Self::arithmetic_nan_handling`].
     #[must_use]
     pub fn with_arithmetic_nan_handling(mut self, value: NanHandling) -> Self {

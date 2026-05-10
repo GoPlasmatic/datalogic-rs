@@ -36,8 +36,7 @@ use crate::engine::Engine;
 ///   [`Self::with_templating`]; only effective when the crate is
 ///   built with `feature = "templating"`.
 /// - **`operators`** — empty. Add custom operators with
-///   [`Self::add_operator`] / [`Self::add_operator_box`] before
-///   [`Self::build`] freezes the set.
+///   [`Self::add_operator`] before [`Self::build`] freezes the set.
 #[must_use = "the builder is consumed by `.build()`"]
 pub struct EngineBuilder {
     config: EvaluationConfig,
@@ -83,10 +82,20 @@ impl EngineBuilder {
     /// Register a [`CustomOperator`] under `name`. Multiple calls with the
     /// same name overwrite the prior registration.
     ///
-    /// Operator registration is builder-only; once [`Self::build`] hands you
-    /// an [`Engine`], its operator set is frozen. For the rare case where
-    /// you already have a `Box<dyn CustomOperator>` (e.g. dynamic dispatch
-    /// from a runtime registry), use [`Self::add_operator_box`].
+    /// Accepts both typed operators (`T: CustomOperator + 'static`) and
+    /// pre-boxed trait objects (`Box<dyn CustomOperator>`) — the bare
+    /// `Box<dyn CustomOperator>` itself implements `CustomOperator`
+    /// (delegating to the inner), so a single entry point covers both
+    /// shapes:
+    ///
+    /// ```ignore
+    /// builder
+    ///     .add_operator("typed", MyOp)                            // typed
+    ///     .add_operator("dyn", boxed_op_from_registry as Box<_>)  // pre-boxed
+    /// ```
+    ///
+    /// Operator registration is builder-only; once [`Self::build`] hands
+    /// you an [`Engine`], its operator set is frozen.
     ///
     /// **Built-ins always win.** If `name` collides with a built-in
     /// JSONLogic operator (`+`, `if`, `var`, `map`, …), the built-in is
@@ -100,20 +109,6 @@ impl EngineBuilder {
         T: CustomOperator + 'static,
     {
         self.operators.insert(name.into(), Box::new(operator));
-        self
-    }
-
-    /// Register a pre-boxed [`CustomOperator`]. Use this when the operator
-    /// is already a `Box<dyn CustomOperator>` (e.g. from a runtime registry);
-    /// otherwise prefer [`Self::add_operator`].
-    #[inline]
-    #[must_use = "builder methods return a new builder; chain into `.build()`"]
-    pub fn add_operator_box(
-        mut self,
-        name: impl Into<String>,
-        operator: Box<dyn CustomOperator>,
-    ) -> Self {
-        self.operators.insert(name.into(), operator);
         self
     }
 

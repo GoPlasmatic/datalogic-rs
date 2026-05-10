@@ -64,7 +64,7 @@ impl Serialize for ErrorPath {
 /// so a single `Error` value can be sent across threads.
 pub type CustomErrorSource = Arc<dyn std::error::Error + Send + Sync + 'static>;
 
-/// String-only custom error — used by [`Error::custom`] to wrap a
+/// String-only custom error — used by [`Error::custom_message`] to wrap a
 /// bare message in a `dyn Error` shell.
 #[derive(Debug)]
 struct MessageError(String);
@@ -96,7 +96,7 @@ pub enum ErrorKind {
     ArithmeticError(Cow<'static, str>),
     /// Custom error for extensions. Carries the underlying typed error so
     /// callers can walk the source chain via [`std::error::Error::source`].
-    /// Constructed via [`Error::custom`] (string-only) or
+    /// Constructed via [`Error::custom_message`] (string-only) or
     /// [`Error::wrap`] (any `std::error::Error + Send + Sync + 'static`).
     Custom(CustomErrorSource),
     /// JSON parsing/serialization error
@@ -280,9 +280,11 @@ impl Error {
         ErrorKind::ArithmeticError(msg.into()).into()
     }
     /// Shorthand for a message-only [`ErrorKind::Custom`]. Equivalent to
-    /// [`Self::wrap`] with a string-shaped error inside.
+    /// [`Self::wrap`] with a string-shaped error inside. Reach for
+    /// [`Self::wrap`] directly when you have a typed `std::error::Error`
+    /// to preserve.
     #[inline]
-    pub fn custom(msg: impl Into<String>) -> Self {
+    pub fn custom_message(msg: impl Into<String>) -> Self {
         Self::wrap(MessageError(msg.into()))
     }
 
