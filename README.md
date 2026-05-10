@@ -295,16 +295,29 @@ Reports land in `packages/benchmark/output/` (gitignored).
 
 ### Comparison with other JSONLogic engines
 
-> **Coming soon.** Side-by-side benchmarks against `json-logic-js`,
-> `json-logic-py`, and other JSONLogic implementations are in progress
-> and will be published here. If there's a comparison you'd like to
-> see, [open an issue](https://github.com/GoPlasmatic/datalogic-rs/issues).
+The cross-library matrix in **[`packages/benchmark/BENCHMARK.md`][bench]**
+runs every operator suite against every available subject (datalogic-rs
+native, our WASM via Node, plus competing Rust and JS libraries) and
+reports avg ns/op per cell with arithmetic + geometric mean
+aggregation rows.
 
-| Engine          | Simple rule | Complex rule | Notes              |
-|-----------------|-------------|--------------|--------------------|
-| datalogic-rs    | _TBA_       | _TBA_        | Reference baseline |
-| json-logic-js   | _TBA_       | _TBA_        |                    |
-| json-logic-py   | _TBA_       | _TBA_        |                    |
+[bench]: ./packages/benchmark/BENCHMARK.md
+
+Geomeans across 44 suites (Apple M2 Pro, macOS 26.3, Rust 1.93, Node 24;
+median of 3 samples per cell, ~200 ms wall budget — see [`BENCHMARK.md`][bench]
+for the per-suite matrix, methodology, and caveats):
+
+| Subject                                              | Geomean ns/op | vs `dlrs:engine` |
+|------------------------------------------------------|--------------:|-----------------:|
+| `dlrs:engine` (datalogic-rs native, precompiled)     |           9.7 |               1× |
+| `json-logic-engine:compiled` (TotalTechGeek, JS)     |          47.2 |             4.9× |
+| `json-logic-engine` (interpreted, JS)                |         160.3 |            16.5× |
+| `jsonlogic-rs` (bestowinc, native Rust)              |         218.0 |            22.5× |
+| `json-logic-js` (jwadhams reference, JS)             |         423.5 |            43.7× |
+| `dlrs:wasm:compiled` (`@goplasmatic/datalogic`, Node)|         855.6 |            88.2× |
+
+Numbers are macOS / Apple Silicon — Linux x86_64 will distribute
+differently. Quote ratios, not absolute ns/op, when citing.
 
 ## Migrating from v4
 
