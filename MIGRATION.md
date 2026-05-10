@@ -277,6 +277,23 @@ match engine.eval_str(rule, data) {
 }
 ```
 
+## JavaScript / npm consumers
+
+The `@goplasmatic/datalogic` (WASM) and `@goplasmatic/datalogic-ui`
+(React) packages share the v5 cutover. Two surface renames mirror the
+Rust core:
+
+| v4 JS surface                                | v5 JS surface                                |
+|----------------------------------------------|----------------------------------------------|
+| `evaluate(logic, data, preserve_structure)`  | `evaluate(logic, data, templating)`          |
+| `new CompiledRule(logic, preserve_structure)`| `new CompiledRule(logic, templating)`        |
+| `<DataLogicEditor preserveStructure={…} />`  | `<DataLogicEditor templating={…} />`         |
+| `onPreserveStructureChange={…}`              | `onTemplatingChange={…}`                     |
+
+The semantic of the flag is unchanged — `true` enables templating mode
+where multi-key objects compile to output-shaping templates with
+embedded JSONLogic.
+
 ## Things that did NOT change
 
 - Operator semantics (every JSONLogic operator behaves the same).

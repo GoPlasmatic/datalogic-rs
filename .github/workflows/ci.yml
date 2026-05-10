@@ -50,21 +50,23 @@ jobs:
 
       - name: Run clippy
         # `--all-features` mirrors the test/example steps so feature-gated
-        # paths (compat, preserve, datetime, trace, error-handling, the
-        # ext-* operators) get linted. Without it, clippy silently skips
-        # gated code and a regression in those paths can land unnoticed.
+        # paths (serde_json, templating, datetime, trace, error-handling,
+        # the ext-* operators) get linted. Without it, clippy silently
+        # skips gated code and a regression in those paths can land
+        # unnoticed.
         run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       - name: Run tests
         # `--all-features` is required to exercise the gated integration
-        # tests: most live behind `compat`, and the JSONLogic suite runner
-        # additionally needs `preserve`. Without these flags, those tests
-        # silently skip and the CI step succeeds without exercising them.
+        # tests: most live behind `serde_json`, and the JSONLogic suite
+        # runner additionally needs `templating`. Without these flags,
+        # those tests silently skip and the CI step succeeds without
+        # exercising them.
         run: cargo test --workspace --all-features
 
       - name: Build examples (all features)
         # Catches example drift on any feature-gated example
-        # (compat / preserve / datetime / trace / error-handling).
+        # (serde_json / templating / datetime / trace / error-handling).
         # Each `[[example]]` in packages/core/Cargo.toml has
         # `required-features = [...]`, so only `--all-features` reaches
         # every example.

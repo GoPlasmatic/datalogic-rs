@@ -9,7 +9,7 @@ A React component library for visualizing, debugging, and editing JSONLogic expr
 - Tree-based automatic layout using @dagrejs/dagre
 - Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing
 - Editing mode with node selection, properties panel, context menus, and undo/redo
-- Structure preserve mode for JSON templates with embedded JSONLogic
+- Templating mode for JSON templates with embedded JSONLogic
 - Built-in WASM-based JSONLogic evaluation with execution tracing
 - Light/dark theme support with system preference detection
 
@@ -98,8 +98,8 @@ Combine editing with live debugging:
 | `data` | `unknown` | - | Data context for evaluation. When provided, debugger controls become available |
 | `theme` | `'light' \| 'dark'` | system | Theme override. If not provided, uses system preference |
 | `className` | `string` | - | Additional CSS class |
-| `preserveStructure` | `boolean` | `false` | Enable structure preserve mode for JSON templates with embedded JSONLogic |
-| `onPreserveStructureChange` | `(value: boolean) => void` | - | Callback when preserve structure changes (from toolbar checkbox) |
+| `templating` | `boolean` | `false` | Enable templating mode: multi-key objects and arrays compile to output-shaping templates with embedded JSONLogic |
+| `onTemplatingChange` | `(value: boolean) => void` | - | Callback when templating mode changes (from toolbar checkbox) |
 | `editable` | `boolean` | `false` | Enable editing: node selection, properties panel, context menus, undo/redo |
 
 ## Exports
@@ -190,7 +190,7 @@ The main component is `DataLogicEditor` which:
 
 - **OperatorNode** (UnifiedOperatorNode): Renders all operators with cell-based argument display (and, or, if, var, val, ==, +, etc.)
 - **LiteralNode**: Renders primitive values (strings, numbers, booleans, null)
-- **StructureNode**: Renders JSON objects/arrays in structure preserve mode
+- **StructureNode**: Renders JSON objects/arrays in templating mode
 
 ## Tech Stack
 

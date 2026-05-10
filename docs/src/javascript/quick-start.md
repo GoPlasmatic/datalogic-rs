@@ -113,7 +113,7 @@ const result = JSON.parse(evaluate(filterLogic, data, false));
 
 ## Templating Mode
 
-Enable `preserve_structure` for JSON templating:
+Enable `templating` for JSON templating:
 
 ```javascript
 const template = JSON.stringify({
@@ -130,7 +130,7 @@ const data = JSON.stringify({
   age: 25
 });
 
-// Third parameter = true enables structure preservation
+// Third parameter = true enables templating mode
 const result = JSON.parse(evaluate(template, data, true));
 // {
 //   "user": { "fullName": "Alice Smith", "isAdult": true },

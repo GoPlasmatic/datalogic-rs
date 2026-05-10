@@ -76,7 +76,7 @@ impl<'engine> Session<'engine> {
     /// free list's start-of-chunk position without freeing OS memory.
     ///
     /// Call this between logical batches to bound peak memory. After reset,
-    /// any borrowed reference previously returned by [`Self::evaluate_borrowed`]
+    /// any borrowed reference previously returned by [`Self::eval_borrowed`]
     /// is invalidated — the borrow checker enforces this for the common case
     /// (the result borrow ends with the previous `&mut self` borrow).
     ///
@@ -99,7 +99,7 @@ impl<'engine> Session<'engine> {
     /// Unlike [`Self::reset`], which keeps the existing chunks and only
     /// rewinds the bump pointer, this drops the chunks entirely and
     /// allocates one new chunk of the requested capacity. Any reference
-    /// previously returned by [`Self::evaluate_borrowed`] is invalidated; the
+    /// previously returned by [`Self::eval_borrowed`] is invalidated; the
     /// `&mut self` signature lets the borrow checker enforce this.
     pub fn reset_with_capacity(&mut self, capacity: usize) {
         self.arena = Bump::with_capacity(capacity);

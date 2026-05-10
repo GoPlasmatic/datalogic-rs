@@ -105,7 +105,7 @@ impl Drop for DepthGuard {
 ///
 /// | Method | Arena ownership | Result type | When to use |
 /// |---|---|---|---|
-/// | [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`] | engine creates a fresh `Bump::with_capacity(4096)` per call | [`OwnedDataValue`] / `String` / `T` | One-shot. Any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
+/// | [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`] | engine creates a fresh `Bump::with_capacity(4096)` per call | [`OwnedDataValue`](datavalue::OwnedDataValue) / `String` / `T` | One-shot. Any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
 /// | [`crate::Session::eval`] / [`crate::Session::eval_str`] / [`crate::Session::eval_into`] / [`crate::Session::eval_borrowed`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned / `String` / `T` / borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
 /// | [`Self::evaluate`] | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, custom pool/allocator strategies, integration with arena-aware downstream code. |
 ///
@@ -334,7 +334,7 @@ impl Engine {
         Logic::compile_with(&owned, self)
     }
 
-    /// Compile and wrap in an [`Arc`] in one call. Convenience for the
+    /// Compile and wrap in an [`Arc`](std::sync::Arc) in one call. Convenience for the
     /// dominant cross-thread-sharing pattern; equivalent to
     /// `Arc::new(engine.compile(rule)?)`.
     pub fn compile_arc<R: crate::IntoLogic>(&self, rule: R) -> Result<std::sync::Arc<Logic>> {

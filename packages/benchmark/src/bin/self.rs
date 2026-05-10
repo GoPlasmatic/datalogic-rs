@@ -5,16 +5,16 @@
 //! Why `Session` rather than a hand-rolled `Bump`:
 //! - `Session` is the documented hot-loop API. Benchmarking it makes the
 //!   reported numbers match what callers actually see in production.
-//! - `evaluate_borrowed` returns a borrowed `&DataValue<'a>` tied to the session
+//! - `eval_borrowed` returns a borrowed `&DataValue<'a>` tied to the session
 //!   arena (no `OwnedDataValue::to_owned` deep-clone), preserving the
 //!   "max perf, zero-copy result" measurement of the original benchmark.
 //! - The session does not reset implicitly; the benchmark calls
-//!   `session.reset()` after every `evaluate_borrowed` so peak memory stays
+//!   `session.reset()` after every `eval_borrowed` so peak memory stays
 //!   bounded by the largest single evaluation (the bump pointer returns
 //!   to chunk start without freeing chunks).
 //!
 //! Self-tuning arena sizing: the warm-up phase mirrors the timed-loop
-//! shape exactly (same `evaluate_borrowed` + `reset` cadence), so the bump
+//! shape exactly (same `eval_borrowed` + `reset` cadence), so the bump
 //! grows to the suite's largest-single-eval high-water mark. We then
 //! call `session.reset_with_capacity(session.allocated_bytes())` to drop
 //! the warm-up's chunks and allocate one fresh chunk of exactly that
@@ -63,7 +63,7 @@ fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, us
     // arena from the warm-up's high-water mark before the timed loop.
     let mut session = engine.session();
 
-    // Warm-up — same per-iteration `evaluate_borrowed` + `reset` shape as the
+    // Warm-up — same per-iteration `eval_borrowed` + `reset` shape as the
     // timed loop, so the bump grows to the suite's largest-single-eval
     // high-water mark. `Bump::reset` keeps the largest chunk; subsequent
     // iterations either fit (no growth) or trigger another doubling.
