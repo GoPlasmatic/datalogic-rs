@@ -8,7 +8,7 @@
 //! compiler keeps reminding you per call site.
 //!
 //! Every method is implemented in terms of the v5 surface (`compile`,
-//! `evaluate`, `evaluate_str`, `evaluate_serde`, `with_trace`) — there is
+//! `evaluate`, `evaluate_str`, `evaluate_json_value`, `with_trace`) — there is
 //! no separate code path. The trait is purely a thin ergonomic shim that
 //! lets 4.x callers keep compiling.
 //!
@@ -181,7 +181,7 @@ impl<T: ArenaOperator + ?Sized> crate::CustomOperator for T {
 /// | Old (4.x)                                                 | New (v5)                                            |
 /// |-----------------------------------------------------------|-----------------------------------------------------|
 /// | `engine.evaluate_json(logic, data)?`                      | `engine.evaluate_str(logic, data)?`                 |
-/// | `engine.evaluate_owned(&compiled, value)?`                | `engine.evaluate_serde(&logic, &value)?`            |
+/// | `engine.evaluate_owned(&compiled, value)?`                | `engine.evaluate_json_value(&logic, &value)?`            |
 /// | `engine.evaluate_json_with_trace(logic, data)?`           | `engine.with_trace().evaluate_str(logic, data)`     |
 /// | `engine.evaluate_json_structured(logic, data)?`           | `engine.evaluate_str(logic, data)?` (Error is structured) |
 /// | `Engine::with_config(cfg)`                             | `Engine::builder().config(cfg).build()`          |
@@ -219,10 +219,10 @@ pub trait LegacyApi: Sized {
     fn compile(&self, logic: &Value) -> Result<Arc<Logic>>;
 
     /// Deprecated: use `Engine::compile(&str)` (parses to v5 types) or
-    /// `evaluate_serde(&Value, &Value)` for one-shot evaluation.
+    /// `evaluate_json_value(&Value, &Value)` for one-shot evaluation.
     #[deprecated(
         since = "5.0.0",
-        note = "use `Engine::compile(&str)` or `evaluate_serde(&Value, &Value)` for one-shot"
+        note = "use `Engine::compile(&str)` or `evaluate_json_value(&Value, &Value)` for one-shot"
     )]
     fn compile_serde_value(&self, logic: &Value) -> Result<Arc<Logic>>;
 
@@ -231,45 +231,45 @@ pub trait LegacyApi: Sized {
     /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_serde(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_json_value(&Value, &Value)`"
     )]
     fn evaluate(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value>;
 
     /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_serde(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_json_value(&Value, &Value)`"
     )]
     fn evaluate_arc_value(&self, compiled: &Logic, data: Arc<Value>) -> Result<Value>;
 
     /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_serde(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_json_value(&Value, &Value)`"
     )]
     fn evaluate_ref(&self, compiled: &Logic, data: &Value) -> Result<Value>;
 
     /// Deprecated: use `Engine::evaluate(&Logic, &DataValue, &Bump)`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_serde(&Value, &Value)`"
+        note = "use `evaluate(&Logic, &DataValue, &Bump)` or `evaluate_json_value(&Value, &Value)`"
     )]
     fn evaluate_owned(&self, compiled: &Logic, data: Value) -> Result<Value>;
 
     /// Deprecated: use `Engine::evaluate_str(&str, &str)` (returns
-    /// `String`) or `Engine::evaluate_serde(&Value, &Value)` (returns
+    /// `String`) or `Engine::evaluate_json_value(&Value, &Value)` (returns
     /// `Value`).
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_str(&str, &str)` or `evaluate_serde(&Value, &Value)`"
+        note = "use `evaluate_str(&str, &str)` or `evaluate_json_value(&Value, &Value)`"
     )]
     fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value>;
 
     /// Deprecated: today every error returned by `evaluate*` already carries
-    /// `operator`/`path` — call `evaluate_serde` and read `Error` directly.
+    /// `operator`/`path` — call `evaluate_json_value` and read `Error` directly.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_serde` — `Error` now carries `operator`/`path` directly"
+        note = "use `evaluate_json_value` — `Error` now carries `operator`/`path` directly"
     )]
     fn evaluate_structured(
         &self,
@@ -281,7 +281,7 @@ pub trait LegacyApi: Sized {
     /// carries `operator`/`path`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `evaluate_str` / `evaluate_serde` — `Error` now carries `operator`/`path` directly"
+        note = "use `evaluate_str` / `evaluate_json_value` — `Error` now carries `operator`/`path` directly"
     )]
     fn evaluate_json_structured(
         &self,
@@ -367,7 +367,7 @@ impl LegacyApi for Engine {
     fn evaluate_json(&self, logic: &str, data: &str) -> Result<Value> {
         let logic_value: Value = serde_json::from_str(logic)?;
         let data_value: Value = serde_json::from_str(data)?;
-        self.evaluate_serde(&logic_value, &data_value)
+        self.evaluate_json_value(&logic_value, &data_value)
     }
 
     fn evaluate_structured(
@@ -389,7 +389,7 @@ impl LegacyApi for Engine {
     ) -> std::result::Result<Value, Error> {
         let logic_value: Value = serde_json::from_str(logic).map_err(Error::from)?;
         let data_value: Value = serde_json::from_str(data).map_err(Error::from)?;
-        self.evaluate_serde(&logic_value, &data_value)
+        self.evaluate_json_value(&logic_value, &data_value)
     }
 
     // ---- Trace entries ----

@@ -187,21 +187,21 @@ pub(crate) enum Resolved<S, D> {
 
 /// Pre-parsed `(raw_path, segments)` pair — the compile-time form of a
 /// `missing` / `missing_some` path argument.
-pub type StaticMissingPath = (Box<str>, Box<[PathSegment]>);
+pub(crate) type StaticMissingPath = (Box<str>, Box<[PathSegment]>);
 
 /// One arg to a `missing` / `missing_some` operator. Literal string paths
 /// are pre-parsed into segments at compile time so the runtime walks the
 /// input data without re-splitting the string or BTreeMap-keying via a
 /// borrowed `&str` on every call.
-pub type CompiledMissingArg = Resolved<StaticMissingPath, CompiledNode>;
+pub(crate) type CompiledMissingArg = Resolved<StaticMissingPath, CompiledNode>;
 
 /// `missing_some` minimum-present argument. `Now(usize)` is a literal
 /// integer resolved at compile time; `Later(_)` is a runtime expression.
-pub type CompiledMissingMin = Resolved<usize, CompiledNode>;
+pub(crate) type CompiledMissingMin = Resolved<usize, CompiledNode>;
 
 /// `missing_some` paths argument. `Now(_)` is a literal array of pre-parsed
 /// paths; `Later(_)` is a runtime expression returning an array.
-pub type CompiledMissingPaths = Resolved<Box<[StaticMissingPath]>, CompiledNode>;
+pub(crate) type CompiledMissingPaths = Resolved<Box<[StaticMissingPath]>, CompiledNode>;
 
 /// Data for a pre-compiled `missing` operator.
 #[derive(Debug, Clone)]

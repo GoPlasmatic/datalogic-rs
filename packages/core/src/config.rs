@@ -54,7 +54,7 @@ pub struct EvaluationConfig {
     pub arithmetic_nan_handling: NanHandling,
 
     /// What `/` and `%` do when the divisor is zero. Default:
-    /// [`DivisionByZeroHandling::ReturnBounds`] (the JavaScript-style
+    /// [`DivisionByZeroHandling::ReturnSaturated`] (the JavaScript-style
     /// `±f64::MAX` / `±f64::MIN` per dividend sign). Switch to
     /// [`DivisionByZeroHandling::ThrowError`] if you'd rather see a
     /// surface error than a sentinel value.
@@ -82,9 +82,9 @@ pub struct EvaluationConfig {
     /// reference behaviour). When more than one flag could fire on the
     /// same value, the precedence is:
     ///
-    /// 1. `strict_numeric` — if `true`, no coercion at all happens; the
-    ///    value either parses as a number or the engine reports a type
-    ///    error. Overrides every other flag.
+    /// 1. `reject_non_numeric` — if `true`, no coercion at all happens;
+    ///    the value either parses as a number or the engine reports a
+    ///    type error. Overrides every other flag.
     /// 2. `null_to_zero` — only consulted on `null` values.
     /// 3. `bool_to_number` — only consulted on `true` / `false`.
     /// 4. `empty_string_to_zero` / `undefined_to_zero` — consulted on
@@ -92,7 +92,7 @@ pub struct EvaluationConfig {
     ///
     /// Each path is independent in practice (the type filters above
     /// don't overlap), so the precedence only matters when reasoning
-    /// about `strict_numeric` vs the rest.
+    /// about `reject_non_numeric` vs the rest.
     pub numeric_coercion: NumericCoercionConfig,
 
     /// Maximum number of nested [`Engine::evaluate`](crate::Engine::evaluate)
@@ -127,8 +127,11 @@ pub enum NanHandling {
 /// Defines how to handle division by zero
 #[derive(Clone, Debug, PartialEq)]
 pub enum DivisionByZeroHandling {
-    /// Return f64::MAX or f64::MIN based on sign (default)
-    ReturnBounds,
+    /// Saturating division: clamp the result to the f64 extreme rather
+    /// than throw or null. Returns `f64::MAX` for a positive dividend,
+    /// `f64::MIN` for a negative dividend, and `0.0` for `0 / 0` (the
+    /// indeterminate form saturates to neutral). Default.
+    ReturnSaturated,
     /// Throw an error
     ThrowError,
     /// Return null
@@ -215,7 +218,7 @@ impl TruthyEvaluator {
 ///
 /// See [`EvaluationConfig::numeric_coercion`] for how these flags
 /// interact when more than one would fire on the same value (short
-/// answer: `strict_numeric` overrides everything else; the rest are
+/// answer: `reject_non_numeric` overrides everything else; the rest are
 /// type-disjoint so they don't conflict in practice).
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -230,11 +233,12 @@ pub struct NumericCoercionConfig {
     /// `true` → `1`, `false` → `0` in numeric context. Default: `true`.
     pub bool_to_number: bool,
 
-    /// Disable every coercion: a non-numeric value is a type error.
+    /// Reject non-numeric values: a non-numeric value is a type error.
     /// Default: `false`. When `true`, this flag overrides every other
     /// flag in this struct — empty strings, nulls, and booleans all
-    /// raise rather than coerce.
-    pub strict_numeric: bool,
+    /// raise rather than coerce. Acts as a kill switch for the rest of
+    /// the coercion knobs in this struct.
+    pub reject_non_numeric: bool,
 
     /// Missing variable lookups (the `var` operator returning `null`
     /// because the path didn't resolve) → `0` in numeric context.
@@ -247,7 +251,7 @@ impl Default for EvaluationConfig {
     fn default() -> Self {
         Self {
             arithmetic_nan_handling: NanHandling::ThrowError,
-            division_by_zero: DivisionByZeroHandling::ReturnBounds,
+            division_by_zero: DivisionByZeroHandling::ReturnSaturated,
             loose_equality_errors: true,
             truthy_evaluator: TruthyEvaluator::JavaScript,
             numeric_coercion: NumericCoercionConfig::default(),
@@ -262,7 +266,7 @@ impl Default for NumericCoercionConfig {
             empty_string_to_zero: true,
             null_to_zero: true,
             bool_to_number: true,
-            strict_numeric: false,
+            reject_non_numeric: false,
             undefined_to_zero: false,
         }
     }
@@ -290,12 +294,12 @@ impl NumericCoercionConfig {
         self
     }
 
-    /// Set [`Self::strict_numeric`]. When `true`, this flag overrides every
-    /// other flag — empty strings, nulls, and booleans all raise rather
-    /// than coerce.
+    /// Set [`Self::reject_non_numeric`]. When `true`, this flag
+    /// overrides every other flag — empty strings, nulls, and booleans
+    /// all raise rather than coerce.
     #[must_use]
-    pub fn with_strict_numeric(mut self, value: bool) -> Self {
-        self.strict_numeric = value;
+    pub fn with_reject_non_numeric(mut self, value: bool) -> Self {
+        self.reject_non_numeric = value;
         self
     }
 
@@ -375,7 +379,7 @@ impl EvaluationConfig {
                 empty_string_to_zero: false,
                 null_to_zero: false,
                 bool_to_number: false,
-                strict_numeric: true,
+                reject_non_numeric: true,
                 undefined_to_zero: false,
             },
             ..Default::default()

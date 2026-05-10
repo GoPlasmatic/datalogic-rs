@@ -69,7 +69,7 @@ let config = EvaluationConfig {
 ```rust
 use datalogic_rs::{EvaluationConfig, DivisionByZeroHandling};
 
-// ReturnBounds (default), ThrowError, ReturnNull, ReturnInfinity
+// ReturnSaturated (default), ThrowError, ReturnNull, ReturnInfinity
 let config = EvaluationConfig {
     division_by_zero: DivisionByZeroHandling::ThrowError,
     ..Default::default()
@@ -80,7 +80,7 @@ let config = EvaluationConfig {
 
 | Setting | Result |
 |---------|--------|
-| `ReturnBounds` (default) | `f64::MAX` (sign of dividend) |
+| `ReturnSaturated` (default) | `f64::MAX` (sign of dividend) |
 | `ThrowError` | `Err(Thrown { type: "NaN" })` |
 | `ReturnNull` | `null` |
 | `ReturnInfinity` | `Infinity` (sign of dividend) |
@@ -147,7 +147,7 @@ let config = EvaluationConfig {
         empty_string_to_zero: false,
         null_to_zero: false,
         bool_to_number: false,
-        strict_numeric: true,
+        reject_non_numeric: true,
         undefined_to_zero: false,
     },
     ..Default::default()

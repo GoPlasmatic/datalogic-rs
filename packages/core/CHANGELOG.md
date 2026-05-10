@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`with_preserve_structure`, `with_config`, `with_config_and_structure`) —
   is **scheduled for removal in 5.1**. Migrate to the v5 surface
   (`Engine::builder()`, `Engine::evaluate_str` / `evaluate` /
-  `evaluate_serde`, the `CustomOperator` trait) before then. To surface
+  `evaluate_json_value`, the `CustomOperator` trait) before then. To surface
   every remaining call site that depends on the shim, drop `compat`
   from your dependency's feature list and rebuild — the deleted symbols
   will fail to compile.
@@ -40,7 +40,7 @@ provides one-release-cycle shims for the most common 4.x entry points.
   deprecated extension methods in `compat::LegacyApi`.
 - **`serde_json` is no longer a default dependency.** Default features are
   empty. Enable the `compat` feature (`features = ["compat"]`) to keep the
-  4.x `serde_json::Value` boundary (`Engine::evaluate_serde`,
+  4.x `serde_json::Value` boundary (`Engine::evaluate_json_value`,
   `compile_serde_value`, the `LegacyApi` trait, etc.).
 - **`CustomOperator` trait** (renamed from the 4.x `Operator`): the
   evaluate method is now just `evaluate` (was `evaluate_arena`), receives
@@ -61,7 +61,7 @@ provides one-release-cycle shims for the most common 4.x entry points.
   Object templating moves to `Engine::builder().with_templating(true)`
   (templating mode, gated by `feature = "templating"`).
 - **`evaluate*` verbs unified.** What 4.x called `evaluate_value` is now
-  `evaluate_serde` (compat-only). The new entry points are
+  `evaluate_json_value` (compat-only). The new entry points are
   `Engine::evaluate_str` (one-shot, JSON in / JSON out) and
   `Engine::evaluate` (arena-aware, zero-copy result).
 - **`Error::wrap` preserves the source chain.** Wrapping an arbitrary
@@ -131,7 +131,7 @@ provides one-release-cycle shims for the most common 4.x entry points.
   JSON-roundtrip resolved paths.
 - **`with_*` setters on `NumericCoercionConfig`.** Mirrors the
   `EvaluationConfig` fluent API: `with_empty_string_to_zero`,
-  `with_null_to_zero`, `with_bool_to_number`, `with_strict_numeric`,
+  `with_null_to_zero`, `with_bool_to_number`, `with_reject_non_numeric`,
   `with_undefined_to_zero`. All `#[must_use]`, all return `Self`.
 
 ### Deprecated

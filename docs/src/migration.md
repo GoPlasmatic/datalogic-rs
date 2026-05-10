@@ -154,7 +154,7 @@ let result: Value = engine.evaluate_json(rule_str, data_str)?;
 let result: String = engine.evaluate_str(rule_str, data_str)?;     // one-shot
 
 #[cfg(feature = "compat")]
-let result: serde_json::Value = engine.evaluate_serde(&rule_value, &data_value)?;
+let result: serde_json::Value = engine.evaluate_json_value(&rule_value, &data_value)?;
 
 // Reusable arena (recommended for repeated calls)
 let mut session = engine.session();
@@ -365,7 +365,7 @@ for browser builds.
 
 `features = ["compat"]` activates:
 
-- `serde_json::Value` adapters: `Engine::evaluate_serde`,
+- `serde_json::Value` adapters: `Engine::evaluate_json_value`,
   `Engine::compile` (taking `&Value`) via `LegacyApi`, deep-convert helpers.
 - The `LegacyApi` extension trait — bringing it into scope unlocks every
   4.x entry point (`evaluate_json`, `evaluate_owned`, `evaluate_ref`,
@@ -399,7 +399,7 @@ will keep nudging you per call site. Plan to drop the feature in 5.1+.
    - `DataLogic::with_config_and_structure(c, p)` → `Engine::builder().config(c).preserve_structure(p).build()`
 
 4. **Update evaluation calls:**
-   - `engine.evaluate(&compiled, &data)` → `Session` / `Engine::evaluate` / `evaluate_serde`
+   - `engine.evaluate(&compiled, &data)` → `Session` / `Engine::evaluate` / `evaluate_json_value`
    - `engine.evaluate_owned(&compiled, data)` → same
    - `engine.evaluate_json(rule, data)` → `engine.evaluate_str(rule, data)` (returns `String`, not `serde_json::Value`)
 

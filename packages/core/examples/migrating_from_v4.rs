@@ -53,16 +53,16 @@ fn main() {
     // v5 — string boundary (no serde_json needed):
     let r_v5_str = engine.evaluate_str(rule, data).unwrap();
     // v5 — serde_json boundary, when you need it (compat feature):
-    let r_v5_serde = engine
-        .evaluate_serde(
+    let r_v5_json_value = engine
+        .evaluate_json_value(
             &json!({"+": [{"var": "a"}, {"var": "b"}]}),
             &json!({"a": 2, "b": 3}),
         )
         .unwrap();
 
-    println!("\n[2] v4 evaluate_json:    {r_v4}");
-    println!("    v5 evaluate_str:     {r_v5_str}");
-    println!("    v5 evaluate_serde:   {r_v5_serde}");
+    println!("\n[2] v4 evaluate_json:        {r_v4}");
+    println!("    v5 evaluate_str:         {r_v5_str}");
+    println!("    v5 evaluate_json_value:  {r_v5_json_value}");
 
     // ============================================================
     // 3. Custom operators

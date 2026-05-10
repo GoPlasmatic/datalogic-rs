@@ -77,13 +77,13 @@ One-shot string-in / string-out evaluation. Allocates a fresh
 pub fn evaluate_str(&self, logic: &str, data: &str) -> Result<String>
 ```
 
-#### `evaluate_serde` (feature = "compat")
+#### `evaluate_json_value` (feature = "compat")
 
 `serde_json::Value` boundary on both sides, mirroring `evaluate_str`.
 
 ```rust
 #[cfg(feature = "compat")]
-pub fn evaluate_serde(&self, logic: &serde_json::Value, data: &serde_json::Value) -> Result<serde_json::Value>
+pub fn evaluate_json_value(&self, logic: &serde_json::Value, data: &serde_json::Value) -> Result<serde_json::Value>
 ```
 
 #### `session`
@@ -107,9 +107,8 @@ pub fn with_trace(&self) -> TracedSession<'_>
 
 ```rust
 pub fn config(&self) -> &EvaluationConfig
-pub fn preserve_structure(&self) -> bool
 pub fn has_custom_operator(&self, name: &str) -> bool
-pub fn operator_names(&self) -> impl Iterator<Item = &str>
+pub fn custom_operator_names(&self) -> impl Iterator<Item = &str>
 ```
 
 ---
@@ -121,10 +120,9 @@ Fluent constructor for `Engine`. Returned by `Engine::builder()`.
 ```rust
 EngineBuilder::new()
     .config(EvaluationConfig::default())
-    .preserve_structure(true)              // feature = "preserve"
+    .with_templating(true)                 // feature = "templating"
     .add_operator("name", MyOp)
-    .add_operator_boxed("dyn", boxed_op)   // when you already have Box<dyn CustomOperator>
-    .remove_operator("unwanted")
+    .add_operator_box("dyn", boxed_op)     // when you already have Box<dyn CustomOperator>
     .build();
 ```
 
@@ -153,7 +151,7 @@ let result_str: String = session.evaluate_str(&compiled, data_json)?;
 let result_owned: datalogic_rs::datavalue::OwnedDataValue = session.evaluate(&compiled, data)?;
 
 #[cfg(feature = "compat")]
-let result_value: serde_json::Value = session.evaluate_serde(&compiled, &serde_data)?;
+let result_value: serde_json::Value = session.evaluate_json_value(&compiled, &serde_data)?;
 ```
 
 `Session::evaluate` accepts any `EvalInput<'_>`.
@@ -209,7 +207,7 @@ with struct update syntax:
 ```rust
 EvaluationConfig {
     arithmetic_nan_handling: NanHandling::ThrowError,
-    division_by_zero: DivisionByZeroHandling::ReturnBounds,
+    division_by_zero: DivisionByZeroHandling::ReturnSaturated,
     loose_equality_errors: true,
     truthy_evaluator: TruthyEvaluator::JavaScript,
     numeric_coercion: NumericCoercionConfig::default(),
@@ -239,7 +237,7 @@ pub enum NanHandling {
 
 ```rust
 pub enum DivisionByZeroHandling {
-    ReturnBounds,    // default — f64::MAX / MIN
+    ReturnSaturated,    // default — f64::MAX / MIN
     ThrowError,
     ReturnNull,
     ReturnInfinity,

@@ -114,7 +114,7 @@ fn demonstrate_numeric_coercion() {
                         .with_empty_string_to_zero(false)
                         .with_null_to_zero(false)
                         .with_bool_to_number(false)
-                        .with_strict_numeric(true),
+                        .with_reject_non_numeric(true),
                 ),
         )
         .build();

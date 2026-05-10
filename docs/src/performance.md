@@ -126,7 +126,7 @@ for data in datasets {
 | JSON strings (one-shot) | `Engine::evaluate_str(rule, data)` |
 | JSON strings (many runs) | `Session::evaluate_str(&compiled, data)` |
 | `OwnedDataValue` (many runs) | `Session::evaluate(&compiled, &owned)` → `OwnedDataValue` |
-| `serde_json::Value` (legacy boundary) | `Engine::evaluate_serde` / `Session::evaluate_serde` (`compat`) |
+| `serde_json::Value` (legacy boundary) | `Engine::evaluate_json_value` / `Session::evaluate_json_value` (`compat`) |
 | Hot path, owns the `Bump` | `Engine::evaluate(&compiled, data, &arena)` |
 
 ### 3. Short-Circuit Evaluation

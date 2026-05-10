@@ -197,11 +197,11 @@ impl<'engine> Session<'engine> {
 
     /// `serde_json::Value` convenience: evaluate `compiled` against a serde
     /// value and convert the result back to a serde value. Mirrors
-    /// [`Engine::evaluate_serde`] but reuses the arena across calls.
+    /// [`Engine::evaluate_json_value`] but reuses the arena across calls.
     /// Does not reset the arena — see [`Self::reset`].
     #[cfg(feature = "compat")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
-    pub fn evaluate_serde(
+    pub fn evaluate_json_value(
         &mut self,
         compiled: &Logic,
         data: &serde_json::Value,

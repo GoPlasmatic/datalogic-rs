@@ -235,7 +235,7 @@ fn arena_ext_helpers_round_trip_through_custom_op() {
         .build();
 
     let result = engine
-        .evaluate_serde(&json!({"sample": []}), &json!({}))
+        .evaluate_json_value(&json!({"sample": []}), &json!({}))
         .unwrap();
     assert_eq!(
         result,
@@ -275,16 +275,16 @@ fn arena_ext_singletons_avoid_arena_writes() {
 }
 
 #[test]
-fn operator_names_lists_registered_custom_ops() {
+fn custom_operator_names_lists_registered_custom_ops() {
     let empty = Engine::new();
-    assert_eq!(empty.operator_names().count(), 0);
+    assert_eq!(empty.custom_operator_names().count(), 0);
 
     let engine = Engine::builder()
         .add_operator("double", DoubleArena)
         .add_operator("xcat", CatArena)
         .build();
 
-    let mut names: Vec<&str> = engine.operator_names().collect();
+    let mut names: Vec<&str> = engine.custom_operator_names().collect();
     names.sort();
     assert_eq!(names, vec!["double", "xcat"]);
 }

@@ -114,7 +114,7 @@ fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &Engine) -> Result<&'a 
             };
             Ok(alloc_number(arena, NumberValue::from_f64(v)))
         }
-        DivisionByZeroHandling::ReturnBounds => {
+        DivisionByZeroHandling::ReturnSaturated => {
             let v = if dividend > 0.0 {
                 f64::MAX
             } else if dividend < 0.0 {

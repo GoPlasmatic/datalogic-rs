@@ -60,7 +60,7 @@ impl Drop for DepthGuard {
 /// implementations, the [`EvaluationConfig`], the optional
 /// preserve-structure flag — and exposes the public surface for parsing
 /// rules ([`Self::compile`]), evaluating them ([`Self::evaluate`],
-/// [`Self::evaluate_str`], [`Self::evaluate_serde`]), and opening
+/// [`Self::evaluate_str`], [`Self::evaluate_json_value`]), and opening
 /// hot-loop / traced sessions ([`Self::session`], [`Self::with_trace`]).
 ///
 /// `Engine` is `Send + Sync` (every field is); the typical pattern is to
@@ -108,7 +108,7 @@ impl Drop for DepthGuard {
 /// | [`Self::evaluate_str`] | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` (JSON) | One-shot. CLI scripts, "I want JSON in and JSON out", any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
 /// | [`crate::Session::evaluate`] / [`crate::Session::evaluate_ref`] / [`crate::Session::evaluate_str`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned (`OwnedDataValue` / `String`) or borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
 /// | [`Self::evaluate`] | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, custom pool/allocator strategies, integration with arena-aware downstream code. |
-/// | [`Self::evaluate_serde`] (gated on `compat`) | engine creates a fresh `Bump::with_capacity(4096)` per call | `serde_json::Value` | Drop-in for v4 callers and any path that needs the `serde_json::Value` boundary on both sides. |
+/// | [`Self::evaluate_json_value`] (gated on `compat`) | engine creates a fresh `Bump::with_capacity(4096)` per call | `serde_json::Value` | Drop-in for v4 callers and any path that needs the `serde_json::Value` boundary on both sides. |
 ///
 /// All four route through the same dispatcher; the only differences are
 /// who owns the arena, what the result type looks like, and whether the
@@ -173,9 +173,9 @@ impl Default for Engine {
 impl std::fmt::Debug for Engine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Print the operator *count* rather than names: names are user
-        // registration data, and `Engine::operator_names()` exposes them
-        // already for callers who want them. The trait objects themselves
-        // can't render a meaningful Debug.
+        // registration data, and `Engine::custom_operator_names()` exposes
+        // them already for callers who want them. The trait objects
+        // themselves can't render a meaningful Debug.
         let mut s = f.debug_struct("Engine");
         s.field("custom_operators", &self.custom_operators.len());
         #[cfg(feature = "templating")]
@@ -288,10 +288,11 @@ impl Engine {
         self.custom_operators.contains_key(name)
     }
 
-    /// Iterator over the names of every custom operator registered on this
-    /// engine. Order is unspecified (HashMap iteration order). Useful for
-    /// tooling, UIs, and tests that need to introspect what's available.
-    pub fn operator_names(&self) -> impl Iterator<Item = &str> {
+    /// Iterator over the names of every *custom* operator registered on
+    /// this engine (built-ins are not included). Order is unspecified
+    /// (HashMap iteration order). Useful for tooling, UIs, and tests
+    /// that need to introspect what's available.
+    pub fn custom_operator_names(&self) -> impl Iterator<Item = &str> {
         self.custom_operators.keys().map(String::as_str)
     }
 
@@ -444,13 +445,13 @@ impl Engine {
     /// Funnels through [`Self::evaluate`] internally.
     #[cfg(feature = "compat")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
-    pub fn evaluate_serde(&self, logic: &Value, data: &Value) -> Result<Value> {
+    pub fn evaluate_json_value(&self, logic: &Value, data: &Value) -> Result<Value> {
         let logic_owned = crate::compat::owned_from_serde(logic);
         let compiled = Logic::compile_with(&logic_owned, self)?;
         self.run_to_value(&compiled, data)
     }
 
-    /// Internal `&Value -> Value` adapter shared by [`Self::evaluate_serde`]
+    /// Internal `&Value -> Value` adapter shared by [`Self::evaluate_json_value`]
     /// and the v4 compat shims in [`crate::compat::LegacyApi`]. Routes
     /// through the public [`Self::evaluate`] so the dispatch path is
     /// identical regardless of entry point.

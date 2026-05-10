@@ -67,7 +67,7 @@ If you need lazy / short-circuit semantics like `and` / `or`, that lives in
 built-in operators today (none of the v5 short-circuit operators are
 exposed through the public custom-operator surface).
 
-### What's the difference between `evaluate`, `evaluate_str`, `session.evaluate*`, and `evaluate_serde`?
+### What's the difference between `evaluate`, `evaluate_str`, `session.evaluate*`, and `evaluate_json_value`?
 
 | Method | Input | Output | Notes |
 |--------|-------|--------|-------|
@@ -75,7 +75,7 @@ exposed through the public custom-operator surface).
 | `Engine::evaluate` | any `EvalInput` + `&Bump` | `&DataValue<'a>` | Hot path. Caller owns the arena, result borrows from it. |
 | `Session::evaluate_str` | `&str` | `String` | Reuses the session's arena across calls. |
 | `Session::evaluate` | any `EvalInput` | `OwnedDataValue` | Owned tree that survives the next reset. |
-| `Engine::evaluate_serde` (`compat`) | `&serde_json::Value` × 2 | `serde_json::Value` | Mirror of `evaluate_str` for callers on `serde_json`. |
+| `Engine::evaluate_json_value` (`compat`) | `&serde_json::Value` × 2 | `serde_json::Value` | Mirror of `evaluate_str` for callers on `serde_json`. |
 
 ---
 
@@ -223,7 +223,7 @@ let config = EvaluationConfig {
 };
 ```
 
-Options: `ReturnBounds` (default — `f64::MAX/MIN`), `ThrowError`,
+Options: `ReturnSaturated` (default — `f64::MAX/MIN`), `ThrowError`,
 `ReturnNull`, `ReturnInfinity`.
 
 ---

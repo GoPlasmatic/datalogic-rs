@@ -107,7 +107,7 @@ Conversion to other shapes:
 - **To a JSON string:** `data_to_json_string(value)` — re-exported at
   the crate root, called internally by `evaluate_str`.
 - **To `serde_json::Value`** (requires `compat` feature): the
-  `Session::evaluate_serde` and `Engine::evaluate_serde` entry points
+  `Session::evaluate_json_value` and `Engine::evaluate_json_value` entry points
   return `serde_json::Value` directly.
 - **Owned vs borrowed:** `DataValue<'a>` borrows from a `Bump`;
   `OwnedDataValue` is the heap-owned counterpart for crossing arena

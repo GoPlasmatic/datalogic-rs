@@ -161,7 +161,7 @@ pub use config::{
 /// Conversions to / from `serde_json::Value` are gated behind the
 /// `compat` feature (kept off by default so the crate has zero external
 /// dependencies in the minimal build). With `compat` enabled, use
-/// [`Engine::evaluate_serde`] / [`Session::evaluate_serde`] to take and
+/// [`Engine::evaluate_json_value`] / [`Session::evaluate_json_value`] to take and
 /// return `serde_json::Value` directly, or
 /// [`data_to_json_string`] for the `DataValue → String` path that
 /// `evaluate_str` uses internally.

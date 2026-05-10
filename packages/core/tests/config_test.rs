@@ -14,7 +14,7 @@ use std::sync::Arc;
 fn test_nan_handling_throw_error() {
     let engine = Engine::new();
     let logic = json!({"+": [1, "not_a_number"]});
-    let result = engine.evaluate_serde(&logic, &json!({}));
+    let result = engine.evaluate_json_value(&logic, &json!({}));
     assert!(result.is_err());
 }
 
@@ -24,7 +24,7 @@ fn test_nan_handling_ignore_value() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(3)); // 1 + 2, ignoring "not_a_number"
 }
 
@@ -35,7 +35,7 @@ fn test_nan_handling_coerce_to_zero() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(3)); // 1 + 0 + 2
 }
 
@@ -45,7 +45,7 @@ fn test_nan_handling_return_null() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(null));
 }
 
@@ -54,15 +54,15 @@ fn test_numeric_coercion_default() {
     let engine = Engine::new();
 
     let logic = json!({"+": ["", 5]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(5));
 
     let logic = json!({"+": [true, false, 3]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(4));
 
     let logic = json!({"+": [null, 10]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(10));
 }
 
@@ -75,20 +75,20 @@ fn test_numeric_coercion_strict() {
                 .with_empty_string_to_zero(false)
                 .with_null_to_zero(false)
                 .with_bool_to_number(false)
-                .with_strict_numeric(true),
+                .with_reject_non_numeric(true),
         );
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"+": ["", 5]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(5));
 
     let logic = json!({"+": [true, 3]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(3));
 
     let logic = json!({"+": [null, 10]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(10));
 }
 
@@ -96,7 +96,7 @@ fn test_numeric_coercion_strict() {
 fn test_loose_equality_errors_default() {
     let engine = Engine::new();
     let logic = json!({"==": [[], 5]});
-    let result = engine.evaluate_serde(&logic, &json!({}));
+    let result = engine.evaluate_json_value(&logic, &json!({}));
     assert!(result.is_err());
 }
 
@@ -106,7 +106,7 @@ fn test_loose_equality_errors_disabled() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"==": [[], 5]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 }
 
@@ -117,11 +117,11 @@ fn test_safe_arithmetic_preset() {
         .build();
 
     let logic = json!({"+": [1, "not_a_number", 2, [3, 4], 5]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(8));
 
     let logic = json!({"==": [[], "string"]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 }
 
@@ -130,11 +130,11 @@ fn test_strict_preset() {
     let engine = Engine::builder().config(EvaluationConfig::strict()).build();
 
     let logic = json!({"+": [true, 5]});
-    let result = engine.evaluate_serde(&logic, &json!({}));
+    let result = engine.evaluate_json_value(&logic, &json!({}));
     assert!(result.is_err());
 
     let logic = json!({"+": [null, 5]});
-    let result = engine.evaluate_serde(&logic, &json!({}));
+    let result = engine.evaluate_json_value(&logic, &json!({}));
     assert!(result.is_err());
 }
 
@@ -152,7 +152,7 @@ fn test_thread_safety() {
 
         let handle = std::thread::spawn(move || {
             let data = json!({"a": i * 10, "b": i});
-            engine.evaluate_serde(&logic, &data).unwrap()
+            engine.evaluate_json_value(&logic, &data).unwrap()
         });
 
         handles.push(handle);
@@ -170,13 +170,13 @@ fn test_runtime_config_change() {
     let logic = json!({"+": [1, "not_a_number"]});
 
     let engine1 = Engine::new();
-    let result = engine1.evaluate_serde(&logic, &json!({}));
+    let result = engine1.evaluate_json_value(&logic, &json!({}));
     assert!(result.is_err());
 
     let engine2 = Engine::builder()
         .config(EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue))
         .build();
-    let result = engine2.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine2.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(1));
 }
 
@@ -186,7 +186,7 @@ fn test_subtraction_with_config() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"-": [10, "invalid", 3]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(7));
 }
 
@@ -197,7 +197,7 @@ fn test_multiplication_with_config() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({"*": [2, "invalid", 3]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(6));
 }
 
@@ -211,11 +211,11 @@ fn test_comparison_with_config() {
     let engine = Engine::builder().config(config).build();
 
     let logic = json!({">": [true, false]});
-    let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 
     let logic = json!({">": ["", -1]});
-    let result = engine.evaluate_serde(&logic, &json!({}));
+    let result = engine.evaluate_json_value(&logic, &json!({}));
     assert!(result.is_err());
 }
 
@@ -237,7 +237,7 @@ fn test_truthy_evaluator_javascript() {
 
     let empty_obj_test = json!({"if": [{"var": "obj"}, "truthy", "falsy"]});
     let result = engine
-        .evaluate_serde(&empty_obj_test, &json!({"obj": {}}))
+        .evaluate_json_value(&empty_obj_test, &json!({"obj": {}}))
         .unwrap();
     assert_eq!(
         result,
@@ -246,7 +246,7 @@ fn test_truthy_evaluator_javascript() {
     );
 
     let result = engine
-        .evaluate_serde(&empty_obj_test, &json!({"obj": {"a": 1}}))
+        .evaluate_json_value(&empty_obj_test, &json!({"obj": {"a": 1}}))
         .unwrap();
     assert_eq!(
         result,
@@ -255,7 +255,7 @@ fn test_truthy_evaluator_javascript() {
     );
 
     for (logic, expected) in test_cases {
-        let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+        let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
 }
@@ -277,7 +277,7 @@ fn test_truthy_evaluator_strict_boolean() {
     ];
 
     for (logic, expected) in test_cases {
-        let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+        let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
 }
@@ -306,7 +306,7 @@ fn test_truthy_evaluator_custom() {
     ];
 
     for (logic, expected) in test_cases {
-        let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+        let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
 }
@@ -329,7 +329,7 @@ fn test_truthy_evaluator_custom_constructor() {
     ];
 
     for (logic, expected) in test_cases {
-        let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+        let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
 }
@@ -351,7 +351,7 @@ fn test_truthy_in_logical_operators() {
     ];
 
     for (logic, expected) in test_cases {
-        let result = engine.evaluate_serde(&logic, &json!({})).unwrap();
+        let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
         assert_eq!(result, expected, "Failed for logic: {:?}", logic);
     }
 }
@@ -398,7 +398,7 @@ fn test_evaluation_config_fluent_setters() {
                 .with_empty_string_to_zero(false)
                 .with_null_to_zero(false)
                 .with_bool_to_number(false)
-                .with_strict_numeric(true),
+                .with_reject_non_numeric(true),
         )
         .with_max_recursion_depth(64);
 
@@ -409,14 +409,14 @@ fn test_evaluation_config_fluent_setters() {
         config.truthy_evaluator,
         TruthyEvaluator::StrictBoolean
     ));
-    assert!(config.numeric_coercion.strict_numeric);
+    assert!(config.numeric_coercion.reject_non_numeric);
     assert_eq!(config.max_recursion_depth, 64);
 
     // Engine-level smoke check: the chained config drives evaluation as
     // expected — `IgnoreValue` lets arithmetic skip the bad operand.
     let engine = Engine::builder().config(config).build();
     let result = engine
-        .evaluate_serde(&json!({"+": [1, "skip", 2]}), &json!({}))
+        .evaluate_json_value(&json!({"+": [1, "skip", 2]}), &json!({}))
         .unwrap();
     assert_eq!(result, json!(3));
 }

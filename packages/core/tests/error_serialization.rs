@@ -391,7 +391,7 @@ fn nan_error(engine: &Engine) -> (datalogic_rs::Logic, Error) {
     let compiled = engine.compile(r#"{"+": ["x", 1]}"#).unwrap();
     let mut session = engine.session();
     let err = session
-        .evaluate_serde(&compiled, &json!(null))
+        .evaluate_json_value(&compiled, &json!(null))
         .expect_err("arithmetic on string must fail");
     (compiled, err)
 }
