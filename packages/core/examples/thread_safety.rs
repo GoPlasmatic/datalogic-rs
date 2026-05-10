@@ -23,7 +23,7 @@ fn main() {
             thread::spawn(move || {
                 let mut session = engine.session();
                 let payload = format!(r#"{{"score": {}}}"#, i * 25);
-                let result = session.evaluate_str(&compiled, &payload).unwrap();
+                let result = session.eval_str(&compiled, &payload).unwrap();
                 (i, i * 25, result)
             })
         })

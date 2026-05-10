@@ -46,7 +46,7 @@ impl Subject for DatalogicRs {
 
     fn evaluate(&self, rule_json: &str, data_json: &str) -> Result<String, String> {
         self.engine
-            .evaluate_str(rule_json, data_json)
+            .eval_str(rule_json, data_json)
             .map_err(|e| format!("{e:?}"))
     }
 }

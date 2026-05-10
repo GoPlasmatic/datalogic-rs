@@ -1,9 +1,7 @@
 //! End-to-end smoke tests for the v5 public surface.
 //!
-//! Exercises only the v5 entry points (`EngineBuilder`, `compile`,
-//! `evaluate`, `evaluate_str`, `evaluate_json_value`). The 4.x compat methods
-//! live behind `crate::compat` and have their own coverage in
-//! `arena_operator_test.rs` / `error_serialization.rs`.
+//! Exercises the v5 entry points (`EngineBuilder`, `compile`, `evaluate`,
+//! `eval_str`, `eval_into`).
 
 use bumpalo::Bump;
 use datalogic_rs::{DataValue, Engine};
@@ -11,7 +9,7 @@ use datalogic_rs::{DataValue, Engine};
 #[test]
 fn builder_default_engine() {
     let engine = Engine::builder().build();
-    let result = engine.evaluate_str(r#"{"+": [1, 2, 3]}"#, "null").unwrap();
+    let result = engine.eval_str(r#"{"+": [1, 2, 3]}"#, "null").unwrap();
     assert_eq!(result, "6");
 }
 
@@ -19,7 +17,7 @@ fn builder_default_engine() {
 fn evaluate_str_one_shot_with_variable() {
     let engine = Engine::new();
     let result = engine
-        .evaluate_str(r#"{"var": "name"}"#, r#"{"name": "Alice"}"#)
+        .eval_str(r#"{"var": "name"}"#, r#"{"name": "Alice"}"#)
         .unwrap();
     assert_eq!(result, "\"Alice\"");
 }
@@ -64,7 +62,7 @@ fn compile_once_evaluate_many_arena_reuse() {
 fn datavalue_object_returned_as_json_string() {
     let engine = Engine::new();
     let result = engine
-        .evaluate_str(r#"{"merge": [[1, 2], [3, 4]]}"#, "null")
+        .eval_str(r#"{"merge": [[1, 2], [3, 4]]}"#, "null")
         .unwrap();
     assert_eq!(result, "[1,2,3,4]");
 }
@@ -142,14 +140,59 @@ fn logic_to_json_handles_constant_folded_subtree() {
     assert_eq!(result.as_i64(), Some(6));
 }
 
-#[cfg(feature = "compat")]
+/// `EngineBuilder::with_constant_folding(false)` keeps every operator in
+/// the compiled tree. We can't observe the tree shape directly (it's
+/// `pub(crate)`), but `Logic::to_json` reflects it — when folding is on
+/// the inner `{"+": [2, 3]}` becomes the literal `5`; when folding is
+/// off it stays as the `+` operator.
+#[test]
+fn with_constant_folding_off_preserves_operators() {
+    let folded = Engine::builder().build();
+    let folded_logic = folded.compile(r#"{"+": [1, {"+": [2, 3]}]}"#).unwrap();
+    let folded_json = folded_logic.to_json();
+    // Folded form replaces the inner `{"+": [2, 3]}` with the literal 5.
+    assert!(
+        !folded_json.contains(r#"{"+": [2"#),
+        "expected folded form, got {folded_json}"
+    );
+
+    let unfolded = Engine::builder().with_constant_folding(false).build();
+    let unfolded_logic = unfolded
+        .compile(r#"{"+": [1, {"+": [2, 3]}]}"#)
+        .unwrap();
+    let unfolded_json = unfolded_logic.to_json();
+    // Unfolded form keeps both `+` operators visible in the round-trip.
+    assert!(
+        unfolded_json.contains(r#"{"+": [2"#),
+        "expected unfolded form to retain inner operator, got {unfolded_json}"
+    );
+
+    // Both engines compute the same answer regardless of folding.
+    let arena = Bump::new();
+    let data = DataValue::from_str("null", &arena).unwrap();
+    assert_eq!(
+        folded.evaluate(&folded_logic, data, &arena).unwrap().as_i64(),
+        Some(6),
+    );
+    let arena2 = Bump::new();
+    let data2 = DataValue::from_str("null", &arena2).unwrap();
+    assert_eq!(
+        unfolded
+            .evaluate(&unfolded_logic, data2, &arena2)
+            .unwrap()
+            .as_i64(),
+        Some(6),
+    );
+}
+
+#[cfg(feature = "serde_json")]
 #[test]
 fn evaluate_json_value_one_shot() {
     use serde_json::json;
     let engine = Engine::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 2, "b": 3});
-    let result = engine.evaluate_json_value(&logic, &data).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &data).unwrap();
     assert_eq!(result, json!(5));
 }
 
@@ -185,7 +228,7 @@ fn max_recursion_depth_catches_custom_operator_reentry() {
             // We don't care about the inner result — the cap fires
             // before we ever come back, so the inner Result is the
             // ConfigurationError that bubbles up.
-            engine.evaluate_str(r#"{"recurse": []}"#, "null")?;
+            engine.eval_str(r#"{"recurse": []}"#, "null")?;
             // Unreachable in practice (the recurse always errors
             // before returning) but kept to satisfy the type.
             Err(datalogic_rs::Error::custom_message("unreachable"))
@@ -213,7 +256,7 @@ fn max_recursion_depth_catches_custom_operator_reentry() {
     // Top-level call. Each `recurse` invocation increments
     // `DISPATCH_DEPTH` once for the dispatcher and once for the inner
     // re-entered `evaluate_str` → at depth 4 we bail.
-    let result = engine.evaluate_str(r#"{"recurse": []}"#, "null");
+    let result = engine.eval_str(r#"{"recurse": []}"#, "null");
     let err = result.expect_err("recursion cap should fire");
 
     assert!(
@@ -260,7 +303,7 @@ fn builtin_shadows_custom_operator_with_same_name() {
     let engine = Engine::builder()
         .add_operator("+", AdditiveImposter)
         .build();
-    let result = engine.evaluate_str(r#"{"+": [1, 2]}"#, "null").unwrap();
+    let result = engine.eval_str(r#"{"+": [1, 2]}"#, "null").unwrap();
     // Built-in `+` ran (3), not the imposter (-1).
     assert_eq!(result, "3");
 }

@@ -34,7 +34,7 @@ use std::sync::Arc;
 ///
 /// // "skipped" can't coerce to a number; with `IgnoreValue` the
 /// // arithmetic continues with the remaining operands.
-/// let result = engine.evaluate_str(r#"{"+": [1, "skipped", 2]}"#, "null").unwrap();
+/// let result = engine.eval_str(r#"{"+": [1, "skipped", 2]}"#, "null").unwrap();
 /// assert_eq!(result, "3");
 /// ```
 ///
@@ -202,7 +202,7 @@ impl TruthyEvaluator {
     ///     }),
     /// );
     /// let engine = Engine::builder().with_config(config).build();
-    /// let result = engine.evaluate_str(r#"{"if": [2, "even", "odd"]}"#, "null").unwrap();
+    /// let result = engine.eval_str(r#"{"if": [2, "even", "odd"]}"#, "null").unwrap();
     /// assert_eq!(result, "\"even\"");
     /// ```
     pub fn custom<F>(f: F) -> Self

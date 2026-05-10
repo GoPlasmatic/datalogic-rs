@@ -1,7 +1,5 @@
-#![cfg(feature = "compat")]
-#![allow(deprecated)]
+#![cfg(feature = "serde_json")]
 
-use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::{Engine, Error};
 use serde_json::{Value, json};
 
@@ -184,7 +182,7 @@ fn structured_error_flattens_variant_extras() {
 fn evaluate_json_structured_reports_outer_operator() {
     let engine = Engine::new();
     let err = engine
-        .evaluate_json_structured(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#)
+        .eval_str(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#)
         .expect_err("throw must produce a structured error");
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["type"], json!("Thrown"));
@@ -195,8 +193,8 @@ fn evaluate_json_structured_reports_outer_operator() {
 #[test]
 fn evaluate_json_structured_success_passes_through() {
     let engine = Engine::new();
-    let result = engine
-        .evaluate_json_structured(r#"{"+": [1, 2]}"#, r#"{}"#)
+    let result: serde_json::Value = engine
+        .eval_into::<serde_json::Value, _, _>(r#"{"+": [1, 2]}"#, r#"{}"#)
         .unwrap();
     // Accept either integer or float encoding — datalogic returns either based on inputs.
     assert_eq!(result.as_f64(), Some(3.0));
@@ -206,7 +204,7 @@ fn evaluate_json_structured_success_passes_through() {
 fn evaluate_json_structured_parse_error_has_no_operator() {
     let engine = Engine::new();
     let err = engine
-        .evaluate_json_structured("not json", r#"{}"#)
+        .eval_str("not json", r#"{}"#)
         .expect_err("invalid JSON should error");
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["type"], json!("ParseError"));
@@ -217,7 +215,7 @@ fn evaluate_json_structured_parse_error_has_no_operator() {
 fn evaluate_json_structured_captures_arithmetic_operator() {
     let engine = Engine::new();
     let err = engine
-        .evaluate_json_structured(r#"{"/": [1, 0]}"#, "{}")
+        .eval_str(r#"{"/": [1, 0]}"#, "{}")
         .expect_err("division by zero must error");
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["operator"], json!("/"));
@@ -228,7 +226,7 @@ fn evaluate_json_structured_captures_arithmetic_operator() {
 fn evaluate_json_structured_captures_unknown_operator() {
     let engine = Engine::new();
     let err = engine
-        .evaluate_json_structured(r#"{"not_a_real_op_123": [1]}"#, "{}")
+        .eval_str(r#"{"not_a_real_op_123": [1]}"#, "{}")
         .expect_err("unknown op must error");
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["type"], json!("InvalidOperator"));
@@ -240,7 +238,7 @@ fn evaluate_json_structured_captures_unknown_operator() {
 fn evaluate_json_structured_captures_type_coercion_op() {
     let engine = Engine::new();
     let err = engine
-        .evaluate_json_structured(r#"{"+": ["abc", 1]}"#, "{}")
+        .eval_str(r#"{"+": ["abc", 1]}"#, "{}")
         .expect_err("non-numeric addition must error");
     let v = serde_json::to_value(&err).unwrap();
     assert_eq!(v["operator"], json!("+"));
@@ -251,10 +249,9 @@ fn evaluate_json_structured_captures_type_coercion_op() {
 fn evaluate_json_with_trace_structured_populates_error_fields() {
     let engine = Engine::new();
     let traced = engine
-        .evaluate_json_with_trace_structured(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#)
-        .unwrap();
-    assert!(traced.error.is_some());
-    let structured = traced.structured_error.expect("structured must populate");
+        .trace()
+        .eval_str(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#);
+    let structured = traced.result.expect_err("structured must populate");
     let v = serde_json::to_value(&structured).unwrap();
     assert_eq!(v["type"], json!("Thrown"));
     assert_eq!(v["operator"], json!("throw"));
@@ -312,7 +309,7 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
     // so the optimiser can't fold the if away and the error unwinds
     // through multiple operator frames.
     let err = engine
-        .evaluate_json_structured(
+        .eval_str(
             r#"{"if": [{"var": "go"}, {"throw": "oops"}, "ok"]}"#,
             r#"{"go": true}"#,
         )
@@ -343,7 +340,7 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
 #[test]
 fn structured_error_empty_path_on_success() {
     let engine = Engine::new();
-    let result = engine.evaluate_json_structured(r#"{"==": [1, 1]}"#, r#"{}"#);
+    let result = engine.eval_str(r#"{"==": [1, 1]}"#, r#"{}"#);
     // Successful eval — no error, so there's nothing to assert about path.
     assert!(result.is_ok());
 }
@@ -356,16 +353,20 @@ fn try_catches_and_discards_inner_path() {
     // and no breadcrumb should leak into a subsequent failing evaluation
     // because try truncates on catch.
     // try swallows the throw; result should be the fallback, not an error.
-    let result =
-        engine.evaluate_json_structured(r#"{"try": [{"throw": "ignored"}, "fallback"]}"#, r#"{}"#);
-    assert_eq!(result.unwrap(), json!("fallback"));
+    let result: serde_json::Value = engine
+        .eval_into::<serde_json::Value, _, _>(
+            r#"{"try": [{"throw": "ignored"}, "fallback"]}"#,
+            r#"{}"#,
+        )
+        .unwrap();
+    assert_eq!(result, json!("fallback"));
 }
 
 #[test]
 fn structured_error_path_serializes_to_json() {
     let engine = Engine::new();
     let err = engine
-        .evaluate_json_structured(r#"{"if": [true, {"throw": "boom"}, "ok"]}"#, r#"{}"#)
+        .eval_str(r#"{"if": [true, {"throw": "boom"}, "ok"]}"#, r#"{}"#)
         .unwrap_err();
 
     let json: Value = serde_json::to_value(&err).expect("must serialize");
@@ -391,7 +392,7 @@ fn nan_error(engine: &Engine) -> (datalogic_rs::Logic, Error) {
     let compiled = engine.compile(r#"{"+": ["x", 1]}"#).unwrap();
     let mut session = engine.session();
     let err = session
-        .evaluate_json_value(&compiled, &json!(null))
+        .eval_into::<serde_json::Value, _>(&compiled, &json!(null))
         .expect_err("arithmetic on string must fail");
     (compiled, err)
 }

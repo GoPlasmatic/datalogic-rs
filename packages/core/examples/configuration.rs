@@ -53,7 +53,7 @@ fn demonstrate_truthiness(name: &str, engine: &Engine) {
     let logic = r#"{"!!": [{"var": "value"}]}"#;
     for (value_json, description) in test_values {
         let data = format!(r#"{{"value": {}}}"#, value_json);
-        let result = engine.evaluate_str(logic, &data).unwrap();
+        let result = engine.eval_str(logic, &data).unwrap();
         let label = if result == "true" { "truthy" } else { "falsy" };
         println!("  {} is {}", description, label);
     }
@@ -66,7 +66,7 @@ fn demonstrate_nan_handling() {
 
     // Default: throw error
     let default_engine = Engine::new();
-    let result = default_engine.evaluate_str(logic, data);
+    let result = default_engine.eval_str(logic, data);
     println!("Default (ThrowError): {:?}", result);
 
     // Ignore non-numeric values
@@ -75,7 +75,7 @@ fn demonstrate_nan_handling() {
             EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue),
         )
         .build();
-    let result = ignore_engine.evaluate_str(logic, data).unwrap();
+    let result = ignore_engine.eval_str(logic, data).unwrap();
     println!("IgnoreValue: {} (non-numeric ignored)", result);
 
     // Return null
@@ -84,7 +84,7 @@ fn demonstrate_nan_handling() {
             EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::ReturnNull),
         )
         .build();
-    let result = null_engine.evaluate_str(logic, data).unwrap();
+    let result = null_engine.eval_str(logic, data).unwrap();
     println!("ReturnNull: {}", result);
 
     // Coerce to zero
@@ -93,7 +93,7 @@ fn demonstrate_nan_handling() {
             EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero),
         )
         .build();
-    let result = coerce_engine.evaluate_str(logic, data).unwrap();
+    let result = coerce_engine.eval_str(logic, data).unwrap();
     println!("CoerceToZero: {} (\"hello\" treated as 0)", result);
 }
 
@@ -108,7 +108,7 @@ fn demonstrate_numeric_coercion() {
     let default_engine = Engine::new();
     println!("Default (Coercion Enabled):");
     for (logic, desc) in &test_cases {
-        let result = default_engine.evaluate_str(logic, "{}").unwrap();
+        let result = default_engine.eval_str(*logic, "{}").unwrap();
         println!("  {} = {}", desc, result);
     }
 
@@ -129,7 +129,7 @@ fn demonstrate_numeric_coercion() {
 
     println!("\nStrict (No Coercion):");
     for (logic, desc) in &test_cases {
-        let result = strict_engine.evaluate_str(logic, "{}").unwrap();
+        let result = strict_engine.eval_str(*logic, "{}").unwrap();
         println!("  {} = {}", desc, result);
     }
 }

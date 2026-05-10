@@ -30,7 +30,7 @@
 //! use datalogic_rs::Engine;
 //!
 //! let engine = Engine::new();
-//! let result = engine.evaluate_str(
+//! let result = engine.eval_str(
 //!     r#"{"==": [{"var": "status"}, "active"]}"#,
 //!     r#"{"status": "active"}"#,
 //! ).unwrap();
@@ -52,7 +52,7 @@
 //!
 //! for x in 0..3 {
 //!     let payload = format!(r#"{{"x": {}}}"#, x);
-//!     let result = session.evaluate_str(&compiled, &payload).unwrap();
+//!     let result = session.eval_str(&compiled, &payload).unwrap();
 //!     assert_eq!(result, (x + 1).to_string());
 //!     // The session does not auto-reset; bound peak memory by
 //!     // resetting between iterations (constant-time, reuses chunks).
@@ -96,21 +96,23 @@
 mod arena;
 mod arena_ext;
 mod builder;
-#[cfg(feature = "compat")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
-pub mod compat;
 mod compile;
 mod config;
 mod engine;
 mod error;
 mod eval_input;
+mod logic_input;
 mod node;
 mod node_serialize;
 mod opcode;
 pub mod operator;
 mod operators;
 mod path;
+mod result_output;
+#[cfg(feature = "serde_json")]
+mod serde_bridge;
 mod session;
+mod top_level;
 #[cfg(feature = "trace")]
 mod trace;
 
@@ -159,23 +161,27 @@ pub use config::{
 /// # Crossing the `serde_json` boundary
 ///
 /// Conversions to / from `serde_json::Value` are gated behind the
-/// `compat` feature (kept off by default so the crate has zero external
-/// dependencies in the minimal build). With `compat` enabled, use
-/// [`Engine::evaluate_json_value`] / [`Session::evaluate_json_value`] to
-/// take and return `serde_json::Value` directly. For the `DataValue →
-/// JSON String` path use the standard `value.to_string()` (driven by
-/// `datavalue`'s native `Display` emitter, which is what `evaluate_str`
-/// uses internally).
+/// `serde_json` feature (kept off by default so the crate has zero
+/// external dependencies in the minimal build). With `serde_json`
+/// enabled, pass a `&serde_json::Value` (or any `&T: Serialize`) into
+/// any `eval*` method via [`EvalInput`] / [`IntoLogic`], and ask for a
+/// `serde_json::Value` (or any `T: DeserializeOwned`) back via
+/// [`Engine::eval_into`] / [`Session::eval_into`]. For the `DataValue
+/// → JSON String` path use the standard `value.to_string()`, which is
+/// what [`Engine::eval_str`] uses internally.
 pub use datavalue;
 pub use engine::Engine;
 pub use error::{CustomErrorSource, Error, ErrorKind};
-pub use eval_input::EvalInput;
+pub use eval_input::{EvalInput, OwnedInput};
+pub use logic_input::IntoLogic;
 pub use node::Logic;
 pub use path::PathStep;
+pub use result_output::FromDataValue;
 pub use session::Session;
-#[cfg(all(feature = "trace", feature = "compat"))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "trace", feature = "compat"))))]
-pub use trace::TracedResult;
+pub use top_level::{compile, eval, eval_str};
+#[cfg(feature = "serde_json")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
+pub use top_level::eval_into;
 #[cfg(feature = "trace")]
 #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
@@ -224,7 +230,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// let engine = Engine::builder().add_operator("double", DoubleArena).build();
 ///
-/// let result = engine.evaluate_str(r#"{"double": 21}"#, "null").unwrap();
+/// let result = engine.eval_str(r#"{"double": 21}"#, "null").unwrap();
 /// assert_eq!(result, "42");
 /// ```
 ///

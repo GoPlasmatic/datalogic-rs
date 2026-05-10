@@ -1,9 +1,9 @@
 //! Builder for [`Engine`].
 //!
-//! Replaces the four ad-hoc 4.x constructors (`new`, `with_preserve_structure`,
-//! `with_config`, `with_config_and_structure`) with a single fluent builder.
-//! All four are still reachable through `crate::compat::LegacyApi` — see that
-//! module for the deprecated shims.
+//! The single entry point for non-default engine construction
+//! (config, custom operators, templating). Replaces the four ad-hoc
+//! 4.x constructors (`new`, `with_preserve_structure`, `with_config`,
+//! `with_config_and_structure`).
 
 use std::collections::HashMap;
 
@@ -37,10 +37,16 @@ use crate::engine::Engine;
 ///   built with `feature = "templating"`.
 /// - **`operators`** — empty. Add custom operators with
 ///   [`Self::add_operator`] before [`Self::build`] freezes the set.
+/// - **`constant_folding`** — `true`. The compile pipeline pre-computes
+///   constant sub-expressions during [`Engine::compile`]. Disable with
+///   [`Self::with_constant_folding`] when you need every operator to
+///   survive in the compiled tree (e.g. for tooling that walks the
+///   structure or applies its own rewrites).
 #[must_use = "the builder is consumed by `.build()`"]
 pub struct EngineBuilder {
     config: EvaluationConfig,
     templating: bool,
+    constant_folding: bool,
     operators: HashMap<String, Box<dyn CustomOperator>>,
 }
 
@@ -57,6 +63,7 @@ impl EngineBuilder {
         Self {
             config: EvaluationConfig::default(),
             templating: false,
+            constant_folding: true,
             operators: HashMap::new(),
         }
     }
@@ -76,6 +83,22 @@ impl EngineBuilder {
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_templating(mut self, on: bool) -> Self {
         self.templating = on;
+        self
+    }
+
+    /// Toggle the compile-time constant-folding pass. Default: `true`
+    /// (folding enabled). Pass `false` when every operator must survive
+    /// in the compiled tree — debuggers, alternate evaluators, or any
+    /// caller that walks the compiled structure and would be surprised
+    /// to see a `{"+": [1, 2]}` collapsed to a `3` literal.
+    ///
+    /// The trace surface ([`crate::Engine::trace`]) always disables
+    /// folding internally regardless of this setting, since traces
+    /// would otherwise lose the folded operators as steps.
+    #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
+    pub fn with_constant_folding(mut self, on: bool) -> Self {
+        self.constant_folding = on;
         self
     }
 
@@ -114,6 +137,11 @@ impl EngineBuilder {
 
     /// Finalise the builder into an immutable [`Engine`] engine.
     pub fn build(self) -> Engine {
-        Engine::from_builder_parts(self.config, self.templating, self.operators)
+        Engine::from_builder_parts(
+            self.config,
+            self.templating,
+            self.constant_folding,
+            self.operators,
+        )
     }
 }

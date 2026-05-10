@@ -7,35 +7,17 @@
 //! # Feature gating
 //!
 //! Gated on `feature = "trace"`. Trace transitively pulls in
-//! `feature = "compat"` (the `Cargo.toml` declares `trace = ["compat"]`)
-//! because the per-step expression tree and recorded values are
-//! `serde_json::Value`-shaped — the structured-trace consumers (the Web
-//! UI, JSON exporters) need the `compat` JSON↔arena bridge to render
-//! steps. If you `--features trace` you implicitly get `--features compat`.
+//! `feature = "serde_json"` (the `Cargo.toml` declares
+//! `trace = ["serde_json"]`) because the per-step expression tree and
+//! recorded values are `serde_json::Value`-shaped — the structured-trace
+//! consumers (the Web UI, JSON exporters) need the JSON↔arena bridge to
+//! render steps. `--features trace` implicitly enables `serde_json`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::node_serialize;
 use crate::{CompiledNode, Error};
-
-/// The result of a traced evaluation, containing both the result and execution trace.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TracedResult {
-    /// The evaluation result
-    pub result: Value,
-    /// Expression tree with unique IDs for flow diagram rendering
-    pub expression_tree: ExpressionNode,
-    /// Ordered execution steps for replay
-    pub steps: Vec<ExecutionStep>,
-    /// Top-level error message if evaluation failed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    /// Structured top-level error if evaluation failed. Serialize-only —
-    /// ignored on deserialize ([`Error`] is a Rust→JS shape).
-    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, default)]
-    pub structured_error: Option<Error>,
-}
 
 /// Represents a node in the expression tree for flow diagram rendering.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,9 +280,12 @@ pub struct TracedRun<R> {
 }
 
 /// Trace-enabled view over a [`crate::Engine`] engine. Constructed via
-/// [`crate::Engine::trace`]. The session's `evaluate*` methods mirror
-/// the engine's, but each call returns a [`TracedRun`] carrying the trace
-/// alongside the result.
+/// [`crate::Engine::trace`]. Mirrors [`crate::Session`] 1:1 — every
+/// `eval*` returns a [`TracedRun<R>`] carrying the trace alongside the
+/// result, where `R` is the same shape that `Session::eval*` would
+/// return. Owns its own [`bumpalo::Bump`] across calls; reset is
+/// per-call (the trace path always allocates a fresh arena to keep the
+/// borrowed-result lifetime tied to the run).
 pub struct TracedSession<'e> {
     engine: &'e crate::Engine,
 }
@@ -313,22 +298,124 @@ impl<'e> TracedSession<'e> {
         Self { engine }
     }
 
-    /// Arena-mode traced evaluation. The result references the supplied arena;
-    /// the trace data is owned and outlives the arena reset cycle.
-    ///
-    /// The trace surfaces only the operators that survived compilation —
-    /// constant sub-expressions folded by [`Engine::compile`](crate::Engine::compile)
-    /// will not appear as steps. For full coverage on a one-shot run, prefer
-    /// [`Self::evaluate_str`].
-    pub fn evaluate<'a, D: crate::EvalInput<'a>>(
+    /// Traced evaluation of a pre-compiled [`crate::Logic`] returning
+    /// [`datavalue::OwnedDataValue`]. The trace surfaces only the
+    /// operators that survived compilation — constant sub-expressions
+    /// folded by [`crate::Engine::compile`] won't appear as steps. For
+    /// full coverage on a one-shot run, prefer [`Self::eval_str`].
+    pub fn eval<D>(
+        &self,
+        compiled: &crate::Logic,
+        data: D,
+    ) -> TracedRun<datavalue::OwnedDataValue>
+    where
+        D: crate::OwnedInput,
+    {
+        let owned_data = match data.into_owned_input() {
+            Ok(d) => d,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let arena = bumpalo::Bump::new();
+        let inner = self.eval_borrowed_in(compiled, &owned_data, &arena);
+        TracedRun {
+            result: inner.result.and_then(crate::FromDataValue::from_arena),
+            steps: inner.steps,
+            expression_tree: inner.expression_tree,
+        }
+    }
+
+    /// One-shot traced evaluation with JSON-string boundary on both
+    /// sides. Compiles internally with the optimizer + constant-fold
+    /// passes disabled, so the trace surfaces every operator in the
+    /// rule.
+    pub fn eval_str<R, D>(&self, rule: R, data: D) -> TracedRun<String>
+    where
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        let owned = match rule.into_owned_logic() {
+            Ok(o) => o,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let compiled = match crate::Logic::compile_for_trace(&owned, self.engine) {
+            Ok(c) => c,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let owned_data = match data.into_owned_input() {
+            Ok(d) => d,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let arena = bumpalo::Bump::new();
+        let inner = self.eval_borrowed_in(&compiled, &owned_data, &arena);
+        TracedRun {
+            result: inner.result.map(|v| v.to_string()),
+            steps: inner.steps,
+            expression_tree: inner.expression_tree,
+        }
+    }
+
+    /// Typed traced evaluation: deserialise the result into
+    /// `T: DeserializeOwned`. Routes through `serde_json`.
+    #[cfg(feature = "serde_json")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
+    pub fn eval_into<T, R, D>(&self, rule: R, data: D) -> TracedRun<T>
+    where
+        T: serde::de::DeserializeOwned,
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        let owned = match rule.into_owned_logic() {
+            Ok(o) => o,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let compiled = match crate::Logic::compile_for_trace(&owned, self.engine) {
+            Ok(c) => c,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let owned_data = match data.into_owned_input() {
+            Ok(d) => d,
+            Err(e) => return Self::compile_failed(e),
+        };
+        let arena = bumpalo::Bump::new();
+        let inner = self.eval_borrowed_in(&compiled, &owned_data, &arena);
+        let result = inner.result.and_then(|v| {
+            let value: serde_json::Value = crate::FromDataValue::from_arena(v)?;
+            serde_json::from_value(value).map_err(crate::Error::from)
+        });
+        TracedRun {
+            result,
+            steps: inner.steps,
+            expression_tree: inner.expression_tree,
+        }
+    }
+
+    /// Traced borrowed evaluation against a caller-owned arena. Mirrors
+    /// [`crate::Session::eval_borrowed`] / [`crate::Engine::evaluate`]
+    /// — the result references `arena`, while the trace data is owned
+    /// and outlives the arena.
+    pub fn eval_borrowed<'a, D>(
         &self,
         compiled: &'a crate::Logic,
         data: D,
         arena: &'a bumpalo::Bump,
-    ) -> TracedRun<&'a crate::DataValue<'a>> {
+    ) -> TracedRun<&'a crate::DataValue<'a>>
+    where
+        D: crate::EvalInput<'a>,
+    {
+        self.eval_borrowed_in(compiled, data, arena)
+    }
+
+    /// Internal: shared body for the borrowed-result trace runs.
+    fn eval_borrowed_in<'a, D>(
+        &self,
+        compiled: &'a crate::Logic,
+        data: D,
+        arena: &'a bumpalo::Bump,
+    ) -> TracedRun<&'a crate::DataValue<'a>>
+    where
+        D: crate::EvalInput<'a>,
+    {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
-        // Same recursion guard as `Engine::evaluate` so a custom op that
-        // re-enters via the trace path is also caught.
         let _depth_guard = match self.engine.enter_dispatch_boundary() {
             Ok(g) => g,
             Err(e) => {
@@ -365,44 +452,15 @@ impl<'e> TracedSession<'e> {
         }
     }
 
-    /// One-shot traced evaluation with JSON-string boundary on both sides.
-    /// Compiles internally with the optimizer + constant-fold passes
-    /// disabled, so the trace surfaces every operator in the rule.
-    pub fn evaluate_str(&self, logic: &str, data: &str) -> TracedRun<String> {
-        // Compile failures land in `result` directly with no steps/tree.
-        let compiled = match datavalue::OwnedDataValue::from_json(logic)
-            .map_err(crate::Error::from)
-            .and_then(|owned| crate::Logic::compile_for_trace(&owned, self.engine))
-        {
-            Ok(c) => c,
-            Err(e) => {
-                return TracedRun {
-                    result: Err(e),
-                    steps: Vec::new(),
-                    expression_tree: ExpressionNode {
-                        id: 0,
-                        expression: String::new(),
-                        children: Vec::new(),
-                    },
-                };
-            }
-        };
-        let arena = bumpalo::Bump::new();
-        let data_dv = match datavalue::DataValue::from_str(data, &arena) {
-            Ok(d) => d,
-            Err(e) => {
-                return TracedRun {
-                    result: Err(e.into()),
-                    steps: Vec::new(),
-                    expression_tree: ExpressionNode::build_from_compiled(&compiled.root),
-                };
-            }
-        };
-        let inner = self.evaluate(&compiled, data_dv, &arena);
+    fn compile_failed<R>(error: crate::Error) -> TracedRun<R> {
         TracedRun {
-            result: inner.result.map(|v| v.to_string()),
-            steps: inner.steps,
-            expression_tree: inner.expression_tree,
+            result: Err(error),
+            steps: Vec::new(),
+            expression_tree: ExpressionNode {
+                id: 0,
+                expression: String::new(),
+                children: Vec::new(),
+            },
         }
     }
 }
@@ -501,7 +559,7 @@ mod tests {
     #[test]
     fn traced_session_evaluate_str_smoke() {
         let engine = crate::Engine::new();
-        let run = engine.trace().evaluate_str(r#"{"+": [1, 2, 3]}"#, "null");
+        let run = engine.trace().eval_str(r#"{"+": [1, 2, 3]}"#, "null");
         assert_eq!(run.result.unwrap(), "6");
         // The one-shot trace path skips static folding internally, so the
         // `+` operator survives and produces a step.
@@ -517,7 +575,7 @@ mod tests {
         let compiled = engine.compile(r#"{"+": [1, 2]}"#).unwrap();
         let arena = bumpalo::Bump::new();
         let data = datavalue::DataValue::from_str("null", &arena).unwrap();
-        let run = engine.trace().evaluate(&compiled, data, &arena);
+        let run = engine.trace().eval_borrowed(&compiled, data, &arena);
         assert_eq!(run.result.as_ref().unwrap().as_i64(), Some(3));
         assert!(
             run.steps.is_empty(),
@@ -528,7 +586,7 @@ mod tests {
     #[test]
     fn traced_session_carries_error_metadata() {
         let engine = crate::Engine::new();
-        let run = engine.trace().evaluate_str(r#"{"+": ["x", 1]}"#, "null");
+        let run = engine.trace().eval_str(r#"{"+": ["x", 1]}"#, "null");
         let err = run.result.expect_err("string-arith should fail");
         assert_eq!(err.operator(), Some("+"));
         assert!(!err.node_ids().is_empty(), "expected populated breadcrumb");

@@ -57,7 +57,7 @@ pub fn init() {
 #[wasm_bindgen]
 pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, String> {
     make_engine(templating)
-        .evaluate_str(logic, data)
+        .eval_str(logic, data)
         .map_err(|e| err_to_json(&e))
 }
 
@@ -79,7 +79,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 #[wasm_bindgen]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, String> {
     let engine = make_engine(templating);
-    let run = engine.trace().evaluate_str(logic, data);
+    let run = engine.trace().eval_str(logic, data);
     Ok(traced_run_to_json(&run))
 }
 

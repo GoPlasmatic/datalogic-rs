@@ -7,11 +7,11 @@
 //! Inputs go through [`crate::EvalInput`] so callers pass whatever they have
 //! on hand (`&str`, `&OwnedDataValue`, `&serde_json::Value`, …); outputs are
 //! either owned ([`OwnedDataValue`] / `String` / `serde_json::Value`) or
-//! borrowed from the arena ([`Self::evaluate_borrowed`]) — borrowed results are
+//! borrowed from the arena ([`Self::eval_borrowed`]) — borrowed results are
 //! invalidated by the next `&mut self` call (Rust's borrow checker enforces).
 //!
 //! For a one-shot evaluation that owns and drops its arena per call, use
-//! [`crate::Engine::evaluate_str`] (convenience). For full caller control of
+//! [`crate::Engine::eval_str`] (convenience). For full caller control of
 //! the arena lifecycle, use [`crate::Engine::evaluate`] directly with a
 //! caller-passed `&Bump`.
 
@@ -39,7 +39,7 @@ use crate::{Engine, EvalInput, Logic, Result};
 ///
 /// for x in 0..3 {
 ///     let payload = format!(r#"{{"x": {}}}"#, x);
-///     let result = session.evaluate_str(&compiled, &payload).unwrap();
+///     let result = session.eval_str(&compiled, &payload).unwrap();
 ///     assert_eq!(result, (x + 1).to_string());
 ///     // Reset between iterations to keep peak memory bounded by the
 ///     // largest single evaluation rather than the cumulative loop.
@@ -119,12 +119,12 @@ impl<'engine> Session<'engine> {
         self.arena.allocated_bytes()
     }
 
-    /// Evaluate `compiled` against `data` and deep-clone the result into an
-    /// [`OwnedDataValue`] that survives subsequent calls and resets.
+    /// Evaluate `compiled` against `data` and deep-clone the result into
+    /// an [`OwnedDataValue`] that survives subsequent calls and resets.
     ///
-    /// The intermediate arena allocations stay in the session's bump until
-    /// the caller invokes [`Self::reset`]. For long-running loops, call
-    /// `reset` between iterations to keep peak memory bounded.
+    /// The intermediate arena allocations stay in the session's bump
+    /// until the caller invokes [`Self::reset`]. For long-running loops,
+    /// call `reset` between iterations to keep peak memory bounded.
     ///
     /// # Example
     ///
@@ -134,31 +134,62 @@ impl<'engine> Session<'engine> {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// let mut session = engine.session();
-    /// let result = session.evaluate(&compiled, r#"{"x": 1}"#).unwrap();
+    /// let result = session.eval(&compiled, r#"{"x": 1}"#).unwrap();
     /// assert_eq!(result.as_bool(), Some(true));
     /// ```
-    pub fn evaluate<'a, D>(&'a mut self, compiled: &Logic, data: D) -> Result<OwnedDataValue>
+    pub fn eval<'a, D>(&'a mut self, compiled: &Logic, data: D) -> Result<OwnedDataValue>
     where
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
         let av = data.into_arena_value(arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
-        Ok(result.to_owned())
+        crate::FromDataValue::from_arena(result)
     }
 
-    /// Evaluate and return a borrowed result tied to this session's arena.
+    /// JSON-string convenience: evaluate against `data` and serialise
+    /// the result back to a JSON [`String`]. Reuses the arena across
+    /// calls; does not reset — see [`Self::reset`].
+    pub fn eval_str<'a, D>(&'a mut self, compiled: &Logic, data: D) -> Result<String>
+    where
+        D: EvalInput<'a>,
+    {
+        let arena: &'a Bump = &self.arena;
+        let av = data.into_arena_value(arena)?;
+        let result = self.engine.evaluate(compiled, av, arena)?;
+        crate::FromDataValue::from_arena(result)
+    }
+
+    /// Typed convenience: evaluate and deserialise the result into
+    /// `T: DeserializeOwned`. Use `T = serde_json::Value` for a JSON
+    /// `Value` result; use a typed struct for direct mapping. Internally
+    /// routes through `serde_json`.
+    #[cfg(feature = "serde_json")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
+    pub fn eval_into<'a, T, D>(&'a mut self, compiled: &Logic, data: D) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        D: EvalInput<'a>,
+    {
+        let value: serde_json::Value = {
+            let arena: &'a Bump = &self.arena;
+            let av = data.into_arena_value(arena)?;
+            let result = self.engine.evaluate(compiled, av, arena)?;
+            crate::FromDataValue::from_arena(result)?
+        };
+        serde_json::from_value(value).map_err(crate::Error::from)
+    }
+
+    /// Evaluate and return a borrowed result tied to this session's
+    /// arena. Same semantics as [`Self::eval`] but skips the deep-clone
+    /// — the returned reference is invalidated by the next `&mut self`
+    /// call (the borrow checker enforces). Use this when the result is
+    /// consumed before the next session call; for cross-call retention
+    /// use [`Self::eval`].
     ///
-    /// Same semantics as [`Self::evaluate`] but skips the deep-clone into
-    /// [`OwnedDataValue`] — the returned reference is invalidated by the
-    /// next `&mut self` call (the borrow checker enforces).
-    /// Use this when the result is consumed before the next session call; for
-    /// cross-call retention, use [`Self::evaluate`].
-    ///
-    /// Symmetric with [`Engine::evaluate`] (caller-managed bump, borrowed
-    /// result) but with the bump owned by the session. Like every other
-    /// `evaluate*` method here, this does not reset the arena — call
-    /// [`Self::reset`] explicitly to bound peak memory.
+    /// Symmetric with [`Engine::evaluate`] (caller-managed bump,
+    /// borrowed result) but with the bump owned by the session. Does
+    /// not reset the arena — call [`Self::reset`] explicitly.
     ///
     /// # Example
     ///
@@ -168,10 +199,10 @@ impl<'engine> Session<'engine> {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
     /// let mut session = engine.session();
-    /// let result = session.evaluate_borrowed(&compiled, r#"{"x": 5}"#).unwrap();
+    /// let result = session.eval_borrowed(&compiled, r#"{"x": 5}"#).unwrap();
     /// assert_eq!(result.as_i64(), Some(6));
     /// ```
-    pub fn evaluate_borrowed<'a, D>(
+    pub fn eval_borrowed<'a, D>(
         &'a mut self,
         compiled: &'a Logic,
         data: D,
@@ -182,33 +213,5 @@ impl<'engine> Session<'engine> {
         let arena: &'a Bump = &self.arena;
         let av = data.into_arena_value(arena)?;
         self.engine.evaluate(compiled, av, arena)
-    }
-
-    /// JSON-string convenience: evaluate `compiled` against a JSON-encoded
-    /// `data` payload and serialise the result back to a JSON `String`.
-    /// Mirrors [`Engine::evaluate_str`] but reuses the arena across calls.
-    /// Does not reset the arena — see [`Self::reset`].
-    pub fn evaluate_str(&mut self, compiled: &Logic, data: &str) -> Result<String> {
-        let arena: &Bump = &self.arena;
-        let av = data.into_arena_value(arena)?;
-        let result = self.engine.evaluate(compiled, av, arena)?;
-        Ok(result.to_string())
-    }
-
-    /// `serde_json::Value` convenience: evaluate `compiled` against a serde
-    /// value and convert the result back to a serde value. Mirrors
-    /// [`Engine::evaluate_json_value`] but reuses the arena across calls.
-    /// Does not reset the arena — see [`Self::reset`].
-    #[cfg(feature = "compat")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
-    pub fn evaluate_json_value(
-        &mut self,
-        compiled: &Logic,
-        data: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        let arena: &Bump = &self.arena;
-        let av = data.into_arena_value(arena)?;
-        let result = self.engine.evaluate(compiled, av, arena)?;
-        Ok(crate::arena::data_to_value(result))
     }
 }

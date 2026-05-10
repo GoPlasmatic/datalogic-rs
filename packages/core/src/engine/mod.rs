@@ -1,14 +1,9 @@
-#[cfg(feature = "compat")]
-use serde_json::Value;
 use std::cell::Cell;
 use std::collections::HashMap;
 
 use crate::config::EvaluationConfig;
 
 use crate::{CompiledNode, Logic, Result};
-
-#[cfg(feature = "trace")]
-mod trace;
 
 thread_local! {
     /// Per-thread `dispatch_node` recursion counter. Incremented at the
@@ -59,8 +54,8 @@ impl Drop for DepthGuard {
 /// Holds the immutable engine state — registered [`crate::CustomOperator`]
 /// implementations, the [`EvaluationConfig`], the optional
 /// preserve-structure flag — and exposes the public surface for parsing
-/// rules ([`Self::compile`]), evaluating them ([`Self::evaluate`],
-/// [`Self::evaluate_str`], [`Self::evaluate_json_value`]), and opening
+/// rules ([`Self::compile`]), evaluating them ([`Self::eval`],
+/// [`Self::eval_str`], [`Self::eval_into`]), and opening
 /// hot-loop / traced sessions ([`Self::session`], [`Self::trace`]).
 ///
 /// `Engine` is `Send + Sync` (every field is); the typical pattern is to
@@ -80,12 +75,12 @@ impl Drop for DepthGuard {
 ///     .compile(r#"{"if": [{">=": [{"var": "age"}, 18]}, "adult", "minor"]}"#)
 ///     .unwrap();
 ///
-/// // 3. Evaluate against many inputs (here via the convenience `evaluate_str`;
-/// //    use `Session::evaluate*` or `Engine::evaluate` for hot-loop variants).
+/// // 3. Evaluate against many inputs (here via `Session::eval_str`;
+/// //    drop to `Engine::evaluate` if you want zero-copy borrowed results).
 /// let mut session = engine.session();
 /// for age in [12, 18, 42] {
 ///     let payload = format!(r#"{{"age": {age}}}"#);
-///     let result = session.evaluate_str(&logic, &payload).unwrap();
+///     let result = session.eval_str(&logic, &payload).unwrap();
 ///     assert!(result == "\"adult\"" || result == "\"minor\"");
 ///     session.reset();
 /// }
@@ -93,28 +88,31 @@ impl Drop for DepthGuard {
 ///
 /// # Choosing an evaluate method
 ///
-/// **Start here.** Use [`Self::evaluate_str`] for one-shot calls. Switch
+/// **Start here.** Use [`Self::eval_str`] for one-shot calls. Switch
 /// to [`crate::Session`] once you're evaluating the same compiled rule
-/// many times — it reuses one arena instead of allocating per call. Drop
-/// down to [`Self::evaluate`] only when you're managing your own
-/// `bumpalo::Bump` (custom pools, integration with arena-aware downstream
-/// code). The table below is the full comparison; the three-line summary
-/// above covers the dominant choice.
+/// many times — it reuses one arena instead of allocating per call.
+/// Drop down to [`Self::evaluate`] only when you're managing your own
+/// `bumpalo::Bump` (custom pools, integration with arena-aware
+/// downstream code).
+///
+/// Result-shape suffixes work the same on every tier: `(none)` returns
+/// [`datavalue::OwnedDataValue`], `_str` returns [`String`] (JSON),
+/// `_into::<T>` returns `T: DeserializeOwned` (requires `serde_json`).
+/// The raw [`Self::evaluate`] is the only method that exposes
+/// `&'a DataValue<'a>` and a caller-owned `&Bump`.
 ///
 /// Three tiers, in order of caller control:
 ///
 /// | Method | Arena ownership | Result type | When to use |
 /// |---|---|---|---|
-/// | [`Self::evaluate_str`] | engine creates a fresh `Bump::with_capacity(4096)` per call | `String` (JSON) | One-shot. CLI scripts, "I want JSON in and JSON out", any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
-/// | [`crate::Session::evaluate`] / [`crate::Session::evaluate_borrowed`] / [`crate::Session::evaluate_str`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned (`OwnedDataValue` / `String`) or borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
+/// | [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`] | engine creates a fresh `Bump::with_capacity(4096)` per call | [`OwnedDataValue`] / `String` / `T` | One-shot. Any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
+/// | [`crate::Session::eval`] / [`crate::Session::eval_str`] / [`crate::Session::eval_into`] / [`crate::Session::eval_borrowed`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned / `String` / `T` / borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
 /// | [`Self::evaluate`] | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, custom pool/allocator strategies, integration with arena-aware downstream code. |
-/// | [`Self::evaluate_json_value`] (gated on `compat`) | engine creates a fresh `Bump::with_capacity(4096)` per call | `serde_json::Value` | Drop-in for v4 callers and any path that needs the `serde_json::Value` boundary on both sides. |
 ///
-/// All four route through the same dispatcher; the only differences are
-/// who owns the arena, what the result type looks like, and whether the
+/// All routes share the same dispatcher; the differences are who owns
+/// the arena, what the result type looks like, and whether the
 /// boundary parses / serialises JSON for you. There is no perf
-/// difference between the arena-aware paths once the bump is warm —
-/// pick the one whose ergonomics fit your call site.
+/// difference between the arena-aware paths once the bump is warm.
 ///
 /// See the crate-level docs for the two-phase architecture, threading
 /// model, and walk-through examples; see the `Session` and
@@ -127,6 +125,12 @@ pub struct Engine {
     /// to output-shaping templates and unknown operator keys pass through.
     #[cfg(feature = "templating")]
     templating: bool,
+    /// Whether `Engine::compile` runs the constant-folding pass.
+    /// Defaults to `true`; toggled via
+    /// [`crate::EngineBuilder::with_constant_folding`]. The trace surface
+    /// always disables folding regardless of this flag (handled in
+    /// `TracedSession`).
+    constant_folding: bool,
     /// Configuration for evaluation behavior
     config: EvaluationConfig,
 }
@@ -190,11 +194,7 @@ impl Engine {
     ///
     /// Use the builder when you need a non-default [`EvaluationConfig`],
     /// templating mode, or pre-registered custom operators.
-    /// For a stock engine, [`Self::new`] is shorter. The 4.x
-    /// `with_preserve_structure` / `with_config` / `with_config_and_structure`
-    /// constructors are still reachable through `compat::LegacyApi` when the
-    /// crate is built with `feature = "compat"`
-    /// (`use datalogic_rs::compat::LegacyApi;`).
+    /// For a stock engine, [`Self::new`] is shorter.
     #[inline]
     pub fn builder() -> crate::EngineBuilder {
         crate::EngineBuilder::new()
@@ -217,7 +217,7 @@ impl Engine {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
     /// let mut session = engine.session();
-    /// let result = session.evaluate_str(&compiled, r#"{"x": 41}"#).unwrap();
+    /// let result = session.eval_str(&compiled, r#"{"x": 41}"#).unwrap();
     /// assert_eq!(result, "42");
     /// ```
     #[inline]
@@ -231,12 +231,14 @@ impl Engine {
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
         _templating: bool,
+        constant_folding: bool,
         operators: HashMap<String, Box<dyn crate::CustomOperator>>,
     ) -> Self {
         Self {
             custom_operators: operators,
             #[cfg(feature = "templating")]
             templating: _templating,
+            constant_folding,
             config,
         }
     }
@@ -256,12 +258,20 @@ impl Engine {
     /// let engine = Engine::new();
     /// ```
     pub fn new() -> Self {
-        Self::from_builder_parts(EvaluationConfig::default(), false, HashMap::new())
+        Self::from_builder_parts(EvaluationConfig::default(), false, true, HashMap::new())
     }
 
     /// Gets a reference to the current evaluation configuration.
     pub fn config(&self) -> &EvaluationConfig {
         &self.config
+    }
+
+    /// Internal: whether the constant-folding pass runs during
+    /// [`Self::compile`]. Reads the field set by
+    /// [`crate::EngineBuilder::with_constant_folding`].
+    #[inline]
+    pub(crate) fn constant_folding_enabled(&self) -> bool {
+        self.constant_folding
     }
 
     /// Internal: whether templating mode is on. Always returns `false`
@@ -297,18 +307,19 @@ impl Engine {
     }
 
     // ============================================================
-    // V5 PUBLIC API — power users compile once + evaluate many; normal
-    // users call `evaluate_str` directly.
+    // V5 PUBLIC API
+    //   - One-shot:   `eval` / `eval_str` / `eval_into`   (engine-owned arena per call)
+    //   - Power tier: `evaluate(&Logic, D, &Bump)`        (caller-owned arena, borrowed result)
+    //   - Hot loop:   `engine.session().eval*(...)`       (pooled arena, manual reset)
+    //   - Trace:      `engine.trace().eval*(...)`         (Session mirror with TracedRun<R>)
     // ============================================================
 
-    /// Compile a JSON logic string into reusable [`Logic`].
+    /// Compile a rule source into reusable [`Logic`].
     ///
-    /// The canonical v5 entry point for compilation. Returns an owned
-    /// [`Logic`] that can be reused across many evaluations on a single
-    /// thread. For cross-thread sharing wrap the result yourself:
-    /// `Arc::new(engine.compile(logic)?)` — `Arc<Logic>` derefs transparently
-    /// into `&Logic` for [`Self::evaluate`] /
-    /// [`Session::evaluate`](crate::Session::evaluate).
+    /// `rule` accepts any [`crate::IntoLogic`] shape: `&str` (JSON-parsed),
+    /// `&OwnedDataValue` / `OwnedDataValue` (cloned/moved), or
+    /// `&serde_json::Value` (gated on `serde_json`). For cross-thread
+    /// sharing prefer [`Self::compile_arc`].
     ///
     /// # Example
     ///
@@ -318,28 +329,35 @@ impl Engine {
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// ```
-    pub fn compile(&self, logic: &str) -> Result<Logic> {
-        let owned = datavalue::OwnedDataValue::from_json(logic)?;
+    pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
+        let owned = rule.into_owned_logic()?;
         Logic::compile_with(&owned, self)
     }
 
+    /// Compile and wrap in an [`Arc`] in one call. Convenience for the
+    /// dominant cross-thread-sharing pattern; equivalent to
+    /// `Arc::new(engine.compile(rule)?)`.
+    pub fn compile_arc<R: crate::IntoLogic>(&self, rule: R) -> Result<std::sync::Arc<Logic>> {
+        Ok(std::sync::Arc::new(self.compile(rule)?))
+    }
+
     /// Open a [`crate::TracedSession`] over this engine. Calls made through
-    /// the session collect a per-call trace; the bare `evaluate*` methods on
-    /// `Engine` itself are unchanged and pay no trace overhead.
+    /// the session collect a per-call trace; the bare `eval*` methods on
+    /// `Engine` itself pay no trace overhead.
     ///
     /// Available only when the crate is built with `feature = "trace"`.
     ///
     /// # Trace coverage
     ///
-    /// The session's one-shot [`crate::TracedSession::evaluate_str`] compiles
-    /// the rule internally with optimization disabled, so every operator in the
-    /// rule surfaces a trace step.
+    /// The session's one-shot [`crate::TracedSession::eval_str`] compiles
+    /// the rule internally with optimization disabled, so every operator
+    /// in the rule surfaces a trace step.
     ///
-    /// The pre-compiled paths ([`crate::TracedSession::evaluate`] taking a `&Logic`)
-    /// inherit whatever shape that `Logic` was compiled into — constant
-    /// sub-expressions folded by [`Self::compile`] won't appear, since there
-    /// is no operator left to execute. Use `evaluate_str` for full coverage
-    /// on a one-shot run.
+    /// The pre-compiled paths ([`crate::TracedSession::eval`] taking a
+    /// `&Logic`) inherit whatever shape that `Logic` was compiled into —
+    /// constant sub-expressions folded by [`Self::compile`] won't appear,
+    /// since there is no operator left to execute. Use `eval_str` for
+    /// full coverage on a one-shot run.
     ///
     /// # Example
     ///
@@ -350,7 +368,7 @@ impl Engine {
     /// let engine = Engine::new();
     /// let run = engine
     ///     .trace()
-    ///     .evaluate_str(r#"{"+": [1, 2]}"#, "null");
+    ///     .eval_str(r#"{"+": [1, 2]}"#, "null");
     /// assert_eq!(run.result.unwrap(), "3");
     /// // run.steps is the per-node execution log;
     /// // run.expression_tree is the rule's compile-time tree shape.
@@ -363,16 +381,13 @@ impl Engine {
         crate::trace::TracedSession::new(self)
     }
 
-    /// Evaluate compiled logic against arena-resident data.
+    /// Evaluate compiled logic against arena-resident data — **raw tier**.
     ///
-    /// The hot path for repeated evaluation. The caller owns the
-    /// [`bumpalo::Bump`] lifecycle and may `reset()` it between calls; the
-    /// returned `&DataValue<'a>` borrows from the arena, so it must be
-    /// dropped before the next reset (enforced by the borrow checker).
-    ///
-    /// Pre-parse JSON input via
-    /// [`datavalue::DataValue::from_str`](datavalue::DataValue::from_str)
-    /// to obtain the `&DataValue<'a>` data argument.
+    /// The caller owns the [`bumpalo::Bump`] lifecycle and may `reset()`
+    /// it between calls; the returned `&DataValue<'a>` borrows from the
+    /// arena, so it must be dropped before the next reset (enforced by
+    /// the borrow checker). For ergonomic owned/typed/JSON-string output,
+    /// prefer [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`].
     ///
     /// # Example
     ///
@@ -390,10 +405,9 @@ impl Engine {
     /// ```
     ///
     /// `data` accepts any input shape understood by [`crate::EvalInput`]:
-    /// `&'a DataValue<'a>` (zero-cost passthrough), `DataValue<'a>` (single
-    /// arena alloc), `&str` (JSON-parsed), `&OwnedDataValue`
-    /// (deep-borrowed), or `&serde_json::Value` (deep-converted, requires
-    /// the `compat` feature).
+    /// `&'a DataValue<'a>` (zero-cost passthrough), `DataValue<'a>`
+    /// (single arena alloc), `&str` (JSON-parsed), `&OwnedDataValue`
+    /// (deep-borrowed), or `&serde_json::Value` (gated on `serde_json`).
     #[inline(always)]
     pub fn evaluate<'a, D: crate::EvalInput<'a>>(
         &self,
@@ -410,12 +424,12 @@ impl Engine {
         }
     }
 
-    /// One-shot evaluation with JSON-string boundary on both sides.
+    /// One-shot evaluation returning [`datavalue::OwnedDataValue`].
     ///
-    /// Parses `logic` + `data`, evaluates, and returns the result as a JSON
-    /// `String`. Allocates a fresh [`bumpalo::Bump`] internally — for
-    /// repeated calls against the same rule, prefer [`Self::compile`] +
-    /// [`Self::evaluate`] with a reused arena.
+    /// Compiles `rule`, parses `data`, evaluates against a fresh
+    /// per-call arena, and deep-clones the result out. For the same
+    /// rule run repeatedly, escalate to [`Self::compile`] + a
+    /// [`Session`](crate::Session).
     ///
     /// # Example
     ///
@@ -423,44 +437,90 @@ impl Engine {
     /// use datalogic_rs::Engine;
     ///
     /// let engine = Engine::new();
-    /// let result = engine.evaluate_str(
+    /// let result = engine.eval(
+    ///     r#"{"+": [{"var": "x"}, 1]}"#,
+    ///     r#"{"x": 41}"#,
+    /// ).unwrap();
+    /// assert_eq!(result.as_i64(), Some(42));
+    /// ```
+    pub fn eval<R, D>(&self, rule: R, data: D) -> Result<datavalue::OwnedDataValue>
+    where
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        self.eval_with::<datavalue::OwnedDataValue, _, _>(rule, data)
+    }
+
+    /// One-shot evaluation returning a JSON [`String`].
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let result = engine.eval_str(
     ///     r#"{"==": [{"var": "x"}, 5]}"#,
     ///     r#"{"x": 5}"#,
     /// ).unwrap();
     /// assert_eq!(result, "true");
     /// ```
-    pub fn evaluate_str(&self, logic: &str, data: &str) -> Result<String> {
-        let compiled = self.compile(logic)?;
-        // 4 KB initial capacity covers typical small-rule evaluations without
-        // bumpalo's first-chunk grow path. Larger inputs grow as usual.
-        let arena = bumpalo::Bump::with_capacity(4096);
-        let data_dv = datavalue::DataValue::from_str(data, &arena)?;
-        let result = self.evaluate(&compiled, data_dv, &arena)?;
-        Ok(result.to_string())
+    pub fn eval_str<R, D>(&self, rule: R, data: D) -> Result<String>
+    where
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        self.eval_with::<String, _, _>(rule, data)
     }
 
-    /// One-shot evaluation with `serde_json::Value` boundary on both sides.
+    /// One-shot evaluation deserialised into a typed `T: DeserializeOwned`.
     ///
-    /// Mirror of [`Self::evaluate_str`] for callers already on `serde_json`.
-    /// Funnels through [`Self::evaluate`] internally.
-    #[cfg(feature = "compat")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
-    pub fn evaluate_json_value(&self, logic: &Value, data: &Value) -> Result<Value> {
-        let logic_owned = crate::compat::owned_from_serde(logic);
-        let compiled = Logic::compile_with(&logic_owned, self)?;
-        self.run_to_value(&compiled, data)
+    /// Use `T = serde_json::Value` for a JSON `Value` result; use a typed
+    /// struct for direct mapping. Internally routes through `serde_json`
+    /// (round-trips the result through a JSON value).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "serde_json")] {
+    /// use datalogic_rs::Engine;
+    /// use serde_json::Value;
+    ///
+    /// let engine = Engine::new();
+    /// let result: Value = engine.eval_into(
+    ///     r#"{"+": [{"var": "x"}, 1]}"#,
+    ///     r#"{"x": 41}"#,
+    /// ).unwrap();
+    /// assert_eq!(result, Value::from(42));
+    /// # }
+    /// ```
+    #[cfg(feature = "serde_json")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
+    pub fn eval_into<T, R, D>(&self, rule: R, data: D) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        let value: serde_json::Value = self.eval_with(rule, data)?;
+        serde_json::from_value(value).map_err(crate::Error::from)
     }
 
-    /// Internal `&Value -> Value` adapter shared by [`Self::evaluate_json_value`]
-    /// and the v4 compat shims in [`crate::compat::LegacyApi`]. Routes
-    /// through the public [`Self::evaluate`] so the dispatch path is
-    /// identical regardless of entry point.
-    #[cfg(feature = "compat")]
-    pub(crate) fn run_to_value(&self, compiled: &Logic, data: &Value) -> Result<Value> {
+    /// Internal generic shared by `eval` / `eval_str` / `eval_into`.
+    /// Compiles, allocates a fresh per-call arena, evaluates, and
+    /// projects the result through [`crate::FromDataValue`].
+    fn eval_with<O, R, D>(&self, rule: R, data: D) -> Result<O>
+    where
+        O: crate::FromDataValue,
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        let compiled = self.compile(rule)?;
+        // 4 KB initial capacity covers typical small-rule evaluations.
         let arena = bumpalo::Bump::with_capacity(4096);
-        let data_av = crate::arena::value_to_data(data, &arena);
-        let result = self.evaluate(compiled, data_av, &arena)?;
-        Ok(crate::arena::data_to_value(result))
+        let owned_data = data.into_owned_input()?;
+        let result = self.evaluate(&compiled, &owned_data, &arena)?;
+        O::from_arena(result)
     }
 
     /// Bump the per-thread dispatch-boundary depth counter, bailing with
@@ -541,7 +601,8 @@ impl Engine {
         // Snapshot context for trace BEFORE recursing — children will
         // mutate iteration frames. Cheap when no tracer is attached.
         #[cfg(feature = "trace")]
-        let ctx_snapshot: Option<Value> = ctx.has_tracer().then(|| ctx.current_data_as_value());
+        let ctx_snapshot: Option<serde_json::Value> =
+            ctx.has_tracer().then(|| ctx.current_data_as_value());
 
         let result = dispatch::dispatch_node_inner(self, node, ctx, arena);
 

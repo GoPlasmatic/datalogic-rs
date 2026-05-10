@@ -24,5 +24,5 @@ pub use value::DataValue;
 pub(crate) use value::{
     coerce_to_number_cfg, data_to_str, truthy_arena, try_coerce_to_integer_cfg,
 };
-#[cfg(feature = "compat")]
+#[cfg(feature = "serde_json")]
 pub(crate) use value::{data_to_value, value_to_data};

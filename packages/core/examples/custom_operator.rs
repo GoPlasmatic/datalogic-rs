@@ -150,12 +150,12 @@ fn main() {
     println!("-------------------");
 
     let result = engine
-        .evaluate_str(r#"{"avg": [10, 20, 30, 40, 50]}"#, "{}")
+        .eval_str(r#"{"avg": [10, 20, 30, 40, 50]}"#, "{}")
         .unwrap();
     println!("   avg([10, 20, 30, 40, 50]) = {}", result);
 
     let result = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"avg": {"var": "scores"}}"#,
             r#"{"scores": [85, 90, 78, 92, 88]}"#,
         )
@@ -167,12 +167,12 @@ fn main() {
     println!("-------------------");
 
     let result1 = engine
-        .evaluate_str(r#"{"between": [{"var": "age"}, 18, 65]}"#, r#"{"age": 25}"#)
+        .eval_str(r#"{"between": [{"var": "age"}, 18, 65]}"#, r#"{"age": 25}"#)
         .unwrap();
     println!("   age=25 between 18 and 65? {}", result1);
 
     let result2 = engine
-        .evaluate_str(r#"{"between": [{"var": "age"}, 18, 65]}"#, r#"{"age": 70}"#)
+        .eval_str(r#"{"between": [{"var": "age"}, 18, 65]}"#, r#"{"age": 70}"#)
         .unwrap();
     println!("   age=70 between 18 and 65? {}\n", result2);
 
@@ -181,7 +181,7 @@ fn main() {
     println!("------------------");
 
     let result = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"format": ["Hello, {}! You have {} messages.", {"var": "name"}, {"var": "count"}]}"#,
             r#"{"name": "Alice", "count": 5}"#,
         )
@@ -211,7 +211,7 @@ fn main() {
 
     for score in [95, 82, 75, 55] {
         let data = format!(r#"{{"score": {}}}"#, score);
-        let grade = session.evaluate_str(&compiled, &data).unwrap();
+        let grade = session.eval_str(&compiled, &data).unwrap();
         println!("   Score {} -> Grade {}", score, grade);
         // Session does not auto-reset — caller bounds peak memory by
         // resetting between iterations.

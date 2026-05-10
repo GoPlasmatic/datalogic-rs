@@ -16,7 +16,7 @@ fn main() {
     // ----- (1) Structured failure -----------------------------------
     // Adding a string to a number raises a Thrown { type: "NaN" }.
     let err = engine
-        .evaluate_str(r#"{"+": ["text", 1]}"#, r#"{}"#)
+        .eval_str(r#"{"+": ["text", 1]}"#, r#"{}"#)
         .unwrap_err();
     println!("[1] failed evaluation");
     println!("    tag: {}", err.tag());
@@ -30,7 +30,7 @@ fn main() {
         // `throw` wraps a string as `{type: <string>}`. To carry richer
         // structured data, look it up from the input via `val`.
         let err = engine
-            .evaluate_str(
+            .eval_str(
                 r#"{"throw": {"val": "err"}}"#,
                 r#"{"err": {"type": "NOT_FOUND", "user_id": 42}}"#,
             )
@@ -45,7 +45,7 @@ fn main() {
         // `try` returns the first arg that succeeds; here a divide by
         // zero is coalesced to 0.
         let r = engine
-            .evaluate_str(
+            .eval_str(
                 r#"{"try": [{"/": [{"var": "n"}, {"var": "d"}]}, 0]}"#,
                 r#"{"n": 10, "d": 0}"#,
             )

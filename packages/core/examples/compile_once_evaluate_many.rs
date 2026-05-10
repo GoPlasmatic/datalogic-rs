@@ -16,7 +16,7 @@ fn main() {
 
     // ----- (1) one-shot: parses, evaluates, returns a JSON string ----
     let r = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"if": [{">": [{"var": "score"}, 50]}, "pass", "fail"]}"#,
             r#"{"score": 75}"#,
         )
@@ -27,7 +27,7 @@ fn main() {
     let mut session = engine.session();
     for score in [25, 60, 75] {
         let payload = format!(r#"{{"score": {score}}}"#);
-        let r = session.evaluate_str(&compiled, &payload).unwrap();
+        let r = session.eval_str(&compiled, &payload).unwrap();
         println!("[2] session.evaluate_str: score={score:>3} -> {r}");
         // Session does not auto-reset — caller bounds peak memory by
         // resetting between iterations (constant-time, reuses chunks).

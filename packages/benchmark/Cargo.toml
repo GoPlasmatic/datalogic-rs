@@ -9,7 +9,7 @@ description = "Dev-only benchmark harness for datalogic-rs (single-engine and cr
 publish = false
 
 [dependencies]
-datalogic-rs = { path = "../core", features = ["compat"] }
+datalogic-rs = { path = "../core", features = ["serde_json"] }
 serde_json = "1.0"
 bumpalo = "3"
 

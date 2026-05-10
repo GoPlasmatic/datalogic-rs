@@ -436,12 +436,12 @@ fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Resu
         ErrorKind::Custom(err) => write!(f, "{}", err),
         ErrorKind::ParseError(msg) => write!(f, "Parse error: {}", msg),
         ErrorKind::Thrown(val) => {
-            #[cfg(feature = "compat")]
+            #[cfg(feature = "serde_json")]
             {
-                let json = crate::compat::owned_to_serde(val);
+                let json = crate::serde_bridge::owned_to_serde(val);
                 write!(f, "Thrown: {}", json)
             }
-            #[cfg(not(feature = "compat"))]
+            #[cfg(not(feature = "serde_json"))]
             {
                 write!(f, "Thrown: {:?}", val)
             }
@@ -487,8 +487,8 @@ impl std::error::Error for Error {
     }
 }
 
-#[cfg(feature = "compat")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compat")))]
+#[cfg(feature = "serde_json")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))

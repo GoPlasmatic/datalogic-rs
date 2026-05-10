@@ -31,7 +31,7 @@ fn main() {
         }
     }"#;
 
-    let result = engine.evaluate_str(template, data).unwrap();
+    let result = engine.eval_str(template, data).unwrap();
     println!("   Template: {}", template);
     println!("   Result:   {}\n", result);
 
@@ -56,7 +56,7 @@ fn main() {
         "timestamp": "2024-01-15T10:30:00Z"
     }"#;
 
-    let result = engine.evaluate_str(template, data).unwrap();
+    let result = engine.eval_str(template, data).unwrap();
     println!("   Result: {}\n", result);
 
     // Example 3: Conditional fields — compile once, evaluate against multiple
@@ -84,12 +84,12 @@ fn main() {
     let mut session = engine.session();
 
     let result1 = session
-        .evaluate_str(&compiled, r#"{"isActive": true, "points": 1500}"#)
+        .eval_str(&compiled, r#"{"isActive": true, "points": 1500}"#)
         .unwrap();
     println!("   User with 1500 points: {}", result1);
 
     let result2 = session
-        .evaluate_str(&compiled, r#"{"isActive": false, "points": 750}"#)
+        .eval_str(&compiled, r#"{"isActive": false, "points": 750}"#)
         .unwrap();
     println!("   User with 750 points:  {}\n", result2);
 
@@ -116,7 +116,7 @@ fn main() {
         ]
     }"#;
 
-    let result = engine.evaluate_str(template, data).unwrap();
+    let result = engine.eval_str(template, data).unwrap();
     println!("   Result: {}\n", result);
 
     // Example 5: API response transformation
@@ -153,7 +153,7 @@ fn main() {
         ]
     }"#;
 
-    let result = engine.evaluate_str(template, data).unwrap();
+    let result = engine.eval_str(template, data).unwrap();
     println!("   Result: {}\n", result);
 
     // Example 6: Comparing with vs without templating
@@ -169,13 +169,13 @@ fn main() {
     }"#;
     let data = r#"{"x": 42}"#;
 
-    let standard_result = standard_engine.evaluate_str(template, data);
+    let standard_result = standard_engine.eval_str(template, data);
     println!(
         "   Standard engine: {:?}",
         standard_result.err().map(|e| e.to_string())
     );
 
-    let templating_result = templating_engine.evaluate_str(template, data).unwrap();
+    let templating_result = templating_engine.eval_str(template, data).unwrap();
     println!("   Templating engine: {}", templating_result);
 
     println!("\nDone!");

@@ -69,7 +69,7 @@ fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, us
     // iterations either fit (no growth) or trigger another doubling.
     for (rule, data) in compiled.iter().zip(inputs.iter()) {
         for _ in 0..ITERATIONS {
-            let _ = session.evaluate_borrowed(rule, *data);
+            let _ = session.eval_borrowed(rule, *data);
             session.reset();
         }
     }
@@ -85,7 +85,7 @@ fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, us
     let start = Instant::now();
     for (rule, data) in compiled.iter().zip(inputs.iter()) {
         for _ in 0..ITERATIONS {
-            let _ = session.evaluate_borrowed(rule, *data);
+            let _ = session.eval_borrowed(rule, *data);
             session.reset();
         }
     }

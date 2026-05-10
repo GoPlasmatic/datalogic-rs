@@ -1,11 +1,9 @@
 //! Tests for arena custom operators against datetime / structured-object inputs.
 
-#![cfg(all(feature = "datetime", feature = "templating", feature = "compat"))]
-#![allow(deprecated)]
+#![cfg(all(feature = "datetime", feature = "templating", feature = "serde_json"))]
 
 use bumpalo::Bump;
 use chrono::{DateTime, Timelike};
-use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Error, Result};
 use serde_json::json;
@@ -66,20 +64,20 @@ fn test_is_night_nighttime() {
 
     // 8 PM should be nighttime
     let logic = json!({"is_night": {"datetime": "2022-07-06T20:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 
     // 11:59 PM should be nighttime
     let logic = json!({"is_night": {"datetime": "2022-07-06T23:59:59Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 
     // 3 AM should be nighttime
     let logic = json!({"is_night": {"datetime": "2022-07-06T03:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 }
 
@@ -90,18 +88,18 @@ fn test_is_night_daytime() {
         .build();
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T08:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T12:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T15:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 }
 
@@ -112,18 +110,18 @@ fn test_is_night_boundaries() {
         .build();
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T19:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T07:00:00Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T06:59:59Z"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 }
 
@@ -134,13 +132,13 @@ fn test_is_night_with_string() {
         .build();
 
     let logic = json!({"is_night": "2022-07-06T21:00:00Z"});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 
     let logic = json!({"is_night": "2022-07-06T10:00:00Z"});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 }
 
@@ -151,13 +149,13 @@ fn test_is_night_with_variable() {
         .build();
 
     let logic = json!({"is_night": {"var": "check_time"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
     let data = json!({"check_time": {"datetime": "2022-07-06T23:00:00Z"}});
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &data).unwrap();
     assert_eq!(result, json!(true));
 
     let data = json!({"check_time": {"datetime": "2022-07-06T14:00:00Z"}});
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &data).unwrap();
     assert_eq!(result, json!(false));
 }
 
@@ -168,13 +166,13 @@ fn test_is_night_with_timezone() {
         .build();
 
     let logic = json!({"is_night": {"datetime": "2022-07-06T22:00:00+05:00"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(false));
 
     let logic = json!({"is_night": {"datetime": "2022-07-07T03:00:00+05:00"}});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(true));
 }
 
@@ -195,8 +193,8 @@ fn test_is_night_with_templating() {
         }
     });
 
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!({"get_the_garlic": {"should_i": "yes"}}));
 
     let logic = json!({
@@ -209,8 +207,8 @@ fn test_is_night_with_templating() {
         }
     });
 
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({})).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!({"get_the_garlic": {"should_i": "nah"}}));
 }
 
@@ -221,13 +219,13 @@ fn test_is_night_error_invalid_argument() {
         .build();
 
     let logic = json!({"is_night": 42});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({}));
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 
     let logic = json!({"is_night": "not a date"});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({}));
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 }
 
@@ -238,16 +236,16 @@ fn test_is_night_error_argument_count() {
         .build();
 
     let logic = json!({"is_night": []});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({}));
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 
     let logic = json!({"is_night": [
         {"datetime": "2022-07-06T20:00:00Z"},
         {"datetime": "2022-07-07T20:00:00Z"}
     ]});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine.evaluate_owned(&compiled, json!({}));
+    let compiled = engine.compile(&logic).unwrap();
+    let result = engine.session().eval_into::<serde_json::Value, _>(&compiled, &json!({}));
     assert!(result.is_err());
 }
 
@@ -272,9 +270,9 @@ fn test_is_night_complex_structured_object() {
         }
     });
 
-    let compiled = engine.compile_serde_value(&logic).unwrap();
+    let compiled = engine.compile(&logic).unwrap();
     let data = json!({"location": "Transylvania"});
-    let result = engine.evaluate_owned(&compiled, data).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &data).unwrap();
 
     assert_eq!(
         result,

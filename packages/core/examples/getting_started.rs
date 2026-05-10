@@ -13,7 +13,7 @@ fn main() {
     let engine = Engine::new();
 
     let allowed = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"and": [
                 {">=": [{"var": "age"}, 18]},
                 {"==": [{"var": "status"}, "active"]}
@@ -37,7 +37,7 @@ fn main() {
     let engine = Engine::builder().with_templating(true).build();
 
     let shaped = engine
-        .evaluate_str(
+        .eval_str(
             r#"{
                 "greeting": {"cat": ["Hello, ", {"var": "name"}, "!"]},
                 "isAdult":  {">=": [{"var": "age"}, 18]}
@@ -54,7 +54,7 @@ fn main() {
 
     // Simple arithmetic: subtotal + tax + shipping.
     let total = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"+": [{"var": "subtotal"}, {"var": "tax"}, {"var": "shipping"}]}"#,
             r#"{"subtotal": 100, "tax": 8.5, "shipping": 5}"#,
         )
@@ -63,7 +63,7 @@ fn main() {
 
     // Reduction: sum of items[].price.
     let cart_total = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"reduce": [
                 {"var": "items"},
                 {"+": [{"var": "accumulator"}, {"var": "current.price"}]},

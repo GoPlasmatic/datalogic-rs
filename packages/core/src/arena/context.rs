@@ -8,7 +8,7 @@
 //! (no `Value::clone`, no `BTreeMap::clone`).
 
 use super::value::DataValue;
-#[cfg(all(test, feature = "compat"))]
+#[cfg(all(test, feature = "serde_json"))]
 use bumpalo::Bump;
 
 /// A single frame in the arena-mode context stack.
@@ -98,7 +98,7 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
-    #[cfg(all(test, feature = "compat"))]
+    #[cfg(all(test, feature = "serde_json"))]
     #[inline]
     fn root_data(&self) -> Option<&'a DataValue<'a>> {
         match self {
@@ -107,7 +107,7 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
-    #[cfg(all(test, feature = "compat"))]
+    #[cfg(all(test, feature = "serde_json"))]
     #[inline]
     fn frame_data(&self) -> Option<&'a DataValue<'a>> {
         match self {
@@ -154,7 +154,7 @@ impl<'a> ContextStack<'a> {
     /// deep-converting it into an arena-resident `DataValue`. Used only by
     /// the test module below — production v5 / compat paths construct a
     /// [`ContextStack::new`] directly with an arena-resident value.
-    #[cfg(all(test, feature = "compat"))]
+    #[cfg(all(test, feature = "serde_json"))]
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
         let av = crate::arena::value::value_to_data(root, arena);
@@ -212,7 +212,7 @@ impl<'a> ContextStack<'a> {
     /// Snapshot the current frame's data as an owned `Value`. Used by the
     /// arena dispatcher before recursing into a child, so the trace step
     /// can record the context that operator saw.
-    #[cfg(all(feature = "trace", feature = "compat"))]
+    #[cfg(all(feature = "trace", feature = "serde_json"))]
     pub(crate) fn current_data_as_value(&self) -> serde_json::Value {
         match self.current() {
             ContextRef::Root(av) => crate::arena::data_to_value(av),
@@ -223,7 +223,7 @@ impl<'a> ContextStack<'a> {
     /// Record the result of a node into the attached tracer. No-op if no
     /// tracer is attached. Callers gate on [`has_tracer`] first to skip the
     /// `Value::clone()` when not tracing.
-    #[cfg(all(feature = "trace", feature = "compat"))]
+    #[cfg(all(feature = "trace", feature = "serde_json"))]
     pub(crate) fn record_node_result(
         &mut self,
         node_id: u32,
@@ -452,7 +452,7 @@ impl Drop for IterGuard<'_, '_> {
     }
 }
 
-#[cfg(all(test, feature = "compat"))]
+#[cfg(all(test, feature = "serde_json"))]
 mod tests {
     use super::*;
     use crate::arena::value::DataValue;

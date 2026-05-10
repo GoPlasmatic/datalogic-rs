@@ -225,7 +225,7 @@ fn eliminate_or(
     })
 }
 
-#[cfg(all(test, feature = "compat"))]
+#[cfg(all(test, feature = "serde_json"))]
 mod tests {
     use super::super::test_helpers::{builtin, val, var_node};
     use super::*;

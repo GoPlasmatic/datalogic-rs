@@ -15,17 +15,17 @@ fn main() {
 
     // ----- parse + format -------------------------------------------
     let r = engine
-        .evaluate_str(r#"{"datetime": "2026-05-06T09:00:00Z"}"#, r#"{}"#)
+        .eval_str(r#"{"datetime": "2026-05-06T09:00:00Z"}"#, r#"{}"#)
         .unwrap();
     println!("datetime literal -> {r}");
 
     let r = engine
-        .evaluate_str(r#"{"parse_date": ["2026-05-06", "yyyy-MM-dd"]}"#, r#"{}"#)
+        .eval_str(r#"{"parse_date": ["2026-05-06", "yyyy-MM-dd"]}"#, r#"{}"#)
         .unwrap();
     println!("parse_date       -> {r}");
 
     let r = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"format_date": [{"datetime": "2026-05-06T09:00:00Z"}, "yyyy-MM-dd"]}"#,
             r#"{}"#,
         )
@@ -34,7 +34,7 @@ fn main() {
 
     // ----- arithmetic with `timestamp` durations --------------------
     let r = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"+": [{"datetime": "2026-05-06T09:00:00Z"}, {"timestamp": "1d"}]}"#,
             r#"{}"#,
         )
@@ -42,7 +42,7 @@ fn main() {
     println!("\n+1 day           -> {r}");
 
     let r = engine
-        .evaluate_str(
+        .eval_str(
             r#"{"date_diff": [
                 {"datetime": "2026-05-08T09:00:00Z"},
                 {"datetime": "2026-05-06T09:00:00Z"},
@@ -54,12 +54,12 @@ fn main() {
     println!("date_diff (days) -> {r}");
 
     // ----- now + comparison -----------------------------------------
-    let r = engine.evaluate_str(r#"{"now": []}"#, r#"{}"#).unwrap();
+    let r = engine.eval_str(r#"{"now": []}"#, r#"{}"#).unwrap();
     println!("\nnow              -> {r}");
 
     // Is the scheduled date in the future?
     let r = engine
-        .evaluate_str(
+        .eval_str(
             r#"{">": [{"var": "scheduled"}, {"now": []}]}"#,
             r#"{"scheduled": {"datetime": "2099-01-01T00:00:00Z"}}"#,
         )

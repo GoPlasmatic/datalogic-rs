@@ -5,11 +5,9 @@
 // requests it; in
 // practice users running this runner will want `--all-features` to actually
 // exercise every suite.
-#![cfg(all(feature = "templating", feature = "compat"))]
-#![allow(deprecated)]
+#![cfg(all(feature = "templating", feature = "serde_json"))]
 
 use datalogic_rs::Engine;
-use datalogic_rs::compat::LegacyApi;
 use serde_json::{Value, json};
 
 use std::env;
@@ -109,7 +107,6 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
             .unwrap_or_else(|| panic!("Test case {} missing 'rule'", index));
 
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
-        let data_arc = std::sync::Arc::new(data);
 
         // Check for templating flag
         let templating = test_obj
@@ -134,8 +131,11 @@ fn run_test_file(test_file: &str) -> (usize, usize) {
         }
 
         // Compile and evaluate
-        match test_engine.compile_serde_value(rule) {
-            Ok(compiled) => match test_engine.evaluate_arc_value(&compiled, data_arc) {
+        match test_engine.compile(rule) {
+            Ok(compiled) => match test_engine
+                .session()
+                .eval_into::<serde_json::Value, _>(&compiled, &data)
+            {
                 Ok(result) => {
                     if expects_error {
                         println!("✗ Test {}: {}", index, description);

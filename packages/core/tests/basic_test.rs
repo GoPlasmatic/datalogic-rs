@@ -1,4 +1,4 @@
-#![cfg(feature = "compat")]
+#![cfg(feature = "serde_json")]
 
 use datalogic_rs::Engine;
 use serde_json::json;
@@ -8,7 +8,7 @@ fn test_basic_equality() {
     let engine = Engine::new();
     let logic = json!({"==": [1, 1]});
     let data = json!({});
-    let result = engine.evaluate_json_value(&logic, &data).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &data).unwrap();
     assert_eq!(result, json!(true));
 }
 
@@ -17,7 +17,7 @@ fn test_variable_access() {
     let engine = Engine::new();
     let logic = json!({"var": "name"});
     let data = json!({"name": "Alice"});
-    let result = engine.evaluate_json_value(&logic, &data).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &data).unwrap();
     assert_eq!(result, json!("Alice"));
 }
 
@@ -33,12 +33,12 @@ fn test_if_then_else() {
     });
 
     let result1 = engine
-        .evaluate_json_value(&logic, &json!({"temp": 100}))
+        .eval_into::<serde_json::Value, _, _>(&logic, &json!({"temp": 100}))
         .unwrap();
     assert_eq!(result1, json!("hot"));
 
     let result2 = engine
-        .evaluate_json_value(&logic, &json!({"temp": 50}))
+        .eval_into::<serde_json::Value, _, _>(&logic, &json!({"temp": 50}))
         .unwrap();
     assert_eq!(result2, json!("cold"));
 }
@@ -54,7 +54,7 @@ fn test_map_with_context() {
             {"+": [{"val": []}, {"val": [[0], "index"]}]}
         ]
     });
-    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &json!({})).unwrap();
     assert_eq!(result, json!([1, 3, 5]));
 }
 
@@ -65,7 +65,7 @@ fn test_now_operator() {
     let engine = Engine::new();
 
     let logic = json!({"now": []});
-    let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &json!({})).unwrap();
 
     assert!(result.is_string(), "Now operator should return a string");
 
@@ -78,7 +78,7 @@ fn test_now_operator() {
     }
 
     std::thread::sleep(std::time::Duration::from_millis(10));
-    let result2 = engine.evaluate_json_value(&logic, &json!({})).unwrap();
+    let result2 = engine.eval_into::<serde_json::Value, _, _>(&logic, &json!({})).unwrap();
     assert!(
         result2.is_string(),
         "Second call to now should also return a string"
@@ -90,7 +90,7 @@ fn test_evaluate_json_value_api() {
     let engine = Engine::new();
     let logic = json!({"+": [{"var": "a"}, {"var": "b"}]});
     let data = json!({"a": 3, "b": 4});
-    let result = engine.evaluate_json_value(&logic, &data).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &data).unwrap();
     assert_eq!(result, json!(7));
 }
 
@@ -101,6 +101,6 @@ fn test_evaluate_with_arena_dispatch() {
     // A rule that triggers arena dispatch (filter + length).
     let logic = json!({"length": {"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]}});
     let data = json!({"items": [1, 2, 3, 4, 5]});
-    let result = engine.evaluate_json_value(&logic, &data).unwrap();
+    let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &data).unwrap();
     assert_eq!(result, json!(3));
 }

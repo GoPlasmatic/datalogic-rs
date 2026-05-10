@@ -577,9 +577,10 @@ impl CompileCtx {
     }
 
     /// Construct a context that skips the optimizer + constant-fold passes.
-    /// Used by the internal trace compile path so traced rules retain every
-    /// operator as a step source.
-    #[cfg(feature = "trace")]
+    /// Used by the internal trace compile path (so traced rules retain
+    /// every operator as a step source) and by `Engine::compile` when
+    /// the engine was built with
+    /// [`crate::EngineBuilder::with_constant_folding(false)`].
     pub(crate) fn no_fold() -> Self {
         Self {
             next_id: ID_ONE,
@@ -633,7 +634,7 @@ impl CompileCtx {
 ///     let engine = Engine::new();
 ///     let _result = engine
 ///         .session()
-///         .evaluate_str(&compiled_clone, r#"{"score": 95}"#)
+///         .eval_str(&compiled_clone, r#"{"score": 95}"#)
 ///         .unwrap();
 /// });
 /// ```
@@ -748,7 +749,7 @@ impl Logic {
     /// // Round-trip: re-compiling the output produces an equivalent rule.
     /// let recompiled = engine.compile(&json).unwrap();
     /// assert_eq!(
-    ///     engine.evaluate_str(&json, r#"{"score": 95}"#).unwrap(),
+    ///     engine.eval_str(&json, r#"{"score": 95}"#).unwrap(),
     ///     "true",
     /// );
     /// # let _ = (compiled, recompiled);

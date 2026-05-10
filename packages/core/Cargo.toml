@@ -32,12 +32,17 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 # Empty default: the crate is `serde_json`-free out of the box. Opt-in
 # features below add interop, optional operators, or templating — see
-# `compat`, `templating`, `datetime`, `trace`, `error-handling`,
+# `serde_json`, `templating`, `datetime`, `trace`, `error-handling`,
 # `ext-string`, `ext-array`, `ext-control`, `ext-math`, `wasm`. Keeping
 # `default = []` means a minimal build pulls only the JSONLogic baseline
 # operators and no optional dependencies.
 default = []
-compat = ["dep:serde_json", "datavalue/serde_json"]
+# `serde_json` enables `&serde_json::Value` interop and the typed
+# `&T: Serialize` / `T: DeserializeOwned` paths through `EvalInput` /
+# `IntoLogic` / `FromDataValue`. Replaces the v5-pre-release `compat`
+# feature, which mixed interop with v4 deprecation shims; the shims are
+# gone and the feature is now named for what it enables.
+serde_json = ["dep:serde_json", "datavalue/serde_json"]
 # `templating` enables templating mode, where multi-key objects in compiled
 # rules become output-shaping templates
 # (`Engine::builder().with_templating(true)`). The 4.x JSONLogic `preserve`
@@ -45,7 +50,7 @@ compat = ["dep:serde_json", "datavalue/serde_json"]
 # already, and templated objects belong in templating mode.
 templating = []
 datetime = ["datavalue/datetime", "dep:chrono"]
-trace = ["compat"]
+trace = ["serde_json"]
 ext-string = []
 ext-array = []
 ext-control = []
@@ -93,14 +98,7 @@ name = "datetime_ops"
 required-features = ["datetime"]
 
 [[example]]
-name = "migrating_from_v4"
-# `compat` brings the v4 LegacyApi entry points (the migration target);
-# `templating` is needed for the v4 `preserve` operator → templating
-# mode walkthrough at the end of the file.
-required-features = ["compat", "templating"]
-
-[[example]]
 name = "zero_copy_input"
-# `compat` enables the `&serde_json::Value` shape; the example shows all
-# input shapes side by side so it needs the gated impl too.
-required-features = ["compat"]
+# `serde_json` enables the `&serde_json::Value` shape; the example shows
+# all input shapes side by side so it needs the gated impl too.
+required-features = ["serde_json"]

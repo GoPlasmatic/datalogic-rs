@@ -1,10 +1,8 @@
 //! Integration tests for the `CustomOperator` trait — zero-clone custom operators.
 
-#![cfg(feature = "compat")]
-#![allow(deprecated)]
+#![cfg(feature = "serde_json")]
 
 use bumpalo::Bump;
-use datalogic_rs::compat::LegacyApi;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{ArenaExt, CustomOperator, DataValue, Engine, Result};
 use serde_json::json;
@@ -48,8 +46,8 @@ fn arena_operator_double_at_root() {
         .add_operator("double", DoubleArena)
         .build();
 
-    let compiled = engine.compile_serde_value(&json!({"double": 21})).unwrap();
-    let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
+    let compiled = engine.compile(&json!({"double": 21})).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!(42));
 }
 
@@ -61,10 +59,11 @@ fn arena_operator_inside_filter() {
         .build();
 
     let compiled = engine
-        .compile_serde_value(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
+        .compile(&json!({"map": [{"var": "xs"}, {"double": {"var": ""}}]}))
         .unwrap();
-    let result = engine
-        .evaluate_ref(&compiled, &json!({"xs": [1, 2, 3, 4]}))
+    let result: serde_json::Value = engine
+        .session()
+        .eval_into(&compiled, &json!({"xs": [1, 2, 3, 4]}))
         .unwrap();
     assert_eq!(result, json!([2, 4, 6, 8]));
 }
@@ -74,9 +73,9 @@ fn arena_operator_string_result() {
     let engine = Engine::builder().add_operator("xcat", CatArena).build();
 
     let compiled = engine
-        .compile_serde_value(&json!({"xcat": ["he", "ll", "o"]}))
+        .compile(&json!({"xcat": ["he", "ll", "o"]}))
         .unwrap();
-    let result = engine.evaluate_ref(&compiled, &json!({})).unwrap();
+    let result: serde_json::Value = engine.session().eval_into(&compiled, &json!({})).unwrap();
     assert_eq!(result, json!("hello"));
 }
 
@@ -87,9 +86,10 @@ fn evaluate_ref_var_inside_filter_bridge_object_input() {
     // bridges synthesize their own context from ctx.root_input().
     let engine = Engine::new();
     let logic = serde_json::json!({"filter": [{"var": "items"}, {">": [{"var": ""}, 2]}]});
-    let compiled = engine.compile_serde_value(&logic).unwrap();
-    let result = engine
-        .evaluate_ref(&compiled, &serde_json::json!({"items": [1, 2, 3, 4, 5]}))
+    let compiled = engine.compile(&logic).unwrap();
+    let result: serde_json::Value = engine
+        .session()
+        .eval_into(&compiled, &serde_json::json!({"items": [1, 2, 3, 4, 5]}))
         .unwrap();
     assert_eq!(result, serde_json::json!([3, 4, 5]));
 }
@@ -102,9 +102,12 @@ fn arena_operator_with_input_ref() {
         .build();
 
     let compiled = engine
-        .compile_serde_value(&json!({"double": {"var": "n"}}))
+        .compile(&json!({"double": {"var": "n"}}))
         .unwrap();
-    let result = engine.evaluate_ref(&compiled, &json!({"n": 5})).unwrap();
+    let result: serde_json::Value = engine
+        .session()
+        .eval_into(&compiled, &json!({"n": 5}))
+        .unwrap();
     assert_eq!(result, json!(10));
 }
 
@@ -137,10 +140,11 @@ fn arena_operator_passthrough_input_ref() {
         .build();
 
     let compiled = engine
-        .compile_serde_value(&serde_json::json!({"read_field": {"var": "name"}}))
+        .compile(&serde_json::json!({"read_field": {"var": "name"}}))
         .unwrap();
-    let result = engine
-        .evaluate_ref(&compiled, &serde_json::json!({"name": "Alice"}))
+    let result: serde_json::Value = engine
+        .session()
+        .eval_into(&compiled, &serde_json::json!({"name": "Alice"}))
         .unwrap();
     assert_eq!(result, serde_json::json!("Alice"));
 }
@@ -174,12 +178,13 @@ fn arena_operator_inside_filter_reads_iter_item_field() {
     // `identity` on `{"var": "active"}`, which the dispatcher resolves
     // against the iter frame.
     let compiled = engine
-        .compile_serde_value(&serde_json::json!({
+        .compile(&serde_json::json!({
             "filter": [{"var": "items"}, {"identity": {"var": "active"}}]
         }))
         .unwrap();
-    let result = engine
-        .evaluate_ref(
+    let result: serde_json::Value = engine
+        .session()
+        .eval_into(
             &compiled,
             &serde_json::json!({"items": [
                 {"id": 1, "active": true},
@@ -235,7 +240,7 @@ fn arena_ext_helpers_round_trip_through_custom_op() {
         .build();
 
     let result = engine
-        .evaluate_json_value(&json!({"sample": []}), &json!({}))
+        .eval_into::<serde_json::Value, _, _>(&json!({"sample": []}), &json!({}))
         .unwrap();
     assert_eq!(
         result,

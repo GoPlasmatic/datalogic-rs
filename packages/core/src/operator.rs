@@ -51,22 +51,4 @@ impl<'ctx, 'a> EvalContext<'ctx, 'a> {
         Self { inner }
     }
 
-    /// Engine-internal accessor used by the deprecated `compat::ArenaOperator`
-    /// bridge to forward to the legacy `&mut ContextStack<'a>` signature.
-    #[cfg(feature = "compat")]
-    #[inline]
-    pub(crate) fn stack_mut(&mut self) -> &mut crate::arena::ContextStack<'a> {
-        self.inner
-    }
 }
-
-/// Deprecated alias for the engine's internal evaluation stack. Kept under
-/// `feature = "compat"` only because `compat::ArenaOperator` still references
-/// it; new code should take an [`EvalContext`] instead. Will be removed in
-/// 5.1 alongside the rest of the `compat` module.
-#[cfg(feature = "compat")]
-#[deprecated(
-    since = "5.0.0",
-    note = "use `EvalContext` in `CustomOperator::evaluate`; `ContextStack` is removed in 5.1"
-)]
-pub use crate::arena::ContextStack;
