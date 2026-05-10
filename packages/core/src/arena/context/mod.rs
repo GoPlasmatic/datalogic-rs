@@ -6,116 +6,23 @@
 //!
 //! Per-iteration cost: pushing a frame is `frames.push(...)` of two pointers
 //! (no `Value::clone`, no `BTreeMap::clone`).
+//!
+//! Submodules split the file by concern:
+//! - [`frame`] — `ContextFrame`, the per-iteration payload.
+//! - [`reference`] — `ContextRef`, the shared "frame or root" reference.
+//!
+//! `ContextStack` itself stays here alongside `IterGuard`, since the guard
+//! mutates the stack's private frame storage directly.
+
+mod frame;
+mod reference;
+
+pub(crate) use frame::ContextFrame;
+pub(crate) use reference::ContextRef;
 
 use super::value::DataValue;
 #[cfg(all(test, feature = "serde_json"))]
 use bumpalo::Bump;
-
-/// A single frame in the arena-mode context stack.
-#[derive(Clone, Copy)]
-pub(crate) enum ContextFrame<'a> {
-    Indexed {
-        data: &'a DataValue<'a>,
-        index: usize,
-    },
-    Keyed {
-        data: &'a DataValue<'a>,
-        index: usize,
-        key: &'a str,
-    },
-    Reduce {
-        current: &'a DataValue<'a>,
-        accumulator: &'a DataValue<'a>,
-    },
-    Data(&'a DataValue<'a>),
-}
-
-impl<'a> ContextFrame<'a> {
-    #[inline]
-    pub(crate) fn data(&self) -> &'a DataValue<'a> {
-        match self {
-            Self::Indexed { data, .. } | Self::Keyed { data, .. } | Self::Data(data) => data,
-            Self::Reduce { current, .. } => current,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_index(&self) -> Option<usize> {
-        match self {
-            Self::Indexed { index, .. } | Self::Keyed { index, .. } => Some(*index),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_key(&self) -> Option<&'a str> {
-        match self {
-            Self::Keyed { key, .. } => Some(key),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_reduce_current(&self) -> Option<&'a DataValue<'a>> {
-        match self {
-            Self::Reduce { current, .. } => Some(current),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_reduce_accumulator(&self) -> Option<&'a DataValue<'a>> {
-        match self {
-            Self::Reduce { accumulator, .. } => Some(accumulator),
-            _ => None,
-        }
-    }
-}
-
-/// Reference to an arena context frame (either a stack frame or the root).
-pub(crate) enum ContextRef<'a, 'ctx> {
-    Frame(&'ctx ContextFrame<'a>),
-    /// Root carries the original input as `&'a DataValue<'a>`, deep-converted
-    /// from a `&Value` at API entry or supplied directly by arena-native
-    /// callers.
-    Root(&'a DataValue<'a>),
-}
-
-impl<'a, 'ctx> ContextRef<'a, 'ctx> {
-    #[inline]
-    pub(crate) fn get_index(&self) -> Option<usize> {
-        match self {
-            Self::Frame(f) => f.get_index(),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_key(&self) -> Option<&'a str> {
-        match self {
-            Self::Frame(f) => f.get_key(),
-            _ => None,
-        }
-    }
-
-    #[cfg(all(test, feature = "serde_json"))]
-    #[inline]
-    fn root_data(&self) -> Option<&'a DataValue<'a>> {
-        match self {
-            Self::Root(av) => Some(*av),
-            Self::Frame(_) => None,
-        }
-    }
-
-    #[cfg(all(test, feature = "serde_json"))]
-    #[inline]
-    fn frame_data(&self) -> Option<&'a DataValue<'a>> {
-        match self {
-            Self::Frame(f) => Some(f.data()),
-            Self::Root(_) => None,
-        }
-    }
-}
 
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
 /// root is `&'a DataValue<'a>` (deep-converted from `&Value` for the public

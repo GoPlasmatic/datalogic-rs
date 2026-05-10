@@ -1,5 +1,22 @@
+//! `Error` — the unified error type returned by every public engine
+//! operation. Submodules are structured by concern:
+//!
+//! - [`kind`] — `ErrorKind` enum + `CustomErrorSource` trait alias.
+//! - [`path`] — `ErrorPath`, the internal breadcrumb storage.
+//! - [`serde`] — `Display`, `std::error::Error`, `Serialize`, and `From`
+//!   impls for foreign error types.
+//!
+//! Re-exports below preserve the pre-split `crate::error::*` import paths so
+//! callers elsewhere in the crate are unaffected by the file split.
+
+mod kind;
+mod path;
+mod serde;
+
+pub use kind::{CustomErrorSource, ErrorKind};
+pub(crate) use path::ErrorPath;
+
 use datavalue::OwnedDataValue;
-use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
@@ -11,58 +28,6 @@ pub(crate) const INVALID_ARGS: &str = "Invalid Arguments";
 /// Canonical "NaN" string used as the `type` field of the thrown error
 /// object that arithmetic and comparison ops raise on non-numeric input.
 pub(crate) const NAN_ERROR: &str = "NaN";
-
-/// Internal storage for the breadcrumb on [`Error`]. Hidden from the public
-/// surface so the layout (currently a plain `Vec<u32>`) can evolve
-/// (smallvec, inline buffer, deferred-grow) without an API change.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ErrorPath {
-    inner: Vec<u32>,
-}
-
-impl ErrorPath {
-    #[inline]
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    #[inline]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    #[inline]
-    pub(crate) fn as_slice(&self) -> &[u32] {
-        &self.inner
-    }
-}
-
-impl From<Vec<u32>> for ErrorPath {
-    #[inline]
-    fn from(inner: Vec<u32>) -> Self {
-        Self { inner }
-    }
-}
-
-impl PartialEq for ErrorPath {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
-    }
-}
-
-impl Eq for ErrorPath {}
-
-impl Serialize for ErrorPath {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.inner.serialize(serializer)
-    }
-}
-
-/// Trait-object alias for the source carried by [`ErrorKind::Custom`].
-/// Reference-counted so [`ErrorKind`] stays cheap to clone, and bounded
-/// so a single `Error` value can be sent across threads.
-pub type CustomErrorSource = Arc<dyn std::error::Error + Send + Sync + 'static>;
 
 /// String-only custom error — used by [`Error::custom_message`] to wrap a
 /// bare message in a `dyn Error` shell.
@@ -76,40 +41,6 @@ impl fmt::Display for MessageError {
 }
 
 impl std::error::Error for MessageError {}
-
-/// Discriminant for [`Error`]. Stable variant tags are exposed via
-/// [`Error::tag`] for matching across releases.
-#[non_exhaustive]
-#[derive(Debug, Clone)]
-pub enum ErrorKind {
-    /// Invalid operator name
-    InvalidOperator(Cow<'static, str>),
-    /// Invalid arguments for an operator
-    InvalidArguments(Cow<'static, str>),
-    /// Variable not found in context
-    VariableNotFound(Cow<'static, str>),
-    /// Invalid context level access
-    InvalidContextLevel(isize),
-    /// Type conversion/coercion error
-    TypeError(Cow<'static, str>),
-    /// Arithmetic error (division by zero, overflow, etc.)
-    ArithmeticError(Cow<'static, str>),
-    /// Custom error for extensions. Carries the underlying typed error so
-    /// callers can walk the source chain via [`std::error::Error::source`].
-    /// Constructed via [`Error::custom_message`] (string-only) or
-    /// [`Error::wrap`] (any `std::error::Error + Send + Sync + 'static`).
-    Custom(CustomErrorSource),
-    /// JSON parsing/serialization error
-    ParseError(Cow<'static, str>),
-    /// Thrown error from throw operator
-    Thrown(OwnedDataValue),
-    /// Invalid format string or pattern
-    FormatError(Cow<'static, str>),
-    /// Index out of bounds for array operations
-    IndexOutOfBounds { index: isize, length: usize },
-    /// Invalid operator configuration
-    ConfigurationError(Cow<'static, str>),
-}
 
 /// Error returned by every [`crate::Engine`] operation.
 ///
@@ -410,144 +341,6 @@ impl Error {
     }
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Render the kind first, then optionally the operator context.
-        write_kind_message(f, &self.kind)?;
-        if let Some(op) = &self.operator {
-            write!(f, " (in operator: {})", op)?;
-        }
-        Ok(())
-    }
-}
-
-/// Render the `ErrorKind` portion of an error message, without the operator
-/// suffix. Single source of truth for the kind → human-readable mapping; used
-/// by `Display for Error` (which then appends the operator context) and
-/// `Error::serialize` (via `KindDisplay`).
-fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Result {
-    match kind {
-        ErrorKind::InvalidOperator(op) => write!(f, "Invalid operator: {}", op),
-        ErrorKind::InvalidArguments(msg) => write!(f, "Invalid arguments: {}", msg),
-        ErrorKind::VariableNotFound(var) => write!(f, "Variable not found: {}", var),
-        ErrorKind::InvalidContextLevel(level) => write!(f, "Invalid context level: {}", level),
-        ErrorKind::TypeError(msg) => write!(f, "Type error: {}", msg),
-        ErrorKind::ArithmeticError(msg) => write!(f, "Arithmetic error: {}", msg),
-        ErrorKind::Custom(err) => write!(f, "{}", err),
-        ErrorKind::ParseError(msg) => write!(f, "Parse error: {}", msg),
-        ErrorKind::Thrown(val) => {
-            #[cfg(feature = "serde_json")]
-            {
-                let json = crate::serde_bridge::owned_to_serde(val);
-                write!(f, "Thrown: {}", json)
-            }
-            #[cfg(not(feature = "serde_json"))]
-            {
-                write!(f, "Thrown: {:?}", val)
-            }
-        }
-        ErrorKind::FormatError(msg) => write!(f, "Format error: {}", msg),
-        ErrorKind::IndexOutOfBounds { index, length } => write!(
-            f,
-            "Index {} out of bounds for array of length {}",
-            index, length
-        ),
-        ErrorKind::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
-    }
-}
-
-impl std::error::Error for Error {
-    /// Returns the wrapped source error, but only for [`ErrorKind::Custom`].
-    ///
-    /// All other [`ErrorKind`] variants carry a flat `Cow<'static, str>`
-    /// payload (or a structured value, in `Thrown` / `IndexOutOfBounds`)
-    /// rather than a typed cause, so they have no `dyn Error` to chain to.
-    /// To attach a typed source, wrap your error via [`Error::wrap`] —
-    /// that produces an `ErrorKind::Custom` whose `source()` returns
-    /// `Some(&original)` and whose `Display` matches the original.
-    ///
-    /// ```rust
-    /// use datalogic_rs::Error;
-    /// use std::error::Error as _;
-    ///
-    /// fn read_config() -> std::io::Result<String> {
-    ///     Err(std::io::Error::other("disk fell off the cliff"))
-    /// }
-    ///
-    /// let err = read_config().map_err(Error::wrap).unwrap_err();
-    /// // The original io::Error survives the wrap and can be walked.
-    /// let source = err.source().unwrap();
-    /// assert!(source.to_string().contains("disk"));
-    /// ```
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match &self.kind {
-            ErrorKind::Custom(err) => Some(err.as_ref()),
-            _ => None,
-        }
-    }
-}
-
-#[cfg(feature = "serde_json")]
-#[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
-    }
-}
-
-impl From<datavalue::ParseError> for Error {
-    fn from(err: datavalue::ParseError) -> Self {
-        Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
-    }
-}
-
-impl From<ErrorKind> for Error {
-    #[inline]
-    fn from(kind: ErrorKind) -> Self {
-        Error::new(kind)
-    }
-}
-
-impl Serialize for Error {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // Shape:
-        // { "type": <tag>, "message": <Display>, ...kind-extras, "operator"?, "node_ids"? }
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("type", self.tag())?;
-        // The Display impl appends "(in operator: ...)" when set; for the
-        // `message` field we want the kind portion only, so render kind
-        // without the operator suffix.
-        map.serialize_entry("message", &KindDisplay(&self.kind).to_string())?;
-        match &self.kind {
-            ErrorKind::VariableNotFound(name) => map.serialize_entry("variable", name)?,
-            ErrorKind::InvalidContextLevel(level) => map.serialize_entry("level", level)?,
-            ErrorKind::Thrown(value) => map.serialize_entry("thrown", value)?,
-            ErrorKind::IndexOutOfBounds { index, length } => {
-                map.serialize_entry("index", index)?;
-                map.serialize_entry("length", length)?;
-            }
-            _ => {}
-        }
-        if let Some(op) = &self.operator {
-            map.serialize_entry("operator", op)?;
-        }
-        if !self.node_ids.is_empty() {
-            map.serialize_entry("node_ids", &self.node_ids)?;
-        }
-        map.end()
-    }
-}
-
-/// Render an [`ErrorKind`] without the operator suffix. Used by
-/// [`Error::serialize`] to populate the `message` field.
-struct KindDisplay<'a>(&'a ErrorKind);
-
-impl<'a> fmt::Display for KindDisplay<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_kind_message(f, self.0)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -603,7 +396,7 @@ mod tests {
     #[test]
     fn error_path_default_is_empty() {
         let p = ErrorPath::new();
-        assert!(p.is_empty());
+        assert!(p.as_slice().is_empty());
         assert_eq!(p.as_slice(), &[] as &[u32]);
     }
 
