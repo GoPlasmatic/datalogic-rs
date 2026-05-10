@@ -48,6 +48,14 @@ cp pkg-nodejs/datalogic_wasm.js pkg/nodejs/
 cp pkg-nodejs/datalogic_wasm.d.ts pkg/nodejs/
 cp pkg-nodejs/datalogic_wasm_bg.wasm.d.ts pkg/nodejs/
 
+# Per-subdir `package.json` overrides. The pkg root sets `"type": "module"`
+# (so `web/` ESM resolves), but wasm-pack's `nodejs` and `bundler` targets
+# emit CommonJS files using `exports.foo = ...`. Without these overrides,
+# Node treats every .js in the package as ESM and the CJS files explode at
+# import time with `ReferenceError: exports is not defined in ES module scope`.
+echo '{"type":"commonjs"}' > pkg/nodejs/package.json
+echo '{"type":"commonjs"}' > pkg/bundler/package.json
+
 # Optimize WASM binaries with wasm-opt if available
 if command -v wasm-opt &> /dev/null; then
     echo "Optimizing WASM binaries with wasm-opt..."

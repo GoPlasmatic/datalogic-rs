@@ -35,8 +35,27 @@ pub struct SuiteCase {
 }
 
 /// Load a suite file into reusable (rule, data) string pairs. Skips
-/// section-header strings and entries without a `rule` field.
+/// section-header strings and entries without a `rule` field. Includes
+/// negative-test cases (those with an `error` field) — used by `bin/self.rs`
+/// where every Rust call is the same engine and error-path cost doesn't
+/// skew comparisons. Cross-library callers should prefer
+/// [`load_suite_for_compare`].
 pub fn load_suite(file_path: &Path) -> Option<Vec<SuiteCase>> {
+    load_suite_inner(file_path, false)
+}
+
+/// Load a suite file into reusable (rule, data) string pairs, **dropping
+/// negative-test cases** (those with an `error` field instead of
+/// `result`). Cross-library benchmarks include subjects whose error
+/// paths differ wildly in cost (e.g. richly-formatted `Display` impls
+/// vs cheap return-null), so including negative cases would penalise
+/// the verbose ones unfairly. The matrix runner in `bin/compare.rs`
+/// uses this variant.
+pub fn load_suite_for_compare(file_path: &Path) -> Option<Vec<SuiteCase>> {
+    load_suite_inner(file_path, true)
+}
+
+fn load_suite_inner(file_path: &Path, drop_error_cases: bool) -> Option<Vec<SuiteCase>> {
     let raw = fs::read_to_string(file_path).ok()?;
     let entries: Vec<Value> = serde_json::from_str(&raw).ok()?;
 
@@ -51,6 +70,10 @@ pub fn load_suite(file_path: &Path) -> Option<Vec<SuiteCase>> {
         let Some(rule) = test_case.get("rule") else {
             continue;
         };
+        if drop_error_cases && test_case.contains_key("error") && !test_case.contains_key("result")
+        {
+            continue;
+        }
         let data = test_case.get("data").cloned().unwrap_or(Value::Null);
 
         let Ok(rule_json) = serde_json::to_string(rule) else {
@@ -178,4 +201,219 @@ pub fn write_report(label: &str, iterations: u32, results: &[SuiteResult]) -> Pa
     let path = out_dir.join(format!("report-{label}-{timestamp}.json"));
     fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).expect("write report");
     path
+}
+
+// ============================================================
+// Cross-library matrix support (used by `bin/compare.rs`).
+// ============================================================
+
+/// One measured run of a subject against a suite. The cross-library
+/// runner does median-of-three by collecting three of these and picking
+/// the middle ns/op.
+#[derive(Clone, Copy, Debug)]
+pub struct SubjectRun {
+    pub elapsed: Duration,
+    pub iterations: u32,
+    pub ok_count: u64,
+    pub err_count: u64,
+}
+
+impl SubjectRun {
+    /// Average ns per op across **all** evaluations (success + error). The
+    /// matrix uses this rather than ns-per-success because (a) we can't
+    /// always tell from a black-box subject which evaluation failed, and
+    /// (b) keeping the denominator total-evals matches what the timed
+    /// loop actually executed.
+    pub fn avg_op_ns(&self) -> f64 {
+        let total_ops = self.ok_count + self.err_count;
+        if total_ops == 0 {
+            return 0.0;
+        }
+        self.elapsed.as_nanos() as f64 / total_ops as f64
+    }
+}
+
+/// One cell in the matrix output. `Value` carries the median ns/op plus
+/// a flag for "this subject errored on some-but-not-all cases" (rendered
+/// with a trailing `*` and a footnote).
+#[derive(Clone, Debug)]
+pub enum MatrixCell {
+    /// Subject ran. `partial = true` when some cases errored but the
+    /// subject was not fully blocked.
+    Value { ns_per_op: f64, partial: bool },
+    /// Subject ran but errored on (effectively) every case. Renders as
+    /// `ERR`.
+    Error,
+    /// Subject was unavailable (Cargo feature off, runtime missing,
+    /// suite couldn't be precompiled). Renders as `—`.
+    Unavailable,
+}
+
+/// One row in the matrix — a suite's per-subject cells.
+pub struct MatrixRow {
+    pub suite: String,
+    pub test_count: usize,
+    pub cells: Vec<MatrixCell>,
+}
+
+/// Geometric mean over the finite, positive values in `xs`. Empty or
+/// all-non-finite input returns NaN. Used for the bottom-of-matrix
+/// aggregation row — geomean is the convention for cross-library
+/// benchmarks because a single slow suite doesn't dominate the total
+/// the way it does with arithmetic mean.
+pub fn geomean(xs: &[f64]) -> f64 {
+    let logs: Vec<f64> = xs
+        .iter()
+        .copied()
+        .filter(|x| x.is_finite() && *x > 0.0)
+        .map(f64::ln)
+        .collect();
+    if logs.is_empty() {
+        return f64::NAN;
+    }
+    let mean_log = logs.iter().sum::<f64>() / logs.len() as f64;
+    mean_log.exp()
+}
+
+/// Arithmetic mean over the finite values in `xs`. Empty input returns NaN.
+pub fn arith_mean(xs: &[f64]) -> f64 {
+    let vals: Vec<f64> = xs.iter().copied().filter(|x| x.is_finite()).collect();
+    if vals.is_empty() {
+        return f64::NAN;
+    }
+    vals.iter().sum::<f64>() / vals.len() as f64
+}
+
+/// Render the matrix as a markdown table to stdout.
+///
+/// Layout: `Suite` column on the left, then one column per subject in
+/// `subject_names` order. Right-aligned numeric cells. Two aggregation
+/// rows at the bottom (`arithmetic mean`, `geometric mean`) computed
+/// over `MatrixCell::Value` cells per column.
+///
+/// `target_wall_time_ms` and `samples_per_cell` go into the header so
+/// the reader knows the timing budget the cells were measured against.
+pub fn render_matrix(
+    subject_names: &[&str],
+    rows: &[MatrixRow],
+    target_wall_time_ms: u32,
+    samples_per_cell: u32,
+) {
+    // Column widths — start from header text, grow to fit the widest cell.
+    let suite_col_header = "Suite";
+    let suite_col_width = rows
+        .iter()
+        .map(|r| r.suite.len())
+        .chain(std::iter::once(suite_col_header.len()))
+        .chain(std::iter::once("geometric mean".len()))
+        .max()
+        .unwrap_or(8);
+
+    let mut col_widths: Vec<usize> = subject_names.iter().map(|n| n.len()).collect();
+    for row in rows {
+        for (i, cell) in row.cells.iter().enumerate() {
+            let w = format_cell(cell).len();
+            if w > col_widths[i] {
+                col_widths[i] = w;
+            }
+        }
+    }
+    // Aggregation rows can also widen the columns.
+    let agg_values = aggregations(subject_names.len(), rows);
+    for (i, w) in col_widths.iter_mut().enumerate() {
+        for (mean, _) in &agg_values {
+            let s = format_aggregate(mean[i]);
+            if s.len() > *w {
+                *w = s.len();
+            }
+        }
+    }
+
+    println!(
+        "\n=== Cross-Library Matrix — avg ns/op (median of {samples_per_cell}, ~{target_wall_time_ms}ms target/cell, {n} suites) ===\n",
+        n = rows.len()
+    );
+
+    // Header
+    print!("| {:<w$} ", suite_col_header, w = suite_col_width);
+    for (name, w) in subject_names.iter().zip(col_widths.iter()) {
+        print!("| {:>w$} ", name, w = *w);
+    }
+    println!("|");
+
+    // Separator (markdown alignment hints — left for first col, right for the rest).
+    print!("|{:-<w$}", "", w = suite_col_width + 2);
+    for w in &col_widths {
+        // ":------:" pattern ends with a colon for right-align; `{:->w$}` fills with `-`.
+        print!("|{:->w$}:", "", w = *w + 1);
+    }
+    println!("|");
+
+    // Body
+    let mut any_partial = false;
+    for row in rows {
+        print!("| {:<w$} ", row.suite, w = suite_col_width);
+        for (cell, w) in row.cells.iter().zip(col_widths.iter()) {
+            let s = format_cell(cell);
+            if matches!(cell, MatrixCell::Value { partial: true, .. }) {
+                any_partial = true;
+            }
+            print!("| {:>w$} ", s, w = *w);
+        }
+        println!("|");
+    }
+
+    // Aggregation rows.
+    let labels = ["arithmetic mean", "geometric mean"];
+    for ((mean_row, _), label) in agg_values.iter().zip(labels.iter()) {
+        print!("| {:<w$} ", label, w = suite_col_width);
+        for (v, w) in mean_row.iter().zip(col_widths.iter()) {
+            print!("| {:>w$} ", format_aggregate(*v), w = *w);
+        }
+        println!("|");
+    }
+
+    if any_partial {
+        println!("\n* partial coverage — subject errored on some cases in this suite.");
+    }
+}
+
+fn format_cell(cell: &MatrixCell) -> String {
+    match cell {
+        MatrixCell::Value { ns_per_op, partial } => {
+            let suffix = if *partial { "*" } else { "" };
+            format!("{:.1}{}", ns_per_op, suffix)
+        }
+        MatrixCell::Error => "ERR".to_string(),
+        MatrixCell::Unavailable => "—".to_string(),
+    }
+}
+
+fn format_aggregate(v: f64) -> String {
+    if v.is_finite() {
+        format!("{:.1}", v)
+    } else {
+        "—".to_string()
+    }
+}
+
+/// Returns one (per-subject means vec, dummy) tuple per aggregation row,
+/// in the order `[arithmetic_mean, geometric_mean]`. The dummy second
+/// element is reserved for future use (e.g. confidence intervals);
+/// keeping the shape lets callers iterate uniformly with row labels.
+fn aggregations(num_subjects: usize, rows: &[MatrixRow]) -> [(Vec<f64>, ()); 2] {
+    let mut arith = vec![f64::NAN; num_subjects];
+    let mut geo = vec![f64::NAN; num_subjects];
+    for j in 0..num_subjects {
+        let col_values: Vec<f64> = rows
+            .iter()
+            .filter_map(|r| match r.cells.get(j) {
+                Some(MatrixCell::Value { ns_per_op, .. }) => Some(*ns_per_op),
+                _ => None,
+            })
+            .collect();
+        arith[j] = arith_mean(&col_values);
+        geo[j] = geomean(&col_values);
+    }
+    [(arith, ()), (geo, ())]
 }
