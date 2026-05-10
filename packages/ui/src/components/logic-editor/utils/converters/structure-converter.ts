@@ -40,7 +40,7 @@ export function convertStructure(
           edges: context.edges,
           parentId: nodeId,
           argIndex: expressionIndex,
-          preserveStructure: context.preserveStructure,
+          templating: context.templating,
         });
 
         elements.push({

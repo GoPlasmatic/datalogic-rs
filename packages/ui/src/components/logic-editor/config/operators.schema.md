@@ -57,7 +57,7 @@ type OperatorCategory =
   | 'datetime'      // datetime, timestamp, parse_date, format_date, date_diff, now
   | 'validation'    // missing, missing_some
   | 'error'         // try, throw
-  | 'utility';      // type, preserve
+  | 'utility';      // type
 ```
 
 ### Arity Specification

@@ -4,6 +4,7 @@
 
 use super::CompiledNode;
 use super::compile_ctx::NodeId;
+#[cfg(feature = "error-handling")]
 use datavalue::OwnedDataValue;
 
 /// A pre-parsed path segment for compiled variable access.

@@ -36,8 +36,10 @@ function App() {
   const [result, setResult] = useState<unknown>(undefined);
   const [resultError, setResultError] = useState<DebugError>(null);
 
-  // Preserve structure mode state
-  const [preserveStructure, setPreserveStructure] = useState<boolean>(false);
+  // Templating mode state — multi-key objects compile to output-shaping
+  // templates with embedded JSONLogic. Matches the v5 core API
+  // (`Engine::builder().with_templating(true)`).
+  const [templating, setTemplating] = useState<boolean>(false);
 
   // Examples dropdown state
   const [selectedExample, setSelectedExample] = useState<string>(
@@ -65,7 +67,7 @@ function App() {
     ready: wasmReady,
     loading: wasmLoading,
     evaluate,
-  } = useWasmEvaluator({ preserveStructure });
+  } = useWasmEvaluator({ templating });
 
   // Update expression when logic text changes
   const handleLogicChange = useCallback((text: string) => {
@@ -155,14 +157,14 @@ function App() {
   const handleShare = useCallback(async () => {
     if (!expression) return;
     try {
-      const url = generateShareableUrl(expression, data, preserveStructure);
+      const url = generateShareableUrl(expression, data, templating);
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy shareable URL:', err);
     }
-  }, [expression, data, preserveStructure]);
+  }, [expression, data, templating]);
 
   // Load from URL or first sample on mount
   useEffect(() => {
@@ -177,7 +179,7 @@ function App() {
       setLogicText(JSON.stringify(shared.logic, null, 2));
       setData(shared.data as object);
       setDataText(JSON.stringify(shared.data, null, 2));
-      if (shared.preserveStructure) setPreserveStructure(true);
+      if (shared.templating) setTemplating(true);
       // Clear the URL parameter after loading
       window.history.replaceState({}, '', window.location.pathname);
     } else {
@@ -295,8 +297,8 @@ function App() {
       onChange={handleExpressionChange}
       data={data}
       theme={theme}
-      preserveStructure={preserveStructure}
-      onPreserveStructureChange={setPreserveStructure}
+      templating={templating}
+      onTemplatingChange={setTemplating}
       editable
     />
   );

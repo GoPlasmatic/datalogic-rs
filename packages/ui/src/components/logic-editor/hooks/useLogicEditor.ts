@@ -23,8 +23,8 @@ interface UseLogicEditorOptions {
   value: JsonLogicValue | null;
   evaluateWithTrace?: (logic: unknown, data: unknown) => TracedResult;
   data?: unknown;
-  /** Enable structure preserve mode for JSON templates with embedded JSONLogic */
-  preserveStructure?: boolean;
+  /** Enable templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic). */
+  templating?: boolean;
 }
 
 interface UseLogicEditorReturn {
@@ -48,7 +48,7 @@ export function useLogicEditor({
   value,
   evaluateWithTrace,
   data,
-  preserveStructure = false,
+  templating = false,
 }: UseLogicEditorOptions): UseLogicEditorReturn {
   const [nodes, setNodes] = useState<LogicNode[]>([]);
   const [edges, setEdges] = useState<LogicEdge[]>([]);
@@ -60,7 +60,7 @@ export function useLogicEditor({
   const lastExternalValueRef = useRef<string>('');
   const lastDataRef = useRef<string>('');
   const lastHadTraceRef = useRef<boolean>(false);
-  const lastPreserveStructureRef = useRef<boolean>(false);
+  const lastTemplatingRef = useRef<boolean>(false);
 
   // Convert JSONLogic to nodes when value changes from outside
   /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from value/data props */
@@ -69,12 +69,12 @@ export function useLogicEditor({
     const dataStr = JSON.stringify(data);
     const hasTrace = !!evaluateWithTrace;
 
-    // Re-process if value, data, trace availability, or preserveStructure changed
+    // Re-process if value, data, trace availability, or templating changed
     if (
       valueStr === lastExternalValueRef.current &&
       dataStr === lastDataRef.current &&
       hasTrace === lastHadTraceRef.current &&
-      preserveStructure === lastPreserveStructureRef.current
+      templating === lastTemplatingRef.current
     ) {
       return;
     }
@@ -92,7 +92,7 @@ export function useLogicEditor({
         lastExternalValueRef.current = valueStr;
         lastDataRef.current = dataStr;
         lastHadTraceRef.current = hasTrace;
-        lastPreserveStructureRef.current = preserveStructure;
+        lastTemplatingRef.current = templating;
         return;
       }
 
@@ -100,7 +100,7 @@ export function useLogicEditor({
       if (evaluateWithTrace && value) {
         try {
           const trace = evaluateWithTrace(value, data ?? {});
-          const { nodes: newNodes, edges: newEdges, traceNodeMap: newTraceNodeMap } = traceToNodes(trace, { preserveStructure, originalValue: value });
+          const { nodes: newNodes, edges: newEdges, traceNodeMap: newTraceNodeMap } = traceToNodes(trace, { templating, originalValue: value });
           const layoutedNodes = applyTreeLayout(newNodes, newEdges);
           const traceResults = buildEvaluationResultsFromTrace(trace);
           setNodes(layoutedNodes);
@@ -113,7 +113,7 @@ export function useLogicEditor({
           lastExternalValueRef.current = valueStr;
           lastDataRef.current = dataStr;
           lastHadTraceRef.current = hasTrace;
-          lastPreserveStructureRef.current = preserveStructure;
+          lastTemplatingRef.current = templating;
           return;
         } catch (traceErr) {
           // Trace conversion failed, fall back to JS parsing
@@ -122,7 +122,7 @@ export function useLogicEditor({
       }
 
       // Fallback to JS parsing (no built-in evaluation results)
-      const { nodes: newNodes, edges: newEdges } = jsonLogicToNodes(value, { preserveStructure });
+      const { nodes: newNodes, edges: newEdges } = jsonLogicToNodes(value, { templating });
       const layoutedNodes = applyTreeLayout(newNodes, newEdges);
       setNodes(layoutedNodes);
       setEdges(newEdges);
@@ -144,8 +144,8 @@ export function useLogicEditor({
     lastExternalValueRef.current = valueStr;
     lastDataRef.current = dataStr;
     lastHadTraceRef.current = hasTrace;
-    lastPreserveStructureRef.current = preserveStructure;
-  }, [value, data, evaluateWithTrace, preserveStructure]);
+    lastTemplatingRef.current = templating;
+  }, [value, data, evaluateWithTrace, templating]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Memoize return value to maintain stable identity

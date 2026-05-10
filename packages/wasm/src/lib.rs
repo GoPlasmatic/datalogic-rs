@@ -76,7 +76,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 /// JSON string of the form `{ result, steps, expression_tree, error? }`. On
 /// runtime failure the `error` field carries the merged structured `Error`
 /// JSON (`type`, `message`, variant extras, optional `operator`/`path`).
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = evaluateWithTrace)]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, String> {
     let engine = make_engine(templating);
     let run = engine.trace().eval_str(logic, data);
@@ -165,38 +165,4 @@ impl CompiledRule {
             .map_err(|e| err_to_json(&e))?;
         Ok(result.to_string())
     }
-
-    /// Backwards-compatible alias for [`Self::evaluate`]. Pre-merge the
-    /// "structured" variant returned a richer error shape; today every error
-    /// already carries the merged structured form, so the two paths are
-    /// identical.
-    #[wasm_bindgen(js_name = evaluateStructured)]
-    pub fn evaluate_structured(&self, data: &str) -> Result<String, String> {
-        self.evaluate(data)
-    }
-}
-
-/// Evaluate a JSONLogic expression with structured errors on failure.
-///
-/// Behaves like [`evaluate`] today — the merged `Error` shape always carries
-/// `type`, `message`, variant extras, and (when populated) `operator` /
-/// `path`. The function is kept as a separate JS export for back-compat with
-/// callers binding `evaluateStructured`.
-#[wasm_bindgen(js_name = evaluateStructured)]
-pub fn evaluate_structured(logic: &str, data: &str, templating: bool) -> Result<String, String> {
-    evaluate(logic, data, templating)
-}
-
-/// Evaluate a JSONLogic expression with execution trace and structured errors.
-///
-/// Today the trace path always returns the merged structured-error shape via
-/// `structured_error` on failure, so this is an alias for
-/// [`evaluate_with_trace`]. Kept for back-compat with the JS binding name.
-#[wasm_bindgen(js_name = evaluateWithTraceStructured)]
-pub fn evaluate_with_trace_structured(
-    logic: &str,
-    data: &str,
-    templating: bool,
-) -> Result<String, String> {
-    evaluate_with_trace(logic, data, templating)
 }

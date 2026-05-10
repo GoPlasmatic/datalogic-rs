@@ -67,7 +67,7 @@ export function createIfElseNodeFromTrace(
       });
     } else {
       // Try positional matching if exact matching fails and value is complex
-      const condNodeType: NodeType = determineNodeType(condition, context.preserveStructure);
+      const condNodeType: NodeType = determineNodeType(condition, context.templating);
       const nextUnused = (condNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
       if (nextUnused) {
         // Use the trace child for proper debug step mapping
@@ -115,7 +115,7 @@ export function createIfElseNodeFromTrace(
       });
     } else {
       // Try positional matching if exact matching fails and value is complex
-      const thenNodeType: NodeType = determineNodeType(thenValue, context.preserveStructure);
+      const thenNodeType: NodeType = determineNodeType(thenValue, context.templating);
       const nextUnused = (thenNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
       if (nextUnused) {
         // Use the trace child for proper debug step mapping
@@ -171,7 +171,7 @@ export function createIfElseNodeFromTrace(
       });
     } else {
       // Try positional matching if exact matching fails and value is complex
-      const elseNodeType: NodeType = determineNodeType(elseValue, context.preserveStructure);
+      const elseNodeType: NodeType = determineNodeType(elseValue, context.templating);
       const nextUnused = (elseNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
       if (nextUnused) {
         // Use the trace child for proper debug step mapping

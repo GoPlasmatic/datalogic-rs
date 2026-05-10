@@ -162,14 +162,15 @@ export interface DataLogicEditorProps {
   className?: string;
 
   /**
-   * Enable structure preserve mode for JSON templates with embedded JSONLogic.
-   * When true, multi-key objects and arrays are treated as data structures
-   * with embedded JSONLogic expressions, rather than invalid JSONLogic.
+   * Enable templating mode: multi-key objects and arrays in compiled rules
+   * become output-shaping templates with embedded JSONLogic expressions,
+   * rather than rejected as invalid JSONLogic. Matches the v5 core API
+   * (`Engine::builder().with_templating(true)`).
    */
-  preserveStructure?: boolean;
+  templating?: boolean;
 
-  /** Callback when preserve structure changes (from toolbar checkbox) */
-  onPreserveStructureChange?: (value: boolean) => void;
+  /** Callback when templating mode changes (from toolbar checkbox) */
+  onTemplatingChange?: (value: boolean) => void;
 
   /**
    * Enable editing: node selection, properties panel, context menus, undo/redo.

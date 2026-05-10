@@ -55,7 +55,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Run a single JSONLogic suite (the `test_jsonlogic` harness picks the file
 from an env var). The path is relative to `packages/core/` because that's
-the test binary's cwd; the harness needs both `compat` and `preserve`:
+the test binary's cwd; the harness needs both `serde_json` and `templating`
+(both included in `--all-features`):
 
 ```bash
 JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
@@ -65,11 +66,12 @@ JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
 Run a feature-gated example:
 
 ```bash
-cargo run -p datalogic-rs --example getting_started --features preserve
-cargo run -p datalogic-rs --example tracing         --features trace
-cargo run -p datalogic-rs --example datetime_ops    --features datetime
-cargo run -p datalogic-rs --example error_handling  --features error-handling
-cargo run -p datalogic-rs --example migrating_from_v4 --features compat
+cargo run -p datalogic-rs --example getting_started   --features templating
+cargo run -p datalogic-rs --example structured_objects --features templating
+cargo run -p datalogic-rs --example tracing           --features trace
+cargo run -p datalogic-rs --example datetime_ops      --features datetime
+cargo run -p datalogic-rs --example error_handling    --features error-handling
+cargo run -p datalogic-rs --example zero_copy_input   --features serde_json
 ```
 
 See [packages/core/examples/README.md](./packages/core/examples/README.md)

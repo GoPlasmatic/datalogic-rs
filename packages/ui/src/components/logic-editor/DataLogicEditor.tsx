@@ -277,8 +277,8 @@ export function DataLogicEditor({
   data,
   theme: themeProp,
   className = '',
-  preserveStructure = false,
-  onPreserveStructureChange,
+  templating = false,
+  onTemplatingChange,
   editable = false,
 }: DataLogicEditorProps) {
   // Debounce timer ref for onChange
@@ -295,7 +295,7 @@ export function DataLogicEditor({
   const {
     ready: wasmReady,
     evaluateWithTrace,
-  } = useWasmEvaluator({ preserveStructure });
+  } = useWasmEvaluator({ templating });
 
   // Evaluation is enabled whenever data is provided (unified mode - no mode switching needed)
   const evalEnabled = data !== undefined;
@@ -305,7 +305,7 @@ export function DataLogicEditor({
     value,
     evaluateWithTrace: evalEnabled && wasmReady ? evaluateWithTrace : undefined,
     data: evalEnabled ? data : undefined,
-    preserveStructure,
+    templating,
   });
 
   // Use a combination of node count, edge count, and root node ID as key
@@ -382,8 +382,8 @@ export function DataLogicEditor({
             <EditorToolbar
               isEditMode={false}
               hasDebugger={hasDebugger}
-              preserveStructure={preserveStructure}
-              onPreserveStructureChange={onPreserveStructureChange}
+              templating={templating}
+              onTemplatingChange={onTemplatingChange}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -396,8 +396,8 @@ export function DataLogicEditor({
             <EditorToolbar
               isEditMode={false}
               hasDebugger={hasDebugger}
-              preserveStructure={preserveStructure}
-              onPreserveStructureChange={onPreserveStructureChange}
+              templating={templating}
+              onTemplatingChange={onTemplatingChange}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -439,8 +439,8 @@ export function DataLogicEditor({
             <EditorToolbar
               isEditMode={isEditMode}
               hasDebugger={hasDebugger}
-              preserveStructure={preserveStructure}
-              onPreserveStructureChange={onPreserveStructureChange}
+              templating={templating}
+              onTemplatingChange={onTemplatingChange}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -454,8 +454,8 @@ export function DataLogicEditor({
             <EditorToolbar
               isEditMode={isEditMode}
               hasDebugger={hasDebugger}
-              preserveStructure={preserveStructure}
-              onPreserveStructureChange={onPreserveStructureChange}
+              templating={templating}
+              onTemplatingChange={onTemplatingChange}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">

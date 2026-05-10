@@ -85,7 +85,7 @@ export function convertVariable(
       edges: context.edges,
       parentId: nodeId,
       argIndex: 1,
-      preserveStructure: context.preserveStructure,
+      templating: context.templating,
     });
     const summary = generateArgSummary(defaultValue);
     summary.label = generateExpressionText(defaultValue, TRUNCATION_LIMITS.expressionText);

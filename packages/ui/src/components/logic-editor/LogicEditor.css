@@ -52,7 +52,7 @@
   flex: 1;
 }
 
-.logic-editor-toolbar .dl-preserve-structure-toggle {
+.logic-editor-toolbar .dl-templating-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -64,7 +64,7 @@
   flex-shrink: 0;
 }
 
-.logic-editor-toolbar .dl-preserve-structure-toggle input[type="checkbox"] {
+.logic-editor-toolbar .dl-templating-toggle input[type="checkbox"] {
   margin: 0;
   cursor: pointer;
 }
@@ -200,7 +200,7 @@
     height: 40px;
   }
 
-  .dl-preserve-structure-toggle span {
+  .dl-templating-toggle span {
     font-size: 11px;
   }
 

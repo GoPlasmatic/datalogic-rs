@@ -5,15 +5,15 @@ import { DebuggerControlsInline } from './debugger-controls';
 interface EditorToolbarProps {
   isEditMode: boolean;
   hasDebugger: boolean;
-  preserveStructure: boolean;
-  onPreserveStructureChange?: (value: boolean) => void;
+  templating: boolean;
+  onTemplatingChange?: (value: boolean) => void;
 }
 
 export const EditorToolbar = memo(function EditorToolbar({
   isEditMode,
   hasDebugger,
-  preserveStructure,
-  onPreserveStructureChange,
+  templating,
+  onTemplatingChange,
 }: EditorToolbarProps) {
   return (
     <div className="logic-editor-toolbar">
@@ -21,14 +21,14 @@ export const EditorToolbar = memo(function EditorToolbar({
       <div className="logic-editor-toolbar-spacer" />
       {hasDebugger && <DebuggerControlsInline />}
       <div className="logic-editor-toolbar-spacer" />
-      {onPreserveStructureChange && (
-        <label className="dl-preserve-structure-toggle">
+      {onTemplatingChange && (
+        <label className="dl-templating-toggle">
           <input
             type="checkbox"
-            checked={preserveStructure}
-            onChange={(e) => onPreserveStructureChange(e.target.checked)}
+            checked={templating}
+            onChange={(e) => onTemplatingChange(e.target.checked)}
           />
-          <span>Preserve Structure</span>
+          <span>Templating</span>
         </label>
       )}
     </div>

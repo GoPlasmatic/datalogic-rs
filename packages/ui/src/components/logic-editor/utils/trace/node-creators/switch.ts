@@ -74,7 +74,7 @@ export function createSwitchNodeFromTrace(
         branchType,
       });
     } else {
-      const nodeType: NodeType = determineNodeType(value, context.preserveStructure);
+      const nodeType: NodeType = determineNodeType(value, context.templating);
       const nextUnused = nodeType !== 'literal' ? getNextUnusedChild(children, usedChildIndices) : null;
       if (nextUnused) {
         usedChildIndices.add(nextUnused.index);
