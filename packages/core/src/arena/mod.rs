@@ -1,10 +1,12 @@
 //! Arena allocation infrastructure for zero-clone evaluation.
 //!
-//! The crate-root re-exports surface what users need: [`crate::DataValue`],
-//! [`crate::operator::ContextStack`], and [`crate::data_to_json_string`]. They appear
-//! in [`crate::CustomOperator::evaluate`] signatures and let users implement custom
-//! operators that participate in arena dispatch without materializing
-//! `serde_json::Value`.
+//! The crate-root re-exports surface what users need: [`crate::DataValue`]
+//! and [`crate::operator::ContextStack`]. They appear in
+//! [`crate::CustomOperator::evaluate`] signatures and let users implement
+//! custom operators that participate in arena dispatch without
+//! materializing `serde_json::Value`. For the `DataValue → JSON String`
+//! path use `value.to_string()` (driven by `datavalue`'s native `Display`
+//! emitter).
 //!
 //! The arena is acquired and released within a single
 //! [`crate::Engine::evaluate`] call; the [`crate::DataValue`] tree borrows
@@ -18,7 +20,7 @@ pub(crate) mod value;
 pub use context::ContextStack;
 pub(crate) use context::IterGuard;
 pub(crate) use util::bvec;
-pub use value::{DataValue, data_to_json_string};
+pub use value::DataValue;
 pub(crate) use value::{
     coerce_to_number_cfg, data_to_str, truthy_arena, try_coerce_to_integer_cfg,
 };

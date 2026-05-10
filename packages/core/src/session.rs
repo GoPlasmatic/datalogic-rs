@@ -192,7 +192,7 @@ impl<'engine> Session<'engine> {
         let arena: &Bump = &self.arena;
         let av = data.into_arena_value(arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
-        Ok(crate::arena::data_to_json_string(result))
+        Ok(result.to_string())
     }
 
     /// `serde_json::Value` convenience: evaluate `compiled` against a serde

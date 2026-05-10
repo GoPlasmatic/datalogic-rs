@@ -166,7 +166,7 @@ impl CompiledRule {
             .engine
             .evaluate(&*self.compiled, data_dv, &arena)
             .map_err(|e| err_to_json(&e))?;
-        Ok(datalogic_rs::arena::data_to_json_string(result))
+        Ok(result.to_string())
     }
 
     /// Backwards-compatible alias for [`Self::evaluate`]. Pre-merge the

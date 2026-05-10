@@ -400,7 +400,7 @@ impl<'e> TracedSession<'e> {
         };
         let inner = self.evaluate(&compiled, data_dv, &arena);
         TracedRun {
-            result: inner.result.map(crate::arena::data_to_json_string),
+            result: inner.result.map(|v| v.to_string()),
             steps: inner.steps,
             expression_tree: inner.expression_tree,
         }

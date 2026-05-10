@@ -114,7 +114,7 @@ mod session;
 #[cfg(feature = "trace")]
 mod trace;
 
-pub use arena::{DataValue, data_to_json_string};
+pub use arena::DataValue;
 pub use arena_ext::ArenaExt;
 pub use builder::EngineBuilder;
 /// The [`bumpalo`] arena allocator, re-exported.
@@ -161,10 +161,11 @@ pub use config::{
 /// Conversions to / from `serde_json::Value` are gated behind the
 /// `compat` feature (kept off by default so the crate has zero external
 /// dependencies in the minimal build). With `compat` enabled, use
-/// [`Engine::evaluate_json_value`] / [`Session::evaluate_json_value`] to take and
-/// return `serde_json::Value` directly, or
-/// [`data_to_json_string`] for the `DataValue → String` path that
-/// `evaluate_str` uses internally.
+/// [`Engine::evaluate_json_value`] / [`Session::evaluate_json_value`] to
+/// take and return `serde_json::Value` directly. For the `DataValue →
+/// JSON String` path use the standard `value.to_string()` (driven by
+/// `datavalue`'s native `Display` emitter, which is what `evaluate_str`
+/// uses internally).
 pub use datavalue;
 pub use engine::Engine;
 pub use error::{CustomErrorSource, Error, ErrorKind};

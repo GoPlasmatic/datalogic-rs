@@ -1,9 +1,12 @@
-//! String formatting + truthiness on `DataValue`. These produce arena-
-//! resident strings (when allocation is needed) so chained string-building
-//! operators (`cat`, `substr`, …) avoid heap traffic.
+//! `data_to_str` (arena-resident `&str` rendering) + truthiness on
+//! `DataValue`. Both produce arena-resident strings so chained
+//! string-building operators (`cat`, `substr`, …) avoid heap traffic.
+//!
+//! `DataValue → JSON String` is *not* implemented here — `datavalue`'s
+//! native `Display` impl emits JSON via its SWAR-driven emitter, and
+//! `value.to_string()` is the canonical entry point.
 
 use bumpalo::Bump;
-use std::fmt::Write;
 
 use super::DataValue;
 
@@ -18,93 +21,10 @@ pub(crate) fn data_to_str<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
         DataValue::Bool(true) => "true",
         DataValue::Bool(false) => "false",
         DataValue::Number(n) => arena.alloc_str(&n.to_string()),
-        // Composite types: serialize as JSON. Rare path; cost acceptable.
-        other => {
-            let mut buf = String::new();
-            write_data_json(&mut buf, other);
-            arena.alloc_str(&buf)
-        }
+        // Composite types: serialize as JSON via `datavalue`'s native
+        // `Display` emitter. Rare path; cost acceptable.
+        other => arena.alloc_str(&other.to_string()),
     }
-}
-
-/// Render a [`DataValue`] as a JSON `String`. Public so v5 callers using
-/// the arena hot path can serialize a result without pulling in `serde_json`
-/// or going through the deprecated `data_to_value` boundary.
-#[inline]
-pub fn data_to_json_string(v: &DataValue<'_>) -> String {
-    let mut buf = String::new();
-    write_data_json(&mut buf, v);
-    buf
-}
-
-/// Tiny manual JSON serializer for [`DataValue`]. Avoids pulling in
-/// `serde_json` for the rare arena-string-rendering path. Format matches
-/// `serde_json::to_string` byte-for-byte for the variants we emit.
-fn write_data_json(buf: &mut String, v: &DataValue<'_>) {
-    match v {
-        DataValue::Null => buf.push_str("null"),
-        DataValue::Bool(true) => buf.push_str("true"),
-        DataValue::Bool(false) => buf.push_str("false"),
-        DataValue::Number(n) => {
-            // Number's Display already matches the JSON shape (NaN/Inf → null).
-            let _ = write!(buf, "{}", n);
-        }
-        DataValue::String(s) => write_json_string(buf, s),
-        DataValue::Array(items) => {
-            buf.push('[');
-            for (i, it) in items.iter().enumerate() {
-                if i > 0 {
-                    buf.push(',');
-                }
-                write_data_json(buf, it);
-            }
-            buf.push(']');
-        }
-        DataValue::Object(pairs) => {
-            buf.push('{');
-            for (i, (k, val)) in pairs.iter().enumerate() {
-                if i > 0 {
-                    buf.push(',');
-                }
-                write_json_string(buf, k);
-                buf.push(':');
-                write_data_json(buf, val);
-            }
-            buf.push('}');
-        }
-        #[cfg(feature = "datetime")]
-        DataValue::DateTime(dt) => {
-            buf.push_str("{\"datetime\":");
-            write_json_string(buf, &dt.to_iso_string());
-            buf.push('}');
-        }
-        #[cfg(feature = "datetime")]
-        DataValue::Duration(d) => {
-            buf.push_str("{\"timestamp\":");
-            write_json_string(buf, &d.to_string());
-            buf.push('}');
-        }
-    }
-}
-
-fn write_json_string(buf: &mut String, s: &str) {
-    buf.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => buf.push_str("\\\""),
-            '\\' => buf.push_str("\\\\"),
-            '\n' => buf.push_str("\\n"),
-            '\r' => buf.push_str("\\r"),
-            '\t' => buf.push_str("\\t"),
-            '\x08' => buf.push_str("\\b"),
-            '\x0c' => buf.push_str("\\f"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(buf, "\\u{:04x}", c as u32);
-            }
-            c => buf.push(c),
-        }
-    }
-    buf.push('"');
 }
 
 /// Config-aware truthiness for `DataValue`. Mirrors `helpers::truthy_arena`.

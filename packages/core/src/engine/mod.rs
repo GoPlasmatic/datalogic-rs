@@ -436,7 +436,7 @@ impl Engine {
         let arena = bumpalo::Bump::with_capacity(4096);
         let data_dv = datavalue::DataValue::from_str(data, &arena)?;
         let result = self.evaluate(&compiled, data_dv, &arena)?;
-        Ok(crate::arena::data_to_json_string(result))
+        Ok(result.to_string())
     }
 
     /// One-shot evaluation with `serde_json::Value` boundary on both sides.

@@ -104,8 +104,9 @@ assert_eq!(result.as_i64(), Some(42));
 
 Conversion to other shapes:
 
-- **To a JSON string:** `data_to_json_string(value)` — re-exported at
-  the crate root, called internally by `evaluate_str`.
+- **To a JSON string:** `value.to_string()` — `DataValue` and
+  `OwnedDataValue` both implement `Display` (via `datavalue`'s native
+  emitter), so the standard `ToString` works.
 - **To `serde_json::Value`** (requires `compat` feature): the
   `Session::evaluate_json_value` and `Engine::evaluate_json_value` entry points
   return `serde_json::Value` directly.
