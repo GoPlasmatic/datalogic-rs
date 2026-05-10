@@ -14,10 +14,10 @@ use datalogic_rs::{Engine, EvaluationConfig};
 // Default engine.
 let engine = Engine::new();
 
-// Builder — set config, structure-preservation, register custom operators.
+// Builder — set config, enable templating, register custom operators.
 let engine = Engine::builder()
-    .config(EvaluationConfig::strict())
-    .preserve_structure(true)        // requires feature = "preserve"
+    .with_config(EvaluationConfig::strict())
+    .with_templating(true)           // requires feature = "templating"
     .add_operator("my_op", MyOperator)
     .build();
 ```
@@ -94,13 +94,14 @@ Open a `Session` that owns a reusable arena.
 pub fn session(&self) -> Session<'_>
 ```
 
-#### `with_trace` (feature = "trace")
+#### `trace` (feature = "trace")
 
 Open a `TracedSession` whose `evaluate*` calls record execution steps.
+Mirrors `session()` — both open a handle that delegates back to the engine.
 
 ```rust
 #[cfg(feature = "trace")]
-pub fn with_trace(&self) -> TracedSession<'_>
+pub fn trace(&self) -> TracedSession<'_>
 ```
 
 #### Introspection helpers
@@ -119,7 +120,7 @@ Fluent constructor for `Engine`. Returned by `Engine::builder()`.
 
 ```rust
 EngineBuilder::new()
-    .config(EvaluationConfig::default())
+    .with_config(EvaluationConfig::default())
     .with_templating(true)                 // feature = "templating"
     .add_operator("name", MyOp)
     .add_operator_box("dyn", boxed_op)     // when you already have Box<dyn CustomOperator>
@@ -336,8 +337,8 @@ pub enum ErrorKind {
 }
 ```
 
-Use `error.kind_tag()` for stable string matching, `error.thrown_value()`
-for the `Thrown` payload, and `error.resolved_path(&compiled)` to translate
+Use `error.tag()` for stable string matching, `error.thrown_value()`
+for the `Thrown` payload, and `error.resolve_path(&compiled)` to translate
 the path breadcrumb into source `PathStep`s.
 
 To wrap a foreign `std::error::Error` into a `Custom` error:
@@ -370,7 +371,7 @@ Error::configuration_error(msg)
 ## PathStep
 
 Resolved entry returned by `Logic::resolve_path` and
-`Error::resolved_path`. Names the operator and child index of a node along
+`Error::resolve_path`. Names the operator and child index of a node along
 the failing-evaluation path.
 
 ---
@@ -403,7 +404,7 @@ pre-compiled `Logic`):
 #[cfg(feature = "trace")]
 {
     let engine = datalogic_rs::Engine::new();
-    let run = engine.with_trace().evaluate_str(r#"{"+": [1, 2]}"#, r#"{}"#);
+    let run = engine.trace().evaluate_str(r#"{"+": [1, 2]}"#, r#"{}"#);
     println!("{}", run.result.unwrap());
     println!("{} steps", run.steps.len());
 }
@@ -411,7 +412,7 @@ pre-compiled `Logic`):
 
 > The pre-compiled paths inherit whatever shape `Engine::compile` produced
 > (constant folding can hide some operators). For full coverage on a
-> single rule, prefer `with_trace().evaluate_str(rule, data)`.
+> single rule, prefer `trace().evaluate_str(rule, data)`.
 
 The deprecated `TracedResult` (returned by the v4 `evaluate_json_with_trace`
 shim) lives behind `compat`.
@@ -427,7 +428,7 @@ use std::sync::Arc;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Arc::new(
         Engine::builder()
-            .config(EvaluationConfig {
+            .with_config(EvaluationConfig {
                 arithmetic_nan_handling: NanHandling::IgnoreValue,
                 ..Default::default()
             })

@@ -9,13 +9,13 @@ Use JSONLogic as a templating engine with structure preservation mode.
 ```rust
 use datalogic_rs::Engine;
 
-// Enable structure preservation
-let engine = Engine::builder().preserve_structure(true).build();
+// Enable templating mode
+let engine = Engine::builder().with_templating(true).build();
 
 // Combine with custom configuration
 let engine = Engine::builder()
-    .config(my_config)
-    .preserve_structure(true)
+    .with_config(my_config)
+    .with_templating(true)
     .build();
 ```
 

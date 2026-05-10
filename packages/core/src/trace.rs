@@ -176,8 +176,11 @@ impl ExpressionNode {
 /// Captures state at each evaluation step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionStep {
-    /// Sequential step number
-    pub id: u32,
+    /// Sequential step number (assigned by the trace collector in
+    /// recording order). Distinct from `node_id`, which is the
+    /// compiled-node id of the expression being evaluated — `step_id`
+    /// is the *order* this step occurred, `node_id` is *which node* ran.
+    pub step_id: u32,
     /// ID of the node being evaluated
     pub node_id: u32,
     /// Current context/scope data at this step
@@ -218,7 +221,7 @@ impl TraceCollector {
     pub fn record_step(&mut self, node_id: u32, context: Value, result: Value) {
         let (iteration_index, iteration_total) = self.current_iteration();
         let step = ExecutionStep {
-            id: self.step_counter,
+            step_id: self.step_counter,
             node_id,
             context,
             result: Some(result),
@@ -234,7 +237,7 @@ impl TraceCollector {
     pub fn record_error(&mut self, node_id: u32, context: Value, error: String) {
         let (iteration_index, iteration_total) = self.current_iteration();
         let step = ExecutionStep {
-            id: self.step_counter,
+            step_id: self.step_counter,
             node_id,
             context,
             result: None,
@@ -277,7 +280,7 @@ impl Default for TraceCollector {
 }
 
 // ============================================================================
-// v5 trace surface — `engine.with_trace().evaluate*(...)` returning `TracedRun`.
+// v5 trace surface — `engine.trace().evaluate*(...)` returning `TracedRun`.
 // ============================================================================
 
 /// Result of a traced evaluation produced by [`TracedSession`]. Always
@@ -295,7 +298,7 @@ pub struct TracedRun<R> {
 }
 
 /// Trace-enabled view over a [`crate::Engine`] engine. Constructed via
-/// [`crate::Engine::with_trace`]. The session's `evaluate*` methods mirror
+/// [`crate::Engine::trace`]. The session's `evaluate*` methods mirror
 /// the engine's, but each call returns a [`TracedRun`] carrying the trace
 /// alongside the result.
 pub struct TracedSession<'e> {
@@ -304,7 +307,7 @@ pub struct TracedSession<'e> {
 
 impl<'e> TracedSession<'e> {
     /// Construct a session over `engine`. Invoked from
-    /// [`crate::Engine::with_trace`].
+    /// [`crate::Engine::trace`].
     #[inline]
     pub(crate) fn new(engine: &'e crate::Engine) -> Self {
         Self { engine }
@@ -477,9 +480,9 @@ mod tests {
 
         let steps = collector.into_steps();
         assert_eq!(steps.len(), 2);
-        assert_eq!(steps[0].id, 0);
+        assert_eq!(steps[0].step_id, 0);
         assert_eq!(steps[0].node_id, 0);
-        assert_eq!(steps[1].id, 1);
+        assert_eq!(steps[1].step_id, 1);
         assert_eq!(steps[1].node_id, 1);
     }
 
@@ -498,9 +501,7 @@ mod tests {
     #[test]
     fn traced_session_evaluate_str_smoke() {
         let engine = crate::Engine::new();
-        let run = engine
-            .with_trace()
-            .evaluate_str(r#"{"+": [1, 2, 3]}"#, "null");
+        let run = engine.trace().evaluate_str(r#"{"+": [1, 2, 3]}"#, "null");
         assert_eq!(run.result.unwrap(), "6");
         // The one-shot trace path skips static folding internally, so the
         // `+` operator survives and produces a step.
@@ -516,7 +517,7 @@ mod tests {
         let compiled = engine.compile(r#"{"+": [1, 2]}"#).unwrap();
         let arena = bumpalo::Bump::new();
         let data = datavalue::DataValue::from_str("null", &arena).unwrap();
-        let run = engine.with_trace().evaluate(&compiled, data, &arena);
+        let run = engine.trace().evaluate(&compiled, data, &arena);
         assert_eq!(run.result.as_ref().unwrap().as_i64(), Some(3));
         assert!(
             run.steps.is_empty(),
@@ -527,9 +528,7 @@ mod tests {
     #[test]
     fn traced_session_carries_error_metadata() {
         let engine = crate::Engine::new();
-        let run = engine
-            .with_trace()
-            .evaluate_str(r#"{"+": ["x", 1]}"#, "null");
+        let run = engine.trace().evaluate_str(r#"{"+": ["x", 1]}"#, "null");
         let err = run.result.expect_err("string-arith should fail");
         assert_eq!(err.operator(), Some("+"));
         assert!(!err.path().is_empty(), "expected populated breadcrumb");

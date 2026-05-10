@@ -11,7 +11,7 @@
 //! - `CompiledLogic`    →  `Logic`
 //! - `Operator`         →  `CustomOperator`
 //! - `evaluate_json`    →  `evaluate_str`
-//! - `with_config(...)` →  `Engine::builder().config(...).build()`
+//! - `with_config(...)` →  `Engine::builder().with_config(...).build()`
 //! - mutating `add_operator`  →  builder-only `add_operator`
 //!
 //! Run:
@@ -35,7 +35,7 @@ fn main() {
     // v4 — LegacyApi associated fn (deprecated):
     let v4 = Engine::with_config(cfg.clone());
     // v5 — fluent builder:
-    let v5 = Engine::builder().config(cfg).build();
+    let v5 = Engine::builder().with_config(cfg).build();
 
     let rule = r#"{"+": [1, "skipped", 2]}"#;
     println!("[1] v4: {}", v4.evaluate_json(rule, r#"{}"#).unwrap());
@@ -137,12 +137,12 @@ fn main() {
     // v5 — fluent:
     let cfg_fluent =
         EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
-    let _engine = Engine::builder().config(cfg_fluent).build();
+    let _engine = Engine::builder().with_config(cfg_fluent).build();
 
     // v5 — direct mutation (fields stay pub):
     let mut cfg_mut = EvaluationConfig::default();
     cfg_mut.arithmetic_nan_handling = NanHandling::IgnoreValue;
-    let _engine = Engine::builder().config(cfg_mut).build();
+    let _engine = Engine::builder().with_config(cfg_mut).build();
 
     println!("\n[5] config: fluent + direct-mutation paths both work");
 }

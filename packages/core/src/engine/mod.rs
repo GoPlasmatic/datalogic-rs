@@ -61,7 +61,7 @@ impl Drop for DepthGuard {
 /// preserve-structure flag — and exposes the public surface for parsing
 /// rules ([`Self::compile`]), evaluating them ([`Self::evaluate`],
 /// [`Self::evaluate_str`], [`Self::evaluate_json_value`]), and opening
-/// hot-loop / traced sessions ([`Self::session`], [`Self::with_trace`]).
+/// hot-loop / traced sessions ([`Self::session`], [`Self::trace`]).
 ///
 /// `Engine` is `Send + Sync` (every field is); the typical pattern is to
 /// build one at startup, wrap it in `Arc<Engine>`, and clone the `Arc`
@@ -349,7 +349,7 @@ impl Engine {
     ///
     /// let engine = Engine::new();
     /// let run = engine
-    ///     .with_trace()
+    ///     .trace()
     ///     .evaluate_str(r#"{"+": [1, 2]}"#, "null");
     /// assert_eq!(run.result.unwrap(), "3");
     /// // run.steps is the per-node execution log;
@@ -359,7 +359,7 @@ impl Engine {
     #[cfg(feature = "trace")]
     #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
     #[inline]
-    pub fn with_trace(&self) -> crate::trace::TracedSession<'_> {
+    pub fn trace(&self) -> crate::trace::TracedSession<'_> {
         crate::trace::TracedSession::new(self)
     }
 

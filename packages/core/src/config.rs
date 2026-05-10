@@ -6,7 +6,7 @@
 //! `±f64::MAX` on division by zero). Use [`EvaluationConfig::default`]
 //! and tweak from there, or pick [`EvaluationConfig::safe_arithmetic`] /
 //! [`EvaluationConfig::strict`] as alternative starting points. Apply
-//! via [`Engine::builder().config(...)`](crate::EngineBuilder::config).
+//! via [`Engine::builder().with_config(...)`](crate::EngineBuilder::with_config).
 
 use datavalue::OwnedDataValue;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use std::sync::Arc;
 /// (matches the JSONLogic reference behaviour), or use
 /// [`Self::safe_arithmetic`] / [`Self::strict`] as starting points and
 /// tweak from there. Pass to the engine via
-/// [`Engine::builder().config(...)`](crate::EngineBuilder::config).
+/// [`Engine::builder().with_config(...)`](crate::EngineBuilder::with_config).
 ///
 /// # Example
 ///
@@ -30,7 +30,7 @@ use std::sync::Arc;
 /// // Chainable setters — only one import needed beyond the enum value.
 /// let config = EvaluationConfig::default()
 ///     .with_arithmetic_nan_handling(NanHandling::IgnoreValue);
-/// let engine = Engine::builder().config(config).build();
+/// let engine = Engine::builder().with_config(config).build();
 ///
 /// // "skipped" can't coerce to a number; with `IgnoreValue` the
 /// // arithmetic continues with the remaining operands.
@@ -201,7 +201,7 @@ impl TruthyEvaluator {
     ///         v.as_i64().map(|n| n % 2 == 0).unwrap_or(false)
     ///     }),
     /// );
-    /// let engine = Engine::builder().config(config).build();
+    /// let engine = Engine::builder().with_config(config).build();
     /// let result = engine.evaluate_str(r#"{"if": [2, "even", "odd"]}"#, "null").unwrap();
     /// assert_eq!(result, "\"even\"");
     /// ```

@@ -83,7 +83,7 @@ provides one-release-cycle shims for the most common 4.x entry points.
   `with_loose_equality_errors`, `with_truthy_evaluator`,
   `with_numeric_coercion`, and `with_max_recursion_depth`.
 - **`PathStep` is `#[non_exhaustive]`.** The fields are output-only (every
-  `PathStep` is produced by `Logic::resolve_path` / `Error::resolved_path`),
+  `PathStep` is produced by `Logic::resolve_path` / `Error::resolve_path`),
   so locking it now means future field adds in 5.x are non-breaking.
   Now derives `Deserialize` alongside the existing `Serialize`, so
   external tooling can JSON-roundtrip resolved paths.
@@ -114,9 +114,9 @@ provides one-release-cycle shims for the most common 4.x entry points.
   no-ops when called on an existing `Error`.
 - **`Error::thrown_value()`** — accessor for the `ErrorKind::Thrown`
   payload without manually pattern-matching the kind.
-- **`Error::resolved_path(&Logic) -> Vec<PathStep>`** — translates the
+- **`Error::resolve_path(&Logic) -> Vec<PathStep>`** — translates the
   failure breadcrumb into structured `PathStep`s (root-to-leaf).
-- **`Engine::with_trace()`** (gated by `feature = "trace"`) — opens a
+- **`Engine::trace()`** (gated by `feature = "trace"`) — opens a
   `TracedSession` that collects per-node execution steps. The one-shot
   `TracedSession::evaluate_str` compiles with optimisation disabled so
   every operator surfaces a trace step.

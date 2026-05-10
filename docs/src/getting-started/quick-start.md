@@ -172,7 +172,7 @@ let engine = Engine::new();
 match engine.evaluate_str(r#"{"+": ["text", 1]}"#, r#"{}"#) {
     Ok(value) => println!("ok: {}", value),
     Err(err) => {
-        println!("kind: {}", err.kind_tag());
+        println!("kind: {}", err.tag());
         if let ErrorKind::Thrown(payload) = &err.kind {
             println!("thrown payload: {:?}", payload);
         }

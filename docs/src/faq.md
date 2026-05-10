@@ -207,7 +207,7 @@ let config = EvaluationConfig {
     arithmetic_nan_handling: NanHandling::IgnoreValue,
     ..Default::default()
 };
-let engine = Engine::builder().config(config).build();
+let engine = Engine::builder().with_config(config).build();
 ```
 
 Options: `ThrowError` (default), `CoerceToZero`, `IgnoreValue`, `ReturnNull`.

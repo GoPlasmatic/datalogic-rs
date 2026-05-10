@@ -400,7 +400,7 @@ fn nan_error(engine: &Engine) -> (datalogic_rs::Logic, Error) {
 fn engine_errors_carry_raw_path_for_on_demand_resolution() {
     // Engine evaluation attaches raw compiled-node ids only — resolving
     // those into PathSteps is paid at the catch site via
-    // `error.resolved_path(&compiled)`. Doing the walk on every
+    // `error.resolve_path(&compiled)`. Doing the walk on every
     // boundary crossing inflates error-heavy workloads ~17×; the
     // resolve-on-demand contract puts the cost where the caller
     // actually needs the data.
@@ -413,8 +413,8 @@ fn engine_errors_carry_raw_path_for_on_demand_resolution() {
         err
     );
     // Resolve on demand against the original Logic.
-    let steps = err.resolved_path(&compiled);
-    assert!(!steps.is_empty(), "resolved_path must produce steps");
+    let steps = err.resolve_path(&compiled);
+    assert!(!steps.is_empty(), "resolve_path must produce steps");
     assert_eq!(steps[0].operator.as_deref(), Some("+"));
 }
 

@@ -11,7 +11,7 @@ use crate::node::CompiledNode;
 
 /// One node along the path from the root of a compiled rule down to the
 /// failing sub-expression. Returned root-to-leaf by
-/// [`crate::Logic::resolve_path`] / [`crate::Error::resolved_path`].
+/// [`crate::Logic::resolve_path`] / [`crate::Error::resolve_path`].
 ///
 /// `#[non_exhaustive]` so future fields can be added in 5.x without
 /// breaking downstream — external code reads fields freely but cannot
@@ -164,7 +164,7 @@ mod tests {
         let data = datavalue::DataValue::from_str("null", &arena).unwrap();
         let err = engine.evaluate(&compiled, data, &arena).unwrap_err();
         // The merged Error should carry a non-empty path now.
-        let steps = err.resolved_path(&compiled);
+        let steps = err.resolve_path(&compiled);
         assert!(
             !steps.is_empty(),
             "expected resolved path for arithmetic failure, got {:?}",

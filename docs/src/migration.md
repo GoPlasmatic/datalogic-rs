@@ -87,7 +87,7 @@ v4 surface.
 were public in v4 but are compile-internal in v5. If you reached into the
 compiled tree, that path was already broken by the arena rewrite — there is
 no shim. Translate failing-evaluation paths via `Logic::resolve_path` /
-`Error::resolved_path` into the public `PathStep` type instead.
+`Error::resolve_path` into the public `PathStep` type instead.
 
 ### Engine Construction
 
@@ -104,10 +104,10 @@ let engine = DataLogic::with_config_and_structure(config, true);
 use datalogic_rs::Engine;
 let engine = Engine::default();
 let engine = Engine::new();
-let engine = Engine::builder().config(config).build();
+let engine = Engine::builder().with_config(config).build();
 let engine = Engine::builder().preserve_structure(true).build();
 let engine = Engine::builder()
-    .config(config)
+    .with_config(config)
     .preserve_structure(true)
     .build();
 ```
@@ -275,7 +275,7 @@ match engine.evaluate_str(rule, data) {
         _ => {}
     },
 }
-// `err.kind_tag()` returns a stable string for cross-version matching.
+// `err.tag()` returns a stable string for cross-version matching.
 // `err.operator` and `err.path` are populated automatically.
 // `err.thrown_value()` accesses the `Thrown` payload.
 ```
@@ -307,7 +307,7 @@ Errors serialise to a stable JSON shape:
 let trace = engine.evaluate_json_with_trace(logic, data)?;
 
 // v5 (feature = "trace")
-let run = engine.with_trace().evaluate_str(logic, data);
+let run = engine.trace().evaluate_str(logic, data);
 println!("{}", run.result.unwrap());
 for step in &run.steps {
     // step.node_id, step.context, step.result, ...
@@ -394,9 +394,9 @@ will keep nudging you per call site. Plan to drop the feature in 5.1+.
    - `ArenaContextStack` → `operator::EvalContext`
 
 3. **Replace constructors** with the builder:
-   - `DataLogic::with_config(c)` → `Engine::builder().config(c).build()`
+   - `DataLogic::with_config(c)` → `Engine::builder().with_config(c).build()`
    - `DataLogic::with_preserve_structure()` → `Engine::builder().preserve_structure(true).build()`
-   - `DataLogic::with_config_and_structure(c, p)` → `Engine::builder().config(c).preserve_structure(p).build()`
+   - `DataLogic::with_config_and_structure(c, p)` → `Engine::builder().with_config(c).with_templating(p).build()`
 
 4. **Update evaluation calls:**
    - `engine.evaluate(&compiled, &data)` → `Session` / `Engine::evaluate` / `evaluate_json_value`

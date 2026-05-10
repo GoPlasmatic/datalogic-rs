@@ -78,7 +78,7 @@ impl fmt::Display for MessageError {
 impl std::error::Error for MessageError {}
 
 /// Discriminant for [`Error`]. Stable variant tags are exposed via
-/// [`Error::kind_tag`] for matching across releases.
+/// [`Error::tag`] for matching across releases.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
@@ -117,7 +117,7 @@ pub enum ErrorKind {
 /// payload. `operator` and `path` are populated by the public `evaluate*`
 /// entry points: `operator` names the outermost operator that produced the
 /// error, and `path` is a breadcrumb of compiled-node ids from the failure
-/// site toward the root (leaf-to-root). Use [`Error::resolved_path`] to
+/// site toward the root (leaf-to-root). Use [`Error::resolve_path`] to
 /// translate the ids into structured [`crate::PathStep`]s callers can act
 /// on.
 ///
@@ -177,14 +177,14 @@ impl Error {
     /// Breadcrumb of compiled-node ids from the failure site toward the root
     /// (leaf-to-root). Returns an empty slice when the error came from
     /// parse/compile or wasn't routed through the public `evaluate*` path.
-    /// Use [`Self::resolved_path`] to convert ids into named steps.
+    /// Use [`Self::resolve_path`] to convert ids into named steps.
     #[inline]
     pub fn path(&self) -> &[u32] {
         self.path.as_slice()
     }
 
     /// Get a stable string tag for the error kind. Stable across releases.
-    pub fn kind_tag(&self) -> &'static str {
+    pub fn tag(&self) -> &'static str {
         match self.kind {
             ErrorKind::InvalidOperator(_) => "InvalidOperator",
             ErrorKind::InvalidArguments(_) => "InvalidArguments",
@@ -238,7 +238,7 @@ impl Error {
     /// at the catch site puts the cost where the caller actually needs
     /// the data — and most callers either inspect raw [`Self::path`]
     /// only, or already hold the compiled `Logic` at the catch site.
-    pub fn resolved_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
+    pub fn resolve_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
         compiled.resolve_path(self.path.as_slice())
     }
 
@@ -373,7 +373,7 @@ impl Error {
     /// 898 ns/op (17×) and arithmetic/plus.json from 22 to 84 ns
     /// (4×) on error-heavy suites where every iteration constructs an
     /// Error. Consumers that need structured steps call
-    /// [`Self::resolved_path`] (takes a `&Logic`) on demand, which is
+    /// [`Self::resolve_path`] (takes a `&Logic`) on demand, which is
     /// the same cost paid once at the catch site rather than at every
     /// boundary crossing.
     ///
@@ -511,7 +511,7 @@ impl Serialize for Error {
         // Shape:
         // { "type": <tag>, "message": <Display>, ...kind-extras, "operator"?, "path"? }
         let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("type", self.kind_tag())?;
+        map.serialize_entry("type", self.tag())?;
         // The Display impl appends "(in operator: ...)" when set; for the
         // `message` field we want the kind portion only, so render kind
         // without the operator suffix.
@@ -554,7 +554,7 @@ mod tests {
     fn wrap_renders_via_display() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing key");
         let err = Error::wrap(io_err);
-        assert_eq!(err.kind_tag(), "Custom");
+        assert_eq!(err.tag(), "Custom");
         assert!(err.to_string().contains("missing key"));
     }
 
@@ -589,7 +589,7 @@ mod tests {
         // — the no-op short-circuit returns the input unchanged.
         let inner = Error::variable_not_found("x");
         let wrapped = Error::wrap(inner.clone());
-        assert_eq!(wrapped.kind_tag(), "VariableNotFound");
+        assert_eq!(wrapped.tag(), "VariableNotFound");
         assert!(matches!(wrapped.kind, ErrorKind::VariableNotFound(ref name) if name == "x"));
         // operator/path metadata round-trips too.
         let with_meta = inner.with_operator("var").with_path(vec![1, 2, 3]);

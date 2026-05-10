@@ -8,7 +8,7 @@
 //! compiler keeps reminding you per call site.
 //!
 //! Every method is implemented in terms of the v5 surface (`compile`,
-//! `evaluate`, `evaluate_str`, `evaluate_json_value`, `with_trace`) — there is
+//! `evaluate`, `evaluate_str`, `evaluate_json_value`, `trace`) — there is
 //! no separate code path. The trait is purely a thin ergonomic shim that
 //! lets 4.x callers keep compiling.
 //!
@@ -182,9 +182,9 @@ impl<T: ArenaOperator + ?Sized> crate::CustomOperator for T {
 /// |-----------------------------------------------------------|-----------------------------------------------------|
 /// | `engine.evaluate_json(logic, data)?`                      | `engine.evaluate_str(logic, data)?`                 |
 /// | `engine.evaluate_owned(&compiled, value)?`                | `engine.evaluate_json_value(&logic, &value)?`            |
-/// | `engine.evaluate_json_with_trace(logic, data)?`           | `engine.with_trace().evaluate_str(logic, data)`     |
+/// | `engine.evaluate_json_with_trace(logic, data)?`           | `engine.trace().evaluate_str(logic, data)`     |
 /// | `engine.evaluate_json_structured(logic, data)?`           | `engine.evaluate_str(logic, data)?` (Error is structured) |
-/// | `Engine::with_config(cfg)`                             | `Engine::builder().config(cfg).build()`          |
+/// | `Engine::with_config(cfg)`                             | `Engine::builder().with_config(cfg).build()`          |
 pub trait LegacyApi: Sized {
     // ---- Constructors ----
 
@@ -196,14 +196,17 @@ pub trait LegacyApi: Sized {
     #[cfg(feature = "templating")]
     fn with_preserve_structure() -> Self;
 
-    /// Deprecated: use `Engine::builder().config(...).build()`.
-    #[deprecated(since = "5.0.0", note = "use `Engine::builder().config(...).build()`")]
-    fn with_config(config: EvaluationConfig) -> Self;
-
-    /// Deprecated: use `Engine::builder().config(...).with_templating(...).build()`.
+    /// Deprecated: use `Engine::builder().with_config(...).build()`.
     #[deprecated(
         since = "5.0.0",
-        note = "use `Engine::builder().config(...).with_templating(...).build()`"
+        note = "use `Engine::builder().with_config(...).build()`"
+    )]
+    fn with_config(config: EvaluationConfig) -> Self;
+
+    /// Deprecated: use `Engine::builder().with_config(...).with_templating(...).build()`.
+    #[deprecated(
+        since = "5.0.0",
+        note = "use `Engine::builder().with_config(...).with_templating(...).build()`"
     )]
     #[cfg(feature = "templating")]
     fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self;
@@ -291,22 +294,22 @@ pub trait LegacyApi: Sized {
 
     // ---- Trace entries ----
 
-    /// Deprecated: use [`crate::Engine::with_trace`] +
+    /// Deprecated: use [`crate::Engine::trace`] +
     /// [`crate::TracedSession::evaluate_str`].
     #[cfg(feature = "trace")]
     #[deprecated(
         since = "5.0.0",
-        note = "use `engine.with_trace().evaluate_str(logic, data)` (returns TracedRun)"
+        note = "use `engine.trace().evaluate_str(logic, data)` (returns TracedRun)"
     )]
     fn evaluate_json_with_trace(&self, logic: &str, data: &str) -> Result<TracedResult>;
 
-    /// Deprecated: use [`crate::Engine::with_trace`] +
+    /// Deprecated: use [`crate::Engine::trace`] +
     /// [`crate::TracedSession::evaluate_str`] — `TracedRun.result` already
     /// carries the merged structured `Error` on failure.
     #[cfg(feature = "trace")]
     #[deprecated(
         since = "5.0.0",
-        note = "use `engine.with_trace().evaluate_str(logic, data)`"
+        note = "use `engine.trace().evaluate_str(logic, data)`"
     )]
     fn evaluate_json_with_trace_structured(
         &self,
@@ -324,13 +327,13 @@ impl LegacyApi for Engine {
     }
 
     fn with_config(config: EvaluationConfig) -> Self {
-        Engine::builder().config(config).build()
+        Engine::builder().with_config(config).build()
     }
 
     #[cfg(feature = "templating")]
     fn with_config_and_structure(config: EvaluationConfig, preserve_structure: bool) -> Self {
         Engine::builder()
-            .config(config)
+            .with_config(config)
             .with_templating(preserve_structure)
             .build()
     }

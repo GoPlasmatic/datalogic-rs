@@ -255,7 +255,7 @@ use datalogic_rs::Engine;
 
 let engine = Engine::new();
 let run = engine
-    .with_trace()
+    .trace()
     .evaluate_str(
         r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
         r#"{"age": 21}"#,

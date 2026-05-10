@@ -101,12 +101,12 @@ let engine = Engine::new();
 
 // Engine with custom configuration
 let engine = Engine::builder()
-    .config(EvaluationConfig::strict())
+    .with_config(EvaluationConfig::strict())
     .build();
 
-// Engine with structure preservation (templating mode) — needs feature = ["preserve"]
-# #[cfg(feature = "preserve")]
-let engine = Engine::builder().preserve_structure(true).build();
+// Engine with templating mode — needs feature = ["templating"]
+# #[cfg(feature = "templating")]
+let engine = Engine::builder().with_templating(true).build();
 
 // Engine with custom operators
 # struct MyOp;

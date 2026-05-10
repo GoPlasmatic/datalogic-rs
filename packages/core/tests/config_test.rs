@@ -21,7 +21,7 @@ fn test_nan_handling_throw_error() {
 #[test]
 fn test_nan_handling_ignore_value() {
     let config = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -32,7 +32,7 @@ fn test_nan_handling_ignore_value() {
 fn test_nan_handling_coerce_to_zero() {
     let config =
         EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -42,7 +42,7 @@ fn test_nan_handling_coerce_to_zero() {
 #[test]
 fn test_nan_handling_return_null() {
     let config = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::ReturnNull);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"+": [1, "not_a_number", 2]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -77,7 +77,7 @@ fn test_numeric_coercion_strict() {
                 .with_bool_to_number(false)
                 .with_reject_non_numeric(true),
         );
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"+": ["", 5]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -103,7 +103,7 @@ fn test_loose_equality_errors_default() {
 #[test]
 fn test_loose_equality_errors_disabled() {
     let config = EvaluationConfig::default().with_loose_equality_errors(false);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"==": [[], 5]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -113,7 +113,7 @@ fn test_loose_equality_errors_disabled() {
 #[test]
 fn test_safe_arithmetic_preset() {
     let engine = Engine::builder()
-        .config(EvaluationConfig::safe_arithmetic())
+        .with_config(EvaluationConfig::safe_arithmetic())
         .build();
 
     let logic = json!({"+": [1, "not_a_number", 2, [3, 4], 5]});
@@ -127,7 +127,9 @@ fn test_safe_arithmetic_preset() {
 
 #[test]
 fn test_strict_preset() {
-    let engine = Engine::builder().config(EvaluationConfig::strict()).build();
+    let engine = Engine::builder()
+        .with_config(EvaluationConfig::strict())
+        .build();
 
     let logic = json!({"+": [true, 5]});
     let result = engine.evaluate_json_value(&logic, &json!({}));
@@ -141,7 +143,7 @@ fn test_strict_preset() {
 #[test]
 fn test_thread_safety() {
     let config = EvaluationConfig::safe_arithmetic();
-    let engine = Arc::new(Engine::builder().config(config).build());
+    let engine = Arc::new(Engine::builder().with_config(config).build());
 
     let logic = Arc::new(json!({"+": [{"var": "a"}, {"var": "b"}]}));
 
@@ -174,7 +176,9 @@ fn test_runtime_config_change() {
     assert!(result.is_err());
 
     let engine2 = Engine::builder()
-        .config(EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue))
+        .with_config(
+            EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue),
+        )
         .build();
     let result = engine2.evaluate_json_value(&logic, &json!({})).unwrap();
     assert_eq!(result, json!(1));
@@ -183,7 +187,7 @@ fn test_runtime_config_change() {
 #[test]
 fn test_subtraction_with_config() {
     let config = EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"-": [10, "invalid", 3]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -194,7 +198,7 @@ fn test_subtraction_with_config() {
 fn test_multiplication_with_config() {
     let config =
         EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({"*": [2, "invalid", 3]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -208,7 +212,7 @@ fn test_comparison_with_config() {
             .with_empty_string_to_zero(false)
             .with_null_to_zero(false),
     );
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let logic = json!({">": [true, false]});
     let result = engine.evaluate_json_value(&logic, &json!({})).unwrap();
@@ -263,7 +267,7 @@ fn test_truthy_evaluator_javascript() {
 #[test]
 fn test_truthy_evaluator_strict_boolean() {
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let test_cases = vec![
         (json!({"if": [0, "truthy", "falsy"]}), json!("truthy")),
@@ -294,7 +298,7 @@ fn test_truthy_evaluator_custom() {
 
     let config = EvaluationConfig::default()
         .with_truthy_evaluator(TruthyEvaluator::Custom(custom_evaluator));
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let test_cases = vec![
         (json!({"if": [0, "truthy", "falsy"]}), json!("truthy")),
@@ -319,7 +323,7 @@ fn test_truthy_evaluator_custom_constructor() {
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::custom(
         |value: &OwnedDataValue| value.as_i64().map(|n| n % 2 == 0).unwrap_or(false),
     ));
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let test_cases = vec![
         (json!({"if": [0, "truthy", "falsy"]}), json!("truthy")),
@@ -337,7 +341,7 @@ fn test_truthy_evaluator_custom_constructor() {
 #[test]
 fn test_truthy_in_logical_operators() {
     let config = EvaluationConfig::default().with_truthy_evaluator(TruthyEvaluator::StrictBoolean);
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
 
     let test_cases = vec![
         (json!({"and": [0, "result"]}), json!("result")),
@@ -414,7 +418,7 @@ fn test_evaluation_config_fluent_setters() {
 
     // Engine-level smoke check: the chained config drives evaluation as
     // expected — `IgnoreValue` lets arithmetic skip the bad operand.
-    let engine = Engine::builder().config(config).build();
+    let engine = Engine::builder().with_config(config).build();
     let result = engine
         .evaluate_json_value(&json!({"+": [1, "skip", 2]}), &json!({}))
         .unwrap();

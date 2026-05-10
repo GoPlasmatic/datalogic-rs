@@ -29,7 +29,7 @@ use crate::engine::Engine;
 ///   truthiness, NaN errors on bad arithmetic input, `±f64::MAX` on
 ///   division by zero, `loose_equality_errors = true`,
 ///   `max_recursion_depth = 256`, and the implicit `null`/`bool`/
-///   `""` → 0 numeric coercions enabled. Override with [`Self::config`];
+///   `""` → 0 numeric coercions enabled. Override with [`Self::with_config`];
 ///   [`EvaluationConfig::safe_arithmetic`] / [`EvaluationConfig::strict`]
 ///   are alternative starting points.
 /// - **`templating`** — `false` (templating mode off). Set with
@@ -65,7 +65,7 @@ impl EngineBuilder {
     /// Set the evaluation config.
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
-    pub fn config(mut self, config: EvaluationConfig) -> Self {
+    pub fn with_config(mut self, config: EvaluationConfig) -> Self {
         self.config = config;
         self
     }

@@ -29,7 +29,7 @@ v5 splits the surface into a small core plus opt-in features:
 | `compat` | off | `serde_json::Value` boundary (`evaluate_json_value`, `compile_serde_value`), the v4 `LegacyApi` shims, and `serde_json` as a runtime dependency. |
 | `templating` | off | Templating mode — `Engine::builder().with_templating(true).build()`. |
 | `datetime` | off | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` operators (pulls in `chrono`). |
-| `trace` | off | Per-evaluation execution tracing (`engine.with_trace()…`). Implies `compat`. |
+| `trace` | off | Per-evaluation execution tracing (`engine.trace()…`). Implies `compat`. |
 | `ext-string` | off | Extended string operators. |
 | `ext-array` | off | Extended array operators (e.g. `sort`). |
 | `ext-control` | off | Extended control-flow operators (e.g. `inspect`). |

@@ -218,13 +218,13 @@ cargo instruments --release -t "CPU Profiler"
 
 ### Tracing for Bottlenecks
 
-Enable the `trace` feature and call `engine.with_trace().evaluate_str(...)`
+Enable the `trace` feature and call `engine.trace().evaluate_str(...)`
 to inspect every executed node.
 
 ```rust
 #[cfg(feature = "trace")]
 {
-    let run = engine.with_trace().evaluate_str(rule, data);
+    let run = engine.trace().evaluate_str(rule, data);
     for step in &run.steps {
         // step.node_id, step.expression, step.context, step.result, ...
     }

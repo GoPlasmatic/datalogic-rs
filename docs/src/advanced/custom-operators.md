@@ -299,7 +299,7 @@ fn value_type_name(v: &DataValue<'_>) -> &'static str {
 }
 ```
 
-The `Error` type is structured: `kind_tag()` returns a stable variant tag,
+The `Error` type is structured: `tag()` returns a stable variant tag,
 and the `operator` / `path` fields are populated automatically by the engine
 when a custom operator returns an error.
 

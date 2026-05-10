@@ -122,7 +122,7 @@ The `trace` feature records every evaluation step:
 use datalogic_rs::Engine;
 
 let engine = Engine::new();
-let run = engine.with_trace().evaluate_str(
+let run = engine.trace().evaluate_str(
     r#"{"if": [{">": [{"var": "age"}, 18]}, "adult", "minor"]}"#,
     r#"{"age": 21}"#,
 );

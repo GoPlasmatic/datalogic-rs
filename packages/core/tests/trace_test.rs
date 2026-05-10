@@ -357,9 +357,7 @@ fn test_trace_custom_operator_error_propagation() {
     }
 
     let engine = Engine::builder().add_operator("fail_op", FailOp).build();
-    let run = engine
-        .with_trace()
-        .evaluate_str(r#"{"fail_op": []}"#, "null");
+    let run = engine.trace().evaluate_str(r#"{"fail_op": []}"#, "null");
 
     // The user's `Error::custom("boom")` propagates back as an Err.
     let err = run.result.expect_err("FailOp returned Err");

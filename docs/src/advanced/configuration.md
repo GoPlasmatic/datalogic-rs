@@ -16,7 +16,7 @@ let config = EvaluationConfig {
     arithmetic_nan_handling: NanHandling::IgnoreValue,
     ..Default::default()
 };
-let engine = Engine::builder().config(config).build();
+let engine = Engine::builder().with_config(config).build();
 ```
 
 > v5 dropped the `with_config` / `with_preserve_structure` /
@@ -161,12 +161,12 @@ use datalogic_rs::{Engine, EvaluationConfig};
 
 // Lenient arithmetic — IgnoreValue + ReturnNull divide-by-zero
 let engine = Engine::builder()
-    .config(EvaluationConfig::safe_arithmetic())
+    .with_config(EvaluationConfig::safe_arithmetic())
     .build();
 
 // Strict — errors for any type mismatch and no numeric coercion
 let engine = Engine::builder()
-    .config(EvaluationConfig::strict())
+    .with_config(EvaluationConfig::strict())
     .build();
 ```
 
@@ -182,7 +182,7 @@ let config = EvaluationConfig {
 };
 
 let engine = Engine::builder()
-    .config(config)
+    .with_config(config)
     .preserve_structure(true)
     .build();
 ```
@@ -198,7 +198,7 @@ let config = EvaluationConfig {
     ..Default::default()
 };
 
-let engine = Engine::builder().config(config).build();
+let engine = Engine::builder().with_config(config).build();
 
 let r = engine.evaluate_str(
     r#"{"+": [1, "not a number", null, 2]}"#,
@@ -211,7 +211,7 @@ let r = engine.evaluate_str(
 
 ```rust
 let engine = Engine::builder()
-    .config(EvaluationConfig::strict())
+    .with_config(EvaluationConfig::strict())
     .build();
 
 let result = engine.evaluate_str(r#"{"+": [1, "2"]}"#, r#"{}"#);
@@ -238,7 +238,7 @@ let config = EvaluationConfig {
     ..Default::default()
 };
 
-let engine = Engine::builder().config(config).build();
+let engine = Engine::builder().with_config(config).build();
 // {"if": [0,  "yes", "no"]}  ⇒ "no"
 // {"if": [-5, "yes", "no"]}  ⇒ "no"
 // {"if": [1,  "yes", "no"]}  ⇒ "yes"

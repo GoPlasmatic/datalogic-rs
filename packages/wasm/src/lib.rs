@@ -64,7 +64,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 /// Evaluate a JSONLogic expression with execution trace for debugging.
 ///
 /// Returns a JSON string containing the result, expression tree, and execution
-/// steps. Powered by [`DataLogic::with_trace`] +
+/// steps. Powered by [`DataLogic::trace`] +
 /// [`datalogic_rs::TracedSession::evaluate_str`].
 ///
 /// # Arguments
@@ -79,7 +79,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 #[wasm_bindgen]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, String> {
     let engine = make_engine(templating);
-    let run = engine.with_trace().evaluate_str(logic, data);
+    let run = engine.trace().evaluate_str(logic, data);
     Ok(traced_run_to_json(&run))
 }
 

@@ -19,7 +19,7 @@ fn main() {
         .evaluate_str(r#"{"+": ["text", 1]}"#, r#"{}"#)
         .unwrap_err();
     println!("[1] failed evaluation");
-    println!("    kind_tag: {}", err.kind_tag());
+    println!("    tag: {}", err.tag());
     println!("    operator: {:?}", err.operator());
     println!("    path:     {:?}", err.path());
     println!("    display:  {err}");
@@ -56,6 +56,6 @@ fn main() {
     // ----- (4) Wrap a foreign error with Error::wrap ----------------
     let err: Error = "abc".parse::<i32>().map_err(Error::wrap).unwrap_err();
     println!("\n[4] wrapped foreign error");
-    println!("    kind_tag: {}", err.kind_tag());
+    println!("    tag: {}", err.tag());
     println!("    display:  {err}");
 }

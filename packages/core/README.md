@@ -50,11 +50,11 @@ v5 reshapes the public API around a single arena-based dispatch path
 and trims the surface to a small, documented set of types. Headline
 renames: `DataLogic` → `Engine`, `evaluate_json` → `evaluate_str`,
 `Operator` → `CustomOperator`, `with_config(...)` →
-`Engine::builder().config(...).build()`. The full breakage list and
+`Engine::builder().with_config(...).build()`. The full breakage list and
 each replacement live in [`CHANGELOG.md`](CHANGELOG.md); a runnable
 side-by-side cheat sheet is in
 [`examples/migrating_from_v4.rs`](examples/migrating_from_v4.rs)
-(`cargo run --example migrating_from_v4 --features compat,preserve`).
+(`cargo run --example migrating_from_v4 --features compat,templating`).
 The `compat` feature keeps the 4.x entry points compiling for one
 release cycle (each is `#[deprecated]` with a `note` pointing at its
 v5 replacement); the `compat` module is scheduled for removal in 5.1.
