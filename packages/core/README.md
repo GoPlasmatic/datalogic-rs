@@ -136,7 +136,7 @@ Three evaluation tiers, in order of caller control:
   allocates one fresh chunk of the given size — combine with
   `Session::allocated_bytes()` to capture a steady-state high-water
   mark from a warm-up pass and pre-size for the hot loop. The bench at
-  `packages/benchmark/src/bin/self.rs` shows the pattern end-to-end.
+  `tools/benchmark/src/bin/self.rs` shows the pattern end-to-end.
 
 The tokio-friendly idiom: `Arc<Engine>` shared across worker threads
 (it's `Send + Sync`), one `Session` per task (it's `Send + !Sync`,

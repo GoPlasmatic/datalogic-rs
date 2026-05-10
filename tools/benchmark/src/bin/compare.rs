@@ -18,10 +18,10 @@
 //! For those, see `bin/self.rs`.
 //!
 //! Adding a subject:
-//! - **Native Rust crate**: add a Cargo feature in `packages/benchmark/Cargo.toml`
+//! - **Native Rust crate**: add a Cargo feature in `tools/benchmark/Cargo.toml`
 //!   gating the dep, write a `Subject` impl below behind `#[cfg(feature = "...")]`,
 //!   push it into `subjects()`.
-//! - **JS / WASM library**: add the dep in `packages/benchmark/runners/package.json`,
+//! - **JS / WASM library**: add the dep in `tools/benchmark/runners/package.json`,
 //!   add a dispatch entry in `runners/node-runner.js`, push a `NodeSubject`
 //!   into `subjects()`.
 
@@ -520,7 +520,7 @@ fn print_help() {
          \x20 - json-logic-js    jwadhams/json-logic-js via Node\n\n\
          To set up Node subjects:\n\
          \x20 cd packages/wasm && ./build.sh\n\
-         \x20 cd packages/benchmark/runners && npm install"
+         \x20 cd tools/benchmark/runners && npm install"
     );
 }
 
@@ -543,7 +543,7 @@ fn main() {
                 "error: {n} subject(s) unavailable: {names}\n\n\
                  To install Node subjects:\n  \
                  cd packages/wasm && ./build.sh\n  \
-                 cd packages/benchmark/runners && npm install\n\n\
+                 cd tools/benchmark/runners && npm install\n\n\
                  Or pass --allow-missing-subjects to render the matrix without them.",
                 n = missing.len(),
                 names = missing.join(", ")

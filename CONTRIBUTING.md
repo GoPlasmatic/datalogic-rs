@@ -8,7 +8,7 @@ monorepo. The packages live under `packages/`:
 | `packages/core`       | `datalogic-rs` (Rust)            | crates.io    |
 | `packages/wasm`       | `@goplasmatic/datalogic`         | npm          |
 | `packages/ui`         | `@goplasmatic/datalogic-ui`      | npm          |
-| `packages/benchmark`  | `datalogic-bench` (dev-only)     | —            |
+| `tools/benchmark`  | `datalogic-bench` (dev-only)     | —            |
 
 For a full picture of how the packages depend on each other, see
 [ARCHITECTURE.md](./ARCHITECTURE.md). For day-to-day commands, the build

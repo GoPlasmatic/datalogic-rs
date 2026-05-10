@@ -39,7 +39,7 @@ This is a monorepo. Every package lives under `packages/`:
 | [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                                | `packages/core`       | Rust        | `cargo add datalogic-rs`             |
 | [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic)       | `packages/wasm`       | Rust → WASM | `npm i @goplasmatic/datalogic`       |
 | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `packages/ui`         | React       | `npm i @goplasmatic/datalogic-ui`    |
-| `datalogic-bench` (internal)                                                           | `packages/benchmark`  | Rust        | _dev-only, not published_            |
+| `datalogic-bench` (internal)                                                           | `tools/benchmark`  | Rust        | _dev-only, not published_            |
 
 For the cross-package design, dependency flow, and feature-flag matrix,
 see [ARCHITECTURE.md](./ARCHITECTURE.md). For local setup, build order,
@@ -50,7 +50,7 @@ and per-package commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 - **JSONLogic in a Rust app** → `packages/core` (`cargo add datalogic-rs`)
 - **JSONLogic in Node.js or the browser** → `packages/wasm` (`npm i @goplasmatic/datalogic`)
 - **Visual rule editor / debugger in a React app** → `packages/ui` (`npm i @goplasmatic/datalogic-ui`)
-- **Compare engines or measure performance** → `packages/benchmark` (dev-only, not published)
+- **Compare engines or measure performance** → `tools/benchmark` (dev-only, not published)
 
 ## Three things you can build with it
 
@@ -222,7 +222,7 @@ read-through operators like `var` borrow zero-copy from the caller's
 input.
 
 The benchmark harness lives in its own dev-only crate,
-`datalogic-bench`, under `packages/benchmark/`. Two binaries share a
+`datalogic-bench`, under `tools/benchmark/`. Two binaries share a
 common harness:
 
 ```bash
@@ -231,21 +231,21 @@ cargo run --release -p datalogic-bench --bin self                 # one suite
 cargo run --release -p datalogic-bench --bin self -- --all        # every suite + JSON report
 
 # Cross-library comparison (only datalogic-rs ships by default; add subjects
-# behind feature flags — see packages/benchmark/README.md).
+# behind feature flags — see tools/benchmark/README.md).
 cargo run --release -p datalogic-bench --bin compare -- --all
 ```
 
-Reports land in `packages/benchmark/output/` (gitignored).
+Reports land in `tools/benchmark/output/` (gitignored).
 
 ### Comparison with other JSONLogic engines
 
-The cross-library matrix in **[`packages/benchmark/BENCHMARK.md`][bench]**
+The cross-library matrix in **[`tools/benchmark/BENCHMARK.md`][bench]**
 runs every operator suite against every available subject (datalogic-rs
 native, our WASM via Node, plus competing Rust and JS libraries) and
 reports avg ns/op per cell with arithmetic + geometric mean
 aggregation rows.
 
-[bench]: ./packages/benchmark/BENCHMARK.md
+[bench]: ./tools/benchmark/BENCHMARK.md
 
 Geomeans across 44 suites (Apple M2 Pro, macOS 26.3, Rust 1.93, Node 24;
 median of 3 samples per cell, ~200 ms wall budget — see [`BENCHMARK.md`][bench]

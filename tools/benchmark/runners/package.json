@@ -2,13 +2,13 @@
   "name": "datalogic-bench-node-runners",
   "private": true,
   "version": "0.0.0",
-  "description": "Node subprocess harness for cross-library JSONLogic benchmarks. Invoked by packages/benchmark/src/bin/compare.rs.",
+  "description": "Node subprocess harness for cross-library JSONLogic benchmarks. Invoked by tools/benchmark/src/bin/compare.rs.",
   "type": "module",
   "scripts": {
     "runner": "node node-runner.js"
   },
   "dependencies": {
-    "@goplasmatic/datalogic": "file:../../wasm/pkg",
+    "@goplasmatic/datalogic": "file:../../../packages/wasm/pkg",
     "json-logic-engine": "^5.0.7",
     "json-logic-js": "^2.0.5"
   },

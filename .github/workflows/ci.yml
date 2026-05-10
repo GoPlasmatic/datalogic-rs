@@ -42,7 +42,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'packages/benchmark/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check formatting
@@ -100,7 +100,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'packages/benchmark/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-msrv-
 
       # Build only — test infra (proc-macros, tooling) often outgrows MSRV

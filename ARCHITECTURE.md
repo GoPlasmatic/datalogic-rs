@@ -26,7 +26,7 @@ runtime targets that build on each other:
                   +-------------------+
 
                   +-------------------+
-                  |  packages/benchmark |   Rust dev binary, NOT published
+                  |  tools/benchmark |   Rust dev binary, NOT published
                   |  datalogic-bench    |   `self` (single-engine) and `compare` (cross-library)
                   +-------------------+
 ```
@@ -41,7 +41,7 @@ visualisation, and trace inspection on top.
 The repo root holds a Cargo workspace with two members:
 
 - `packages/core` — the published crate, `datalogic-rs`.
-- `packages/benchmark` — dev-only binaries (`self`, `compare`), `publish = false`.
+- `tools/benchmark` — dev-only binaries (`self`, `compare`), `publish = false`.
 
 `packages/wasm` declares its own `[workspace]` table and is excluded from the
 parent workspace. This is deliberate: `wasm-pack` needs the WASM-specific
@@ -106,7 +106,7 @@ or `templating`.
 | WASM FFI surface               | `packages/wasm/src/lib.rs`                        |
 | WASM build script              | `packages/wasm/build.sh`                          |
 | React editor + debugger        | `packages/ui/src/components/logic-editor/`        |
-| Benchmark harness              | `packages/benchmark/src/`                         |
+| Benchmark harness              | `tools/benchmark/src/`                         |
 
 For day-to-day commands (build, test, run, link), see [DEVELOPMENT.md](./DEVELOPMENT.md).
 

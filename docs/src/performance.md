@@ -52,7 +52,7 @@ v5 optimizations:
 ### Running Benchmarks
 
 The benchmark harness lives in its own dev-only crate, `datalogic-bench`,
-under `packages/benchmark/`. Two binaries share a common harness:
+under `tools/benchmark/`. Two binaries share a common harness:
 
 ```bash
 # Single-engine benchmark (datalogic-rs alone, fast arena path)
@@ -60,11 +60,11 @@ cargo run --release -p datalogic-bench --bin self
 cargo run --release -p datalogic-bench --bin self -- --all   # every suite + JSON report
 
 # Cross-library comparison (only datalogic-rs ships by default; see
-# packages/benchmark/README.md for adding more subjects)
+# tools/benchmark/README.md for adding more subjects)
 cargo run --release -p datalogic-bench --bin compare -- --all
 ```
 
-Reports land in `packages/benchmark/output/` (gitignored).
+Reports land in `tools/benchmark/output/` (gitignored).
 
 ### Creating Custom Benchmarks
 

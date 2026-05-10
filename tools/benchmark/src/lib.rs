@@ -17,6 +17,8 @@ use serde_json::Value;
 pub fn suites_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
+        .join("..")
+        .join("packages")
         .join("core")
         .join("tests")
         .join("suites")
@@ -154,7 +156,7 @@ pub fn print_summary(label: &str, results: &[SuiteResult]) {
     println!("Average op time:     {avg:.2} ns");
 }
 
-/// Write a JSON report into `packages/benchmark/output/`.
+/// Write a JSON report into `tools/benchmark/output/`.
 pub fn write_report(label: &str, iterations: u32, results: &[SuiteResult]) -> PathBuf {
     let out_dir = output_root();
     fs::create_dir_all(&out_dir).expect("create output dir");

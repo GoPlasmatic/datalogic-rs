@@ -17,7 +17,7 @@ publish = false
 # `@goplasmatic/datalogic` binary (currently `wasm = datetime + trace
 # + templating` per `packages/wasm/Cargo.toml`), which is its own
 # distribution decision.
-datalogic-rs = { path = "../core", features = [
+datalogic-rs = { path = "../../packages/core", features = [
     "serde_json",
     "templating",
     "datetime",

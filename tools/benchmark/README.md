@@ -12,7 +12,7 @@ Two binaries share a common suite loader and reporter (`src/lib.rs`):
 | `compare` | Cross-library **matrix** — runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
 
 Both read JSON suites from `packages/core/tests/suites/`. `self` writes a
-JSON report to `packages/benchmark/output/` (gitignored); `compare` only
+JSON report to `tools/benchmark/output/` (gitignored); `compare` only
 prints to stdout.
 
 ## `self` — regression baseline
@@ -79,7 +79,7 @@ package but exercise different APIs (interpreter vs build-then-call).
 cd packages/wasm && ./build.sh
 
 # Install the runner deps (json-logic-js + a file: link to the wasm pkg):
-cd packages/benchmark/runners && npm install
+cd tools/benchmark/runners && npm install
 ```
 
 If `node` isn't on PATH or `runners/node_modules/` is missing, the
@@ -136,12 +136,12 @@ cargo run --release -p datalogic-bench --bin compare -- --all --allow-missing-su
 
 ### Native-CPU build (optional, host-only numbers)
 
-A `.cargo/config.toml` inside `packages/benchmark/` adds
+A `.cargo/config.toml` inside `tools/benchmark/` adds
 `-C target-cpu=native`. Cargo only picks this up when the cwd is at or below
 the benchmark crate, so it's opt-in by location:
 
 ```bash
-cd packages/benchmark
+cd tools/benchmark
 cargo run --release --bin compare -- --all
 ```
 
@@ -153,7 +153,7 @@ from the repo root remain portable.
 
 ### Native Rust crate
 
-1. Add an optional dep + a Cargo feature in `packages/benchmark/Cargo.toml`:
+1. Add an optional dep + a Cargo feature in `tools/benchmark/Cargo.toml`:
    ```toml
    [dependencies]
    my-jsonlogic = { version = "X.Y", optional = true }
@@ -169,7 +169,7 @@ from the repo root remain portable.
 
 ### JS / WASM library (via Node subprocess)
 
-1. `cd packages/benchmark/runners && npm install <pkg>`.
+1. `cd tools/benchmark/runners && npm install <pkg>`.
 2. Add a `LIBS` entry in `runners/node-runner.js` — one async `setup`
    that returns a callable `apply(case)`.
 3. In `build_subjects()` inside `bin/compare.rs`, push a new

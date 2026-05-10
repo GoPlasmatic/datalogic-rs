@@ -1,7 +1,7 @@
 # Benchmark reference
 
 Cross-library JSONLogic matrix produced by
-`packages/benchmark/src/bin/compare.rs`. This file is the canonical
+`tools/benchmark/src/bin/compare.rs`. This file is the canonical
 performance reference — link to it from other docs (README, blog posts,
 changelog) rather than re-quoting numbers inline, so updates only need
 one place.
@@ -170,7 +170,7 @@ One-time setup for the Node subjects:
 
 ```bash
 cd packages/wasm && ./build.sh
-cd packages/benchmark/runners && npm install
+cd tools/benchmark/runners && npm install
 ```
 
 Run the matrix:
@@ -182,7 +182,7 @@ cargo run --release -p datalogic-bench --bin compare \
 
 Drop `--features subject-jsonlogic-rs` to skip the gated Rust competitor.
 Pass a single suite name (e.g. `arithmetic/plus.json`) instead of `--all`
-for fast iteration. See `packages/benchmark/README.md` for the full flag
+for fast iteration. See `tools/benchmark/README.md` for the full flag
 reference and the recipe to add more subjects.
 
 ## Caveats

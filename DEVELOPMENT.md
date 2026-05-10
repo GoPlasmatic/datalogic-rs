@@ -125,7 +125,7 @@ workflow validates → publishes the crate to crates.io → builds and publishes
 GitHub Release. There are no local publish scripts; do not run `npm publish`
 or `cargo publish` by hand.
 
-## `packages/benchmark` — performance harness
+## `tools/benchmark` — performance harness
 
 Dev-only, never published. Two binaries share `src/lib.rs`:
 
@@ -138,9 +138,9 @@ cargo run --release -p datalogic-bench --bin self -- --all   # every suite + JSO
 cargo run --release -p datalogic-bench --bin compare -- --all
 ```
 
-Reports land in `packages/benchmark/output/` (gitignored). To add another
+Reports land in `tools/benchmark/output/` (gitignored). To add another
 JSONLogic implementation as a comparison subject, see
-[packages/benchmark/README.md](./packages/benchmark/README.md).
+[tools/benchmark/README.md](./tools/benchmark/README.md).
 
 ## Adding a built-in operator
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 //
 // Node subprocess harness for cross-library JSONLogic benchmarks. Spawned
-// once per (subject, suite) cell by `packages/benchmark/src/bin/compare.rs`.
+// once per (subject, suite) cell by `tools/benchmark/src/bin/compare.rs`.
 //
 // Reads JSON from stdin:
 //   { library: "<npm-name>", target_ms: 200, samples: 3, cases: [...] }

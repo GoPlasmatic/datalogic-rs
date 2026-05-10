@@ -2,7 +2,7 @@
 resolver = "3"
 members = [
     "packages/core",
-    "packages/benchmark",
+    "tools/benchmark",
 ]
 # `packages/wasm` defines its own `[workspace]` so wasm-pack can apply its
 # WASM-specific `[profile.release]` (opt-level "z", lto, panic = "abort")

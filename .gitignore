@@ -42,8 +42,8 @@ docs/src/assets/*.js.map
 docs/src/assets/*.css
 
 # Benchmark reports (output/ is committed via .gitkeep, contents are not)
-packages/benchmark/output/*
-!packages/benchmark/output/.gitkeep
+tools/benchmark/output/*
+!tools/benchmark/output/.gitkeep
 
 # cargo-flamegraph / cargo-instruments output
 flamegraph.svg
