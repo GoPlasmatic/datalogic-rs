@@ -135,9 +135,9 @@ The compiled, reusable rule tree. Output of `Engine::compile`.
 
 - `Send + Sync` — wrap in `Arc` to share across threads.
 - Immutable after construction.
-- `resolve_path(&self, path: &[u32]) -> Vec<PathStep>` — translate the
-  breadcrumb of a structured `Error` into the source path of the failing
-  node.
+- `resolve_node_ids(&self, ids: &[u32]) -> Vec<PathStep>` — translate
+  the breadcrumb of a structured `Error` into the source path of the
+  failing node.
 
 ---
 
@@ -316,7 +316,7 @@ pub enum ErrorKind {
     InvalidContextLevel(isize),
     TypeError(String),
     ArithmeticError(String),
-    Custom(CustomSource),
+    Custom(CustomErrorSource),
     ParseError(String),
     Thrown(OwnedDataValue),
     FormatError(String),
@@ -332,14 +332,14 @@ pub enum ErrorKind {
   "type": "<KindTag>",
   "message": "<Display>",
   "operator": "<name>",        // present only when known
-  "path": [42, 13, 7],         // present only when non-empty
+  "node_ids": [42, 13, 7],     // present only when non-empty
   // kind-specific extras (variable, level, thrown, index/length, ...)
 }
 ```
 
 Use `error.tag()` for stable string matching, `error.thrown_value()`
 for the `Thrown` payload, and `error.resolve_path(&compiled)` to translate
-the path breadcrumb into source `PathStep`s.
+the `node_ids` breadcrumb into source `PathStep`s.
 
 To wrap a foreign `std::error::Error` into a `Custom` error:
 
@@ -370,7 +370,7 @@ Error::configuration_error(msg)
 
 ## PathStep
 
-Resolved entry returned by `Logic::resolve_path` and
+Resolved entry returned by `Logic::resolve_node_ids` and
 `Error::resolve_path`. Names the operator and child index of a node along
 the failing-evaluation path.
 

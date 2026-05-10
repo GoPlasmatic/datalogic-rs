@@ -32,7 +32,7 @@ impl Engine {
                 expression_tree,
                 steps,
                 error: None,
-                error_structured: None,
+                structured_error: None,
             },
             Err(e) => {
                 let message = e.to_string();
@@ -42,7 +42,7 @@ impl Engine {
                     expression_tree,
                     steps,
                     error: Some(message),
-                    error_structured: Some(e),
+                    structured_error: Some(e),
                 }
             }
         }

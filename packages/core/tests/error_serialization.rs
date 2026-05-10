@@ -254,7 +254,7 @@ fn evaluate_json_with_trace_structured_populates_error_fields() {
         .evaluate_json_with_trace_structured(r#"{"throw": {"type": "Boom"}}"#, r#"{}"#)
         .unwrap();
     assert!(traced.error.is_some());
-    let structured = traced.error_structured.expect("structured must populate");
+    let structured = traced.structured_error.expect("structured must populate");
     let v = serde_json::to_value(&structured).unwrap();
     assert_eq!(v["type"], json!("Thrown"));
     assert_eq!(v["operator"], json!("throw"));
@@ -320,23 +320,23 @@ fn structured_error_has_nonempty_path_on_runtime_error() {
 
     // Breadcrumb should be populated, leaf-first (deepest failure first).
     assert!(
-        !err.path().is_empty(),
+        !err.node_ids().is_empty(),
         "expected breadcrumb path, got empty"
     );
     // All ids should be nonzero (SYNTHETIC_ID=0 is reserved).
-    for id in err.path() {
+    for id in err.node_ids() {
         assert!(
             *id > 0,
             "synthetic id leaked into breadcrumb: {:?}",
-            err.path()
+            err.node_ids()
         );
     }
     // Should have at least 2 ids — the throw itself plus the wrapping if,
     // since the if's dynamic condition prevents dead-code elimination.
     assert!(
-        err.path().len() >= 2,
+        err.node_ids().len() >= 2,
         "expected at least 2 ids in path, got {:?}",
-        err.path()
+        err.node_ids()
     );
 }
 
@@ -369,14 +369,14 @@ fn structured_error_path_serializes_to_json() {
         .unwrap_err();
 
     let json: Value = serde_json::to_value(&err).expect("must serialize");
-    // `path` should be present as an array of numbers.
-    let path = json
-        .get("path")
-        .expect("serialized error should include `path` field")
+    // `node_ids` should be present as an array of numbers.
+    let node_ids = json
+        .get("node_ids")
+        .expect("serialized error should include `node_ids` field")
         .as_array()
-        .expect("`path` should be an array");
-    assert!(!path.is_empty());
-    for id in path {
+        .expect("`node_ids` should be an array");
+    assert!(!node_ids.is_empty());
+    for id in node_ids {
         assert!(id.is_u64());
     }
     // No PathStep cache field is serialized — wire format is the
@@ -408,7 +408,7 @@ fn engine_errors_carry_raw_path_for_on_demand_resolution() {
     let (compiled, err) = nan_error(&engine);
 
     assert!(
-        !err.path().is_empty(),
+        !err.node_ids().is_empty(),
         "engine errors must arrive with raw breadcrumb ids, got {:?}",
         err
     );
@@ -423,20 +423,20 @@ fn with_path_replaces_prior_path() {
     // `with_path` is a plain setter — replacing the inline `Vec<u32>`
     // wholesale.
     let err = Error::invalid_arguments("nope")
-        .with_path(vec![1, 2, 3])
-        .with_path(vec![999]);
-    assert_eq!(err.path(), &[999]);
+        .with_node_ids(vec![1, 2, 3])
+        .with_node_ids(vec![999]);
+    assert_eq!(err.node_ids(), &[999]);
 }
 
 #[test]
-fn wrap_preserves_path_metadata() {
+fn wrap_preserves_node_ids_metadata() {
     // `Error::wrap(some_error)` is a no-op when given an existing Error;
-    // the raw path round-trips alongside operator metadata.
+    // the raw node_ids breadcrumb round-trips alongside operator metadata.
     let engine = Engine::new();
     let (_compiled, err) = nan_error(&engine);
-    let original_path = err.path().to_vec();
-    assert!(!original_path.is_empty());
+    let original_node_ids = err.node_ids().to_vec();
+    assert!(!original_node_ids.is_empty());
 
     let wrapped = Error::wrap(err);
-    assert_eq!(wrapped.path(), original_path.as_slice());
+    assert_eq!(wrapped.node_ids(), original_node_ids.as_slice());
 }

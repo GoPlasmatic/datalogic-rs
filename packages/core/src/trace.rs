@@ -34,7 +34,7 @@ pub struct TracedResult {
     /// Structured top-level error if evaluation failed. Serialize-only —
     /// ignored on deserialize ([`Error`] is a Rust→JS shape).
     #[serde(skip_serializing_if = "Option::is_none", skip_deserializing, default)]
-    pub error_structured: Option<Error>,
+    pub structured_error: Option<Error>,
 }
 
 /// Represents a node in the expression tree for flow diagram rendering.
@@ -531,6 +531,6 @@ mod tests {
         let run = engine.trace().evaluate_str(r#"{"+": ["x", 1]}"#, "null");
         let err = run.result.expect_err("string-arith should fail");
         assert_eq!(err.operator(), Some("+"));
-        assert!(!err.path().is_empty(), "expected populated breadcrumb");
+        assert!(!err.node_ids().is_empty(), "expected populated breadcrumb");
     }
 }

@@ -21,7 +21,7 @@ fn main() {
     println!("[1] failed evaluation");
     println!("    tag: {}", err.tag());
     println!("    operator: {:?}", err.operator());
-    println!("    path:     {:?}", err.path());
+    println!("    node_ids: {:?}", err.node_ids());
     println!("    display:  {err}");
 
     // ----- (2) Throw + read the payload (feature = error-handling) --

@@ -62,7 +62,7 @@ impl Serialize for ErrorPath {
 /// Trait-object alias for the source carried by [`ErrorKind::Custom`].
 /// Reference-counted so [`ErrorKind`] stays cheap to clone, and bounded
 /// so a single `Error` value can be sent across threads.
-pub type CustomSource = Arc<dyn std::error::Error + Send + Sync + 'static>;
+pub type CustomErrorSource = Arc<dyn std::error::Error + Send + Sync + 'static>;
 
 /// String-only custom error — used by [`Error::custom`] to wrap a
 /// bare message in a `dyn Error` shell.
@@ -98,7 +98,7 @@ pub enum ErrorKind {
     /// callers can walk the source chain via [`std::error::Error::source`].
     /// Constructed via [`Error::custom`] (string-only) or
     /// [`Error::wrap`] (any `std::error::Error + Send + Sync + 'static`).
-    Custom(CustomSource),
+    Custom(CustomErrorSource),
     /// JSON parsing/serialization error
     ParseError(Cow<'static, str>),
     /// Thrown error from throw operator
@@ -114,18 +114,18 @@ pub enum ErrorKind {
 /// Error returned by every [`crate::Engine`] operation.
 ///
 /// The `kind` field carries the failure category and any variant-specific
-/// payload. `operator` and `path` are populated by the public `evaluate*`
-/// entry points: `operator` names the outermost operator that produced the
-/// error, and `path` is a breadcrumb of compiled-node ids from the failure
-/// site toward the root (leaf-to-root). Use [`Error::resolve_path`] to
-/// translate the ids into structured [`crate::PathStep`]s callers can act
-/// on.
+/// payload. `operator` and `node_ids` are populated by the public
+/// `evaluate*` entry points: `operator` names the outermost operator that
+/// produced the error, and `node_ids` is a breadcrumb of compiled-node ids
+/// from the failure site toward the root (leaf-to-root). Use
+/// [`Error::resolve_path`] to translate the ids into structured
+/// [`crate::PathStep`]s callers can act on.
 ///
 /// # Wire format
 ///
 /// `Error` serialises as:
-/// `{"type": <kind tag>, "message": <Display>, ...kind-extras, "operator"?, "path"?}`.
-/// `operator` is omitted when `None`; `path` is omitted when empty. JS
+/// `{"type": <kind tag>, "message": <Display>, ...kind-extras, "operator"?, "node_ids"?}`.
+/// `operator` is omitted when `None`; `node_ids` is omitted when empty. JS
 /// consumers can `JSON.parse(err)` and switch on `err.type`.
 ///
 /// # Source chains
@@ -149,10 +149,10 @@ pub struct Error {
     /// Breadcrumb of compiled-node ids from the failure site toward the
     /// root (leaf-to-root). Empty when the error came from parse/compile
     /// or wasn't routed through the public `evaluate*` path. Stored
-    /// inline (no `Box`) so attaching a path at the boundary is just a
-    /// move — heap-allocating per error showed up as a +30% regression
-    /// on error-heavy suites (try/throw/datetime/string).
-    path: ErrorPath,
+    /// inline (no `Box`) so attaching the breadcrumb at the boundary is
+    /// just a move — heap-allocating per error showed up as a +30%
+    /// regression on error-heavy suites (try/throw/datetime/string).
+    node_ids: ErrorPath,
 }
 
 impl Error {
@@ -162,7 +162,7 @@ impl Error {
         Self {
             kind,
             operator: None,
-            path: ErrorPath::new(),
+            node_ids: ErrorPath::new(),
         }
     }
 
@@ -177,10 +177,10 @@ impl Error {
     /// Breadcrumb of compiled-node ids from the failure site toward the root
     /// (leaf-to-root). Returns an empty slice when the error came from
     /// parse/compile or wasn't routed through the public `evaluate*` path.
-    /// Use [`Self::resolve_path`] to convert ids into named steps.
+    /// Use [`Self::resolve_path`] to convert ids into named [`crate::PathStep`]s.
     #[inline]
-    pub fn path(&self) -> &[u32] {
-        self.path.as_slice()
+    pub fn node_ids(&self) -> &[u32] {
+        self.node_ids.as_slice()
     }
 
     /// Get a stable string tag for the error kind. Stable across releases.
@@ -218,17 +218,17 @@ impl Error {
     /// storage is currently a plain `Vec<u32>`; future versions may swap to
     /// an inline-buffer / smallvec layout without an API change.
     #[must_use = "builder methods return the modified Error; bind or return it"]
-    pub fn with_path(mut self, path: Vec<u32>) -> Self {
-        self.path = path.into();
+    pub fn with_node_ids(mut self, ids: Vec<u32>) -> Self {
+        self.node_ids = ids.into();
         self
     }
 
-    /// Resolve the raw [`Self::path`] node ids into structured
+    /// Resolve the raw [`Self::node_ids`] breadcrumb into structured
     /// [`crate::PathStep`]s (root-to-leaf). Walks the compiled tree once.
     ///
-    /// Returns an empty vector when `self.path` is empty. Ids absent from the
-    /// compiled tree (e.g. when the error came from compile-time, before
-    /// evaluation populated the breadcrumb) are skipped.
+    /// Returns an empty vector when `self.node_ids` is empty. Ids absent
+    /// from the compiled tree (e.g. when the error came from compile-time,
+    /// before evaluation populated the breadcrumb) are skipped.
     ///
     /// **Why on demand**: an earlier design eagerly cached the resolved
     /// steps on `Error` so callers could read them without holding the
@@ -236,10 +236,10 @@ impl Error {
     /// JSON pointer per node, and paying it on every boundary error
     /// inflated error-heavy benchmark suites by 17×. Resolving on demand
     /// at the catch site puts the cost where the caller actually needs
-    /// the data — and most callers either inspect raw [`Self::path`]
+    /// the data — and most callers either inspect raw [`Self::node_ids`]
     /// only, or already hold the compiled `Logic` at the catch site.
     pub fn resolve_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
-        compiled.resolve_path(self.path.as_slice())
+        compiled.resolve_node_ids(self.node_ids.as_slice())
     }
 
     // ---- 4.x convenience constructors ----
@@ -367,7 +367,7 @@ impl Error {
     /// keeping the hot `Ok` arm's I-cache footprint tight.
     ///
     /// **Lazy path resolution.** The boundary attaches raw compiled-node
-    /// ids only — it does *not* call `Logic::resolve_path` here. That
+    /// ids only — it does *not* call `Logic::resolve_node_ids` here. That
     /// walk allocates a HashMap of every node + a `String` JSON pointer
     /// per node and was measured to balloon try.json from 51 ns/op to
     /// 898 ns/op (17×) and arithmetic/plus.json from 22 to 84 ns
@@ -387,11 +387,11 @@ impl Error {
     #[inline(never)]
     pub(crate) fn decorated(
         mut self,
-        path: Vec<u32>,
+        node_ids: Vec<u32>,
         compiled: &crate::Logic,
         prefer_existing_op: bool,
     ) -> Self {
-        self = self.with_path(path);
+        self = self.with_node_ids(node_ids);
         if !prefer_existing_op || self.operator.is_none() {
             if let Some(name) = compiled.root_op_name.clone() {
                 self.operator = Some(name);
@@ -509,7 +509,7 @@ impl From<ErrorKind> for Error {
 impl Serialize for Error {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // Shape:
-        // { "type": <tag>, "message": <Display>, ...kind-extras, "operator"?, "path"? }
+        // { "type": <tag>, "message": <Display>, ...kind-extras, "operator"?, "node_ids"? }
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("type", self.tag())?;
         // The Display impl appends "(in operator: ...)" when set; for the
@@ -529,8 +529,8 @@ impl Serialize for Error {
         if let Some(op) = &self.operator {
             map.serialize_entry("operator", op)?;
         }
-        if !self.path.is_empty() {
-            map.serialize_entry("path", &self.path)?;
+        if !self.node_ids.is_empty() {
+            map.serialize_entry("node_ids", &self.node_ids)?;
         }
         map.end()
     }
@@ -591,11 +591,11 @@ mod tests {
         let wrapped = Error::wrap(inner.clone());
         assert_eq!(wrapped.tag(), "VariableNotFound");
         assert!(matches!(wrapped.kind, ErrorKind::VariableNotFound(ref name) if name == "x"));
-        // operator/path metadata round-trips too.
-        let with_meta = inner.with_operator("var").with_path(vec![1, 2, 3]);
+        // operator + node_ids metadata round-trip too.
+        let with_meta = inner.with_operator("var").with_node_ids(vec![1, 2, 3]);
         let wrapped = Error::wrap(with_meta);
         assert_eq!(wrapped.operator(), Some("var"));
-        assert_eq!(wrapped.path(), &[1, 2, 3]);
+        assert_eq!(wrapped.node_ids(), &[1, 2, 3]);
     }
 
     #[test]
@@ -612,10 +612,10 @@ mod tests {
     }
 
     #[test]
-    fn with_path_stores_inline_no_box() {
-        // Engine boundary calls `with_path` once per error; storage is
-        // inline `Vec<u32>` so this is just a move, not a heap alloc.
-        let err = Error::invalid_arguments("x").with_path(vec![1, 2, 3]);
-        assert_eq!(err.path(), &[1, 2, 3]);
+    fn with_node_ids_stores_inline_no_box() {
+        // Engine boundary calls `with_node_ids` once per error; storage
+        // is inline `Vec<u32>` so this is just a move, not a heap alloc.
+        let err = Error::invalid_arguments("x").with_node_ids(vec![1, 2, 3]);
+        assert_eq!(err.node_ids(), &[1, 2, 3]);
     }
 }

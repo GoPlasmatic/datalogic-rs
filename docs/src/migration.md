@@ -86,8 +86,8 @@ v4 surface.
 `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, and `ReduceHint`
 were public in v4 but are compile-internal in v5. If you reached into the
 compiled tree, that path was already broken by the arena rewrite — there is
-no shim. Translate failing-evaluation paths via `Logic::resolve_path` /
-`Error::resolve_path` into the public `PathStep` type instead.
+no shim. Translate failing-evaluation paths via `Logic::resolve_node_ids`
+/ `Error::resolve_path` into the public `PathStep` type instead.
 
 ### Engine Construction
 
@@ -276,7 +276,7 @@ match engine.evaluate_str(rule, data) {
     },
 }
 // `err.tag()` returns a stable string for cross-version matching.
-// `err.operator` and `err.path` are populated automatically.
+// `err.operator()` and `err.node_ids()` are populated automatically.
 // `err.thrown_value()` accesses the `Thrown` payload.
 ```
 
@@ -296,7 +296,7 @@ Errors serialise to a stable JSON shape:
   "type": "InvalidArguments",
   "message": "expected number",
   "operator": "double",
-  "path": [42, 7]
+  "node_ids": [42, 7]
 }
 ```
 

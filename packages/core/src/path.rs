@@ -11,7 +11,7 @@ use crate::node::CompiledNode;
 
 /// One node along the path from the root of a compiled rule down to the
 /// failing sub-expression. Returned root-to-leaf by
-/// [`crate::Logic::resolve_path`] / [`crate::Error::resolve_path`].
+/// [`crate::Logic::resolve_node_ids`] / [`crate::Error::resolve_path`].
 ///
 /// `#[non_exhaustive]` so future fields can be added in 5.x without
 /// breaking downstream — external code reads fields freely but cannot
@@ -21,7 +21,7 @@ use crate::node::CompiledNode;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PathStep {
-    /// Compile-time node id, matching [`crate::Error::path`].
+    /// Compile-time node id, matching [`crate::Error::node_ids`].
     pub node_id: u32,
     /// Operator name at this node, when one applies. `None` for plain values
     /// and arrays.
@@ -46,11 +46,11 @@ impl Logic {
     /// Translate a breadcrumb of compiled-node ids into structured
     /// [`PathStep`]s, root-to-leaf.
     ///
-    /// Input is the leaf-to-root breadcrumb stored on [`crate::Error::path`].
+    /// Input is the leaf-to-root breadcrumb stored on [`crate::Error::node_ids`].
     /// Walks the compiled tree once to build an id → location index, then
     /// resolves each input id; ids absent from the tree are skipped (defensive
     /// against synthetic nodes from operator fast paths).
-    pub fn resolve_path(&self, ids: &[u32]) -> Vec<PathStep> {
+    pub fn resolve_node_ids(&self, ids: &[u32]) -> Vec<PathStep> {
         if ids.is_empty() {
             return Vec::new();
         }
@@ -134,7 +134,7 @@ mod tests {
         // Use a rule with a `var` that survives static evaluation as the root.
         let compiled = engine().compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
         let root_id = compiled.root.id();
-        let steps = compiled.resolve_path(&[root_id]);
+        let steps = compiled.resolve_node_ids(&[root_id]);
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].node_id, root_id);
         assert_eq!(steps[0].operator.as_deref(), Some("=="));
@@ -145,14 +145,14 @@ mod tests {
     #[test]
     fn resolve_empty_path_returns_empty() {
         let compiled = engine().compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
-        assert!(compiled.resolve_path(&[]).is_empty());
+        assert!(compiled.resolve_node_ids(&[]).is_empty());
     }
 
     #[test]
     fn resolve_unknown_ids_are_skipped() {
         let compiled = engine().compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
         // u32::MAX won't exist in the tree.
-        assert!(compiled.resolve_path(&[u32::MAX]).is_empty());
+        assert!(compiled.resolve_node_ids(&[u32::MAX]).is_empty());
     }
 
     #[test]

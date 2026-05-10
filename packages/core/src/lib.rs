@@ -167,7 +167,7 @@ pub use config::{
 /// `evaluate_str` uses internally.
 pub use datavalue;
 pub use engine::Engine;
-pub use error::{CustomSource, Error, ErrorKind};
+pub use error::{CustomErrorSource, Error, ErrorKind};
 pub use eval_input::EvalInput;
 pub use node::Logic;
 pub use path::PathStep;

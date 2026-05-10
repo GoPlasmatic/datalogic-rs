@@ -40,5 +40,5 @@ export interface TracedResult {
   expression_tree: ExpressionNode;
   steps: ExecutionStep[];
   error?: string;
-  error_structured?: StructuredError;
+  structured_error?: StructuredError;
 }

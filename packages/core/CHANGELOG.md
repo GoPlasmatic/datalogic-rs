@@ -68,9 +68,9 @@ provides one-release-cycle shims for the most common 4.x entry points.
   `std::error::Error` produces an `ErrorKind::Custom` whose
   `std::error::Error::source()` returns the original — the 4.x
   Display-only wrap is gone.
-- **`Error::operator` and `Error::path` are private fields** with public
-  accessors `operator()` / `path()`. Construct via
-  `Error::with_operator(...).with_path(...)`.
+- **`Error::operator` and `Error::node_ids` are private fields** with
+  public accessors `operator()` / `node_ids()`. Construct via
+  `Error::with_operator(...).with_node_ids(...)`.
 - **`Error` and `TracedResult` no longer implement `UnwindSafe` /
   `RefUnwindSafe`.** Caused by the new
   `ErrorKind::Custom(Arc<dyn std::error::Error + Send + Sync>)` variant —
@@ -83,7 +83,7 @@ provides one-release-cycle shims for the most common 4.x entry points.
   `with_loose_equality_errors`, `with_truthy_evaluator`,
   `with_numeric_coercion`, and `with_max_recursion_depth`.
 - **`PathStep` is `#[non_exhaustive]`.** The fields are output-only (every
-  `PathStep` is produced by `Logic::resolve_path` / `Error::resolve_path`),
+  `PathStep` is produced by `Logic::resolve_node_ids` / `Error::resolve_path`),
   so locking it now means future field adds in 5.x are non-breaking.
   Now derives `Deserialize` alongside the existing `Serialize`, so
   external tooling can JSON-roundtrip resolved paths.

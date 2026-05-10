@@ -85,7 +85,7 @@ pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<
 
 /// Render a [`datalogic_rs::TracedRun`] into the JS wire shape. Mirrors the
 /// historical `TracedResult` JSON layout: `{ result, expression_tree, steps,
-/// error?, error_structured? }`.
+/// error?, structured_error? }`.
 fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
     #[derive(Serialize)]
     struct Wire<'a> {
@@ -95,7 +95,7 @@ fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        error_structured: Option<&'a Error>,
+        structured_error: Option<&'a Error>,
     }
 
     let result_json: serde_json::Value;
@@ -119,7 +119,7 @@ fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
         expression_tree: &run.expression_tree,
         steps: &run.steps,
         error: error_msg,
-        error_structured: error_struct,
+        structured_error: error_struct,
     })
     .unwrap_or_default()
 }
@@ -193,7 +193,7 @@ pub fn evaluate_structured(logic: &str, data: &str, templating: bool) -> Result<
 /// Evaluate a JSONLogic expression with execution trace and structured errors.
 ///
 /// Today the trace path always returns the merged structured-error shape via
-/// `error_structured` on failure, so this is an alias for
+/// `structured_error` on failure, so this is an alias for
 /// [`evaluate_with_trace`]. Kept for back-compat with the JS binding name.
 #[wasm_bindgen(js_name = evaluateWithTraceStructured)]
 pub fn evaluate_with_trace_structured(
