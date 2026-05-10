@@ -4,7 +4,7 @@
  * Manages copy/paste operations for logic nodes.
  */
 
-import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { LogicNode } from '../../types';
 import type { ClipboardData } from './types';
 import {
@@ -36,8 +36,12 @@ export function useClipboardState(deps: ClipboardDeps) {
     hasEditedRef,
   } = deps;
 
+  // Clipboard payload lives in a ref (deep clone, mutated imperatively
+  // alongside `pasteNode`); `canPaste` mirrors its non-empty state as
+  // actual state so consumers can use it in render without reading the
+  // ref during the render pass.
   const clipboardRef = useRef<ClipboardData | null>(null);
-  const [clipboardVersion, setClipboardVersion] = useState(0);
+  const [canPaste, setCanPaste] = useState(false);
 
   const copyNode = useCallback(() => {
     if (!selectedNode) return;
@@ -51,7 +55,7 @@ export function useClipboardState(deps: ClipboardDeps) {
       nodes: copiedNodes,
       rootId: selectedNode.id,
     };
-    setClipboardVersion((v) => v + 1);
+    setCanPaste(copiedNodes.length > 0);
   }, [selectedNode, internalNodes]);
 
   const pasteNode = useCallback(() => {
@@ -117,12 +121,6 @@ export function useClipboardState(deps: ClipboardDeps) {
       return newNodes;
     });
   }, [selectedNode, pushToUndoStack, onNodesChange, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]);
-
-  const canPaste = useMemo(
-    () => clipboardRef.current !== null && clipboardRef.current.nodes.length > 0,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [clipboardVersion]
-  );
 
   return { copyNode, pasteNode, canPaste };
 }

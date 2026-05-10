@@ -7,8 +7,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Get version from root Cargo.toml
-VERSION=$(grep '^version = ' ../Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+# Version source: this crate's own Cargo.toml (the npm package version
+# tracks the wasm crate, not the workspace root which has no `version`).
+VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 echo "Building @goplasmatic/datalogic version $VERSION"
 
 # Clean previous builds
@@ -67,8 +68,9 @@ else
     echo "  apt install binaryen   # Debian/Ubuntu"
 fi
 
-# Copy LICENSE and README
-cp ../LICENSE pkg/
+# Copy LICENSE (from this crate's root — the wasm crate ships its own
+# copy alongside `Cargo.toml`) and README.
+cp LICENSE pkg/
 cp README.md pkg/
 
 # Create package.json

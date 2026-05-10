@@ -7,31 +7,36 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
 fn test_evaluate_simple() {
-    let result = evaluate(r#"{"==": [1, 1]}"#, "{}").unwrap();
+    let result = evaluate(r#"{"==": [1, 1]}"#, "{}", false).unwrap();
     assert_eq!(result, "true");
 }
 
 #[wasm_bindgen_test]
 fn test_evaluate_with_data() {
-    let result = evaluate(r#"{"var": "x"}"#, r#"{"x": 42}"#).unwrap();
+    let result = evaluate(r#"{"var": "x"}"#, r#"{"x": 42}"#, false).unwrap();
     assert_eq!(result, "42");
 }
 
 #[wasm_bindgen_test]
 fn test_evaluate_arithmetic() {
-    let result = evaluate(r#"{"+": [2, 3]}"#, "{}").unwrap();
+    let result = evaluate(r#"{"+": [2, 3]}"#, "{}", false).unwrap();
     assert_eq!(result, "5");
 }
 
 #[wasm_bindgen_test]
 fn test_evaluate_comparison() {
-    let result = evaluate(r#"{">": [5, 3]}"#, "{}").unwrap();
+    let result = evaluate(r#"{">": [5, 3]}"#, "{}", false).unwrap();
     assert_eq!(result, "true");
 }
 
 #[wasm_bindgen_test]
 fn test_evaluate_array_operations() {
-    let result = evaluate(r#"{"map": [[1, 2, 3], {"*": [{"var": ""}, 2]}]}"#, "{}").unwrap();
+    let result = evaluate(
+        r#"{"map": [[1, 2, 3], {"*": [{"var": ""}, 2]}]}"#,
+        "{}",
+        false,
+    )
+    .unwrap();
     assert_eq!(result, "[2,4,6]");
 }
 
@@ -40,6 +45,7 @@ fn test_evaluate_conditional() {
     let result = evaluate(
         r#"{"if": [{"var": "active"}, "yes", "no"]}"#,
         r#"{"active": true}"#,
+        false,
     )
     .unwrap();
     assert_eq!(result, "\"yes\"");
@@ -47,7 +53,7 @@ fn test_evaluate_conditional() {
 
 #[wasm_bindgen_test]
 fn test_compiled_rule() {
-    let rule = CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#).unwrap();
+    let rule = CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, false).unwrap();
 
     let result1 = rule.evaluate(r#"{"a": 1, "b": 2}"#).unwrap();
     assert_eq!(result1, "3");
@@ -58,12 +64,12 @@ fn test_compiled_rule() {
 
 #[wasm_bindgen_test]
 fn test_invalid_json_logic() {
-    let result = evaluate("not valid json", "{}");
+    let result = evaluate("not valid json", "{}", false);
     assert!(result.is_err());
 }
 
 #[wasm_bindgen_test]
 fn test_invalid_data() {
-    let result = evaluate(r#"{"var": "x"}"#, "not valid json");
+    let result = evaluate(r#"{"var": "x"}"#, "not valid json", false);
     assert!(result.is_err());
 }

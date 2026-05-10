@@ -19,9 +19,11 @@ export interface ExecutionStep {
 /**
  * Structured error shape emitted by the WASM `*_structured` entry points.
  *
- * Mirrors the Rust `StructuredError` serialization — `type` is a stable
+ * Mirrors the Rust `Error` serialization — `type` is a stable
  * machine-readable kind, `message` is human-readable, and variant-specific
- * extras appear as extra fields.
+ * extras appear as extra fields. `node_ids` is the v5 failure breadcrumb
+ * (compile-time node IDs, root-to-leaf); `stage` is set on parse-time
+ * failures from the WASM boundary itself.
  */
 export interface StructuredError {
   type: string;
@@ -33,6 +35,7 @@ export interface StructuredError {
   index?: number;
   length?: number;
   stage?: string;
+  node_ids?: number[];
 }
 
 export interface TracedResult {

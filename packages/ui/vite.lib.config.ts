@@ -18,6 +18,10 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
       '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
+      // Match `vite.config.ts`: resolve the WASM dep to the vendored
+      // copy that `prebuild:lib` (→ sync-wasm) refreshes from
+      // `../wasm/pkg/` before this build runs.
+      '@goplasmatic/datalogic': resolve(__dirname, 'vendor/datalogic'),
     },
   },
   build: {

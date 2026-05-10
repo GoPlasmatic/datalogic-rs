@@ -4,7 +4,7 @@
  * Manages undo/redo history stacks for the editor.
  */
 
-import { useCallback, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useCallback, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import type { LogicNode } from '../../types';
 
 const MAX_HISTORY_SIZE = 50;
@@ -15,9 +15,14 @@ export function useHistoryState(
   onNodesChange: ((nodes: LogicNode[]) => void) | undefined,
   clearSelection: () => void
 ) {
+  // Stacks live in refs because they hold deep clones, change synchronously
+  // alongside reducer-style updates, and are read by callbacks. The two
+  // `can*` booleans below mirror their `length > 0` state so consumers can
+  // depend on them in render without reading the ref from the memo body.
   const undoStackRef = useRef<LogicNode[][]>([]);
   const redoStackRef = useRef<LogicNode[][]>([]);
-  const [historyVersion, setHistoryVersion] = useState(0);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const pushToUndoStack = useCallback((nodes: LogicNode[]) => {
     undoStackRef.current = [
@@ -25,7 +30,8 @@ export function useHistoryState(
       JSON.parse(JSON.stringify(nodes)),
     ];
     redoStackRef.current = [];
-    setHistoryVersion((v) => v + 1);
+    setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   const undo = useCallback(() => {
@@ -33,7 +39,8 @@ export function useHistoryState(
 
     const previousState = undoStackRef.current.pop()!;
     redoStackRef.current.push(JSON.parse(JSON.stringify(nodesRef.current)));
-    setHistoryVersion((v) => v + 1);
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(true);
 
     setInternalNodes(previousState);
     onNodesChange?.(previousState);
@@ -45,24 +52,13 @@ export function useHistoryState(
 
     const nextState = redoStackRef.current.pop()!;
     undoStackRef.current.push(JSON.parse(JSON.stringify(nodesRef.current)));
-    setHistoryVersion((v) => v + 1);
+    setCanUndo(true);
+    setCanRedo(redoStackRef.current.length > 0);
 
     setInternalNodes(nextState);
     onNodesChange?.(nextState);
     clearSelection();
   }, [nodesRef, setInternalNodes, onNodesChange, clearSelection]);
-
-  const canUndo = useMemo(
-    () => undoStackRef.current.length > 0,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [historyVersion]
-  );
-
-  const canRedo = useMemo(
-    () => redoStackRef.current.length > 0,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [historyVersion]
-  );
 
   return { pushToUndoStack, undo, redo, canUndo, canRedo };
 }

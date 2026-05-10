@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use datalogic_rs::{CompiledLogic, DataLogic, DataValue, Error};
+use datalogic_rs::{DataValue, Engine, Error, Logic};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-/// Build a `DataLogic` engine honoring the `templating` flag.
-fn make_engine(templating: bool) -> DataLogic {
+/// Build an [`Engine`] honoring the `templating` flag.
+fn make_engine(templating: bool) -> Engine {
     if templating {
-        DataLogic::builder().with_templating(true).build()
+        Engine::builder().with_templating(true).build()
     } else {
-        DataLogic::new()
+        Engine::new()
     }
 }
 
@@ -64,8 +64,8 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 /// Evaluate a JSONLogic expression with execution trace for debugging.
 ///
 /// Returns a JSON string containing the result, expression tree, and execution
-/// steps. Powered by [`DataLogic::trace`] +
-/// [`datalogic_rs::TracedSession::evaluate_str`].
+/// steps. Powered by [`Engine::trace`] +
+/// [`datalogic_rs::TracedSession::eval_str`].
 ///
 /// # Arguments
 /// * `logic` - JSON string containing the JSONLogic expression
@@ -130,8 +130,8 @@ fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
 /// as it avoids re-parsing the logic on each evaluation.
 #[wasm_bindgen]
 pub struct CompiledRule {
-    engine: DataLogic,
-    compiled: Arc<CompiledLogic>,
+    engine: Engine,
+    compiled: Arc<Logic>,
 }
 
 #[wasm_bindgen]
@@ -144,11 +144,8 @@ impl CompiledRule {
     #[wasm_bindgen(constructor)]
     pub fn new(logic: &str, templating: bool) -> Result<CompiledRule, String> {
         let engine = make_engine(templating);
-        let compiled = engine.compile(logic).map_err(|e| err_to_json(&e))?;
-        Ok(CompiledRule {
-            engine,
-            compiled: Arc::new(compiled),
-        })
+        let compiled = engine.compile_arc(logic).map_err(|e| err_to_json(&e))?;
+        Ok(CompiledRule { engine, compiled })
     }
 
     /// Evaluate the compiled rule against data.
@@ -159,12 +156,12 @@ impl CompiledRule {
     /// # Returns
     /// JSON string result or merged structured `Error` JSON on failure.
     pub fn evaluate(&self, data: &str) -> Result<String, String> {
-        let arena = bumpalo::Bump::new();
+        let arena = datalogic_rs::bumpalo::Bump::new();
         let data_dv = DataValue::from_str(data, &arena)
             .map_err(|e| input_err_to_json("parse-data", format!("{:?}", e)))?;
         let result = self
             .engine
-            .evaluate(&*self.compiled, data_dv, &arena)
+            .evaluate(&self.compiled, data_dv, &arena)
             .map_err(|e| err_to_json(&e))?;
         Ok(result.to_string())
     }

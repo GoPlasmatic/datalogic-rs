@@ -31,10 +31,14 @@ function parseStructuredError(err: unknown, fallbackMessage: string): Structured
   return { type: 'Unknown', message: raw };
 }
 
+// Mirrors `pkg/web/datalogic_wasm.d.ts` — kept hand-rolled so this file
+// does not depend on the WASM .d.ts being regenerated to typecheck. The
+// boolean third arg is `templating` in v5 (renamed from v4's
+// `preserve_structure`); behaviour is identical.
 interface WasmModule {
-  evaluateStructured: (logic: string, data: string, preserve_structure: boolean) => string;
-  evaluateWithTraceStructured: (logic: string, data: string, preserve_structure: boolean) => string;
-  CompiledRule: new (logic: string, preserve_structure: boolean) => {
+  evaluateStructured: (logic: string, data: string, templating: boolean) => string;
+  evaluateWithTraceStructured: (logic: string, data: string, templating: boolean) => string;
+  CompiledRule: new (logic: string, templating: boolean) => {
     evaluateStructured: (data: string) => string;
     free: () => void;
   };

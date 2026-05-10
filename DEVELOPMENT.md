@@ -80,7 +80,6 @@ for the full table.
 ```bash
 cd packages/wasm
 ./build.sh               # builds web, bundler, and nodejs targets
-./publish.sh             # only used by CI; talks to npm
 ```
 
 The crate is its own Cargo workspace (see ARCHITECTURE.md for why), so
@@ -92,11 +91,12 @@ The crate is its own Cargo workspace (see ARCHITECTURE.md for why), so
 ```bash
 cd packages/ui
 npm install
-npm run dev              # local playground, hot reload
+npm run dev              # local playground, hot reload (auto-syncs WASM)
 npm run build            # standalone playground (dist/)
 npm run build:lib        # publishable component (dist/)
 npm run build:embed      # embeddable widget for the docs site (dist-embed/)
 npm run lint
+npm run sync-wasm        # manually re-copy ../wasm/pkg/ → vendor/datalogic/
 ```
 
 Three Vite configs power the three build modes:
@@ -105,9 +105,23 @@ Three Vite configs power the three build modes:
 - `vite.lib.config.ts` — `@goplasmatic/datalogic-ui` library bundle
 - `vite.embed.config.ts` — embeddable widget for docs
 
-If you change the Rust core, rebuild WASM (`cd packages/wasm && ./build.sh`)
-before reloading the UI dev server — the linked package picks up the new
-artifacts automatically.
+The WASM dep is vendored under `packages/ui/vendor/datalogic/` (gitignored),
+synced from `packages/wasm/pkg/` by `sync-wasm`. The `predev` and `prebuild*`
+hooks run it automatically, so the typical loop is just:
+
+```bash
+cd packages/wasm && ./build.sh    # rebuild after Rust changes
+cd ../ui && npm run dev           # predev re-vendors the fresh pkg/
+```
+
+## Releases
+
+All publishing flows through `.github/workflows/release.yml`, triggered by
+pushing a `v*` tag whose version matches `packages/core/Cargo.toml`. The
+workflow validates → publishes the crate to crates.io → builds and publishes
+`@goplasmatic/datalogic` and `@goplasmatic/datalogic-ui` to npm → cuts the
+GitHub Release. There are no local publish scripts; do not run `npm publish`
+or `cargo publish` by hand.
 
 ## `packages/benchmark` — performance harness
 
