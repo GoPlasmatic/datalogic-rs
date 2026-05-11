@@ -1,0 +1,149 @@
+name: Python Release
+
+# Triggered by `python-v*` tags so the binding can ship independently of
+# the core crate (which is gated by `v*` tags via release.yml).
+on:
+  push:
+    tags:
+      - 'python-v*'
+  # Manual dispatch for branch-based wheel build dry-runs (no publish).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from packages/python/Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' packages/python/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "packages/python/Cargo.toml version: $VERSION"
+
+      # pyproject.toml carries its own version; the publish job reads from
+      # there. Drift between Cargo.toml and pyproject.toml would publish
+      # mismatched metadata (Cargo binary version vs PyPI distribution
+      # version), so fail fast.
+      - name: Confirm pyproject.toml matches
+        run: |
+          PYVER=$(grep '^version = ' packages/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "$PYVER" != "$VERSION" ]; then
+            echo "::error::pyproject.toml version $PYVER does not match Cargo.toml version $VERSION"
+            exit 1
+          fi
+          echo "pyproject.toml version $PYVER matches Cargo.toml"
+
+      - name: Validate tag matches version (skip on workflow_dispatch)
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#python-v}"
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "$TAG_VERSION" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match packages/python/Cargo.toml version $VERSION"
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches packages/python/Cargo.toml version $VERSION"
+
+  build-wheels:
+    name: Build wheels (${{ matrix.target.os }} / ${{ matrix.target.arch }} / ${{ matrix.target.libc }})
+    needs: validate
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # Linux glibc (manylinux2014)
+          - { os: linux, arch: x86_64,  libc: manylinux,    runner: ubuntu-latest, target: x86_64-unknown-linux-gnu,    manylinux: "2014" }
+          - { os: linux, arch: aarch64, libc: manylinux,    runner: ubuntu-latest, target: aarch64-unknown-linux-gnu,   manylinux: "2014" }
+          # Linux musl (Alpine / distroless)
+          - { os: linux, arch: x86_64,  libc: musllinux,    runner: ubuntu-latest, target: x86_64-unknown-linux-musl,   manylinux: "musllinux_1_2" }
+          - { os: linux, arch: aarch64, libc: musllinux,    runner: ubuntu-latest, target: aarch64-unknown-linux-musl,  manylinux: "musllinux_1_2" }
+          # macOS
+          - { os: macos, arch: x86_64,  libc: "",            runner: macos-13,      target: x86_64-apple-darwin,         manylinux: "off" }
+          - { os: macos, arch: arm64,   libc: "",            runner: macos-14,      target: aarch64-apple-darwin,        manylinux: "off" }
+          # Windows
+          - { os: windows, arch: x86_64, libc: "",            runner: windows-latest, target: x86_64-pc-windows-msvc,    manylinux: "off" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          # Pin maturin so a release months from now produces the same
+          # wheels. Bump deliberately when needed.
+          maturin-version: "1.7.4"
+          working-directory: packages/python
+          target: ${{ matrix.target.target }}
+          args: --release --out dist
+          # `manylinux` ALSO drives musllinux selection; the action
+          # interprets values like "musllinux_1_2" as a musllinux build.
+          manylinux: ${{ matrix.target.manylinux }}
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ matrix.target.libc }}
+          path: packages/python/dist/*.whl
+
+  build-sdist:
+    name: Build sdist
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: "1.7.4"
+          working-directory: packages/python
+          command: sdist
+          args: --out dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: packages/python/dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    # Publish only on tag push, not workflow_dispatch — manual runs are for
+    # dry-runs only.
+    if: github.event_name == 'push'
+    needs: [validate, build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    # `pypi` GitHub Environment provides the manual approval gate (configure
+    # in repo settings → Environments → pypi → required reviewers). Without
+    # an approval, a stray tag push won't publish unattended.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/datalogic
+    # OIDC trusted publishing — requires PyPI to have a publisher
+    # configured for this repo + workflow + environment. No API token used.
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # `skip-existing` avoids a hard failure if a wheel was already
+          # uploaded by an earlier (partial) run for the same version.
+          skip-existing: true

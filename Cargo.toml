@@ -6,10 +6,13 @@ members = [
 ]
 # `packages/wasm` defines its own `[workspace]` so wasm-pack can apply its
 # WASM-specific `[profile.release]` (opt-level "z", lto, panic = "abort")
-# without contaminating the rest of the tree. `packages/ui` is a Node
-# package and is invisible to Cargo regardless.
+# without contaminating the rest of the tree. `packages/python` is excluded
+# so contributors don't need a Python toolchain to run `cargo test
+# --workspace` and so the `cdylib` artifact doesn't slow down the default
+# build. `packages/ui` is a Node package and is invisible to Cargo regardless.
 exclude = [
     "packages/wasm",
+    "packages/python",
     "packages/ui",
 ]
 

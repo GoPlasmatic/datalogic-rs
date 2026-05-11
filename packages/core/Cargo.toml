@@ -56,24 +56,6 @@ ext-array = []
 ext-control = []
 error-handling = []
 ext-math = []
-# `wasm` is the umbrella feature the `datalogic-wasm` crate enables. It must
-# include every operator family the JS/UI playground exposes — keeping it in
-# sync with the UI palette is what makes `try`, `throw`, `switch`, `match`,
-# `??`, `type`, `length`, `upper`/`lower`/`trim`/`split`/`starts_with`/
-# `ends_with`, `sort`, `slice`, `exists`, `abs`/`ceil`/`floor` actually
-# resolve at runtime instead of returning `UnknownOperator`. The pure-Rust
-# crate keeps these gated for callers that want a smaller surface; the
-# WASM/UI consumer wants them all.
-wasm = [
-    "datetime",
-    "trace",
-    "templating",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-control",
-    "ext-math",
-]
 
 [dependencies]
 # Floors below are the **minimum** versions we actually compile against.

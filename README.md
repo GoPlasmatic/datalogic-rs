@@ -38,8 +38,12 @@ This is a monorepo. Every package lives under `packages/`:
 |----------------------------------------------------------------------------------------|-----------------------|-------------|--------------------------------------|
 | [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                                | `packages/core`       | Rust        | `cargo add datalogic-rs`             |
 | [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic)       | `packages/wasm`       | Rust → WASM | `npm i @goplasmatic/datalogic`       |
+| [`datalogic`](https://pypi.org/project/datalogic/)                                     | `packages/python`     | Rust → Python | `pip install datalogic`            |
 | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `packages/ui`         | React       | `npm i @goplasmatic/datalogic-ui`    |
 | `datalogic-bench` (internal)                                                           | `tools/benchmark`  | Rust        | _dev-only, not published_            |
+
+For the convention every language binding follows (layout, build, CI,
+release tag scheme), see [packages/BINDINGS.md](./packages/BINDINGS.md).
 
 For the cross-package design, dependency flow, and feature-flag matrix,
 see [ARCHITECTURE.md](./ARCHITECTURE.md). For local setup, build order,
@@ -49,6 +53,7 @@ and per-package commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 - **JSONLogic in a Rust app** → `packages/core` (`cargo add datalogic-rs`)
 - **JSONLogic in Node.js or the browser** → `packages/wasm` (`npm i @goplasmatic/datalogic`)
+- **JSONLogic in a Python service or data pipeline** → `packages/python` (`pip install datalogic`)
 - **Visual rule editor / debugger in a React app** → `packages/ui` (`npm i @goplasmatic/datalogic-ui`)
 - **Compare engines or measure performance** → `tools/benchmark` (dev-only, not published)
 
