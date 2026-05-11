@@ -33,16 +33,16 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/wasm/Cargo.toml') }}
+            bindings/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-wasm-
 
       - name: Build WASM
-        run: cd packages/wasm && ./build.sh
+        run: cd bindings/wasm && ./build.sh
 
       - name: Upload wasm-pkg artifact
         uses: actions/upload-artifact@v4
         with:
           name: wasm-pkg
-          path: packages/wasm/pkg/
+          path: bindings/wasm/pkg/
           if-no-files-found: error

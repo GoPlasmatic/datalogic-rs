@@ -23,7 +23,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wasm-pkg
-          path: packages/wasm/pkg/
+          path: bindings/wasm/pkg/
 
       - uses: actions/setup-node@v4
         with:
@@ -32,7 +32,7 @@ jobs:
 
       - name: Sync UI version + WASM dep
         run: |
-          cd packages/ui
+          cd ui
           # Bump UI's own version
           npm version "${{ inputs.version }}" --no-git-tag-version --allow-same-version
           # Pin @goplasmatic/datalogic to the same version we're publishing
@@ -41,19 +41,19 @@ jobs:
 
       # Wire the freshly-built local WASM artifact into ui/node_modules
       # BEFORE running npm install. With the symlink present and its
-      # version matching packages/ui/package.json's pin, `npm install`
+      # version matching ui/package.json's pin, `npm install`
       # preserves it instead of fetching from the registry — critical
       # because we run BEFORE publish-wasm.
       - name: Link local WASM package into UI
         run: |
-          cd packages/wasm/pkg && npm link
+          cd bindings/wasm/pkg && npm link
           cd ../../ui && npm link @goplasmatic/datalogic
 
       - name: Install UI dependencies
-        run: cd packages/ui && npm install
+        run: cd ui && npm install
 
       - name: Build UI library
-        run: cd packages/ui && npm run build:lib
+        run: cd ui && npm run build:lib
 
       # Bundle only the files `npm publish` actually packs — everything
       # listed in package.json's `files` field plus the package manifest,
@@ -65,9 +65,9 @@ jobs:
         with:
           name: ui-package
           path: |
-            packages/ui/package.json
-            packages/ui/package-lock.json
-            packages/ui/README.md
-            packages/ui/LICENSE
-            packages/ui/dist/
+            ui/package.json
+            ui/package-lock.json
+            ui/README.md
+            ui/LICENSE
+            ui/dist/
           if-no-files-found: error

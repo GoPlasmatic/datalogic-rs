@@ -169,7 +169,7 @@ Headline takeaways:
 One-time setup for the Node subjects:
 
 ```bash
-cd packages/wasm && ./build.sh
+cd bindings/wasm && ./build.sh
 cd tools/benchmark/runners && npm install
 ```
 

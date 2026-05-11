@@ -4,31 +4,31 @@ This monorepo ships one logical product — a JSONLogic engine — across three
 runtime targets that build on each other:
 
 ```
-                  +-------------------+
-                  |  packages/core    |   Rust crate -> crates.io
-                  |  datalogic-rs     |   the engine; everything else wraps it
-                  +---------+---------+
+              +---------------------------+
+              |  crates/datalogic-rs      |   Rust crate -> crates.io
+              |  datalogic-rs             |   the engine; everything else wraps it
+              +-------------+-------------+
                             |
-                  uses path = "../core"
-                            |
-                            v
-                  +-------------------+
-                  |  packages/wasm    |   wasm-bindgen wrapper -> @goplasmatic/datalogic (npm)
-                  |  datalogic-wasm   |   wasm-pack builds three targets: web/bundler/nodejs
-                  +---------+---------+
-                            |
-                  consumed via npm link / npm install
+              uses path = "../../crates/datalogic-rs"
                             |
                             v
-                  +-------------------+
-                  |  packages/ui      |   React component -> @goplasmatic/datalogic-ui (npm)
-                  |                   |   visual debugger + playground
-                  +-------------------+
+              +---------------------------+
+              |  bindings/wasm            |   wasm-bindgen wrapper -> @goplasmatic/datalogic (npm)
+              |  datalogic-wasm           |   wasm-pack builds three targets: web/bundler/nodejs
+              +-------------+-------------+
+                            |
+              consumed via npm link / npm install
+                            |
+                            v
+              +---------------------------+
+              |  ui                       |   React component -> @goplasmatic/datalogic-ui (npm)
+              |                           |   visual debugger + playground
+              +---------------------------+
 
-                  +-------------------+
-                  |  tools/benchmark |   Rust dev binary, NOT published
-                  |  datalogic-bench    |   `self` (single-engine) and `compare` (cross-library)
-                  +-------------------+
+              +---------------------------+
+              |  tools/benchmark          |   Rust dev binary, NOT published
+              |  datalogic-bench          |   `self` (single-engine) and `compare` (cross-library)
+              +---------------------------+
 ```
 
 The Rust core is the source of truth for behaviour. WASM is a thin FFI shell
@@ -40,19 +40,19 @@ visualisation, and trace inspection on top.
 
 The repo root holds a Cargo workspace with two members:
 
-- `packages/core` — the published crate, `datalogic-rs`.
+- `crates/datalogic-rs` — the published crate, `datalogic-rs`.
 - `tools/benchmark` — dev-only binaries (`self`, `compare`), `publish = false`.
 
-`packages/wasm` declares its own `[workspace]` table and is excluded from the
+`bindings/wasm` declares its own `[workspace]` table and is excluded from the
 parent workspace. This is deliberate: `wasm-pack` needs the WASM-specific
 release profile (`opt-level = "z"`, `lto = true`, `panic = "abort"`,
 `strip = true`), and Cargo only honours `[profile.*]` at a workspace root.
 Keeping WASM as its own workspace lets it apply that profile without
 affecting builds of `core` or `benchmark`.
 
-`packages/ui` is a Node package. Cargo ignores it.
+`ui` is a Node package. Cargo ignores it.
 
-## Two-phase evaluation (in `packages/core`)
+## Two-phase evaluation (in `crates/datalogic-rs`)
 
 1. **Compile** — `Engine::compile` parses JSON logic into a `Logic` tree.
    String operator names are resolved to an `OpCode` enum so dispatch at
@@ -84,7 +84,7 @@ opt in via their dependency line.
 | `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, `tracing` example        |
 | `error-handling`  | `try` / `throw` operators                                         | `error_handling` example       |
 | `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | opt-in per consumer            |
-| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `packages/wasm` only           |
+| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only           |
 
 The `datalogic-bench` crate enables `serde_json` because it reads the
 JSON test-suite files via `serde_json::Value`; it does not need `wasm`
@@ -94,25 +94,25 @@ or `templating`.
 
 | Concern                        | Path                                              |
 |--------------------------------|---------------------------------------------------|
-| Public Rust API                | `packages/core/src/lib.rs`                        |
-| Engine + dispatcher            | `packages/core/src/engine/`                       |
-| Compile pipeline + optimiser   | `packages/core/src/compile/`                      |
-| OpCode enum (59 builtins)      | `packages/core/src/opcode.rs`                     |
-| Operator implementations       | `packages/core/src/operators/`                    |
-| Arena value types & context    | `packages/core/src/arena/`                        |
-| Rust integration tests         | `packages/core/tests/`                            |
-| JSONLogic JSON test suites     | `packages/core/tests/suites/`                     |
-| Executable examples            | `packages/core/examples/`                         |
-| WASM FFI surface               | `packages/wasm/src/lib.rs`                        |
-| WASM build script              | `packages/wasm/build.sh`                          |
-| React editor + debugger        | `packages/ui/src/components/logic-editor/`        |
+| Public Rust API                | `crates/datalogic-rs/src/lib.rs`                        |
+| Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                       |
+| Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                      |
+| OpCode enum (59 builtins)      | `crates/datalogic-rs/src/opcode.rs`                     |
+| Operator implementations       | `crates/datalogic-rs/src/operators/`                    |
+| Arena value types & context    | `crates/datalogic-rs/src/arena/`                        |
+| Rust integration tests         | `crates/datalogic-rs/tests/`                            |
+| JSONLogic JSON test suites     | `crates/datalogic-rs/tests/suites/`                     |
+| Executable examples            | `crates/datalogic-rs/examples/`                         |
+| WASM FFI surface               | `bindings/wasm/src/lib.rs`                        |
+| WASM build script              | `bindings/wasm/build.sh`                          |
+| React editor + debugger        | `ui/src/components/logic-editor/`        |
 | Benchmark harness              | `tools/benchmark/src/`                         |
 
 For day-to-day commands (build, test, run, link), see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ## Compile-time optimizations
 
-The compile pipeline (`packages/core/src/compile/optimize/`) runs three
+The compile pipeline (`crates/datalogic-rs/src/compile/optimize/`) runs three
 passes to a fixpoint: constant folding, dead-code elimination, and
 strength reduction. Each pass is a pure tree transform with its own
 test suite, and adding another is a matter of dropping a file in the
@@ -136,7 +136,7 @@ pass to fire — notably:
   invariant once outside the loop.
 - `evaluate_invariant_no_push` short-circuits any predicate-side node
   that doesn't reference the iteration scope.
-- `dispatch_node` (`packages/core/src/engine/mod.rs`) carries a
+- `dispatch_node` (`crates/datalogic-rs/src/engine/mod.rs`) carries a
   literal fast path: trivial `Value` nodes (`Null`, `Bool`, numbers,
   empty primitives) return their precomputed `&'static DataValue<'static>`
   directly without entering the dispatch match.

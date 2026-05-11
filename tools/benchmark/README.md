@@ -11,7 +11,7 @@ Two binaries share a common suite loader and reporter (`src/lib.rs`):
 | `self`    | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
 | `compare` | Cross-library **matrix** — runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
 
-Both read JSON suites from `packages/core/tests/suites/`. `self` writes a
+Both read JSON suites from `crates/datalogic-rs/tests/suites/`. `self` writes a
 JSON report to `tools/benchmark/output/` (gitignored); `compare` only
 prints to stdout.
 
@@ -76,7 +76,7 @@ package but exercise different APIs (interpreter vs build-then-call).
 
 ```bash
 # Build the WASM that the dlrs:wasm column points at:
-cd packages/wasm && ./build.sh
+cd bindings/wasm && ./build.sh
 
 # Install the runner deps (json-logic-js + a file: link to the wasm pkg):
 cd tools/benchmark/runners && npm install

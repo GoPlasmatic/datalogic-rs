@@ -15,9 +15,9 @@ publish = false
 # do them, the bench just hadn't opted in. The dlrs:wasm column
 # separately reflects whatever feature set is baked into the published
 # `@goplasmatic/datalogic` binary (currently `wasm = datetime + trace
-# + templating` per `packages/wasm/Cargo.toml`), which is its own
+# + templating` per `bindings/wasm/Cargo.toml`), which is its own
 # distribution decision.
-datalogic-rs = { path = "../../packages/core", features = [
+datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "serde_json",
     "templating",
     "datetime",

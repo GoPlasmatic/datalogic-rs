@@ -259,7 +259,7 @@ const DataLogicEditor = dynamic(
 ```bash
 cargo install wasm-pack
 rustup target add wasm32-unknown-unknown
-cd packages/wasm && ./build.sh
+cd bindings/wasm && ./build.sh
 ```
 
 ### TypeScript errors with imports

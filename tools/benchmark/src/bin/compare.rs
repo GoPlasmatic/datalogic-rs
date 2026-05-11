@@ -519,7 +519,7 @@ fn print_help() {
          \x20 - dlrs:wasm        @goplasmatic/datalogic via Node\n\
          \x20 - json-logic-js    jwadhams/json-logic-js via Node\n\n\
          To set up Node subjects:\n\
-         \x20 cd packages/wasm && ./build.sh\n\
+         \x20 cd bindings/wasm && ./build.sh\n\
          \x20 cd tools/benchmark/runners && npm install"
     );
 }
@@ -542,7 +542,7 @@ fn main() {
             eprintln!(
                 "error: {n} subject(s) unavailable: {names}\n\n\
                  To install Node subjects:\n  \
-                 cd packages/wasm && ./build.sh\n  \
+                 cd bindings/wasm && ./build.sh\n  \
                  cd tools/benchmark/runners && npm install\n\n\
                  Or pass --allow-missing-subjects to render the matrix without them.",
                 n = missing.len(),

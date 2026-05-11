@@ -35,7 +35,7 @@ jobs:
           # Pin maturin so a release months from now produces the same
           # wheels. Bump deliberately when needed.
           maturin-version: "1.7.4"
-          working-directory: packages/python
+          working-directory: bindings/python
           target: ${{ matrix.target.target }}
           args: --release --out dist
           # `manylinux` doubles as the musllinux selector — values like
@@ -46,7 +46,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-wheels-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ matrix.target.libc }}
-          path: packages/python/dist/*.whl
+          path: bindings/python/dist/*.whl
 
   sdist:
     name: Build sdist
@@ -58,7 +58,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           maturin-version: "1.7.4"
-          working-directory: packages/python
+          working-directory: bindings/python
           command: sdist
           args: --out dist
 
@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-sdist
-          path: packages/python/dist/*.tar.gz
+          path: bindings/python/dist/*.tar.gz
 
   # Run pytest against a build of the binding on Linux. Logical tests
   # (error attrs, dict/string conversion, session semantics) are
@@ -91,17 +91,17 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/python/target/
-          key: ${{ runner.os }}-python-${{ hashFiles('packages/python/Cargo.toml') }}
+            bindings/python/target/
+          key: ${{ runner.os }}-python-${{ hashFiles('bindings/python/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-python-
 
       - name: Install build + test deps
         run: pip install --upgrade pip maturin pytest
 
       - name: Build + install binding
-        working-directory: packages/python
+        working-directory: bindings/python
         run: maturin develop --release
 
       - name: Run pytest
-        working-directory: packages/python
+        working-directory: bindings/python
         run: pytest -v

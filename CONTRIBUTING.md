@@ -1,14 +1,17 @@
 # Contributing to datalogic-rs
 
 Thanks for your interest in contributing! This is a Cargo workspace + npm
-monorepo. The packages live under `packages/`:
+monorepo. Top-level layout:
 
 | Path                  | Package                          | Publishes to |
 |-----------------------|----------------------------------|--------------|
-| `packages/core`       | `datalogic-rs` (Rust)            | crates.io    |
-| `packages/wasm`       | `@goplasmatic/datalogic`         | npm          |
-| `packages/ui`         | `@goplasmatic/datalogic-ui`      | npm          |
-| `tools/benchmark`  | `datalogic-bench` (dev-only)     | —            |
+| `crates/datalogic-rs` | `datalogic-rs` (Rust)            | crates.io    |
+| `bindings/wasm`       | `@goplasmatic/datalogic`         | npm          |
+| `bindings/python`     | `datalogic-py`                   | PyPI         |
+| `bindings/c`          | `datalogic-c` (C ABI)            | (in-tree)    |
+| `bindings/go`         | `datalogic-go` (cgo)             | Go modules   |
+| `ui`                  | `@goplasmatic/datalogic-ui`      | npm          |
+| `tools/benchmark`     | `datalogic-bench` (dev-only)     | —            |
 
 For a full picture of how the packages depend on each other, see
 [ARCHITECTURE.md](./ARCHITECTURE.md). For day-to-day commands, the build
@@ -26,7 +29,7 @@ change in the React debugger.
 - **Rust** 1.85 or newer (`rustup update stable`) — the core crate uses `edition = "2024"`
 - **wasm-pack** — only needed if you are rebuilding WASM
   (`curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`)
-- **Node.js** 20+ — only needed for `packages/ui`
+- **Node.js** 20+ — only needed for `ui`
 - **mdbook** — only needed if you are building the docs site
   (`cargo install mdbook`)
 
@@ -41,9 +44,9 @@ cd datalogic-rs
 cargo test --workspace --all-features
 
 # Full workflow (Rust → WASM → UI), see DEVELOPMENT.md for the npm link step
-cd packages/wasm && ./build.sh
-cd ../wasm/pkg && npm link
-cd ../../ui && npm link @goplasmatic/datalogic && npm install && npm run dev
+cd bindings/wasm && ./build.sh
+cd pkg && npm link
+cd ../../../ui && npm link @goplasmatic/datalogic && npm install && npm run dev
 ```
 
 ---
@@ -59,13 +62,13 @@ cd ../../ui && npm link @goplasmatic/datalogic && npm install && npm run dev
 
 ## Writing tests
 
-There are two complementary test systems in `packages/core/tests/`:
+There are two complementary test systems in `crates/datalogic-rs/tests/`:
 
-- **Rust integration tests** in `packages/core/tests/*.rs` (e.g.
+- **Rust integration tests** in `crates/datalogic-rs/tests/*.rs` (e.g.
   `basic_test.rs`, `config_test.rs`, `trace_test.rs`). Use these for
   engine-level behaviour, configuration, tracing, custom operators, and
   anything that needs Rust-specific setup.
-- **JSONLogic suites** in `packages/core/tests/suites/*.json`. Use these
+- **JSONLogic suites** in `crates/datalogic-rs/tests/suites/*.json`. Use these
   for any new JSONLogic operator or edge case — they double as the
   canonical behaviour spec and are replayable in the playground.
 
@@ -81,7 +84,7 @@ A suite entry looks like:
 ```
 
 Error cases use `"error": { "type": "NaN" }` instead of `"result"`. See
-[packages/core/tests/README.md](./packages/core/tests/README.md) for the
+[crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md) for the
 full schema.
 
 ## Adding an operator
@@ -91,7 +94,7 @@ full schema.
   [DEVELOPMENT.md → Adding a built-in operator](./DEVELOPMENT.md#adding-a-built-in-operator).
 - **Custom operator** (your own application extends the engine): implement
   `CustomOperator`, register on `Engine::builder().add_operator(...)`. See
-  the [`custom_operator` example](./packages/core/examples/custom_operator.rs)
+  the [`custom_operator` example](./crates/datalogic-rs/examples/custom_operator.rs)
   and [Custom Operators in the docs site](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
 
 ## Debugging rules

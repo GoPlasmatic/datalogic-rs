@@ -1,0 +1,59 @@
+# `[workspace]` makes this crate its own workspace root for the same reason
+# `bindings/wasm` and `bindings/python` do: keeps the C ABI's binding deps
+# and `cdylib`/`staticlib` outputs from contaminating the root workspace's
+# `cargo test --workspace --all-features` path. The parent `Cargo.toml`
+# excludes this directory.
+[workspace]
+
+[package]
+name = "datalogic-c"
+version = "5.0.0"
+edition = "2024"
+description = "C ABI for the datalogic-rs JSONLogic engine — shared FFI surface for Go, PHP, JVM, and other C-FFI consumers"
+license = "Apache-2.0"
+repository = "https://github.com/GoPlasmatic/datalogic-rs"
+
+[lib]
+# `cdylib`    — the importable shared library (`.so`/`.dylib`/`.dll`)
+#               for cgo, PHP FFI, JNA, dlopen, etc.
+# `staticlib` — for consumers that want to statically link (e.g. a Go
+#               binary with a self-contained datalogic).
+# `rlib`      — lets `tests/smoke.rs` (and downstream Rust crates) link
+#               the binding as a normal Rust dep and call the extern fns
+#               directly without going through dlopen.
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "datalogic_c"
+
+[dependencies]
+# Feature set mirrors `bindings/python` so a rule that runs from Python
+# also runs through the C ABI without surprise. `trace` is omitted — the
+# C surface doesn't expose tracing in v1; add it back if/when we wrap
+# `TracedSession`.
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+    "serde_json",
+    "datetime",
+    "templating",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-control",
+    "ext-math",
+] }
+serde_json = "1.0"
+
+[build-dependencies]
+# `cbindgen` regenerates `include/datalogic.h` on every build. The
+# generated header is committed so downstream C/Go/PHP/JVM consumers
+# don't need cbindgen on their box.
+#
+# Pinned to 0.29+ because earlier versions don't recognise the Rust 2024
+# `#[unsafe(no_mangle)]` attribute syntax we use on the `extern "C"`
+# entry points — they silently skip the symbols and produce an empty
+# header instead of a parse error.
+cbindgen = "0.29"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+# Line tables let perf tools resolve frames without bloating the .so.
+debug = "line-tables-only"

@@ -33,7 +33,7 @@ name: Release
 # anything ships to a registry, and the publish jobs themselves just
 # download + push.
 #
-# The Go binding ships as a Git tag (`packages/go/vX.Y.Z`) rather than
+# The Go binding ships as a Git tag (`bindings/go/vX.Y.Z`) rather than
 # to a package registry — same gate applies. The C ABI matrix is
 # reusable: future PHP and JVM bindings will hang off the same
 # staticlib/cdylib outputs and slot into the same build-then-publish
@@ -75,19 +75,19 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(grep '^version = ' packages/core/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(grep '^version = ' crates/datalogic-rs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "packages/core/Cargo.toml version: $VERSION"
+          echo "crates/datalogic-rs/Cargo.toml version: $VERSION"
 
       - name: Validate tag matches version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           VERSION="${{ steps.version.outputs.version }}"
           if [ "$TAG_VERSION" != "$VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match packages/core/Cargo.toml version $VERSION"
+            echo "::error::Tag $GITHUB_REF_NAME does not match crates/datalogic-rs/Cargo.toml version $VERSION"
             exit 1
           fi
-          echo "Tag $GITHUB_REF_NAME matches packages/core/Cargo.toml version $VERSION"
+          echo "Tag $GITHUB_REF_NAME matches crates/datalogic-rs/Cargo.toml version $VERSION"
 
       # All bindings share the same `v*` tag as core, so their version
       # fields must agree. Catch any forgotten bump here, BEFORE core is
@@ -111,22 +111,22 @@ jobs:
           }
 
           # Cargo.toml `version = "..."` for each Rust-side binding.
-          for crate in packages/python/Cargo.toml \
-                       packages/wasm/Cargo.toml \
-                       packages/c/Cargo.toml; do
+          for crate in bindings/python/Cargo.toml \
+                       bindings/wasm/Cargo.toml \
+                       bindings/c/Cargo.toml; do
             v=$(grep '^version = ' "$crate" | head -1 | sed 's/version = "\(.*\)"/\1/')
             check "$crate" "$v" "$crate"
           done
 
           # Python distribution name (pyproject.toml) and UI npm package
           # (package.json) carry their own version field.
-          PY=$(grep '^version = ' packages/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          check "packages/python/pyproject.toml" "$PY" "packages/python/pyproject.toml"
+          PY=$(grep '^version = ' bindings/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          check "bindings/python/pyproject.toml" "$PY" "bindings/python/pyproject.toml"
 
-          UI=$(node -p "require('./packages/ui/package.json').version")
-          check "packages/ui/package.json" "$UI" "packages/ui/package.json"
+          UI=$(node -p "require('./ui/package.json').version")
+          check "ui/package.json" "$UI" "ui/package.json"
 
-          # Go module: version lives implicitly in the `packages/go/vX.Y.Z`
+          # Go module: version lives implicitly in the `bindings/go/vX.Y.Z`
           # tag pushed by publish-go — nothing in source to drift, so it's
           # not checked here.
 
@@ -150,7 +150,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check formatting
@@ -204,7 +204,7 @@ jobs:
 
       - name: Publish
         if: steps.check.outputs.skip != 'true'
-        run: cargo publish --manifest-path packages/core/Cargo.toml
+        run: cargo publish --manifest-path crates/datalogic-rs/Cargo.toml
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
@@ -236,7 +236,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wasm-pkg
-          path: packages/wasm/pkg/
+          path: bindings/wasm/pkg/
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -258,7 +258,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd packages/wasm/pkg && npm publish --access public
+        run: cd bindings/wasm/pkg && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -278,7 +278,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download ui-package artifact
-        # The artifact tarball roots with `packages/ui/...`. Default
+        # The artifact tarball roots with `ui/...`. Default
         # `path: .` reconstructs that tree under the runner root.
         uses: actions/download-artifact@v4
         with:
@@ -304,7 +304,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd packages/ui && npm publish --access public
+        run: cd ui && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -377,41 +377,41 @@ jobs:
           # so merging puts every platform dir directly under artifacts/.
           merge-multiple: true
 
-      - name: Stage staticlibs into packages/go/lib/
+      - name: Stage staticlibs into bindings/go/lib/
         run: |
-          mkdir -p packages/go/lib
+          mkdir -p bindings/go/lib
           for dir in artifacts/*/; do
             name=$(basename "$dir")
-            mkdir -p "packages/go/lib/${name}"
-            cp "${dir}/libdatalogic_c.a" "packages/go/lib/${name}/"
+            mkdir -p "bindings/go/lib/${name}"
+            cp "${dir}/libdatalogic_c.a" "bindings/go/lib/${name}/"
           done
           echo "Staged platform directories:"
-          ls packages/go/lib/
+          ls bindings/go/lib/
 
-      - name: Stage header into packages/go/include/
+      - name: Stage header into bindings/go/include/
         # The cbindgen-generated header is platform-agnostic — it has no
         # #ifdef'd content — so we generate it once on this Linux runner
         # rather than collecting it from every matrix output.
         run: |
-          cargo build --release --manifest-path packages/c/Cargo.toml
-          mkdir -p packages/go/include
-          cp packages/c/include/datalogic.h packages/go/include/
+          cargo build --release --manifest-path bindings/c/Cargo.toml
+          mkdir -p bindings/go/include
+          cp bindings/c/include/datalogic.h bindings/go/include/
 
       - name: Commit and push Go module tag
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          TAG="packages/go/v${VERSION}"
+          TAG="bindings/go/v${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # `-f` because packages/go/.gitignore excludes these dirs on main.
+          # `-f` because bindings/go/.gitignore excludes these dirs on main.
           # The release tag is the only place they ever exist in the tree.
-          git add -f packages/go/lib/ packages/go/include/
+          git add -f bindings/go/lib/ bindings/go/include/
           git commit -m "release(go): stage artifacts for ${TAG}"
           git tag "${TAG}"
           # Push only the tag — the synthetic commit becomes reachable
           # through it but never lands on a branch. Main stays binary-free.
           git push origin "${TAG}"
-          echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/packages/go@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
+          echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/bindings/go@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
 
   github-release:
     name: Create GitHub Release

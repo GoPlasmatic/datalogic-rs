@@ -28,8 +28,8 @@
 - [ ] `cargo fmt --all` passes
 - [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` passes
 - [ ] `cargo test --workspace --all-features` passes
-- [ ] Added/updated JSON suite under `packages/core/tests/suites/` (for
+- [ ] Added/updated JSON suite under `crates/datalogic-rs/tests/suites/` (for
       operator changes)
-- [ ] Rebuilt WASM (`cd packages/wasm && ./build.sh`) and verified UI /
+- [ ] Rebuilt WASM (`cd bindings/wasm && ./build.sh`) and verified UI /
       JS still work (only if you touched the WASM crate or the public
       Rust API)

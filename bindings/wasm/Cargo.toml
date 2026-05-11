@@ -1,0 +1,63 @@
+# `[workspace]` makes this crate its own workspace root so wasm-pack can
+# apply the WASM-specific `[profile.release]` below (opt-level "z", lto,
+# panic = "abort") without contaminating the rest of the monorepo. The
+# parent `Cargo.toml` at the repo root excludes this path for the same
+# reason.
+[workspace]
+
+[package]
+name = "datalogic-wasm"
+version = "5.0.0"
+edition = "2024"
+description = "WebAssembly bindings for datalogic-rs JSONLogic engine"
+license = "Apache-2.0"
+repository = "https://github.com/GoPlasmatic/datalogic-rs"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# `path` resolves locally for in-repo builds; `version` resolves against
+# crates.io once `datalogic-rs 5.x` is published. Cargo prefers the path
+# when both are set, so this keeps developer builds against the local
+# tree while making the WASM crate publishable as a downstream of the
+# released core. Bump the requirement deliberately when the core API
+# breaks (i.e. on each major).
+# The `datalogic-rs` crate re-exports `bumpalo`, so this crate uses
+# `datalogic_rs::bumpalo` instead of pulling its own copy — keeps the
+# major version aligned automatically.
+# Feature list is inlined here (rather than via an umbrella feature on the
+# core crate) so the binding owns its operator surface and the core
+# Cargo.toml stays free of binding-specific bundling. Keep this in sync
+# with the UI palette — every operator family the JS/UI playground exposes
+# (`try`, `throw`, `switch`, `match`, `??`, `type`, `length`,
+# `upper`/`lower`/`trim`/`split`/`starts_with`/`ends_with`, `sort`,
+# `slice`, `exists`, `abs`/`ceil`/`floor`) needs the matching feature here
+# or it returns `UnknownOperator` at runtime.
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+    "datetime",
+    "trace",
+    "templating",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-control",
+    "ext-math",
+] }
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+console_error_panic_hook = "0.1"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

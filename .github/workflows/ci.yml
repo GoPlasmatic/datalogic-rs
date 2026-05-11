@@ -42,7 +42,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check formatting
@@ -67,7 +67,7 @@ jobs:
       - name: Build examples (all features)
         # Catches example drift on any feature-gated example
         # (serde_json / templating / datetime / trace / error-handling).
-        # Each `[[example]]` in packages/core/Cargo.toml has
+        # Each `[[example]]` in crates/datalogic-rs/Cargo.toml has
         # `required-features = [...]`, so only `--all-features` reaches
         # every example.
         run: cargo build -p datalogic-rs --examples --all-features
@@ -100,7 +100,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'packages/core/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-msrv-
 
       # Build only — test infra (proc-macros, tooling) often outgrows MSRV
@@ -181,34 +181,34 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/c/target/
-          key: ${{ runner.os }}-${{ matrix.platform.arch }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
+            bindings/c/target/
+          key: ${{ runner.os }}-${{ matrix.platform.arch }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
           restore-keys: ${{ runner.os }}-${{ matrix.platform.arch }}-c-
 
       - name: Build C ABI staticlib
-        run: cargo build --release --manifest-path packages/c/Cargo.toml --target ${{ matrix.platform.cargo_target }}
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.platform.cargo_target }}
 
       # Stage into the cgo-build-tagged layout. The matching cgo_<os>_<arch>.go
       # file expects exactly ${SRCDIR}/lib/<os>_<arch>/libdatalogic_c.a.
-      - name: Stage staticlib + header into packages/go/
+      - name: Stage staticlib + header into bindings/go/
         shell: bash
         run: |
           PLATFORM=${{ matrix.platform.os }}_${{ matrix.platform.arch }}
-          mkdir -p packages/go/lib/$PLATFORM packages/go/include
-          cp packages/c/target/${{ matrix.platform.cargo_target }}/release/libdatalogic_c.a packages/go/lib/$PLATFORM/
-          cp packages/c/include/datalogic.h packages/go/include/
+          mkdir -p bindings/go/lib/$PLATFORM bindings/go/include
+          cp bindings/c/target/${{ matrix.platform.cargo_target }}/release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
+          cp bindings/c/include/datalogic.h bindings/go/include/
 
       - name: go vet
         shell: bash
-        working-directory: packages/go
+        working-directory: bindings/go
         run: go vet ./...
 
       - name: go test
         shell: bash
-        working-directory: packages/go
+        working-directory: bindings/go
         run: go test -v ./...
 
-  # C ABI smoke. packages/c is excluded from the root workspace so
+  # C ABI smoke. bindings/c is excluded from the root workspace so
   # `cargo test --workspace` in the check job skips it — without this
   # job, a regression in the C ABI's extern "C" surface (NULL handling,
   # error-state lifetime, cbindgen header drift) wouldn't surface until
@@ -229,8 +229,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/c/target/
-          key: ${{ runner.os }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
+            bindings/c/target/
+          key: ${{ runner.os }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
           restore-keys: ${{ runner.os }}-c-
 
       # Builds the cdylib + staticlib + rlib, generates the cbindgen header,
@@ -238,7 +238,7 @@ jobs:
       # end-to-end (version, apply, compile, session, parse error, runtime
       # error with path, NULL-safety).
       - name: Build + test C ABI
-        run: cargo test --manifest-path packages/c/Cargo.toml
+        run: cargo test --manifest-path bindings/c/Cargo.toml
 
       - name: Verify cbindgen-generated header is up to date
         # The header is committed; the build regenerates it. If the
@@ -246,8 +246,8 @@ jobs:
         # from the Rust source — fail loudly so we don't ship a stale
         # header to downstream consumers.
         run: |
-          if ! git diff --exit-code packages/c/include/datalogic.h; then
-            echo "::error::packages/c/include/datalogic.h is out of sync with src/. Run 'cargo build -p datalogic-c' and commit the result."
+          if ! git diff --exit-code bindings/c/include/datalogic.h; then
+            echo "::error::bindings/c/include/datalogic.h is out of sync with src/. Run 'cargo build -p datalogic-c' and commit the result."
             exit 1
           fi
 
@@ -277,12 +277,12 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/wasm/Cargo.toml') }}
+            bindings/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-wasm-
 
       - name: Build WASM
-        run: cd packages/wasm && ./build.sh
+        run: cd bindings/wasm && ./build.sh
 
       # Hand the built pkg/ to the ui-build job below — saves it the cost
       # of repeating the wasm build from scratch.
@@ -290,7 +290,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wasm-pkg
-          path: packages/wasm/pkg/
+          path: bindings/wasm/pkg/
           if-no-files-found: error
 
   # Python test. Builds the binding via `maturin develop` into a venv,
@@ -317,8 +317,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/python/target/
-          key: ${{ runner.os }}-python-${{ hashFiles('packages/python/Cargo.toml') }}
+            bindings/python/target/
+          key: ${{ runner.os }}-python-${{ hashFiles('bindings/python/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-python-
 
       - name: Install build + test deps
@@ -329,11 +329,11 @@ jobs:
       # debug builds of pyo3 + the engine's compile pass are slow enough
       # to dominate the test run.
       - name: Build + install binding
-        working-directory: packages/python
+        working-directory: bindings/python
         run: maturin develop --release
 
       - name: Run pytest
-        working-directory: packages/python
+        working-directory: bindings/python
         run: pytest -v
 
   # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic
@@ -355,21 +355,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wasm-pkg
-          path: packages/wasm/pkg/
+          path: bindings/wasm/pkg/
 
       # npm link semantics: the linked package's version takes precedence
       # at `npm install` time even if the registry has a different one.
       # Matches the release-time flow in publish-ui.
       - name: Link local WASM into UI
         run: |
-          cd packages/wasm/pkg && npm link
+          cd bindings/wasm/pkg && npm link
           cd ../../ui && npm link @goplasmatic/datalogic
 
       - name: Install UI dependencies
-        run: cd packages/ui && npm install
+        run: cd ui && npm install
 
       - name: Lint UI
-        run: cd packages/ui && npm run lint
+        run: cd ui && npm run lint
 
       - name: Build UI library
-        run: cd packages/ui && npm run build:lib
+        run: cd ui && npm run build:lib

@@ -50,28 +50,28 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            packages/c/target/
-          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
+            bindings/c/target/
+          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-
 
       - name: Build C ABI staticlib
-        run: cargo build --release --manifest-path packages/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
 
       # Stage straight into the package's lib/include layout so the
       # validation step uses exactly the paths the cgo build tags reference.
-      - name: Stage staticlib + header into packages/go/
+      - name: Stage staticlib + header into bindings/go/
         shell: bash
         run: |
           PLATFORM=${{ matrix.target.os }}_${{ matrix.target.arch }}
-          mkdir -p packages/go/lib/$PLATFORM packages/go/include
-          cp packages/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a packages/go/lib/$PLATFORM/
-          cp packages/c/include/datalogic.h packages/go/include/
+          mkdir -p bindings/go/lib/$PLATFORM bindings/go/include
+          cp bindings/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
+          cp bindings/c/include/datalogic.h bindings/go/include/
 
       # Native: full `go test` validates the link step + runtime behavior.
       - name: Validate via go test (native)
         if: matrix.target.native
         shell: bash
-        working-directory: packages/go
+        working-directory: bindings/go
         run: go test -v ./...
 
       # Cross-compile (darwin/amd64 from arm64 host): we can verify the
@@ -81,7 +81,7 @@ jobs:
       - name: Validate via go build (cross-compile)
         if: '!matrix.target.native'
         shell: bash
-        working-directory: packages/go
+        working-directory: bindings/go
         env:
           GOOS: ${{ matrix.target.os }}
           GOARCH: ${{ matrix.target.arch }}
@@ -92,7 +92,7 @@ jobs:
           go vet ./...
           go build -v ./...
 
-      # Upload from packages/go/lib/ so the artifact tarball roots at
+      # Upload from bindings/go/lib/ so the artifact tarball roots at
       # <os>_<arch>/libdatalogic_c.a. With download-artifact's
       # merge-multiple, all five tarballs flatten into one artifacts/
       # tree with five sibling <os>_<arch>/ subdirs.
@@ -100,5 +100,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-staticlib-${{ matrix.target.os }}-${{ matrix.target.arch }}
-          path: packages/go/lib/
+          path: bindings/go/lib/
           if-no-files-found: error

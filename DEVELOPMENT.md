@@ -9,8 +9,8 @@ picture (what depends on what, why the layout is shaped this way), see
 | Tool       | Version | Why                                                             |
 |------------|---------|-----------------------------------------------------------------|
 | Rust       | 1.85+   | The core crate uses `edition = "2024"`                          |
-| `wasm-pack`| latest  | Builds `packages/wasm` (only needed for WASM/UI changes)        |
-| Node.js    | 20+     | Builds and runs `packages/ui`                                   |
+| `wasm-pack`| latest  | Builds `bindings/wasm` (only needed for WASM/UI changes)        |
+| Node.js    | 20+     | Builds and runs `ui`                                   |
 | `mdbook`   | latest  | Builds the docs site under `docs/`                              |
 
 ```bash
@@ -30,12 +30,12 @@ The packages have a strict build order. From a fresh clone:
 # runner additionally needs feature = "templating". --all-features unlocks both.
 cargo test --workspace --all-features
 
-# 2. WASM bindings — produces packages/wasm/pkg/{web,bundler,nodejs}.
-cd packages/wasm && ./build.sh && cd ../..
+# 2. WASM bindings — produces bindings/wasm/pkg/{web,bundler,nodejs}.
+cd bindings/wasm && ./build.sh && cd ../..
 
 # 3. UI — needs the locally-built WASM linked into node_modules first.
-cd packages/wasm/pkg && npm link
-cd ../../ui && npm link @goplasmatic/datalogic && npm install
+cd bindings/wasm/pkg && npm link
+cd ../../../ui && npm link @goplasmatic/datalogic && npm install
 npm run dev   # or: npm run build:lib for the publishable bundle
 ```
 
@@ -43,7 +43,7 @@ The `npm link` step is what wires the *just-built* WASM into the UI; without
 it, `npm install` would pull `@goplasmatic/datalogic` from the registry and
 silently mask any local Rust changes you wanted to test.
 
-## `packages/core` — Rust library
+## `crates/datalogic-rs` — Rust library
 
 ```bash
 cargo check -p datalogic-rs
@@ -54,7 +54,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 Run a single JSONLogic suite (the `test_jsonlogic` harness picks the file
-from an env var). The path is relative to `packages/core/` because that's
+from an env var). The path is relative to `crates/datalogic-rs/` because that's
 the test binary's cwd; the harness needs both `serde_json` and `templating`
 (both included in `--all-features`):
 
@@ -74,31 +74,31 @@ cargo run -p datalogic-rs --example error_handling    --features error-handling
 cargo run -p datalogic-rs --example zero_copy_input   --features serde_json
 ```
 
-See [packages/core/examples/README.md](./packages/core/examples/README.md)
+See [crates/datalogic-rs/examples/README.md](./crates/datalogic-rs/examples/README.md)
 for the full table.
 
-## `packages/wasm` — WebAssembly bindings
+## `bindings/wasm` — WebAssembly bindings
 
 ```bash
-cd packages/wasm
+cd bindings/wasm
 ./build.sh               # builds web, bundler, and nodejs targets
 ```
 
 The crate is its own Cargo workspace (see ARCHITECTURE.md for why), so
-`cargo` commands inside `packages/wasm/` operate on it standalone. Run
+`cargo` commands inside `bindings/wasm/` operate on it standalone. Run
 `cargo test` from inside that directory if you need to test the FFI.
 
-## `packages/ui` — React component
+## `ui` — React component
 
 ```bash
-cd packages/ui
+cd ui
 npm install
 npm run dev              # local playground, hot reload (auto-syncs WASM)
 npm run build            # standalone playground (dist/)
 npm run build:lib        # publishable component (dist/)
 npm run build:embed      # embeddable widget for the docs site (dist-embed/)
 npm run lint
-npm run sync-wasm        # manually re-copy ../wasm/pkg/ → vendor/datalogic/
+npm run sync-wasm        # manually re-copy ../bindings/wasm/pkg/ → vendor/datalogic/
 ```
 
 Three Vite configs power the three build modes:
@@ -107,19 +107,19 @@ Three Vite configs power the three build modes:
 - `vite.lib.config.ts` — `@goplasmatic/datalogic-ui` library bundle
 - `vite.embed.config.ts` — embeddable widget for docs
 
-The WASM dep is vendored under `packages/ui/vendor/datalogic/` (gitignored),
-synced from `packages/wasm/pkg/` by `sync-wasm`. The `predev` and `prebuild*`
+The WASM dep is vendored under `ui/vendor/datalogic/` (gitignored),
+synced from `bindings/wasm/pkg/` by `sync-wasm`. The `predev` and `prebuild*`
 hooks run it automatically, so the typical loop is just:
 
 ```bash
-cd packages/wasm && ./build.sh    # rebuild after Rust changes
-cd ../ui && npm run dev           # predev re-vendors the fresh pkg/
+cd bindings/wasm && ./build.sh    # rebuild after Rust changes
+cd ../../ui && npm run dev        # predev re-vendors the fresh pkg/
 ```
 
 ## Releases
 
 All publishing flows through `.github/workflows/release.yml`, triggered by
-pushing a `v*` tag whose version matches `packages/core/Cargo.toml`. The
+pushing a `v*` tag whose version matches `crates/datalogic-rs/Cargo.toml`. The
 workflow validates → publishes the crate to crates.io → builds and publishes
 `@goplasmatic/datalogic` and `@goplasmatic/datalogic-ui` to npm → cuts the
 GitHub Release. There are no local publish scripts; do not run `npm publish`
@@ -144,16 +144,16 @@ JSONLogic implementation as a comparison subject, see
 
 ## Adding a built-in operator
 
-1. Add a variant to `OpCode` in `packages/core/src/opcode.rs` and wire its
+1. Add a variant to `OpCode` in `crates/datalogic-rs/src/opcode.rs` and wire its
    `FromStr` + `as_str()` entries.
-2. Implement `evaluate_<op>` under `packages/core/src/operators/<category>/`
+2. Implement `evaluate_<op>` under `crates/datalogic-rs/src/operators/<category>/`
    following the established signature
    (`args: &'a [CompiledNode], ctx: &mut DataContextStack<'a>, engine: &Engine, arena: &'a Bump`).
-3. Add a dispatch arm in `packages/core/src/engine/dispatch.rs` (or in
+3. Add a dispatch arm in `crates/datalogic-rs/src/engine/dispatch.rs` (or in
    `OpCode::evaluate_direct()` — same path).
-4. Add a JSON suite under `packages/core/tests/suites/<category>/` covering
+4. Add a JSON suite under `crates/datalogic-rs/tests/suites/<category>/` covering
    the happy path and at least one error case. See
-   [packages/core/tests/README.md](./packages/core/tests/README.md) for the
+   [crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md) for the
    suite format.
 5. If you also want it accessible from JS, no further work — the WASM
    wrapper exposes the engine as-is; new operators are picked up
@@ -165,7 +165,7 @@ Custom operators (extending the engine from your application code) are
 covered in the
 [Custom Operators guide](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html)
 on the docs site, with a runnable
-[`custom_operator` example](./packages/core/examples/custom_operator.rs)
+[`custom_operator` example](./crates/datalogic-rs/examples/custom_operator.rs)
 in the core crate.
 
 ## Documentation site (`docs/`)

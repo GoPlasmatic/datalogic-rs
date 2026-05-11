@@ -32,18 +32,18 @@ via WebAssembly, or in a React visual debugger.
 
 ## Repository layout
 
-This is a monorepo. Every package lives under `packages/`:
+This is a monorepo. Top-level layout:
 
 | Package                                                                                | Path                  | Language    | Install                              |
 |----------------------------------------------------------------------------------------|-----------------------|-------------|--------------------------------------|
-| [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                                | `packages/core`       | Rust        | `cargo add datalogic-rs`             |
-| [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic)       | `packages/wasm`       | Rust → WASM | `npm i @goplasmatic/datalogic`       |
-| [`datalogic-py`](https://pypi.org/project/datalogic-py/)                               | `packages/python`     | Rust → Python | `pip install datalogic-py`         |
-| [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `packages/ui`         | React       | `npm i @goplasmatic/datalogic-ui`    |
+| [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                                | `crates/datalogic-rs`       | Rust        | `cargo add datalogic-rs`             |
+| [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic)       | `bindings/wasm`       | Rust → WASM | `npm i @goplasmatic/datalogic`       |
+| [`datalogic-py`](https://pypi.org/project/datalogic-py/)                               | `bindings/python`     | Rust → Python | `pip install datalogic-py`         |
+| [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `ui`         | React       | `npm i @goplasmatic/datalogic-ui`    |
 | `datalogic-bench` (internal)                                                           | `tools/benchmark`  | Rust        | _dev-only, not published_            |
 
 For the convention every language binding follows (layout, build, CI,
-release tag scheme), see [packages/BINDINGS.md](./packages/BINDINGS.md).
+release tag scheme), see [bindings/BINDINGS.md](./bindings/BINDINGS.md).
 
 For the cross-package design, dependency flow, and feature-flag matrix,
 see [ARCHITECTURE.md](./ARCHITECTURE.md). For local setup, build order,
@@ -51,10 +51,10 @@ and per-package commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ## Which package do I want?
 
-- **JSONLogic in a Rust app** → `packages/core` (`cargo add datalogic-rs`)
-- **JSONLogic in Node.js or the browser** → `packages/wasm` (`npm i @goplasmatic/datalogic`)
-- **JSONLogic in a Python service or data pipeline** → `packages/python` (`pip install datalogic-py`)
-- **Visual rule editor / debugger in a React app** → `packages/ui` (`npm i @goplasmatic/datalogic-ui`)
+- **JSONLogic in a Rust app** → `crates/datalogic-rs` (`cargo add datalogic-rs`)
+- **JSONLogic in Node.js or the browser** → `bindings/wasm` (`npm i @goplasmatic/datalogic`)
+- **JSONLogic in a Python service or data pipeline** → `bindings/python` (`pip install datalogic-py`)
+- **Visual rule editor / debugger in a React app** → `ui` (`npm i @goplasmatic/datalogic-ui`)
 - **Compare engines or measure performance** → `tools/benchmark` (dev-only, not published)
 
 ## Three things you can build with it
@@ -186,7 +186,7 @@ For high-throughput callers, compile the rule once and reuse a `Session` —
 it owns a reusable arena and resets it between calls, so peak memory
 tracks the largest single evaluation. The full pattern (with `Engine`,
 `compile`, `session`, and `reset`) lives in
-[`examples/compile_once_evaluate_many.rs`](./packages/core/examples/compile_once_evaluate_many.rs).
+[`examples/compile_once_evaluate_many.rs`](./crates/datalogic-rs/examples/compile_once_evaluate_many.rs).
 Power users who want zero-copy `&DataValue<'a>` results can call
 `Engine::evaluate` directly with a caller-managed `bumpalo::Bump`.
 
@@ -196,7 +196,7 @@ Register your own operators on `Engine::builder().add_operator(...)` and
 call them from rules just like the built-ins. Arguments arrive
 pre-evaluated as arena-resident `&DataValue<'a>` borrows; you allocate
 the result back into the arena. Runnable example:
-[`examples/custom_operator.rs`](./packages/core/examples/custom_operator.rs).
+[`examples/custom_operator.rs`](./crates/datalogic-rs/examples/custom_operator.rs).
 Full guide:
 [Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
 
@@ -215,7 +215,7 @@ Enable the `trace` feature to record every evaluation step. From Rust,
 `evaluate_with_trace(logic, data)` from `@goplasmatic/datalogic`. For an
 interactive trace view, drop in the React debugger or use the
 [online playground](https://goplasmatic.github.io/datalogic-rs/playground/).
-See [`examples/tracing.rs`](./packages/core/examples/tracing.rs) for the
+See [`examples/tracing.rs`](./crates/datalogic-rs/examples/tracing.rs) for the
 full Rust pattern.
 
 ## Performance & Benchmarks
