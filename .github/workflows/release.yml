@@ -42,6 +42,22 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual rerun for when a transient failure (npm hiccup, network blip,
+  # PyPI maintenance) caused a partial release. Trigger via the Actions
+  # UI ("Run workflow" → select tag) or:
+  #   gh workflow run release.yml --ref v5.0.0
+  # The validate job's tag-match check enforces that the chosen ref is
+  # actually a `v*` tag whose name matches the core's Cargo.toml version.
+  workflow_dispatch:
+
+# Cancel-in-progress is deliberately OFF: a half-cancelled release is
+# worse than two sequential ones. If two tags land back-to-back, the
+# second waits for the first; that's the right tradeoff for a pipeline
+# that touches crates.io / npm / PyPI and can't easily reverse partial
+# publishes.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -73,23 +89,52 @@ jobs:
           fi
           echo "Tag $GITHUB_REF_NAME matches packages/core/Cargo.toml version $VERSION"
 
-      # Python ships under the same `v*` tag as core, so its Cargo.toml +
-      # pyproject.toml must agree. Catch a forgotten bump here, before
-      # core is published and the tag is impossible to retract cleanly.
-      - name: Validate Python package versions match core
+      # All bindings share the same `v*` tag as core, so their version
+      # fields must agree. Catch any forgotten bump here, BEFORE core is
+      # published and the tag is impossible to retract cleanly. Loop
+      # over every (path, extractor, label) triple in one step rather
+      # than per-binding to keep the surface single-purpose.
+      - name: Validate binding versions match core
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          PYCARGO=$(grep '^version = ' packages/python/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          PYPROJECT=$(grep '^version = ' packages/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          if [ "$PYCARGO" != "$VERSION" ]; then
-            echo "::error::packages/python/Cargo.toml ($PYCARGO) does not match core ($VERSION) — bump together"
+          FAIL=0
+          check() {
+            local label="$1"
+            local actual="$2"
+            local file="$3"
+            if [ "$actual" != "$VERSION" ]; then
+              echo "::error file=${file}::${label} version is '${actual}', expected '${VERSION}' (bump together with core)"
+              FAIL=1
+            else
+              echo "  ${label}: $actual ✓"
+            fi
+          }
+
+          # Cargo.toml `version = "..."` for each Rust-side binding.
+          for crate in packages/python/Cargo.toml \
+                       packages/wasm/Cargo.toml \
+                       packages/c/Cargo.toml; do
+            v=$(grep '^version = ' "$crate" | head -1 | sed 's/version = "\(.*\)"/\1/')
+            check "$crate" "$v" "$crate"
+          done
+
+          # Python distribution name (pyproject.toml) and UI npm package
+          # (package.json) carry their own version field.
+          PY=$(grep '^version = ' packages/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          check "packages/python/pyproject.toml" "$PY" "packages/python/pyproject.toml"
+
+          UI=$(node -p "require('./packages/ui/package.json').version")
+          check "packages/ui/package.json" "$UI" "packages/ui/package.json"
+
+          # Go module: version lives implicitly in the `packages/go/vX.Y.Z`
+          # tag pushed by publish-go — nothing in source to drift, so it's
+          # not checked here.
+
+          if [ "$FAIL" != 0 ]; then
+            echo "::error::One or more binding versions drift from core ($VERSION). Bump them together."
             exit 1
           fi
-          if [ "$PYPROJECT" != "$VERSION" ]; then
-            echo "::error::packages/python/pyproject.toml ($PYPROJECT) does not match core ($VERSION) — bump together"
-            exit 1
-          fi
-          echo "core $VERSION matches python Cargo.toml + pyproject.toml"
+          echo "All binding versions match core $VERSION"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -115,23 +160,27 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        # `--all-features` is required: most integration tests are gated
+        # behind `serde_json` and the JSONLogic suite runner needs
+        # `templating`. Without it, those tests silently skip and the
+        # step "passes" without exercising them. Matches the
+        # `cargo test --workspace --all-features` in ci.yml's check job.
+        run: cargo test --workspace --all-features
 
   publish-crate:
     name: Publish core to crates.io
-    # Gate: every binding's build must succeed before we touch crates.io.
-    # `validate` is implicit (it's needed by every build job listed here).
-    # Once this job runs, crates.io has the new version and we can't
-    # un-publish — so we require everything that could fail downstream
-    # to have already passed.
+    # Gate: every binding's build phase must succeed before we touch
+    # crates.io. Once this job runs, crates.io has the new version and
+    # we can't un-publish — so everything that could fail downstream
+    # must have already passed. Each `build-*` here is a reusable
+    # workflow that wraps that binding's build/test jobs; if any of
+    # them fails, this gate never opens and no bindings publish.
     needs:
       - validate
       - build-wasm
       - build-ui
-      - python-build-wheels
-      - python-build-sdist
-      - python-test
-      - go-build-staticlib
+      - build-python
+      - build-go
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -159,52 +208,22 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
-  # ---------------------------------------------------------------- WASM + UI
-  # Build-then-publish split: build-wasm and build-ui produce the
-  # publishable artifacts before publish-crate is allowed to run.
-  # publish-wasm and publish-ui only download + npm publish — no rebuild.
-  # If the WASM build is broken, this fails BEFORE crates.io is touched.
+  # =========================================================== Build phase
+  # Each `build-*` job is a thin call into a reusable workflow that owns
+  # that binding's build/test concerns. The reusable workflows live in
+  # .github/workflows/release-build-*.yml. Artifacts they upload
+  # (wasm-pkg, ui-package, python-wheels-*, python-sdist, go-staticlib-*)
+  # are accessible to the publish jobs below — workflow_call artifacts
+  # are scoped to the calling workflow's run.
+  #
+  # All four build jobs run in parallel after validate. publish-crate
+  # waits on all of them; nothing publishes if any binding's build
+  # phase fails.
 
   build-wasm:
     name: Build WASM
     needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Install binaryen
-        run: sudo apt-get update && sudo apt-get install -y binaryen
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            packages/wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/wasm/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-wasm-
-
-      - name: Build WASM
-        run: cd packages/wasm && ./build.sh
-
-      - name: Upload wasm-pkg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wasm-pkg
-          path: packages/wasm/pkg/
-          if-no-files-found: error
+    uses: ./.github/workflows/release-build-wasm.yml
 
   publish-wasm:
     name: Publish WASM to npm
@@ -246,68 +265,9 @@ jobs:
   build-ui:
     name: Build UI
     needs: [validate, build-wasm]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download wasm-pkg artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: wasm-pkg
-          path: packages/wasm/pkg/
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Sync UI version + WASM dep from packages/core/Cargo.toml
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          cd packages/ui
-          # Bump ui's own version
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-          # Pin the @goplasmatic/datalogic dep to the same version we are
-          # about to publish. The published UI then references the same
-          # WASM version (no possibility of a UI ↔ WASM version skew).
-          npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
-
-      # Wire the freshly-built local WASM artifact into ui/node_modules
-      # BEFORE running npm install. With the symlink present and its
-      # version matching packages/ui/package.json's pin, `npm install`
-      # preserves it instead of fetching from the registry — which is
-      # critical because we run BEFORE publish-wasm, so the new $VERSION
-      # isn't on npm yet.
-      - name: Link local WASM package into UI
-        run: |
-          cd packages/wasm/pkg && npm link
-          cd ../../ui && npm link @goplasmatic/datalogic
-
-      - name: Install UI dependencies
-        run: cd packages/ui && npm install
-
-      - name: Build UI library
-        run: cd packages/ui && npm run build:lib
-
-      # Bundle only the files `npm publish` actually packs — everything
-      # listed in package.json's `files` field plus the package manifest,
-      # README, LICENSE. node_modules is intentionally excluded (it
-      # carries the linked-local WASM symlink which would not match the
-      # published WASM dep). publish-ui re-installs cleanly from the
-      # registry-resolvable package.json.
-      - name: Upload ui-package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-package
-          path: |
-            packages/ui/package.json
-            packages/ui/package-lock.json
-            packages/ui/README.md
-            packages/ui/LICENSE
-            packages/ui/dist/
-          if-no-files-found: error
+    uses: ./.github/workflows/release-build-ui.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
 
   publish-ui:
     name: Publish UI to npm
@@ -348,115 +308,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # ------------------------------------------------------------------- Python
-  # Python wheels build in parallel with the WASM/UI chain. abi3-py310
-  # means one wheel per (os, arch) covers CPython 3.10+; matrix produces
-  # 7 wheels (manylinux + musllinux × x86_64/aarch64, macOS x86_64/arm64,
-  # Windows x86_64). sdist builds in a separate cheap job. Publish
-  # collects both and uploads via OIDC trusted publishing.
-
-  python-build-wheels:
-    name: Build Python wheel (${{ matrix.target.os }} / ${{ matrix.target.arch }} / ${{ matrix.target.libc }})
-    # Moved to the build phase — runs before publish-crate so a wheel
-    # failure on any (os, arch, libc) blocks the crate publish.
+  build-python:
+    name: Build Python
     needs: validate
-    runs-on: ${{ matrix.target.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - { os: linux,   arch: x86_64,  libc: manylinux, runner: ubuntu-latest,  target: x86_64-unknown-linux-gnu,    manylinux: "2014" }
-          - { os: linux,   arch: aarch64, libc: manylinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-gnu,   manylinux: "2014" }
-          - { os: linux,   arch: x86_64,  libc: musllinux, runner: ubuntu-latest,  target: x86_64-unknown-linux-musl,   manylinux: "musllinux_1_2" }
-          - { os: linux,   arch: aarch64, libc: musllinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-musl,  manylinux: "musllinux_1_2" }
-          - { os: macos,   arch: x86_64,  libc: "",         runner: macos-13,       target: x86_64-apple-darwin,         manylinux: "off" }
-          - { os: macos,   arch: arm64,   libc: "",         runner: macos-14,       target: aarch64-apple-darwin,        manylinux: "off" }
-          - { os: windows, arch: x86_64,  libc: "",         runner: windows-latest, target: x86_64-pc-windows-msvc,      manylinux: "off" }
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          # Pin maturin so a release months from now produces the same
-          # wheels. Bump deliberately when needed.
-          maturin-version: "1.7.4"
-          working-directory: packages/python
-          target: ${{ matrix.target.target }}
-          args: --release --out dist
-          # `manylinux` doubles as the musllinux selector — values like
-          # "musllinux_1_2" are interpreted by the action.
-          manylinux: ${{ matrix.target.manylinux }}
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-wheels-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ matrix.target.libc }}
-          path: packages/python/dist/*.whl
-
-  python-build-sdist:
-    name: Build Python sdist
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          maturin-version: "1.7.4"
-          working-directory: packages/python
-          command: sdist
-          args: --out dist
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-sdist
-          path: packages/python/dist/*.tar.gz
-
-  # Run pytest against a build of the binding on Linux. Logical tests
-  # (error attrs, dict/string conversion, session semantics) are
-  # platform-agnostic, so one platform suffices to catch Python-level
-  # regressions. The wheel matrix above catches per-platform link issues.
-  python-test:
-    name: Python pytest
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            packages/python/target/
-          key: ${{ runner.os }}-python-${{ hashFiles('packages/python/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-python-
-
-      - name: Install build + test deps
-        run: pip install --upgrade pip maturin pytest
-
-      - name: Build + install binding
-        working-directory: packages/python
-        run: maturin develop --release
-
-      - name: Run pytest
-        working-directory: packages/python
-        run: pytest -v
+    uses: ./.github/workflows/release-build-python.yml
 
   publish-python:
     name: Publish Python to PyPI
-    needs: [validate, publish-crate, python-build-wheels, python-build-sdist, python-test]
+    needs: [validate, publish-crate, build-python]
     runs-on: ubuntu-latest
     # `pypi` GitHub Environment provides the manual approval gate
     # (configure in repo Settings → Environments → pypi → required
@@ -485,126 +344,20 @@ jobs:
           # uploaded by an earlier (partial) run for the same version.
           skip-existing: true
 
-  # ----------------------------------------------------------------------- Go
-  # Go modules don't have a registry — `go get` fetches source from the
-  # repository at a given tag, then cgo links against whatever's in the
-  # tree. We solve this by (a) building libdatalogic_c.a for every
-  # supported (os, arch) in a matrix, (b) staging them into
-  # packages/go/lib/<os>_<arch>/ on a synthetic commit, and (c) pushing
-  # a `packages/go/vX.Y.Z` tag pointing at that commit. The synthetic
-  # commit never lands on `main` — it's only reachable through the tag.
-  #
-  # End consumers do `go get github.com/.../packages/go@vX.Y.Z` and get
-  # the staticlib for their platform automatically; the cgo build tags
-  # in packages/go/cgo_<os>_<arch>.go select the right one.
-
-  go-build-staticlib:
-    name: Go staticlib (${{ matrix.target.os }}/${{ matrix.target.arch }})
-    # Build phase — runs before publish-crate so a broken cgo file or
-    # missing system library blocks the entire release.
+  build-go:
+    name: Build Go staticlibs
     needs: validate
-    runs-on: ${{ matrix.target.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          # `native: true` — the runner can execute the built binary, so we
-          # run `go test` against it before uploading.
-          # `native: false` — runner cross-compiles to the target; we
-          # validate the link step via `go build` but can't run tests.
-          - { os: linux,   arch: amd64, runner: ubuntu-latest,    cargo_target: x86_64-unknown-linux-gnu,  native: true  }
-          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, cargo_target: aarch64-unknown-linux-gnu, native: true  }
-          # Both darwin builds run on macos-14 (arm64 host). The arm64 build
-          # is native; amd64 is cross-compiled — macOS toolchains bundle
-          # both linkers, so one runner covers both targets. Cross outputs
-          # can't run here (Rosetta doesn't help with `go test`'s
-          # in-process forks), hence `native: false` for x86_64-apple-darwin.
-          - { os: darwin,  arch: amd64, runner: macos-14,         cargo_target: x86_64-apple-darwin,       native: false }
-          - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,      native: true  }
-          # `gnu` (mingw-w64) rather than `msvc` so the produced .a is
-          # ABI-compatible with Go's default cgo toolchain on Windows.
-          - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-gnu,     native: true  }
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/release-build-go.yml
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target.cargo_target }}
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            packages/c/target/
-          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-
-
-      - name: Build C ABI staticlib
-        run: cargo build --release --manifest-path packages/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
-
-      # Stage straight into the package's lib/include layout so the
-      # validation step below uses exactly the same paths the cgo build
-      # tags reference. The same staged tree is what publish-go later
-      # downloads + commits.
-      - name: Stage staticlib + header into packages/go/
-        shell: bash
-        run: |
-          PLATFORM=${{ matrix.target.os }}_${{ matrix.target.arch }}
-          mkdir -p packages/go/lib/$PLATFORM packages/go/include
-          cp packages/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a packages/go/lib/$PLATFORM/
-          cp packages/c/include/datalogic.h packages/go/include/
-
-      # Native: full `go test` validates the link step + runtime behavior.
-      # If a cgo file's LDFLAGS list is wrong, this step fails here rather
-      # than after publish-go has already tagged a broken release.
-      - name: Validate via go test (native)
-        if: matrix.target.native
-        shell: bash
-        working-directory: packages/go
-        run: go test -v ./...
-
-      # Cross-compile case (darwin/amd64 from arm64 host): we can verify
-      # the link step but not run the resulting binary. `go vet ./...` then
-      # `go build ./...` confirms the cgo file parses and the static
-      # library resolves all referenced symbols. The host's clang covers
-      # the x86_64 cross via -arch.
-      - name: Validate via go build (cross-compile)
-        if: '!matrix.target.native'
-        shell: bash
-        working-directory: packages/go
-        env:
-          GOOS: ${{ matrix.target.os }}
-          GOARCH: ${{ matrix.target.arch }}
-          CGO_ENABLED: '1'
-          CGO_CFLAGS: -arch x86_64
-          CGO_LDFLAGS: -arch x86_64
-        run: |
-          go vet ./...
-          go build -v ./...
-
-      # Upload from packages/go/lib/ so the artifact tarball roots at
-      # <os>_<arch>/libdatalogic_c.a. With download-artifact's
-      # merge-multiple, all five tarballs flatten into one artifacts/
-      # tree with five sibling <os>_<arch>/ subdirs.
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-staticlib-${{ matrix.target.os }}-${{ matrix.target.arch }}
-          path: packages/go/lib/
-          if-no-files-found: error
+  # ============================================================ Publish phase
+  # Everything below runs only after publish-crate succeeds — and
+  # publish-crate runs only when every `build-*` is green. The
+  # publish-* jobs are pure download + push: no rebuild, so a publish
+  # failure here can only be a transient registry issue.
 
   publish-go:
     name: Publish Go module tag
-    needs: [validate, publish-crate, go-build-staticlib]
+    needs: [validate, publish-crate, build-go]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

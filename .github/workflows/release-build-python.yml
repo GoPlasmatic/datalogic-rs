@@ -1,0 +1,107 @@
+name: _release-build-python
+
+# Internal reusable workflow — called by release.yml's `build-python` job.
+# Owns the three Python build-phase concerns:
+#   - wheels (matrix per os/arch/libc — 7 entries)
+#   - sdist
+#   - pytest (single platform; logical behavior is platform-agnostic)
+#
+# Each step uploads its own artifact for publish-python to download.
+
+on:
+  workflow_call:
+
+jobs:
+  wheels:
+    name: Build wheel (${{ matrix.target.os }} / ${{ matrix.target.arch }} / ${{ matrix.target.libc }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { os: linux,   arch: x86_64,  libc: manylinux, runner: ubuntu-latest,  target: x86_64-unknown-linux-gnu,    manylinux: "2014" }
+          - { os: linux,   arch: aarch64, libc: manylinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-gnu,   manylinux: "2014" }
+          - { os: linux,   arch: x86_64,  libc: musllinux, runner: ubuntu-latest,  target: x86_64-unknown-linux-musl,   manylinux: "musllinux_1_2" }
+          - { os: linux,   arch: aarch64, libc: musllinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-musl,  manylinux: "musllinux_1_2" }
+          - { os: macos,   arch: x86_64,  libc: "",         runner: macos-13,       target: x86_64-apple-darwin,         manylinux: "off" }
+          - { os: macos,   arch: arm64,   libc: "",         runner: macos-14,       target: aarch64-apple-darwin,        manylinux: "off" }
+          - { os: windows, arch: x86_64,  libc: "",         runner: windows-latest, target: x86_64-pc-windows-msvc,      manylinux: "off" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          # Pin maturin so a release months from now produces the same
+          # wheels. Bump deliberately when needed.
+          maturin-version: "1.7.4"
+          working-directory: packages/python
+          target: ${{ matrix.target.target }}
+          args: --release --out dist
+          # `manylinux` doubles as the musllinux selector — values like
+          # "musllinux_1_2" are interpreted by the action.
+          manylinux: ${{ matrix.target.manylinux }}
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheels-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ matrix.target.libc }}
+          path: packages/python/dist/*.whl
+
+  sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: "1.7.4"
+          working-directory: packages/python
+          command: sdist
+          args: --out dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: packages/python/dist/*.tar.gz
+
+  # Run pytest against a build of the binding on Linux. Logical tests
+  # (error attrs, dict/string conversion, session semantics) are
+  # platform-agnostic, so one platform suffices to catch Python-level
+  # regressions; the wheel matrix above catches per-platform link issues.
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/python/target/
+          key: ${{ runner.os }}-python-${{ hashFiles('packages/python/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-python-
+
+      - name: Install build + test deps
+        run: pip install --upgrade pip maturin pytest
+
+      - name: Build + install binding
+        working-directory: packages/python
+        run: maturin develop --release
+
+      - name: Run pytest
+        working-directory: packages/python
+        run: pytest -v
