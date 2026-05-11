@@ -1,6 +1,6 @@
-# @goplasmatic/datalogic
+# @goplasmatic/datalogic-wasm
 
-[![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic)](https://www.npmjs.com/package/@goplasmatic/datalogic)
+[![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 High-performance [JSONLogic](https://jsonlogic.com/) engine for
@@ -23,7 +23,7 @@ overview and the API-tier model that every binding implements, see the
 ## Install
 
 ```bash
-npm install @goplasmatic/datalogic
+npm install @goplasmatic/datalogic-wasm
 ```
 
 The published package is **pre-built** — no Rust or WASM toolchain
@@ -33,7 +33,7 @@ required to consume it. If you want to build from source instead, see
 ## Quick start
 
 ```javascript
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 // Browser / ES modules — initialise the WASM module once on startup.
 // (Skip this on Node.js — see "Usage by environment" below.)
@@ -59,7 +59,7 @@ console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
 
 ```html
 <script type="module">
-  import init, { evaluate } from '@goplasmatic/datalogic';
+  import init, { evaluate } from '@goplasmatic/datalogic-wasm';
   await init();
   const result = evaluate('{"and": [true, {"var": "active"}]}',
                           '{"active": true}', false);
@@ -77,7 +77,7 @@ frontend, or when per-platform native prebuilds are a non-starter for
 your deployment.
 
 ```javascript
-import { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+import { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 // No init() needed for Node.js
 const result = evaluate('{"==": [1, 1]}', '{}', false);
@@ -86,7 +86,7 @@ const result = evaluate('{"==": [1, 1]}', '{}', false);
 ### Bundlers (Webpack, Vite, …)
 
 ```javascript
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 await init();
 const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}', false);
 ```
@@ -96,9 +96,9 @@ const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}', false
 If you need a specific target build:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic/web';      // web target
-import init, { evaluate } from '@goplasmatic/datalogic/bundler';  // bundler target
-import { evaluate }       from '@goplasmatic/datalogic/nodejs';   // nodejs target
+import init, { evaluate } from '@goplasmatic/datalogic-wasm/web';      // web target
+import init, { evaluate } from '@goplasmatic/datalogic-wasm/bundler';  // bundler target
+import { evaluate }       from '@goplasmatic/datalogic-wasm/nodejs';   // nodejs target
 ```
 
 ## API reference

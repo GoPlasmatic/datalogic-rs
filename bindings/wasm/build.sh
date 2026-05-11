@@ -10,7 +10,7 @@ cd "$SCRIPT_DIR"
 # Version source: this crate's own Cargo.toml (the npm package version
 # tracks the wasm crate, not the workspace root which has no `version`).
 VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-echo "Building @goplasmatic/datalogic version $VERSION"
+echo "Building @goplasmatic/datalogic-wasm version $VERSION"
 
 # Clean previous builds
 rm -rf pkg pkg-web pkg-bundler pkg-nodejs
@@ -84,7 +84,7 @@ cp README.md pkg/
 # Create package.json
 cat > pkg/package.json << EOF
 {
-  "name": "@goplasmatic/datalogic",
+  "name": "@goplasmatic/datalogic-wasm",
   "version": "$VERSION",
   "description": "High-performance JSONLogic engine for JavaScript/TypeScript - WebAssembly powered",
   "license": "Apache-2.0",
@@ -170,4 +170,4 @@ echo ""
 echo "To test locally:"
 echo "  cd pkg && npm pack"
 echo "  # In your test project:"
-echo "  npm install /path/to/goplasmatic-datalogic-$VERSION.tgz"
+echo "  npm install /path/to/goplasmatic-datalogic-wasm-$VERSION.tgz"

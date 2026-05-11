@@ -391,8 +391,8 @@ fn build_subjects() -> SubjectAvailability {
         // (display name, LIBS dispatch key, npm package to probe)
         (
             "dlrs:wasm:compiled",
-            "@goplasmatic/datalogic-compiled",
-            "@goplasmatic/datalogic",
+            "@goplasmatic/datalogic-wasm-compiled",
+            "@goplasmatic/datalogic-wasm",
         ),
         ("json-logic-js", "json-logic-js", "json-logic-js"),
         (
@@ -516,7 +516,7 @@ fn print_help() {
          Cargo features:\n\
          \x20 --features subject-jsonlogic-rs   Add the `jsonlogic-rs` Rust crate column\n\n\
          Node subjects (auto-detected when `runners/node_modules/<pkg>` is installed):\n\
-         \x20 - dlrs:wasm        @goplasmatic/datalogic via Node\n\
+         \x20 - dlrs:wasm        @goplasmatic/datalogic-wasm via Node\n\
          \x20 - json-logic-js    jwadhams/json-logic-js via Node\n\n\
          To set up Node subjects:\n\
          \x20 cd bindings/wasm && ./build.sh\n\

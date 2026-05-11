@@ -10,13 +10,16 @@ labels: bug
 <!-- Tick the package(s) where the bug shows up. -->
 
 - [ ] `datalogic-rs` (Rust crate)
-- [ ] `@goplasmatic/datalogic` (WASM npm package)
+- [ ] `@goplasmatic/datalogic-wasm` (WASM npm package)
+- [ ] `@goplasmatic/datalogic-node` (Node native npm package)
 - [ ] `@goplasmatic/datalogic-ui` (React component)
+- [ ] `datalogic-py` (Python)
+- [ ] `datalogic-go` (Go)
 - [ ] `datalogic-bench` (benchmark harness)
 
 ## Versions
 
-- datalogic-rs / @goplasmatic/datalogic version:
+- Package + version:
 - Rust toolchain (`rustc --version`) / Node version, if applicable:
 - OS + architecture:
 

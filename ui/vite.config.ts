@@ -19,10 +19,10 @@ export default defineConfig({
       // keeps the file under the UI project root so Vite's default
       // `server.fs.allow` covers it — no need to widen the allow-list
       // out to the monorepo root.
-      '@goplasmatic/datalogic': resolve(__dirname, 'vendor/datalogic'),
+      '@goplasmatic/datalogic-wasm': resolve(__dirname, 'vendor/datalogic'),
     },
   },
   optimizeDeps: {
-    exclude: ['@goplasmatic/datalogic'],
+    exclude: ['@goplasmatic/datalogic-wasm'],
   },
 })

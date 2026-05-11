@@ -14,8 +14,8 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 | Language | Internal Cargo crate | Published artifact | Registry |
 |---|---|---|---|
 | Rust | `datalogic-rs` | `datalogic-rs` | crates.io |
-| WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic`** (grandfathered, predates this convention) | npm |
-| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (first-class Node target — WASM `@goplasmatic/datalogic` ships alongside for browsers / Deno / Bun / Workers) | npm |
+| WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic-wasm`** | npm |
+| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (first-class Node target — WASM `@goplasmatic/datalogic-wasm` ships alongside for browsers / Deno / Bun / Workers) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
 | C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/PHP/JVM in-tree, not separately published) | — |
 | Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go` (in-tree module) | Go modules |
@@ -28,10 +28,10 @@ For Python the PyPI distribution name is `datalogic-py` but the Python
 import paths, and PyPI's normalisation already treats hyphens and
 underscores as equivalent for installation.
 
-The npm WASM package is `@goplasmatic/datalogic` (without the `-wasm`
-suffix) only because it predates the convention; renaming it would force
-every existing consumer to update. New language packages should follow
-the convention without exception.
+Prior to v5 the WASM package shipped as `@goplasmatic/datalogic` (grandfathered
+from before the convention existed). v5 brings it in line: `@goplasmatic/datalogic-wasm`
+is the canonical name going forward. v4.x consumers still on the old name see
+a deprecation notice on `npm install` pointing them at the new name.
 
 ## Convention
 
@@ -82,7 +82,7 @@ the convention without exception.
 
 | Binding | Path | Tech | Publishes to |
 |---|---|---|---|
-| WebAssembly | `bindings/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic` |
+| WebAssembly | `bindings/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic-wasm` |
 | Node native | `bindings/node/` | napi-rs + napi-cli (per-platform `.node` prebuilds with `optionalDependencies`) | npm: `@goplasmatic/datalogic-node` |
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/PHP/JVM) |
@@ -97,7 +97,7 @@ the Rust core:
   napi-rs gives the binding direct access to V8 types and per-platform
   native code — the same Rust engine, just behind a thin FFI layer.
   Node services should pick this by default.
-- **`@goplasmatic/datalogic`** is the WebAssembly build. Run it in
+- **`@goplasmatic/datalogic-wasm`** is the WebAssembly build. Run it in
   browsers, Deno, Bun, Cloudflare Workers, or any other runtime where a
   single artifact across platforms beats per-platform native prebuilds.
   Node consumers who want one artifact shared with a browser frontend

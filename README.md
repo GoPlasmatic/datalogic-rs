@@ -9,7 +9,7 @@
   [![Crates.io](https://img.shields.io/crates/v/datalogic-rs.svg)](https://crates.io/crates/datalogic-rs)
   [![Documentation](https://docs.rs/datalogic-rs/badge.svg)](https://docs.rs/datalogic-rs)
   [![npm (node)](https://img.shields.io/npm/v/@goplasmatic/datalogic-node?label=npm%20%40datalogic-node)](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
-  [![npm (wasm)](https://img.shields.io/npm/v/@goplasmatic/datalogic?label=npm%20%40datalogic)](https://www.npmjs.com/package/@goplasmatic/datalogic)
+  [![npm (wasm)](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm?label=npm%20%40datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
   [![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/)
 
 </div>
@@ -43,7 +43,7 @@ full API reference for that language.
 |---------------------------------------|----------------------------------------------------------------------------------|-------------------------------------------------------------|-------------------------------------------------|
 | **Rust** application or service       | [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                          | `cargo add datalogic-rs`                                    | [crates/datalogic-rs/README.md](./crates/datalogic-rs/README.md) |
 | **Node.js** service (TypeScript or JS) | [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node) | `npm i @goplasmatic/datalogic-node`             | [bindings/node/README.md](./bindings/node/README.md)            |
-| **Browser, Deno, Bun, Cloudflare Workers, edge runtimes** | [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic) (WebAssembly) | `npm i @goplasmatic/datalogic` | [bindings/wasm/README.md](./bindings/wasm/README.md)            |
+| **Browser, Deno, Bun, Cloudflare Workers, edge runtimes** | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) (WebAssembly) | `npm i @goplasmatic/datalogic-wasm` | [bindings/wasm/README.md](./bindings/wasm/README.md)            |
 | **Python** service or data pipeline   | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                         | `pip install datalogic-py`                                  | [bindings/python/README.md](./bindings/python/README.md)        |
 | **Go** service                        | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go`    | [bindings/go/README.md](./bindings/go/README.md)                |
 | **React** visual rule editor / debugger | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `npm i @goplasmatic/datalogic-ui`                           | [ui/README.md](./ui/README.md)                                  |
@@ -142,7 +142,7 @@ const result = apply({ '>': [{ var: 'x' }, 10] }, { x: 42 });
 **Browser / Deno / Bun / Cloudflare Workers** — via WebAssembly:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 await init();
 const result = evaluate('{">": [{"var": "x"}, 10]}', '{"x": 42}', false);
@@ -233,7 +233,7 @@ for the per-suite matrix, methodology, and caveats):
 | `json-logic-engine` (interpreted, JS)                |         160.3 |            16.5× |
 | `jsonlogic-rs` (bestowinc, native Rust)              |         218.0 |            22.5× |
 | `json-logic-js` (jwadhams reference, JS)             |         423.5 |            43.7× |
-| `dlrs:wasm:compiled` (`@goplasmatic/datalogic` WASM, run under Node)|         855.6 |            88.2× |
+| `dlrs:wasm:compiled` (`@goplasmatic/datalogic-wasm`, run under Node)|         855.6 |            88.2× |
 
 The WASM row above measures the WebAssembly build running in Node — the
 artifact you'd ship to browsers / Deno / Bun / Cloudflare Workers, not

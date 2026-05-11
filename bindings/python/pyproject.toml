@@ -8,8 +8,7 @@ build-backend = "maturin"
 [project]
 # Follows the `datalogic-<lang>` naming convention used for every
 # language binding (`datalogic-rs` on crates.io, `datalogic-py` on PyPI,
-# future `datalogic-rb` / `datalogic-go` / …). The npm WASM package
-# predates the convention and stays as `@goplasmatic/datalogic`.
+# `@goplasmatic/datalogic-wasm` and `@goplasmatic/datalogic-node` on npm).
 name = "datalogic-py"
 version = "5.0.0"
 description = "Python bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many."

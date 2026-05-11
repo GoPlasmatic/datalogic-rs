@@ -14,7 +14,7 @@ For the cross-runtime overview and the API-tier model every binding
 implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
-> **Two npm packages, one engine.** `@goplasmatic/datalogic` is the
+> **Two npm packages, one engine.** `@goplasmatic/datalogic-wasm` is the
 > WebAssembly build — runs in browsers, Node, Deno, Bun. This package
 > (`@goplasmatic/datalogic-node`) is the **native** Node build via
 > [napi-rs](https://napi.rs/), pulling in the same Rust engine through a

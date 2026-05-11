@@ -8,7 +8,7 @@
     "runner": "node node-runner.js"
   },
   "dependencies": {
-    "@goplasmatic/datalogic": "file:../../../bindings/wasm/pkg",
+    "@goplasmatic/datalogic-wasm": "file:../../../bindings/wasm/pkg",
     "json-logic-engine": "^5.0.7",
     "json-logic-js": "^2.0.5"
   },

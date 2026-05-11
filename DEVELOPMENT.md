@@ -43,12 +43,12 @@ cd bindings/node && npm install && npx napi build --platform --release && cd ../
 
 # 4. UI — needs the locally-built WASM linked into node_modules first.
 cd bindings/wasm/pkg && npm link
-cd ../../../ui && npm link @goplasmatic/datalogic && npm install
+cd ../../../ui && npm link @goplasmatic/datalogic-wasm && npm install
 npm run dev   # or: npm run build:lib for the publishable bundle
 ```
 
 The `npm link` step is what wires the *just-built* WASM into the UI; without
-it, `npm install` would pull `@goplasmatic/datalogic` from the registry and
+it, `npm install` would pull `@goplasmatic/datalogic-wasm` from the registry and
 silently mask any local Rust changes you wanted to test.
 
 ## `crates/datalogic-rs` — Rust library
@@ -201,7 +201,7 @@ cd ../../ui && npm run dev        # predev re-vendors the fresh pkg/
 All publishing flows through `.github/workflows/release.yml`, triggered by
 pushing a `v*` tag whose version matches `crates/datalogic-rs/Cargo.toml`. The
 workflow validates → publishes the crate to crates.io → builds and publishes
-every binding (`@goplasmatic/datalogic` WASM, `@goplasmatic/datalogic-node`
+every binding (`@goplasmatic/datalogic-wasm` WASM, `@goplasmatic/datalogic-node`
 napi-rs prebuilds, `datalogic-py` to PyPI, the Go module tag, and
 `@goplasmatic/datalogic-ui`) → cuts the GitHub Release. There are no local
 publish scripts; do not run `npm publish` or `cargo publish` by hand.

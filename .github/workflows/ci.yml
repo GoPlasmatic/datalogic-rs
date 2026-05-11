@@ -336,7 +336,7 @@ jobs:
         working-directory: bindings/python
         run: pytest -v
 
-  # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic
+  # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic-wasm
   # would normally resolve from the registry; we link the locally-built
   # WASM pkg/ instead so PR CI doesn't depend on the published artifact
   # matching this branch's source.
@@ -363,7 +363,7 @@ jobs:
       - name: Link local WASM into UI
         run: |
           cd bindings/wasm/pkg && npm link
-          cd ../../ui && npm link @goplasmatic/datalogic
+          cd ../../ui && npm link @goplasmatic/datalogic-wasm
 
       - name: Install UI dependencies
         run: cd ui && npm install

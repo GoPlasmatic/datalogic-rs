@@ -14,7 +14,7 @@ publish = false
 # `sort`, `datetime`, etc. fall through to ERR cells — the engine *can*
 # do them, the bench just hadn't opted in. The dlrs:wasm column
 # separately reflects whatever feature set is baked into the published
-# `@goplasmatic/datalogic` binary (currently `wasm = datetime + trace
+# `@goplasmatic/datalogic-wasm` binary (currently `wasm = datetime + trace
 # + templating` per `bindings/wasm/Cargo.toml`), which is its own
 # distribution decision.
 datalogic-rs = { path = "../../crates/datalogic-rs", features = [

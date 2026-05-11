@@ -13,7 +13,7 @@ evaluator**.
 
 This is the **Rust core** of the
 [`datalogic-rs` monorepo](https://github.com/GoPlasmatic/datalogic-rs).
-The repo also ships [WASM](https://www.npmjs.com/package/@goplasmatic/datalogic),
+The repo also ships [WASM](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm),
 [Python](https://pypi.org/project/datalogic-py/), Go, and
 [React](https://www.npmjs.com/package/@goplasmatic/datalogic-ui)
 bindings — same rules, same semantics. For the cross-runtime overview

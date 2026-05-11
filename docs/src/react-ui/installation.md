@@ -25,7 +25,7 @@ The package requires:
 | `react-dom` | 18+ or 19+ | React DOM renderer |
 | `@xyflow/react` | 12+ | Flow diagram rendering |
 
-> **Note:** The `@goplasmatic/datalogic` WASM package is bundled internally for evaluation.
+> **Note:** The `@goplasmatic/datalogic-wasm` WASM package is bundled internally for evaluation.
 
 ## CSS Setup
 

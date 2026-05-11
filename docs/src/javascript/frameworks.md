@@ -8,7 +8,7 @@ This guide covers integration with popular JavaScript frameworks and build tools
 
 ```tsx
 import { useEffect, useState } from 'react';
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 function App() {
   const [ready, setReady] = useState(false);
@@ -34,7 +34,7 @@ Create a reusable hook for JSONLogic evaluation:
 
 ```tsx
 import { useEffect, useState, useMemo } from 'react';
-import init, { CompiledRule } from '@goplasmatic/datalogic';
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 // Initialize once at module level
 let initPromise: Promise<void> | null = null;
@@ -100,7 +100,7 @@ function FeatureFlag({ feature, user }) {
 
 ```tsx
 import { useQuery } from '@tanstack/react-query';
-import init, { CompiledRule } from '@goplasmatic/datalogic';
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 export function useCompiledRule(logic: object) {
   return useQuery({
@@ -123,7 +123,7 @@ export function useCompiledRule(logic: object) {
 ```vue
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import init, { CompiledRule } from '@goplasmatic/datalogic';
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 const ready = ref(false);
 const data = ref({ age: 25 });
@@ -157,7 +157,7 @@ const isAdult = computed(() => {
 ```typescript
 // useJsonLogic.ts
 import { ref, onMounted, watchEffect, Ref } from 'vue';
-import init, { CompiledRule } from '@goplasmatic/datalogic';
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -199,7 +199,7 @@ export function useJsonLogic(logic: Ref<object>, data: Ref<unknown>) {
 
 ```javascript
 const express = require('express');
-const { evaluate, CompiledRule } = require('@goplasmatic/datalogic');
+const { evaluate, CompiledRule } = require('@goplasmatic/datalogic-wasm');
 
 const app = express();
 app.use(express.json());
@@ -237,7 +237,7 @@ app.get('/admin', authorize('canAccess'), (req, res) => {
 ### Rule Evaluation API
 
 ```javascript
-const { evaluate } = require('@goplasmatic/datalogic');
+const { evaluate } = require('@goplasmatic/datalogic-wasm');
 
 app.post('/api/evaluate', (req, res) => {
   const { logic, data, preserveStructure = false } = req.body;
@@ -306,7 +306,7 @@ For App Router, create a client component:
 'use client';
 
 import { useEffect, useState } from 'react';
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 export function JsonLogicEvaluator({ logic, data }) {
   const [result, setResult] = useState(null);
@@ -338,7 +338,7 @@ For simple pages without bundlers:
   <div id="result"></div>
 
   <script type="module">
-    import init, { evaluate } from 'https://unpkg.com/@goplasmatic/datalogic@latest/web/datalogic_wasm.js';
+    import init, { evaluate } from 'https://unpkg.com/@goplasmatic/datalogic-wasm@latest/web/datalogic_wasm.js';
 
     async function run() {
       await init();
@@ -365,7 +365,7 @@ For simple pages without bundlers:
 
 ```javascript
 // worker.js
-import init, { CompiledRule } from '@goplasmatic/datalogic';
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 let rule = null;
 
@@ -385,7 +385,7 @@ self.onmessage = async (e) => {
 
 ```javascript
 const { Worker, isMainThread, parentPort } = require('worker_threads');
-const { CompiledRule } = require('@goplasmatic/datalogic');
+const { CompiledRule } = require('@goplasmatic/datalogic-wasm');
 
 if (isMainThread) {
   const worker = new Worker(__filename);

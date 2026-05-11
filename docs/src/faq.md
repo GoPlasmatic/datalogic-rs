@@ -89,7 +89,7 @@ on `EvalInput` / `IntoLogic`) require `feature = "serde_json"`.
 No. The Node.js target does not require initialization:
 
 ```javascript
-const { evaluate } = require('@goplasmatic/datalogic');
+const { evaluate } = require('@goplasmatic/datalogic-wasm');
 evaluate('{"==": [1, 1]}', '{}', false);
 ```
 
@@ -111,7 +111,7 @@ const value = JSON.parse(result);
 Types are included in the package:
 
 ```typescript
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 await init();
 const result: string = evaluate('{"==": [1, 1]}', '{}', false);

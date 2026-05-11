@@ -44,7 +44,7 @@ build) and adds editing, visualisation, and trace inspection on top.
 
 Two JS-side packages, one engine: **`@goplasmatic/datalogic-node`**
 (napi-rs, per-platform `.node` prebuilds) is the first-class target for
-Node services. **`@goplasmatic/datalogic`** (WASM) is the right pick
+Node services. **`@goplasmatic/datalogic-wasm`** (WASM) is the right pick
 for browsers, Deno, Bun, Cloudflare Workers, and any context where one
 artifact across runtimes beats per-platform prebuilds.
 

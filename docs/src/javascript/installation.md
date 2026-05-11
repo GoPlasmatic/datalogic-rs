@@ -1,18 +1,18 @@
 # Installation
 
-The `@goplasmatic/datalogic` package provides WebAssembly bindings for the datalogic-rs engine, bringing high-performance JSONLogic evaluation to JavaScript and TypeScript.
+The `@goplasmatic/datalogic-wasm` package provides WebAssembly bindings for the datalogic-rs engine, bringing high-performance JSONLogic evaluation to JavaScript and TypeScript.
 
 ## Package Installation
 
 ```bash
 # npm
-npm install @goplasmatic/datalogic
+npm install @goplasmatic/datalogic-wasm
 
 # yarn
-yarn add @goplasmatic/datalogic
+yarn add @goplasmatic/datalogic-wasm
 
 # pnpm
-pnpm add @goplasmatic/datalogic
+pnpm add @goplasmatic/datalogic-wasm
 ```
 
 ## Build Targets
@@ -31,10 +31,10 @@ The package's `exports` field automatically selects the appropriate target:
 
 ```javascript
 // Browser/Bundler - uses web or bundler target
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 // Node.js - uses nodejs target
-const { evaluate } = require('@goplasmatic/datalogic');
+const { evaluate } = require('@goplasmatic/datalogic-wasm');
 ```
 
 ### Explicit Target Import
@@ -43,13 +43,13 @@ If you need a specific target:
 
 ```javascript
 // Web target (ES modules with init)
-import init, { evaluate } from '@goplasmatic/datalogic/web';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm/web';
 
 // Bundler target
-import init, { evaluate } from '@goplasmatic/datalogic/bundler';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm/bundler';
 
 // Node.js target
-import { evaluate } from '@goplasmatic/datalogic/nodejs';
+import { evaluate } from '@goplasmatic/datalogic-wasm/nodejs';
 ```
 
 ## WASM Initialization
@@ -57,7 +57,7 @@ import { evaluate } from '@goplasmatic/datalogic/nodejs';
 For browser and bundler environments, you must initialize the WASM module before using any functions:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 // Initialize once at application startup
 await init();
@@ -73,7 +73,7 @@ const result = evaluate('{"==": [1, 1]}', '{}', false);
 The package includes TypeScript declarations. No additional `@types` package is needed.
 
 ```typescript
-import init, { evaluate, CompiledRule, evaluate_with_trace } from '@goplasmatic/datalogic';
+import init, { evaluate, CompiledRule, evaluate_with_trace } from '@goplasmatic/datalogic-wasm';
 
 // Full type inference for all exports
 const result: string = evaluate('{"==": [1, 1]}', '{}', false);
@@ -89,7 +89,7 @@ For quick prototyping or simple pages, you can load directly from a CDN:
 
 ```html
 <script type="module">
-  import init, { evaluate } from 'https://unpkg.com/@goplasmatic/datalogic@latest/web/datalogic_wasm.js';
+  import init, { evaluate } from 'https://unpkg.com/@goplasmatic/datalogic-wasm@latest/web/datalogic_wasm.js';
 
   async function run() {
     await init();

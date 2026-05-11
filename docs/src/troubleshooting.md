@@ -121,7 +121,7 @@ for data in dataset {
 **Solution:** Call `init()` before using any functions:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 await init();
 evaluate(logic, data, false);
@@ -135,10 +135,10 @@ evaluate(logic, data, false);
 
 ```javascript
 // Browser/Bundler — need default import for init
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 // Node.js — no init needed
-const { evaluate } = require('@goplasmatic/datalogic');
+const { evaluate } = require('@goplasmatic/datalogic-wasm');
 ```
 
 ### "Failed to fetch" in browser

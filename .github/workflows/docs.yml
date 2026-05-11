@@ -69,7 +69,7 @@ jobs:
           # `npm install`, but isn't checked in. Add `cache: 'npm'` once
           # a lockfile is committed.
 
-      # Pin the UI's `@goplasmatic/datalogic` dep to the version we just
+      # Pin the UI's `@goplasmatic/datalogic-wasm` dep to the version we just
       # built in `bindings/wasm/pkg/` (extracted from
       # `crates/datalogic-rs/Cargo.toml`). Without this the local link below
       # would mismatch ui/package.json's pin and `npm install`
@@ -78,7 +78,7 @@ jobs:
       - name: Pin UI -> WASM version to local build
         run: |
           VERSION=$(grep '^version = ' crates/datalogic-rs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          cd ui && npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
+          cd ui && npm pkg set "dependencies.@goplasmatic/datalogic-wasm=$VERSION"
 
       # Wire the freshly-built local WASM into ui/node_modules
       # BEFORE `npm install`. With the symlink already present and its
@@ -87,7 +87,7 @@ jobs:
       - name: Link local WASM package into UI
         run: |
           cd bindings/wasm/pkg && npm link
-          cd ../../ui && npm link @goplasmatic/datalogic
+          cd ../../ui && npm link @goplasmatic/datalogic-wasm
 
       - name: Install UI dependencies
         run: cd ui && npm install

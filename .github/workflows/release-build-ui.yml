@@ -35,9 +35,9 @@ jobs:
           cd ui
           # Bump UI's own version
           npm version "${{ inputs.version }}" --no-git-tag-version --allow-same-version
-          # Pin @goplasmatic/datalogic to the same version we're publishing
+          # Pin @goplasmatic/datalogic-wasm to the same version we're publishing
           # so the released UI references the matching WASM (no skew).
-          npm pkg set "dependencies.@goplasmatic/datalogic=${{ inputs.version }}"
+          npm pkg set "dependencies.@goplasmatic/datalogic-wasm=${{ inputs.version }}"
 
       # Wire the freshly-built local WASM artifact into ui/node_modules
       # BEFORE running npm install. With the symlink present and its
@@ -47,7 +47,7 @@ jobs:
       - name: Link local WASM package into UI
         run: |
           cd bindings/wasm/pkg && npm link
-          cd ../../ui && npm link @goplasmatic/datalogic
+          cd ../../ui && npm link @goplasmatic/datalogic-wasm
 
       - name: Install UI dependencies
         run: cd ui && npm install

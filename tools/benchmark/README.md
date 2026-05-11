@@ -64,7 +64,7 @@ Auto-detected at runtime (require Node + an `npm install` in `runners/`):
 
 | Column                       | API exercised                                                              |
 |------------------------------|----------------------------------------------------------------------------|
-| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic` `new CompiledRule(ruleStr, false)` once per rule, then `.evaluate(dataStr)` per call. WASM analog of `dlrs:engine`; remaining per-call cost is data marshall + parse + result stringify across the V8↔WASM boundary. |
+| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` `new CompiledRule(ruleStr, false)` once per rule, then `.evaluate(dataStr)` per call. WASM analog of `dlrs:engine`; remaining per-call cost is data marshall + parse + result stringify across the V8↔WASM boundary. |
 | `json-logic-js`              | `json-logic-js` (jwadhams) — `apply(rule, data)`, interpreted, no compile API. |
 | `json-logic-engine`          | `json-logic-engine` (TotalTechGeek) — interpreted (`engine.run(rule, data)`). |
 | `json-logic-engine:compiled` | `json-logic-engine` — pre-compiled (`engine.build(rule)`, "12.5–20× hot path" per the library's README). |

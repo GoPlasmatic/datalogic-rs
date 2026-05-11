@@ -9,6 +9,32 @@ cookbook.
 If you are still on v4 and not ready to migrate, stay on the latest
 4.x release. v5 does not support a side-by-side mode.
 
+## npm package rename (JS/TS consumers only)
+
+The WASM npm package was renamed to align with the `datalogic-<lang>`
+convention used by every other binding:
+
+| v4 | v5 |
+|---|---|
+| `@goplasmatic/datalogic` (WASM) | **`@goplasmatic/datalogic-wasm`** |
+| _(new in v5)_ | **`@goplasmatic/datalogic-node`** — native Node.js binding via napi-rs |
+| `@goplasmatic/datalogic-ui` | `@goplasmatic/datalogic-ui` (unchanged) |
+
+If you are a JS consumer:
+
+- **Browsers, Deno, Bun, Cloudflare Workers** → switch
+  `npm install @goplasmatic/datalogic` to `npm install @goplasmatic/datalogic-wasm`.
+- **Node.js services** → install `@goplasmatic/datalogic-node` instead;
+  it's the new native build (per-platform `.node` prebuild) and is
+  materially faster than the WASM path for Node. The WASM package
+  still works under Node if you'd rather have a single artifact across
+  Node + browser.
+- **React UI consumers** → no change. `@goplasmatic/datalogic-ui`
+  bundles its own WASM internally.
+
+The legacy `@goplasmatic/datalogic` name is not republished at v5; v4.x
+versions remain installable for consumers not ready to move.
+
 ## What changed at a glance
 
 | Concern                     | v4                                                   | v5                                                              |
@@ -279,7 +305,7 @@ match engine.eval_str(rule, data) {
 
 ## JavaScript / npm consumers
 
-The `@goplasmatic/datalogic` (WASM) and `@goplasmatic/datalogic-ui`
+The `@goplasmatic/datalogic-wasm` (WASM) and `@goplasmatic/datalogic-ui`
 (React) packages share the v5 cutover. Two surface renames mirror the
 Rust core:
 

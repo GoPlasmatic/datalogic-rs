@@ -256,7 +256,7 @@ jobs:
         id: check
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          if npm view "@goplasmatic/datalogic@$VERSION" version 2>/dev/null; then
+          if npm view "@goplasmatic/datalogic-wasm@$VERSION" version 2>/dev/null; then
             echo "Version $VERSION already published to npm, skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
@@ -280,7 +280,7 @@ jobs:
   publish-ui:
     name: Publish UI to npm
     # publish-wasm before publish-ui because the published UI's
-    # dependency on @goplasmatic/datalogic@$VERSION must be resolvable
+    # dependency on @goplasmatic/datalogic-wasm@$VERSION must be resolvable
     # on npm at install time.
     needs: [validate, publish-crate, build-ui, publish-wasm]
     runs-on: ubuntu-latest

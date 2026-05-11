@@ -56,18 +56,18 @@ const LIBS = {
       return (c) => c._jle_compiled(c.data);
     },
   },
-  '@goplasmatic/datalogic-compiled': {
+  '@goplasmatic/datalogic-wasm-compiled': {
     // Pre-compiled via the WASM-side `CompiledRule` class. Cuts rule
     // parse + compile + rule-string marshalling out of the per-call
     // path; data marshalling + parse + result stringify still happen
     // every call (realistic — callers do reuse rules but pass fresh
     // data). The WASM analog of `dlrs:engine`.
     setup: async (cases) => {
-      const mod = await import('@goplasmatic/datalogic');
+      const mod = await import('@goplasmatic/datalogic-wasm');
       const CompiledRule = mod.CompiledRule ?? mod.default?.CompiledRule;
       if (typeof CompiledRule !== 'function') {
         throw new Error(
-          '@goplasmatic/datalogic: `CompiledRule` not found on module. Build pkg/ via `cd packages/wasm && ./build.sh`.',
+          '@goplasmatic/datalogic-wasm: `CompiledRule` not found on module. Build pkg/ via `cd bindings/wasm && ./build.sh`.',
         );
       }
       for (const c of cases) {

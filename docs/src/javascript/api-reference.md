@@ -1,6 +1,6 @@
 # API Reference
 
-Complete API documentation for the `@goplasmatic/datalogic` WebAssembly package.
+Complete API documentation for the `@goplasmatic/datalogic-wasm` WebAssembly package.
 
 ## Functions
 
@@ -19,7 +19,7 @@ function init(input?: InitInput): Promise<InitOutput>;
 
 **Example:**
 ```javascript
-import init from '@goplasmatic/datalogic';
+import init from '@goplasmatic/datalogic-wasm';
 
 // Standard initialization
 await init();

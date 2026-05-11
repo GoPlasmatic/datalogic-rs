@@ -9,7 +9,7 @@ JSONLogic expressions as interactive node-based flow diagrams.
 This is the **React surface** of the
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs) monorepo.
 It consumes the WASM binding
-([`@goplasmatic/datalogic`](../bindings/wasm/README.md)) for evaluation
+([`@goplasmatic/datalogic-wasm`](../bindings/wasm/README.md)) for evaluation
 and tracing — for the engine itself and the cross-runtime overview,
 see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
@@ -169,7 +169,7 @@ The component respects the `data-theme` attribute on parent elements for theming
 
 This package lives at `ui/` in the
 [datalogic-rs monorepo](https://github.com/GoPlasmatic/datalogic-rs). It
-depends on a locally-built `@goplasmatic/datalogic` WASM bundle — see
+depends on a locally-built `@goplasmatic/datalogic-wasm` WASM bundle — see
 [DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
 for the full link/install dance. Day-to-day, from the repo root:
 
@@ -213,7 +213,7 @@ The main component is `DataLogicEditor` which:
 - lucide-react (icons)
 - @msgpack/msgpack (data serialization)
 - fflate (compression)
-- @goplasmatic/datalogic (bundled, for WASM evaluation)
+- @goplasmatic/datalogic-wasm (bundled, for WASM evaluation)
 
 ## Documentation
 
@@ -222,7 +222,7 @@ For complete documentation including all props, customization options, and advan
 ## Learn more
 
 - [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [WASM binding README](../bindings/wasm/README.md) — `@goplasmatic/datalogic`, the JS/TS engine this UI consumes
+- [WASM binding README](../bindings/wasm/README.md) — `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
 - [Rust crate README](../crates/datalogic-rs/README.md) — engine design, the 5-tier API model
 - [Full documentation](https://goplasmatic.github.io/datalogic-rs/)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)

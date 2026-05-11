@@ -25,7 +25,7 @@ own tier-by-tier numbers, see `bin/self.rs`.
 | Column                       | API                                                                                                                                                                          |
 |------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `dlrs:engine`                | datalogic-rs native: pre-compiled `Logic` + caller-owned `Bump`, `Engine::evaluate(...)` per call                                                                            |
-| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic` (this repo, via Node): `new CompiledRule(ruleStr, false)` once + `.evaluate(dataStr)` per call                                                      |
+| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` (this repo, via Node): `new CompiledRule(ruleStr, false)` once + `.evaluate(dataStr)` per call                                                 |
 | `jsonlogic-rs`               | [bestowinc/json-logic-rs] 0.5 (Rust): `apply(&Value, &Value)` — no compile API, pre-parsed in setup                                                                          |
 | `json-logic-js`              | [json-logic-js] (jwadhams, JS via Node): `apply(rule, data)` — interpreted, no compile API                                                                                   |
 | `json-logic-engine`          | [json-logic-engine] (TotalTechGeek, JS via Node): `engine.run(rule, data)` — interpreted                                                                                     |
@@ -147,7 +147,7 @@ Headline takeaways:
   what hurts. To go below this number you'd have to bypass V8 entirely
   (e.g. host the WASM in `wasmtime` from native Rust) — out of scope.
 - **`ERR` cells reflect operator-set differences**, not raw failure:
-  - The published `@goplasmatic/datalogic` WASM ships a curated feature
+  - The published `@goplasmatic/datalogic-wasm` ships a curated feature
     set (`datetime + trace + templating`); suites needing operators
     outside that (`try`, `length`, `sort`, `slice`, `coalesce`,
     `exists`, `arithmetic/{abs,ceil,floor}`, `string/string.json`,

@@ -205,7 +205,7 @@ root.
 - `error-handling` — `try` / `throw` operators.
 - `ext-string`, `ext-array`, `ext-control`, `ext-math` — opt-in operator
   groups beyond the JSONLogic baseline.
-- `wasm` — convenience bundle for the `@goplasmatic/datalogic` WASM
+- `wasm` — convenience bundle for the `@goplasmatic/datalogic-wasm` WASM
   package (enables `datetime`, `trace`, `templating`).
 
 See `MIGRATION.md` at the repo root for the v4 → v5 cookbook.

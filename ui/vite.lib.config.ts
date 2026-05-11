@@ -21,7 +21,7 @@ export default defineConfig({
       // Match `vite.config.ts`: resolve the WASM dep to the vendored
       // copy that `prebuild:lib` (→ sync-wasm) refreshes from
       // `../wasm/pkg/` before this build runs.
-      '@goplasmatic/datalogic': resolve(__dirname, 'vendor/datalogic'),
+      '@goplasmatic/datalogic-wasm': resolve(__dirname, 'vendor/datalogic'),
     },
   },
   build: {

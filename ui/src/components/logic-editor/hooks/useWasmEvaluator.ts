@@ -72,7 +72,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
         setError(null);
 
         // Dynamic import of the WASM module
-        const wasm = await import('@goplasmatic/datalogic');
+        const wasm = await import('@goplasmatic/datalogic-wasm');
 
         // Initialize the WASM module
         await wasm.default();
