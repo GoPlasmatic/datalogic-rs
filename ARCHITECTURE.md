@@ -1,40 +1,45 @@
 # Architecture
 
-This monorepo ships one logical product — a JSONLogic engine — across three
-runtime targets that build on each other:
+This monorepo ships one logical product — a JSONLogic engine — across
+multiple runtime targets that all wrap the same Rust core:
 
 ```
-              +---------------------------+
-              |  crates/datalogic-rs      |   Rust crate -> crates.io
-              |  datalogic-rs             |   the engine; everything else wraps it
-              +-------------+-------------+
-                            |
-              uses path = "../../crates/datalogic-rs"
-                            |
-                            v
-              +---------------------------+
-              |  bindings/wasm            |   wasm-bindgen wrapper -> @goplasmatic/datalogic (npm)
-              |  datalogic-wasm           |   wasm-pack builds three targets: web/bundler/nodejs
-              +-------------+-------------+
-                            |
-              consumed via npm link / npm install
-                            |
-                            v
-              +---------------------------+
-              |  ui                       |   React component -> @goplasmatic/datalogic-ui (npm)
-              |                           |   visual debugger + playground
-              +---------------------------+
-
-              +---------------------------+
-              |  tools/benchmark          |   Rust dev binary, NOT published
-              |  datalogic-bench          |   `self` (single-engine) and `compare` (cross-library)
-              +---------------------------+
+                          +-----------------------------+
+                          |   crates/datalogic-rs       |   Rust crate -> crates.io
+                          |   the engine (source of     |   every binding wraps this
+                          |   truth for behaviour)      |
+                          +--+----+----+----+----+------+
+                             |    |    |    |    |
+            path = "../../crates/datalogic-rs" (each binding pins it)
+                             |    |    |    |    |
+        +--------------------+    |    |    |    +----------------------+
+        |             +-----------+    |    +-----------+               |
+        v             v                v                v               v
+  +----------+  +-----------+  +--------------+  +-------+    +------------------+
+  | bindings |  | bindings  |  | bindings/c   |  |bindings|   | tools/benchmark  |
+  | /wasm    |  | /python   |  | C ABI +      |  |/go     |   | dev-only binary  |
+  | wasm-    |  | pyo3 +    |  | cbindgen     |  |cgo over|   | self / compare   |
+  | bindgen  |  | maturin   |  | (in-tree)    |  |C ABI   |   |                  |
+  +----+-----+  +-----+-----+  +------+-------+  +---+----+    +------------------+
+       |              |               ^              |
+   npm link           |       static link via cgo    |
+       |              |               |              |
+       v              v               +------ links -+
+   +-------+      PyPI                    Go modules
+   | ui    |   datalogic-py           bindings/go/v* tag
+   | React |
+   +-------+
+       |
+       v
+   npm: @goplasmatic/datalogic-ui
 ```
 
-The Rust core is the source of truth for behaviour. WASM is a thin FFI shell
-that converts strings at the boundary and re-exposes the engine. The UI
-consumes the published WASM (or a locally-linked build) and adds editing,
-visualisation, and trace inspection on top.
+The Rust core is the source of truth for behaviour. Each binding is a
+thin FFI shell that converts at the language boundary and re-exposes
+the engine. WASM, Python, C, and Go pin the core via Cargo path-deps;
+Go links statically through the `bindings/c` C ABI. The React UI
+(`ui/`) consumes the published WASM (or a locally-linked build) and
+adds editing, visualisation, and trace inspection on top.
 
 ## Cargo workspace layout
 
@@ -43,14 +48,23 @@ The repo root holds a Cargo workspace with two members:
 - `crates/datalogic-rs` — the published crate, `datalogic-rs`.
 - `tools/benchmark` — dev-only binaries (`self`, `compare`), `publish = false`.
 
-`bindings/wasm` declares its own `[workspace]` table and is excluded from the
-parent workspace. This is deliberate: `wasm-pack` needs the WASM-specific
-release profile (`opt-level = "z"`, `lto = true`, `panic = "abort"`,
-`strip = true`), and Cargo only honours `[profile.*]` at a workspace root.
-Keeping WASM as its own workspace lets it apply that profile without
-affecting builds of `core` or `benchmark`.
+Each Rust-side binding (`bindings/wasm`, `bindings/python`,
+`bindings/c`) declares its own `[workspace]` table and is excluded
+from the parent workspace. This is deliberate:
 
-`ui` is a Node package. Cargo ignores it.
+- **`bindings/wasm`** — `wasm-pack` needs the WASM-specific release
+  profile (`opt-level = "z"`, `lto = true`, `panic = "abort"`,
+  `strip = true`), and Cargo only honours `[profile.*]` at a workspace
+  root.
+- **`bindings/python`** — keeps the pyo3 build deps + `cdylib` codegen
+  out of the default `cargo test --workspace --all-features` path so
+  contributors don't need a Python interpreter to run core tests.
+- **`bindings/c`** — same reasoning: keeps cbindgen + `cdylib`/`staticlib`
+  outputs separate from the core test loop.
+
+`bindings/go` is a Go module (no Cargo manifest); it links the static
+library produced by `bindings/c`. `ui` is a Node package. Cargo
+ignores both.
 
 ## Two-phase evaluation (in `crates/datalogic-rs`)
 
@@ -94,19 +108,22 @@ or `templating`.
 
 | Concern                        | Path                                              |
 |--------------------------------|---------------------------------------------------|
-| Public Rust API                | `crates/datalogic-rs/src/lib.rs`                        |
-| Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                       |
-| Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                      |
-| OpCode enum (59 builtins)      | `crates/datalogic-rs/src/opcode.rs`                     |
-| Operator implementations       | `crates/datalogic-rs/src/operators/`                    |
-| Arena value types & context    | `crates/datalogic-rs/src/arena/`                        |
-| Rust integration tests         | `crates/datalogic-rs/tests/`                            |
-| JSONLogic JSON test suites     | `crates/datalogic-rs/tests/suites/`                     |
-| Executable examples            | `crates/datalogic-rs/examples/`                         |
+| Public Rust API                | `crates/datalogic-rs/src/lib.rs`                  |
+| Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                 |
+| Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                |
+| OpCode enum (59 builtins)      | `crates/datalogic-rs/src/opcode.rs`               |
+| Operator implementations       | `crates/datalogic-rs/src/operators/`              |
+| Arena value types & context    | `crates/datalogic-rs/src/arena/`                  |
+| Rust integration tests         | `crates/datalogic-rs/tests/`                      |
+| JSONLogic JSON test suites     | `crates/datalogic-rs/tests/suites/`               |
+| Executable examples            | `crates/datalogic-rs/examples/`                   |
 | WASM FFI surface               | `bindings/wasm/src/lib.rs`                        |
 | WASM build script              | `bindings/wasm/build.sh`                          |
-| React editor + debugger        | `ui/src/components/logic-editor/`        |
-| Benchmark harness              | `tools/benchmark/src/`                         |
+| Python FFI (pyo3)              | `bindings/python/src/lib.rs`                      |
+| C ABI (extern "C" + cbindgen)  | `bindings/c/src/`, generated header in `bindings/c/include/datalogic.h` |
+| Go binding (cgo over C ABI)    | `bindings/go/`                                    |
+| React editor + debugger        | `ui/src/components/logic-editor/`                 |
+| Benchmark harness              | `tools/benchmark/src/`                            |
 
 For day-to-day commands (build, test, run, link), see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
