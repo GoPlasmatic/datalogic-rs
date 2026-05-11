@@ -2,10 +2,13 @@
 //!
 //! These are the **zero-config** path — call sites that don't need
 //! custom operators, custom configuration, or templating mode reach
-//! for [`eval`] / [`eval_str`] / [`eval_into`] / [`compile`] directly,
-//! without constructing an [`Engine`] first. The shared engine is a
+//! for [`eval`] / [`eval_str`] / [`compile`] directly, without
+//! constructing an [`Engine`] first. The shared engine is a
 //! `OnceLock<Engine>` of [`Engine::default`]; subsequent calls are
 //! free of construction cost.
+//!
+//! With the `serde_json` feature, `eval_into` is also available for
+//! typed deserialization of the result.
 //!
 //! Escalate to [`Engine`] when you need any of:
 //! - a non-default [`crate::EvaluationConfig`],

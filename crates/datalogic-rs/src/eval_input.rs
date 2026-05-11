@@ -107,7 +107,17 @@ impl<'a> EvalInput<'a> for &'a serde_json::Value {
 // ============================================================
 
 /// Adapter trait for [`crate::Engine::eval`] / [`crate::Engine::eval_str`]
-/// / [`crate::Engine::eval_into`] and the module-level `datalogic::eval*`
+// `Engine::eval_into` is gated behind `serde_json`. Link it when the
+// feature is on; otherwise reference it as code text to keep the docs
+// resolvable in a default-features build.
+#[cfg_attr(
+    feature = "serde_json",
+    doc = "/ [`crate::Engine::eval_into`] and the module-level `datalogic::eval*`"
+)]
+#[cfg_attr(
+    not(feature = "serde_json"),
+    doc = "(plus `Engine::eval_into` with the `serde_json` feature) and the module-level `datalogic::eval*`"
+)]
 /// helpers, where the engine creates and owns the arena per call.
 ///
 /// Unlike [`EvalInput`] (which carries an arena lifetime), `OwnedInput`

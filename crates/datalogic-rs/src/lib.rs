@@ -166,7 +166,17 @@ pub use config::{
 /// enabled, pass a `&serde_json::Value` (or any `&T: Serialize`) into
 /// any `eval*` method via [`EvalInput`] / [`IntoLogic`], and ask for a
 /// `serde_json::Value` (or any `T: DeserializeOwned`) back via
-/// [`Engine::eval_into`] / [`Session::eval_into`]. For the `DataValue
+// `Engine::eval_into` / `Session::eval_into` are gated behind
+// `serde_json`; link them when the feature is on, otherwise emit them
+// as code text so default-features `cargo doc` doesn't break.
+#[cfg_attr(
+    feature = "serde_json",
+    doc = "[`Engine::eval_into`] / [`Session::eval_into`]. For the `DataValue"
+)]
+#[cfg_attr(
+    not(feature = "serde_json"),
+    doc = "`Engine::eval_into` / `Session::eval_into`. For the `DataValue"
+)]
 /// → JSON String` path use the standard `value.to_string()`, which is
 /// what [`Engine::eval_str`] uses internally.
 pub use datavalue;

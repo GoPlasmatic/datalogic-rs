@@ -54,9 +54,24 @@ impl Drop for DepthGuard {
 /// Holds the immutable engine state — registered [`crate::CustomOperator`]
 /// implementations, the [`EvaluationConfig`], the optional
 /// preserve-structure flag — and exposes the public surface for parsing
-/// rules ([`Self::compile`]), evaluating them ([`Self::eval`],
-/// [`Self::eval_str`], [`Self::eval_into`]), and opening
-/// hot-loop / traced sessions ([`Self::session`], [`Self::trace`]).
+/// rules ([`Self::compile`]), evaluating them ([`Self::eval`] /
+// `Self::eval_into` is feature-gated on `serde_json`; link it
+// conditionally so default-features `cargo doc` doesn't break.
+#[cfg_attr(
+    feature = "serde_json",
+    doc = "[`Self::eval_str`], [`Self::eval_into`]), and opening hot-loop"
+)]
+#[cfg_attr(
+    not(feature = "serde_json"),
+    doc = "[`Self::eval_str`], `Self::eval_into`), and opening hot-loop"
+)]
+/// sessions ([`Self::session`]).
+// The `trace` feature adds [`Self::trace`]; reference it conditionally so
+// `cargo doc` without `--all-features` doesn't break on the intra-doc link.
+#[cfg_attr(
+    feature = "trace",
+    doc = "Enabling the `trace` feature also exposes [`Self::trace`] for traced sessions."
+)]
 ///
 /// `Engine` is `Send + Sync` (every field is); the typical pattern is to
 /// build one at startup, wrap it in `Arc<Engine>`, and clone the `Arc`
@@ -105,8 +120,25 @@ impl Drop for DepthGuard {
 ///
 /// | Method | Arena ownership | Result type | When to use |
 /// |---|---|---|---|
-/// | [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`] | engine creates a fresh `Bump::with_capacity(4096)` per call | [`OwnedDataValue`](datavalue::OwnedDataValue) / `String` / `T` | One-shot. Any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |
-/// | [`crate::Session::eval`] / [`crate::Session::eval_str`] / [`crate::Session::eval_into`] / [`crate::Session::eval_borrowed`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned / `String` / `T` / borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |
+// `eval_into` is feature-gated on `serde_json`; emit a linked or plain
+// reference depending on the active features so default-features
+// `cargo doc` doesn't break the table row.
+#[cfg_attr(
+    feature = "serde_json",
+    doc = "| [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`] | engine creates a fresh `Bump::with_capacity(4096)` per call | [`OwnedDataValue`](datavalue::OwnedDataValue) / `String` / `T` | One-shot. Any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |"
+)]
+#[cfg_attr(
+    not(feature = "serde_json"),
+    doc = "| [`Self::eval`] / [`Self::eval_str`] / `Self::eval_into` | engine creates a fresh `Bump::with_capacity(4096)` per call | [`OwnedDataValue`](datavalue::OwnedDataValue) / `String` / `T` | One-shot. Any caller that doesn't want to think about arenas. Allocates each call — for hot loops, drop to `Session`. |"
+)]
+#[cfg_attr(
+    feature = "serde_json",
+    doc = "| [`crate::Session::eval`] / [`crate::Session::eval_str`] / [`crate::Session::eval_into`] / [`crate::Session::eval_borrowed`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned / `String` / `T` / borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |"
+)]
+#[cfg_attr(
+    not(feature = "serde_json"),
+    doc = "| [`crate::Session::eval`] / [`crate::Session::eval_str`] / `Session::eval_into` / [`crate::Session::eval_borrowed`] | session-owned `Bump`, caller calls [`crate::Session::reset`] between batches | owned / `String` / `T` / borrowed `&'a DataValue<'a>` | Hot loop with a long-lived engine. The `Session` hides `bumpalo` from the call site and pre-sizes the arena via [`crate::Session::reset_with_capacity`] when needed. |"
+)]
 /// | [`Self::evaluate`] | caller-passed `&Bump`; library never resets | `&'a DataValue<'a>` (borrowed) | Zero-copy result paths, custom pool/allocator strategies, integration with arena-aware downstream code. |
 ///
 /// All routes share the same dispatcher; the differences are who owns
@@ -387,7 +419,13 @@ impl Engine {
     /// it between calls; the returned `&DataValue<'a>` borrows from the
     /// arena, so it must be dropped before the next reset (enforced by
     /// the borrow checker). For ergonomic owned/typed/JSON-string output,
-    /// prefer [`Self::eval`] / [`Self::eval_str`] / [`Self::eval_into`].
+    /// prefer [`Self::eval`] / [`Self::eval_str`]
+    // `Self::eval_into` is gated behind `serde_json`; link conditionally.
+    #[cfg_attr(feature = "serde_json", doc = "/ [`Self::eval_into`].")]
+    #[cfg_attr(
+        not(feature = "serde_json"),
+        doc = "(plus `Self::eval_into` with the `serde_json` feature)."
+    )]
     ///
     /// # Example
     ///

@@ -91,10 +91,20 @@ impl EngineBuilder {
     /// in the compiled tree — debuggers, alternate evaluators, or any
     /// caller that walks the compiled structure and would be surprised
     /// to see a `{"+": [1, 2]}` collapsed to a `3` literal.
-    ///
-    /// The trace surface ([`crate::Engine::trace`]) always disables
-    /// folding internally regardless of this setting, since traces
-    /// would otherwise lose the folded operators as steps.
+    // The trace-feature addendum links to `Engine::trace`, which only
+    // exists with `feature = "trace"`. Gate the whole paragraph behind
+    // the same feature so `cargo doc` without `--all-features` doesn't
+    // break on the intra-doc link.
+    #[cfg_attr(feature = "trace", doc = "")]
+    #[cfg_attr(
+        feature = "trace",
+        doc = "The trace surface ([`crate::Engine::trace`]) always disables folding"
+    )]
+    #[cfg_attr(
+        feature = "trace",
+        doc = "internally regardless of this setting, since traces would otherwise"
+    )]
+    #[cfg_attr(feature = "trace", doc = "lose the folded operators as steps.")]
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_constant_folding(mut self, on: bool) -> Self {

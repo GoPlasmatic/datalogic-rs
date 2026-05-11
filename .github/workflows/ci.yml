@@ -78,9 +78,17 @@ jobs:
         # settings via `[package.metadata.docs.rs]`) don't regress.
         # `--no-deps` keeps the run scoped to our crate; transitive
         # dep warnings are not our problem.
+        #
+        # Run twice: with `--all-features` (matches the docs.rs build)
+        # AND with default features. Intra-doc links to feature-gated
+        # items are easy to write and only fail in the feature-off
+        # build — a contributor running plain `cargo doc` hits them
+        # but CI used to miss them.
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc -p datalogic-rs --all-features --no-deps
+        run: |
+          cargo doc -p datalogic-rs --all-features --no-deps
+          cargo doc -p datalogic-rs --no-deps
 
   msrv:
     name: MSRV (Rust 1.85)
