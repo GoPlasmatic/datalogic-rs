@@ -26,6 +26,7 @@ jobs:
           - { os: macos,   arch: x86_64,  libc: "",         runner: macos-13,       target: x86_64-apple-darwin,         manylinux: "off" }
           - { os: macos,   arch: arm64,   libc: "",         runner: macos-14,       target: aarch64-apple-darwin,        manylinux: "off" }
           - { os: windows, arch: x86_64,  libc: "",         runner: windows-latest, target: x86_64-pc-windows-msvc,      manylinux: "off" }
+          - { os: windows, arch: arm64,   libc: "",         runner: windows-11-arm, target: aarch64-pc-windows-msvc,     manylinux: "off" }
     steps:
       - uses: actions/checkout@v4
 

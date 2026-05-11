@@ -141,6 +141,7 @@ Supported (os, arch) matrix:
 | macOS | amd64 | `macos-14` (cross from arm64 host) | `x86_64-apple-darwin` |
 | macOS | arm64 | `macos-14` (native) | `aarch64-apple-darwin` |
 | Windows | amd64 | `windows-latest` | `x86_64-pc-windows-gnu` (mingw — for cgo compat; PHP/JVM may need `msvc` too) |
+| Windows | arm64 | `windows-11-arm` | `aarch64-pc-windows-gnullvm` (llvm-mingw — installed in-job; no native mingw-w64 ARM64 port exists) |
 
 ## Open candidates
 

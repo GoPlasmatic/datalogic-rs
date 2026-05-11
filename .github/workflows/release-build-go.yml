@@ -31,7 +31,12 @@ jobs:
           - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,      native: true  }
           # `gnu` (mingw-w64) rather than `msvc` so the produced .a is
           # ABI-compatible with Go's default cgo toolchain on Windows.
+          # For ARM64, `gnullvm` (llvm-mingw) is the equivalent — traditional
+          # mingw-w64 has no stable ARM64 port, so llvm-mingw is the only
+          # mingw-style toolchain available. Installed explicitly below
+          # because windows-11-arm runners don't bundle it.
           - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-gnu,     native: true  }
+          - { os: windows, arch: arm64, runner: windows-11-arm,   cargo_target: aarch64-pc-windows-gnullvm, native: true  }
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +47,20 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+
+      # windows-11-arm has no mingw toolchain pre-installed. Both the
+      # `aarch64-pc-windows-gnullvm` Rust target and Go's cgo need the
+      # llvm-mingw bin dir on PATH (provides `clang`, `ld.lld`, and the
+      # `aarch64-w64-mingw32-*` aliases cgo expects). Pinned release so a
+      # rerun months from now produces the same artifact.
+      - name: Install llvm-mingw (Windows ARM64)
+        if: matrix.target.cargo_target == 'aarch64-pc-windows-gnullvm'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-aarch64.zip"
+          Invoke-WebRequest -Uri $url -OutFile llvm-mingw.zip
+          Expand-Archive -Path llvm-mingw.zip -DestinationPath C:\
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\llvm-mingw-20240619-ucrt-aarch64\bin"
 
       - name: Cache cargo
         uses: actions/cache@v4
