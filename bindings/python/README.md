@@ -130,7 +130,10 @@ with engine.session() as sess:
         result = sess.evaluate(rule, payload)
 ```
 
-`Session` is **not thread-safe** — open one per thread.
+`Session` is the per-thread workhorse — open one per worker thread.
+The arena that makes it fast can't be shared across threads (the same
+way a database connection is per-task in a connection-pool model);
+`Engine` and `Rule` are both thread-safe, so share those.
 
 ## Error handling
 
@@ -155,11 +158,11 @@ except EvaluateError as e:
 
 ## Threading
 
-| Type      | Safe to share across threads?                                                |
-|-----------|------------------------------------------------------------------------------|
-| `Engine`  | ✅ Yes                                                                       |
-| `Rule`    | ✅ Yes — `evaluate` releases the GIL, giving real parallelism                |
-| `Session` | ❌ No — open one per thread                                                  |
+| Type      | Pattern                                                                          |
+|-----------|----------------------------------------------------------------------------------|
+| `Engine`  | Build once; share across threads                                                 |
+| `Rule`    | Compile once; share across threads — `evaluate` releases the GIL for parallelism |
+| `Session` | One per worker thread — the per-task workhorse                                   |
 
 ## Type conversion
 

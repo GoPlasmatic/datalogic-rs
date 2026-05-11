@@ -378,12 +378,20 @@ Runnable example: [`examples/error_handling.rs`](./examples/error_handling.rs).
 
 ## Thread safety
 
-| Type                           | `Send` | `Sync` | Notes                                                              |
-|--------------------------------|:------:|:------:|--------------------------------------------------------------------|
-| `Engine`                       | ✅     | ✅     | Construct once, share via `Arc`                                    |
-| `Logic`                        | ✅     | ✅     | Compiled rules; use `Engine::compile_arc` for cross-thread sharing |
-| `Session`                      | ✅     | ❌     | Owns a `Bump`; open one per thread / per task                      |
-| `CustomOperator` implementors  | ✅     | ✅     | Required by the trait bound                                        |
+`Engine`, `Logic`, and your `CustomOperator` types are all `Send + Sync`
+— construct the `Engine` once, compile the rule once, share both via
+`Arc` across as many threads or tokio tasks as you want. `Session` is
+the per-task workhorse: each task opens its own. It owns a
+`bumpalo::Bump` that can't be shared across threads (the same way a
+database connection is per-task in a connection-pool model), and Rust
+enforces this at compile time — there's no runtime hazard.
+
+| Type                           | Pattern                                                                        |
+|--------------------------------|--------------------------------------------------------------------------------|
+| `Engine`                       | One per process; share via `Arc`                                               |
+| `Logic`                        | Compile once; share via `Arc` (or use `Engine::compile_arc`)                   |
+| `CustomOperator` implementors  | Register on the builder; live inside the shared `Engine` (`Send + Sync` bound) |
+| `Session`                      | One per task / per goroutine — the per-task workhorse                          |
 
 Runnable example: [`examples/thread_safety.rs`](./examples/thread_safety.rs).
 

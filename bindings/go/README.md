@@ -137,11 +137,11 @@ if err != nil {
 
 ## Threading
 
-| Type | Safe to share across goroutines? |
-|---|---|
-| `Engine` | Yes |
-| `Rule` | Yes — `Evaluate` is safe to call from many goroutines |
-| `Session` | **No** — open one per goroutine |
+| Type      | Pattern                                                                            |
+|-----------|------------------------------------------------------------------------------------|
+| `Engine`  | Construct once; share across goroutines                                            |
+| `Rule`    | Compile once; share across goroutines — `Evaluate` is safe to call from many       |
+| `Session` | One per goroutine — the per-task workhorse                                         |
 
 ## How it links
 
