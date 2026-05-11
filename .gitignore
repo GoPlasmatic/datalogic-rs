@@ -26,15 +26,14 @@ Cargo.lock
 .DS_Store
 node_modules/
 .claude/
-CLAUDE.md
 
 # mdBook generated output
 docs/book/
 docs/src/wasm/
 
-# UI build output
-packages/ui/dist/
-packages/ui/dist-embed/
+# UI build output (post-flatten layout — see ARCHITECTURE.md)
+ui/dist/
+ui/dist-embed/
 
 # Docs embed build artifacts (generated when building the UI embed bundle)
 docs/src/assets/*.js

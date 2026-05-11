@@ -1,0 +1,82 @@
+# Dependabot config for the datalogic-rs monorepo.
+#
+# Each binding owns its own Cargo workspace (root excludes bindings/wasm,
+# python, c, node) — so we register every Cargo manifest separately.
+# `versioning-strategy: increase-if-necessary` keeps the floor versions in
+# `crates/datalogic-rs/Cargo.toml` honest with the minimal-versions CI
+# job: PRs only bump the floor when the new range requires it.
+version: 2
+updates:
+  # ──────────── Cargo ────────────
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, rust]
+    groups:
+      patch:
+        update-types: [patch]
+      minor:
+        update-types: [minor]
+    versioning-strategy: increase-if-necessary
+
+  - package-ecosystem: cargo
+    directory: /bindings/wasm
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, rust, wasm]
+
+  - package-ecosystem: cargo
+    directory: /bindings/python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, rust, python]
+
+  - package-ecosystem: cargo
+    directory: /bindings/c
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, rust, c-abi]
+
+  - package-ecosystem: cargo
+    directory: /bindings/node
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, rust, node]
+
+  # ──────────── npm ────────────
+  # The UI is the only npm tree with substantive runtime deps; bindings/node
+  # only carries `@napi-rs/cli` as a devDep. Limit npm noise accordingly.
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, javascript, ui]
+    groups:
+      patch:
+        update-types: [patch]
+      minor:
+        update-types: [minor]
+
+  - package-ecosystem: npm
+    directory: /bindings/node
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    labels: [dependencies, javascript, node]
+
+  # ──────────── GitHub Actions ────────────
+  # Pin action versions sharply; bump on Dependabot's cadence rather than
+  # via floating `@v4` aliases that can change underfoot.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
