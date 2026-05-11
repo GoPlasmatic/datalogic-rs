@@ -139,27 +139,27 @@ jobs:
         run: cargo +stable test --workspace --all-features
 
   # Cross-platform validation of the Go binding's full cgo path on every
-  # PR and main push. The release-time matrix also runs this but only
-  # fires on `v*` tags — catching breakage at PR time keeps a broken
-  # cgo file (wrong LDFLAGS list, missing system lib, etc.) from
-  # landing on main where it would silently rot until release day.
+  # PR and main push. The release-time matrix runs the same set of targets;
+  # mirroring it here at PR time catches a broken cgo file (wrong LDFLAGS
+  # list, missing system lib, missing per-platform build-tag file) before
+  # it lands on main and silently rots until release day.
   #
-  # Three native platforms cover the production targets:
-  #   - linux/amd64   (covers linux/arm64 in practice — same Rust target family)
-  #   - darwin/arm64  (covers darwin/amd64 — same Apple toolchain)
-  #   - windows/amd64 (only Windows target we ship)
-  # The release matrix still exercises all five; this is the PR-time
-  # smoke layer.
+  # Matrix mirrors release-build-go.yml exactly. Cross-compile-only
+  # entries (`native: false`) validate the link step via `go build`
+  # without trying to execute the produced binary.
   go-cgo:
-    name: Go cgo (${{ matrix.platform.os }}/${{ matrix.platform.arch }})
-    runs-on: ${{ matrix.platform.runner }}
+    name: Go cgo (${{ matrix.target.os }}/${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - { os: linux,   arch: amd64, runner: ubuntu-latest,  cargo_target: x86_64-unknown-linux-gnu }
-          - { os: darwin,  arch: arm64, runner: macos-14,       cargo_target: aarch64-apple-darwin     }
-          - { os: windows, arch: amd64, runner: windows-latest, cargo_target: x86_64-pc-windows-gnu    }
+        target:
+          - { os: linux,   arch: amd64, runner: ubuntu-latest,    cargo_target: x86_64-unknown-linux-gnu,    native: true  }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, cargo_target: aarch64-unknown-linux-gnu,   native: true  }
+          - { os: darwin,  arch: amd64, runner: macos-14,         cargo_target: x86_64-apple-darwin,         native: false }
+          - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,        native: true  }
+          - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-gnu,       native: true  }
+          - { os: windows, arch: arm64, runner: windows-11-arm,   cargo_target: aarch64-pc-windows-gnullvm,  native: true  }
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -167,12 +167,25 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform.cargo_target }}
+          targets: ${{ matrix.target.cargo_target }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+
+      # windows-11-arm has no mingw toolchain pre-installed. Mirrors
+      # release-build-go.yml: both the `aarch64-pc-windows-gnullvm` Rust
+      # target and cgo need llvm-mingw on PATH (clang, ld.lld, the
+      # `aarch64-w64-mingw32-*` aliases cgo expects).
+      - name: Install llvm-mingw (Windows ARM64)
+        if: matrix.target.cargo_target == 'aarch64-pc-windows-gnullvm'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-aarch64.zip"
+          Invoke-WebRequest -Uri $url -OutFile llvm-mingw.zip
+          Expand-Archive -Path llvm-mingw.zip -DestinationPath C:\
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\llvm-mingw-20240619-ucrt-aarch64\bin"
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -182,31 +195,46 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bindings/c/target/
-          key: ${{ runner.os }}-${{ matrix.platform.arch }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.platform.arch }}-c-
+          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-
 
       - name: Build C ABI staticlib
-        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.platform.cargo_target }}
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
 
       # Stage into the cgo-build-tagged layout. The matching cgo_<os>_<arch>.go
       # file expects exactly ${SRCDIR}/lib/<os>_<arch>/libdatalogic_c.a.
       - name: Stage staticlib + header into bindings/go/
         shell: bash
         run: |
-          PLATFORM=${{ matrix.platform.os }}_${{ matrix.platform.arch }}
+          PLATFORM=${{ matrix.target.os }}_${{ matrix.target.arch }}
           mkdir -p bindings/go/lib/$PLATFORM bindings/go/include
-          cp bindings/c/target/${{ matrix.platform.cargo_target }}/release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
+          cp bindings/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
           cp bindings/c/include/datalogic.h bindings/go/include/
 
-      - name: go vet
-        shell: bash
-        working-directory: bindings/go
-        run: go vet ./...
-
-      - name: go test
+      # Native: full `go test` validates link + runtime behavior.
+      - name: Validate via go test (native)
+        if: matrix.target.native
         shell: bash
         working-directory: bindings/go
         run: go test -v ./...
+
+      # Cross-compile (darwin/amd64 from arm64 host): can verify the link
+      # step but cannot run the produced binary. `go vet` + `go build`
+      # confirm the cgo file parses and the static library resolves all
+      # referenced symbols. macOS clang covers the x86_64 cross via -arch.
+      - name: Validate via go build (cross-compile)
+        if: '!matrix.target.native'
+        shell: bash
+        working-directory: bindings/go
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: '1'
+          CGO_CFLAGS: -arch x86_64
+          CGO_LDFLAGS: -arch x86_64
+        run: |
+          go vet ./...
+          go build -v ./...
 
   # C ABI smoke. bindings/c is excluded from the root workspace so
   # `cargo test --workspace` in the check job skips it — without this
@@ -264,8 +292,13 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # Pinned + cached. The upstream curl-installer fetches whatever
+      # version is current at install time — that floats CI across
+      # wasm-pack releases and bites you on a release-day regression.
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Install binaryen
         run: sudo apt-get update && sudo apt-get install -y binaryen
@@ -335,6 +368,50 @@ jobs:
       - name: Run pytest
         working-directory: bindings/python
         run: pytest -v
+
+  # Node-binding smoke build. The release-time matrix fans out to 8
+  # platforms; mirroring all of them at PR time is expensive and most
+  # regressions are platform-agnostic (binding logic, conv layer, error
+  # surface). One Linux build + `node --test` catches the common cases
+  # and keeps release-build-node from failing for the first time on
+  # tag day. The release matrix still validates each prebuild target.
+  node-test:
+    name: Node binding smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/node/target/
+          key: ${{ runner.os }}-node-${{ hashFiles('bindings/node/Cargo.toml', 'bindings/node/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Install npm deps
+        working-directory: bindings/node
+        run: npm ci || npm install
+
+      # `napi build --platform --release` emits
+      # datalogic-node.<triple>.node + index.js + index.d.ts. Mirrors
+      # the release-build-node.yml prebuild step.
+      - name: Build .node prebuild
+        working-directory: bindings/node
+        run: npx napi build --platform --release
+
+      - name: Run node:test
+        working-directory: bindings/node
+        run: npm test
 
   # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic-wasm
   # would normally resolve from the registry; we link the locally-built
