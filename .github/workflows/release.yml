@@ -6,14 +6,22 @@ name: Release
 # Flow:
 #   validate  →  publish-crate  →  ┬─ publish-wasm  →  publish-ui
 #                                  ├─ python-build-wheels (matrix) ─┐
-#                                  └─ python-build-sdist            ├─ publish-python
-#                                                                   ┘
+#                                  ├─ python-build-sdist            ├─ publish-python
+#                                  ├─ go-build-staticlib (matrix) ──┴─ publish-go
+#                                  │
 #                                  └────────────── github-release (waits for all) ──┘
 #
 # Tests run once in `validate`; publishing the core crate happens before
 # any binding goes out (so a binding never references an unpublished
 # core version on its package registry); language bindings then fan out
 # in parallel.
+#
+# The Go binding ships as a Git tag (`packages/go/vX.Y.Z`) rather than to
+# a package registry. The matrix builds the C ABI staticlib for every
+# supported (os, arch); publish-go stages all five into packages/go/lib/
+# on a synthetic commit and pushes the subdirectory-module tag. The
+# shared C ABI matrix is reusable — future PHP and JVM bindings will hang
+# off the same staticlib/cdylib outputs.
 on:
   push:
     tags:
@@ -355,9 +363,182 @@ jobs:
           # uploaded by an earlier (partial) run for the same version.
           skip-existing: true
 
+  # ----------------------------------------------------------------------- Go
+  # Go modules don't have a registry — `go get` fetches source from the
+  # repository at a given tag, then cgo links against whatever's in the
+  # tree. We solve this by (a) building libdatalogic_c.a for every
+  # supported (os, arch) in a matrix, (b) staging them into
+  # packages/go/lib/<os>_<arch>/ on a synthetic commit, and (c) pushing
+  # a `packages/go/vX.Y.Z` tag pointing at that commit. The synthetic
+  # commit never lands on `main` — it's only reachable through the tag.
+  #
+  # End consumers do `go get github.com/.../packages/go@vX.Y.Z` and get
+  # the staticlib for their platform automatically; the cgo build tags
+  # in packages/go/cgo_<os>_<arch>.go select the right one.
+
+  go-build-staticlib:
+    name: Go staticlib (${{ matrix.target.os }}/${{ matrix.target.arch }})
+    needs: [validate, publish-crate]
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # `native: true` — the runner can execute the built binary, so we
+          # run `go test` against it before uploading.
+          # `native: false` — runner cross-compiles to the target; we
+          # validate the link step via `go build` but can't run tests.
+          - { os: linux,   arch: amd64, runner: ubuntu-latest,    cargo_target: x86_64-unknown-linux-gnu,  native: true  }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, cargo_target: aarch64-unknown-linux-gnu, native: true  }
+          # Both darwin builds run on macos-14 (arm64 host). The arm64 build
+          # is native; amd64 is cross-compiled — macOS toolchains bundle
+          # both linkers, so one runner covers both targets. Cross outputs
+          # can't run here (Rosetta doesn't help with `go test`'s
+          # in-process forks), hence `native: false` for x86_64-apple-darwin.
+          - { os: darwin,  arch: amd64, runner: macos-14,         cargo_target: x86_64-apple-darwin,       native: false }
+          - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,      native: true  }
+          # `gnu` (mingw-w64) rather than `msvc` so the produced .a is
+          # ABI-compatible with Go's default cgo toolchain on Windows.
+          - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-gnu,     native: true  }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.cargo_target }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/c/target/
+          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-
+
+      - name: Build C ABI staticlib
+        run: cargo build --release --manifest-path packages/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+
+      # Stage straight into the package's lib/include layout so the
+      # validation step below uses exactly the same paths the cgo build
+      # tags reference. The same staged tree is what publish-go later
+      # downloads + commits.
+      - name: Stage staticlib + header into packages/go/
+        shell: bash
+        run: |
+          PLATFORM=${{ matrix.target.os }}_${{ matrix.target.arch }}
+          mkdir -p packages/go/lib/$PLATFORM packages/go/include
+          cp packages/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a packages/go/lib/$PLATFORM/
+          cp packages/c/include/datalogic.h packages/go/include/
+
+      # Native: full `go test` validates the link step + runtime behavior.
+      # If a cgo file's LDFLAGS list is wrong, this step fails here rather
+      # than after publish-go has already tagged a broken release.
+      - name: Validate via go test (native)
+        if: matrix.target.native
+        shell: bash
+        working-directory: packages/go
+        run: go test -v ./...
+
+      # Cross-compile case (darwin/amd64 from arm64 host): we can verify
+      # the link step but not run the resulting binary. `go vet ./...` then
+      # `go build ./...` confirms the cgo file parses and the static
+      # library resolves all referenced symbols. The host's clang covers
+      # the x86_64 cross via -arch.
+      - name: Validate via go build (cross-compile)
+        if: '!matrix.target.native'
+        shell: bash
+        working-directory: packages/go
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: '1'
+          CGO_CFLAGS: -arch x86_64
+          CGO_LDFLAGS: -arch x86_64
+        run: |
+          go vet ./...
+          go build -v ./...
+
+      # Upload from packages/go/lib/ so the artifact tarball roots at
+      # <os>_<arch>/libdatalogic_c.a. With download-artifact's
+      # merge-multiple, all five tarballs flatten into one artifacts/
+      # tree with five sibling <os>_<arch>/ subdirs.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-staticlib-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: packages/go/lib/
+          if-no-files-found: error
+
+  publish-go:
+    name: Publish Go module tag
+    needs: [validate, publish-crate, go-build-staticlib]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the full tag commit to base our synthetic release commit on.
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download all staticlibs
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: go-staticlib-*
+          # merge-multiple: each artifact's tarball roots at <os>_<arch>/,
+          # so merging puts every platform dir directly under artifacts/.
+          merge-multiple: true
+
+      - name: Stage staticlibs into packages/go/lib/
+        run: |
+          mkdir -p packages/go/lib
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            mkdir -p "packages/go/lib/${name}"
+            cp "${dir}/libdatalogic_c.a" "packages/go/lib/${name}/"
+          done
+          echo "Staged platform directories:"
+          ls packages/go/lib/
+
+      - name: Stage header into packages/go/include/
+        # The cbindgen-generated header is platform-agnostic — it has no
+        # #ifdef'd content — so we generate it once on this Linux runner
+        # rather than collecting it from every matrix output.
+        run: |
+          cargo build --release --manifest-path packages/c/Cargo.toml
+          mkdir -p packages/go/include
+          cp packages/c/include/datalogic.h packages/go/include/
+
+      - name: Commit and push Go module tag
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="packages/go/v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `-f` because packages/go/.gitignore excludes these dirs on main.
+          # The release tag is the only place they ever exist in the tree.
+          git add -f packages/go/lib/ packages/go/include/
+          git commit -m "release(go): stage artifacts for ${TAG}"
+          git tag "${TAG}"
+          # Push only the tag — the synthetic commit becomes reachable
+          # through it but never lands on a branch. Main stays binary-free.
+          git push origin "${TAG}"
+          echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/packages/go@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
+
   github-release:
     name: Create GitHub Release
-    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python]
+    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

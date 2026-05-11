@@ -16,8 +16,12 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 | Rust | `datalogic-rs` | `datalogic-rs` | crates.io |
 | WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic`** (grandfathered, predates this convention) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
+| C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/PHP/JVM in-tree, not separately published) | — |
+| Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/packages/go` (in-tree module) | Go modules |
+| _future_ Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (alongside the WASM `@goplasmatic/datalogic`) | npm |
+| _future_ PHP | `datalogic-php` | `goplasmatic/datalogic-php` | Packagist |
+| _future_ JVM | `datalogic-jvm` | `com.goplasmatic:datalogic` | Maven Central |
 | _future_ Ruby | `datalogic-rb` | `datalogic-rb` | RubyGems |
-| _future_ Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-go` | Go modules |
 
 For Python the PyPI distribution name is `datalogic-py` but the Python
 **module** name is `datalogic_py` — Python doesn't allow hyphens in
@@ -80,14 +84,80 @@ the convention without exception.
 |---|---|---|---|
 | WebAssembly | `packages/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic` |
 | Python | `packages/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
+| C ABI | `packages/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/PHP/JVM) |
+| Go | `packages/go/` | cgo over `packages/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/packages/go` |
+
+## Shared C ABI (`packages/c/`)
+
+The C ABI is **not a publishable binding by itself** — it's the canonical
+FFI boundary that lower-level language packages consume. Languages whose
+Rust binding tools (pyo3, napi-rs, magnus, wasm-bindgen) provide a more
+ergonomic surface skip the C ABI and target their runtime directly.
+Languages without a mature Rust binding tool (Go, PHP, JVM via FFI)
+consume the C ABI's cdylib + generated header.
+
+| Binding route | Goes through `packages/c/`? | Why |
+|---|---|---|
+| Python (pyo3) | No | pyo3 gives ergonomic dict/list marshalling — better than JSON-string FFI |
+| WASM (wasm-bindgen) | No | The browser doesn't have a C ABI — wasm-bindgen is the only path |
+| Node native (napi-rs) | No | napi-rs exposes V8 types directly; cheaper than JSON-roundtrip |
+| Ruby (magnus) | No | magnus mirrors pyo3 — direct Ruby type marshalling |
+| Go (cgo) | **Yes** | No first-class Rust↔Go binding tool |
+| PHP (FFI) | **Yes** | PHP's FFI extension consumes any cdylib + header |
+| JVM (JNA / JNR-FFI) | **Yes** | Avoids hand-writing JNI per platform |
+
+The C ABI's surface is JSON-in/JSON-out throughout — no struct
+marshalling at the boundary. Languages that want native-type fast paths
+either go around the C ABI (rows above) or add a thin native shim on top.
+
+### Cross-platform binary distribution for C-ABI bindings
+
+Languages that route through `packages/c/` need the static / shared
+library at the consumer's build (Go cgo) or runtime (PHP FFI, JVM JNA)
+time. The release workflow handles this with a shared (os, arch)
+matrix that compiles `packages/c/` once on a native runner per
+platform, plus a per-language packaging job that picks up the matrix
+artifacts and ships them in that language's idiomatic distribution
+channel.
+
+| Lang | Distribution shape | Lib type | Path in artifact |
+|---|---|---|---|
+| Go | Git tag `packages/go/vX.Y.Z` with binaries staged in source tree | `.a` static | `packages/go/lib/<os>_<arch>/libdatalogic_c.a` |
+| PHP | Composer package with platform binaries under `bin/` | `.so` / `.dylib` / `.dll` | `bin/<os>-<arch>/` (loaded via `FFI::cdef`) |
+| JVM | JAR with platform binaries under `META-INF/native/` | `.so` / `.dylib` / `.dll` | `META-INF/native/<os>-<arch>/` (loaded via JNA `Native.load`) |
+
+The matrix in `.github/workflows/release.yml` (`go-build-staticlib`)
+currently runs only the Go binding's matrix. When PHP / JVM bindings
+land, they reuse the same matrix outputs — the matrix becomes a
+producer of staticlib + cdylib artifacts, and each binding's
+`publish-*` job is a downstream consumer.
+
+Supported (os, arch) matrix:
+
+| OS | Arch | Runner | Rust target |
+|---|---|---|---|
+| Linux | amd64 | `ubuntu-latest` | `x86_64-unknown-linux-gnu` |
+| Linux | arm64 | `ubuntu-24.04-arm` | `aarch64-unknown-linux-gnu` |
+| macOS | amd64 | `macos-14` (cross from arm64 host) | `x86_64-apple-darwin` |
+| macOS | arm64 | `macos-14` (native) | `aarch64-apple-darwin` |
+| Windows | amd64 | `windows-latest` | `x86_64-pc-windows-gnu` (mingw — for cgo compat; PHP/JVM may need `msvc` too) |
 
 ## Open candidates
 
-- **Node.js native** (napi-rs) — faster than WASM for server-side Node
-- **Ruby** (magnus / rb-sys)
-- **Go** (cgo via cbindgen header)
-- **Java/Kotlin** (jni or duchess)
-- **Swift** (swift-bridge)
+The order below reflects the current implementation plan:
+
+1. **Node native** — `packages/node/` via `napi-rs`, published as
+   `@goplasmatic/datalogic-node` alongside the existing
+   `@goplasmatic/datalogic` (WASM)
+2. **PHP** — `packages/php/` via PHP FFI over `packages/c/`
+3. **JVM** — `packages/jvm/` via JNA or JNR-FFI over `packages/c/`
+4. **Ruby** — `packages/ruby/` via `magnus`
+
+Other plausible future bindings:
+
+- **Swift** (`swift-bridge` or UniFFI; UniFFI also covers Kotlin)
+- **.NET** (`csbindgen` over `packages/c/`)
+- **Elixir** (`rustler` NIFs)
 
 The core engine is `Send + Sync` and exposes a clean compile-once /
 evaluate-many surface (`Engine`, `Logic`, `Session`), so the same

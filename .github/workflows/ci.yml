@@ -137,3 +137,73 @@ jobs:
 
       - name: Test with minimal versions
         run: cargo +stable test --workspace --all-features
+
+  # Cross-platform validation of the Go binding's full cgo path on every
+  # PR and main push. The release-time matrix also runs this but only
+  # fires on `v*` tags — catching breakage at PR time keeps a broken
+  # cgo file (wrong LDFLAGS list, missing system lib, etc.) from
+  # landing on main where it would silently rot until release day.
+  #
+  # Three native platforms cover the production targets:
+  #   - linux/amd64   (covers linux/arm64 in practice — same Rust target family)
+  #   - darwin/arm64  (covers darwin/amd64 — same Apple toolchain)
+  #   - windows/amd64 (only Windows target we ship)
+  # The release matrix still exercises all five; this is the PR-time
+  # smoke layer.
+  go-cgo:
+    name: Go cgo (${{ matrix.platform.os }}/${{ matrix.platform.arch }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: linux,   arch: amd64, runner: ubuntu-latest,  cargo_target: x86_64-unknown-linux-gnu }
+          - { os: darwin,  arch: arm64, runner: macos-14,       cargo_target: aarch64-apple-darwin     }
+          - { os: windows, arch: amd64, runner: windows-latest, cargo_target: x86_64-pc-windows-gnu    }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.cargo_target }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/c/target/
+          key: ${{ runner.os }}-${{ matrix.platform.arch }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.platform.arch }}-c-
+
+      - name: Build C ABI staticlib
+        run: cargo build --release --manifest-path packages/c/Cargo.toml --target ${{ matrix.platform.cargo_target }}
+
+      # Stage into the cgo-build-tagged layout. The matching cgo_<os>_<arch>.go
+      # file expects exactly ${SRCDIR}/lib/<os>_<arch>/libdatalogic_c.a.
+      - name: Stage staticlib + header into packages/go/
+        shell: bash
+        run: |
+          PLATFORM=${{ matrix.platform.os }}_${{ matrix.platform.arch }}
+          mkdir -p packages/go/lib/$PLATFORM packages/go/include
+          cp packages/c/target/${{ matrix.platform.cargo_target }}/release/libdatalogic_c.a packages/go/lib/$PLATFORM/
+          cp packages/c/include/datalogic.h packages/go/include/
+
+      - name: go vet
+        shell: bash
+        working-directory: packages/go
+        run: go vet ./...
+
+      - name: go test
+        shell: bash
+        working-directory: packages/go
+        run: go test -v ./...
