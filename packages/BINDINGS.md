@@ -39,9 +39,9 @@ the convention without exception.
 | Dep on core | `datalogic-rs = { path = "../core", version = "5.x", features = [...explicit list...] }` — the binding inlines the feature set it wants |
 | Core feature | **No umbrella feature in core.** The binding owns its operator surface; `packages/core/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
 | Tests | `packages/<lang>/tests/` in the binding's native test runner (pytest, jest, …) |
-| CI | `.github/workflows/<lang>-release.yml` — separate from the crates.io release workflow |
-| Release tags | `v*` (e.g. `v5.0.0`) — same trigger as `release.yml`, so one tag push releases core (crates.io), wasm (npm), ui (npm), python (PyPI), … together. Each binding's workflow validates its own `Cargo.toml` against the tag. |
-| Versioning | Bindings track the core version exactly (5.0.0 → 5.0.0). The unified-tag scheme requires this — release-time validation fails if a binding's version drifts from core. For an independent cadence, switch the binding's workflow trigger to a binding-prefixed tag (`<lang>-v*`). |
+| CI | A pair of jobs added to `.github/workflows/release.yml` — `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
+| Release tags | `v*` (e.g. `v5.0.0`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
+| Versioning | Bindings track the core version exactly (5.0.0 → 5.0.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` drifts from core. |
 
 ## Why these conventions
 
@@ -65,13 +65,14 @@ the convention without exception.
   that's a rare event and explicit listing makes each binding's surface
   obvious without cross-referencing.
 
-- **Per-binding release workflow.** Each binding has its own
-  `<lang>-release.yml`, even though they share the `v*` tag trigger
-  with the core release. Separate files keep the per-binding wheel /
-  package matrices contained, isolate publish failures
-  (Python wheel build failure ≠ core publish failure), and let a
-  binding switch to an independent tag scheme later without unwiring
-  shared YAML.
+- **Single unified release workflow.** Every binding's release jobs
+  live in `.github/workflows/release.yml`. The flow is: validate +
+  tests → publish core → fan out bindings in parallel
+  (wasm → ui chain alongside python wheels → publish-python). One
+  tag push, one workflow run, one set of status checks. The trade-off
+  is that a Python wheel-build failure shows up in the same run as
+  core/wasm — but the bindings are independent jobs, so a failure in
+  one doesn't roll back the others.
 
 ## Existing bindings
 
