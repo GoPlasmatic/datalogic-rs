@@ -207,3 +207,169 @@ jobs:
         shell: bash
         working-directory: packages/go
         run: go test -v ./...
+
+  # C ABI smoke. packages/c is excluded from the root workspace so
+  # `cargo test --workspace` in the check job skips it — without this
+  # job, a regression in the C ABI's extern "C" surface (NULL handling,
+  # error-state lifetime, cbindgen header drift) wouldn't surface until
+  # the go-cgo / python / php / jvm jobs noticed. Running it directly
+  # gives a cleaner failure attribution.
+  c-abi-test:
+    name: C ABI test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/c/target/
+          key: ${{ runner.os }}-c-${{ hashFiles('packages/c/Cargo.toml', 'packages/c/src/**', 'packages/core/Cargo.toml', 'packages/core/src/**') }}
+          restore-keys: ${{ runner.os }}-c-
+
+      # Builds the cdylib + staticlib + rlib, generates the cbindgen header,
+      # and runs tests/smoke.rs which exercises the extern "C" surface
+      # end-to-end (version, apply, compile, session, parse error, runtime
+      # error with path, NULL-safety).
+      - name: Build + test C ABI
+        run: cargo test --manifest-path packages/c/Cargo.toml
+
+      - name: Verify cbindgen-generated header is up to date
+        # The header is committed; the build regenerates it. If the
+        # working tree shows a diff, the committed header has drifted
+        # from the Rust source — fail loudly so we don't ship a stale
+        # header to downstream consumers.
+        run: |
+          if ! git diff --exit-code packages/c/include/datalogic.h; then
+            echo "::error::packages/c/include/datalogic.h is out of sync with src/. Run 'cargo build -p datalogic-c' and commit the result."
+            exit 1
+          fi
+
+  # WASM smoke build. Catches a wasm-pack / Rust target / wasm-opt
+  # regression at PR time rather than at release. Single platform —
+  # the WASM artifact is platform-agnostic so one runner suffices.
+  wasm-build:
+    name: WASM build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install binaryen
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/wasm/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-wasm-
+
+      - name: Build WASM
+        run: cd packages/wasm && ./build.sh
+
+      # Hand the built pkg/ to the ui-build job below — saves it the cost
+      # of repeating the wasm build from scratch.
+      - name: Upload wasm-pkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-pkg
+          path: packages/wasm/pkg/
+          if-no-files-found: error
+
+  # Python test. Builds the binding via `maturin develop` into a venv,
+  # then runs pytest. Single platform — pytest validates logical behavior
+  # (error attrs, dict/string conversion, session semantics) which is
+  # platform-agnostic. The release-time wheel matrix catches per-platform
+  # build issues; this catches Python-level regressions.
+  python-test:
+    name: Python pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/python/target/
+          key: ${{ runner.os }}-python-${{ hashFiles('packages/python/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-python-
+
+      - name: Install build + test deps
+        run: pip install --upgrade pip maturin pytest
+
+      # `maturin develop --release` builds the binding and installs it
+      # into the current Python env in one shot. Using --release because
+      # debug builds of pyo3 + the engine's compile pass are slow enough
+      # to dominate the test run.
+      - name: Build + install binding
+        working-directory: packages/python
+        run: maturin develop --release
+
+      - name: Run pytest
+        working-directory: packages/python
+        run: pytest -v
+
+  # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic
+  # would normally resolve from the registry; we link the locally-built
+  # WASM pkg/ instead so PR CI doesn't depend on the published artifact
+  # matching this branch's source.
+  ui-build:
+    name: UI lint + build
+    needs: wasm-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download wasm-pkg
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-pkg
+          path: packages/wasm/pkg/
+
+      # npm link semantics: the linked package's version takes precedence
+      # at `npm install` time even if the registry has a different one.
+      # Matches the release-time flow in publish-ui.
+      - name: Link local WASM into UI
+        run: |
+          cd packages/wasm/pkg && npm link
+          cd ../../ui && npm link @goplasmatic/datalogic
+
+      - name: Install UI dependencies
+        run: cd packages/ui && npm install
+
+      - name: Lint UI
+        run: cd packages/ui && npm run lint
+
+      - name: Build UI library
+        run: cd packages/ui && npm run build:lib

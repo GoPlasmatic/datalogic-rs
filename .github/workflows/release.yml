@@ -3,25 +3,41 @@ name: Release
 # Single unified release workflow. One `git tag v5.x.y && git push --tags`
 # fires this and ships every artifact in the monorepo.
 #
-# Flow:
-#   validate  →  publish-crate  →  ┬─ publish-wasm  →  publish-ui
-#                                  ├─ python-build-wheels (matrix) ─┐
-#                                  ├─ python-build-sdist            ├─ publish-python
-#                                  ├─ go-build-staticlib (matrix) ──┴─ publish-go
-#                                  │
-#                                  └────────────── github-release (waits for all) ──┘
+# Flow (two phases — all builds must pass before any publish runs):
 #
-# Tests run once in `validate`; publishing the core crate happens before
-# any binding goes out (so a binding never references an unpublished
-# core version on its package registry); language bindings then fan out
-# in parallel.
+#   validate
+#      │
+#      ├─ build-wasm
+#      ├─ build-ui (needs build-wasm)
+#      ├─ python-build-wheels (matrix)
+#      ├─ python-build-sdist
+#      ├─ python-test
+#      └─ go-build-staticlib (matrix)
+#      ↓  all builds + tests green
+#   publish-crate              ← single chokepoint; nothing publishes if any build above fails
+#      │
+#      ├─ publish-wasm   (downloads build-wasm artifact, npm publish — no rebuild)
+#      ├─ publish-python (downloads wheel/sdist artifacts, PyPI upload)
+#      └─ publish-go     (downloads go-staticlib artifacts, tag push)
+#      ↓  publish-wasm done
+#   publish-ui            (downloads build-ui artifact, npm publish)
+#      ↓
+#   github-release
 #
-# The Go binding ships as a Git tag (`packages/go/vX.Y.Z`) rather than to
-# a package registry. The matrix builds the C ABI staticlib for every
-# supported (os, arch); publish-go stages all five into packages/go/lib/
-# on a synthetic commit and pushes the subdirectory-module tag. The
-# shared C ABI matrix is reusable — future PHP and JVM bindings will hang
-# off the same staticlib/cdylib outputs.
+# Why the build-then-publish split: once `publish-crate` succeeds, the
+# core is on crates.io and can only be yanked, not deleted. The old
+# layout had publish-wasm + publish-ui doing BUILD+PUBLISH in the same
+# job, so a build break after publish-crate would leave a partial
+# release. Now every binding produces its publishable artifact in a
+# pure build job; publish-crate waits on every build to succeed before
+# anything ships to a registry, and the publish jobs themselves just
+# download + push.
+#
+# The Go binding ships as a Git tag (`packages/go/vX.Y.Z`) rather than
+# to a package registry — same gate applies. The C ABI matrix is
+# reusable: future PHP and JVM bindings will hang off the same
+# staticlib/cdylib outputs and slot into the same build-then-publish
+# topology.
 on:
   push:
     tags:
@@ -103,7 +119,19 @@ jobs:
 
   publish-crate:
     name: Publish core to crates.io
-    needs: validate
+    # Gate: every binding's build must succeed before we touch crates.io.
+    # `validate` is implicit (it's needed by every build job listed here).
+    # Once this job runs, crates.io has the new version and we can't
+    # un-publish — so we require everything that could fail downstream
+    # to have already passed.
+    needs:
+      - validate
+      - build-wasm
+      - build-ui
+      - python-build-wheels
+      - python-build-sdist
+      - python-test
+      - go-build-staticlib
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -132,14 +160,14 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
   # ---------------------------------------------------------------- WASM + UI
-  # WASM uses `path = "../core"` so it doesn't strictly need the crates.io
-  # publish to succeed first, but `needs: publish-crate` enforces the
-  # invariant: a binding never ships ahead of its core. UI then chains
-  # off WASM (it bundles the wasm-pkg artifact).
+  # Build-then-publish split: build-wasm and build-ui produce the
+  # publishable artifacts before publish-crate is allowed to run.
+  # publish-wasm and publish-ui only download + npm publish — no rebuild.
+  # If the WASM build is broken, this fails BEFORE crates.io is touched.
 
-  publish-wasm:
-    name: Publish WASM to npm
-    needs: [validate, publish-crate]
+  build-wasm:
+    name: Build WASM
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -171,6 +199,26 @@ jobs:
       - name: Build WASM
         run: cd packages/wasm && ./build.sh
 
+      - name: Upload wasm-pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-pkg
+          path: packages/wasm/pkg/
+          if-no-files-found: error
+
+  publish-wasm:
+    name: Publish WASM to npm
+    # publish-crate gates the entire publish phase; this job's actual
+    # input is the build-wasm artifact.
+    needs: [validate, publish-crate, build-wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wasm-pkg artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-pkg
+          path: packages/wasm/pkg/
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -195,15 +243,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Upload wasm-pkg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wasm-pkg
-          path: packages/wasm/pkg/
-
-  publish-ui:
-    name: Publish UI to npm
-    needs: [validate, publish-wasm]
+  build-ui:
+    name: Build UI
+    needs: [validate, build-wasm]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -228,16 +270,16 @@ jobs:
           # Bump ui's own version
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           # Pin the @goplasmatic/datalogic dep to the same version we are
-          # about to publish (the wasm publish job runs first). Without
-          # this, the published ui would still reference an older WASM.
+          # about to publish. The published UI then references the same
+          # WASM version (no possibility of a UI ↔ WASM version skew).
           npm pkg set "dependencies.@goplasmatic/datalogic=$VERSION"
 
       # Wire the freshly-built local WASM artifact into ui/node_modules
-      # BEFORE running npm install. With the symlink already present and
-      # its version matching packages/ui/package.json's pin, `npm install`
-      # preserves it instead of fetching from the registry — important
-      # because publish-wasm may have just run and the new $VERSION may
-      # not be indexed on npm yet.
+      # BEFORE running npm install. With the symlink present and its
+      # version matching packages/ui/package.json's pin, `npm install`
+      # preserves it instead of fetching from the registry — which is
+      # critical because we run BEFORE publish-wasm, so the new $VERSION
+      # isn't on npm yet.
       - name: Link local WASM package into UI
         run: |
           cd packages/wasm/pkg && npm link
@@ -248,6 +290,45 @@ jobs:
 
       - name: Build UI library
         run: cd packages/ui && npm run build:lib
+
+      # Bundle only the files `npm publish` actually packs — everything
+      # listed in package.json's `files` field plus the package manifest,
+      # README, LICENSE. node_modules is intentionally excluded (it
+      # carries the linked-local WASM symlink which would not match the
+      # published WASM dep). publish-ui re-installs cleanly from the
+      # registry-resolvable package.json.
+      - name: Upload ui-package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-package
+          path: |
+            packages/ui/package.json
+            packages/ui/package-lock.json
+            packages/ui/README.md
+            packages/ui/LICENSE
+            packages/ui/dist/
+          if-no-files-found: error
+
+  publish-ui:
+    name: Publish UI to npm
+    # publish-wasm before publish-ui because the published UI's
+    # dependency on @goplasmatic/datalogic@$VERSION must be resolvable
+    # on npm at install time.
+    needs: [validate, publish-crate, build-ui, publish-wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ui-package artifact
+        # The artifact tarball roots with `packages/ui/...`. Default
+        # `path: .` reconstructs that tree under the runner root.
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-package
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Check if version exists on npm
         id: check
@@ -276,7 +357,9 @@ jobs:
 
   python-build-wheels:
     name: Build Python wheel (${{ matrix.target.os }} / ${{ matrix.target.arch }} / ${{ matrix.target.libc }})
-    needs: [validate, publish-crate]
+    # Moved to the build phase — runs before publish-crate so a wheel
+    # failure on any (os, arch, libc) blocks the crate publish.
+    needs: validate
     runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
@@ -313,7 +396,7 @@ jobs:
 
   python-build-sdist:
     name: Build Python sdist
-    needs: [validate, publish-crate]
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -332,9 +415,48 @@ jobs:
           name: python-sdist
           path: packages/python/dist/*.tar.gz
 
+  # Run pytest against a build of the binding on Linux. Logical tests
+  # (error attrs, dict/string conversion, session semantics) are
+  # platform-agnostic, so one platform suffices to catch Python-level
+  # regressions. The wheel matrix above catches per-platform link issues.
+  python-test:
+    name: Python pytest
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            packages/python/target/
+          key: ${{ runner.os }}-python-${{ hashFiles('packages/python/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-python-
+
+      - name: Install build + test deps
+        run: pip install --upgrade pip maturin pytest
+
+      - name: Build + install binding
+        working-directory: packages/python
+        run: maturin develop --release
+
+      - name: Run pytest
+        working-directory: packages/python
+        run: pytest -v
+
   publish-python:
     name: Publish Python to PyPI
-    needs: [validate, python-build-wheels, python-build-sdist]
+    needs: [validate, publish-crate, python-build-wheels, python-build-sdist, python-test]
     runs-on: ubuntu-latest
     # `pypi` GitHub Environment provides the manual approval gate
     # (configure in repo Settings → Environments → pypi → required
@@ -378,7 +500,9 @@ jobs:
 
   go-build-staticlib:
     name: Go staticlib (${{ matrix.target.os }}/${{ matrix.target.arch }})
-    needs: [validate, publish-crate]
+    # Build phase — runs before publish-crate so a broken cgo file or
+    # missing system library blocks the entire release.
+    needs: validate
     runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
