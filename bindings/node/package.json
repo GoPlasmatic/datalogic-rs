@@ -4,6 +4,7 @@
   "description": "Native Node.js bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many.",
   "main": "index.js",
   "types": "index.d.ts",
+  "author": "Harishankar Narayanan <nharishankar@gmail.com>",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

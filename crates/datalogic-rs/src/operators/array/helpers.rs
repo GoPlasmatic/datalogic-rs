@@ -74,9 +74,8 @@ pub(super) fn evaluate_invariant_no_push<'a>(
 /// predicate's own [`CompiledNode::BuiltinOperator`] node — see the
 /// `predicate_hint` field. Quantifier/filter operators read the cached hint
 /// instead of pattern-matching the predicate tree on every iteration.
-#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub enum FastPredicate {
+pub(crate) enum FastPredicate {
     /// Strict equality (===) or inequality (!==) against a literal
     StrictEq {
         var_path: Box<[crate::node::PathSegment]>,
@@ -354,9 +353,8 @@ pub(crate) enum ResolvedInput<'a> {
 /// `{var: "..."}` against the root frame — we can read directly from
 /// `ctx.root_input()` without dispatching into the arena evaluator. Any
 /// other shape, including nested operators, falls through to `General`.
-#[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IterArgKind {
+pub(crate) enum IterArgKind {
     /// `args[0]` is a `CompiledVar { scope_level: 0, … }` with no
     /// metadata/reduce/default — borrow directly from the root frame.
     /// `path_segments_empty == true` short-circuits the per-call segment

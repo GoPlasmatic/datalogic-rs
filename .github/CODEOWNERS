@@ -1,0 +1,3 @@
+# Default reviewer for everything in this repo.
+# See https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+*       @shankar-gpio @codetiger

@@ -2,7 +2,7 @@
 //!
 //! Run:
 //!
-//!     cargo run --example getting_started --features preserve
+//!     cargo run --example getting_started --features templating
 
 use datalogic_rs::Engine;
 
