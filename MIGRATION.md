@@ -9,6 +9,63 @@ cookbook.
 If you are still on v4 and not ready to migrate, stay on the latest
 4.x release. v5 does not support a side-by-side mode.
 
+## v4 → v5 in 60 seconds
+
+Most call-site changes are mechanical 1:1 renames. The deep-dive is
+below; this checklist covers the 90% case.
+
+**Rust callers**
+
+- Cargo feature: `compat` → `serde_json` ([details](#cargotoml))
+- Engine construction is builder-only:
+  `Engine::with_config(c)` → `Engine::builder().with_config(c).build()`
+  ([details](#engine-construction))
+- Templating: `with_preserve_structure()` →
+  `builder().with_templating(true).build()`
+  ([details](#engine-construction))
+- One-shot: `engine.evaluate_json(rule, data) -> Value` →
+  `engine.eval_str(rule, data) -> String` (JSON in/out) or
+  `engine.eval_into::<T>(rule, data)` (typed)
+  ([details](#evaluation))
+- Compile from `&Value`: `engine.compile_serde_value(&v)` →
+  `engine.compile(&v)` ([details](#compilation))
+- Custom operators: `ArenaOperator` → `CustomOperator`,
+  `&mut ContextStack` → `&mut EvalContext`
+  ([details](#custom-operators))
+- Trace: `engine.evaluate_json_with_trace(...)` →
+  `engine.trace().eval_str(...)` returning `TracedRun<R>`
+  ([details](#trace))
+
+**JS / TS callers**
+
+- npm install: `@goplasmatic/datalogic` →
+  `@goplasmatic/datalogic-wasm` (browser/edge) or
+  `@goplasmatic/datalogic-node` (new in v5, Node-native via napi-rs)
+  ([details](#npm-package-rename-jsts-consumers-only))
+- Templating flag rename: `preserve_structure` → `templating` — same
+  semantics ([details](#javascript--npm-consumers))
+
+If a v4 surface isn't covered here, search this document or
+[file an issue](#if-you-get-stuck).
+
+## Contents
+
+- [npm package rename (JS/TS consumers only)](#npm-package-rename-jsts-consumers-only)
+- [What changed at a glance](#what-changed-at-a-glance)
+- [Cargo.toml](#cargotoml)
+- [Method-by-method translation](#method-by-method-translation)
+  - [Engine construction](#engine-construction)
+  - [Compilation](#compilation)
+  - [Evaluation](#evaluation)
+  - [Trace](#trace)
+  - [Custom operators](#custom-operators)
+- [New v5 capabilities (not in v4)](#new-v5-capabilities-not-in-v4)
+- [Common patterns side-by-side](#common-patterns-side-by-side)
+- [Recipe: structural-error consumers](#recipe-structural-error-consumers)
+- [JavaScript / npm consumers](#javascript--npm-consumers)
+- [Things that did NOT change](#things-that-did-not-change)
+- [If you get stuck](#if-you-get-stuck)
+
 ## npm package rename (JS/TS consumers only)
 
 The WASM npm package was renamed to align with the `datalogic-<lang>`

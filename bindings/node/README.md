@@ -14,6 +14,13 @@ For the cross-runtime overview and the API-tier model every binding
 implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
+> **New in v5.** This native Node binding is new — there is no v4 Node
+> package. If you were running JSONLogic under Node via v4's
+> `@goplasmatic/datalogic` (WASM), the v5 upgrade path for production
+> Node services is to install **this** package. See
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md#npm-package-rename-jsts-consumers-only)
+> for the full cookbook.
+
 > **Two npm packages, one engine.** `@goplasmatic/datalogic-wasm` is the
 > WebAssembly build — runs in browsers, Node, Deno, Bun. This package
 > (`@goplasmatic/datalogic-node`) is the **native** Node build via
@@ -131,6 +138,17 @@ new Engine({ templating: true })
 
 `templating: true` enables the engine's output-shaping templating mode —
 multi-key objects in a rule compile to templates with embedded JSONLogic.
+
+## Performance
+
+This package wraps the same Rust engine measured as `dlrs:engine` in the
+[cross-library benchmark][bench] — geomean **9.7 ns/op across 44 operator
+suites**, ~5× faster than `json-logic-engine` (compiled JS) and ~44×
+faster than `json-logic-js`. The napi-rs boundary adds a small per-call
+marshalling cost on top; native-Node measurements will land in the
+benchmark report once the suite is wired up against the prebuild.
+
+[bench]: https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md
 
 ## Building from source
 

@@ -13,6 +13,11 @@ For the cross-runtime overview and the API-tier model every binding
 implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
+> **New in v5.** `datalogic-py` is new — there is no v4 Python package.
+> If you were calling the v4 Rust crate or the v4 `@goplasmatic/datalogic`
+> WASM package, the engine's v4 → v5 changes are catalogued in
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+
 ## Install
 
 ```bash
@@ -192,6 +197,19 @@ rule = engine.compile({
 rule.evaluate({"user": {"name": "Ada"}, "score": 99})
 # -> {"name": "Ada", "ok": True}
 ```
+
+## Performance
+
+This package wraps the same Rust engine measured as `dlrs:engine` in the
+[cross-library benchmark][bench] — geomean **9.7 ns/op across 44 operator
+suites** in native Rust. The pyo3 boundary and `pythonize` dict
+conversion add a small per-call cost on top; use
+`rule.evaluate_str(json_text)` when you already have a JSON string and
+want to skip the dict path. `evaluate` releases the GIL, so a
+multi-threaded server gains real parallelism on top of the engine's
+native speed.
+
+[bench]: https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md
 
 ## Learn more
 

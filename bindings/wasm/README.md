@@ -12,6 +12,12 @@ Same rules, same semantics as the Rust crate. For the cross-runtime
 overview and the API-tier model that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
+> **Coming from `@goplasmatic/datalogic` (v4)?** This package is the v5
+> rename — same WASM engine, one JS-surface flag renamed
+> (`preserve_structure` → `templating`). See
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md#javascript--npm-consumers)
+> for the cookbook.
+
 > **On Node.js? Use the native binding instead.**
 > [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
 > ships a per-platform native build via [napi-rs](https://napi.rs) and is

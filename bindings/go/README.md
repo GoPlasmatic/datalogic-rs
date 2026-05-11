@@ -9,6 +9,11 @@ Same rules, same semantics as the Rust crate. For the cross-runtime
 overview and the API-tier model every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
+> **New in v5.** This Go binding is new — there is no v4 Go package. If
+> you were calling the v4 Rust crate or the v4 `@goplasmatic/datalogic`
+> WASM package, the engine's v4 → v5 changes are catalogued in
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+
 ## Install
 
 ```sh
@@ -142,6 +147,16 @@ if err != nil {
 | `Engine`  | Construct once; share across goroutines                                            |
 | `Rule`    | Compile once; share across goroutines — `Evaluate` is safe to call from many       |
 | `Session` | One per goroutine — the per-task workhorse                                         |
+
+## Performance
+
+This package wraps the same Rust engine measured as `dlrs:engine` in the
+[cross-library benchmark][bench] — geomean **9.7 ns/op across 44 operator
+suites**, ~5× faster than `json-logic-engine` (compiled JS) and ~22×
+faster than `jsonlogic-rs` (the closest native-Rust alternative). The
+cgo boundary adds a small per-call marshalling cost on top.
+
+[bench]: https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md
 
 ## How it links
 

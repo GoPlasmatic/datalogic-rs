@@ -63,6 +63,16 @@ If you're building a UI that lets humans author rules, also pull in
 [`@goplasmatic/datalogic-ui`](./ui/README.md) — it consumes the WASM
 binding and gives you a visual editor and step-through debugger.
 
+## Documentation
+
+The [full documentation site](https://goplasmatic.github.io/datalogic-rs/)
+is the long-form home for everything below: the operator reference
+(all 59 built-ins, organised by category), advanced topics (templating,
+custom operators, tracing, configuration), and an
+[interactive playground](https://goplasmatic.github.io/datalogic-rs/playground/)
+for trying rules live without installing anything. The rest of this
+README is the short version.
+
 ## Three things you can build with it
 
 ### 1. Business rules
@@ -187,13 +197,13 @@ Every binding exposes the same conceptual ladder — pick the entry
 point that matches how often you evaluate and how much control you
 want over allocation.
 
-| Tier | What it is                                                  | Use when                                                                            |
-|------|-------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| **0** | **Module-level one-shot** — `eval_str`, `eval`, `eval_into`, `compile` | Quick scripts, ad-hoc evaluation, no custom configuration                           |
-| **1** | **Engine one-shot** — `Engine::eval*`                       | You need custom operators, non-default config, or templating mode                   |
-| **2** | **Session (hot loop)** — `Engine::session()` + `Session::eval*` | You're evaluating compiled rules many times — services, batch jobs, request handlers |
-| **3** | **Zero-copy evaluate** — `Engine::evaluate(&Logic, data, &Bump)` | You want results that borrow directly into a caller-owned arena (specialised use)  |
-| **4** | **Traced evaluation** — `Engine::trace()`                   | Debugging, visualising execution, building inspector UIs                            |
+| What it is                                                                              | Use when                                                                            |
+|-----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| **Tier 0 — Module-level one-shot** — `eval_str`, `eval`, `eval_into`, `compile`         | Quick scripts, ad-hoc evaluation, no custom configuration                           |
+| **Tier 1 — Engine one-shot** — `Engine::eval*`                                          | You need custom operators, non-default config, or templating mode                   |
+| **Tier 2 — Session (hot loop)** — `Engine::session()` + `Session::eval*`                | You're evaluating compiled rules many times — services, batch jobs, request handlers |
+| **Tier 3 — Zero-copy evaluate** — `Engine::evaluate(&Logic, data, &Bump)`               | You want results that borrow directly into a caller-owned arena (specialised use)   |
+| **Tier 4 — Traced evaluation** — `Engine::trace()`                                      | Debugging, visualising execution, building inspector UIs                            |
 
 **Most callers want Tier 0 or Tier 2.** Tier 0 is the right default
 for trying something out; reach for Tier 2 once the same rule is being
