@@ -1,6 +1,17 @@
 # @goplasmatic/datalogic-ui
 
-A React component library for visualizing, debugging, and editing JSONLogic expressions as interactive node-based flow diagrams.
+[![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-ui)](https://www.npmjs.com/package/@goplasmatic/datalogic-ui)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+A React component library for visualizing, debugging, and editing
+JSONLogic expressions as interactive node-based flow diagrams.
+
+This is the **React surface** of the
+[`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs) monorepo.
+It consumes the WASM binding
+([`@goplasmatic/datalogic`](../bindings/wasm/README.md)) for evaluation
+and tracing — for the engine itself and the cross-runtime overview,
+see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
 ## Features
 
@@ -208,11 +219,13 @@ The main component is `DataLogicEditor` which:
 
 For complete documentation including all props, customization options, and advanced usage, see the [full documentation](https://goplasmatic.github.io/datalogic-rs/react-ui/installation.html).
 
-## Links
+## Learn more
 
-- [GitHub Repository](https://github.com/GoPlasmatic/datalogic-rs)
-- [Full Documentation](https://goplasmatic.github.io/datalogic-rs/)
-- [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/)
+- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
+- [WASM binding README](../bindings/wasm/README.md) — `@goplasmatic/datalogic`, the JS/TS engine this UI consumes
+- [Rust crate README](../crates/datalogic-rs/README.md) — engine design, the 5-tier API model
+- [Full documentation](https://goplasmatic.github.io/datalogic-rs/)
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 
 ## License
 

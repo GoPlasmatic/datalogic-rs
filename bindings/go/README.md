@@ -5,6 +5,10 @@ engine. Routes through the shared C ABI at [`bindings/c/`](../c) via
 cgo, linking `libdatalogic_c.a` statically — no runtime shared-library
 dependency for end-user binaries.
 
+Same rules, same semantics as the Rust crate. For the cross-runtime
+overview and the API-tier model every binding implements, see the
+[repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+
 ## Install
 
 ```sh
@@ -68,7 +72,19 @@ into `bindings/go/lib/<os>_<arch>/` and the header into
 commit is reachable only through the tag — `main` stays
 binary-free.
 
-## Quick start
+## API reference
+
+The Go binding mirrors the Rust engine's
+[API tier model](https://github.com/GoPlasmatic/datalogic-rs#choosing-your-api-five-tiers-one-engine).
+
+| Tier         | Entry point                                  | Use when                                                |
+|--------------|----------------------------------------------|---------------------------------------------------------|
+| One-shot     | `datalogic.Apply(rule, data)`                | Ad-hoc evaluation, one rule + one data shape            |
+| Engine       | `datalogic.NewEngine().Apply(rule, data)`    | Engine reuse without compile-once                       |
+| Compile once | `engine.Compile(rule)` → `rule.Evaluate(data)` | Same rule evaluated against many data inputs          |
+| Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops — arena reuse per goroutine            |
+
+### Quick start
 
 ```go
 package main
@@ -137,3 +153,11 @@ datalogic-rs (Rust)  →  bindings/c/  →  libdatalogic_c.a  →  cgo → Go
 
 `make build` keeps `lib/` and `include/` in sync with the Rust source.
 The same staticlib will eventually back the PHP and JVM bindings.
+
+## Learn more
+
+- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
+- [Rust crate README](../../crates/datalogic-rs/README.md) — engine design, custom operators, configuration knobs
+- [C ABI README](../c/README.md) — the FFI boundary this binding consumes
+- [Full documentation](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)

@@ -24,6 +24,8 @@
 
 **datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a fast, memory-efficient, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
 
+The same engine ships across runtimes: **Rust, JavaScript / TypeScript (WebAssembly), Python, Go, and a React visual debugger**. Author the rule once; evaluate it anywhere. For the cross-runtime overview and per-binding install instructions, see the [repository README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+
 > **v5 is here.** v5 is a breaking release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based, switches custom operators to a pre-evaluated arena API, and removes the implicit `serde_json` dependency from the default build. v5 is a hard cliff — there is no compatibility shim. See the [Migration Guide](migration.md) for the conceptual overview and the repo-root `MIGRATION.md` for the full v4 → v5 cookbook.
 
 ## Why datalogic-rs?
@@ -32,7 +34,8 @@
 - **Thread-Safe** - Wrap `Logic` in `Arc` and share across threads (or use `Engine::compile_arc` to do it in one step)
 - **Zero `unsafe`** - The crate enforces `#![forbid(unsafe_code)]`
 - **serde_json-free by default** - The string-based API needs no `serde_json` dependency; opt into the `serde_json` feature when you need `serde_json::Value` interop or the typed `eval_into::<T>` paths
-- **Three tiers, one mental model** - module-level helpers (`datalogic_rs::eval_str`, …) for one-shot, `Engine` for configured workloads, `Session` for compile-once-evaluate-many hot loops
+- **Five-tier API ladder** - module-level helpers (`datalogic_rs::eval_str`, …) for one-shot use, `Engine` for configured workloads, `Session` for compile-once / evaluate-many hot loops, raw `evaluate(&Bump)` for zero-copy result pipelines, and `Engine::trace()` for debugging
+- **Cross-runtime** - same rules, same semantics across Rust, WASM, Python, Go, and the React debugger
 - **Extensible** - Register custom operators on an `EngineBuilder`
 - **Feature-Rich** - 59 built-in operators including datetime, regex, and error handling
 - **Fully Compliant** - Passes the official JSONLogic test suite
@@ -111,3 +114,6 @@ This rule checks if `age > 18` AND `country == "US"`.
 - [Quick Start](getting-started/quick-start.md) - Get up and running in minutes
 - [Migration Guide](migration.md) - Move from v4 to v5
 - [Operators](operators/overview.md) - Explore all 59 built-in operators
+- [API Reference](api/reference.md) - Public Rust types and the 5-tier API model
+
+**Using another language?** This site focuses on the Rust crate; for JavaScript / TypeScript, Python, Go, and React, jump straight to the per-binding README in the [repo root](https://github.com/GoPlasmatic/datalogic-rs#readme).

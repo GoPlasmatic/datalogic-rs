@@ -1,265 +1,271 @@
 # @goplasmatic/datalogic
 
-High-performance [JSONLogic](https://jsonlogic.com/) engine for JavaScript/TypeScript, powered by WebAssembly.
+[![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic)](https://www.npmjs.com/package/@goplasmatic/datalogic)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-This package provides WebAssembly bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs), a Rust implementation of JSONLogic that supports all standard operators plus extended functionality.
+High-performance [JSONLogic](https://jsonlogic.com/) engine for
+JavaScript / TypeScript — Node.js, browser, and bundlers — powered by
+WebAssembly. WASM bindings for
+[`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
-## Installation
+Same rules, same semantics as the Rust crate. For the cross-runtime
+overview and the API-tier model that every binding implements, see the
+[repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+
+## Install
 
 ```bash
 npm install @goplasmatic/datalogic
 ```
 
-> **Building from source instead?** You'll need [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
-> and the `wasm32-unknown-unknown` Rust target. See
-> [Building from Source](#building-from-source) below. The published
-> npm package above is pre-built — no toolchain required to consume it.
+The published package is **pre-built** — no Rust or WASM toolchain
+required to consume it. If you want to build from source instead, see
+[Building from source](#building-from-source).
 
-## Quick Start
+## Quick start
 
 ```javascript
 import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
 
-// Initialize the WASM module (required for web/ES modules)
+// Browser / ES modules — initialise the WASM module once on startup.
+// (Skip this on Node.js — see "Usage by environment" below.)
 await init();
 
-// Simple evaluation
+// One-shot evaluation
 const result = evaluate('{"==": [1, 1]}', '{}', false);
 console.log(result); // "true"
 
 // With data
-const result2 = evaluate('{"var": "user.age"}', '{"user": {"age": 25}}', false);
-console.log(result2); // "25"
+const score = evaluate('{"var": "user.age"}', '{"user": {"age": 25}}', false);
+console.log(score); // "25"
 
-// Compiled rule for repeated evaluation (better performance)
+// Compile once, evaluate many — faster for repeated calls
 const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}', false);
-console.log(rule.evaluate('{"a": 1, "b": 2}')); // "3"
+console.log(rule.evaluate('{"a": 1,  "b": 2}'));  // "3"
 console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
 ```
 
-## Usage by Environment
+## Usage by environment
 
-### Browser (ES Modules)
+### Browser (ES modules)
 
 ```html
 <script type="module">
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
-
-async function run() {
-    // Initialize WASM module
-    await init();
-
-    // Now you can use evaluate and CompiledRule
-    const result = evaluate('{"and": [true, {"var": "active"}]}', '{"active": true}', false);
-    console.log(result); // "true"
-}
-
-run();
+  import init, { evaluate } from '@goplasmatic/datalogic';
+  await init();
+  const result = evaluate('{"and": [true, {"var": "active"}]}',
+                          '{"active": true}', false);
+  console.log(result); // "true"
 </script>
 ```
 
 ### Node.js
 
 ```javascript
-// ESM
 import { evaluate, CompiledRule } from '@goplasmatic/datalogic';
 
 // No init() needed for Node.js
 const result = evaluate('{"==": [1, 1]}', '{}', false);
-console.log(result); // "true"
-
-// Compiled rule
-const rule = new CompiledRule('{"if": [{"var": "premium"}, "VIP", "Standard"]}', false);
-console.log(rule.evaluate('{"premium": true}')); // "\"VIP\""
-console.log(rule.evaluate('{"premium": false}')); // "\"Standard\""
 ```
 
-### Bundlers (Webpack, Vite, etc.)
+### Bundlers (Webpack, Vite, …)
 
 ```javascript
 import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
-
-// For bundlers, you may need to initialize
 await init();
-
 const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}', false);
-console.log(result); // "true"
 ```
 
-### Explicit Target Imports
+### Explicit target imports
 
-If you need to import a specific target build:
+If you need a specific target build:
 
 ```javascript
-// Web target (ES modules with init)
-import init, { evaluate } from '@goplasmatic/datalogic/web';
-
-// Bundler target
-import init, { evaluate } from '@goplasmatic/datalogic/bundler';
-
-// Node.js target
-import { evaluate } from '@goplasmatic/datalogic/nodejs';
+import init, { evaluate } from '@goplasmatic/datalogic/web';      // web target
+import init, { evaluate } from '@goplasmatic/datalogic/bundler';  // bundler target
+import { evaluate }       from '@goplasmatic/datalogic/nodejs';   // nodejs target
 ```
 
-## API Reference
+## API reference
 
-### `evaluate(logic: string, data: string, templating: boolean): string`
+The WASM binding mirrors the Rust engine's
+[API tier model](https://github.com/GoPlasmatic/datalogic-rs#choosing-your-api-five-tiers-one-engine).
+JavaScript surfaces three of the five tiers:
 
-Evaluate a JSONLogic expression against data.
+| Tier        | Entry point                            | Use when                                                     |
+|-------------|----------------------------------------|--------------------------------------------------------------|
+| One-shot    | `evaluate(logic, data, templating)`    | Ad-hoc evaluation, one rule + one data shape                 |
+| Compile once | `new CompiledRule(logic, templating)` | Same rule evaluated against many data inputs                 |
+| Traced       | `evaluate_with_trace(logic, data, …)` | Debugging, inspector UIs, anything that visualises execution |
 
-**Parameters:**
-- `logic` - JSON string containing the JSONLogic expression
-- `data` - JSON string containing the data to evaluate against
-- `templating` - If `true`, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
+### `evaluate(logic, data, templating)`
 
-**Returns:** JSON string result
+One-shot evaluation. Parses the rule each call — fine for ad-hoc use,
+but reach for `CompiledRule` if you call this in a loop.
 
-**Throws:** Error string on invalid JSON or evaluation error
+**Parameters**
+
+- `logic` *(string)* — JSON string containing the JSONLogic expression.
+- `data` *(string)* — JSON string containing the data to evaluate against.
+- `templating` *(boolean)* — If `true`, enables templating mode: multi-key
+  objects compile to output-shaping templates with embedded JSONLogic.
+
+**Returns** — JSON string with the result.
+
+**Throws** — `Error` (with a string message) on invalid JSON or
+evaluation failure.
 
 ```javascript
-evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}', false); // "true"
-evaluate('{"+": [1, 2, 3]}', '{}', false); // "6"
+evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}', false);             // "true"
+evaluate('{"+": [1, 2, 3]}', '{}', false);                            // "6"
 evaluate('{"map": [[1,2,3], {"+": [{"var": ""}, 1]}]}', '{}', false); // "[2,3,4]"
 
-// With templating mode for JSON templates
-evaluate('{"name": {"var": "user"}, "active": true}', '{"user": "Alice"}', true);
+// Templating mode — multi-key object becomes a response template
+evaluate('{"name": {"var": "user"}, "active": true}',
+         '{"user": "Alice"}', true);
 // '{"name":"Alice","active":true}'
-```
-
-### `evaluate_with_trace(logic: string, data: string, templating: boolean): string`
-
-Evaluate with execution trace for debugging. Returns detailed step-by-step information about how the expression was evaluated.
-
-**Parameters:**
-- `logic` - JSON string containing the JSONLogic expression
-- `data` - JSON string containing the data to evaluate against
-- `templating` - If `true`, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
-
-**Returns:** JSON string containing `TracedResult` with:
-- `result` - The evaluation result
-- `expression_tree` - Tree structure of the expression with node IDs
-- `steps` - Array of execution steps with context and intermediate results
-
-```javascript
-const trace = evaluate_with_trace('{"and": [true, {"var": "x"}]}', '{"x": true}', false);
-console.log(JSON.parse(trace));
-// {
-//   "result": true,
-//   "expression_tree": { "id": 0, "expression": "{\"and\": [...]}", ... },
-//   "steps": [...]
-// }
 ```
 
 ### `CompiledRule`
 
-A compiled JSONLogic rule for repeated evaluation. Pre-compiling rules provides better performance when evaluating the same logic against different data.
-
-#### `new CompiledRule(logic: string, templating: boolean)`
-
-Create a new compiled rule.
-
-**Parameters:**
-- `logic` - JSON string containing the JSONLogic expression
-- `templating` - If `true`, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
+A compiled JSONLogic rule for repeated evaluation. Pre-compiling pays
+off as soon as you evaluate the same rule against more than one data
+input.
 
 ```javascript
 const rule = new CompiledRule('{">=": [{"var": "age"}, 18]}', false);
-```
-
-#### `evaluate(data: string): string`
-
-Evaluate the compiled rule against data.
-
-```javascript
 rule.evaluate('{"age": 21}'); // "true"
 rule.evaluate('{"age": 16}'); // "false"
 ```
 
-## Supported Operators
+**Constructor** — `new CompiledRule(logic, templating)`
 
-This library supports 59 built-in operators covering all standard JSONLogic plus extended functionality:
+- `logic` *(string)* — JSON string containing the JSONLogic expression.
+- `templating` *(boolean)* — Enable templating mode.
 
-**Logical:** `and`, `or`, `!`, `!!`
+**Methods**
 
-**Comparison:** `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
+- `evaluate(data: string): string` — evaluate the compiled rule against
+  a JSON data string. Returns a JSON string.
 
-**Arithmetic:** `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
+### `evaluate_with_trace(logic, data, templating)`
 
-**Control Flow:** `if`, `?:`, `??` (coalesce)
+Evaluate and return a step-by-step execution trace. Useful for
+inspector UIs and debugging — the React debugger
+([`@goplasmatic/datalogic-ui`](../../ui/README.md)) consumes this shape
+directly.
 
-**Array:** `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`
+**Returns** — JSON string containing a `TracedResult`:
 
-**String:** `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
+```javascript
+const trace = evaluate_with_trace('{"and": [true, {"var": "x"}]}',
+                                  '{"x": true}', false);
+JSON.parse(trace);
+// {
+//   "result": true,
+//   "expression_tree": { "id": 0, "expression": "{\"and\": [...]}", ... },
+//   "steps": [ /* per-node execution steps */ ]
+// }
+```
 
-**Data Access:** `var`, `val`, `exists`, `missing`, `missing_some`
+## Error handling
 
-**Date/Time:** `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`
+Both `evaluate` and `CompiledRule.evaluate` throw on failure. The thrown
+`Error.message` carries a JSON-formatted error shape — useful for
+distinguishing parse errors from runtime errors programmatically:
 
-**Error Handling:** `try`, `throw`
+```javascript
+try {
+  evaluate('not valid json', '{}', false);
+} catch (e) {
+  // e.message contains the engine's error shape
+  console.error(e.message);
+}
+```
 
-**Type Operations:** `type`
+The two broad categories:
+
+- **Parse errors** — malformed JSON in either argument, or unsupported
+  operator names. Surface immediately.
+- **Runtime errors** — `var` misses (under a strict config),
+  arithmetic on non-numbers, explicit `throw` operators. Carry the
+  failing operator and the node path through the compiled tree.
+
+## Threading & Web Workers
+
+The WASM module is **isolated per Web Worker**: each Worker loads its
+own copy of the module, so a `CompiledRule` created in one Worker
+cannot be transferred to another. Within a single Worker, evaluation
+is synchronous and single-threaded — share a `CompiledRule` across
+calls in the same context, not across Workers.
+
+If you need true parallelism, spawn N Workers and compile the rule N
+times (once per Worker). The compile cost is small relative to the
+isolation benefit.
+
+## Supported operators
+
+This binding exposes all 59 built-in operators from the Rust engine:
+
+**Logical** — `and`, `or`, `!`, `!!`
+**Comparison** — `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
+**Arithmetic** — `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
+**Control flow** — `if`, `?:`, `??` (coalesce)
+**Array** — `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`
+**String** — `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
+**Data access** — `var`, `val`, `exists`, `missing`, `missing_some`
+**Date/time** — `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`
+**Error handling** — `try`, `throw`
+**Type** — `type`
 
 > **Templating mode:** v5 removed the `preserve` *operator*. To enable
-> templating (JSON templates with embedded JSONLogic, where multi-key
-> objects compile to output-shaping templates), pass `templating: true`
-> to `evaluate` (or `new CompiledRule(logic, true)`) — see the API
-> Reference above.
+> JSON templates with embedded JSONLogic (multi-key objects become
+> output-shaping templates), pass `templating: true` to `evaluate` or
+> `new CompiledRule(logic, true)`.
 
-For the complete list and documentation, see the [main repository](https://github.com/GoPlasmatic/datalogic-rs).
+For the full operator reference and semantics, see the
+[documentation site](https://goplasmatic.github.io/datalogic-rs/).
 
 ## Performance
 
-This WASM-based implementation provides near-native performance:
-
 - **Compiled rules** are significantly faster for repeated evaluations
-- **Zero-copy** where possible between JS and WASM
-- **Small bundle size** (~50KB gzipped)
+- **Zero-copy** between JS strings and WASM where possible
+- **Small bundle** — ~50 KB gzipped
 
-## Building from Source
+For numbers, see the cross-library benchmark matrix in
+[`tools/benchmark/BENCHMARK.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).
+The WASM subject is included as `dlrs:wasm:compiled` — slower than
+the native Rust engine by design (the JS↔WASM boundary has a fixed
+cost) but still competitive with pure-JS implementations.
 
-### Prerequisites
-
-- [Rust](https://rustup.rs/) with `wasm32-unknown-unknown` target
-- [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
+## Building from source
 
 ```bash
-# Install wasm-pack
+# Prerequisites
+rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
 
-# Add WASM target
-rustup target add wasm32-unknown-unknown
-```
-
-### Build
-
-```bash
+# Build
 cd bindings/wasm
-./build.sh
+./build.sh   # produces pkg/{web,bundler,nodejs}
 ```
 
-This creates a `pkg/` directory with builds for all targets (web, bundler, nodejs).
-
-### Running Tests
+### Tests
 
 ```bash
-# Run tests in headless Chrome
 wasm-pack test --headless --chrome
-
-# Run tests in headless Firefox
 wasm-pack test --headless --firefox
 ```
+
+## Learn more
+
+- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
+- [Rust crate README](../../crates/datalogic-rs/README.md) — engine design, the 5-tier API model, custom operators
+- [React debugger](../../ui/README.md) — `@goplasmatic/datalogic-ui`, consumes this binding
+- [Full documentation](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/) — try rules live
+- [JSONLogic specification](https://jsonlogic.com/)
 
 ## License
 
 Apache-2.0
-
-## Documentation
-
-For complete documentation including advanced usage, framework integration, and API details, see the [full documentation](https://goplasmatic.github.io/datalogic-rs/javascript/installation.html).
-
-## Links
-
-- [GitHub Repository](https://github.com/GoPlasmatic/datalogic-rs)
-- [Full Documentation](https://goplasmatic.github.io/datalogic-rs/)
-- [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/)
-- [JSONLogic Specification](https://jsonlogic.com/)

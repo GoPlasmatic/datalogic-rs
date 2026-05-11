@@ -1,36 +1,26 @@
 # Contributing to datalogic-rs
 
-Thanks for your interest in contributing! This is a Cargo workspace + npm
-monorepo. Top-level layout:
+Thanks for your interest in contributing! This file is the contribution
+workflow itself — for the cross-package layout see
+[README.md](./README.md), for design and dependency flow see
+[ARCHITECTURE.md](./ARCHITECTURE.md), for build / test / run commands
+per package see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
-| Path                  | Package                          | Publishes to |
-|-----------------------|----------------------------------|--------------|
-| `crates/datalogic-rs` | `datalogic-rs` (Rust)            | crates.io    |
-| `bindings/wasm`       | `@goplasmatic/datalogic`         | npm          |
-| `bindings/python`     | `datalogic-py`                   | PyPI         |
-| `bindings/c`          | `datalogic-c` (C ABI)            | (in-tree)    |
-| `bindings/go`         | `datalogic-go` (cgo)             | Go modules   |
-| `ui`                  | `@goplasmatic/datalogic-ui`      | npm          |
-| `tools/benchmark`     | `datalogic-bench` (dev-only)     | —            |
-
-For a full picture of how the packages depend on each other, see
-[ARCHITECTURE.md](./ARCHITECTURE.md). For day-to-day commands, the build
-order, and the WASM/UI link dance, see [DEVELOPMENT.md](./DEVELOPMENT.md) —
-this file focuses on the contribution workflow itself.
-
-Most contributions touch only the Rust crate. You only need the WASM / UI
-toolchains if you are changing those layers or verifying an end-to-end
-change in the React debugger.
+Most contributions touch only the Rust crate. You only need the
+WASM / Python / Go / UI toolchains if you are changing those layers or
+verifying an end-to-end change in the React debugger.
 
 ---
 
 ## Prerequisites
 
 - **Rust** 1.85 or newer (`rustup update stable`) — the core crate uses `edition = "2024"`
-- **wasm-pack** — only needed if you are rebuilding WASM
+- **wasm-pack** — only if you are rebuilding WASM
   (`curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`)
-- **Node.js** 20+ — only needed for `ui`
-- **mdbook** — only needed if you are building the docs site
+- **Node.js** 20+ — only if you are working on `ui/`
+- **Python 3.10+** with [`maturin`](https://www.maturin.rs/) — only if you are working on `bindings/python/`
+- **Go 1.22+** and a C compiler — only if you are working on `bindings/go/`
+- **mdbook** — only if you are building the docs site
   (`cargo install mdbook`)
 
 ## Setup
@@ -39,15 +29,14 @@ change in the React debugger.
 git clone https://github.com/GoPlasmatic/datalogic-rs.git
 cd datalogic-rs
 
-# Rust-only workflow (--all-features unlocks the full test surface; without
-# it most integration tests skip silently because they require feature = "serde_json")
+# Rust-only workflow — most contributions stop here.
+# --all-features unlocks the full test surface; without it most
+# integration tests skip silently (they require feature = "serde_json").
 cargo test --workspace --all-features
-
-# Full workflow (Rust → WASM → UI), see DEVELOPMENT.md for the npm link step
-cd bindings/wasm && ./build.sh
-cd pkg && npm link
-cd ../../../ui && npm link @goplasmatic/datalogic && npm install && npm run dev
 ```
+
+For the full Rust → WASM → UI link dance, and per-binding build
+commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ---
 
@@ -84,8 +73,8 @@ A suite entry looks like:
 ```
 
 Error cases use `"error": { "type": "NaN" }` instead of `"result"`. See
-[crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md) for the
-full schema.
+[crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md)
+for the full schema.
 
 ## Adding an operator
 
@@ -95,14 +84,15 @@ full schema.
 - **Custom operator** (your own application extends the engine): implement
   `CustomOperator`, register on `Engine::builder().add_operator(...)`. See
   the [`custom_operator` example](./crates/datalogic-rs/examples/custom_operator.rs)
-  and [Custom Operators in the docs site](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
+  and the [Custom operators section in the crate README](./crates/datalogic-rs/README.md#custom-operators).
 
 ## Debugging rules
 
-Enable the `trace` feature to record every evaluation step, then inspect
-the trace programmatically (Rust) or visually (the React debugger). See
-the [Debugging with traces](./README.md#debugging-with-traces) section in
-the README for a full Rust + JS example.
+Enable the `trace` feature on the Rust crate to record every evaluation
+step, then inspect the trace programmatically (Rust) or visually (the
+React debugger). See the [Tier 4 example in the crate README](./crates/datalogic-rs/README.md#tier-4--traced-evaluation-trace-feature)
+for the Rust pattern, or drop into
+[`@goplasmatic/datalogic-ui`](./ui/README.md) for the visual debugger.
 
 ---
 
@@ -111,8 +101,9 @@ the README for a full Rust + JS example.
 1. Fork and create a topic branch.
 2. Make your change. Add or update tests.
 3. Run `cargo fmt && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace --all-features`.
-   If you touched WASM/UI, also run the relevant build scripts.
+   If you touched WASM / Python / Go / UI, also run the relevant build
+   scripts ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands).
 4. Open a PR with a description of the *why* and a short test plan.
 
-Architectural notes live in [ARCHITECTURE.md](./ARCHITECTURE.md). Questions
-and proposals are welcome via GitHub issues.
+Architectural notes live in [ARCHITECTURE.md](./ARCHITECTURE.md).
+Questions and proposals are welcome via GitHub issues.

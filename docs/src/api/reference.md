@@ -4,17 +4,20 @@ Core types and methods in datalogic-rs v5.
 
 ## Public surface at a glance
 
-v5 exposes three non-overlapping tiers, in order of caller control:
+v5 exposes five evaluation tiers, in order of caller control. Pick by
+use case, not by curiosity — most callers want **Tier 0** for ad-hoc
+work or **Tier 2** for repeated evaluation.
 
-| Tier | What it is | Use when |
-|---|---|---|
-| **Module-level helpers** (`datalogic_rs::eval`, `eval_str`, `eval_into`, `compile`) | Zero-config, default engine, one call site. | One-shot evaluations with no custom operators or configuration. |
-| **`Engine`** (configured / raw arena power tier) | Builder-constructed engine; ergonomic one-shot methods plus the raw `evaluate` path with caller-owned `&Bump`. | You need custom operators, a non-default `EvaluationConfig`, templating mode, traced runs, or zero-copy borrowed results. |
-| **`Session`** (compile-once, evaluate-many) | Engine handle that owns a reusable `bumpalo::Bump`. | Hot loops where you reuse the same compiled `Logic` across many inputs and want to amortise arena allocation. |
+| Tier | Entry point | Arena owner | Returns | Use when |
+|------|-------------|-------------|---------|----------|
+| **0** | `datalogic_rs::eval_str` / `eval` / `eval_into` / `compile` | lazy static `Engine` | `String` / `OwnedDataValue` / `T` / `Logic` | One-shot scripts, ad-hoc evaluation, no custom config |
+| **1** | `Engine::eval_str` / `eval` / `eval_into` | per-call `Bump` | `String` / `OwnedDataValue` / `T` | You need custom operators, config, or templating mode |
+| **2** | `Engine::session()` → `Session::eval*` | session-owned `Bump` | owned **or** `&DataValue<'a>` | Hot loops, services, batch jobs |
+| **3** | `Engine::evaluate(&Logic, data, &Bump)` | caller-owned `Bump` | `&'a DataValue<'a>` | Zero-copy result pipelines, custom pool strategies |
+| **4** | `Engine::trace()` → `TracedSession::*` | session-owned + trace buffer | `TracedRun<R>` | Debugging, visualisation, instrumentation |
 
-`TracedSession` mirrors `Session` 1:1 under `feature = "trace"` — every
-`eval*` returns a [`TracedRun<R>`](#tracedrunr-feature--trace) carrying
-the steps and expression tree alongside the result.
+The same tier model is exposed in every binding — see each binding's
+README for the language-idiomatic entry points.
 
 ## Module-level helpers
 

@@ -54,15 +54,20 @@ serde_json = "1.0"
 
 If you're upgrading from v4, see the [Migration Guide](../migration.md).
 
-## WebAssembly Support
+## Other languages
 
-For WebAssembly targets, use the npm package:
+The Rust crate is the engine; every other language uses its own
+binding. Click through to the binding's README for install
+instructions and the language-idiomatic API:
 
-```bash
-npm install @goplasmatic/datalogic
-```
+| Language                      | Package                                                                          | Install                                                  | Deep-dive                                                                          |
+|-------------------------------|----------------------------------------------------------------------------------|----------------------------------------------------------|------------------------------------------------------------------------------------|
+| JavaScript / TypeScript (WASM) | [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic) | `npm i @goplasmatic/datalogic`                           | [bindings/wasm/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md) |
+| Python                        | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                         | `pip install datalogic-py`                               | [bindings/python/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/python/README.md) |
+| Go                            | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go` | [bindings/go/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/go/README.md)        |
+| React (visual debugger)       | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `npm i @goplasmatic/datalogic-ui`                  | [ui/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md)                          |
 
-Or build from source:
+Building the WASM binding from source:
 
 ```bash
 cd bindings/wasm
