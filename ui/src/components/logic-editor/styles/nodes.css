@@ -25,24 +25,25 @@
    ============================================ */
 
 .dl-node {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 2px solid;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: inherit;
   font-size: 13px;
   width: 100%;
   box-sizing: border-box;
-  box-shadow: 0 2px 6px var(--node-shadow);
-  transition: box-shadow 0.2s, transform 0.1s;
+  box-shadow: var(--node-shadow);
+  transition: box-shadow var(--motion-base) var(--ease-out),
+              transform var(--motion-fast) var(--ease-out);
   background: var(--node-bg) !important;
   position: relative;
 }
 
 .dl-node:hover {
-  box-shadow: 0 4px 12px var(--node-shadow-hover);
+  box-shadow: var(--node-shadow-hover);
 }
 
 .dl-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), 0 4px 12px var(--node-shadow-hover);
+  box-shadow: 0 0 0 2px var(--accent-blue), var(--node-shadow-hover);
 }
 
 /* ============================================
@@ -125,7 +126,7 @@
 
 .vertical-cell-header {
   padding: 4px 10px;
-  border-radius: 6px 6px 0 0;
+  border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
   color: white;
   display: flex;
   align-items: center;
@@ -347,7 +348,7 @@
 
 .structure-node-header {
   padding: 6px 12px;
-  border-radius: 6px 6px 0 0;
+  border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
   color: white;
   display: flex;
   align-items: center;
@@ -524,11 +525,11 @@
   margin-top: 4px;
   background: var(--debug-popover-bg);
   color: var(--debug-popover-text);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 11px;
   z-index: 1000;
-  box-shadow: 0 4px 12px var(--debug-popover-shadow);
+  box-shadow: var(--shadow-md);
   min-width: 150px;
   max-width: 300px;
   max-height: 200px;
@@ -760,11 +761,11 @@
   position: absolute;
   background: var(--debug-popover-bg);
   color: var(--debug-popover-text);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: 11px;
   z-index: 9999;
-  box-shadow: 0 4px 16px var(--debug-popover-shadow);
+  box-shadow: var(--shadow-lg);
   min-width: 180px;
   max-width: 280px;
   pointer-events: auto;

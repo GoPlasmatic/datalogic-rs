@@ -50,12 +50,15 @@
   padding: 6px 12px;
   font-size: 13px;
   border: 1px solid var(--border-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   text-decoration: none;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .header-link:hover {
@@ -66,6 +69,11 @@
 
 .header-link:active {
   background: var(--bg-active);
+}
+
+.header-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .header-divider {
@@ -83,11 +91,14 @@
   font-size: 13px;
   font-weight: 500;
   border: 1px solid var(--border-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .new-button:hover {
@@ -98,6 +109,11 @@
 
 .new-button:active {
   background: var(--bg-active);
+}
+
+.new-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Examples Dropdown */
@@ -112,17 +128,25 @@
   padding: 6px 12px;
   font-size: 13px;
   border: 1px solid var(--border-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .examples-dropdown-trigger:hover {
   background: var(--bg-hover);
   border-color: var(--border-primary);
   color: var(--text-primary);
+}
+
+.examples-dropdown-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .examples-dropdown-label {
@@ -162,8 +186,8 @@
   padding: 4px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
   z-index: 1000;
 }
 
@@ -174,11 +198,12 @@
   font-size: 13px;
   text-align: left;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
 }
 
 .examples-dropdown-item:hover {
@@ -201,19 +226,26 @@
   font-size: 13px;
   font-weight: 500;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--accent-blue);
   color: white;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out),
+              filter var(--motion-fast) var(--ease-out);
 }
 
 .share-button:hover:not(:disabled) {
-  filter: brightness(1.1);
+  background: var(--accent-blue-hover);
 }
 
 .share-button:active:not(:disabled) {
   filter: brightness(0.95);
+}
+
+.share-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--accent-blue);
 }
 
 .share-button:disabled {
@@ -221,7 +253,14 @@
   cursor: not-allowed;
 }
 
-/* Theme Toggle */
+/* Theme Toggle (binary, mobile fallback).
+   The compound selector `.theme-toggle.theme-toggle--mobile-only` has higher
+   specificity than the base `.theme-toggle` rule below, so the binary toggle
+   stays hidden on desktop where the segmented .theme-switch is shown instead. */
+.theme-toggle.theme-toggle--mobile-only {
+  display: none;
+}
+
 .theme-toggle {
   display: flex;
   align-items: center;
@@ -230,11 +269,14 @@
   height: 36px;
   padding: 0;
   border: 1px solid var(--border-secondary);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .theme-toggle:hover {
@@ -245,6 +287,55 @@
 
 .theme-toggle:active {
   background: var(--bg-active);
+}
+
+.theme-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Three-way segmented theme switch (desktop) */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  gap: 0;
+}
+
+.theme-switch-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.theme-switch-option:hover:not(.is-active) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.theme-switch-option.is-active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.theme-switch-option:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Main Content */
@@ -293,15 +384,55 @@
 
 /* Divider */
 .divider {
-  width: 4px;
-  background: var(--border-primary);
+  position: relative;
+  width: 6px;
+  background: transparent;
   cursor: col-resize;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background var(--motion-fast) var(--ease-out);
 }
 
-.divider:hover,
-.divider.dragging {
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border-primary);
+  transform: translateX(-50%);
+  transition: background var(--motion-fast) var(--ease-out),
+              width var(--motion-fast) var(--ease-out);
+}
+
+.divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 28px;
+  border-radius: 1px;
+  background: var(--text-tertiary);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity var(--motion-fast) var(--ease-out),
+              background var(--motion-fast) var(--ease-out);
+  pointer-events: none;
+}
+
+.divider:hover::before,
+.divider.dragging::before {
+  background: var(--accent-blue);
+  width: 2px;
+}
+
+.divider:hover::after {
+  opacity: 0.5;
+}
+
+.divider.dragging::after {
+  opacity: 0.9;
   background: var(--accent-blue);
 }
 
@@ -319,7 +450,7 @@
   height: 44px;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -340,8 +471,8 @@
   padding: 4px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
   z-index: 10000;
 }
 
@@ -358,9 +489,9 @@
   color: var(--text-secondary);
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--motion-fast) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -460,6 +591,15 @@
     width: 44px;
     height: 44px;
     flex-shrink: 0;
+  }
+
+  /* Swap: hide the desktop segmented switch, show the binary mobile toggle */
+  .theme-switch {
+    display: none;
+  }
+
+  .theme-toggle.theme-toggle--mobile-only {
+    display: flex;
   }
 }
 

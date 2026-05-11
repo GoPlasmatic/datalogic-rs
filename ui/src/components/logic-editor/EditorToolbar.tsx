@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { UndoRedoToolbar } from './UndoRedoToolbar';
 import { DebuggerControlsInline } from './debugger-controls';
+import { Tooltip } from '../Tooltip';
 
 interface EditorToolbarProps {
   isEditMode: boolean;
@@ -22,14 +23,19 @@ export const EditorToolbar = memo(function EditorToolbar({
       {hasDebugger && <DebuggerControlsInline />}
       <div className="logic-editor-toolbar-spacer" />
       {onTemplatingChange && (
-        <label className="dl-templating-toggle">
-          <input
-            type="checkbox"
-            checked={templating}
-            onChange={(e) => onTemplatingChange(e.target.checked)}
-          />
-          <span>Templating</span>
-        </label>
+        <Tooltip
+          label="Compile multi-key objects as output templates with embedded JSONLogic"
+          side="bottom"
+        >
+          <label className="dl-templating-toggle">
+            <input
+              type="checkbox"
+              checked={templating}
+              onChange={(e) => onTemplatingChange(e.target.checked)}
+            />
+            <span>Templating</span>
+          </label>
+        </Tooltip>
       )}
     </div>
   );

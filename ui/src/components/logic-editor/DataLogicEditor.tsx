@@ -7,6 +7,7 @@ import {
   useEdgesState,
   ReactFlowProvider,
 } from '@xyflow/react';
+import { Workflow } from 'lucide-react';
 import './styles/reactflow-base.css';
 
 import type { DataLogicEditorProps, LogicNode, LogicEdge } from './types';
@@ -33,6 +34,42 @@ import './LogicEditor.css';
 
 const emptyResults: EvaluationResultsMap = new Map();
 
+function EmptyState({
+  exampleSuggestions,
+  onSelectExample,
+}: {
+  exampleSuggestions?: string[];
+  onSelectExample?: (name: string) => void;
+}) {
+  const chips = exampleSuggestions && onSelectExample ? exampleSuggestions : [];
+  return (
+    <div className="logic-editor-empty">
+      <div className="logic-editor-empty-icon">
+        <Workflow size={28} strokeWidth={1.5} />
+      </div>
+      <p>No expression</p>
+      <p className="logic-editor-empty-hint">
+        Enter valid JSONLogic in the input panel to visualize it.
+      </p>
+      {chips.length > 0 && (
+        <div className="logic-editor-empty-chips">
+          <span className="logic-editor-empty-chips-label">Try</span>
+          {chips.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="logic-editor-empty-chip"
+              onClick={() => onSelectExample?.(name)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Read-only inner component - minimal, no EditorContext dependency.
  * Used when editable=false to avoid EditorProvider's state sync effects.
@@ -42,11 +79,15 @@ function ReadOnlyEditorInner({
   initialEdges,
   theme,
   showDebugger,
+  exampleSuggestions,
+  onSelectExample,
 }: {
   initialNodes: LogicNode[];
   initialEdges: LogicEdge[];
   theme: 'light' | 'dark';
   showDebugger: boolean;
+  exampleSuggestions?: string[];
+  onSelectExample?: (name: string) => void;
 }) {
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
 
@@ -107,12 +148,10 @@ function ReadOnlyEditorInner({
         </ReactFlowProvider>
 
         {visibleNodes.length === 0 && (
-          <div className="logic-editor-empty">
-            <p>No expression</p>
-            <p className="logic-editor-empty-hint">
-              Enter valid JSONLogic in the input panel to visualize it
-            </p>
-          </div>
+          <EmptyState
+            exampleSuggestions={exampleSuggestions}
+            onSelectExample={onSelectExample}
+          />
         )}
       </ConnectedHandlesProvider>
     </EvaluationContext.Provider>
@@ -129,12 +168,16 @@ function EditableEditorInner({
   evaluationResults,
   theme,
   showDebugger,
+  exampleSuggestions,
+  onSelectExample,
 }: {
   initialNodes: LogicNode[];
   initialEdges: LogicEdge[];
   evaluationResults: EvaluationResultsMap;
   theme: 'light' | 'dark';
   showDebugger: boolean;
+  exampleSuggestions?: string[];
+  onSelectExample?: (name: string) => void;
 }) {
   // Background dot colors based on theme
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
@@ -259,12 +302,10 @@ function EditableEditorInner({
         </ReactFlowProvider>
 
         {visibleNodes.length === 0 && (
-          <div className="logic-editor-empty">
-            <p>No expression</p>
-            <p className="logic-editor-empty-hint">
-              Enter valid JSONLogic in the input panel to visualize it
-            </p>
-          </div>
+          <EmptyState
+            exampleSuggestions={exampleSuggestions}
+            onSelectExample={onSelectExample}
+          />
         )}
       </ConnectedHandlesProvider>
     </EvaluationContext.Provider>
@@ -280,6 +321,8 @@ export function DataLogicEditor({
   templating = false,
   onTemplatingChange,
   editable = false,
+  exampleSuggestions,
+  onSelectExample,
 }: DataLogicEditorProps) {
   // Debounce timer ref for onChange
   const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,6 +411,8 @@ export function DataLogicEditor({
         initialEdges={editor.edges}
         theme={resolvedTheme}
         showDebugger={false}
+        exampleSuggestions={exampleSuggestions}
+        onSelectExample={onSelectExample}
       />
     );
 
@@ -419,6 +464,8 @@ export function DataLogicEditor({
       evaluationResults={emptyResults}
       theme={resolvedTheme}
       showDebugger={false}
+      exampleSuggestions={exampleSuggestions}
+      onSelectExample={onSelectExample}
     />
   );
 

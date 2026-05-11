@@ -12,70 +12,70 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'variable',
     label: 'Variables',
     description: 'Access data from the context',
-    color: '#5C7CFA', // blue
+    color: '#6366f1', // indigo
     icon: 'database',
   },
   comparison: {
     name: 'comparison',
     label: 'Comparison',
     description: 'Compare values',
-    color: '#20C997', // teal
+    color: '#14b8a6', // teal
     icon: 'scale',
   },
   logical: {
     name: 'logical',
     label: 'Logical',
     description: 'Boolean logic operations',
-    color: '#845EF7', // violet
+    color: '#8b5cf6', // violet
     icon: 'binary',
   },
   arithmetic: {
     name: 'arithmetic',
     label: 'Arithmetic',
     description: 'Mathematical operations',
-    color: '#40C057', // green
+    color: '#22c55e', // green
     icon: 'calculator',
   },
   control: {
     name: 'control',
     label: 'Control Flow',
     description: 'Conditional branching',
-    color: '#F59F00', // amber
+    color: '#f59e0b', // amber
     icon: 'git-branch',
   },
   string: {
     name: 'string',
     label: 'String',
     description: 'Text manipulation',
-    color: '#15AABF', // cyan
+    color: '#06b6d4', // cyan
     icon: 'type',
   },
   array: {
     name: 'array',
     label: 'Array',
     description: 'Array operations and iteration',
-    color: '#5F3DC4', // indigo
+    color: '#7c3aed', // deep violet
     icon: 'layers',
   },
   datetime: {
     name: 'datetime',
     label: 'Date & Time',
     description: 'Date and time operations',
-    color: '#748FFC', // slate blue
+    color: '#0ea5e9', // sky
     icon: 'clock',
   },
   validation: {
     name: 'validation',
     label: 'Validation',
     description: 'Check for missing values',
-    color: '#ADB5BD', // grey-blue
+    color: '#94a3b8', // slate
     icon: 'alert-circle',
   },
   error: {
     name: 'error',
     label: 'Error Handling',
     description: 'Handle errors gracefully',
-    color: '#FA5252', // red
+    color: '#ef4444', // red
     icon: 'circle-x',
   },
   utility: {

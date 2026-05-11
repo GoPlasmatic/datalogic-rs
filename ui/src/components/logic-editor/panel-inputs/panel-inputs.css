@@ -36,18 +36,19 @@
   padding: 8px 10px;
   font-size: 13px;
   font-family: inherit;
-  color: var(--dl-text-primary, #1a1a1a);
-  background: var(--dl-bg-input, #fff);
-  border: 1px solid var(--dl-border, #e0e0e0);
-  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
   box-sizing: border-box;
 }
 
 .panel-input:focus {
-  border-color: var(--dl-primary, #3b82f6);
-  box-shadow: 0 0 0 3px var(--dl-primary-alpha, rgba(59, 130, 246, 0.15));
+  border-color: var(--accent-blue);
+  box-shadow: var(--focus-ring);
 }
 
 .panel-input:disabled {
@@ -146,15 +147,15 @@
 }
 
 .panel-input-checkbox:checked + .panel-input-toggle {
-  background: var(--dl-primary, #3b82f6);
+  background: var(--accent-blue);
 }
 
 .panel-input-checkbox:checked + .panel-input-toggle::after {
   transform: translateX(16px);
 }
 
-.panel-input-checkbox:focus + .panel-input-toggle {
-  box-shadow: 0 0 0 3px var(--dl-primary-alpha, rgba(59, 130, 246, 0.15));
+.panel-input-checkbox:focus-visible + .panel-input-toggle {
+  box-shadow: var(--focus-ring);
 }
 
 .panel-input-checkbox:disabled + .panel-input-toggle {
@@ -197,16 +198,17 @@
 .panel-input-path-wrapper {
   display: flex;
   align-items: center;
-  background: var(--dl-bg-input, #fff);
-  border: 1px solid var(--dl-border, #e0e0e0);
-  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .panel-input-path-wrapper:focus-within {
-  border-color: var(--dl-primary, #3b82f6);
-  box-shadow: 0 0 0 3px var(--dl-primary-alpha, rgba(59, 130, 246, 0.15));
+  border-color: var(--accent-blue);
+  box-shadow: var(--focus-ring);
 }
 
 .panel-input-path-prefix {

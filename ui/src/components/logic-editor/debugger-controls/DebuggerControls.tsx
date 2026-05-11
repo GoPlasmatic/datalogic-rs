@@ -9,6 +9,7 @@ import {
   SkipForward,
 } from 'lucide-react';
 import { useDebuggerContext } from '../context';
+import { Tooltip } from '../../Tooltip';
 import './DebuggerControls.css';
 
 export function DebuggerControlsInline() {
@@ -104,49 +105,54 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
 
         {/* Navigation buttons */}
         <div className="dl-debugger-buttons">
-          <button
-            className="dl-debugger-btn"
-            onClick={reset}
-            disabled={isAtStart}
-            title="Reset to start (Home)"
-          >
-            <SkipBack size={16} />
-          </button>
+          <Tooltip label="Reset" shortcut="Home" side="top">
+            <button
+              className="dl-debugger-btn"
+              onClick={reset}
+              disabled={isAtStart}
+            >
+              <SkipBack size={16} />
+            </button>
+          </Tooltip>
 
-          <button
-            className="dl-debugger-btn"
-            onClick={stepBackward}
-            disabled={isAtStart}
-            title="Step backward (Left Arrow)"
-          >
-            <ChevronLeft size={18} />
-          </button>
+          <Tooltip label="Step back" shortcut="←" side="top">
+            <button
+              className="dl-debugger-btn"
+              onClick={stepBackward}
+              disabled={isAtStart}
+            >
+              <ChevronLeft size={18} />
+            </button>
+          </Tooltip>
 
-          <button
-            className="dl-debugger-btn dl-debugger-btn-primary"
-            onClick={isPlaying ? pause : play}
-            title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-          >
-            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-          </button>
+          <Tooltip label={isPlaying ? 'Pause' : 'Play'} shortcut="Space" side="top">
+            <button
+              className="dl-debugger-btn dl-debugger-btn-primary"
+              onClick={isPlaying ? pause : play}
+            >
+              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+            </button>
+          </Tooltip>
 
-          <button
-            className="dl-debugger-btn"
-            onClick={stepForward}
-            disabled={isAtEnd}
-            title="Step forward (Right Arrow)"
-          >
-            <ChevronRight size={18} />
-          </button>
+          <Tooltip label="Step forward" shortcut="→" side="top">
+            <button
+              className="dl-debugger-btn"
+              onClick={stepForward}
+              disabled={isAtEnd}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </Tooltip>
 
-          <button
-            className="dl-debugger-btn"
-            onClick={() => goToStep(totalSteps - 1)}
-            disabled={isAtEnd}
-            title="Jump to end (End)"
-          >
-            <SkipForward size={16} />
-          </button>
+          <Tooltip label="Jump to end" shortcut="End" side="top">
+            <button
+              className="dl-debugger-btn"
+              onClick={() => goToStep(totalSteps - 1)}
+              disabled={isAtEnd}
+            >
+              <SkipForward size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Step counter: 0/N at initial, then 1/N .. N/N when stepping */}

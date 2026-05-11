@@ -12,18 +12,11 @@
   bottom: 8px;
   width: 280px;
   z-index: 50;
-  background: var(--bg-secondary, #ffffff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
-}
-
-/* Dark mode */
-.logic-editor[data-theme="dark"] .properties-panel {
-  background: var(--bg-secondary, #1e1e1e);
-  border-color: var(--border-color, #3e3e3e);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .properties-panel-content {
@@ -84,10 +77,17 @@
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-tertiary, #999);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.properties-panel-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .properties-panel-close:hover {
@@ -433,26 +433,24 @@
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 500;
-  color: #ef4444;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.logic-editor[data-theme="dark"] .properties-panel-delete {
-  background: #451a1a;
-  border-color: #7f1d1d;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .properties-panel-delete:hover {
-  background: #fee2e2;
-  border-color: #ef4444;
+  background: var(--error-bg-light);
+  border-color: var(--error-text);
 }
 
-.logic-editor[data-theme="dark"] .properties-panel-delete:hover {
-  background: #5c2424;
+.properties-panel-delete:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--error-text);
 }
 
 /* ==========================================================================
@@ -869,17 +867,18 @@
   width: 100%;
   padding: 8px 12px 8px 32px;
   font-size: 13px;
-  color: var(--text-primary, #1a1a1a);
-  background: var(--bg-tertiary, #f8f9fa);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .properties-panel-search-input:focus {
-  border-color: var(--color-primary, #2563eb);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+  border-color: var(--accent-blue);
+  box-shadow: var(--focus-ring);
 }
 
 .properties-panel-search-input::placeholder {

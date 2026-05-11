@@ -109,7 +109,7 @@ export const PropertiesPanel = memo(function PropertiesPanel({
       applyTimerRef.current = setTimeout(() => {
         applyPanelChanges();
         applyTimerRef.current = null;
-      }, 500);
+      }, 200);
     }
 
     return () => {
