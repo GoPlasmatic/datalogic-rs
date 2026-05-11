@@ -1,0 +1,62 @@
+# `[workspace]` makes this crate its own workspace root for the same
+# reason `bindings/python` and `bindings/wasm` do: keeps the
+# `crate-type = ["cdylib"]` output and napi-specific build glue out of
+# the root workspace's `cargo test --workspace --all-features` path.
+# The parent `Cargo.toml` at the repo root excludes this directory.
+[workspace]
+
+[package]
+name = "datalogic-node"
+version = "5.0.0"
+edition = "2024"
+description = "Node.js native bindings for datalogic-rs JSONLogic engine"
+license = "Apache-2.0"
+repository = "https://github.com/GoPlasmatic/datalogic-rs"
+
+[lib]
+# `cdylib` produces the importable `.node` artifact napi-rs loads at
+# runtime. `rlib` lets downstream Rust crates link the binding directly
+# (mirrors what `bindings/python` and `bindings/wasm` do).
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Mirrors the `datalogic-wasm` / `datalogic-py` pattern: prefer local
+# path during in-repo development; the published `5.0` requirement
+# kicks in once the binding is published as a downstream of the released
+# core.
+#
+# Feature list mirrors the Python binding so a rule valid from Python is
+# also valid from Node. `serde_json` is required for napi-rs's serde
+# bridge to convert JS objects ↔ `serde_json::Value`.
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+    "serde_json",
+    "datetime",
+    "trace",
+    "templating",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-control",
+    "ext-math",
+] }
+# napi 3.x is the current major and the floor for `napi-derive` 3.x's
+# improved async / class ergonomics. `napi9` enables Node 18+ ABI. The
+# `serde-json` feature wires the `serde_json::Value` ↔ `JsUnknown` bridge
+# we lean on in conv.rs.
+napi = { version = "3", default-features = false, features = ["napi9", "serde-json"] }
+napi-derive = "3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+# Match the root workspace's release profile so the .node artifact gets
+# the same inlining propagation across crate boundaries. The Python and
+# WASM bindings each tune this differently (WASM goes for size; Python
+# inherits root); Node prioritises throughput, so `lto = "fat"` +
+# `codegen-units = 1` is the right tradeoff.
+lto = "fat"
+codegen-units = 1
+strip = true

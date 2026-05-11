@@ -15,10 +15,10 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 |---|---|---|---|
 | Rust | `datalogic-rs` | `datalogic-rs` | crates.io |
 | WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic`** (grandfathered, predates this convention) | npm |
+| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (alongside the WASM `@goplasmatic/datalogic`) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
 | C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/PHP/JVM in-tree, not separately published) | — |
 | Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go` (in-tree module) | Go modules |
-| _future_ Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (alongside the WASM `@goplasmatic/datalogic`) | npm |
 | _future_ PHP | `datalogic-php` | `goplasmatic/datalogic-php` | Packagist |
 | _future_ JVM | `datalogic-jvm` | `com.goplasmatic:datalogic` | Maven Central |
 | _future_ Ruby | `datalogic-rb` | `datalogic-rb` | RubyGems |
@@ -83,6 +83,7 @@ the convention without exception.
 | Binding | Path | Tech | Publishes to |
 |---|---|---|---|
 | WebAssembly | `bindings/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic` |
+| Node native | `bindings/node/` | napi-rs + napi-cli (per-platform `.node` prebuilds with `optionalDependencies`) | npm: `@goplasmatic/datalogic-node` |
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/PHP/JVM) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go` |
@@ -147,12 +148,9 @@ Supported (os, arch) matrix:
 
 The order below reflects the current implementation plan:
 
-1. **Node native** — `bindings/node/` via `napi-rs`, published as
-   `@goplasmatic/datalogic-node` alongside the existing
-   `@goplasmatic/datalogic` (WASM)
-2. **PHP** — `bindings/php/` via PHP FFI over `bindings/c/`
-3. **JVM** — `bindings/jvm/` via JNA or JNR-FFI over `bindings/c/`
-4. **Ruby** — `bindings/ruby/` via `magnus`
+1. **PHP** — `bindings/php/` via PHP FFI over `bindings/c/`
+2. **JVM** — `bindings/jvm/` via JNA or JNR-FFI over `bindings/c/`
+3. **Ruby** — `bindings/ruby/` via `magnus`
 
 Other plausible future bindings:
 

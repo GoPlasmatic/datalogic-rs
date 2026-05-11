@@ -6,15 +6,16 @@ members = [
 ]
 # `bindings/wasm` defines its own `[workspace]` so wasm-pack can apply its
 # WASM-specific `[profile.release]` (opt-level "z", lto, panic = "abort")
-# without contaminating the rest of the tree. `bindings/python` and
-# `bindings/c` are excluded so contributors don't need a Python toolchain
-# or have to wait on cbindgen+cdylib codegen just to run `cargo test
-# --workspace --all-features` against core. `ui` is a Node package and is
-# invisible to Cargo regardless.
+# without contaminating the rest of the tree. `bindings/python`,
+# `bindings/c`, and `bindings/node` are excluded so contributors don't
+# need a Python / Node toolchain or have to wait on cbindgen+cdylib /
+# napi build codegen just to run `cargo test --workspace --all-features`
+# against core. `ui` is a Node package and is invisible to Cargo regardless.
 exclude = [
     "bindings/wasm",
     "bindings/python",
     "bindings/c",
+    "bindings/node",
     "ui",
 ]
 

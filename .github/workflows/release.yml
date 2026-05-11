@@ -12,13 +12,15 @@ name: Release
 #      ├─ python-build-wheels (matrix)
 #      ├─ python-build-sdist
 #      ├─ python-test
-#      └─ go-build-staticlib (matrix)
+#      ├─ go-build-staticlib (matrix)
+#      └─ node-build-prebuild (matrix)
 #      ↓  all builds + tests green
 #   publish-crate              ← single chokepoint; nothing publishes if any build above fails
 #      │
 #      ├─ publish-wasm   (downloads build-wasm artifact, npm publish — no rebuild)
 #      ├─ publish-python (downloads wheel/sdist artifacts, PyPI upload)
-#      └─ publish-go     (downloads go-staticlib artifacts, tag push)
+#      ├─ publish-go     (downloads go-staticlib artifacts, tag push)
+#      └─ publish-node   (downloads node-prebuild artifacts, napi prepublish + npm publish)
 #      ↓  publish-wasm done
 #   publish-ui            (downloads build-ui artifact, npm publish)
 #      ↓
@@ -113,18 +115,23 @@ jobs:
           # Cargo.toml `version = "..."` for each Rust-side binding.
           for crate in bindings/python/Cargo.toml \
                        bindings/wasm/Cargo.toml \
-                       bindings/c/Cargo.toml; do
+                       bindings/c/Cargo.toml \
+                       bindings/node/Cargo.toml; do
             v=$(grep '^version = ' "$crate" | head -1 | sed 's/version = "\(.*\)"/\1/')
             check "$crate" "$v" "$crate"
           done
 
-          # Python distribution name (pyproject.toml) and UI npm package
-          # (package.json) carry their own version field.
+          # Python distribution name (pyproject.toml), UI npm package
+          # (package.json), and Node binding package (package.json) each
+          # carry their own version field.
           PY=$(grep '^version = ' bindings/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           check "bindings/python/pyproject.toml" "$PY" "bindings/python/pyproject.toml"
 
           UI=$(node -p "require('./ui/package.json').version")
           check "ui/package.json" "$UI" "ui/package.json"
+
+          NODE_PKG=$(node -p "require('./bindings/node/package.json').version")
+          check "bindings/node/package.json" "$NODE_PKG" "bindings/node/package.json"
 
           # Go module: version lives implicitly in the `bindings/go/vX.Y.Z`
           # tag pushed by publish-go — nothing in source to drift, so it's
@@ -181,6 +188,7 @@ jobs:
       - build-ui
       - build-python
       - build-go
+      - build-node
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -349,6 +357,11 @@ jobs:
     needs: validate
     uses: ./.github/workflows/release-build-go.yml
 
+  build-node:
+    name: Build Node prebuilds
+    needs: validate
+    uses: ./.github/workflows/release-build-node.yml
+
   # ============================================================ Publish phase
   # Everything below runs only after publish-crate succeeds — and
   # publish-crate runs only when every `build-*` is green. The
@@ -413,9 +426,68 @@ jobs:
           git push origin "${TAG}"
           echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/bindings/go@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
 
+  publish-node:
+    name: Publish Node bindings to npm
+    # publish-crate gates the entire publish phase; this job's actual
+    # input is the build-node artifacts (one .node per platform).
+    needs: [validate, publish-crate, build-node]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install bindings/node deps
+        working-directory: bindings/node
+        run: npm ci || npm install
+
+      - name: Download all prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          # Each artifact tarball roots at the .node file directly, so
+          # merge-multiple drops every prebuild side-by-side into
+          # bindings/node/. `napi prepublish -t npm` then matches each
+          # .node to its `npm/<os>-<arch>[-<libc>]/` subpackage via the
+          # triple in the filename.
+          path: bindings/node/
+          pattern: node-prebuild-*
+          merge-multiple: true
+
+      - name: List collected prebuilds
+        run: ls -la bindings/node/*.node
+
+      - name: Check if version exists on npm
+        id: check
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          if npm view "@goplasmatic/datalogic-node@$VERSION" version 2>/dev/null; then
+            echo "Version $VERSION already published to npm, skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Publishing version $VERSION to npm"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to npm
+        if: steps.check.outputs.skip != 'true'
+        working-directory: bindings/node
+        # `napi prepublish -t npm` writes per-platform subpackages to
+        # `npm/<triple>/`, copies the matching .node, and runs
+        # `npm publish` on each subpackage plus the umbrella package.
+        # The umbrella declares the subpackages as `optionalDependencies`
+        # so consumers' npm pulls only the prebuild for their platform.
+        run: npx napi prepublish -t npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+
   github-release:
     name: Create GitHub Release
-    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go]
+    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go, publish-node]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
