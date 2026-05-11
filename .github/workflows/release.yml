@@ -143,6 +143,26 @@ jobs:
           fi
           echo "All binding versions match core $VERSION"
 
+      # Catch the common "tag pushed without finalising CHANGELOG" mistake.
+      # The github-release job below extracts notes from CHANGELOG.md by
+      # section header; a missing or "- TBD" / "- Unreleased" header means
+      # we'd ship a release with placeholder notes. Fail loudly here,
+      # before crates.io publication makes the tag impossible to retract.
+      - name: Validate CHANGELOG.md entry
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          HEADER=$(grep -E "^## \[${VERSION}\]" CHANGELOG.md | head -1 || true)
+          if [ -z "$HEADER" ]; then
+            echo "::error file=CHANGELOG.md::No '## [${VERSION}]' section found"
+            exit 1
+          fi
+          # Match `## [X.Y.Z] - YYYY-MM-DD`. Reject TBD/Unreleased/missing date.
+          if ! echo "$HEADER" | grep -Eq "^## \[${VERSION}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\s*$"; then
+            echo "::error file=CHANGELOG.md::CHANGELOG entry '${HEADER}' is missing a YYYY-MM-DD release date (stamp it before tagging)"
+            exit 1
+          fi
+          echo "CHANGELOG.md entry: ${HEADER} ✓"
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -164,7 +184,12 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # `--all-features` mirrors ci.yml so feature-gated paths
+        # (serde_json, templating, datetime, trace, error-handling, the
+        # ext-* operators) get linted. Without it, a regression there
+        # can pass release validate while failing PR clippy — drift we
+        # don't want.
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       - name: Run tests
         # `--all-features` is required: most integration tests are gated
@@ -199,10 +224,13 @@ jobs:
 
       - name: Check if version exists on crates.io
         id: check
+        # `cargo search` greps a prefix match, which can return a
+        # different crate that happens to start with `datalogic-rs`. The
+        # registry API is an exact lookup: 200 + `versions[].num` array
+        # gives us the authoritative answer.
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          PUBLISHED=$(cargo search datalogic-rs --limit 1 2>/dev/null | grep "^datalogic-rs" | sed 's/.*= "\(.*\)".*/\1/' || echo "")
-          if [ "$VERSION" = "$PUBLISHED" ]; then
+          if curl -sf "https://crates.io/api/v1/crates/datalogic-rs/${VERSION}" >/dev/null; then
             echo "Version $VERSION already published to crates.io, skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
@@ -239,6 +267,13 @@ jobs:
     # input is the build-wasm artifact.
     needs: [validate, publish-crate, build-wasm]
     runs-on: ubuntu-latest
+    # `id-token: write` lets `npm publish --provenance` generate the
+    # SLSA build-provenance attestation tied to this workflow run.
+    # `contents: read` is needed because npm provenance includes a
+    # workflow-source link.
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Download wasm-pkg artifact
         uses: actions/download-artifact@v4
@@ -266,7 +301,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd bindings/wasm/pkg && npm publish --access public
+        run: cd bindings/wasm/pkg && npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -284,6 +319,9 @@ jobs:
     # on npm at install time.
     needs: [validate, publish-crate, build-ui, publish-wasm]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Download ui-package artifact
         # The artifact tarball roots with `ui/...`. Default
@@ -312,7 +350,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd ui && npm publish --access public
+        run: cd ui && npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -432,6 +470,9 @@ jobs:
     # input is the build-node artifacts (one .node per platform).
     needs: [validate, publish-crate, build-node]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -479,10 +520,16 @@ jobs:
         # `npm publish` on each subpackage plus the umbrella package.
         # The umbrella declares the subpackages as `optionalDependencies`
         # so consumers' npm pulls only the prebuild for their platform.
+        #
+        # `NPM_CONFIG_PROVENANCE=true` flips the `--provenance` flag on
+        # every `npm publish` invocation napi makes (umbrella + each
+        # `npm/<triple>/` subpackage), so all 9 packages carry a SLSA
+        # provenance attestation. Needs `id-token: write` (set above).
         run: npx napi prepublish -t npm
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
           GITHUB_TOKEN: ${{ github.token }}
 
   github-release:
@@ -493,12 +540,75 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Extract just this version's section from CHANGELOG.md. Awk reads
+      # lines between `## [X.Y.Z]` and the next `## [` header (exclusive)
+      # — the validate job already enforced that the section exists and
+      # carries a real date, so we can rely on it being present.
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::Failed to extract CHANGELOG section for $VERSION (validate should have caught this)"
+            exit 1
+          fi
+          echo "Release notes preview:"
+          head -20 release-notes.md
+
+      # Download every build-phase artifact uploaded by the build-* jobs
+      # earlier in the run. We attach these to the GitHub Release as assets
+      # so air-gapped consumers can grab the .whl / .tgz / .node prebuilds
+      # without going through PyPI/npm. crates.io tarball isn't attached
+      # — `cargo publish` is the canonical source there.
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          # Skip `python-sdist` and `python-wheels-*` only if you want
+          # PyPI to be the single source; leaving them in lets users
+          # pip-install a wheel from the release page without PyPI.
+          pattern: '*'
+
+      - name: Stage assets into a flat dir
+        run: |
+          mkdir -p assets
+          # WASM npm tarball
+          if [ -d release-assets/wasm-pkg ]; then
+            cd release-assets/wasm-pkg && npm pack --pack-destination ../../assets && cd ../..
+          fi
+          # UI npm tarball — artifact roots at ui/, repack from there
+          if [ -d release-assets/ui-package/ui ]; then
+            cd release-assets/ui-package/ui && npm pack --pack-destination ../../../assets && cd ../../..
+          fi
+          # Python wheels + sdist
+          find release-assets -type f \( -name '*.whl' -o -name '*.tar.gz' \) \
+            -exec cp {} assets/ \;
+          # Node prebuilds (one .node per platform)
+          find release-assets -type f -name 'datalogic-node.*.node' \
+            -exec cp {} assets/ \;
+          # Go staticlibs — bundle each platform dir into a tarball
+          if [ -d release-assets ]; then
+            for d in release-assets/go-staticlib-*/; do
+              [ -d "$d" ] || continue
+              name=$(basename "$d")
+              tar -C "$d" -czf "assets/${name}.tar.gz" .
+            done
+          fi
+          echo "Final asset set:"
+          ls -la assets/
+
       - name: Create release
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           gh release create "v$VERSION" \
             --title "v$VERSION" \
-            --generate-notes \
-            --verify-tag
+            --notes-file release-notes.md \
+            --verify-tag \
+            assets/*
         env:
           GH_TOKEN: ${{ github.token }}

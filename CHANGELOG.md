@@ -10,7 +10,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ## [Unreleased]
 
-## [5.0.0] - TBD
+## [5.0.0] - 2026-05-11
 
 v5 is a coordinated major release across the Rust core crate and every
 binding (WASM, Node, Python, C, Go). For step-by-step v4→v5 migration,
