@@ -31,7 +31,7 @@ fn apply(py: Python<'_>, rule: &Bound<'_, PyAny>, data: &Bound<'_, PyAny>) -> Py
 }
 
 #[pymodule]
-fn datalogic(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn datalogic_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = m.py();
 
     m.add_class::<Engine>()?;

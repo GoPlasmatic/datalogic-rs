@@ -1,11 +1,14 @@
 name: Python Release
 
-# Triggered by `python-v*` tags so the binding can ship independently of
-# the core crate (which is gated by `v*` tags via release.yml).
+# Triggered by `v*` tags — same trigger as `release.yml`, so a single
+# `git tag v5.0.1 && git push --tags` ships core (crates.io), wasm (npm),
+# ui (npm), and Python (PyPI) together. The validation step enforces
+# that packages/python/Cargo.toml and packages/core/Cargo.toml carry
+# matching versions, so an out-of-sync bump fails fast.
 on:
   push:
     tags:
-      - 'python-v*'
+      - 'v*'
   # Manual dispatch for branch-based wheel build dry-runs (no publish).
   workflow_dispatch:
 
@@ -42,10 +45,24 @@ jobs:
           fi
           echo "pyproject.toml version $PYVER matches Cargo.toml"
 
+      # `v*` tags release every package in the monorepo, so the Python and
+      # core versions must agree — release.yml validates against core, this
+      # one validates against python; a mismatch here means a forgotten
+      # bump in either Cargo.toml.
+      - name: Confirm core and Python versions match
+        run: |
+          COREVER=$(grep '^version = ' packages/core/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "$COREVER" != "$VERSION" ]; then
+            echo "::error::packages/python/Cargo.toml ($VERSION) does not match packages/core/Cargo.toml ($COREVER) — bump them together"
+            exit 1
+          fi
+          echo "core $COREVER matches python $VERSION"
+
       - name: Validate tag matches version (skip on workflow_dispatch)
         if: github.event_name == 'push'
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#python-v}"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
           VERSION="${{ steps.version.outputs.version }}"
           if [ "$TAG_VERSION" != "$VERSION" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match packages/python/Cargo.toml version $VERSION"
@@ -128,7 +145,7 @@ jobs:
     # an approval, a stray tag push won't publish unattended.
     environment:
       name: pypi
-      url: https://pypi.org/p/datalogic
+      url: https://pypi.org/p/datalogic-py
     # OIDC trusted publishing — requires PyPI to have a publisher
     # configured for this repo + workflow + environment. No API token used.
     permissions:

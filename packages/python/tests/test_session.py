@@ -2,7 +2,7 @@
 
 import pytest
 
-from datalogic import Engine, Session
+from datalogic_py import Engine, Session
 
 
 def test_session_basic():

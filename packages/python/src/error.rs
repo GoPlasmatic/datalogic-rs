@@ -22,10 +22,12 @@ use pyo3::create_exception;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 
-create_exception!(datalogic, DataLogicError, PyException, "Base exception raised by datalogic.");
-create_exception!(datalogic, ParseError, DataLogicError, "Raised when a rule or data input cannot be parsed.");
+// First arg to `create_exception!` is the module name the exception
+// reports itself under; must match `[lib] name` in Cargo.toml.
+create_exception!(datalogic_py, DataLogicError, PyException, "Base exception raised by datalogic_py.");
+create_exception!(datalogic_py, ParseError, DataLogicError, "Raised when a rule or data input cannot be parsed.");
 create_exception!(
-    datalogic,
+    datalogic_py,
     EvaluateError,
     DataLogicError,
     "Raised when an operator fails at evaluation time. Carries .error_type, .operator, .node_ids, and (when resolvable) .path."

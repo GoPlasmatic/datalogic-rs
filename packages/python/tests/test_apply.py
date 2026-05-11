@@ -1,6 +1,6 @@
 """One-shot `apply()` — parity surface with classic JSONLogic bindings."""
 
-from datalogic import apply
+from datalogic_py import apply
 
 
 def test_apply_dict_inputs():

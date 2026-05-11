@@ -6,7 +6,11 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "datalogic"
+# Follows the `datalogic-<lang>` naming convention used for every
+# language binding (`datalogic-rs` on crates.io, `datalogic-py` on PyPI,
+# future `datalogic-rb` / `datalogic-go` / …). The npm WASM package
+# predates the convention and stays as `@goplasmatic/datalogic`.
+name = "datalogic-py"
 version = "5.0.0"
 description = "Python bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many."
 readme = "README.md"
@@ -40,8 +44,11 @@ test = ["pytest>=7"]
 
 [tool.maturin]
 # `module-name` MUST match the `[lib] name` in Cargo.toml — this is how
-# maturin picks the symbol name the produced .so exports.
-module-name = "datalogic"
+# maturin picks the symbol name the produced .so exports. Python's
+# distribution-vs-import naming separation lets PyPI carry `datalogic-py`
+# (hyphenated, convention-compliant) while the import is `datalogic_py`
+# (Python doesn't allow hyphens in module names).
+module-name = "datalogic_py"
 # `abi3` strips the per-CPython-minor wheel build. With
 # pyo3 features = ["abi3-py310"] one wheel per (os, arch) covers 3.10+.
 features = ["pyo3/extension-module"]

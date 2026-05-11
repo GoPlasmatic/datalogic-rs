@@ -1,6 +1,6 @@
-# datalogic — Python bindings for `datalogic-rs`
+# datalogic-py — Python bindings for `datalogic-rs`
 
-[![PyPI](https://img.shields.io/pypi/v/datalogic.svg)](https://pypi.org/project/datalogic/)
+[![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Python bindings for [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs),
@@ -11,10 +11,14 @@ Unlike the original Python `jsonlogic` packages, this binding exposes the
 supports — compile a rule once and evaluate it against thousands of data
 inputs without re-parsing.
 
+> **Naming:** `pip install datalogic-py` (PyPI distribution name) →
+> `import datalogic_py` (Python module name). Python modules can't
+> contain hyphens, so the underscore form is the import.
+
 ## Install
 
 ```bash
-pip install datalogic
+pip install datalogic-py
 ```
 
 Pre-built wheels are published for Linux (manylinux + musllinux, x86_64 and
@@ -25,7 +29,7 @@ one wheel per platform covers every CPython 3.10+ release.
 ## Quick start
 
 ```python
-from datalogic import apply
+from datalogic_py import apply
 
 # One-shot — parses the rule each call. Use for ad-hoc evaluations.
 result = apply(
@@ -38,7 +42,7 @@ result = apply(
 ## Compile once, evaluate many
 
 ```python
-from datalogic import Engine
+from datalogic_py import Engine
 
 engine = Engine()
 rule = engine.compile({"if": [{">": [{"var": "score"}, 50]}, "pass", "fail"]})
@@ -58,7 +62,7 @@ For batches where you want to amortise arena reset across iterations,
 open a `Session`:
 
 ```python
-from datalogic import Engine
+from datalogic_py import Engine
 
 engine = Engine()
 rule = engine.compile({"+": [{"var": "x"}, 1]})
@@ -81,7 +85,7 @@ All exceptions descend from `DataLogicError`:
 | `EvaluateError` | Operator failure at runtime — carries `.error_type`, `.operator`, `.path` |
 
 ```python
-from datalogic import Engine, EvaluateError
+from datalogic_py import Engine, EvaluateError
 
 engine = Engine()
 try:

@@ -6,7 +6,7 @@
 [workspace]
 
 [package]
-name = "datalogic-python"
+name = "datalogic-py"
 version = "5.0.0"
 edition = "2024"
 description = "Python bindings for datalogic-rs JSONLogic engine"
@@ -17,9 +17,10 @@ repository = "https://github.com/GoPlasmatic/datalogic-rs"
 # `cdylib` produces the importable `.so`/`.pyd`; `rlib` lets a Rust
 # consumer link this crate as a normal dep (e.g. for downstream tests).
 crate-type = ["cdylib", "rlib"]
-# `name` controls the module name Python sees (`import datalogic`). Keep
-# this aligned with `[tool.maturin] module-name` in `pyproject.toml`.
-name = "datalogic"
+# `name` controls the module name Python sees (`import datalogic_py`).
+# Keep this aligned with `[tool.maturin] module-name` in `pyproject.toml`
+# and with the `#[pymodule] fn datalogic_py(...)` symbol in `src/lib.rs`.
+name = "datalogic_py"
 
 [dependencies]
 # Mirrors the `datalogic-wasm` pattern: prefer the local path during

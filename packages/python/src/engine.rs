@@ -17,7 +17,7 @@ use crate::session::Session;
 /// Construct once at startup and share across threads — `Engine` is
 /// internally `Arc<datalogic_rs::Engine>` and Python's reference semantics
 /// mean every reference points at the same underlying engine.
-#[pyclass(name = "Engine", module = "datalogic", frozen)]
+#[pyclass(name = "Engine", module = "datalogic_py", frozen)]
 pub struct Engine {
     pub(crate) inner: Arc<RsEngine>,
 }
@@ -100,7 +100,7 @@ impl Engine {
 /// re-parsing. ``Rule`` is thread-safe — share the same instance across
 /// worker threads to evaluate in parallel; the binding releases the GIL
 /// around each Rust evaluate call.
-#[pyclass(name = "Rule", module = "datalogic", frozen)]
+#[pyclass(name = "Rule", module = "datalogic_py", frozen)]
 pub struct Rule {
     engine: Arc<RsEngine>,
     logic: Arc<Logic>,

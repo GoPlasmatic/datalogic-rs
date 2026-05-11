@@ -4,6 +4,31 @@ Each language binding lives as a sibling crate under `packages/<lang>/` and
 follows the same conventions, so a new binding can be added without
 re-deriving the layout.
 
+## Naming
+
+Every binding's published artifact follows the **`datalogic-<lang>`** pattern.
+`<lang>` is the short, established suffix for the target language — `rs` for
+Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
+`java` / `kt` / `swift` for the JVM/mobile family.
+
+| Language | Internal Cargo crate | Published artifact | Registry |
+|---|---|---|---|
+| Rust | `datalogic-rs` | `datalogic-rs` | crates.io |
+| WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic`** (grandfathered, predates this convention) | npm |
+| Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
+| _future_ Ruby | `datalogic-rb` | `datalogic-rb` | RubyGems |
+| _future_ Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-go` | Go modules |
+
+For Python the PyPI distribution name is `datalogic-py` but the Python
+**module** name is `datalogic_py` — Python doesn't allow hyphens in
+import paths, and PyPI's normalisation already treats hyphens and
+underscores as equivalent for installation.
+
+The npm WASM package is `@goplasmatic/datalogic` (without the `-wasm`
+suffix) only because it predates the convention; renaming it would force
+every existing consumer to update. New language packages should follow
+the convention without exception.
+
 ## Convention
 
 | Concern | Decision |
@@ -15,8 +40,8 @@ re-deriving the layout.
 | Core feature | **No umbrella feature in core.** The binding owns its operator surface; `packages/core/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
 | Tests | `packages/<lang>/tests/` in the binding's native test runner (pytest, jest, …) |
 | CI | `.github/workflows/<lang>-release.yml` — separate from the crates.io release workflow |
-| Release tags | `<lang>-v*` (e.g. `python-v5.0.0`), so the binding can ship independently of the core |
-| Versioning | Track the core version (5.x for this generation) — binding-specific patch bumps are fine, but major/minor align with core |
+| Release tags | `v*` (e.g. `v5.0.0`) — same trigger as `release.yml`, so one tag push releases core (crates.io), wasm (npm), ui (npm), python (PyPI), … together. Each binding's workflow validates its own `Cargo.toml` against the tag. |
+| Versioning | Bindings track the core version exactly (5.0.0 → 5.0.0). The unified-tag scheme requires this — release-time validation fails if a binding's version drifts from core. For an independent cadence, switch the binding's workflow trigger to a binding-prefixed tag (`<lang>-v*`). |
 
 ## Why these conventions
 
@@ -40,18 +65,20 @@ re-deriving the layout.
   that's a rare event and explicit listing makes each binding's surface
   obvious without cross-referencing.
 
-- **Per-binding release workflow + tag scheme.** A binding bug fix
-  shouldn't force a core release. `<lang>-v*` tags decouple the
-  cadences, and the workflow extracts the version from the binding's
-  own `Cargo.toml` (and `pyproject.toml`/`package.json`/etc.) — not
-  from `packages/core/Cargo.toml`.
+- **Per-binding release workflow.** Each binding has its own
+  `<lang>-release.yml`, even though they share the `v*` tag trigger
+  with the core release. Separate files keep the per-binding wheel /
+  package matrices contained, isolate publish failures
+  (Python wheel build failure ≠ core publish failure), and let a
+  binding switch to an independent tag scheme later without unwiring
+  shared YAML.
 
 ## Existing bindings
 
 | Binding | Path | Tech | Publishes to |
 |---|---|---|---|
 | WebAssembly | `packages/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic` |
-| Python | `packages/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic` |
+| Python | `packages/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 
 ## Open candidates
 

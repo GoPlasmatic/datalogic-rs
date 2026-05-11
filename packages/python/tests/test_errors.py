@@ -2,7 +2,7 @@
 
 import pytest
 
-from datalogic import (
+from datalogic_py import (
     DataLogicError,
     Engine,
     EvaluateError,

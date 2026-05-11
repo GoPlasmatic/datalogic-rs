@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from datalogic import Engine, Rule
+from datalogic_py import Engine, Rule
 
 
 def test_engine_constructor():

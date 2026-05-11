@@ -18,7 +18,7 @@ use crate::conv::{dict_to_value, value_to_pyobject};
 use crate::engine::Rule;
 use crate::error::engine_error_to_pyerr;
 
-#[pyclass(name = "Session", module = "datalogic", unsendable)]
+#[pyclass(name = "Session", module = "datalogic_py", unsendable)]
 pub struct Session {
     engine: Arc<RsEngine>,
     arena: Bump,
