@@ -15,7 +15,7 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 |---|---|---|---|
 | Rust | `datalogic-rs` | `datalogic-rs` | crates.io |
 | WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic`** (grandfathered, predates this convention) | npm |
-| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (alongside the WASM `@goplasmatic/datalogic`) | npm |
+| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (first-class Node target — WASM `@goplasmatic/datalogic` ships alongside for browsers / Deno / Bun / Workers) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
 | C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/PHP/JVM in-tree, not separately published) | — |
 | Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go` (in-tree module) | Go modules |
@@ -87,6 +87,24 @@ the convention without exception.
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/PHP/JVM) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go` |
+
+### Two npm packages, one engine
+
+The JS-side surface is intentionally split into two packages that share
+the Rust core:
+
+- **`@goplasmatic/datalogic-node`** is the first-class Node target.
+  napi-rs gives the binding direct access to V8 types and per-platform
+  native code — the same Rust engine, just behind a thin FFI layer.
+  Node services should pick this by default.
+- **`@goplasmatic/datalogic`** is the WebAssembly build. Run it in
+  browsers, Deno, Bun, Cloudflare Workers, or any other runtime where a
+  single artifact across platforms beats per-platform native prebuilds.
+  Node consumers who want one artifact shared with a browser frontend
+  can still use it — but the native package is faster.
+
+Both packages track the same version and ship from the same release
+workflow; pick the one that matches the runtime, not the language.
 
 ## Shared C ABI (`bindings/c/`)
 

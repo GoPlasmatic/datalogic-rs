@@ -4,13 +4,21 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 High-performance [JSONLogic](https://jsonlogic.com/) engine for
-JavaScript / TypeScript — Node.js, browser, and bundlers — powered by
-WebAssembly. WASM bindings for
+**browsers, Deno, Bun, Cloudflare Workers, and other edge / non-Node JS
+runtimes** — powered by WebAssembly. WASM bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
 Same rules, same semantics as the Rust crate. For the cross-runtime
 overview and the API-tier model that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+
+> **On Node.js? Use the native binding instead.**
+> [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
+> ships a per-platform native build via [napi-rs](https://napi.rs) and is
+> materially faster than the WASM path for Node workloads. This package
+> still works under Node (and is the right pick when you want a single
+> artifact across Node + browser), but production Node services should
+> reach for `@goplasmatic/datalogic-node` first.
 
 ## Install
 
@@ -59,7 +67,14 @@ console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
 </script>
 ```
 
-### Node.js
+### Node.js (WASM path)
+
+For most Node workloads you should prefer the native binding —
+[`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node).
+The WASM path below is supported and works fine; reach for it when you
+want a single artifact shared between a Node backend and a browser
+frontend, or when per-platform native prebuilds are a non-starter for
+your deployment.
 
 ```javascript
 import { evaluate, CompiledRule } from '@goplasmatic/datalogic';

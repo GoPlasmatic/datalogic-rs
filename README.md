@@ -2,13 +2,14 @@
   <img src="https://avatars.githubusercontent.com/u/207296579?s=200&v=4" alt="Plasmatic Logo" width="120" height="120">
 
 # datalogic-rs
-**A fast, production-ready engine for JSONLogic — Rust core, WASM, Python, Go, React debugger.**
+**A fast, production-ready engine for JSONLogic — Rust core, Node-native, WASM, Python, Go, React debugger.**
 
   [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
   [![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
   [![Crates.io](https://img.shields.io/crates/v/datalogic-rs.svg)](https://crates.io/crates/datalogic-rs)
   [![Documentation](https://docs.rs/datalogic-rs/badge.svg)](https://docs.rs/datalogic-rs)
-  [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic)](https://www.npmjs.com/package/@goplasmatic/datalogic)
+  [![npm (node)](https://img.shields.io/npm/v/@goplasmatic/datalogic-node?label=npm%20%40datalogic-node)](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
+  [![npm (wasm)](https://img.shields.io/npm/v/@goplasmatic/datalogic?label=npm%20%40datalogic)](https://www.npmjs.com/package/@goplasmatic/datalogic)
   [![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/)
 
 </div>
@@ -21,8 +22,8 @@
 a JSON-shaped language for evaluating logical rules against data. Use it
 as a **rule engine** for business logic, a **JSON template engine** for
 response shaping, or a **safe expression evaluator** for user-supplied
-formulas — and run the same rules in **Rust, Node.js, the browser
-(WebAssembly), Python, Go, or a React visual debugger**.
+formulas — and run the same rules in **Rust, Node.js (native via napi),
+the browser (WebAssembly), Python, Go, or a React visual debugger**.
 
 <div align="center">
   <a href="https://goplasmatic.github.io/datalogic-rs/playground/">
@@ -41,15 +42,24 @@ full API reference for that language.
 | Your stack                            | Package                                                                          | Install                                                     | Deep-dive                                       |
 |---------------------------------------|----------------------------------------------------------------------------------|-------------------------------------------------------------|-------------------------------------------------|
 | **Rust** application or service       | [`datalogic-rs`](https://crates.io/crates/datalogic-rs)                          | `cargo add datalogic-rs`                                    | [crates/datalogic-rs/README.md](./crates/datalogic-rs/README.md) |
-| **JavaScript / TypeScript** (Node, browser, bundler) | [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic) | `npm i @goplasmatic/datalogic`                              | [bindings/wasm/README.md](./bindings/wasm/README.md)            |
+| **Node.js** service (TypeScript or JS) | [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node) | `npm i @goplasmatic/datalogic-node`             | [bindings/node/README.md](./bindings/node/README.md)            |
+| **Browser, Deno, Bun, Cloudflare Workers, edge runtimes** | [`@goplasmatic/datalogic`](https://www.npmjs.com/package/@goplasmatic/datalogic) (WebAssembly) | `npm i @goplasmatic/datalogic` | [bindings/wasm/README.md](./bindings/wasm/README.md)            |
 | **Python** service or data pipeline   | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                         | `pip install datalogic-py`                                  | [bindings/python/README.md](./bindings/python/README.md)        |
 | **Go** service                        | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go`    | [bindings/go/README.md](./bindings/go/README.md)                |
 | **React** visual rule editor / debugger | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `npm i @goplasmatic/datalogic-ui`                           | [ui/README.md](./ui/README.md)                                  |
 | **C / PHP / JVM** via FFI             | `datalogic-c` (in-tree)                                                          | build locally — consumed by Go and future PHP/JVM bindings  | [bindings/c/README.md](./bindings/c/README.md)                  |
 
 Not sure which one? If you're writing the rules and evaluating them in
-the same service, pick the binding for that service's language. If
-you're building a UI that lets humans author rules, also pull in
+the same service, pick the binding for that service's language.
+
+**On Node.js, reach for `@goplasmatic/datalogic-node`** — it's the
+native build (per-platform `.node` prebuild via
+[napi-rs](https://napi.rs)), which is materially faster than the WASM
+path. The WASM package is the right pick when you need a single
+artifact across browser + edge runtimes (Deno, Bun, Cloudflare Workers)
+or when you'd rather avoid per-platform prebuilt binaries.
+
+If you're building a UI that lets humans author rules, also pull in
 [`@goplasmatic/datalogic-ui`](./ui/README.md) — it consumes the WASM
 binding and gives you a visual editor and step-through debugger.
 
@@ -120,7 +130,16 @@ let result = datalogic_rs::eval_str(
 // "true"
 ```
 
-**JavaScript / TypeScript** — Node.js + browser, via WebAssembly:
+**Node.js (native)** — services, scripts, CLIs:
+
+```javascript
+import { apply } from '@goplasmatic/datalogic-node';
+
+const result = apply({ '>': [{ var: 'x' }, 10] }, { x: 42 });
+// true
+```
+
+**Browser / Deno / Bun / Cloudflare Workers** — via WebAssembly:
 
 ```javascript
 import init, { evaluate } from '@goplasmatic/datalogic';
@@ -185,7 +204,7 @@ runnable examples, see [crates/datalogic-rs/README.md](./crates/datalogic-rs/REA
 
 ## Highlights
 
-- **Cross-platform** — same engine, same rules in Rust, Node.js, browsers (WASM), Python, Go, and a React UI
+- **Cross-platform** — same engine, same rules in Rust, Node.js (native), browsers + edge runtimes (WASM), Python, Go, and a React UI
 - **59 built-in operators** with full JSONLogic spec compliance
 - **Compile once, evaluate millions of times** — `Logic` is `Send + Sync`; share via `Arc`
 - **Zero `unsafe`** — built with `#![forbid(unsafe_code)]`
@@ -214,7 +233,17 @@ for the per-suite matrix, methodology, and caveats):
 | `json-logic-engine` (interpreted, JS)                |         160.3 |            16.5× |
 | `jsonlogic-rs` (bestowinc, native Rust)              |         218.0 |            22.5× |
 | `json-logic-js` (jwadhams reference, JS)             |         423.5 |            43.7× |
-| `dlrs:wasm:compiled` (`@goplasmatic/datalogic`, Node)|         855.6 |            88.2× |
+| `dlrs:wasm:compiled` (`@goplasmatic/datalogic` WASM, run under Node)|         855.6 |            88.2× |
+
+The WASM row above measures the WebAssembly build running in Node — the
+artifact you'd ship to browsers / Deno / Bun / Cloudflare Workers, not
+the Node-native package. Node consumers should reach for
+[`@goplasmatic/datalogic-node`](./bindings/node/README.md) (per-platform
+napi-rs prebuilds) for production workloads; it shares the same Rust
+core as the `dlrs:engine` row above with only the napi boundary added,
+so its ceiling sits much closer to native Rust than to WASM. Native-Node
+benchmark numbers will land here once the suite is wired up against the
+`@goplasmatic/datalogic-node` prebuild.
 
 Numbers are macOS / Apple Silicon — Linux x86_64 will distribute
 differently. Quote ratios, not absolute ns/op, when citing.

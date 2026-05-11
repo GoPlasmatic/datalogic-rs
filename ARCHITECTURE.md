@@ -4,29 +4,30 @@ This monorepo ships one logical product — a JSONLogic engine — across
 multiple runtime targets that all wrap the same Rust core:
 
 ```
-                          +-----------------------------+
-                          |   crates/datalogic-rs       |   Rust crate -> crates.io
-                          |   the engine (source of     |   every binding wraps this
-                          |   truth for behaviour)      |
-                          +--+----+----+----+----+------+
-                             |    |    |    |    |
-            path = "../../crates/datalogic-rs" (each binding pins it)
-                             |    |    |    |    |
-        +--------------------+    |    |    |    +----------------------+
-        |             +-----------+    |    +-----------+               |
-        v             v                v                v               v
-  +----------+  +-----------+  +--------------+  +-------+    +------------------+
-  | bindings |  | bindings  |  | bindings/c   |  |bindings|   | tools/benchmark  |
-  | /wasm    |  | /python   |  | C ABI +      |  |/go     |   | dev-only binary  |
-  | wasm-    |  | pyo3 +    |  | cbindgen     |  |cgo over|   | self / compare   |
-  | bindgen  |  | maturin   |  | (in-tree)    |  |C ABI   |   |                  |
-  +----+-----+  +-----+-----+  +------+-------+  +---+----+    +------------------+
-       |              |               ^              |
-   npm link           |       static link via cgo    |
-       |              |               |              |
-       v              v               +------ links -+
-   +-------+      PyPI                    Go modules
-   | ui    |   datalogic-py           bindings/go/v* tag
+                              +-----------------------------+
+                              |   crates/datalogic-rs       |   Rust crate -> crates.io
+                              |   the engine (source of     |   every binding wraps this
+                              |   truth for behaviour)      |
+                              +--+----+----+----+----+----+-+
+                                 |    |    |    |    |    |
+                path = "../../crates/datalogic-rs" (each binding pins it)
+                                 |    |    |    |    |    |
+        +------------------------+    |    |    |    |    +----------------------+
+        |        +--------------------+    |    |    +----------+                |
+        |        |       +-----------------+    +---------+     |                |
+        v        v       v                                v     v                v
+  +----------+  +-----------+  +-----------+  +--------------+  +-------+   +-----------+
+  | bindings |  | bindings  |  | bindings  |  | bindings/c   |  |bindings|  |tools/     |
+  | /wasm    |  | /node     |  | /python   |  | C ABI +      |  |/go     |  |benchmark  |
+  | wasm-    |  | napi-rs   |  | pyo3 +    |  | cbindgen     |  |cgo over|  |dev-only   |
+  | bindgen  |  |           |  | maturin   |  | (in-tree)    |  |C ABI   |  |           |
+  +----+-----+  +-----+-----+  +-----+-----+  +------+-------+  +---+----+  +-----------+
+       |              |              |               ^              |
+   npm link    npm: @datalogic-node  |       static link via cgo    |
+       |       (per-platform .node)  |               |              |
+       v              ↓              v               +------ links -+
+   +-------+   end-user runtime  PyPI                    Go modules
+   | ui    |   (Node 18+)      datalogic-py          bindings/go/v* tag
    | React |
    +-------+
        |
@@ -36,10 +37,16 @@ multiple runtime targets that all wrap the same Rust core:
 
 The Rust core is the source of truth for behaviour. Each binding is a
 thin FFI shell that converts at the language boundary and re-exposes
-the engine. WASM, Python, C, and Go pin the core via Cargo path-deps;
-Go links statically through the `bindings/c` C ABI. The React UI
-(`ui/`) consumes the published WASM (or a locally-linked build) and
-adds editing, visualisation, and trace inspection on top.
+the engine. WASM, Node, Python, C, and Go pin the core via Cargo
+path-deps; Go links statically through the `bindings/c` C ABI. The
+React UI (`ui/`) consumes the published WASM (or a locally-linked
+build) and adds editing, visualisation, and trace inspection on top.
+
+Two JS-side packages, one engine: **`@goplasmatic/datalogic-node`**
+(napi-rs, per-platform `.node` prebuilds) is the first-class target for
+Node services. **`@goplasmatic/datalogic`** (WASM) is the right pick
+for browsers, Deno, Bun, Cloudflare Workers, and any context where one
+artifact across runtimes beats per-platform prebuilds.
 
 ## Cargo workspace layout
 
@@ -48,14 +55,17 @@ The repo root holds a Cargo workspace with two members:
 - `crates/datalogic-rs` — the published crate, `datalogic-rs`.
 - `tools/benchmark` — dev-only binaries (`self`, `compare`), `publish = false`.
 
-Each Rust-side binding (`bindings/wasm`, `bindings/python`,
-`bindings/c`) declares its own `[workspace]` table and is excluded
-from the parent workspace. This is deliberate:
+Each Rust-side binding (`bindings/wasm`, `bindings/node`,
+`bindings/python`, `bindings/c`) declares its own `[workspace]` table
+and is excluded from the parent workspace. This is deliberate:
 
 - **`bindings/wasm`** — `wasm-pack` needs the WASM-specific release
   profile (`opt-level = "z"`, `lto = true`, `panic = "abort"`,
   `strip = true`), and Cargo only honours `[profile.*]` at a workspace
   root.
+- **`bindings/node`** — keeps the napi-rs build deps + `cdylib` codegen
+  out of the default `cargo test --workspace --all-features` path so
+  contributors don't need Node toolchain to run core tests.
 - **`bindings/python`** — keeps the pyo3 build deps + `cdylib` codegen
   out of the default `cargo test --workspace --all-features` path so
   contributors don't need a Python interpreter to run core tests.
@@ -92,13 +102,13 @@ opt in via their dependency line.
 
 | Feature           | Effect                                                            | Used by                        |
 |-------------------|-------------------------------------------------------------------|--------------------------------|
-| `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | `benchmark`, integration tests |
-| `templating`      | Structure-preservation (templating) mode                          | examples, WASM                 |
-| `datetime`        | Date/time operators (pulls in `chrono`)                           | WASM, `datetime_ops` example   |
-| `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, `tracing` example        |
-| `error-handling`  | `try` / `throw` operators                                         | `error_handling` example       |
-| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | opt-in per consumer            |
-| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only           |
+| `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | Node, Python, `benchmark`, integration tests |
+| `templating`      | Structure-preservation (templating) mode                          | WASM, Node, Python, examples   |
+| `datetime`        | Date/time operators (pulls in `chrono`)                           | WASM, Node, Python, `datetime_ops` example |
+| `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, Node, Python, `tracing` example |
+| `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, `error_handling` example |
+| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python; opt-in per Rust consumer |
+| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only — Node and Python inline the feature list rather than using the meta-feature |
 
 The `datalogic-bench` crate enables `serde_json` because it reads the
 JSON test-suite files via `serde_json::Value`; it does not need `wasm`
@@ -119,6 +129,7 @@ or `templating`.
 | Executable examples            | `crates/datalogic-rs/examples/`                   |
 | WASM FFI surface               | `bindings/wasm/src/lib.rs`                        |
 | WASM build script              | `bindings/wasm/build.sh`                          |
+| Node native FFI (napi-rs)      | `bindings/node/src/lib.rs`                        |
 | Python FFI (pyo3)              | `bindings/python/src/lib.rs`                      |
 | C ABI (extern "C" + cbindgen)  | `bindings/c/src/`, generated header in `bindings/c/include/datalogic.h` |
 | Go binding (cgo over C ABI)    | `bindings/go/`                                    |
