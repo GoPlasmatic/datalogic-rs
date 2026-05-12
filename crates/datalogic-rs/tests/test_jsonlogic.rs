@@ -41,6 +41,19 @@ fn test_jsonlogic() {
                 serde_json::from_str(&index_contents).expect("Failed to parse index.json");
 
             for test_file in index {
+                // Suites under `flagd/` exercise operators registered
+                // only under `--features flagd`. Without the feature
+                // the operator names parse as `InvalidOperator` and the
+                // suite would spuriously fail; skip explicitly so the
+                // index can stay feature-agnostic.
+                if test_file.starts_with("flagd/") && !cfg!(feature = "flagd") {
+                    println!(
+                        "WARNING: Skipping {} (requires `flagd` feature)\n",
+                        test_file
+                    );
+                    continue;
+                }
+
                 let test_path = format!("tests/suites/{}", test_file);
 
                 // Check if file exists

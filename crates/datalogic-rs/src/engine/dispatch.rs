@@ -291,6 +291,12 @@ pub(super) fn dispatch_node_inner<'a>(
             Throw => crate::operators::error_handling::evaluate_throw,
             #[cfg(feature = "error-handling")]
             Try => crate::operators::error_handling::evaluate_try,
+
+            // flagd
+            #[cfg(feature = "flagd")]
+            Fractional => crate::operators::flagd::evaluate_fractional,
+            #[cfg(feature = "flagd")]
+            SemVer => crate::operators::flagd::evaluate_sem_ver,
         ],
 
         // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,

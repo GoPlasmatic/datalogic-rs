@@ -143,7 +143,10 @@ fn evaluate_error_sets_operator_and_path() {
     let path_ptr = datalogic_last_error_path_json();
     assert!(!path_ptr.is_null(), "path JSON should be populated");
     let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap();
-    assert!(path.starts_with('['), "path should be a JSON array, got: {path}");
+    assert!(
+        path.starts_with('['),
+        "path should be a JSON array, got: {path}"
+    );
 
     unsafe { datalogic_rule_free(rule) };
     unsafe { datalogic_engine_free(engine) };
@@ -232,7 +235,12 @@ fn builder_custom_operator_error_propagates() {
     let b = datalogic_engine_builder_new();
     let name = cstr("boom");
     unsafe {
-        datalogic_engine_builder_add_operator(b, name.as_ptr(), Some(boom_op), std::ptr::null_mut());
+        datalogic_engine_builder_add_operator(
+            b,
+            name.as_ptr(),
+            Some(boom_op),
+            std::ptr::null_mut(),
+        );
     }
     let engine = unsafe { datalogic_engine_builder_build(b) };
     unsafe { datalogic_engine_builder_free(b) };
@@ -301,12 +309,13 @@ fn null_pointers_are_handled_without_segfault() {
     unsafe { datalogic_session_free(std::ptr::null_mut()) };
     unsafe { datalogic_string_free(std::ptr::null_mut()) };
     unsafe { datalogic_session_reset(std::ptr::null_mut()) };
-    assert_eq!(unsafe { datalogic_session_allocated_bytes(std::ptr::null_mut()) }, 0);
+    assert_eq!(
+        unsafe { datalogic_session_allocated_bytes(std::ptr::null_mut()) },
+        0
+    );
 
     // Fallible entry points must set last-error and return NULL, not crash.
-    let bad = unsafe {
-        datalogic_engine_compile(std::ptr::null_mut(), cstr("{}").as_ptr())
-    };
+    let bad = unsafe { datalogic_engine_compile(std::ptr::null_mut(), cstr("{}").as_ptr()) };
     assert!(bad.is_null());
     let msg = unsafe { CStr::from_ptr(datalogic_last_error_message()) }
         .to_str()

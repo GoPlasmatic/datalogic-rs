@@ -12,8 +12,8 @@
 //! [`unify_input`] normalises both into a single `Value` that the engine
 //! can consume.
 
-use napi::bindgen_prelude::*;
 use napi::Env;
+use napi::bindgen_prelude::*;
 use serde_json::Value;
 
 use crate::error::parse_error;

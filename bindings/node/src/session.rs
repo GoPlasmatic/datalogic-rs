@@ -13,10 +13,10 @@
 
 use std::sync::Arc;
 
-use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::Engine as RsEngine;
-use napi::bindgen_prelude::*;
+use datalogic_rs::bumpalo::Bump;
 use napi::Env;
+use napi::bindgen_prelude::*;
 use serde_json::Value;
 
 use crate::engine::Rule;

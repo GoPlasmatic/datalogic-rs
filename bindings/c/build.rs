@@ -9,7 +9,9 @@ use std::path::PathBuf;
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let out_header = PathBuf::from(&crate_dir).join("include").join("datalogic.h");
+    let out_header = PathBuf::from(&crate_dir)
+        .join("include")
+        .join("datalogic.h");
 
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");

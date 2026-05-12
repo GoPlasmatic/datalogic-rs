@@ -13,7 +13,7 @@ mod session;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
-use crate::engine::{compile_inner, evaluate_value, Engine, Rule};
+use crate::engine::{Engine, Rule, compile_inner, evaluate_value};
 use crate::error::{DataLogicError, EvaluateError, ParseError};
 use crate::session::Session;
 

@@ -45,5 +45,7 @@
     "string/string.json",
     "arithmetic/abs.json",
     "arithmetic/ceil.json",
-    "arithmetic/floor.json"
+    "arithmetic/floor.json",
+    "flagd/fractional.json",
+    "flagd/sem_ver.json"
 ]

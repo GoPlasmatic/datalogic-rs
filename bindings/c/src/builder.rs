@@ -5,7 +5,7 @@
 //! ownership transfer behind an opaque handle whose mutating entry points
 //! `take` and `replace` the inner builder in-place.
 
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 use datalogic_rs::bumpalo::Bump;
@@ -14,9 +14,9 @@ use datalogic_rs::{
     CustomOperator, DataValue, Engine as RsEngine, Error as DlError, Result as DlResult,
 };
 
+use crate::cstr_to_str;
 use crate::engine::Engine;
 use crate::error::{clear_error_state, set_error_message};
-use crate::{cstr_to_str};
 
 unsafe extern "C" {
     /// `free(3)` from libc. The Rust default allocator on `cdylib` targets

@@ -56,6 +56,16 @@ ext-array = []
 ext-control = []
 error-handling = []
 ext-math = []
+# flagd-compat: enables the JSONLogic operators specified by the
+# OpenFeature flagd in-process provider on top of the JSONLogic
+# baseline:
+#   - `fractional` — deterministic murmurhash3 percentage bucketing
+#                    (vendored hash, no external dep)
+#   - `sem_ver`    — semantic version comparison with the flagd-spec
+#                    normalizations (strip v/V prefix, pad partials,
+#                    coerce numeric input, drop build metadata). Pulls
+#                    in the `semver` crate, kept optional via dep:.
+flagd = ["dep:semver"]
 
 [dependencies]
 # Floors below are the **minimum** versions we actually compile against.
@@ -68,6 +78,10 @@ serde_json = { version = "1.0.85", optional = true }
 chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"], optional = true }
 datavalue = { version = "0.2.1", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { version = "3.14", features = ["collections"] }
+# Used by the `flagd` feature's `sem_ver` operator. `default-features =
+# false` strips `serde` / `serde1` integration we don't need — the
+# operator only uses `Version::parse` + `PartialOrd`.
+semver = { version = "1.0", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.32", features = ["full"] }

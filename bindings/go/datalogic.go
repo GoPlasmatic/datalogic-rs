@@ -49,7 +49,6 @@ import "C"
 
 import (
 	"runtime"
-	"runtime/cgo"
 	"unsafe"
 )
 
@@ -62,10 +61,10 @@ import (
 // finalizer, which is best-effort).
 type Engine struct {
 	ptr *C.datalogic_engine
-	// opHandles retains cgo.Handle references for every registered
-	// custom operator so the trampoline can still resolve them during
-	// evaluation. Released on Close.
-	opHandles []cgo.Handle
+	// opHandles retains heap-allocated `cgo.Handle` boxes for every
+	// registered custom operator so the trampoline can still resolve
+	// them during evaluation. Released on Close.
+	opHandles []*handleBox
 }
 
 // NewEngine constructs an engine with default configuration.
@@ -97,8 +96,8 @@ func (e *Engine) Close() {
 	}
 	C.datalogic_engine_free(e.ptr)
 	e.ptr = nil
-	for _, h := range e.opHandles {
-		h.Delete()
+	for _, hb := range e.opHandles {
+		hb.h.Delete()
 	}
 	e.opHandles = nil
 	runtime.SetFinalizer(e, nil)

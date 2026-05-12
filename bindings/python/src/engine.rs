@@ -55,10 +55,7 @@ impl Engine {
     ///     JSON value string out.
     #[new]
     #[pyo3(signature = (*, templating = false, custom_operators = None))]
-    fn new(
-        templating: bool,
-        custom_operators: Option<HashMap<String, Py<PyAny>>>,
-    ) -> Self {
+    fn new(templating: bool, custom_operators: Option<HashMap<String, Py<PyAny>>>) -> Self {
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
         } else {
@@ -66,10 +63,7 @@ impl Engine {
         };
         if let Some(map) = custom_operators {
             for (name, callback) in map {
-                builder = builder.add_operator(
-                    name.clone(),
-                    PyOperator { name, callback },
-                );
+                builder = builder.add_operator(name.clone(), PyOperator { name, callback });
             }
         }
         Self {
@@ -210,10 +204,7 @@ impl CustomOperator for PyOperator {
         let result_str: String = Python::with_gil(|py| -> Result<String, DlError> {
             let callable = self.callback.bind(py);
             let ret = callable.call1((json.as_str(),)).map_err(|e| {
-                DlError::custom_message(format!(
-                    "custom operator '{}' raised: {}",
-                    self.name, e
-                ))
+                DlError::custom_message(format!("custom operator '{}' raised: {}", self.name, e))
             })?;
             ret.extract::<String>().map_err(|e| {
                 DlError::custom_message(format!(

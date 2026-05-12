@@ -8,9 +8,9 @@ use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
     CustomOperator, DataValue, Engine as RsEngine, Error as DlError, Logic, Result as DlResult,
 };
+use napi::Env;
 use napi::bindgen_prelude::*;
 use napi::sys;
-use napi::Env;
 use serde_json::Value;
 
 use crate::conv::unify_input;
@@ -221,10 +221,7 @@ impl CustomOperator for NodeOperator {
             ))
         })?;
         let ret_str: String = func.call(json).map_err(|e| {
-            DlError::custom_message(format!(
-                "custom operator '{}' threw: {}",
-                self.name, e
-            ))
+            DlError::custom_message(format!("custom operator '{}' threw: {}", self.name, e))
         })?;
 
         // 3. Parse the returned JSON into the arena.
@@ -241,11 +238,7 @@ impl CustomOperator for NodeOperator {
 
 // ---------------- shared helpers ----------------
 
-pub(crate) fn compile_inner(
-    env: &Env,
-    engine: &Arc<RsEngine>,
-    rule: Value,
-) -> Result<Arc<Logic>> {
+pub(crate) fn compile_inner(env: &Env, engine: &Arc<RsEngine>, rule: Value) -> Result<Arc<Logic>> {
     match rule {
         Value::String(s) => engine
             .compile_arc(s.as_str())

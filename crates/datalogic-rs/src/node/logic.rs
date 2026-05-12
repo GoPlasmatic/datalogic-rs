@@ -289,6 +289,25 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         #[cfg(feature = "datetime")]
         Now => false,
 
+        // Context-dependent in implicit form: when the bucketing
+        // expression is omitted, `fractional` reads `$flagd.flagKey` and
+        // `targetingKey` from the root data, so it cannot be folded even
+        // if every literal arg is static. Even the explicit form depends
+        // on the user expecting it to be evaluated per-call (the same
+        // input always produces the same output, but folding bakes in
+        // *one* bucketing key for the lifetime of the compiled rule —
+        // which is correct, but surprises users who rebuild the rule
+        // with a different bucketing strategy). Keep dynamic.
+        #[cfg(feature = "flagd")]
+        Fractional => false,
+        // `sem_ver` is pure given static args — `Version::parse` +
+        // comparison has no context dependency. Fold when every arg
+        // (version1, op, version2) is a literal. The common case is
+        // `sem_ver(var("app_version"), ">=", "1.2.0")` which has a
+        // dynamic var and stays dynamic naturally.
+        #[cfg(feature = "flagd")]
+        SemVer => args_static(),
+
         // Runtime disambiguation needed: Merge/Min/Max have to distinguish
         // a [1,2,3] literal from operator arguments at runtime to handle
         // nested arrays correctly.

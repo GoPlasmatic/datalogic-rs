@@ -34,9 +34,9 @@
 //! pending exception back to the napi runtime via `Status::PendingException`.
 
 use datalogic_rs::{Error as RsError, Logic};
-use napi::bindgen_prelude::*;
 use napi::Env;
-use serde_json::{json, Value};
+use napi::bindgen_prelude::*;
+use serde_json::{Value, json};
 
 /// Convert a `datalogic_rs::Error` into a thrown JS Error and return a
 /// `napi::Error` with `Status::PendingException` so the napi runtime
@@ -44,7 +44,11 @@ use serde_json::{json, Value};
 pub fn engine_error(env: &Env, err: &RsError, compiled: Option<&Logic>) -> napi::Error {
     let tag = err.tag();
     let message = err.to_string();
-    let name = if tag == "ParseError" { "ParseError" } else { "EvaluateError" };
+    let name = if tag == "ParseError" {
+        "ParseError"
+    } else {
+        "EvaluateError"
+    };
     let attrs = ErrorAttrs {
         name,
         message: &message,
@@ -95,7 +99,8 @@ fn throw_attrs(env: &Env, attrs: &ErrorAttrs<'_>) -> Option<napi::Error> {
         Some(op) => obj.set_named_property("operator", op).ok()?,
         None => obj.set_named_property("operator", Null).ok()?,
     }
-    obj.set_named_property("nodeIds", attrs.node_ids.to_vec()).ok()?;
+    obj.set_named_property("nodeIds", attrs.node_ids.to_vec())
+        .ok()?;
     match &attrs.path {
         Some(steps) => {
             let array_value = Value::Array(steps.clone());
@@ -107,7 +112,10 @@ fn throw_attrs(env: &Env, attrs: &ErrorAttrs<'_>) -> Option<napi::Error> {
     // PendingException tells napi-rs "JS already has a throw queued; do
     // not throw the napi::Error I'm returning". The reason string is
     // never seen by JS in this path.
-    Some(napi::Error::new(napi::Status::PendingException, String::new()))
+    Some(napi::Error::new(
+        napi::Status::PendingException,
+        String::new(),
+    ))
 }
 
 fn resolve_path(err: &RsError, compiled: &Logic) -> Vec<Value> {

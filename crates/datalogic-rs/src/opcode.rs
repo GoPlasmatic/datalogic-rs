@@ -157,6 +157,12 @@ pub enum OpCode {
     Ceil = 50,
     #[cfg(feature = "ext-math")]
     Floor = 51,
+
+    // === flagd ===
+    #[cfg(feature = "flagd")]
+    Fractional = 60,
+    #[cfg(feature = "flagd")]
+    SemVer = 61,
 }
 
 /// Single source of truth for `(operator string, OpCode)` mappings.
@@ -270,6 +276,11 @@ const OPCODE_NAMES: &[(&str, OpCode)] = &[
     ("ceil", OpCode::Ceil),
     #[cfg(feature = "ext-math")]
     ("floor", OpCode::Floor),
+    // flagd
+    #[cfg(feature = "flagd")]
+    ("fractional", OpCode::Fractional),
+    #[cfg(feature = "flagd")]
+    ("sem_ver", OpCode::SemVer),
 ];
 
 impl FromStr for OpCode {
@@ -395,6 +406,11 @@ impl OpCode {
             OpCode::Ceil => "ceil",
             #[cfg(feature = "ext-math")]
             OpCode::Floor => "floor",
+            // flagd
+            #[cfg(feature = "flagd")]
+            OpCode::Fractional => "fractional",
+            #[cfg(feature = "flagd")]
+            OpCode::SemVer => "sem_ver",
         }
     }
 }

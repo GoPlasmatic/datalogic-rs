@@ -285,13 +285,7 @@ impl Engine {
             builder = builder.with_templating(true);
         }
         for (name, callback) in custom_ops {
-            builder = builder.add_operator(
-                name.clone(),
-                JsOperator {
-                    name,
-                    callback,
-                },
-            );
+            builder = builder.add_operator(name.clone(), JsOperator { name, callback });
         }
         Ok(Engine {
             inner: Arc::new(builder.build()),
@@ -311,7 +305,9 @@ impl Engine {
     /// call. Returns the result as a JSON string.
     #[wasm_bindgen(js_name = evalStr)]
     pub fn eval_str(&self, logic: &str, data: &str) -> Result<String, String> {
-        self.inner.eval_str(logic, data).map_err(|e| err_to_json(&e))
+        self.inner
+            .eval_str(logic, data)
+            .map_err(|e| err_to_json(&e))
     }
 }
 

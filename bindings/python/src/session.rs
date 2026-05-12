@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
-use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::Engine as RsEngine;
+use datalogic_rs::bumpalo::Bump;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyString};
 use serde_json::Value;

@@ -52,6 +52,16 @@ import (
 //     bubbles back to the caller as part of the evaluation error.
 type OperatorFunc func(argsJSON string) (string, error)
 
+// handleBox wraps a cgo.Handle inside an addressable struct so we can
+// pass a real Go heap pointer through `void* user_data` instead of
+// coercing the handle's `uintptr` value into an `unsafe.Pointer` — the
+// latter trips `go vet`'s `unsafeptr` check because the integer-to-
+// pointer conversion is indistinguishable from a synthesised pointer.
+// The trampoline recovers the `cgo.Handle` via a normal pointer cast.
+type handleBox struct {
+	h cgo.Handle
+}
+
 // EngineBuilder accumulates engine configuration. Call Build to produce
 // an Engine; the builder is consumed in the process.
 //
@@ -59,7 +69,7 @@ type OperatorFunc func(argsJSON string) (string, error)
 // and call Build before sharing the resulting Engine.
 type EngineBuilder struct {
 	ptr     *C.datalogic_engine_builder
-	handles []cgo.Handle // freed when the consuming Engine is closed
+	handles []*handleBox // freed when the consuming Engine is closed
 }
 
 // NewEngineBuilder creates a fresh, empty builder.
@@ -90,13 +100,13 @@ func (b *EngineBuilder) Templating(on bool) *EngineBuilder {
 func (b *EngineBuilder) AddOperator(name string, fn OperatorFunc) *EngineBuilder {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	h := cgo.NewHandle(fn)
-	b.handles = append(b.handles, h)
+	hb := &handleBox{h: cgo.NewHandle(fn)}
+	b.handles = append(b.handles, hb)
 	C.datalogic_engine_builder_add_operator(
 		b.ptr,
 		cName,
 		C.datalogic_go_get_trampoline(),
-		unsafe.Pointer(h),
+		unsafe.Pointer(hb),
 	)
 	return b
 }
@@ -108,8 +118,8 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	ePtr := C.datalogic_engine_builder_build(b.ptr)
 	if ePtr == nil {
 		// Reclaim handles — the engine never picked them up.
-		for _, h := range b.handles {
-			h.Delete()
+		for _, hb := range b.handles {
+			hb.h.Delete()
 		}
 		b.handles = nil
 		C.datalogic_engine_builder_free(b.ptr)
@@ -127,8 +137,8 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 
 //export goDatalogicOpTrampoline
 func goDatalogicOpTrampoline(argsJSON *C.char, userData unsafe.Pointer, errorOut **C.char) *C.char {
-	h := cgo.Handle(userData)
-	fn, ok := h.Value().(OperatorFunc)
+	hb := (*handleBox)(userData)
+	fn, ok := hb.h.Value().(OperatorFunc)
 	if !ok {
 		if errorOut != nil {
 			*errorOut = C.CString("internal: operator handle had wrong type")

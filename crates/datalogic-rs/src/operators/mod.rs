@@ -64,5 +64,7 @@ pub(crate) mod variable;
 pub(crate) mod datetime;
 #[cfg(feature = "error-handling")]
 pub(crate) mod error_handling;
+#[cfg(feature = "flagd")]
+pub(crate) mod flagd;
 #[cfg(feature = "ext-control")]
 pub(crate) mod inspect;

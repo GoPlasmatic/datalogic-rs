@@ -93,7 +93,10 @@ pub unsafe extern "C" fn datalogic_session_evaluate(
     // has already been materialised, so dropping the arena's allocations
     // is safe. Matches the Python binding's Session semantics.
     session.arena.reset();
-    match session.engine.evaluate(&rule.logic, data_json, &session.arena) {
+    match session
+        .engine
+        .evaluate(&rule.logic, data_json, &session.arena)
+    {
         Ok(av) => string_to_cstring(av.to_string()),
         Err(e) => {
             set_error(&e, Some(&rule.logic));
