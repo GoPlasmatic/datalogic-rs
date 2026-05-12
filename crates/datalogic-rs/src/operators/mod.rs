@@ -26,6 +26,9 @@
 //! | `try`, `throw` | `error-handling` |
 //! | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | `datetime` |
 //! | `exists` (raw / multi-arg form) | `ext-control` |
+//! | `fractional`, `sem_ver` ([flagd-compat][flagd]) | `flagd` |
+//!
+//! [flagd]: https://flagd.dev/reference/custom-operations/
 //!
 //! # Operator Categories
 //!
@@ -40,6 +43,10 @@
 //! - **Error Handling**: `try`, `throw` - Exception-like error handling
 //! - **Type**: `type` - Runtime type inspection
 //! - **Missing**: `missing`, `missing_some` - Check for missing fields
+//! - **flagd-compat**: `fractional`, `sem_ver` — feature-flagging operators
+//!   from the [OpenFeature flagd in-process provider
+//!   spec](https://flagd.dev/reference/custom-operations/), implemented to
+//!   match the canonical Go evaluator byte-for-byte. Gated on `flagd`.
 //!
 //! # Dispatch Mechanism
 //!

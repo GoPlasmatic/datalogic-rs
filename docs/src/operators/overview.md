@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 59 built-in operators organized into logical categories. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 61 built-in operators organized into logical categories, plus two opt-in flagd-compatible operators behind the `flagd` Cargo feature. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
@@ -16,6 +16,7 @@ datalogic-rs provides 59 built-in operators organized into logical categories. T
 | [DateTime](datetime.md) | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | Date and time |
 | [Missing Values](missing.md) | `missing`, `missing_some` | Check for missing data |
 | [Error Handling](error-handling.md) | `try`, `throw` | Exception handling |
+| [flagd-Compat](flagd.md) | `fractional`, `sem_ver` | Feature-flag targeting (OpenFeature flagd spec); requires `features = ["flagd"]` |
 
 ## Operator Syntax
 

@@ -215,7 +215,7 @@ runnable examples, see [crates/datalogic-rs/README.md](./crates/datalogic-rs/REA
 ## Highlights
 
 - **Cross-platform** — same engine, same rules in Rust, Node.js (native), browsers + edge runtimes (WASM), Python, Go, and a React UI
-- **59 built-in operators** with full JSONLogic spec compliance
+- **61 built-in operators** with full JSONLogic spec compliance, plus opt-in [OpenFeature flagd-compatible](https://flagd.dev/reference/custom-operations/) `fractional` and `sem_ver` behind `features = ["flagd"]`
 - **Compile once, evaluate millions of times** — `Logic` is `Send + Sync`; share via `Arc`
 - **Zero `unsafe`** — built with `#![forbid(unsafe_code)]`
 - **Arena-allocated evaluation** — `bumpalo`-backed; read-through ops borrow zero-copy from the input

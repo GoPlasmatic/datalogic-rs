@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes pending._
+### Added
+
+- **`flagd` Cargo feature** — opt-in OpenFeature flagd-compatible operators
+  ([spec](https://flagd.dev/reference/custom-operations/)):
+  `fractional` (deterministic murmurhash3-x86-32 percentage bucketing,
+  matches the canonical Go evaluator byte-for-byte) and `sem_ver`
+  (semantic-version comparison with the spec's `v`-prefix / partial-
+  version / numeric-coercion / build-metadata normalizations, backed by
+  the [`semver`](https://docs.rs/semver) crate). Conformance test
+  suites under `tests/suites/flagd/` mirror the upstream Go tests.
 
 ## [5.0.0] - 2026-05-09
 

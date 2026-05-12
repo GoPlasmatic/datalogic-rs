@@ -10,6 +10,28 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ## [Unreleased]
 
+### Added
+
+- **`flagd` Cargo feature** — opt-in OpenFeature flagd-compatible operators
+  ([spec](https://flagd.dev/reference/custom-operations/)):
+  - `fractional` — deterministic murmurhash3-x86-32 percentage bucketing,
+    matching the canonical Go evaluator's `(hash * total_weight) >> 32`
+    integer distribution. Hash implementation vendored inline (~30 LOC,
+    no external dep) for portability across every target.
+  - `sem_ver` — semantic-version comparison with the spec's four input
+    normalizations (strip `v`/`V` prefix, pad partial versions, coerce
+    numeric input, drop build metadata). Backed by the optional
+    [`semver`](https://docs.rs/semver) crate.
+
+  Both return `null` on malformed input; conformance test suites under
+  `crates/datalogic-rs/tests/suites/flagd/` mirror the upstream
+  [`fractional_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/fractional_test.go)
+  and [`semver_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/semver_test.go).
+- **Custom operator registration across every language binding** — WASM,
+  Node, Python, C ABI, and Go now expose a way to register host-language
+  callbacks as JSONLogic operators, with a uniform JSON-string in/out
+  contract. See [`bindings/BINDINGS.md`](./bindings/BINDINGS.md#custom-operator-support).
+
 ## [5.0.0] - 2026-05-11
 
 v5 is a coordinated major release across the Rust core crate and every

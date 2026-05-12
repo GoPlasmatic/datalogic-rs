@@ -35,6 +35,9 @@
 //! - **ext-control**: `exists`, `??`, `switch`/`match`, `type`
 //! - **error-handling**: `try`, `throw`
 //! - **ext-math**: `abs`, `ceil`, `floor`
+//! - **flagd** ([spec](https://flagd.dev/reference/custom-operations/)):
+//!   `fractional` (murmurhash3 percentage bucketing), `sem_ver`
+//!   (semantic-version comparison with flagd-spec normalizations)
 //!
 //! # Adding New Operators
 //!

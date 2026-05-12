@@ -405,9 +405,63 @@ Runnable example: [`examples/thread_safety.rs`](./examples/thread_safety.rs).
 | `trace`           | Execution-step recording for the debugger (implies `serde_json`)          |
 | `error-handling`  | `try` / `throw` operators                                                 |
 | `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families             |
+| `flagd`           | flagd-compat operators (`fractional`, `sem_ver`); pulls in `semver`       |
 
 The default build is `serde_json`-free; opt in via
 `features = ["serde_json"]` when you need the value boundary.
+
+### `flagd` — OpenFeature flagd-compatible operators
+
+Enables two operators specified by the
+[OpenFeature flagd in-process provider](https://flagd.dev/reference/custom-operations/),
+implemented to match the canonical
+[Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator)
+byte-for-byte:
+
+- **[`fractional`](https://flagd.dev/reference/custom-operations/fractional-operation/)** —
+  deterministic percentage bucketing for A/B tests and rollouts. Uses
+  MurmurHash3 x86-32 of a bucketing key (explicit string, or implicit
+  `flagKey + targetingKey` from the root `$flagd` envelope) plus
+  `(hash * total_weight) >> 32` integer distribution, identical to the
+  Go evaluator's algorithm. The hash is vendored inline (~30 LOC, no
+  external dep) for portability across every target.
+- **[`sem_ver`](https://flagd.dev/reference/custom-operations/semver-operation/)** —
+  semantic-version comparison with the spec's four input normalizations:
+  strip leading `v`/`V`, pad partial versions (`1.0` → `1.0.0`), coerce
+  numeric input to string, and drop SemVer build metadata. Backed by
+  the [`semver`](https://docs.rs/semver) crate (optional dep). Operators:
+  `=`, `!=`, `<`, `<=`, `>`, `>=`, `^` (same major), `~` (same major+minor).
+
+Both operators return `null` on malformed input rather than raising — the
+flagd evaluator observes the `null` and falls back to the flag's default
+variant; non-flagd callers can compose with `??` or `if` for the same
+effect.
+
+```rust,no_run
+// Cargo.toml: datalogic-rs = { version = "5", features = ["flagd"] }
+use datalogic_rs::Engine;
+
+let engine = Engine::new();
+
+// A typical flagd targeting rule: ship "new-ui" to 50 % of @example.com users.
+let result: String = engine.eval_str(
+    r#"{
+        "fractional": [
+            { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+            ["new-ui", 50],
+            ["old-ui", 50]
+        ]
+    }"#,
+    r#"{"email": "alice@example.com", "$flagd": {"flagKey": "header-color"}}"#,
+)?;
+// result is one of "\"new-ui\"" or "\"old-ui\"" — sticky per email.
+# Ok::<(), datalogic_rs::Error>(())
+```
+
+Conformance test suites under
+[`tests/suites/flagd/`](./tests/suites/) mirror the canonical Go test
+files in `open-feature/flagd` so every release is checked against the
+upstream behaviour.
 
 ## Performance
 

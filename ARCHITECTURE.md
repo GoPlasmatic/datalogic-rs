@@ -108,6 +108,7 @@ opt in via their dependency line.
 | `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, Node, Python, `tracing` example |
 | `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, `error_handling` example |
 | `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python; opt-in per Rust consumer |
+| `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | Rust consumers wiring up a flagd in-process evaluator. See [flagd docs](https://flagd.dev/reference/custom-operations/) |
 | `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only — Node and Python inline the feature list rather than using the meta-feature |
 
 The `datalogic-bench` crate enables `serde_json` because it reads the
@@ -121,7 +122,7 @@ or `templating`.
 | Public Rust API                | `crates/datalogic-rs/src/lib.rs`                  |
 | Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                 |
 | Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                |
-| OpCode enum (59 builtins)      | `crates/datalogic-rs/src/opcode.rs`               |
+| OpCode enum (61 builtins)      | `crates/datalogic-rs/src/opcode.rs`               |
 | Operator implementations       | `crates/datalogic-rs/src/operators/`              |
 | Arena value types & context    | `crates/datalogic-rs/src/arena/`                  |
 | Rust integration tests         | `crates/datalogic-rs/tests/`                      |
