@@ -149,6 +149,150 @@ fn evaluate_error_sets_operator_and_path() {
     unsafe { datalogic_engine_free(engine) };
 }
 
+// =============== Custom operator builder ===============
+
+/// Test callback: `[n]` -> `n*2` as a JSON string.
+unsafe extern "C" fn double_op(
+    args_json: *const std::ffi::c_char,
+    _user_data: *mut std::ffi::c_void,
+    _error_out: *mut *mut std::ffi::c_char,
+) -> *mut std::ffi::c_char {
+    let args = unsafe { CStr::from_ptr(args_json) }.to_str().unwrap();
+    // args is `"[n]"` — strip brackets and parse.
+    let inner: f64 = args[1..args.len() - 1].trim().parse().unwrap();
+    let result = format!("{}", inner * 2.0);
+    // Allocate with libc malloc so the binding's libc free works.
+    let cs = CString::new(result).unwrap();
+    // Use `Box::into_raw` of a `String`'s bytes won't survive libc free;
+    // we instead `strdup` via libc.
+    unsafe extern "C" {
+        fn strdup(s: *const std::ffi::c_char) -> *mut std::ffi::c_char;
+    }
+    unsafe { strdup(cs.as_ptr()) }
+}
+
+/// Test callback that always errors.
+unsafe extern "C" fn boom_op(
+    _args_json: *const std::ffi::c_char,
+    _user_data: *mut std::ffi::c_void,
+    error_out: *mut *mut std::ffi::c_char,
+) -> *mut std::ffi::c_char {
+    unsafe extern "C" {
+        fn strdup(s: *const std::ffi::c_char) -> *mut std::ffi::c_char;
+    }
+    let msg = cstr("custom-failure");
+    unsafe { *error_out = strdup(msg.as_ptr()) };
+    std::ptr::null_mut()
+}
+
+/// Test callback that reads `user_data` (an i64 pointer) and adds it.
+unsafe extern "C" fn add_user_data_op(
+    args_json: *const std::ffi::c_char,
+    user_data: *mut std::ffi::c_void,
+    _error_out: *mut *mut std::ffi::c_char,
+) -> *mut std::ffi::c_char {
+    let bias = unsafe { *(user_data as *const i64) };
+    let args = unsafe { CStr::from_ptr(args_json) }.to_str().unwrap();
+    let inner: i64 = args[1..args.len() - 1].trim().parse().unwrap();
+    let result = CString::new(format!("{}", inner + bias)).unwrap();
+    unsafe extern "C" {
+        fn strdup(s: *const std::ffi::c_char) -> *mut std::ffi::c_char;
+    }
+    unsafe { strdup(result.as_ptr()) }
+}
+
+#[test]
+fn builder_with_custom_operator_evaluates() {
+    let b = datalogic_engine_builder_new();
+    let name = cstr("double");
+    unsafe {
+        let rc = datalogic_engine_builder_add_operator(
+            b,
+            name.as_ptr(),
+            Some(double_op),
+            std::ptr::null_mut(),
+        );
+        assert_eq!(rc, 0);
+    }
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    assert!(!engine.is_null());
+    unsafe { datalogic_engine_builder_free(b) };
+
+    let rule = cstr(r#"{"double":[21]}"#);
+    let data = cstr("{}");
+    let out = unsafe { datalogic_engine_apply(engine, rule.as_ptr(), data.as_ptr()) };
+    let s = unsafe { take_string(out) };
+    assert_eq!(s, "42");
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn builder_custom_operator_error_propagates() {
+    datalogic_last_error_clear();
+    let b = datalogic_engine_builder_new();
+    let name = cstr("boom");
+    unsafe {
+        datalogic_engine_builder_add_operator(b, name.as_ptr(), Some(boom_op), std::ptr::null_mut());
+    }
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    unsafe { datalogic_engine_builder_free(b) };
+
+    let rule = cstr(r#"{"boom":[]}"#);
+    let data = cstr("{}");
+    let out = unsafe { datalogic_engine_apply(engine, rule.as_ptr(), data.as_ptr()) };
+    assert!(out.is_null(), "boom should fail evaluation");
+    let msg = unsafe { CStr::from_ptr(datalogic_last_error_message()) }
+        .to_str()
+        .unwrap();
+    assert!(msg.contains("custom-failure"), "got message: {msg}");
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn builder_custom_operator_receives_user_data() {
+    let b = datalogic_engine_builder_new();
+    let name = cstr("addbias");
+    let bias: i64 = 100;
+    unsafe {
+        datalogic_engine_builder_add_operator(
+            b,
+            name.as_ptr(),
+            Some(add_user_data_op),
+            &bias as *const i64 as *mut std::ffi::c_void,
+        );
+    }
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    unsafe { datalogic_engine_builder_free(b) };
+
+    let rule = cstr(r#"{"addbias":[7]}"#);
+    let data = cstr("{}");
+    let out = unsafe { datalogic_engine_apply(engine, rule.as_ptr(), data.as_ptr()) };
+    let s = unsafe { take_string(out) };
+    assert_eq!(s, "107");
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn builder_set_templating_takes_effect() {
+    let b = datalogic_engine_builder_new();
+    unsafe { datalogic_engine_builder_set_templating(b, 1) };
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    unsafe { datalogic_engine_builder_free(b) };
+    assert!(!engine.is_null());
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn builder_build_twice_returns_null_and_sets_error() {
+    let b = datalogic_engine_builder_new();
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    assert!(!engine.is_null());
+    let again = unsafe { datalogic_engine_builder_build(b) };
+    assert!(again.is_null(), "second build must fail");
+    unsafe { datalogic_engine_free(engine) };
+    unsafe { datalogic_engine_builder_free(b) };
+}
+
 #[test]
 fn null_pointers_are_handled_without_segfault() {
     // Free entry points are explicitly NULL-safe.

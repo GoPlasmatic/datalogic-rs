@@ -49,17 +49,23 @@ import "C"
 
 import (
 	"runtime"
+	"runtime/cgo"
 	"unsafe"
 )
 
 // Engine is a JSONLogic compile/evaluate engine.
 //
-// Construct one with NewEngine and reuse it for the lifetime of the
-// program — Engine caches no per-call state and is safe to share across
+// Construct one with NewEngine (no custom operators) or NewEngineBuilder
+// (custom operators) and reuse it for the lifetime of the program —
+// Engine caches no per-call state and is safe to share across
 // goroutines. Close it explicitly when done (or rely on the GC
 // finalizer, which is best-effort).
 type Engine struct {
 	ptr *C.datalogic_engine
+	// opHandles retains cgo.Handle references for every registered
+	// custom operator so the trampoline can still resolve them during
+	// evaluation. Released on Close.
+	opHandles []cgo.Handle
 }
 
 // NewEngine constructs an engine with default configuration.
@@ -91,6 +97,10 @@ func (e *Engine) Close() {
 	}
 	C.datalogic_engine_free(e.ptr)
 	e.ptr = nil
+	for _, h := range e.opHandles {
+		h.Delete()
+	}
+	e.opHandles = nil
 	runtime.SetFinalizer(e, nil)
 }
 

@@ -88,6 +88,26 @@ a deprecation notice on `npm install` pointing them at the new name.
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/PHP/JVM) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go` |
 
+### Custom operator support
+
+Every binding exposes a way to register user-defined JSONLogic operators
+written in the host language. The cross-binding contract is the same:
+the host callback receives the operator's pre-evaluated arguments as a
+JSON-array string and returns a JSON-value string. Bindings differ only
+in how the registration is plumbed into their constructor surface:
+
+| Binding | API shape | Example |
+|---|---|---|
+| WASM (`@goplasmatic/datalogic-wasm`) | Options bag on `new Engine(opts)` | `new Engine({ customOperators: { foo: argsJson => '...' } })` |
+| Node (`@goplasmatic/datalogic-node`) | Second positional arg on `new Engine(opts, ops)` | `new Engine({}, { foo: argsJson => '...' })` |
+| Python (`datalogic-py`) | Keyword arg on `Engine(...)` | `Engine(custom_operators={"foo": lambda a: "..."})` |
+| C ABI (`bindings/c/`) | Explicit builder + function-pointer callback | `datalogic_engine_builder_add_operator(b, "foo", cb, user_data)` |
+| Go (`bindings/go/`) | Fluent builder over the C ABI | `NewEngineBuilder().AddOperator("foo", fn).Build()` |
+
+**Built-ins win** on every binding: registering a name that collides
+with a built-in JSONLogic operator (`+`, `if`, `var`, …) has no effect
+at evaluation time — the built-in dispatches first.
+
 ### Two npm packages, one engine
 
 The JS-side surface is intentionally split into two packages that share

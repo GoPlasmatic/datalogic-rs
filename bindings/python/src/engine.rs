@@ -1,9 +1,13 @@
 //! `Engine` and `Rule` pyclasses — the heart of the binding.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use datalogic_rs::bumpalo::Bump;
-use datalogic_rs::{Engine as RsEngine, Logic};
+use datalogic_rs::operator::EvalContext;
+use datalogic_rs::{
+    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, Logic, Result as DlResult,
+};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyString};
 use serde_json::Value;
@@ -17,6 +21,23 @@ use crate::session::Session;
 /// Construct once at startup and share across threads — `Engine` is
 /// internally `Arc<datalogic_rs::Engine>` and Python's reference semantics
 /// mean every reference points at the same underlying engine.
+///
+/// # Custom operators
+///
+/// Pass ``custom_operators={"name": callable, ...}`` to register custom
+/// JSONLogic operators. Each callable receives the evaluated args as a
+/// JSON-array string and must return a JSON string of the result::
+///
+///     engine = Engine(custom_operators={
+///         "double": lambda args_json: json.dumps(json.loads(args_json)[0] * 2),
+///     })
+///     engine.eval_str('{"double": [21]}', '{}')  # "42"
+///
+/// Callbacks run while the GIL is held; the binding re-acquires the GIL
+/// inside each operator call even if the surrounding evaluation released
+/// it. **Built-ins win over custom registrations of the same name** — the
+/// engine's built-in dispatcher never reaches a custom op with a name like
+/// ``"+"`` or ``"if"``.
 #[pyclass(name = "Engine", module = "datalogic_py", frozen)]
 pub struct Engine {
     pub(crate) inner: Arc<RsEngine>,
@@ -29,16 +50,30 @@ impl Engine {
     /// :param templating: when ``True``, multi-key objects in compiled
     ///     rules become output-shaping templates (the engine's "templating
     ///     mode"). Off by default.
+    /// :param custom_operators: optional dict ``{name: callable}`` whose
+    ///     values are ``Callable[[str], str]`` — JSON-array string in,
+    ///     JSON value string out.
     #[new]
-    #[pyo3(signature = (*, templating = false))]
-    fn new(templating: bool) -> Self {
-        let inner = if templating {
-            RsEngine::builder().with_templating(true).build()
+    #[pyo3(signature = (*, templating = false, custom_operators = None))]
+    fn new(
+        templating: bool,
+        custom_operators: Option<HashMap<String, Py<PyAny>>>,
+    ) -> Self {
+        let mut builder = if templating {
+            RsEngine::builder().with_templating(true)
         } else {
-            RsEngine::new()
+            RsEngine::builder()
         };
+        if let Some(map) = custom_operators {
+            for (name, callback) in map {
+                builder = builder.add_operator(
+                    name.clone(),
+                    PyOperator { name, callback },
+                );
+            }
+        }
         Self {
-            inner: Arc::new(inner),
+            inner: Arc::new(builder.build()),
         }
     }
 
@@ -140,6 +175,64 @@ impl Rule {
 
     fn __repr__(&self) -> String {
         "Rule(<compiled>)".to_string()
+    }
+}
+
+// =============== Custom operator bridge ===============
+
+/// Custom operator backed by a Python callable. Args cross the boundary
+/// as a JSON-array string; the return must be a JSON string.
+struct PyOperator {
+    name: String,
+    callback: Py<PyAny>,
+}
+
+impl CustomOperator for PyOperator {
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        arena: &'a Bump,
+    ) -> DlResult<&'a DataValue<'a>> {
+        // 1. Build the args JSON array.
+        let mut json = String::from("[");
+        for (i, a) in args.iter().enumerate() {
+            if i > 0 {
+                json.push(',');
+            }
+            json.push_str(&a.to_json_string());
+        }
+        json.push(']');
+
+        // 2. Acquire the GIL and call the Python callable. `with_gil`
+        //    re-acquires the GIL even if the surrounding evaluation
+        //    released it via `py.allow_threads`.
+        let result_str: String = Python::with_gil(|py| -> Result<String, DlError> {
+            let callable = self.callback.bind(py);
+            let ret = callable.call1((json.as_str(),)).map_err(|e| {
+                DlError::custom_message(format!(
+                    "custom operator '{}' raised: {}",
+                    self.name, e
+                ))
+            })?;
+            ret.extract::<String>().map_err(|e| {
+                DlError::custom_message(format!(
+                    "custom operator '{}' must return a JSON string: {}",
+                    self.name, e
+                ))
+            })
+        })?;
+
+        // 3. Parse the returned JSON into the eval arena so the borrowed
+        //    `DataValue` outlives this call.
+        let arena_str = arena.alloc_str(&result_str);
+        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
+            DlError::custom_message(format!(
+                "custom operator '{}' returned invalid JSON: {}",
+                self.name, e
+            ))
+        })?;
+        Ok(arena.alloc(parsed))
     }
 }
 

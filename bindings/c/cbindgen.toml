@@ -34,7 +34,7 @@ header = """/* SPDX-License-Identifier: Apache-2.0
 
 [export]
 prefix = ""
-item_types = ["functions", "opaque"]
+item_types = ["functions", "opaque", "typedefs"]
 
 # Rust types use Rust naming conventions; rename to C-style at the
 # boundary so consumers see `datalogic_engine`, not `Engine`.
@@ -42,6 +42,8 @@ item_types = ["functions", "opaque"]
 "Engine" = "datalogic_engine"
 "Rule" = "datalogic_rule"
 "Session" = "datalogic_session"
+"EngineBuilder" = "datalogic_engine_builder"
+"DatalogicOpCallback" = "datalogic_op_callback"
 
 [parse]
 parse_deps = false

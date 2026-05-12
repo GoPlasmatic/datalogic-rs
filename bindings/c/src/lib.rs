@@ -11,11 +11,13 @@
 //! thread-local last-error block queryable via
 //! [`datalogic_last_error_message`] et al.
 
+mod builder;
 mod engine;
 mod error;
 mod rule;
 mod session;
 
+pub use builder::*;
 pub use engine::*;
 pub use error::*;
 pub use rule::*;

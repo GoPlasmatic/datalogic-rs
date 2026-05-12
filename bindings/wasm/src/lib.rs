@@ -1,15 +1,20 @@
 use std::sync::Arc;
 
-use datalogic_rs::{DataValue, Engine, Error, Logic};
+use datalogic_rs::bumpalo::Bump;
+use datalogic_rs::operator::EvalContext;
+use datalogic_rs::{
+    CustomOperator, DataValue, Engine as RsEngine, Error, Logic, Result as DlResult,
+};
+use js_sys::{Function, Object, Reflect};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-/// Build an [`Engine`] honoring the `templating` flag.
-fn make_engine(templating: bool) -> Engine {
+/// Build an [`RsEngine`] honoring the `templating` flag.
+fn make_engine(templating: bool) -> RsEngine {
     if templating {
-        Engine::builder().with_templating(true).build()
+        RsEngine::builder().with_templating(true).build()
     } else {
-        Engine::new()
+        RsEngine::new()
     }
 }
 
@@ -64,7 +69,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 /// Evaluate a JSONLogic expression with execution trace for debugging.
 ///
 /// Returns a JSON string containing the result, expression tree, and execution
-/// steps. Powered by [`Engine::trace`] +
+/// steps. Powered by [`RsEngine::trace`] +
 /// [`datalogic_rs::TracedSession::eval_str`].
 ///
 /// # Arguments
@@ -128,9 +133,13 @@ fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
 ///
 /// Use this when you need to evaluate the same logic against different data,
 /// as it avoids re-parsing the logic on each evaluation.
+///
+/// `CompiledRule` builds its own engine internally and therefore does **not**
+/// support custom operators. For custom operators, use [`Engine`] +
+/// [`Engine::compile`] instead.
 #[wasm_bindgen]
 pub struct CompiledRule {
-    engine: Engine,
+    engine: RsEngine,
     compiled: Arc<Logic>,
 }
 
@@ -156,7 +165,7 @@ impl CompiledRule {
     /// # Returns
     /// JSON string result or merged structured `Error` JSON on failure.
     pub fn evaluate(&self, data: &str) -> Result<String, String> {
-        let arena = datalogic_rs::bumpalo::Bump::new();
+        let arena = Bump::new();
         let data_dv = DataValue::from_str(data, &arena)
             .map_err(|e| input_err_to_json("parse-data", format!("{:?}", e)))?;
         let result = self
@@ -165,4 +174,227 @@ impl CompiledRule {
             .map_err(|e| err_to_json(&e))?;
         Ok(result.to_string())
     }
+}
+
+// =============== Custom operator bridge ===============
+
+/// JS-backed custom operator. The host JS function receives a JSON-array
+/// string of evaluated args and returns a JSON string of the result.
+struct JsOperator {
+    name: String,
+    callback: Function,
+}
+
+// SAFETY: `wasm32-unknown-unknown` is single-threaded. The `CustomOperator:
+// Send + Sync` bound exists for the native build's multi-threaded engine;
+// in WASM there is no other thread that could observe the `js_sys::Function`.
+// If WASM threads (atomics + shared memory) are ever enabled, this needs
+// to be revisited — but `js-sys` itself relies on the same assumption.
+unsafe impl Send for JsOperator {}
+unsafe impl Sync for JsOperator {}
+
+impl CustomOperator for JsOperator {
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        arena: &'a Bump,
+    ) -> DlResult<&'a DataValue<'a>> {
+        // 1. Serialize args as a JSON array. `DataValue::to_json_string`
+        //    handles all leaf types; we just need to wrap with `[...]` and
+        //    insert commas.
+        let mut json = String::from("[");
+        for (i, a) in args.iter().enumerate() {
+            if i > 0 {
+                json.push(',');
+            }
+            json.push_str(&a.to_json_string());
+        }
+        json.push(']');
+
+        // 2. Invoke the JS callback synchronously. WASM JS calls are sync
+        //    by definition.
+        let js_args = JsValue::from_str(&json);
+        let ret = self.callback.call1(&JsValue::NULL, &js_args).map_err(|e| {
+            Error::custom_message(format!(
+                "custom operator '{}' threw: {}",
+                self.name,
+                e.as_string().unwrap_or_else(|| format!("{:?}", e))
+            ))
+        })?;
+
+        // 3. Decode the return value into a JSON string. `null`/`undefined`
+        //    map to JSON null; anything else must be a string.
+        let ret_str: String = if ret.is_null() || ret.is_undefined() {
+            "null".to_string()
+        } else if let Some(s) = ret.as_string() {
+            s
+        } else {
+            return Err(Error::custom_message(format!(
+                "custom operator '{}' must return a JSON string (or null/undefined for JSON null), got {:?}",
+                self.name, ret
+            )));
+        };
+
+        // 4. Parse the returned JSON into the eval arena so the borrowed
+        //    `DataValue` stays valid for the rest of the evaluation.
+        let arena_str = arena.alloc_str(&ret_str);
+        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
+            Error::custom_message(format!(
+                "custom operator '{}' returned invalid JSON: {}",
+                self.name, e
+            ))
+        })?;
+        Ok(arena.alloc(parsed))
+    }
+}
+
+// =============== Engine class (custom-op capable) ===============
+
+/// JSONLogic compile/evaluate engine with optional custom operators.
+///
+/// Construct with `new Engine(options)` where `options` is:
+/// ```ts
+/// {
+///   templating?: boolean,
+///   customOperators?: Record<string, (argsJson: string) => string>
+/// }
+/// ```
+///
+/// `customOperators` registers a JS function under each name. The function
+/// receives the evaluated args as a JSON-array string (e.g. `"[1, 2, \"x\"]"`)
+/// and **must return a JSON string** (e.g. `"\"variant_a\""`, `"42"`,
+/// `"null"`). Returning `null`/`undefined` is treated as JSON `null`. A
+/// thrown JS exception or non-string return becomes a runtime evaluation
+/// error.
+///
+/// Custom operator names collide-and-lose with built-ins: registering `"+"`
+/// has no effect because the built-in dispatches first.
+#[wasm_bindgen]
+pub struct Engine {
+    inner: Arc<RsEngine>,
+}
+
+#[wasm_bindgen]
+impl Engine {
+    #[wasm_bindgen(constructor)]
+    pub fn new(options: JsValue) -> Result<Engine, String> {
+        let (templating, custom_ops) = parse_engine_options(&options)?;
+        let mut builder = RsEngine::builder();
+        if templating {
+            builder = builder.with_templating(true);
+        }
+        for (name, callback) in custom_ops {
+            builder = builder.add_operator(
+                name.clone(),
+                JsOperator {
+                    name,
+                    callback,
+                },
+            );
+        }
+        Ok(Engine {
+            inner: Arc::new(builder.build()),
+        })
+    }
+
+    /// Compile a JSONLogic rule into a reusable [`Rule`].
+    pub fn compile(&self, logic: &str) -> Result<Rule, String> {
+        let compiled = self.inner.compile_arc(logic).map_err(|e| err_to_json(&e))?;
+        Ok(Rule {
+            engine: self.inner.clone(),
+            compiled,
+        })
+    }
+
+    /// One-shot: compile `logic` and evaluate against `data` in a single
+    /// call. Returns the result as a JSON string.
+    #[wasm_bindgen(js_name = evalStr)]
+    pub fn eval_str(&self, logic: &str, data: &str) -> Result<String, String> {
+        self.inner.eval_str(logic, data).map_err(|e| err_to_json(&e))
+    }
+}
+
+/// A rule compiled against a specific [`Engine`] — preserves access to that
+/// engine's custom operators.
+#[wasm_bindgen]
+pub struct Rule {
+    engine: Arc<RsEngine>,
+    compiled: Arc<Logic>,
+}
+
+#[wasm_bindgen]
+impl Rule {
+    /// Evaluate the compiled rule against `data` (a JSON string).
+    pub fn evaluate(&self, data: &str) -> Result<String, String> {
+        let arena = Bump::new();
+        let data_dv = DataValue::from_str(data, &arena)
+            .map_err(|e| input_err_to_json("parse-data", format!("{:?}", e)))?;
+        let result = self
+            .engine
+            .evaluate(&self.compiled, data_dv, &arena)
+            .map_err(|e| err_to_json(&e))?;
+        Ok(result.to_string())
+    }
+}
+
+// =============== options-bag parsing ===============
+
+/// Pull `{ templating, customOperators }` out of a JS options object.
+/// Anything missing falls back to the zero value (no templating, no ops).
+fn parse_engine_options(options: &JsValue) -> Result<(bool, Vec<(String, Function)>), String> {
+    if options.is_null() || options.is_undefined() {
+        return Ok((false, Vec::new()));
+    }
+    let obj: &Object = options
+        .dyn_ref::<Object>()
+        .ok_or_else(|| input_err_to_json("parse-options", "options must be an object"))?;
+
+    let templating = match Reflect::get(obj, &JsValue::from_str("templating")) {
+        Ok(v) if v.is_undefined() || v.is_null() => false,
+        Ok(v) => v.as_bool().ok_or_else(|| {
+            input_err_to_json("parse-options", "options.templating must be a boolean")
+        })?,
+        Err(_) => false,
+    };
+
+    let custom_ops = match Reflect::get(obj, &JsValue::from_str("customOperators")) {
+        Ok(v) if v.is_undefined() || v.is_null() => Vec::new(),
+        Ok(v) => parse_custom_operators(&v)?,
+        Err(_) => Vec::new(),
+    };
+
+    Ok((templating, custom_ops))
+}
+
+fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, String> {
+    let obj: &Object = v.dyn_ref::<Object>().ok_or_else(|| {
+        input_err_to_json(
+            "parse-options",
+            "options.customOperators must be an object of {name: function}",
+        )
+    })?;
+
+    let keys = Object::keys(obj);
+    let mut out = Vec::with_capacity(keys.length() as usize);
+    for i in 0..keys.length() {
+        let key = keys.get(i);
+        let name = key.as_string().ok_or_else(|| {
+            input_err_to_json("parse-options", "customOperators keys must be strings")
+        })?;
+        let value = Reflect::get(obj, &key).map_err(|e| {
+            input_err_to_json(
+                "parse-options",
+                format!("failed to read customOperators['{}']: {:?}", name, e),
+            )
+        })?;
+        let function = value.dyn_into::<Function>().map_err(|_| {
+            input_err_to_json(
+                "parse-options",
+                format!("customOperators['{}'] must be a function", name),
+            )
+        })?;
+        out.push((name, function));
+    }
+    Ok(out)
 }

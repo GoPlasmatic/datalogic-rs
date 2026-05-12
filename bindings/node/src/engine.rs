@@ -1,10 +1,15 @@
 //! `Engine` and `Rule` napi classes — the heart of the binding.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use datalogic_rs::bumpalo::Bump;
-use datalogic_rs::{Engine as RsEngine, Logic};
+use datalogic_rs::operator::EvalContext;
+use datalogic_rs::{
+    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, Logic, Result as DlResult,
+};
 use napi::bindgen_prelude::*;
+use napi::sys;
 use napi::Env;
 use serde_json::Value;
 
@@ -30,6 +35,28 @@ pub struct EngineOptions {
 /// Construct once at startup and share across calls — `Engine` is
 /// internally `Arc<datalogic_rs::Engine>` and JS reference semantics mean
 /// every reference points at the same underlying engine.
+///
+/// # Custom operators
+///
+/// Pass a `{name: fn}` map as the second constructor argument to register
+/// custom JSONLogic operators. Each callback receives the evaluated args as
+/// a JSON-array string and must return a JSON string of the result:
+///
+/// ```js
+/// const engine = new Engine({}, {
+///   double: (argsJson) => {
+///     const [n] = JSON.parse(argsJson);
+///     return JSON.stringify(n * 2);
+///   }
+/// });
+/// engine.evalStr('{"double": [21]}', '{}'); // "42"
+/// ```
+///
+/// Callbacks run synchronously on the same thread the engine was
+/// constructed on. **An engine carrying custom operators must not be
+/// shared across worker threads** — the JS function reference is bound
+/// to the originating V8 isolate. Engines without custom operators are
+/// free to cross threads as before.
 #[napi]
 pub struct Engine {
     pub(crate) inner: Arc<RsEngine>,
@@ -39,18 +66,33 @@ pub struct Engine {
 impl Engine {
     /// Create a new engine.
     #[napi(constructor)]
-    pub fn new(options: Option<EngineOptions>) -> Self {
-        let templating = options
-            .and_then(|o| o.templating)
-            .unwrap_or(false);
-        let inner = if templating {
-            RsEngine::builder().with_templating(true).build()
+    pub fn new(
+        env: Env,
+        options: Option<EngineOptions>,
+        custom_operators: Option<HashMap<String, FunctionRef<String, String>>>,
+    ) -> Result<Self> {
+        let templating = options.and_then(|o| o.templating).unwrap_or(false);
+        let mut builder = if templating {
+            RsEngine::builder().with_templating(true)
         } else {
-            RsEngine::new()
+            RsEngine::builder()
         };
-        Self {
-            inner: Arc::new(inner),
+        if let Some(map) = custom_operators {
+            let env_raw = env.raw();
+            for (name, callback) in map {
+                builder = builder.add_operator(
+                    name.clone(),
+                    NodeOperator {
+                        name,
+                        callback,
+                        env_raw,
+                    },
+                );
+            }
         }
+        Ok(Self {
+            inner: Arc::new(builder.build()),
+        })
     }
 
     /// Compile a JSONLogic rule into a reusable `Rule`. Accepts either a
@@ -126,6 +168,74 @@ impl Rule {
     #[napi]
     pub fn evaluate_str(&self, env: Env, data: Value) -> Result<String> {
         evaluate_str(&env, &self.engine, &self.logic, data)
+    }
+}
+
+// =============== Custom operator bridge ===============
+
+/// Custom operator backed by a JS callback. The callback receives a
+/// JSON-array string of args and returns a JSON string of the result.
+struct NodeOperator {
+    name: String,
+    callback: FunctionRef<String, String>,
+    /// Raw napi env captured at registration. The CustomOperator trait
+    /// runs without an `Env`, so we keep one to `borrow_back` the
+    /// stored FunctionRef during evaluation. The pointer is valid for
+    /// the V8 isolate lifetime — which is also the engine's lifetime
+    /// when used from a single thread, the contract for this binding.
+    env_raw: sys::napi_env,
+}
+
+// SAFETY: `FunctionRef` is `Send + Sync` (napi declares this so
+// references can outlive the originating call scope). `sys::napi_env`
+// is a raw pointer to the V8 isolate; we capture it once at
+// construction and only dereference it on the same thread the engine
+// was created on (the documented contract for custom-op-bearing
+// engines).
+unsafe impl Send for NodeOperator {}
+unsafe impl Sync for NodeOperator {}
+
+impl CustomOperator for NodeOperator {
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        arena: &'a Bump,
+    ) -> DlResult<&'a DataValue<'a>> {
+        // 1. Build the args JSON array.
+        let mut json = String::from("[");
+        for (i, a) in args.iter().enumerate() {
+            if i > 0 {
+                json.push(',');
+            }
+            json.push_str(&a.to_json_string());
+        }
+        json.push(']');
+
+        // 2. Borrow the JS function back through the stored env and call it.
+        let env = Env::from_raw(self.env_raw);
+        let func = self.callback.borrow_back(&env).map_err(|e| {
+            DlError::custom_message(format!(
+                "custom operator '{}': failed to acquire JS function: {}",
+                self.name, e
+            ))
+        })?;
+        let ret_str: String = func.call(json).map_err(|e| {
+            DlError::custom_message(format!(
+                "custom operator '{}' threw: {}",
+                self.name, e
+            ))
+        })?;
+
+        // 3. Parse the returned JSON into the arena.
+        let arena_str = arena.alloc_str(&ret_str);
+        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
+            DlError::custom_message(format!(
+                "custom operator '{}' returned invalid JSON: {}",
+                self.name, e
+            ))
+        })?;
+        Ok(arena.alloc(parsed))
     }
 }
 

@@ -37,6 +37,13 @@
 typedef struct datalogic_engine datalogic_engine;
 
 /**
+ * Opaque builder handle. Internally holds an `Option<EngineBuilder>` so
+ * each `set_*` / `add_operator` entry point can take the inner by value
+ * (the Rust builder consumes `self` on every method) and put it back.
+ */
+typedef struct datalogic_engine_builder datalogic_engine_builder;
+
+/**
  * Compiled JSONLogic rule. Send + Sync — share one across threads and
  * evaluate in parallel; each `datalogic_rule_evaluate` call creates its
  * own short-lived arena.
@@ -57,6 +64,25 @@ typedef struct datalogic_rule datalogic_rule;
  * even if the consumer frees the engine handle first.
  */
 typedef struct datalogic_session datalogic_session;
+
+/**
+ * Callback signature for user-defined operators.
+ *
+ * * `args_json` — borrowed, NUL-terminated UTF-8 JSON-array string of
+ *   pre-evaluated arguments (e.g. `"[1, 2, \"x\"]"`). Do not free.
+ * * `user_data` — opaque pointer the caller registered via
+ *   [`datalogic_engine_builder_add_operator`].
+ * * `error_out` — out-pointer. On error, set `*error_out` to a freshly
+ *   `malloc`'d, NUL-terminated UTF-8 message (the binding will call
+ *   `free` on it). May be left untouched / `NULL` for a generic error.
+ *
+ * Returns:
+ * - **success**: a freshly `malloc`'d, NUL-terminated UTF-8 JSON string
+ *   (e.g. `"42"`, `"\"variant_a\""`, `"{\"a\":1}"`). The binding parses
+ *   and then calls `free` on it.
+ * - **error**: `NULL`, optionally with `*error_out` filled.
+ */
+typedef char *(*datalogic_op_callback)(const char *args_json, void *user_data, char **error_out);
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,6 +108,79 @@ extern "C" {
  * behaviour.
  */
  void datalogic_string_free(char *ptr);
+
+/**
+ * `free(3)` from libc. The Rust default allocator on `cdylib` targets
+ * is the system allocator (which is libc malloc on Linux/macOS/Windows),
+ * so freeing user-supplied `malloc`'d strings via libc `free` is safe
+ * across the FFI boundary.
+ */
+extern void free(void *ptr);
+
+/**
+ * Construct a new engine builder. Caller must release the handle via
+ * [`datalogic_engine_builder_free`] (no-op after a successful
+ * [`datalogic_engine_builder_build`], which consumes the builder).
+ */
+ datalogic_engine_builder *datalogic_engine_builder_new(void);
+
+/**
+ * Free an engine builder handle. Safe with `NULL`. Idempotent after a
+ * successful `build()` (which already drops the inner builder; the
+ * outer handle still needs freeing).
+ *
+ * # Safety
+ *
+ * `builder` must either be `NULL` or a pointer previously returned by
+ * [`datalogic_engine_builder_new`] that has not been freed.
+ */
+ void datalogic_engine_builder_free(datalogic_engine_builder *builder);
+
+/**
+ * Toggle templating mode on the builder.
+ *
+ * # Safety
+ *
+ * `builder` must be a valid pointer returned by
+ * [`datalogic_engine_builder_new`].
+ */
+ void datalogic_engine_builder_set_templating(datalogic_engine_builder *builder, int32_t enabled);
+
+/**
+ * Register a custom operator. The callback is invoked on every match of
+ * the operator name during evaluation. See [`DatalogicOpCallback`] for
+ * the contract.
+ *
+ * **Built-ins win** — registering a name that collides with a built-in
+ * JSONLogic operator (`+`, `if`, `var`, …) silently does nothing at
+ * evaluation time; the built-in dispatches first.
+ *
+ * # Safety
+ *
+ * `builder` must be valid; `name` must be NUL-terminated UTF-8;
+ * `callback` must be a valid C function pointer (or `NULL` to make this
+ * a no-op). `user_data` is opaque to the binding and passed back into
+ * every invocation.
+ */
+
+int32_t datalogic_engine_builder_add_operator(datalogic_engine_builder *builder,
+                                              const char *name,
+                                              datalogic_op_callback callback,
+                                              void *user_data);
+
+/**
+ * Finalise the builder into an [`Engine`]. The builder handle is left
+ * in a drained state — [`datalogic_engine_builder_free`] still needs to
+ * be called to release the outer allocation.
+ *
+ * Returns `NULL` if the builder has already been built / is invalid.
+ *
+ * # Safety
+ *
+ * `builder` must be a valid pointer returned by
+ * [`datalogic_engine_builder_new`].
+ */
+ datalogic_engine *datalogic_engine_builder_build(datalogic_engine_builder *builder);
 
 /**
  * Construct a new engine. Pass `templating != 0` to enable the engine's
