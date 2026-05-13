@@ -133,6 +133,18 @@ jobs:
           NODE_PKG=$(node -p "require('./bindings/node/package.json').version")
           check "bindings/node/package.json" "$NODE_PKG" "bindings/node/package.json"
 
+          # .NET binding: <Version> in the csproj.
+          DOTNET=$(grep -oP '(?<=<Version>)[^<]+' bindings/dotnet/src/Datalogic/Datalogic.csproj | head -1)
+          check "bindings/dotnet/src/Datalogic/Datalogic.csproj" "$DOTNET" "bindings/dotnet/src/Datalogic/Datalogic.csproj"
+
+          # JVM binding: top-level <version> in pom.xml (first match —
+          # parent/dep versions appear later and don't matter here).
+          JVM=$(grep -oP '(?<=<version>)[^<]+' bindings/jvm/pom.xml | head -1)
+          check "bindings/jvm/pom.xml" "$JVM" "bindings/jvm/pom.xml"
+
+          # PHP binding: composer.json doesn't carry a version field
+          # (Packagist resolves from tags). Nothing to check.
+
           # Go module: version lives implicitly in the `bindings/go/vX.Y.Z`
           # tag pushed by publish-go — nothing in source to drift, so it's
           # not checked here.
@@ -214,6 +226,10 @@ jobs:
       - build-python
       - build-go
       - build-node
+      - build-c-cdylib
+      - build-dotnet
+      - build-jvm
+      - build-php
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -400,6 +416,30 @@ jobs:
     needs: validate
     uses: ./.github/workflows/release-build-node.yml
 
+  # Shared C-ABI cdylib matrix. Java, .NET, and PHP all consume these
+  # artifacts via their respective packaging jobs. Go has its own
+  # staticlib matrix in build-go above; both run in parallel after
+  # validate.
+  build-c-cdylib:
+    name: Build C ABI cdylib (matrix)
+    needs: validate
+    uses: ./.github/workflows/release-build-c-cdylib.yml
+
+  build-dotnet:
+    name: Build .NET NuGet
+    needs: [validate, build-c-cdylib]
+    uses: ./.github/workflows/release-build-dotnet.yml
+
+  build-jvm:
+    name: Build JVM JAR
+    needs: [validate, build-c-cdylib]
+    uses: ./.github/workflows/release-build-jvm.yml
+
+  build-php:
+    name: Build PHP distribution
+    needs: [validate, build-c-cdylib]
+    uses: ./.github/workflows/release-build-php.yml
+
   # ============================================================ Publish phase
   # Everything below runs only after publish-crate succeeds — and
   # publish-crate runs only when every `build-*` is green. The
@@ -532,9 +572,154 @@ jobs:
           NPM_CONFIG_PROVENANCE: 'true'
           GITHUB_TOKEN: ${{ github.token }}
 
+  publish-dotnet:
+    name: Publish .NET to NuGet
+    needs: [validate, publish-crate, build-dotnet]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download .nupkg artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dotnet-nupkg
+          path: nupkg/
+
+      - name: Push to NuGet
+        # `--skip-duplicate` avoids a hard fail if a partial earlier run
+        # already pushed this version.
+        run: |
+          dotnet nuget push 'nupkg/*.nupkg' \
+            --api-key "${NUGET_API_KEY}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  publish-jvm:
+    name: Publish JVM to Maven Central
+    needs: [validate, publish-crate, build-c-cdylib]
+    runs-on: ubuntu-latest
+    # `maven-central` GitHub Environment provides a manual-approval
+    # gate — see Settings → Environments → maven-central → required
+    # reviewers. Maven Central publishes can't be cleanly retracted, so
+    # we gate them the same way as PyPI.
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/com.goplasmatic/datalogic
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # publish-jvm needs the cdylibs inside the JAR. The build-jvm
+      # output is an artifact (not a filesystem snapshot), so we
+      # re-stage from the cdylib matrix outputs here and rebuild before
+      # `mvn deploy`. This re-runs JAR assembly but it's cheap (no
+      # cargo) and avoids shipping a fat artifact between jobs.
+      - name: Download cdylib artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: cdylib/
+          pattern: c-cdylib-*
+          merge-multiple: true
+
+      - name: Stage native libs under META-INF/native/<jna-platform>/
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A JNA=(
+            [linux-amd64]=linux-x86-64
+            [linux-arm64]=linux-aarch64
+            [darwin-amd64]=darwin-x86-64
+            [darwin-arm64]=darwin-aarch64
+            [windows-amd64]=win32-x86-64
+            [windows-arm64]=win32-aarch64
+          )
+          for plat in "${!JNA[@]}"; do
+            jna=${JNA[$plat]}
+            if [ -d "cdylib/$plat" ]; then
+              mkdir -p "bindings/jvm/src/main/resources/META-INF/native/$jna"
+              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/META-INF/native/$jna/"
+            fi
+          done
+
+      - name: Configure GPG for signing
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Deploy to Central Portal
+        working-directory: bindings/jvm
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          # Inline server creds into a temporary settings.xml so we
+          # don't touch the runner's ~/.m2/settings.xml.
+          cat > settings.xml <<'EOF'
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${env.MAVEN_CENTRAL_USERNAME}</username>
+                <password>${env.MAVEN_CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          mvn -B -s settings.xml -P release -DskipTests \
+            -Dgpg.passphrase="$MAVEN_GPG_PASSPHRASE" \
+            deploy
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
+  publish-php:
+    name: Publish PHP (Packagist tag)
+    needs: [validate, publish-crate, build-php]
+    runs-on: ubuntu-latest
+    # PHP packages are distributed via Packagist, which auto-indexes from
+    # Git tags. No registry push needed — the v* tag that triggered this
+    # workflow is already on the remote by the time we get here. This
+    # job just records the artifact in the workflow run for traceability
+    # and notifies Packagist's webhook if configured.
+    steps:
+      - name: Download PHP distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: php-dist
+          path: dist/
+
+      - name: List distribution
+        run: ls -la dist/
+
+      - name: Notify Packagist (optional)
+        # If PACKAGIST_USERNAME / PACKAGIST_TOKEN secrets are set, ping
+        # the Packagist API to refresh the package's metadata from the
+        # new tag. The secrets are optional; if absent, this step is a
+        # no-op and Packagist's polling will pick the tag up within ~1h.
+        if: ${{ env.PACKAGIST_USERNAME != '' && env.PACKAGIST_TOKEN != '' }}
+        env:
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+        run: |
+          curl -fsSL -XPOST \
+            -H 'content-type:application/json' \
+            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
+            -d '{"repository":{"url":"https://github.com/GoPlasmatic/datalogic-rs"}}'
+
   github-release:
     name: Create GitHub Release
-    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go, publish-node]
+    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go, publish-node, publish-dotnet, publish-jvm, publish-php]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -599,6 +784,20 @@ jobs:
               tar -C "$d" -czf "assets/${name}.tar.gz" .
             done
           fi
+          # C ABI cdylibs — bundle each platform dir into a tarball.
+          if [ -d release-assets ]; then
+            for d in release-assets/c-cdylib-*/; do
+              [ -d "$d" ] || continue
+              name=$(basename "$d")
+              tar -C "$d" -czf "assets/${name}.tar.gz" .
+            done
+          fi
+          # .NET NuGet packages.
+          find release-assets -type f -name '*.nupkg' -exec cp {} assets/ \;
+          # JVM JARs.
+          find release-assets -type f -name 'datalogic-*.jar' -exec cp {} assets/ \;
+          # PHP distribution zip.
+          find release-assets -type f -name '*.zip' -exec cp {} assets/ \;
           echo "Final asset set:"
           ls -la assets/
 

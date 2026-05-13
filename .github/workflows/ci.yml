@@ -458,3 +458,114 @@ jobs:
 
       - name: Build UI library
         run: cd ui && npm run build:lib
+
+  # .NET binding smoke. Single platform — the binding is P/Invoke over
+  # the C ABI's cdylib, so the .NET-side logic (LibraryImport stubs,
+  # marshalling, dispose semantics) is platform-agnostic. The release
+  # matrix validates per-RID native libs.
+  dotnet-test:
+    name: .NET binding test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/c/target/
+          key: ${{ runner.os }}-c-dotnet-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-c-dotnet-
+
+      - name: Build C ABI cdylib
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+
+      - name: dotnet test
+        working-directory: bindings/dotnet
+        run: dotnet test -c Release
+
+  # JVM binding smoke. Same rationale as dotnet-test — the binding is
+  # JNA over the C ABI's cdylib.
+  jvm-test:
+    name: JVM binding test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('bindings/jvm/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/c/target/
+          key: ${{ runner.os }}-c-jvm-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-c-jvm-
+
+      - name: Build C ABI cdylib
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+
+      - name: mvn test
+        working-directory: bindings/jvm
+        run: mvn -B test
+
+  # PHP binding smoke. Same rationale — PHP FFI over the C ABI.
+  php-test:
+    name: PHP binding test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: ffi, json
+          coverage: none
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/c/target/
+          key: ${{ runner.os }}-c-php-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-c-php-
+
+      - name: Build C ABI cdylib
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+
+      - name: composer install
+        working-directory: bindings/php
+        run: composer install --no-interaction --no-progress
+
+      - name: phpunit
+        working-directory: bindings/php
+        run: vendor/bin/phpunit --no-coverage

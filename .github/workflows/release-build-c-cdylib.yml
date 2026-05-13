@@ -1,0 +1,67 @@
+name: _release-build-c-cdylib
+
+# Internal reusable workflow — called by release.yml's `build-c-cdylib` job.
+# Builds the C ABI cdylib for every supported (os, arch) and uploads
+# one `c-cdylib-<os>-<arch>` artifact per matrix entry. The
+# downstream packaging jobs for .NET, Java, and PHP all consume these.
+#
+# Why separate from release-build-go.yml: the Go binding consumes the
+# staticlib (.a) and runs Go-specific validation (go test / build);
+# the other C-ABI consumers want the dynamic library (.so / .dylib /
+# .dll). Building once here keeps the toolchain matrix DRY and ensures
+# every dyn-link consumer gets identical artifacts.
+
+on:
+  workflow_call:
+
+jobs:
+  cdylib:
+    name: C cdylib (${{ matrix.target.os }}/${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # Linux: GNU libc. Windows: msvc (idiomatic for .NET / Java
+          # JNA / PHP FFI consumers, unlike Go which prefers the mingw
+          # `gnu` ABI).
+          - { os: linux,   arch: amd64, runner: ubuntu-latest,    cargo_target: x86_64-unknown-linux-gnu,  filename: libdatalogic_c.so }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, cargo_target: aarch64-unknown-linux-gnu, filename: libdatalogic_c.so }
+          - { os: darwin,  arch: amd64, runner: macos-14,         cargo_target: x86_64-apple-darwin,       filename: libdatalogic_c.dylib }
+          - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,      filename: libdatalogic_c.dylib }
+          - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-msvc,    filename: datalogic_c.dll }
+          - { os: windows, arch: arm64, runner: windows-11-arm,   cargo_target: aarch64-pc-windows-msvc,   filename: datalogic_c.dll }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.cargo_target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/c/target/
+          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-cdylib-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-cdylib-
+
+      - name: Build C ABI cdylib
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+
+      - name: Stage cdylib into upload dir
+        shell: bash
+        run: |
+          PLATFORM=${{ matrix.target.os }}-${{ matrix.target.arch }}
+          mkdir -p upload/$PLATFORM
+          cp bindings/c/target/${{ matrix.target.cargo_target }}/release/${{ matrix.target.filename }} upload/$PLATFORM/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-cdylib-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: upload/
+          if-no-files-found: error

@@ -1,0 +1,80 @@
+name: _release-build-jvm
+
+# Internal reusable workflow — called by release.yml's `build-jvm`
+# job. Consumes the cdylib matrix artifacts, stages them under
+# bindings/jvm/src/main/resources/META-INF/native/<jna-platform>/ (the
+# layout JNA's auto-loader extracts from), runs `mvn test`, then
+# `mvn package` and uploads the resulting JAR.
+
+on:
+  workflow_call:
+
+jobs:
+  package:
+    name: mvn package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('bindings/jvm/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Download all cdylib artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: cdylib/
+          pattern: c-cdylib-*
+          merge-multiple: true
+
+      # Map the matrix's `<os>-<arch>` to JNA's platform-resource
+      # naming (Platform.RESOURCE_PREFIX) and stage native libs into
+      # META-INF/native/<jna-platform>/.
+      - name: Stage native libs under META-INF/native/<jna-platform>/
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A JNA=(
+            [linux-amd64]=linux-x86-64
+            [linux-arm64]=linux-aarch64
+            [darwin-amd64]=darwin-x86-64
+            [darwin-arm64]=darwin-aarch64
+            [windows-amd64]=win32-x86-64
+            [windows-arm64]=win32-aarch64
+          )
+          for plat in "${!JNA[@]}"; do
+            jna=${JNA[$plat]}
+            if [ -d "cdylib/$plat" ]; then
+              mkdir -p "bindings/jvm/src/main/resources/META-INF/native/$jna"
+              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/META-INF/native/$jna/"
+              echo "Staged $plat -> $jna"
+            fi
+          done
+          ls -R bindings/jvm/src/main/resources/META-INF/native/
+
+      - name: Build C ABI locally (for `mvn test`)
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+
+      - name: Test
+        working-directory: bindings/jvm
+        run: mvn -B test
+
+      - name: Package
+        working-directory: bindings/jvm
+        run: mvn -B -DskipTests package
+
+      - name: Upload JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-jars
+          path: |
+            bindings/jvm/target/datalogic-*.jar
+          if-no-files-found: error
