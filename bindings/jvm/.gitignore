@@ -1,0 +1,9 @@
+target/
+*.iml
+.idea/
+.classpath
+.project
+.settings/
+
+# Native libs staged at release time
+src/main/resources/META-INF/native/*/
