@@ -4,8 +4,8 @@ C ABI for the [`datalogic-rs`](../../crates/datalogic-rs) JSONLogic engine. This
 the canonical FFI boundary the language bindings under `bindings/go`,
 `bindings/php`, `bindings/jvm`, etc. consume.
 
-> **Not a user-facing binding.** If you're writing a Go, PHP, or JVM
-> application, use the corresponding language binding — see the
+> **Not a user-facing binding.** If you're writing a Go, JVM, .NET, or
+> PHP application, use the corresponding language binding — see the
 > [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) for
 > the list. This crate is for authors of *new* language bindings that
 > want to route through a shared FFI surface.
@@ -65,9 +65,10 @@ See [`include/datalogic.h`](include/datalogic.h). High-level shape:
 
 | Binding | Path | Mechanism |
 |---|---|---|
-| Go | `bindings/go/` | `cgo` over the cdylib (planned, next) |
-| PHP | `bindings/php/` | PHP FFI (planned) |
-| JVM | `bindings/jvm/` | JNA / JNR-FFI / JNI (planned) |
+| Go | `bindings/go/` | `cgo` over the staticlib |
+| JVM | `bindings/jvm/` | JNA over the cdylib |
+| .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over the cdylib |
+| PHP | `bindings/php/` | PHP FFI (`FFI::cdef`) over the cdylib |
 
 The Python (`bindings/python/`) and WASM (`bindings/wasm/`) bindings
 target their language runtimes directly (pyo3, wasm-bindgen) and do

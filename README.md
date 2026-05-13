@@ -46,8 +46,11 @@ full API reference for that language.
 | **Browser, Deno, Bun, Cloudflare Workers, edge runtimes** | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) (WebAssembly) | `npm i @goplasmatic/datalogic-wasm` | [bindings/wasm/README.md](./bindings/wasm/README.md)            |
 | **Python** service or data pipeline   | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                         | `pip install datalogic-py`                                  | [bindings/python/README.md](./bindings/python/README.md)        |
 | **Go** service                        | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go`    | [bindings/go/README.md](./bindings/go/README.md)                |
+| **Java / JVM** service                | `com.goplasmatic:datalogic`                                                      | Maven Central dependency                                    | [bindings/jvm/README.md](./bindings/jvm/README.md)              |
+| **.NET** service                      | `Goplasmatic.Datalogic`                                                          | `dotnet add package Goplasmatic.Datalogic`                  | [bindings/dotnet/README.md](./bindings/dotnet/README.md)        |
+| **PHP** service                       | `goplasmatic/datalogic`                                                          | `composer require goplasmatic/datalogic`                    | [bindings/php/README.md](./bindings/php/README.md)              |
 | **React** visual rule editor / debugger | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `npm i @goplasmatic/datalogic-ui`                           | [ui/README.md](./ui/README.md)                                  |
-| **C / PHP / JVM** via FFI             | `datalogic-c` (in-tree)                                                          | build locally — consumed by Go and future PHP/JVM bindings  | [bindings/c/README.md](./bindings/c/README.md)                  |
+| **C ABI** for new language bindings   | `datalogic-c` (in-tree)                                                          | build locally — shared FFI surface for Go/JVM/.NET/PHP      | [bindings/c/README.md](./bindings/c/README.md)                  |
 
 Not sure which one? If you're writing the rules and evaluating them in
 the same service, pick the binding for that service's language.

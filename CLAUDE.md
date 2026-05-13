@@ -18,11 +18,14 @@ Cargo workspace + npm monorepo organized into four areas: **`crates/`**
 
 | Path              | Package                                   | Publishes to                         |
 |-------------------|-------------------------------------------|--------------------------------------|
-| `bindings/wasm`   | `@goplasmatic/datalogic` (WASM)           | npm                                  |
+| `bindings/wasm`   | `@goplasmatic/datalogic-wasm` (WASM)      | npm                                  |
 | `bindings/node`   | `@goplasmatic/datalogic-node` (napi-rs)   | npm                                  |
 | `bindings/python` | `datalogic-py` (pyo3)                     | PyPI                                 |
-| `bindings/c`      | `datalogic-c` (C ABI / cbindgen)          | in-tree only (consumed by Go etc.)   |
+| `bindings/c`      | `datalogic-c` (C ABI / cbindgen)          | in-tree only (consumed by Go/JVM/.NET/PHP) |
 | `bindings/go`     | `datalogic-go` (cgo over C ABI)           | Go modules (`bindings/go/v*` tag)    |
+| `bindings/jvm`    | `com.goplasmatic:datalogic` (JNA)         | Maven Central                        |
+| `bindings/dotnet` | `Goplasmatic.Datalogic` (P/Invoke)        | NuGet                                |
+| `bindings/php`    | `goplasmatic/datalogic` (PHP FFI)         | Packagist                            |
 
 **UI** — `ui/`
 

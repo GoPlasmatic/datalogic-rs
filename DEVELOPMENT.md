@@ -168,6 +168,54 @@ any change to the C ABI's Rust source. End-user API, install
 instructions, and prebuilt-library platform matrix:
 [bindings/go/README.md](./bindings/go/README.md).
 
+## `bindings/dotnet` — .NET binding (P/Invoke over C ABI)
+
+```bash
+cd ../c && cargo build --release   # produce libdatalogic_c.{so,dylib,dll}
+cd ../dotnet
+dotnet build -c Release
+dotnet test
+```
+
+P/Invoke stubs are hand-written with `LibraryImport` (source-generated,
+NativeAOT-ready). The native library is resolved at runtime via a
+`DllImportResolver` that falls through:
+`DATALOGIC_NATIVE_LIB` env → NuGet's `runtimes/<rid>/native/` →
+`bindings/c/target/release/`. Publish target: NuGet `Goplasmatic.Datalogic`.
+End-user API: [bindings/dotnet/README.md](./bindings/dotnet/README.md).
+
+## `bindings/jvm` — JVM binding (JNA over C ABI)
+
+```bash
+cd ../c && cargo build --release
+cd ../jvm
+mvn test                           # JUnit 5
+mvn package                        # produces target/datalogic-*.jar + sources + javadoc
+```
+
+JNA `Library` interface mirrors `bindings/c/include/datalogic.h`. The
+Surefire plugin sets `jna.library.path` to `../c/target/release` so
+local tests pick up the in-tree cdylib. Publishable JARs ship the
+native libs under `META-INF/native/<jna-platform>/`. Target: Maven
+Central as `com.goplasmatic:datalogic`. End-user API:
+[bindings/jvm/README.md](./bindings/jvm/README.md).
+
+## `bindings/php` — PHP binding (PHP FFI over C ABI)
+
+```bash
+cd ../c && cargo build --release
+cd ../php
+composer install                    # one-time
+vendor/bin/phpunit                  # PHPUnit
+```
+
+Loads `libdatalogic_c.{so,dylib,dll}` at runtime via
+`FFI::cdef(<curated header>, <lib path>)`. The Native loader searches
+`DATALOGIC_NATIVE_LIB` → `bindings/php/lib/<os>-<arch>/` → in-tree
+`bindings/c/target/release/`. PHP 8.1+ with `ext-ffi` required. Publish
+target: Packagist `goplasmatic/datalogic`. End-user API:
+[bindings/php/README.md](./bindings/php/README.md).
+
 ## `ui` — React component
 
 ```bash

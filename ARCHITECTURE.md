@@ -4,43 +4,46 @@ This monorepo ships one logical product — a JSONLogic engine — across
 multiple runtime targets that all wrap the same Rust core:
 
 ```
-                              +-----------------------------+
-                              |   crates/datalogic-rs       |   Rust crate -> crates.io
-                              |   the engine (source of     |   every binding wraps this
-                              |   truth for behaviour)      |
-                              +--+----+----+----+----+----+-+
-                                 |    |    |    |    |    |
-                path = "../../crates/datalogic-rs" (each binding pins it)
-                                 |    |    |    |    |    |
-        +------------------------+    |    |    |    |    +----------------------+
-        |        +--------------------+    |    |    +----------+                |
-        |        |       +-----------------+    +---------+     |                |
-        v        v       v                                v     v                v
-  +----------+  +-----------+  +-----------+  +--------------+  +-------+   +-----------+
-  | bindings |  | bindings  |  | bindings  |  | bindings/c   |  |bindings|  |tools/     |
-  | /wasm    |  | /node     |  | /python   |  | C ABI +      |  |/go     |  |benchmark  |
-  | wasm-    |  | napi-rs   |  | pyo3 +    |  | cbindgen     |  |cgo over|  |dev-only   |
-  | bindgen  |  |           |  | maturin   |  | (in-tree)    |  |C ABI   |  |           |
-  +----+-----+  +-----+-----+  +-----+-----+  +------+-------+  +---+----+  +-----------+
-       |              |              |               ^              |
-   npm link    npm: @datalogic-node  |       static link via cgo    |
-       |       (per-platform .node)  |               |              |
-       v              ↓              v               +------ links -+
-   +-------+   end-user runtime  PyPI                    Go modules
-   | ui    |   (Node 18+)      datalogic-py          bindings/go/v* tag
-   | React |
-   +-------+
-       |
-       v
-   npm: @goplasmatic/datalogic-ui
+                          +-----------------------------+
+                          |   crates/datalogic-rs       |   Rust crate -> crates.io
+                          |   the engine (source of     |   every binding wraps this
+                          |   truth for behaviour)      |
+                          +--+----+----+----+----+----+-+
+                             |    |    |    |    |    |
+            path = "../../crates/datalogic-rs" (each binding pins it)
+                             |    |    |    |    |    |
+        +--------------------+    |    |    |    |    +----------------------+
+        |       +-----------------+    |    |    +-----+                     |
+        |       |       +--------------+    +-----+    |                     |
+        v       v       v                         v    v                     v
+  +---------+ +--------+ +---------+  +---------------+   +---------+   +---------+
+  |bindings | |bindings| |bindings |  | bindings/c    |   |tools/   |   | ui      |
+  |/wasm    | |/node   | |/python  |  | C ABI +       |   |benchmark|   | React   |
+  |wasm-    | |napi-rs | |pyo3 +   |  | cbindgen      |   |dev-only |   +---------+
+  |bindgen  | |        | |maturin  |  | (in-tree)     |   +---------+        |
+  +----+----+ +--+-----+ +----+----+  +-------+-------+                      v
+       |         |            |               |                       npm: @goplasmatic
+       v         v            v               | dynamic / static            /datalogic-ui
+   npm: @gop    npm:        PyPI:             |   link consumers
+   datalogic-   @gop        datalogic-py      v
+   wasm         datalogic-                +---+---+----+---+----+
+                node                      |       |    |   |    |
+                                          v       v    v   v    v
+                                       bindings/  /jvm /dotnet /php /go
+                                          C       JNA  P/Invoke FFI cgo
+                                          (in-    JAR  NuGet    Composer
+                                          tree)        (NuGet)  + Go
+                                                                modules
 ```
 
 The Rust core is the source of truth for behaviour. Each binding is a
 thin FFI shell that converts at the language boundary and re-exposes
-the engine. WASM, Node, Python, C, and Go pin the core via Cargo
-path-deps; Go links statically through the `bindings/c` C ABI. The
-React UI (`ui/`) consumes the published WASM (or a locally-linked
-build) and adds editing, visualisation, and trace inspection on top.
+the engine. WASM, Node, Python, and C pin the core via Cargo path-deps;
+Go, JVM, .NET, and PHP all link against `bindings/c`'s artifacts (Go
+statically via `.a`; JVM/.NET/PHP dynamically via `.so` / `.dylib` /
+`.dll`). The React UI (`ui/`) consumes the published WASM (or a
+locally-linked build) and adds editing, visualisation, and trace
+inspection on top.
 
 Two JS-side packages, one engine: **`@goplasmatic/datalogic-node`**
 (napi-rs, per-platform `.node` prebuilds) is the first-class target for
@@ -57,7 +60,10 @@ The repo root holds a Cargo workspace with two members:
 
 Each Rust-side binding (`bindings/wasm`, `bindings/node`,
 `bindings/python`, `bindings/c`) declares its own `[workspace]` table
-and is excluded from the parent workspace. This is deliberate:
+and is excluded from the parent workspace. The non-Rust bindings
+(`bindings/jvm`, `bindings/dotnet`, `bindings/php`, `bindings/go`) are
+not Cargo crates at all — they're Maven / .NET / Composer / Go modules
+that consume the artifacts from `bindings/c`. This is deliberate:
 
 - **`bindings/wasm`** — `wasm-pack` needs the WASM-specific release
   profile (`opt-level = "z"`, `lto = true`, `panic = "abort"`,
@@ -73,8 +79,11 @@ and is excluded from the parent workspace. This is deliberate:
   outputs separate from the core test loop.
 
 `bindings/go` is a Go module (no Cargo manifest); it links the static
-library produced by `bindings/c`. `ui` is a Node package. Cargo
-ignores both.
+library produced by `bindings/c`. `bindings/jvm`, `bindings/dotnet`,
+and `bindings/php` are Maven / .NET / Composer packages that load the
+**dynamic** library produced by `bindings/c` at runtime — they don't
+participate in the Rust build graph at all. `ui` is a Node package.
+Cargo ignores them all.
 
 ## Two-phase evaluation (in `crates/datalogic-rs`)
 
@@ -102,14 +111,19 @@ opt in via their dependency line.
 
 | Feature           | Effect                                                            | Used by                        |
 |-------------------|-------------------------------------------------------------------|--------------------------------|
-| `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | Node, Python, `benchmark`, integration tests |
-| `templating`      | Structure-preservation (templating) mode                          | WASM, Node, Python, examples   |
-| `datetime`        | Date/time operators (pulls in `chrono`)                           | WASM, Node, Python, `datetime_ops` example |
-| `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, Node, Python, `tracing` example |
-| `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, `error_handling` example |
-| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python; opt-in per Rust consumer |
-| `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | Rust consumers wiring up a flagd in-process evaluator. See [flagd docs](https://flagd.dev/reference/custom-operations/) |
-| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only — Node and Python inline the feature list rather than using the meta-feature |
+| `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | Node, Python, C, `benchmark`, integration tests |
+| `templating`      | Structure-preservation (templating) mode                          | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), examples |
+| `datetime`        | Date/time operators (pulls in `chrono`)                           | WASM, Node, Python, C, `datetime_ops` example |
+| `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `tracing` example |
+| `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, C, `error_handling` example |
+| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python, C; opt-in per Rust consumer |
+| `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit). See [flagd docs](https://flagd.dev/reference/custom-operations/) |
+| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only — Node, Python, and C inline the feature list rather than using the meta-feature |
+
+The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
+`bindings/c` is compiled with — they don't have their own Cargo
+manifest. To turn an operator family on or off for those bindings, edit
+`bindings/c/Cargo.toml` and rebuild the cdylib.
 
 The `datalogic-bench` crate enables `serde_json` because it reads the
 JSON test-suite files via `serde_json::Value`; it does not need `wasm`
@@ -134,6 +148,9 @@ or `templating`.
 | Python FFI (pyo3)              | `bindings/python/src/lib.rs`                      |
 | C ABI (extern "C" + cbindgen)  | `bindings/c/src/`, generated header in `bindings/c/include/datalogic.h` |
 | Go binding (cgo over C ABI)    | `bindings/go/`                                    |
+| JVM binding (JNA over C ABI)   | `bindings/jvm/`                                   |
+| .NET binding (P/Invoke over C ABI) | `bindings/dotnet/`                            |
+| PHP binding (PHP FFI over C ABI) | `bindings/php/`                                 |
 | React editor + debugger        | `ui/src/components/logic-editor/`                 |
 | Benchmark harness              | `tools/benchmark/src/`                            |
 

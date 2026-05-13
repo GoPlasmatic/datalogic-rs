@@ -17,10 +17,11 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 | WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic-wasm`** | npm |
 | Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (first-class Node target — WASM `@goplasmatic/datalogic-wasm` ships alongside for browsers / Deno / Bun / Workers) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
-| C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/PHP/JVM in-tree, not separately published) | — |
+| C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/JVM/.NET/PHP in-tree, not separately published) | — |
 | Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go` (in-tree module) | Go modules |
-| _future_ PHP | `datalogic-php` | `goplasmatic/datalogic-php` | Packagist |
-| _future_ JVM | `datalogic-jvm` | `com.goplasmatic:datalogic` | Maven Central |
+| JVM | (no Cargo crate — Maven module) | `com.goplasmatic:datalogic` | Maven Central |
+| .NET | (no Cargo crate — .NET project) | `Goplasmatic.Datalogic` | NuGet |
+| PHP | (no Cargo crate — Composer package) | `goplasmatic/datalogic` | Packagist |
 | _future_ Ruby | `datalogic-rb` | `datalogic-rb` | RubyGems |
 
 For Python the PyPI distribution name is `datalogic-py` but the Python
@@ -85,8 +86,11 @@ a deprecation notice on `npm install` pointing them at the new name.
 | WebAssembly | `bindings/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic-wasm` |
 | Node native | `bindings/node/` | napi-rs + napi-cli (per-platform `.node` prebuilds with `optionalDependencies`) | npm: `@goplasmatic/datalogic-node` |
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
-| C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/PHP/JVM) |
+| C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/JVM/.NET/PHP) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go` |
+| JVM | `bindings/jvm/` | JNA over `bindings/c/` cdylib | Maven Central: `com.goplasmatic:datalogic` |
+| .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over `bindings/c/` cdylib | NuGet: `Goplasmatic.Datalogic` |
+| PHP | `bindings/php/` | PHP FFI (`FFI::cdef`) over `bindings/c/` cdylib | Packagist: `goplasmatic/datalogic` |
 
 ### Custom operator support
 
@@ -103,6 +107,9 @@ in how the registration is plumbed into their constructor surface:
 | Python (`datalogic-py`) | Keyword arg on `Engine(...)` | `Engine(custom_operators={"foo": lambda a: "..."})` |
 | C ABI (`bindings/c/`) | Explicit builder + function-pointer callback | `datalogic_engine_builder_add_operator(b, "foo", cb, user_data)` |
 | Go (`bindings/go/`) | Fluent builder over the C ABI | `NewEngineBuilder().AddOperator("foo", fn).Build()` |
+| JVM (`com.goplasmatic:datalogic`) | Fluent builder | `Engine.builder().addOperator("foo", argsJson -> "...").build()` |
+| .NET (`Goplasmatic.Datalogic`) | Fluent builder | `Engine.Builder().AddOperator("foo", argsJson => "...").Build()` |
+| PHP (`goplasmatic/datalogic`) | Fluent builder | `Engine::builder()->addOperator('foo', fn ($a) => '...')->build()` |
 
 **Built-ins win** on every binding: registering a name that collides
 with a built-in JSONLogic operator (`+`, `if`, `var`, …) has no effect
@@ -142,8 +149,9 @@ consume the C ABI's cdylib + generated header.
 | Node native (napi-rs) | No | napi-rs exposes V8 types directly; cheaper than JSON-roundtrip |
 | Ruby (magnus) | No | magnus mirrors pyo3 — direct Ruby type marshalling |
 | Go (cgo) | **Yes** | No first-class Rust↔Go binding tool |
-| PHP (FFI) | **Yes** | PHP's FFI extension consumes any cdylib + header |
-| JVM (JNA / JNR-FFI) | **Yes** | Avoids hand-writing JNI per platform |
+| JVM (JNA) | **Yes** | Avoids hand-writing JNI per platform |
+| .NET (P/Invoke / `LibraryImport`) | **Yes** | NativeAOT-ready source-gen P/Invoke over the cdylib |
+| PHP (FFI) | **Yes** | PHP's FFI extension consumes any cdylib + curated header |
 
 The C ABI's surface is JSON-in/JSON-out throughout — no struct
 marshalling at the boundary. Languages that want native-type fast paths
@@ -162,14 +170,15 @@ channel.
 | Lang | Distribution shape | Lib type | Path in artifact |
 |---|---|---|---|
 | Go | Git tag `bindings/go/vX.Y.Z` with binaries staged in source tree | `.a` static | `bindings/go/lib/<os>_<arch>/libdatalogic_c.a` |
-| PHP | Composer package with platform binaries under `bin/` | `.so` / `.dylib` / `.dll` | `bin/<os>-<arch>/` (loaded via `FFI::cdef`) |
-| JVM | JAR with platform binaries under `META-INF/native/` | `.so` / `.dylib` / `.dll` | `META-INF/native/<os>-<arch>/` (loaded via JNA `Native.load`) |
+| JVM | JAR with platform binaries under `META-INF/native/` | `.so` / `.dylib` / `.dll` | `META-INF/native/<jna-platform>/` (loaded via JNA `Native.load`) |
+| .NET | NuGet package with platform binaries under `runtimes/<rid>/native/` | `.so` / `.dylib` / `.dll` | `runtimes/{linux,osx,win}-{x64,arm64}/native/` |
+| PHP | Composer package with platform binaries under `lib/<os>-<arch>/` | `.so` / `.dylib` / `.dll` | `lib/<os>-<arch>/` (loaded via `FFI::cdef`) |
 
-The matrix in `.github/workflows/release.yml` (`go-build-staticlib`)
-currently runs only the Go binding's matrix. When PHP / JVM bindings
-land, they reuse the same matrix outputs — the matrix becomes a
-producer of staticlib + cdylib artifacts, and each binding's
-`publish-*` job is a downstream consumer.
+Two matrices in `.github/workflows/`:
+- `release-build-go.yml` produces the `.a` staticlib per platform (Go only).
+- `release-build-c-cdylib.yml` produces the `.so`/`.dylib`/`.dll` cdylib
+  per platform; .NET, JVM, and PHP packaging jobs each consume those
+  artifacts and re-stage them under their idiomatic on-disk layout.
 
 Supported (os, arch) matrix:
 
@@ -184,17 +193,11 @@ Supported (os, arch) matrix:
 
 ## Open candidates
 
-The order below reflects the current implementation plan:
+Bindings that haven't landed yet:
 
-1. **PHP** — `bindings/php/` via PHP FFI over `bindings/c/`
-2. **JVM** — `bindings/jvm/` via JNA or JNR-FFI over `bindings/c/`
-3. **Ruby** — `bindings/ruby/` via `magnus`
-
-Other plausible future bindings:
-
-- **Swift** (`swift-bridge` or UniFFI; UniFFI also covers Kotlin)
-- **.NET** (`csbindgen` over `bindings/c/`)
-- **Elixir** (`rustler` NIFs)
+- **Ruby** — `bindings/ruby/` via `magnus` (PR registry: RubyGems)
+- **Swift** — `swift-bridge` or UniFFI (also covers Kotlin natively)
+- **Elixir** — `rustler` NIFs
 
 The core engine is `Send + Sync` and exposes a clean compile-once /
 evaluate-many surface (`Engine`, `Logic`, `Session`), so the same
