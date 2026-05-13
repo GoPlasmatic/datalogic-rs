@@ -51,8 +51,9 @@ jobs:
           done
           ls -R bindings/php/lib/
 
-      - name: Build C ABI locally (for PHPUnit)
-        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+      # Composite: setup Rust + cargo cache + build the host's cdylib so
+      # PHPUnit's FFI-loaded code can find it.
+      - uses: ./.github/actions/c-abi-host
 
       - name: Composer install
         working-directory: bindings/php

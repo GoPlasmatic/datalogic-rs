@@ -8,6 +8,16 @@ name: _release-build-go
 
 on:
   workflow_call:
+    inputs:
+      upload-artifact:
+        description: |
+          Whether to upload the staticlib artifact. release.yml needs it
+          (publish-go consumes the artifacts to stage the Go module tag);
+          ci.yml calls this workflow purely for cross-platform validation
+          and passes `false` to skip the upload step.
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   staticlib:
@@ -114,8 +124,11 @@ jobs:
       # Upload from bindings/go/lib/ so the artifact tarball roots at
       # <os>_<arch>/libdatalogic_c.a. With download-artifact's
       # merge-multiple, all five tarballs flatten into one artifacts/
-      # tree with five sibling <os>_<arch>/ subdirs.
+      # tree with five sibling <os>_<arch>/ subdirs. Skipped for CI
+      # invocations (see `inputs.upload-artifact`) which only need the
+      # cross-platform validation, not the published artifacts.
       - name: Upload artifact
+        if: inputs.upload-artifact
         uses: actions/upload-artifact@v4
         with:
           name: go-staticlib-${{ matrix.target.os }}-${{ matrix.target.arch }}

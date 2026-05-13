@@ -456,9 +456,6 @@ jobs:
           # Need the full tag commit to base our synthetic release commit on.
           fetch-depth: 0
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Download all staticlibs
         uses: actions/download-artifact@v4
         with:
@@ -479,12 +476,14 @@ jobs:
           echo "Staged platform directories:"
           ls bindings/go/lib/
 
+      # The cbindgen-generated header is platform-agnostic — it has no
+      # #ifdef'd content — so we generate it once on this Linux runner
+      # rather than collecting it from every matrix output. The composite
+      # action does the cargo build for us as a side effect.
+      - uses: ./.github/actions/c-abi-host
+
       - name: Stage header into bindings/go/include/
-        # The cbindgen-generated header is platform-agnostic — it has no
-        # #ifdef'd content — so we generate it once on this Linux runner
-        # rather than collecting it from every matrix output.
         run: |
-          cargo build --release --manifest-path bindings/c/Cargo.toml
           mkdir -p bindings/go/include
           cp bindings/c/include/datalogic.h bindings/go/include/
 
@@ -600,7 +599,12 @@ jobs:
 
   publish-jvm:
     name: Publish JVM to Maven Central
-    needs: [validate, publish-crate, build-c-cdylib]
+    # `build-jvm` is listed explicitly even though publish-crate already
+    # transitively depends on it: it makes the dep graph readable at a
+    # glance ("the JVM smoke must pass before we deploy to Central") and
+    # prevents a future edit that loosens publish-crate's gates from
+    # silently dropping the JVM smoke check.
+    needs: [validate, publish-crate, build-c-cdylib, build-jvm]
     runs-on: ubuntu-latest
     # `maven-central` GitHub Environment provides a manual-approval
     # gate — see Settings → Environments → maven-central → required

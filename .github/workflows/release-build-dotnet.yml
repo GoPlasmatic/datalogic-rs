@@ -53,13 +53,12 @@ jobs:
           done
           ls -R bindings/dotnet/runtimes
 
-      - name: Build C ABI locally (for `dotnet test`)
-        # The test project uses the runtimes/ folder lookup path which
-        # `dotnet test` doesn't honor for a project reference — it
-        # needs the lib alongside the test assembly. Easiest: build the
-        # host's cdylib via cargo and let the in-tree NativeLibraryResolver
-        # fall back to bindings/c/target/release/.
-        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+      # The test project uses the runtimes/ folder lookup path which
+      # `dotnet test` doesn't honor for a project reference — it needs
+      # the lib alongside the test assembly. The composite action builds
+      # the host's cdylib via cargo and lets the in-tree
+      # NativeLibraryResolver fall back to bindings/c/target/release/.
+      - uses: ./.github/actions/c-abi-host
 
       - name: Test
         working-directory: bindings/dotnet

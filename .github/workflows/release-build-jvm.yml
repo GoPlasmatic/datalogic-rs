@@ -60,8 +60,9 @@ jobs:
           done
           ls -R bindings/jvm/src/main/resources/META-INF/native/
 
-      - name: Build C ABI locally (for `mvn test`)
-        run: cargo build --release --manifest-path bindings/c/Cargo.toml
+      # Composite: setup Rust + cargo cache + build the host's cdylib so
+      # `mvn test` can dlopen() it during the smoke run.
+      - uses: ./.github/actions/c-abi-host
 
       - name: Test
         working-directory: bindings/jvm
