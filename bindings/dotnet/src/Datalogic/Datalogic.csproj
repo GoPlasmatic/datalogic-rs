@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Goplasmatic.Datalogic</RootNamespace>
+    <AssemblyName>Goplasmatic.Datalogic</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NuGet packaging. Version is bumped together with the core crate
+         via the release workflow; the validate step fails the build if
+         this drifts. -->
+    <PackageId>Goplasmatic.Datalogic</PackageId>
+    <Version>5.0.0</Version>
+    <Authors>Plasmatic</Authors>
+    <Company>Plasmatic</Company>
+    <Description>.NET bindings for the datalogic-rs JSONLogic engine. Wraps the shared C ABI via P/Invoke.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/GoPlasmatic/datalogic-rs</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/GoPlasmatic/datalogic-rs</PackageProjectUrl>
+    <PackageTags>jsonlogic;rules-engine;datalogic;native</PackageTags>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The README explains how `runtimes/<rid>/native/` populates the
+         native libs in CI. Local dev resolves the lib from the C ABI's
+         cargo target dir via the DllImportResolver in
+         Native/NativeMethods.cs. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!-- Embedded native binaries: populated by the release workflow before
+       `dotnet pack`. The wildcard means local dev doesn't need anything
+       under `runtimes/` to build/run — the DllImportResolver falls back
+       to the C ABI's cargo target dir. -->
+  <ItemGroup>
+    <None Include="..\..\runtimes\**\*" Pack="true" PackagePath="runtimes" Condition="Exists('..\..\runtimes')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>
