@@ -608,7 +608,7 @@ jobs:
     # we gate them the same way as PyPI.
     environment:
       name: maven-central
-      url: https://central.sonatype.com/artifact/com.goplasmatic/datalogic
+      url: https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic
     steps:
       - uses: actions/checkout@v4
 

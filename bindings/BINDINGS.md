@@ -19,7 +19,7 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
 | C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/JVM/.NET/PHP in-tree, not separately published) | — |
 | Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go` (in-tree module) | Go modules |
-| JVM | (no Cargo crate — Maven module) | `com.goplasmatic:datalogic` | Maven Central |
+| JVM | (no Cargo crate — Maven module) | `io.github.goplasmatic:datalogic` | Maven Central |
 | .NET | (no Cargo crate — .NET project) | `Goplasmatic.Datalogic` | NuGet |
 | PHP | (no Cargo crate — Composer package) | `goplasmatic/datalogic` | Packagist |
 | _future_ Ruby | `datalogic-rb` | `datalogic-rb` | RubyGems |
@@ -88,7 +88,7 @@ a deprecation notice on `npm install` pointing them at the new name.
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/JVM/.NET/PHP) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go` |
-| JVM | `bindings/jvm/` | JNA over `bindings/c/` cdylib | Maven Central: `com.goplasmatic:datalogic` |
+| JVM | `bindings/jvm/` | JNA over `bindings/c/` cdylib | Maven Central: `io.github.goplasmatic:datalogic` |
 | .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over `bindings/c/` cdylib | NuGet: `Goplasmatic.Datalogic` |
 | PHP | `bindings/php/` | PHP FFI (`FFI::cdef`) over `bindings/c/` cdylib | Packagist: `goplasmatic/datalogic` |
 
@@ -107,7 +107,7 @@ in how the registration is plumbed into their constructor surface:
 | Python (`datalogic-py`) | Keyword arg on `Engine(...)` | `Engine(custom_operators={"foo": lambda a: "..."})` |
 | C ABI (`bindings/c/`) | Explicit builder + function-pointer callback | `datalogic_engine_builder_add_operator(b, "foo", cb, user_data)` |
 | Go (`bindings/go/`) | Fluent builder over the C ABI | `NewEngineBuilder().AddOperator("foo", fn).Build()` |
-| JVM (`com.goplasmatic:datalogic`) | Fluent builder | `Engine.builder().addOperator("foo", argsJson -> "...").build()` |
+| JVM (`io.github.goplasmatic:datalogic`) | Fluent builder | `Engine.builder().addOperator("foo", argsJson -> "...").build()` |
 | .NET (`Goplasmatic.Datalogic`) | Fluent builder | `Engine.Builder().AddOperator("foo", argsJson => "...").Build()` |
 | PHP (`goplasmatic/datalogic`) | Fluent builder | `Engine::builder()->addOperator('foo', fn ($a) => '...')->build()` |
 

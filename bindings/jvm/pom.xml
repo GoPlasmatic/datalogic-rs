@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.goplasmatic</groupId>
+    <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
     <version>5.0.0</version>
     <packaging>jar</packaging>

@@ -1,12 +1,19 @@
-# `com.goplasmatic:datalogic` — Java binding for [`datalogic-rs`](../../crates/datalogic-rs)
+# `io.github.goplasmatic:datalogic` — Java binding for [`datalogic-rs`](../../crates/datalogic-rs)
 
 JNA wrapper over the shared [`bindings/c`](../c) C ABI. Targets JDK 11+.
+
+> **Note on naming.** The Maven `groupId` is `io.github.goplasmatic`
+> (auto-verified Sonatype namespace tied to the GitHub org), but the
+> Java *package* path remains `com.goplasmatic.datalogic` — same brand
+> as the npm `@goplasmatic/` and Composer `goplasmatic/` scopes. Maven
+> permits groupId / package divergence; consumers just need both lines
+> correct.
 
 ## Install
 
 ```xml
 <dependency>
-    <groupId>com.goplasmatic</groupId>
+    <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
     <version>5.0.0</version>
 </dependency>
