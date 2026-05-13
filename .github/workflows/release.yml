@@ -684,14 +684,18 @@ jobs:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
   publish-php:
-    name: Publish PHP (Packagist tag)
+    name: Publish PHP (subtree-split + Packagist)
     needs: [validate, publish-crate, build-php]
     runs-on: ubuntu-latest
-    # PHP packages are distributed via Packagist, which auto-indexes from
-    # Git tags. No registry push needed — the v* tag that triggered this
-    # workflow is already on the remote by the time we get here. This
-    # job just records the artifact in the workflow run for traceability
-    # and notifies Packagist's webhook if configured.
+    # Packagist's public service requires composer.json at the repo
+    # root, which our monorepo can't provide directly. The fix is the
+    # standard "subtree split" pattern (same shape Symfony / Doctrine /
+    # Laravel use): on each v* tag, this job re-stages the built PHP
+    # tree as the root of a sibling distribution repo
+    # (GoPlasmatic/datalogic-php), commits, tags, and pushes. Packagist
+    # watches the distribution repo and picks up the new tag — either
+    # via webhook ping (if PACKAGIST_TOKEN is configured) or its hourly
+    # crawler.
     steps:
       - name: Download PHP distribution
         uses: actions/download-artifact@v4
@@ -699,14 +703,70 @@ jobs:
           name: php-dist
           path: dist/
 
-      - name: List distribution
-        run: ls -la dist/
+      - name: Unpack distribution
+        # build-php's zip contains everything we want at the dist repo's
+        # root: src/, lib/, composer.json, README.md. Unzip into ./tree.
+        run: |
+          mkdir -p tree
+          unzip -q dist/goplasmatic-datalogic-php.zip -d tree-raw
+          # The zip wraps everything in a `goplasmatic-datalogic/` dir.
+          mv tree-raw/goplasmatic-datalogic/* tree/
+          ls -la tree/
+
+      - name: Push to GoPlasmatic/datalogic-php as v${{ needs.validate.outputs.version }}
+        env:
+          # Fine-grained PAT with Contents:write scoped to the
+          # GoPlasmatic/datalogic-php repo. The default GITHUB_TOKEN
+          # can't push across repos, so this is the one secret unique
+          # to the PHP flow.
+          PHP_DIST_PUSH_TOKEN: ${{ secrets.PHP_DIST_PUSH_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PHP_DIST_PUSH_TOKEN:-}" ]; then
+            echo "::error::PHP_DIST_PUSH_TOKEN secret is required to push to GoPlasmatic/datalogic-php"
+            exit 1
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Clone target with the PAT so push works. Default branch
+          # assumption: `main`. If empty (just-created repo), git clone
+          # still works but produces an empty working tree.
+          git clone --depth=1 \
+            "https://x-access-token:${PHP_DIST_PUSH_TOKEN}@github.com/GoPlasmatic/datalogic-php.git" \
+            target
+
+          cd target
+          # Replace tree contents wholesale. The dist repo is a derived
+          # artifact; we don't preserve cross-version diff history at
+          # file level — one release commit per tag is the contract.
+          # `git rm -rf .` cleans everything tracked; rsync then drops
+          # the new tree in place.
+          git rm -rf . 2>/dev/null || true
+          # Anything untracked (e.g. .git/) survives `git rm`. Remove
+          # leftover files except the .git dir to avoid stale content.
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -r ../tree/. .
+          git add -A
+          # Skip empty commits (e.g. a rerun of the same tag).
+          if git diff --cached --quiet; then
+            echo "Distribution tree unchanged for v${VERSION}; skipping commit."
+          else
+            git commit -m "release: v${VERSION}"
+          fi
+          # Tag must be unique; force-update if a partial earlier run
+          # left a stale tag pointing at an older commit.
+          git tag -f "v${VERSION}"
+          git push origin HEAD:main
+          git push origin "v${VERSION}" --force
+          echo "::notice::Pushed v${VERSION} to GoPlasmatic/datalogic-php"
 
       - name: Notify Packagist (optional)
-        # If PACKAGIST_USERNAME / PACKAGIST_TOKEN secrets are set, ping
-        # the Packagist API to refresh the package's metadata from the
-        # new tag. The secrets are optional; if absent, this step is a
-        # no-op and Packagist's polling will pick the tag up within ~1h.
+        # If PACKAGIST_USERNAME / PACKAGIST_TOKEN are configured, ping
+        # the Packagist API to refresh the package immediately. Without
+        # them, Packagist's hourly crawler picks up the tag within ~1h.
         if: ${{ env.PACKAGIST_USERNAME != '' && env.PACKAGIST_TOKEN != '' }}
         env:
           PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
@@ -715,7 +775,7 @@ jobs:
           curl -fsSL -XPOST \
             -H 'content-type:application/json' \
             "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d '{"repository":{"url":"https://github.com/GoPlasmatic/datalogic-rs"}}'
+            -d '{"repository":{"url":"https://github.com/GoPlasmatic/datalogic-php"}}'
 
   github-release:
     name: Create GitHub Release
