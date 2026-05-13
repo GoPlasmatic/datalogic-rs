@@ -16,12 +16,14 @@ mod engine;
 mod error;
 mod rule;
 mod session;
+mod traced_session;
 
 pub use builder::*;
 pub use engine::*;
 pub use error::*;
 pub use rule::*;
 pub use session::*;
+pub use traced_session::*;
 
 use std::ffi::{CStr, CString, c_char};
 

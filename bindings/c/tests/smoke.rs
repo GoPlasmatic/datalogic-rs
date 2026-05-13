@@ -307,6 +307,7 @@ fn null_pointers_are_handled_without_segfault() {
     unsafe { datalogic_engine_free(std::ptr::null_mut()) };
     unsafe { datalogic_rule_free(std::ptr::null_mut()) };
     unsafe { datalogic_session_free(std::ptr::null_mut()) };
+    unsafe { datalogic_traced_session_free(std::ptr::null_mut()) };
     unsafe { datalogic_string_free(std::ptr::null_mut()) };
     unsafe { datalogic_session_reset(std::ptr::null_mut()) };
     assert_eq!(
@@ -321,4 +322,83 @@ fn null_pointers_are_handled_without_segfault() {
         .to_str()
         .unwrap();
     assert!(msg.contains("null"));
+}
+
+// =============== Traced session ===============
+
+#[test]
+fn traced_session_evaluate_returns_result_and_steps() {
+    let engine = datalogic_engine_new(0);
+    let session = unsafe { datalogic_engine_traced_session(engine) };
+    assert!(!session.is_null());
+
+    let rule = cstr(r#"{"+":[{"var":"x"},1]}"#);
+    let data = cstr(r#"{"x":41}"#);
+    let out = unsafe { datalogic_traced_session_evaluate(session, rule.as_ptr(), data.as_ptr()) };
+    let json = unsafe { take_string(out) };
+    // Wire shape: {"result": ..., "expression_tree": ..., "steps": [...]}
+    let v: serde_json::Value = serde_json::from_str(&json).expect("traced run is JSON");
+    assert_eq!(v["result"], serde_json::json!(42));
+    assert!(v["steps"].is_array(), "steps should be an array");
+    assert!(
+        !v["steps"].as_array().unwrap().is_empty(),
+        "steps should not be empty for a non-trivial rule"
+    );
+    assert!(v["expression_tree"].is_object());
+    assert!(v["error"].is_null());
+
+    unsafe { datalogic_traced_session_free(session) };
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn traced_session_surfaces_runtime_error_in_payload() {
+    let engine = datalogic_engine_new(0);
+    let session = unsafe { datalogic_engine_traced_session(engine) };
+
+    let rule = cstr(r#"{"throw":"boom"}"#);
+    let data = cstr("{}");
+    let out = unsafe { datalogic_traced_session_evaluate(session, rule.as_ptr(), data.as_ptr()) };
+    // Traced eval ALWAYS returns a JSON payload — engine errors live in
+    // the payload's `error` field, not as a NULL return.
+    let json = unsafe { take_string(out) };
+    let v: serde_json::Value = serde_json::from_str(&json).expect("traced run is JSON");
+    assert!(v["result"].is_null());
+    let err = v["error"].as_str().expect("error message present");
+    assert!(err.to_lowercase().contains("boom") || err.to_lowercase().contains("throw"));
+    assert!(v["structured_error"].is_object());
+
+    unsafe { datalogic_traced_session_free(session) };
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn traced_session_evaluate_with_null_pointers_sets_error() {
+    datalogic_last_error_clear();
+    let engine = datalogic_engine_new(0);
+    let session = unsafe { datalogic_engine_traced_session(engine) };
+    let data = cstr("{}");
+    let out =
+        unsafe { datalogic_traced_session_evaluate(session, std::ptr::null(), data.as_ptr()) };
+    assert!(out.is_null());
+    let msg = unsafe { CStr::from_ptr(datalogic_last_error_message()) }
+        .to_str()
+        .unwrap();
+    assert!(msg.contains("rule_json"), "got: {msg}");
+    unsafe { datalogic_traced_session_free(session) };
+    unsafe { datalogic_engine_free(engine) };
+}
+
+// =============== flagd-feature operators (sem_ver, fractional) ===============
+
+#[test]
+fn flagd_sem_ver_operator_is_available() {
+    // Smoke-test that the C ABI exposes the flagd feature's sem_ver op.
+    let engine = datalogic_engine_new(0);
+    let rule = cstr(r#"{"sem_ver":["1.2.3","<","2.0.0"]}"#);
+    let data = cstr("{}");
+    let out = unsafe { datalogic_engine_apply(engine, rule.as_ptr(), data.as_ptr()) };
+    let s = unsafe { take_string(out) };
+    assert_eq!(s, "true");
+    unsafe { datalogic_engine_free(engine) };
 }

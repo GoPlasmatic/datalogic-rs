@@ -42,6 +42,7 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "ext-array",
     "ext-control",
     "ext-math",
+    "flagd",
 ] }
 # pyo3 0.23 is the floor for Rust edition 2024 + the `Bound<'py, T>` API.
 # `abi3-py310` produces ONE wheel per (os, arch) covering CPython 3.10+;

@@ -4,8 +4,8 @@
  *
  * Threading & memory model
  * ------------------------
- *  - `datalogic_engine` and `datalogic_rule` handles are thread-safe;
- *    share across threads freely.
+ *  - `datalogic_engine`, `datalogic_rule`, and `datalogic_traced_session`
+ *    handles are thread-safe; share across threads freely.
  *  - `datalogic_session` handles are NOT thread-safe; open one per thread.
  *  - Inputs (rule_json, data_json) are caller-owned, NUL-terminated UTF-8.
  *  - Functions returning `char*` transfer ownership — caller must release
@@ -64,6 +64,21 @@ typedef struct datalogic_rule datalogic_rule;
  * even if the consumer frees the engine handle first.
  */
 typedef struct datalogic_session datalogic_session;
+
+/**
+ * Trace-enabled handle over a [`datalogic_rs::Engine`]. Constructed via
+ * [`datalogic_engine_traced_session`].
+ *
+ * Unlike [`crate::session::Session`], this handle carries no per-call
+ * arena — `TracedSession` always allocates a fresh `bumpalo::Bump` per
+ * run to keep the borrowed-result lifetime tied to the trace. The
+ * handle exists for API symmetry (every binding gets `engine ->
+ * traced_session -> evaluate`).
+ *
+ * Holds `Arc<Engine>` so the underlying engine outlives the handle
+ * even if the consumer frees the engine handle first.
+ */
+typedef struct datalogic_traced_session datalogic_traced_session;
 
 /**
  * Callback signature for user-defined operators.
@@ -364,6 +379,49 @@ char *datalogic_session_evaluate(datalogic_session *session,
  * `session` must be a valid pointer or `NULL`.
  */
  uintptr_t datalogic_session_allocated_bytes(datalogic_session *session);
+
+/**
+ * Open a [`TracedSession`] bound to this engine. Every `evaluate` call
+ * returns a JSON object carrying the result alongside execution-step and
+ * expression-tree metadata.
+ *
+ * # Safety
+ *
+ * `engine` must be a valid pointer returned by
+ * [`crate::datalogic_engine_new`].
+ */
+ datalogic_traced_session *datalogic_engine_traced_session(datalogic_engine *engine);
+
+/**
+ * Release a traced-session handle. Safe to call with `NULL`.
+ *
+ * # Safety
+ *
+ * `session` must either be `NULL` or a pointer previously returned by
+ * [`datalogic_engine_traced_session`] that has not been freed.
+ */
+ void datalogic_traced_session_free(datalogic_traced_session *session);
+
+/**
+ * One-shot traced evaluation: compile `rule_json` internally with the
+ * optimizer disabled, evaluate against `data_json`, and return the
+ * result + trace as a JSON-object string. Engine errors (parse / eval)
+ * surface inside the returned JSON's `error` / `structured_error`
+ * fields, not as a `NULL` return — `NULL` is reserved for invalid input
+ * pointers (null / non-UTF8).
+ *
+ * Caller releases the returned string via
+ * [`crate::datalogic_string_free`].
+ *
+ * # Safety
+ *
+ * `session` must be a valid pointer; `rule_json` and `data_json` must be
+ * valid NUL-terminated UTF-8 strings.
+ */
+
+char *datalogic_traced_session_evaluate(datalogic_traced_session *session,
+                                        const char *rule_json,
+                                        const char *data_json);
 
 #ifdef __cplusplus
 }  // extern "C"

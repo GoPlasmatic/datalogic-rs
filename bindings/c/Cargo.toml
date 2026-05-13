@@ -26,19 +26,23 @@ name = "datalogic_c"
 
 [dependencies]
 # Feature set mirrors `bindings/python` so a rule that runs from Python
-# also runs through the C ABI without surprise. `trace` is omitted — the
-# C surface doesn't expose tracing in v1; add it back if/when we wrap
-# `TracedSession`.
+# also runs through the C ABI without surprise. `trace` is wired up via
+# `datalogic_traced_session_*` in `src/traced_session.rs`; `flagd` exposes
+# `fractional` + `sem_ver` to every downstream consumer (Go, Java, .NET,
+# PHP).
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "serde_json",
     "datetime",
+    "trace",
     "templating",
     "error-handling",
     "ext-string",
     "ext-array",
     "ext-control",
     "ext-math",
+    "flagd",
 ] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [build-dependencies]

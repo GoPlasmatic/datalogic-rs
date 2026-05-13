@@ -19,8 +19,8 @@ header = """/* SPDX-License-Identifier: Apache-2.0
  *
  * Threading & memory model
  * ------------------------
- *  - `datalogic_engine` and `datalogic_rule` handles are thread-safe;
- *    share across threads freely.
+ *  - `datalogic_engine`, `datalogic_rule`, and `datalogic_traced_session`
+ *    handles are thread-safe; share across threads freely.
  *  - `datalogic_session` handles are NOT thread-safe; open one per thread.
  *  - Inputs (rule_json, data_json) are caller-owned, NUL-terminated UTF-8.
  *  - Functions returning `char*` transfer ownership — caller must release
@@ -42,6 +42,7 @@ item_types = ["functions", "opaque", "typedefs"]
 "Engine" = "datalogic_engine"
 "Rule" = "datalogic_rule"
 "Session" = "datalogic_session"
+"TracedSession" = "datalogic_traced_session"
 "EngineBuilder" = "datalogic_engine_builder"
 "DatalogicOpCallback" = "datalogic_op_callback"
 
