@@ -72,6 +72,16 @@ jobs:
         # `napi build --platform` emits `datalogic-node.<triple>.node`.
         # `--release` strips and runs the release profile defined in
         # bindings/node/Cargo.toml (lto = "fat" + codegen-units = 1).
+        #
+        # `-C link-self-contained=yes` on musl targets: building a shared
+        # `.node` defaults to dynamically linking `libgcc_s.so.1`, which
+        # apt's `musl-tools` doesn't ship on arm64 hosts (and is fragile
+        # on x64). Self-contained linking makes rustc bundle
+        # `compiler-rt` for runtime support instead, dropping the
+        # libgcc_s dependency entirely. No effect on glibc / macOS /
+        # windows targets — empty string disables the flag there.
+        env:
+          RUSTFLAGS: ${{ matrix.target.libc == 'musl' && '-C link-self-contained=yes' || '' }}
         run: npx napi build --platform --release --target ${{ matrix.target.target }}
 
       # Run the JS test suite when the runner can execute the resulting
