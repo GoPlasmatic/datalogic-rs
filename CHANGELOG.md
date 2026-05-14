@@ -8,10 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
-## [Unreleased]
+## [5.0.0] - 2026-05-14
+
+v5 is a coordinated major release across the Rust core crate and every
+language binding — WASM, Node, Python, C, Go, JVM, .NET, and PHP. For
+step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
 
 ### Added
 
+- **Node-native binding** (`@goplasmatic/datalogic-node`) via napi-rs,
+  shipping per-platform `.node` prebuilds. WASM is now positioned for
+  browser/edge; Node services should prefer the native binding.
+- **Python binding** (`datalogic-py`) via pyo3 + maturin, with abi3-py310
+  wheels across Linux (gnu/musl, x86_64/aarch64), macOS, and Windows.
+- **C ABI crate** (`bindings/c`) via cbindgen, exposed as a static and
+  shared library consumed in-tree by the Go / JVM / .NET / PHP bindings.
+- **Go binding** (`datalogic-go`) over the C ABI, with a synthetic
+  `bindings/go/v*` tag published by the release pipeline.
+- **JVM binding** (`io.github.goplasmatic:datalogic`) via JNA over the
+  shared C cdylib, published to Maven Central.
+- **.NET binding** (`Goplasmatic.Datalogic`) via P/Invoke over the
+  shared C cdylib, published to NuGet.
+- **PHP binding** (`goplasmatic/datalogic`) via PHP FFI over the shared
+  C cdylib; ships via a subtree split to `GoPlasmatic/datalogic-php`
+  (Packagist resolves from tags).
 - **`flagd` Cargo feature** — opt-in OpenFeature flagd-compatible operators
   ([spec](https://flagd.dev/reference/custom-operations/)):
   - `fractional` — deterministic murmurhash3-x86-32 percentage bucketing,
@@ -28,27 +48,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   [`fractional_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/fractional_test.go)
   and [`semver_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/semver_test.go).
 - **Custom operator registration across every language binding** — WASM,
-  Node, Python, C ABI, and Go now expose a way to register host-language
-  callbacks as JSONLogic operators, with a uniform JSON-string in/out
-  contract. See [`bindings/BINDINGS.md`](./bindings/BINDINGS.md#custom-operator-support).
-
-## [5.0.0] - 2026-05-11
-
-v5 is a coordinated major release across the Rust core crate and every
-binding (WASM, Node, Python, C, Go). For step-by-step v4→v5 migration,
-see [MIGRATION.md](./MIGRATION.md).
-
-### Added
-
-- **Node-native binding** (`@goplasmatic/datalogic-node`) via napi-rs,
-  shipping per-platform `.node` prebuilds. WASM is now positioned for
-  browser/edge; Node services should prefer the native binding.
-- **Python binding** (`datalogic-py`) via pyo3 + maturin, with abi3-py310
-  wheels across Linux (gnu/musl, x86_64/aarch64), macOS, and Windows.
-- **C ABI crate** (`bindings/c`) via cbindgen, exposed as a static library
-  consumed in-tree by the Go binding.
-- **Go binding** (`datalogic-go`) over the C ABI, with a synthetic
-  `bindings/go/v*` tag published by the release pipeline.
+  Node, Python, C ABI, Go, JVM, .NET, and PHP now expose a way to
+  register host-language callbacks as JSONLogic operators, with a
+  uniform JSON-string in/out contract. See
+  [`bindings/BINDINGS.md`](./bindings/BINDINGS.md#custom-operator-support).
 - **Module-level helpers**: `datalogic_rs::eval`, `eval_str`, `eval_into`,
   and `compile` — backed by a default engine, no construction required.
 - **`engine.eval_into::<T>(...)`** for typed deserialization of results.
@@ -56,13 +59,19 @@ see [MIGRATION.md](./MIGRATION.md).
 - **`with_constant_folding(false)`** builder flag for tree walkers
   (debuggers, alternate evaluators).
 - **`TracedSession`** mirrors `Session` 1:1 — every `eval*` returns
-  `TracedRun<R>`.
+  `TracedRun<R>`. The C ABI surfaces a parallel
+  `datalogic_traced_session_*` family so JVM / .NET / PHP / Go share
+  the same session-with-trace contract.
 - **`ArenaExt` trait** for ergonomic `CustomOperator` return values, plus
   a public `bumpalo` re-export.
 - **`IntoLogic`** and **`FromDataValue`** traits for boundary conversion.
 - Public docs site (mdBook) at `docs/`, deployed via `.github/workflows/docs.yml`.
 - Cross-library benchmark matrix under `tools/benchmark/` (datalogic-rs
   vs. json-logic-* and WASM peers).
+- Arena-mode evaluation dispatch: every operator now has a native
+  arena variant (no legacy bridge fallbacks), structured-error
+  breadcrumbs carry a node-id path, and the trace pipeline reuses
+  `CompiledNode::id` directly instead of a side-table HashMap.
 
 ### Changed
 
@@ -116,5 +125,318 @@ See [MIGRATION.md](./MIGRATION.md) for the authoritative v4→v5 cookbook,
 including a 60-second checklist, method-by-method translations,
 side-by-side patterns, and structural-error consumer recipes.
 
-[Unreleased]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.0.0...HEAD
-[5.0.0]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v5.0.0
+## [4.0.21] - 2026-04-11
+
+### Fixed
+
+- UI type declarations regenerated to match the published library
+  surface; resolves consumer TypeScript build errors against
+  `@goplasmatic/datalogic-ui`.
+
+## [4.0.20] - 2026-04-11
+
+### Added
+
+- First CI and release workflows for the v4 line
+  (`.github/workflows/ci.yml`, `.github/workflows/release.yml`).
+
+### Changed
+
+- Reduced code duplication across operator implementations and
+  trimmed unused dependencies in the core crate.
+
+### Fixed
+
+- UI: resolved edge-crossing artefacts and trace-matching mismatches
+  in the visual debugger.
+- UI: dropped `vite-plugin-top-level-await` for Vite 8 compatibility.
+- Clippy + TypeScript lint cleanups across the workspace.
+
+### Security
+
+- UI dev deps: patched `picomatch` and `brace-expansion` advisories.
+
+## [4.0.19] - 2026-03-12
+
+### Added
+
+- Compilation pipeline restructured into a modular, multi-pass
+  optimisation flow (constant-folding etc.) on top of the
+  `CompiledNode` IR.
+
+### Changed
+
+- Removed the unused `Optimized(OptimizedNode)` variant from the
+  compiled-node enum and trimmed the surrounding match arms.
+- Evaluation hot-path tuning: more aggressive `#[inline]` placement
+  and enum-size reductions for cache-line wins.
+
+### Fixed
+
+- WASM target: dropped the unconditional `chrono`/`wasmbind` dep so
+  consumers compiling for non-browser wasm32 targets build cleanly
+  (PR [#48](https://github.com/GoPlasmatic/datalogic-rs/pull/48),
+  thanks @aepfli).
+- UI: trace child matching now uses deep equality, fixing mismatches
+  when `BTreeMap` key ordering diverged between runs.
+- UI: CSS imports moved into components so the library build's
+  tree-shaker doesn't drop them.
+
+### Security
+
+- Bumped UI dev dependencies to clear `npm audit` findings.
+
+## [4.0.18] - 2026-02-06
+
+### Added
+
+- **`switch` / `match` operator** for pattern-matching style control
+  flow (replaces deeply nested `if` chains).
+- UI: visual support for rendering `switch`/`match` nodes in the
+  debugger.
+
+### Changed
+
+- Compile-time specialisation for hot operators plus fast paths for
+  quantifiers (`all`/`some`/`none`), `reduce`, `map`, `try`/`throw`,
+  and datetime parsing.
+- New invariant-evaluation helper used by `slice`, `cat`, `length`,
+  and `min`/`max`.
+- Eliminated redundant datetime / duration parsing in comparisons;
+  improved comparison heuristics.
+- Removed an unnecessary `LazyLock` from NaN error construction.
+
+## [4.0.15] - 2026-02-04
+
+### Added
+
+- Dedicated `CompiledVar` and `CompiledExists` node variants with
+  matching evaluation + tracing paths (faster than the generic
+  operator dispatch they replace).
+
+### Changed
+
+- **Eval hot path is ~23% faster** in the bundled benchmarks via
+  fewer clones, dedicated context-frame fields for `reduce`, and
+  `Cow`-based intermediate values.
+- Replaced the `BTreeMap`-backed reduce context frame with explicit
+  fields (`accumulator`, `current`).
+- Removed the `SmallVec` dependency — array nodes use `Vec` directly.
+- Operator modules consolidated; duplicated comparison logic
+  deduplicated.
+- Moved `val` datetime / duration property access out of the val
+  fast path and optimised val compilation.
+- Bumped `regex` to 1.12.
+
+### Fixed
+
+- Numeric and string comparison fast paths corrected for edge cases
+  around mixed types.
+
+## [4.0.14] - 2026-02-02
+
+### Added
+
+- UI: operator catalog panel with category icons + colour coding.
+- UI: URL sharing for rules + data ("share a debug session").
+- UI: visual editor mode with properties panel + context menus, plus
+  per-argument type selection.
+- UI: error visualisation in the debugger trace.
+- UI: mobile-friendly responsive layout (iPad + phone).
+- UI: `componentMode` prop to toggle the mode selector visibility.
+- UI: namespaced CSS classes with a `dl-` prefix and a theme system
+  (v4.0.13 internal cut).
+
+### Changed
+
+- UI: rebranded from "DataLogic Debugger" to **DataLogic Studio**.
+- UI: modularised debugger context, trace utilities, and editor
+  architecture; unified node components.
+- Core: simplified `throw` / `try` operator implementations.
+
+### Fixed
+
+- UI: focus loss during edits, expression sync on deletion, desktop
+  accordion regression, mobile properties-panel positioning,
+  toolbar/menu issues on iPad, `if`/`else` trace matching and
+  structure-node collapse, filter example using `val`.
+- UI: read-only mode no longer mounts `EditorProvider`.
+
+### Removed
+
+- UI: deprecated props, unused CSS, stale public assets and manifest
+  reference.
+
+## [4.0.9] - 2026-01-24
+
+### Added
+
+- Crate packaging excludes the `ui/` tree and npm files so cargo
+  package payloads stay lean.
+
+### Fixed
+
+- UI: debugger and structure-node edge regressions.
+- Docs: corrected datetime operator examples.
+
+## [4.0.8] - 2026-01-24
+
+### Added
+
+- **React visual debugger** (`@goplasmatic/datalogic-ui`) and an
+  initial monorepo layout housing the UI alongside the core crate.
+- UI: human-readable operator titles in the logic editor.
+
+### Changed
+
+- Renamed the `datalogic-wasm/` directory to `wasm/` and tightened
+  the WASM build profile.
+- Docs modularised into JS / React sections, plus a link to the
+  full-page visual debugger from the playground.
+
+### Fixed
+
+- WASM: `now` datetime operator wired through to the JS surface.
+- Playground URLs updated from the legacy `datalogic-ui` repo.
+- Docs workflow: corrected the `rust-toolchain` action name.
+- pnpm version removed from CI so the `packageManager` field in
+  `package.json` is authoritative.
+
+## [4.0.7] - 2026-01-23
+
+### Added
+
+- **Execution tracing** for step-by-step debugging — exposed both in
+  the Rust API and the WASM surface.
+- WASM published to **npm** with CDN-friendly loading paths.
+- WASM `preserve_structure` parameter on the JS entry points.
+
+### Changed
+
+- Playground updated to consume WASM 4.0.7 with the new
+  `preserve_structure` flag.
+
+### Removed
+
+- Dropped the "execution-trace proposal" draft now that the feature
+  has landed.
+
+## [4.0.5] - 2026-01-09
+
+### Added
+
+- **WebAssembly bindings** as a first-class binding target, with
+  optimised dependency tree.
+- **mdBook documentation** at `docs/` with GitHub Pages deployment.
+- **Custom operators** support that interoperates with
+  `preserve_structure` mode (PR
+  [#44](https://github.com/GoPlasmatic/datalogic-rs/pull/44),
+  thanks @ngerakines).
+- Comprehensive documentation set + worked examples.
+
+### Changed
+
+- Context stack simplified; operator implementations trimmed.
+- Bumped `regex` to 1.12.2.
+
+## [4.0.4] - 2025-10-03
+
+### Added
+
+- **Comprehensive `EvaluationConfig`** for tuning evaluator behaviour
+  (numeric coercion, undefined handling, etc.).
+
+### Changed
+
+- Context-metadata keys and value-access paths optimised.
+- `access_path_ref` refactored to use let-chains for cleaner nested
+  matching.
+
+## [4.0.3] - 2025-09-18
+
+### Fixed
+
+- `val` operator: numeric indices with level access (e.g. nested
+  index lookups in scoped contexts) now resolve correctly.
+
+## [4.0.2] - 2025-09-18
+
+### Fixed
+
+- `reduce` operator: nested properties whose parent key was a numeric
+  string no longer mis-resolve.
+
+## [4.0.1] - 2025-09-14
+
+### Changed
+
+- Dependency-version maintenance bump.
+
+## [4.0.0] - 2025-09-14
+
+Major architecture overhaul ("v4 redesign"). The evaluator is now
+built around a pre-compiled `CompiledNode` IR with an `OpCode` enum
+dispatch, replacing the v3 walk-the-`Value` evaluator. See
+[MIGRATION.md](./MIGRATION.md) for v3→v4 movement (and the v4→v5
+section for the subsequent migration).
+
+### Added
+
+- **Pre-compilation pipeline**: `OpCode` enum + `CompiledNode` IR,
+  static logic pre-compilation, and an inline-function dispatch
+  layer.
+- **Operator surface — comparison, arithmetic, type, string,
+  datetime, duration, control-flow** all rebuilt on the new IR with
+  comprehensive coverage and overflow-safe semantics.
+- **`exists` operator** plus fixes to `array` / `val` operators
+  around it.
+- **`length` operator** for strings and arrays.
+- **`sort` and `slice` operators**.
+- **`try` / `throw` operators** for error handling.
+- **`now` operator** returning the current datetime.
+- **Comprehensive thread-safety story** with `Arc`-backed root data
+  on the context stack.
+
+### Changed
+
+- Eliminated `node_to_value` conversions — everything operates on
+  `CompiledNode` end-to-end.
+- Consolidated common operator logic into shared helper modules and
+  deduplicated comparison code.
+- Removed the v3 hash-caching system after profiling showed it was
+  no longer load-bearing.
+- Datetime overflow protection switched to saturation semantics for
+  arithmetic; overflow protection extended to all numeric operators.
+- Structured-object handling in the fast evaluator hardened.
+- Duration checks reordered ahead of generic object checks in
+  comparison operators (fixes mis-typed comparisons).
+
+### Fixed
+
+- `merge` operator: null values handled correctly.
+- Numerous compile-time and doc-test regressions surfaced by the
+  rewrite.
+
+### Removed
+
+- Arena-allocation layer from the v3 design (the v4 evaluator no
+  longer needed it; arena evaluation was reintroduced as an
+  optional dispatch mode in v5).
+- Hash-caching layer (see above).
+
+[5.0.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v4.0.21...v5.0.0
+[4.0.21]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.21
+[4.0.20]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.20
+[4.0.19]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.19
+[4.0.18]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.18
+[4.0.15]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.15
+[4.0.14]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.14
+[4.0.9]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.9
+[4.0.8]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.8
+[4.0.7]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.7
+[4.0.5]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.5
+[4.0.4]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.4
+[4.0.3]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.3
+[4.0.2]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.2
+[4.0.1]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.1
+[4.0.0]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.0

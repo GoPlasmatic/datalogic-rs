@@ -67,7 +67,7 @@ are authoritative; link to them.
   JSON suite under `tests/suites/`. See the canonical step-by-step in
   [`DEVELOPMENT.md`](./DEVELOPMENT.md#adding-a-built-in-operator).
 - **Operator function signature:**
-  `pub(crate) fn evaluate_<op><'a>(args: &'a [CompiledNode], ctx: &mut DataContextStack<'a>, engine: &Engine, arena: &'a Bump) -> Result<&'a DataValue<'a>>`.
+  `pub(crate) fn evaluate_<op><'a>(args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump) -> Result<&'a DataValue<'a>>`.
 - **Test-suite JSON format:** array of test-case objects with
   `description`, `rule`, `data`, and either `result` or `error`. Strings
   in the array are skipped (used as section headers). Full schema in

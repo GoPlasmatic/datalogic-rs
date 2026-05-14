@@ -277,7 +277,7 @@ JSONLogic implementation as a comparison subject, see
    `FromStr` + `as_str()` entries.
 2. Implement `evaluate_<op>` under `crates/datalogic-rs/src/operators/<category>/`
    following the established signature
-   (`args: &'a [CompiledNode], ctx: &mut DataContextStack<'a>, engine: &Engine, arena: &'a Bump`).
+   (`args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump`).
 3. Add a dispatch arm in `crates/datalogic-rs/src/engine/dispatch.rs` (or in
    `OpCode::evaluate_direct()` — same path).
 4. Add a JSON suite under `crates/datalogic-rs/tests/suites/<category>/` covering
