@@ -688,10 +688,6 @@ jobs:
           mvn -B -s settings.xml -P release -DskipTests \
             -Dgpg.passphrase="$MAVEN_GPG_PASSPHRASE" \
             deploy
-        env:
-          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
   publish-php:
     name: Publish PHP (subtree-split + Packagist)
