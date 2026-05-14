@@ -340,11 +340,16 @@ jobs:
       contents: read
     steps:
       - name: Download ui-package artifact
-        # The artifact tarball roots with `ui/...`. Default
-        # `path: .` reconstructs that tree under the runner root.
+        # `actions/upload-artifact@v4+` strips the common parent path
+        # when every uploaded path shares a prefix (every entry in
+        # release-build-ui.yml's upload starts with `ui/`, so the
+        # artifact actually contains `package.json`, `dist/`, etc. at
+        # root — without the `ui/` wrapper). Download into `ui/`
+        # explicitly so the subsequent `cd ui && npm publish` works.
         uses: actions/download-artifact@v8
         with:
           name: ui-package
+          path: ui
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
