@@ -1,0 +1,51 @@
+[package]
+name = "datalogic-bench"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Dev-only benchmark harness for datalogic-rs (single-engine and cross-library)."
+publish = false
+
+[dependencies]
+# Enable every operator-set feature so the dlrs:* columns in `bin/compare.rs`
+# can run every suite. Without these, suites exercising `try`, `length`,
+# `sort`, `datetime`, etc. fall through to ERR cells — the engine *can*
+# do them, the bench just hadn't opted in. The dlrs:wasm column
+# separately reflects whatever feature set is baked into the published
+# `@goplasmatic/datalogic-wasm` binary (currently `wasm = datetime + trace
+# + templating` per `bindings/wasm/Cargo.toml`), which is its own
+# distribution decision.
+datalogic-rs = { path = "../../crates/datalogic-rs", features = [
+    "serde_json",
+    "templating",
+    "datetime",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-control",
+    "ext-math",
+] }
+serde_json = "1.0"
+bumpalo = "3"
+
+# Native Rust competitor crates. Each gates one optional dep + one
+# `Subject` impl in `src/bin/compare.rs`. Off by default so the basic
+# matrix (datalogic-rs tiers + Node subjects) doesn't pull them in.
+jsonlogic-rs = { version = "0.5", optional = true }
+
+# `compare` binary subjects are gated so the default build doesn't pull in
+# every other JSONLogic crate. Add a feature per subject and wire it in
+# `src/bin/compare.rs`.
+[features]
+default = []
+subject-jsonlogic-rs = ["dep:jsonlogic-rs"]
+
+[[bin]]
+name = "self"
+path = "src/bin/self.rs"
+
+[[bin]]
+name = "compare"
+path = "src/bin/compare.rs"

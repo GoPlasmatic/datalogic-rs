@@ -244,7 +244,7 @@ export const SAMPLE_EXPRESSIONS: Record<
   // Special: Structure Mode
   // ============================================
 
-  // preserveStructure mode - JSON template output (requires "Preserve Structure" checkbox)
+  // templating mode - JSON template output (requires "Templating" checkbox)
   "Party Template (Structure)": {
     logic: {
       if: [

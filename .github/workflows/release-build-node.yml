@@ -1,0 +1,98 @@
+name: _release-build-node
+
+# Internal reusable workflow — called by release.yml's `build-node` job.
+# Owns the Node binding's build-phase concerns:
+#   - per-platform .node prebuilds via napi-cli (matrix: 8 entries)
+#   - node:test smoke run on the host-native platform (single job)
+#
+# Each matrix entry uploads its own artifact (one .node file) for
+# publish-node to download and stage into the per-platform npm
+# subpackages via `napi prepublish`.
+
+on:
+  workflow_call:
+
+jobs:
+  prebuild:
+    name: Build (${{ matrix.target.os }} / ${{ matrix.target.arch }} / ${{ matrix.target.libc }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { os: linux,   arch: x64,   libc: gnu,   runner: ubuntu-latest,    target: x86_64-unknown-linux-gnu    }
+          - { os: linux,   arch: arm64, libc: gnu,   runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu   }
+          - { os: linux,   arch: x64,   libc: musl,  runner: ubuntu-latest,    target: x86_64-unknown-linux-musl   }
+          - { os: linux,   arch: arm64, libc: musl,  runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl  }
+          - { os: macos,   arch: x64,   libc: "",    runner: macos-13,         target: x86_64-apple-darwin         }
+          - { os: macos,   arch: arm64, libc: "",    runner: macos-14,         target: aarch64-apple-darwin        }
+          - { os: windows, arch: x64,   libc: msvc,  runner: windows-latest,   target: x86_64-pc-windows-msvc      }
+          - { os: windows, arch: arm64, libc: msvc,  runner: windows-11-arm,   target: aarch64-pc-windows-msvc     }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          # registry-url is only needed in the publish job, but having it
+          # here lets `npm install` resolve scoped packages consistently.
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.target }}
+
+      # musl wheels need a musl-targeting linker on the runner. Apt's
+      # `musl-tools` provides musl-gcc for x86_64; for aarch64 the cross
+      # variant `gcc-aarch64-linux-gnu` is bundled differently. napi-cli
+      # picks the linker up from `CC_<target>` / cargo's linker config.
+      - name: Install musl toolchain (Linux musl only)
+        if: matrix.target.libc == 'musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/node/target/
+          key: ${{ runner.os }}-${{ matrix.target.target }}-node-${{ hashFiles('bindings/node/Cargo.toml', 'bindings/node/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.target }}-node-
+
+      - name: Install npm deps
+        working-directory: bindings/node
+        run: npm ci || npm install
+
+      - name: Build .node prebuild
+        working-directory: bindings/node
+        # `napi build --platform` emits `datalogic-node.<triple>.node`.
+        # `--release` strips and runs the release profile defined in
+        # bindings/node/Cargo.toml (lto = "fat" + codegen-units = 1).
+        run: npx napi build --platform --release --target ${{ matrix.target.target }}
+
+      # Run the JS test suite when the runner can execute the resulting
+      # binary natively (gnu Linux, native macOS arch, native Windows
+      # arch). Skip on musl (no musl runtime on the runner) and on
+      # cross-compiled targets.
+      - name: Run node:test (native only)
+        if: |
+          (matrix.target.os == 'linux' && matrix.target.libc == 'gnu') ||
+          (matrix.target.os == 'macos' && matrix.target.runner == 'macos-14' && matrix.target.arch == 'arm64') ||
+          (matrix.target.os == 'macos' && matrix.target.runner == 'macos-13' && matrix.target.arch == 'x64') ||
+          (matrix.target.os == 'windows' && matrix.target.runner == 'windows-latest' && matrix.target.arch == 'x64') ||
+          (matrix.target.os == 'windows' && matrix.target.runner == 'windows-11-arm' && matrix.target.arch == 'arm64')
+        working-directory: bindings/node
+        run: npm test
+
+      - name: Upload .node artifact
+        uses: actions/upload-artifact@v7
+        with:
+          # Artifact name carries the triple so publish-node can match
+          # each .node to its corresponding npm/<os-arch-libc>/ subpackage.
+          name: node-prebuild-${{ matrix.target.os }}-${{ matrix.target.arch }}${{ matrix.target.libc && format('-{0}', matrix.target.libc) || '' }}
+          path: bindings/node/*.node
+          if-no-files-found: error

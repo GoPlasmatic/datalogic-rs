@@ -1,0 +1,296 @@
+[
+    "# sem_ver — mirrors flagd's canonical Go conformance suite",
+    "# Source: https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/semver_test.go",
+    "# Operators: = (Equals), != (NotEqual), < (Less), <= (LessOrEqual), > (Greater),",
+    "#            >= (GreaterOrEqual), ^ (MatchMajor), ~ (MatchMinor)",
+
+    "## TestSemVerOperator_Compare — direct operator semantics",
+
+    "### invalid version → null (would be a parse error)",
+    {
+        "description": "'invalid' > 'v1.0.0' → null",
+        "rule": { "sem_ver": ["invalid", ">", "v1.0.0"] },
+        "data": {},
+        "result": null
+    },
+
+    "### pre-release ordering per SemVer 2.0",
+    {
+        "description": "preview version vs non-preview: v1.0.0-preview.1.2 > v1.0.0 → false (pre-release < release)",
+        "rule": { "sem_ver": ["v1.0.0-preview.1.2", ">", "v1.0.0"] },
+        "data": {},
+        "result": false
+    },
+    {
+        "description": "preview vs preview: v1.0.0-preview.1.3 > v1.0.0-preview.1.2 → true",
+        "rule": { "sem_ver": ["v1.0.0-preview.1.3", ">", "v1.0.0-preview.1.2"] },
+        "data": {},
+        "result": true
+    },
+
+    "### v-prefix asymmetry (one side prefixed)",
+    {
+        "description": "no prefixed v left, v-prefixed right, Greater: 0.0.1 > v0.0.2 → false",
+        "rule": { "sem_ver": ["0.0.1", ">", "v0.0.2"] },
+        "data": {},
+        "result": false
+    },
+    {
+        "description": "v-prefixed left, no prefixed v right, Greater: v0.0.1 > 0.0.2 → false",
+        "rule": { "sem_ver": ["v0.0.1", ">", "0.0.2"] },
+        "data": {},
+        "result": false
+    },
+    {
+        "description": "v0.0.1 == 0.0.1 (v stripped on left)",
+        "rule": { "sem_ver": ["v0.0.1", "=", "0.0.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "uppercase V prefix: V1.0.0 == 1.0.0",
+        "rule": { "sem_ver": ["V1.0.0", "=", "1.0.0"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "0.0.1 > 0.0.2 (no v-prefix on either side) → false",
+        "rule": { "sem_ver": ["0.0.1", ">", "0.0.2"] },
+        "data": {},
+        "result": false
+    },
+
+    "### invalid operator → null",
+    {
+        "description": "empty-string operator → null",
+        "rule": { "sem_ver": ["v0.0.1", "", "v0.0.2"] },
+        "data": {},
+        "result": null
+    },
+
+    "### less than — including large numbers and partial versions",
+    {
+        "description": "Less with large numbers: v1234.0.1 < v1235.0.2 → true",
+        "rule": { "sem_ver": ["v1234.0.1", "<", "v1235.0.2"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 < v0.0.2 → true",
+        "rule": { "sem_ver": ["v0.0.1", "<", "v0.0.2"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "no minor version: v1.0 < v1.2 → true (padded to 1.0.0 / 1.2.0)",
+        "rule": { "sem_ver": ["v1.0", "<", "v1.2"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 < v0.0.1 → false",
+        "rule": { "sem_ver": ["v0.0.1", "<", "v0.0.1"] },
+        "data": {},
+        "result": false
+    },
+
+    "### less or equal",
+    {
+        "description": "v0.0.1 <= v0.0.2 → true",
+        "rule": { "sem_ver": ["v0.0.1", "<=", "v0.0.2"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 <= v0.0.1 → true",
+        "rule": { "sem_ver": ["v0.0.1", "<=", "v0.0.1"] },
+        "data": {},
+        "result": true
+    },
+
+    "### equality",
+    {
+        "description": "v0.0.1 = v0.0.1 → true",
+        "rule": { "sem_ver": ["v0.0.1", "=", "v0.0.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.2 = v0.0.1 → false",
+        "rule": { "sem_ver": ["v0.0.2", "=", "v0.0.1"] },
+        "data": {},
+        "result": false
+    },
+
+    "### inequality",
+    {
+        "description": "v0.0.2 != v0.0.1 → true",
+        "rule": { "sem_ver": ["v0.0.2", "!=", "v0.0.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 != v0.0.1 → false",
+        "rule": { "sem_ver": ["v0.0.1", "!=", "v0.0.1"] },
+        "data": {},
+        "result": false
+    },
+
+    "### greater or equal",
+    {
+        "description": "v0.0.2 >= v0.0.1 → true",
+        "rule": { "sem_ver": ["v0.0.2", ">=", "v0.0.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 >= v0.0.1 → true",
+        "rule": { "sem_ver": ["v0.0.1", ">=", "v0.0.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 >= v0.0.2 → false",
+        "rule": { "sem_ver": ["v0.0.1", ">=", "v0.0.2"] },
+        "data": {},
+        "result": false
+    },
+
+    "### greater",
+    {
+        "description": "v0.0.2 > v0.0.1 → true",
+        "rule": { "sem_ver": ["v0.0.2", ">", "v0.0.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "v0.0.1 > v0.0.1 → false",
+        "rule": { "sem_ver": ["v0.0.1", ">", "v0.0.1"] },
+        "data": {},
+        "result": false
+    },
+
+    "### match major (^)",
+    {
+        "description": "matching major: v1.3.4 ^ v1.5.3 → true",
+        "rule": { "sem_ver": ["v1.3.4", "^", "v1.5.3"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "not matching major: v2.1.1 ^ v1.1.1 → false",
+        "rule": { "sem_ver": ["v2.1.1", "^", "v1.1.1"] },
+        "data": {},
+        "result": false
+    },
+
+    "### match minor (~)",
+    {
+        "description": "matching minor: v1.3.4 ~ v1.3.1 → true",
+        "rule": { "sem_ver": ["v1.3.4", "~", "v1.3.1"] },
+        "data": {},
+        "result": true
+    },
+    {
+        "description": "not matching minor: v2.2.1 ~ v2.1.1 → false",
+        "rule": { "sem_ver": ["v2.2.1", "~", "v2.1.1"] },
+        "data": {},
+        "result": false
+    },
+
+    "## TestJSONEvaluator_semVerEvaluation — integration cases (gated rollout via `if`)",
+
+    {
+        "description": "versions and operator - match: 1.0.0 > 0.1.0 → red",
+        "rule": { "if": [{ "sem_ver": ["1.0.0", ">", "0.1.0"] }, "red", null] },
+        "data": { "version": "1.0.0" },
+        "result": "red"
+    },
+    {
+        "description": "nested var op - match: version > 1.0.0 (version=1.0.1)",
+        "rule": { "if": [{ "sem_ver": [{ "var": "version" }, ">", "1.0.0"] }, "red", null] },
+        "data": { "version": "1.0.1" },
+        "result": "red"
+    },
+    {
+        "description": "versions and operator - no match: 1.0.0 > 1.0.0 → green",
+        "rule": { "if": [{ "sem_ver": ["1.0.0", ">", "1.0.0"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "green"
+    },
+    {
+        "description": "major-version match: 1.2.3 ^ 1.5.6 → red",
+        "rule": { "if": [{ "sem_ver": ["1.2.3", "^", "1.5.6"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "red"
+    },
+    {
+        "description": "minor-version match: 1.2.3 ~ 1.2.6 → red",
+        "rule": { "if": [{ "sem_ver": ["1.2.3", "~", "1.2.6"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "red"
+    },
+    {
+        "description": "versions as double (1.2 = 1.2) - match → red",
+        "rule": { "if": [{ "sem_ver": [1.2, "=", "1.2"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "red"
+    },
+    {
+        "description": "versions as int (1 = v1.0.0) - match → red",
+        "rule": { "if": [{ "sem_ver": [1, "=", "v1.0.0"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "red"
+    },
+    {
+        "description": "v-prefixed nested var: version < v1.2 (version=v1.0.0) - match → red",
+        "rule": { "if": [{ "sem_ver": [{ "var": "version" }, "<", "v1.2"] }, "red", "green"] },
+        "data": { "version": "v1.0.0" },
+        "result": "red"
+    },
+    {
+        "description": "major-version no-match: 2.2.3 ^ 1.2.3 → green",
+        "rule": { "if": [{ "sem_ver": ["2.2.3", "^", "1.2.3"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "green"
+    },
+    {
+        "description": "minor-version no-match: 1.3.3 ~ 1.2.6 → green",
+        "rule": { "if": [{ "sem_ver": ["1.3.3", "~", "1.2.6"] }, "red", "green"] },
+        "data": { "version": "1.0.0" },
+        "result": "green"
+    },
+    {
+        "description": "nested var no-match: version > 1.0.0 (version=0.0.1) → green",
+        "rule": { "if": [{ "sem_ver": [{ "var": "version" }, ">", "1.0.0"] }, "red", "green"] },
+        "data": { "version": "0.0.1" },
+        "result": "green"
+    },
+
+    "## Parsing-error paths — flagd falls back to the false branch (which expects 'green')",
+    "## In our impl the operator returns null; nested in `if`, null is falsy → green branch wins",
+    {
+        "description": "invalid version → if → green branch",
+        "rule": { "if": [{ "sem_ver": ["invalid", ">", "1.0.0"] }, "red", "green"] },
+        "data": {},
+        "result": "green"
+    },
+    {
+        "description": "invalid operator → if → green branch",
+        "rule": { "if": [{ "sem_ver": ["1.0.0", "invalid", "1.0.0"] }, "red", "green"] },
+        "data": {},
+        "result": "green"
+    },
+    {
+        "description": "non-string operator (int) → if → green branch",
+        "rule": { "if": [{ "sem_ver": ["1.0.0", 1, "1.0.0"] }, "red", "green"] },
+        "data": {},
+        "result": "green"
+    },
+    {
+        "description": "wrong number of args → if → green branch",
+        "rule": { "if": [{ "sem_ver": ["not", "enough"] }, "red", "green"] },
+        "data": {},
+        "result": "green"
+    }
+]

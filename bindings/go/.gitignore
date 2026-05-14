@@ -1,0 +1,9 @@
+# Staged C ABI artifacts produced by `make build`. These are
+# platform-specific build outputs, not source. CI publishes prebuilt
+# artifacts for releases; contributors run `make build` locally.
+/lib/
+/include/
+
+# Test caches and binaries
+*.test
+*.out

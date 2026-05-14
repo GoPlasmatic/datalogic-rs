@@ -1,0 +1,324 @@
+//! Dead code elimination pass.
+//!
+//! Eliminates unreachable branches when conditions are compile-time constants:
+//! - `{"if": [true, A, B]}` → `A` (also handles `?:`, which normalizes to `if`)
+//! - `{"and": [true, X]}` → `X` (strip identity elements)
+//! - `{"and": [false, X]}` → `false` (absorbing element)
+//! - `{"or": [true, X]}` → `true` (absorbing element)
+//! - `{"or": [false, X]}` → `X` (strip identity elements)
+
+use crate::Engine;
+use crate::node::CompiledNode;
+use crate::opcode::OpCode;
+
+use super::helpers::is_truthy_literal;
+
+/// Eliminate dead branches from a compiled node tree.
+///
+/// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
+/// the input. Only transforms the top-level node — recursive application
+/// is driven by the optimiser pipeline's fixpoint loop.
+pub fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
+    match &node {
+        CompiledNode::BuiltinOperator {
+            id, opcode, args, ..
+        } => {
+            let rewritten = match opcode {
+                OpCode::If => eliminate_if(*id, args, engine),
+                OpCode::And => eliminate_and(*id, args, engine),
+                OpCode::Or => eliminate_or(*id, args, engine),
+                _ => None,
+            };
+            match rewritten {
+                Some(new_node) => (new_node, true),
+                None => (node, false),
+            }
+        }
+        _ => (node, false),
+    }
+}
+
+/// Eliminate dead branches in if/elseif/else chains.
+/// Returns `Some(new_node)` if the input was rewritten, `None` otherwise.
+fn eliminate_if(
+    outer_id: crate::node::NodeId,
+    args: &[CompiledNode],
+    engine: &Engine,
+) -> Option<CompiledNode> {
+    if args.is_empty() {
+        return Some(CompiledNode::synthetic_value(
+            datavalue::OwnedDataValue::Null,
+        ));
+    }
+
+    let mut i = 0;
+    let mut new_args: Vec<CompiledNode> = Vec::new();
+    let mut skipped_any = false;
+
+    while i < args.len() {
+        if i == args.len() - 1 {
+            // Final else clause — keep it
+            if new_args.is_empty() {
+                // All previous conditions were false → this is the result
+                return Some(args[i].clone());
+            }
+            new_args.push(args[i].clone());
+            break;
+        }
+
+        // Check if condition is a static value
+        match is_truthy_literal(&args[i], engine) {
+            Some(true) => {
+                // Condition is statically true → return the then-branch
+                if i + 1 < args.len() {
+                    if new_args.is_empty() {
+                        return Some(args[i + 1].clone());
+                    }
+                    // We had prior non-static conditions; this becomes the else
+                    new_args.push(args[i + 1].clone());
+                    skipped_any = true;
+                    break;
+                }
+                return Some(args[i].clone());
+            }
+            Some(false) => {
+                // Condition is statically false → skip this condition+then pair
+                skipped_any = true;
+                i += 2;
+                continue;
+            }
+            None => {
+                // Non-static condition — keep it
+                new_args.push(args[i].clone());
+                if i + 1 < args.len() {
+                    new_args.push(args[i + 1].clone());
+                }
+                i += 2;
+            }
+        }
+    }
+
+    if new_args.is_empty() {
+        // All conditions were statically false, no else clause
+        return Some(CompiledNode::synthetic_value(
+            datavalue::OwnedDataValue::Null,
+        ));
+    }
+
+    if new_args.len() == 1 {
+        // Single remaining element is the else clause
+        return Some(new_args.into_iter().next().unwrap());
+    }
+
+    if !skipped_any && new_args.len() == args.len() {
+        // No-op rebuild — leave input untouched
+        return None;
+    }
+
+    Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
+        opcode: OpCode::If,
+        args: new_args.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
+    })
+}
+
+/// Eliminate identity/absorbing elements in `and`.
+fn eliminate_and(
+    outer_id: crate::node::NodeId,
+    args: &[CompiledNode],
+    engine: &Engine,
+) -> Option<CompiledNode> {
+    if args.is_empty() {
+        return None;
+    }
+
+    let mut remaining: Vec<CompiledNode> = Vec::new();
+
+    for arg in args {
+        match is_truthy_literal(arg, engine) {
+            Some(false) => {
+                // Absorbing element — and short-circuits, returns the falsy value
+                return Some(arg.clone());
+            }
+            Some(true) => {
+                // Identity element — skip (and returns the value, not bool)
+                continue;
+            }
+            None => {
+                remaining.push(arg.clone());
+            }
+        }
+    }
+
+    if remaining.is_empty() {
+        // All elements were truthy literals — return the last one
+        return Some(args.last().unwrap().clone());
+    }
+
+    if remaining.len() == 1 {
+        return Some(remaining.into_iter().next().unwrap());
+    }
+
+    if remaining.len() == args.len() {
+        // Nothing stripped — no change
+        return None;
+    }
+
+    Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
+        opcode: OpCode::And,
+        args: remaining.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
+    })
+}
+
+/// Eliminate identity/absorbing elements in `or`.
+fn eliminate_or(
+    outer_id: crate::node::NodeId,
+    args: &[CompiledNode],
+    engine: &Engine,
+) -> Option<CompiledNode> {
+    if args.is_empty() {
+        return None;
+    }
+
+    let mut remaining: Vec<CompiledNode> = Vec::new();
+
+    for arg in args {
+        match is_truthy_literal(arg, engine) {
+            Some(true) => {
+                // Absorbing element — or short-circuits, returns the truthy value
+                return Some(arg.clone());
+            }
+            Some(false) => {
+                // Identity element — skip
+                continue;
+            }
+            None => {
+                remaining.push(arg.clone());
+            }
+        }
+    }
+
+    if remaining.is_empty() {
+        // All elements were falsy literals — return the last one
+        return Some(args.last().unwrap().clone());
+    }
+
+    if remaining.len() == 1 {
+        return Some(remaining.into_iter().next().unwrap());
+    }
+
+    if remaining.len() == args.len() {
+        return None;
+    }
+
+    Some(CompiledNode::BuiltinOperator {
+        id: outer_id,
+        opcode: OpCode::Or,
+        args: remaining.into_boxed_slice(),
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
+    })
+}
+
+#[cfg(all(test, feature = "serde_json"))]
+mod tests {
+    use super::super::test_helpers::{builtin, val, var_node};
+    use super::*;
+
+    #[test]
+    fn test_if_true_condition() {
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::If,
+            vec![
+                val(datavalue::OwnedDataValue::Bool(true)),
+                var_node("x"),
+                var_node("y"),
+            ],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Var { .. }));
+    }
+
+    #[test]
+    fn test_if_false_condition() {
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::If,
+            vec![
+                val(datavalue::OwnedDataValue::Bool(false)),
+                var_node("x"),
+                var_node("y"),
+            ],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        // Should return "y" (the else branch)
+        assert!(matches!(result, CompiledNode::Var { .. }));
+    }
+
+    #[test]
+    fn test_and_with_true_prefix() {
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::And,
+            vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x")],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Var { .. }));
+    }
+
+    #[test]
+    fn test_and_with_false() {
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::And,
+            vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x")],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Value { .. }));
+    }
+
+    #[test]
+    fn test_or_with_true() {
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::Or,
+            vec![val(datavalue::OwnedDataValue::Bool(true)), var_node("x")],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Value { .. }));
+    }
+
+    #[test]
+    fn test_or_with_false_prefix() {
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::Or,
+            vec![val(datavalue::OwnedDataValue::Bool(false)), var_node("x")],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Var { .. }));
+    }
+
+    #[test]
+    fn test_ternary_true() {
+        // `?:` normalizes to OpCode::If at FromStr; eliminate_if handles
+        // the 3-arg case identically to a ternary.
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::If,
+            vec![
+                val(datavalue::OwnedDataValue::Bool(true)),
+                var_node("x"),
+                var_node("y"),
+            ],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Var { .. }));
+    }
+}

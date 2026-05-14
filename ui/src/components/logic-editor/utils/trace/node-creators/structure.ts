@@ -34,12 +34,12 @@ const EXPR_PLACEHOLDER_QUOTED = `"${EXPR_PLACEHOLDER}"`;
 
 /**
  * Check if a value should be treated as an expression branch in trace conversion
- * This includes JSONLogic expressions and nested structures (when preserveStructure is enabled)
+ * This includes JSONLogic expressions and nested structures (when templating is enabled)
  */
-function isExpressionBranch(item: unknown, preserveStructure: boolean): boolean {
+function isExpressionBranch(item: unknown, templating: boolean): boolean {
   if (isJsonLogicExpression(item)) return true;
-  // In preserveStructure mode, nested structures are also separate expression nodes in the trace
-  if (preserveStructure && isDataStructure(item)) return true;
+  // In templating mode, nested structures are also separate expression nodes in the trace
+  if (templating && isDataStructure(item)) return true;
   return false;
 }
 
@@ -55,7 +55,7 @@ function walkAndCollectFromTrace(
   if (Array.isArray(value)) {
     return value.map((item, index) => {
       const itemPath = [...path, String(index)];
-      if (isExpressionBranch(item, context.preserveStructure)) {
+      if (isExpressionBranch(item, context.templating)) {
         return onValue(itemPath, item);
       } else if (typeof item === 'object' && item !== null) {
         return walkAndCollectFromTrace(item, itemPath, onValue, context);
@@ -68,7 +68,7 @@ function walkAndCollectFromTrace(
     const result: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
       const itemPath = [...path, key];
-      if (isExpressionBranch(item, context.preserveStructure)) {
+      if (isExpressionBranch(item, context.templating)) {
         result[key] = onValue(itemPath, item, key);
       } else if (typeof item === 'object' && item !== null) {
         result[key] = walkAndCollectFromTrace(item, itemPath, onValue, context);

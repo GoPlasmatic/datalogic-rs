@@ -6,87 +6,96 @@ Frequently asked questions about datalogic-rs.
 
 ### What is JSONLogic?
 
-JSONLogic is a way to write portable, safe logic rules as JSON. It was created to allow non-developers to create complex rules that can be evaluated consistently across different platforms. The specification is available at [jsonlogic.com](https://jsonlogic.com).
+JSONLogic is a way to write portable, safe logic rules as JSON. The
+specification is available at [jsonlogic.com](https://jsonlogic.com).
 
 ### Why use datalogic-rs instead of the reference implementation?
 
-- **Performance:** datalogic-rs is significantly faster than JavaScript implementations
-- **Thread Safety:** Compiled rules can be safely shared across threads
-- **Extended Operators:** Includes datetime, regex, and additional string/array operators
-- **Type Safety:** Full Rust type system benefits
-- **WASM Support:** Use the same engine in browsers and Node.js
+- **Performance** — significantly faster than JS implementations
+- **Thread Safety** — `Logic` is `Send + Sync`; wrap in `Arc` to share
+- **Extended Operators** — datetime, regex, error handling, more
+- **Type Safety** — full Rust type system benefits
+- **WASM Support** — same engine in browsers and Node.js
+- **Zero `unsafe`** — the crate is built with `#![forbid(unsafe_code)]`
 
 ### Is datalogic-rs fully compatible with JSONLogic?
 
-Yes. datalogic-rs passes the complete official JSONLogic test suite. It also includes additional operators that extend the specification.
+Yes. datalogic-rs passes the complete official JSONLogic test suite. It
+also includes additional operators that extend the specification.
 
 ---
 
 ## Rust Usage
 
-### Should I use v3 or v4?
+### Should I use v4 or v5?
 
-**Use v4** for most projects. It has a simpler, more ergonomic API.
+**Use v5** for new projects. The API is cleaner, the default build does
+not pull in `serde_json`, and the arena evaluation path is exposed
+directly. See the [Migration Guide](migration.md) for the move from v4.
 
-**Use v3** only if you need maximum performance with arena allocation and are comfortable with lifetime management.
-
-Both versions are maintained and receive bug fixes.
+v5 is a hard cliff — there is no compatibility shim, so plan a single
+cutover when upgrading from v4. The repo-root `MIGRATION.md` has the
+per-call cookbook.
 
 ### How do I share compiled rules across threads?
 
-`CompiledLogic` is wrapped in `Arc` and is `Send + Sync`:
+`Logic` is `Send + Sync`. Wrap it in `Arc` to share:
 
 ```rust
+use datalogic_rs::Engine;
 use std::sync::Arc;
-use datalogic_rs::DataLogic;
 
-let engine = Arc::new(DataLogic::new());
-let compiled = engine.compile(&logic).unwrap();
+let engine = Arc::new(Engine::new());
+let compiled = engine.compile_arc(rule).unwrap();
 
-// Clone the Arc for each thread
 let compiled_clone = Arc::clone(&compiled);
 std::thread::spawn(move || {
-    // Use compiled_clone here
+    let mut session = engine.session();
+    session.eval_str(&compiled_clone, data)
 });
 ```
 
-### Why do custom operators receive unevaluated arguments?
+### Why are custom operator arguments pre-evaluated in v5?
 
-This design allows operators to implement lazy evaluation (like `and` and `or`) and control how arguments are processed. Always call `evaluator.evaluate()` on arguments that should be evaluated:
+The pre-evaluated, arena-based design makes custom operators behave like
+built-ins: the engine recurses, hands you `&DataValue<'a>` borrows, and you
+return another arena allocation. This avoids the boundary conversion that
+the v4 `Operator` trait paid on every call and removes the need for a
+separate `Evaluator` trait.
 
-```rust
-impl Operator for MyOperator {
-    fn evaluate(&self, args: &[Value], context: &mut ContextStack, evaluator: &dyn Evaluator) -> Result<Value> {
-        // Evaluate the first argument
-        let value = evaluator.evaluate(&args[0], context)?;
-        // ...
-    }
-}
-```
+If you need lazy / short-circuit semantics like `and` / `or`, that lives in
+built-in operators today (none of the v5 short-circuit operators are
+exposed through the public custom-operator surface).
 
-### What's the difference between `evaluate` and `evaluate_owned`?
+### What's the difference between `eval`, `eval_str`, `eval_into`, and `evaluate`?
 
-- `evaluate`: Takes a reference to data, returns `Cow<Value>` (avoids cloning when possible)
-- `evaluate_owned`: Takes ownership of data, returns `Value` (simpler API)
+| Method | Input | Output | Notes |
+|--------|-------|--------|-------|
+| `datalogic_rs::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | Module-level helper backed by a default engine. Use when you don't need custom operators or non-default config. |
+| `Engine::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | One-shot through a configured engine. Allocates a fresh arena internally. |
+| `Engine::evaluate` | `&Logic`, any `EvalInput`, `&Bump` | `&'a DataValue<'a>` | Hot path. Caller owns the arena, result borrows from it. |
+| `Session::eval_str` (and `eval` / `eval_into`) | `&Logic`, `D: EvalInput` | `String` (or `OwnedDataValue` / `T`) | Reuses the session's arena across calls. Caller calls `session.reset()` between batches. |
+| `Session::eval_borrowed` | `&Logic`, `D: EvalInput` | `&'a DataValue<'a>` | Zero-copy result; valid until the next `&mut self` call. |
 
-Use `evaluate` for performance-critical code with large data. Use `evaluate_owned` for simpler code.
+The typed `eval_into::<T>` paths (and the `serde_json::Value` boundary
+on `EvalInput` / `IntoLogic`) require `feature = "serde_json"`.
 
 ---
 
-## JavaScript/WASM Usage
+## JavaScript / WASM Usage
 
 ### Do I need to call `init()` in Node.js?
 
-No. The Node.js target doesn't require initialization:
+No. The Node.js target does not require initialization:
 
 ```javascript
-const { evaluate } = require('@goplasmatic/datalogic');
-evaluate('{"==": [1, 1]}', '{}', false); // Works immediately
+const { evaluate } = require('@goplasmatic/datalogic-wasm');
+evaluate('{"==": [1, 1]}', '{}', false);
 ```
 
 ### Why do I need to JSON.stringify my data?
 
-The WASM interface uses string-based communication for maximum compatibility. Always stringify inputs and parse outputs:
+The WASM interface uses string-based communication for maximum compatibility:
 
 ```javascript
 const result = evaluate(
@@ -102,7 +111,7 @@ const value = JSON.parse(result);
 Types are included in the package:
 
 ```typescript
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic';
+import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 await init();
 const result: string = evaluate('{"==": [1, 1]}', '{}', false);
@@ -114,7 +123,8 @@ const result: string = evaluate('{"==": [1, 1]}', '{}', false);
 
 ### Why does the editor need explicit dimensions?
 
-React Flow (the underlying library) requires a container with defined dimensions to calculate node positions and viewport. Set dimensions via CSS or inline styles:
+React Flow (the underlying library) requires a container with defined
+dimensions to calculate node positions and viewport.
 
 ```tsx
 <div style={{ height: '500px' }}>
@@ -138,10 +148,6 @@ export function Editor({ expression }) {
 }
 ```
 
-### When will edit mode be available?
-
-Edit mode is on the roadmap. Check the [GitHub issues](https://github.com/GoPlasmatic/datalogic-rs/issues) for updates.
-
 ---
 
 ## Operators
@@ -151,7 +157,7 @@ Edit mode is on the roadmap. Check the [GitHub issues](https://github.com/GoPlas
 Use the `var` operator with numeric path segments:
 
 ```json
-{ "var": "items.0.name" }
+{"var": "items.0.name"}
 ```
 
 ### What's the difference between `==` and `===`?
@@ -169,28 +175,25 @@ Use the `var` operator with numeric path segments:
 Use the `missing` or `missing_some` operators:
 
 ```json
-{
-  "if": [
-    { "missing": ["user.email"] },
+{"if": [
+    {"missing": ["user.email"]},
     "Email required",
     "Valid"
-  ]
-}
+]}
 ```
 
 Or use default values with `var`:
 
 ```json
-{ "var": ["user.email", "no-email@example.com"] }
+{"var": ["user.email", "no-email@example.com"]}
 ```
 
-### Can I use regex?
+### What happened to the `preserve` operator?
 
-Yes. Use the `match` operator:
-
-```json
-{ "match": [{ "var": "email" }, "^[a-z]+@example\\.com$"] }
-```
+It was removed in v5. Literal scalars and arrays already pass through
+inline, and templated objects belong in templating mode
+(`Engine::builder().with_templating(true).build()`, requires
+`feature = "templating"`).
 
 ---
 
@@ -201,58 +204,55 @@ Yes. Use the `match` operator:
 Use the `NanHandling` configuration:
 
 ```rust
-use datalogic_rs::{DataLogic, EvaluationConfig, NanHandling};
+use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::IgnoreValue);
-let engine = DataLogic::with_config(config);
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::IgnoreValue,
+    ..Default::default()
+};
+let engine = Engine::builder().with_config(config).build();
 ```
 
-Options:
-- `ThrowError` (default): Return an error
-- `CoerceToZero`: Treat non-numeric as 0
-- `IgnoreValue`: Skip non-numeric values
+Options: `ThrowError` (default), `CoerceToZero`, `IgnoreValue`, `ReturnNull`.
 
 ### How do I change division by zero behavior?
 
 ```rust
-use datalogic_rs::{EvaluationConfig, DivisionByZero};
+use datalogic_rs::{EvaluationConfig, DivisionByZeroHandling};
 
-let config = EvaluationConfig::default()
-    .with_division_by_zero(DivisionByZero::ReturnBounds);
+let config = EvaluationConfig {
+    division_by_zero: DivisionByZeroHandling::ReturnNull,
+    ..Default::default()
+};
 ```
 
-Options:
-- `ReturnBounds` (default): Return Infinity/-Infinity
-- `ThrowError`: Return an error
-- `ReturnZero`: Return 0
+Options: `ReturnSaturated` (default — `f64::MAX/MIN`), `ThrowError`,
+`ReturnNull`, `ReturnInfinity`.
 
 ---
 
 ## Troubleshooting
 
-### "Unknown operator" error
+### "Invalid operator" error
 
 In standard mode, unrecognized keys are treated as errors. Either:
-1. Fix the operator name (check spelling)
-2. Register a custom operator
-3. Enable `preserve_structure` mode for templating
+
+1. Fix the operator name (operators are case-sensitive)
+2. Register a custom operator on the builder
+3. Enable templating mode (`feature = "templating"`) — `Engine::builder().with_templating(true).build()`
 
 ### Performance issues with large expressions
 
-1. Use `CompiledRule` instead of repeated `evaluate` calls
-2. Consider breaking complex rules into smaller, composable pieces
-3. Profile with tracing to identify slow sub-expressions
+1. Use `Session` for repeated calls (arena reuse)
+2. Drop to `Engine::evaluate` with a caller-managed `bumpalo::Bump` for the
+   absolute hot path
+3. Profile with `feature = "trace"` to identify slow sub-expressions
 
 ### WASM initialization fails
 
-Ensure you're awaiting `init()` before calling other functions:
+Ensure you `await init()` before calling other functions:
 
 ```javascript
-// Wrong
-const result = evaluate(...);
-
-// Correct
 await init();
 const result = evaluate(...);
 ```

@@ -15,8 +15,8 @@ export function convertValue(
   value: JsonLogicValue,
   context: ConversionContext
 ): string {
-  // In preserveStructure mode, check for data structures (multi-key objects or arrays with content)
-  if (context.preserveStructure && isDataStructure(value)) {
+  // In templating mode, check for data structures (multi-key objects or arrays with content)
+  if (context.templating && isDataStructure(value)) {
     return convertStructure(value as Record<string, unknown> | unknown[], context, convertValue);
   }
 

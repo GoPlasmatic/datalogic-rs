@@ -1,19 +1,20 @@
 import { memo } from 'react';
 import { UndoRedoToolbar } from './UndoRedoToolbar';
 import { DebuggerControlsInline } from './debugger-controls';
+import { Tooltip } from '../Tooltip';
 
 interface EditorToolbarProps {
   isEditMode: boolean;
   hasDebugger: boolean;
-  preserveStructure: boolean;
-  onPreserveStructureChange?: (value: boolean) => void;
+  templating: boolean;
+  onTemplatingChange?: (value: boolean) => void;
 }
 
 export const EditorToolbar = memo(function EditorToolbar({
   isEditMode,
   hasDebugger,
-  preserveStructure,
-  onPreserveStructureChange,
+  templating,
+  onTemplatingChange,
 }: EditorToolbarProps) {
   return (
     <div className="logic-editor-toolbar">
@@ -21,15 +22,20 @@ export const EditorToolbar = memo(function EditorToolbar({
       <div className="logic-editor-toolbar-spacer" />
       {hasDebugger && <DebuggerControlsInline />}
       <div className="logic-editor-toolbar-spacer" />
-      {onPreserveStructureChange && (
-        <label className="dl-preserve-structure-toggle">
-          <input
-            type="checkbox"
-            checked={preserveStructure}
-            onChange={(e) => onPreserveStructureChange(e.target.checked)}
-          />
-          <span>Preserve Structure</span>
-        </label>
+      {onTemplatingChange && (
+        <Tooltip
+          label="Compile multi-key objects as output templates with embedded JSONLogic"
+          side="bottom"
+        >
+          <label className="dl-templating-toggle">
+            <input
+              type="checkbox"
+              checked={templating}
+              onChange={(e) => onTemplatingChange(e.target.checked)}
+            />
+            <span>Templating</span>
+          </label>
+        </Tooltip>
       )}
     </div>
   );

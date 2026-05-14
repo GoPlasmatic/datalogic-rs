@@ -8,8 +8,8 @@ export interface TraceConversionResult extends ConversionResult {
 
 // Options for trace conversion
 export interface TraceToNodesOptions {
-  /** Enable structure preserve mode for JSON templates with embedded JSONLogic */
-  preserveStructure?: boolean;
+  /** Enable templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic). */
+  templating?: boolean;
   /** Original expression value - used to preserve key ordering in structure nodes */
   originalValue?: JsonLogicValue;
 }
@@ -19,7 +19,7 @@ export interface TraceContext {
   nodes: LogicNode[];
   edges: LogicEdge[];
   traceNodeMap: Map<string, string>;
-  preserveStructure: boolean;
+  templating: boolean;
 }
 
 // Value type for evaluation results

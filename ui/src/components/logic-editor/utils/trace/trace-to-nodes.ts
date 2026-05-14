@@ -33,7 +33,7 @@ export function traceToNodes(trace: TracedResult, options: TraceToNodesOptions =
     nodes,
     edges,
     traceNodeMap,
-    preserveStructure: options.preserveStructure ?? false,
+    templating: options.templating ?? false,
   }, {}, rootExpression);
 
   return {
@@ -62,7 +62,7 @@ function processExpressionNode(
   context.traceNodeMap.set(nodeId, nodeId);
 
   // Determine the type of expression and create appropriate node
-  const nodeType = determineNodeType(expression, context.preserveStructure);
+  const nodeType = determineNodeType(expression, context.templating);
 
   switch (nodeType) {
     case 'literal':
@@ -131,7 +131,7 @@ function createFallbackNode(
   parentInfo: ParentInfo
 ): void {
   // Determine the appropriate node type based on the value
-  const nodeType = determineNodeType(value, context.preserveStructure);
+  const nodeType = determineNodeType(value, context.templating);
 
   // Create the appropriate node type, passing empty children since we don't have trace data
   switch (nodeType) {

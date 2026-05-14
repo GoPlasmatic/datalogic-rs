@@ -14,6 +14,10 @@ dist-ssr
 *.local
 *.tsbuildinfo
 
+# Vendored WASM artefacts — copied from packages/wasm/pkg/ by `npm run
+# sync-wasm` (auto-runs before dev/build). Regenerated, not source.
+vendor/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

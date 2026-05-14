@@ -1,0 +1,312 @@
+//! `compile_node` and friends: convert an [`OwnedDataValue`] rule tree into
+//! the engine's [`CompiledNode`] form.
+//!
+//! `compile_node` dispatches by [`OwnedDataValue`] variant. The interesting
+//! case is a single-key object — that's an operator invocation, and
+//! operator-specific specialisations live in `super::operator`.
+
+use datavalue::OwnedDataValue;
+
+use crate::node::{CompileCtx, CompiledNode, node_is_static};
+use crate::opcode::OpCode;
+use crate::{Engine, Result};
+
+use super::missing::{compile_missing, compile_missing_some};
+use super::operator;
+use super::optimize;
+
+/// Compile a single value into a [`CompiledNode`].
+pub(super) fn compile_node(
+    value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    match value {
+        OwnedDataValue::Object(pairs) if pairs.len() > 1 => {
+            compile_multi_key_object(pairs, engine, templating, ctx)
+        }
+        OwnedDataValue::Object(pairs) if pairs.len() == 1 => {
+            let (op_name, args_value) = &pairs[0];
+            compile_operator_invocation(op_name, args_value, engine, templating, ctx)
+        }
+        OwnedDataValue::Array(arr) => compile_array(arr, engine, templating, ctx),
+        _ => Ok(CompiledNode::value_with_id(
+            Some(ctx.next_id()),
+            value.clone(),
+        )),
+    }
+}
+
+/// Multi-key object — only valid in `templating` mode (where it
+/// becomes a structured-object output template); otherwise an error.
+fn compile_multi_key_object(
+    pairs: &[(String, OwnedDataValue)],
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    #[cfg(feature = "templating")]
+    if templating {
+        let fields: Vec<_> = pairs
+            .iter()
+            .map(|(key, val)| {
+                compile_node(val, engine, templating, ctx)
+                    .map(|compiled_val| (key.clone(), compiled_val))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        return Ok(CompiledNode::StructuredObject(Box::new(
+            crate::node::StructuredObjectData {
+                id: Some(ctx.next_id()),
+                fields: fields.into_boxed_slice(),
+            },
+        )));
+    }
+    let _ = (pairs, engine, templating, ctx);
+    Err(crate::error::Error::invalid_operator("Unknown Operator"))
+}
+
+/// Single-key object: an operator invocation. Routes to either the builtin
+/// path (when the key parses as an `OpCode`) or the custom-operator /
+/// templating-mode path.
+fn compile_operator_invocation(
+    op_name: &str,
+    args_value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    if let Ok(opcode) = op_name.parse::<OpCode>() {
+        return compile_builtin(op_name, opcode, args_value, engine, templating, ctx);
+    }
+
+    #[cfg(feature = "templating")]
+    if templating {
+        return compile_templating_unknown(op_name, args_value, engine, templating, ctx);
+    }
+
+    let args = compile_args(args_value, engine, templating, ctx)?;
+    Ok(CompiledNode::CustomOperator(Box::new(
+        crate::node::CustomOperatorData {
+            id: Some(ctx.next_id()),
+            name: op_name.to_string(),
+            args,
+        },
+    )))
+}
+
+/// Builtin operator path: handle invalid-args sentinels for `and`/`or`/`if`,
+/// var/val/exists specialisations,
+/// missing/missing_some, throw, and fall through to a generic
+/// `BuiltinOperator` (with optimization + static-fold passes when an
+/// `engine` is supplied).
+fn compile_builtin(
+    op_name: &str,
+    opcode: OpCode,
+    args_value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
+    if requires_array && !matches!(args_value, OwnedDataValue::Array(_)) {
+        return Ok(invalid_args_marker(opcode, args_value, ctx));
+    }
+
+    let args = compile_args(args_value, engine, templating, ctx)?;
+
+    if let Some(node) = try_specialised(op_name, opcode, &args, ctx) {
+        return Ok(node);
+    }
+
+    if opcode == OpCode::Missing {
+        return Ok(compile_missing(args, ctx));
+    }
+    if opcode == OpCode::MissingSome {
+        return Ok(compile_missing_some(args, ctx));
+    }
+
+    #[cfg(feature = "error-handling")]
+    if let Some(node) = try_compile_throw_literal(opcode, &args, ctx) {
+        return Ok(node);
+    }
+
+    let mut node = CompiledNode::BuiltinOperator {
+        id: Some(ctx.next_id()),
+        opcode,
+        args,
+        predicate_hint: None,
+        iter_arg_kind: crate::operators::array::IterArgKind::General,
+    };
+
+    // Optimization + static-fold passes (engine-dependent and gated on
+    // the compile context's `skip_fold` flag, which the trace path sets).
+    if let Some(eng) = engine {
+        if !ctx.skip_fold() {
+            node = optimize::optimize(node, eng);
+            if node_is_static(&node) {
+                if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
+                    return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+                }
+            }
+        }
+    }
+
+    Ok(node)
+}
+
+/// Try the operator-specific compile-time specialisations: `var`, `val`,
+/// `exists`. Returns `None` if no specialisation applies.
+///
+/// We've already paid for `op_name -> OpCode` upstream, so dispatch on the
+/// opcode first and skip the per-call string compares for the (common)
+/// non-specialised path. `var` and `val` both compile to `OpCode::Val`,
+/// but with different arg-shape semantics — `var`'s second arg is a
+/// default fallback, `val`'s is a path-chain segment — so the inner split
+/// on `op_name` stays.
+fn try_specialised(
+    op_name: &str,
+    opcode: OpCode,
+    args: &[CompiledNode],
+    ctx: &mut CompileCtx,
+) -> Option<CompiledNode> {
+    match opcode {
+        OpCode::Val => {
+            // Only "var" / "val" map to `OpCode::Val` (see `OpCode::FromStr`).
+            if op_name == "var" {
+                operator::try_compile_var(args, ctx)
+            } else {
+                operator::try_compile_val(args, ctx)
+            }
+        }
+        #[cfg(feature = "ext-control")]
+        OpCode::Exists => operator::try_compile_exists(args, ctx),
+        _ => None,
+    }
+}
+
+/// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /
+/// `if` invoked with a non-array argument. Carries the op name forward so
+/// the dispatcher can produce an error that names the failing op rather
+/// than a generic "Invalid Arguments".
+fn invalid_args_marker(
+    opcode: OpCode,
+    _args_value: &OwnedDataValue,
+    ctx: &mut CompileCtx,
+) -> CompiledNode {
+    CompiledNode::InvalidArgs {
+        id: Some(ctx.next_id()),
+        op_name: opcode.as_str(),
+    }
+}
+
+/// `throw` with a literal string argument compiles to a pre-built error
+/// payload so runtime evaluation has nothing to coerce.
+#[cfg(feature = "error-handling")]
+fn try_compile_throw_literal(
+    opcode: OpCode,
+    args: &[CompiledNode],
+    ctx: &mut CompileCtx,
+) -> Option<CompiledNode> {
+    if opcode != OpCode::Throw || args.len() != 1 {
+        return None;
+    }
+    let CompiledNode::Value {
+        value: OwnedDataValue::String(s),
+        ..
+    } = &args[0]
+    else {
+        return None;
+    };
+    Some(CompiledNode::Throw(Box::new(
+        crate::node::CompiledThrowData {
+            id: Some(ctx.next_id()),
+            error: OwnedDataValue::Object(vec![(
+                "type".to_string(),
+                OwnedDataValue::String(s.clone()),
+            )]),
+        },
+    )))
+}
+
+/// Unknown-operator handling under `templating` mode. Custom
+/// operators registered on the engine compile to a `CustomOperator`;
+/// otherwise the key/value pair becomes a single-field structured-object
+/// output template.
+#[cfg(feature = "templating")]
+fn compile_templating_unknown(
+    op_name: &str,
+    args_value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    if let Some(eng) = engine {
+        if eng.has_custom_operator(op_name) {
+            let args = compile_args(args_value, engine, templating, ctx)?;
+            return Ok(CompiledNode::CustomOperator(Box::new(
+                crate::node::CustomOperatorData {
+                    id: Some(ctx.next_id()),
+                    name: op_name.to_string(),
+                    args,
+                },
+            )));
+        }
+    }
+    let compiled_val = compile_node(args_value, engine, templating, ctx)?;
+    let fields = vec![(op_name.to_string(), compiled_val)].into_boxed_slice();
+    Ok(CompiledNode::StructuredObject(Box::new(
+        crate::node::StructuredObjectData {
+            id: Some(ctx.next_id()),
+            fields,
+        },
+    )))
+}
+
+/// Compile a literal array. When all elements are static and an engine is
+/// supplied, the whole array is constant-folded to an [`OwnedDataValue`] literal.
+fn compile_array(
+    arr: &[OwnedDataValue],
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    let nodes = arr
+        .iter()
+        .map(|v| compile_node(v, engine, templating, ctx))
+        .collect::<Result<Vec<_>>>()?;
+
+    let nodes_boxed = nodes.into_boxed_slice();
+    let node = CompiledNode::Array {
+        id: Some(ctx.next_id()),
+        nodes: nodes_boxed,
+    };
+
+    if let Some(eng) = engine {
+        if !ctx.skip_fold() && node_is_static(&node) {
+            if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
+                return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+            }
+        }
+    }
+
+    Ok(node)
+}
+
+/// Compile operator arguments — an array is iterated; anything else is
+/// treated as a single-arg form.
+pub(super) fn compile_args(
+    value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<Box<[CompiledNode]>> {
+    match value {
+        OwnedDataValue::Array(arr) => arr
+            .iter()
+            .map(|v| compile_node(v, engine, templating, ctx))
+            .collect::<Result<Vec<_>>>()
+            .map(Vec::into_boxed_slice),
+        _ => Ok(vec![compile_node(value, engine, templating, ctx)?].into_boxed_slice()),
+    }
+}

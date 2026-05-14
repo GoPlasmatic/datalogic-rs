@@ -53,7 +53,7 @@ export function convertOperator(
         parentId: nodeId,
         argIndex: idx,
         branchType: 'branch',
-        preserveStructure: context.preserveStructure,
+        templating: context.templating,
       });
       const summary = generateArgSummary(operand);
       summary.label = generateExpressionText(operand, TRUNCATION_LIMITS.expressionText);

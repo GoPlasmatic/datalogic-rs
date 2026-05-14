@@ -1,6 +1,6 @@
 # API Reference
 
-Complete API documentation for the `@goplasmatic/datalogic` WebAssembly package.
+Complete API documentation for the `@goplasmatic/datalogic-wasm` WebAssembly package.
 
 ## Functions
 
@@ -19,7 +19,7 @@ function init(input?: InitInput): Promise<InitOutput>;
 
 **Example:**
 ```javascript
-import init from '@goplasmatic/datalogic';
+import init from '@goplasmatic/datalogic-wasm';
 
 // Standard initialization
 await init();
@@ -37,13 +37,13 @@ await init('/custom/path/datalogic_wasm_bg.wasm');
 Evaluate a JSONLogic expression against data.
 
 ```typescript
-function evaluate(logic: string, data: string, preserve_structure: boolean): string;
+function evaluate(logic: string, data: string, templating: boolean): string;
 ```
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
 - `data` - JSON string containing the data context
-- `preserve_structure` - Enable templating mode (preserves object structure)
+- `templating` - Enable templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 
 **Returns:** JSON string containing the result
 
@@ -73,17 +73,17 @@ evaluate(
 
 ---
 
-### `evaluate_with_trace()`
+### `evaluateWithTrace()`
 
 Evaluate with detailed execution trace for debugging.
 
 ```typescript
-function evaluate_with_trace(logic: string, data: string, preserve_structure: boolean): string;
+function evaluateWithTrace(logic: string, data: string, templating: boolean): string;
 ```
 
 **Parameters:** Same as `evaluate()`
 
-**Returns:** JSON string containing `TracedResult`:
+**Returns:** JSON string containing a `TracedResult`:
 
 ```typescript
 interface TracedResult {
@@ -105,9 +105,14 @@ interface Step {
 }
 ```
 
+> The `TracedResult` JSON layout is the JavaScript-side wire shape and is
+> stable across the v4 → v5 cutover. On the Rust side it is produced from
+> a `datalogic_rs::TracedRun<String>` (see the
+> [Rust API reference](../api/reference.md#tracedrunr-feature--trace)).
+
 **Example:**
 ```javascript
-const trace = evaluate_with_trace(
+const trace = evaluateWithTrace(
   '{"and": [true, {"var": "x"}]}',
   '{"x": false}',
   false
@@ -129,12 +134,12 @@ Pre-compiled rule for efficient repeated evaluation.
 #### Constructor
 
 ```typescript
-new CompiledRule(logic: string, preserve_structure: boolean)
+new CompiledRule(logic: string, templating: boolean)
 ```
 
 **Parameters:**
 - `logic` - JSON string containing the JSONLogic expression
-- `preserve_structure` - Enable templating mode
+- `templating` - Enable templating mode
 
 **Throws:** If the logic is invalid JSON or contains compilation errors
 
@@ -166,24 +171,7 @@ rule.evaluate('{"a": 1, "b": 2}');  // "3"
 rule.evaluate('{"a": 10, "b": 20}'); // "30"
 ```
 
-##### `evaluate_with_trace(data: string): string`
-
-Evaluate with execution trace.
-
-```typescript
-evaluate_with_trace(data: string): string;
-```
-
-**Parameters:**
-- `data` - JSON string containing the data context
-
-**Returns:** JSON string containing `TracedResult`
-
-**Example:**
-```javascript
-const rule = new CompiledRule('{"if": [{"var": "x"}, "yes", "no"]}', false);
-const trace = JSON.parse(rule.evaluate_with_trace('{"x": true}'));
-```
+> **Tracing a compiled rule:** the WASM `CompiledRule` exposes `evaluate` only. For execution traces, call the standalone `evaluateWithTrace(logic, data, templating)` function — it recompiles per call but returns the full `TracedResult` shape.
 
 ---
 
@@ -203,19 +191,19 @@ const result: string = evaluate(logic, data, false);
 const parsed: boolean = JSON.parse(result); // true
 ```
 
-### Preserve Structure Mode
+### Templating Mode
 
-When `preserve_structure` is `true`:
+When `templating` is `true`:
 - Unknown object keys become output fields
 - Only recognized operators are evaluated
 - Useful for JSON templating
 
 ```javascript
-// Without preserve_structure - "result" treated as unknown operator
+// Without templating - "result" treated as unknown operator
 evaluate('{"result": {"var": "x"}}', '{"x": 1}', false);
 // Error or unexpected behavior
 
-// With preserve_structure - "result" becomes output field
+// With templating - "result" becomes output field
 evaluate('{"result": {"var": "x"}}', '{"x": 1}', true);
 // '{"result":1}'
 ```
@@ -237,7 +225,7 @@ try {
 
 Common error types:
 - JSON parse errors (invalid syntax)
-- Unknown operator errors (in non-preserve mode)
+- Unknown operator errors (when templating is off)
 - Type errors (wrong argument types)
 - Variable access errors (missing required data)
 

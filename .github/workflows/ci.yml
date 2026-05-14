@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -34,7 +34,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -42,14 +42,413 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        # `--all-features` mirrors the test/example steps so feature-gated
+        # paths (serde_json, templating, datetime, trace, error-handling,
+        # the ext-* operators) get linted. Without it, clippy silently
+        # skips gated code and a regression in those paths can land
+        # unnoticed.
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        # `--all-features` is required to exercise the gated integration
+        # tests: most live behind `serde_json`, and the JSONLogic suite
+        # runner additionally needs `templating`. Without these flags,
+        # those tests silently skip and the CI step succeeds without
+        # exercising them.
+        run: cargo test --workspace --all-features
+
+      - name: Build examples (all features)
+        # Catches example drift on any feature-gated example
+        # (serde_json / templating / datetime / trace / error-handling).
+        # Each `[[example]]` in crates/datalogic-rs/Cargo.toml has
+        # `required-features = [...]`, so only `--all-features` reaches
+        # every example.
+        run: cargo build -p datalogic-rs --examples --all-features
+
+      - name: Build docs (deny warnings)
+        # Treat broken intra-doc links and missing-docs warnings as
+        # errors so docs.rs builds (which run with the same effective
+        # settings via `[package.metadata.docs.rs]`) don't regress.
+        # `--no-deps` keeps the run scoped to our crate; transitive
+        # dep warnings are not our problem.
+        #
+        # Run twice: with `--all-features` (matches the docs.rs build)
+        # AND with default features. Intra-doc links to feature-gated
+        # items are easy to write and only fail in the feature-off
+        # build — a contributor running plain `cargo doc` hits them
+        # but CI used to miss them.
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc -p datalogic-rs --all-features --no-deps
+          cargo doc -p datalogic-rs --no-deps
+
+  msrv:
+    name: MSRV (Rust 1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust 1.85 (matches `rust-version` in Cargo.toml)
+        uses: dtolnay/rust-toolchain@1.85
+
+      - name: Cache cargo (separate from stable to avoid toolchain mix)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-msrv-
+
+      # Build only — test infra (proc-macros, tooling) often outgrows MSRV
+      # without the library code itself doing so. We want to catch the
+      # library-code regression, not chase tooling churn.
+      - name: Build (all features)
+        run: cargo build --workspace --all-features
+
+  minimal-versions:
+    name: Minimal-versions resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # `-Z minimal-versions` is a nightly-only resolver mode that picks
+      # the lowest version that satisfies each dep's `^X.Y` requirement,
+      # rather than the latest. Catches under-pinned semver-incompatible
+      # deps (e.g. a `bumpalo = "3"` requirement that secretly needs a
+      # 3.x feature added in 3.4 — we'd want `bumpalo = "3.4"`).
+      - name: Setup nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      # Install a *stable* toolchain too — the actual build runs on
+      # stable; nightly is only used to *resolve* the lockfile.
+      - name: Setup stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve with minimal versions
+        run: cargo +nightly update -Z minimal-versions
+
+      # `tools/benchmark` is dev-only; under `--all-features` it pulls
+      # `jsonlogic-rs 0.5` → `phf 0.8` → `proc-macro-hack 0.5.4` → broken
+      # `syn 0.15.14` (AttributeArgs gating bug). We can't pin transitives
+      # we don't own, and the gate's purpose is to catch regressions in
+      # the library code we publish (`datalogic-rs`), so exclude the
+      # benchmark crate.
+      - name: Build with minimal versions
+        run: cargo +stable build --workspace --all-features --exclude datalogic-bench
+
+      - name: Test with minimal versions
+        run: cargo +stable test --workspace --all-features --exclude datalogic-bench
+
+  # Cross-platform validation of the Go binding's full cgo path on every
+  # PR and main push. Delegates to the same reusable workflow release.yml
+  # uses, so the matrix + llvm-mingw bootstrap + cgo validation stay in
+  # one place. `upload-artifact: false` skips the per-platform artifact
+  # upload — CI only needs the validation, not the staging output that
+  # publish-go consumes at release time.
+  go-cgo:
+    name: Go cgo
+    uses: ./.github/workflows/release-build-go.yml
+    with:
+      upload-artifact: false
+
+  # C ABI smoke. bindings/c is excluded from the root workspace so
+  # `cargo test --workspace` in the check job skips it — without this
+  # job, a regression in the C ABI's extern "C" surface (NULL handling,
+  # error-state lifetime, cbindgen header drift) wouldn't surface until
+  # the go-cgo / python / php / jvm jobs noticed. Running it directly
+  # gives a cleaner failure attribution.
+  c-abi-test:
+    name: C ABI test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Composite action: Rust setup + shared host-target cache + release build.
+      # The follow-up `cargo test` reuses the cache, so it only compiles the
+      # smoke test binary on top of the already-built lib.
+      - uses: ./.github/actions/c-abi-host
+
+      # Runs tests/smoke.rs which exercises the extern "C" surface
+      # end-to-end (version, apply, compile, session, parse error, runtime
+      # error with path, NULL-safety). The composite already built the lib
+      # and regenerated the cbindgen header via build.rs.
+      - name: Test C ABI smoke surface
+        run: cargo test --manifest-path bindings/c/Cargo.toml
+
+      - name: Verify cbindgen-generated header is up to date
+        # The header is committed; the build regenerates it. If the
+        # working tree shows a diff, the committed header has drifted
+        # from the Rust source — fail loudly so we don't ship a stale
+        # header to downstream consumers.
+        run: |
+          if ! git diff --exit-code bindings/c/include/datalogic.h; then
+            echo "::error::bindings/c/include/datalogic.h is out of sync with src/. Run 'cargo build -p datalogic-c' and commit the result."
+            exit 1
+          fi
+
+  # WASM smoke build. Catches a wasm-pack / Rust target / wasm-opt
+  # regression at PR time rather than at release. Single platform —
+  # the WASM artifact is platform-agnostic so one runner suffices.
+  wasm-build:
+    name: WASM build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Pinned + cached. The upstream curl-installer fetches whatever
+      # version is current at install time — that floats CI across
+      # wasm-pack releases and bites you on a release-day regression.
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.14.0
+
+      - name: Install binaryen
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-wasm-
+
+      - name: Build WASM
+        run: cd bindings/wasm && ./build.sh
+
+      # Hand the built pkg/ to the ui-build job below — saves it the cost
+      # of repeating the wasm build from scratch.
+      - name: Upload wasm-pkg
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-pkg
+          path: bindings/wasm/pkg/
+          if-no-files-found: error
+
+  # Python test. Builds the binding via `maturin develop` into a venv,
+  # then runs pytest. Single platform — pytest validates logical behavior
+  # (error attrs, dict/string conversion, session semantics) which is
+  # platform-agnostic. The release-time wheel matrix catches per-platform
+  # build issues; this catches Python-level regressions.
+  python-test:
+    name: Python pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/python/target/
+          key: ${{ runner.os }}-python-${{ hashFiles('bindings/python/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-python-
+
+      # `maturin develop` requires a virtualenv (or conda env) — it installs
+      # the freshly-built wheel into the active interpreter's site-packages.
+      # actions/setup-python provides only the bare interpreter, so we
+      # create a local venv and propagate VIRTUAL_ENV + PATH to subsequent
+      # steps via $GITHUB_ENV / $GITHUB_PATH.
+      - name: Create venv
+        working-directory: bindings/python
+        run: |
+          python -m venv .venv
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install build + test deps
+        working-directory: bindings/python
+        run: pip install --upgrade pip maturin pytest
+
+      # `maturin develop --release` builds the binding and installs it
+      # into the active venv in one shot. Using --release because debug
+      # builds of pyo3 + the engine's compile pass are slow enough to
+      # dominate the test run.
+      - name: Build + install binding
+        working-directory: bindings/python
+        run: maturin develop --release
+
+      - name: Run pytest
+        working-directory: bindings/python
+        run: pytest -v
+
+  # Node-binding smoke build. The release-time matrix fans out to 8
+  # platforms; mirroring all of them at PR time is expensive and most
+  # regressions are platform-agnostic (binding logic, conv layer, error
+  # surface). One Linux build + `node --test` catches the common cases
+  # and keeps release-build-node from failing for the first time on
+  # tag day. The release matrix still validates each prebuild target.
+  node-test:
+    name: Node binding smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/node/target/
+          key: ${{ runner.os }}-node-${{ hashFiles('bindings/node/Cargo.toml', 'bindings/node/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Install npm deps
+        working-directory: bindings/node
+        run: npm ci || npm install
+
+      # `napi build --platform --release` emits
+      # datalogic-node.<triple>.node + index.js + index.d.ts. Mirrors
+      # the release-build-node.yml prebuild step.
+      - name: Build .node prebuild
+        working-directory: bindings/node
+        run: npx napi build --platform --release
+
+      - name: Run node:test
+        working-directory: bindings/node
+        run: npm test
+
+  # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic-wasm
+  # would normally resolve from the registry; we link the locally-built
+  # WASM pkg/ instead so PR CI doesn't depend on the published artifact
+  # matching this branch's source.
+  ui-build:
+    name: UI lint + build
+    needs: wasm-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Download wasm-pkg
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-pkg
+          path: bindings/wasm/pkg/
+
+      # npm link semantics: the linked package's version takes precedence
+      # at `npm install` time even if the registry has a different one.
+      # Matches the release-time flow in publish-ui.
+      - name: Link local WASM into UI
+        run: |
+          cd bindings/wasm/pkg && npm link
+          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
+
+      - name: Install UI dependencies
+        run: cd ui && npm install
+
+      - name: Lint UI
+        run: cd ui && npm run lint
+
+      - name: Build UI library
+        run: cd ui && npm run build:lib
+
+  # .NET binding smoke. Single platform — the binding is P/Invoke over
+  # the C ABI's cdylib, so the .NET-side logic (LibraryImport stubs,
+  # marshalling, dispose semantics) is platform-agnostic. The release
+  # matrix validates per-RID native libs.
+  dotnet-test:
+    name: .NET binding test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: ./.github/actions/c-abi-host
+
+      - name: dotnet test
+        working-directory: bindings/dotnet
+        run: dotnet test -c Release
+
+  # JVM binding smoke. Same rationale as dotnet-test — the binding is
+  # JNA over the C ABI's cdylib.
+  jvm-test:
+    name: JVM binding test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Maven repository
+        uses: actions/cache@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('bindings/jvm/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - uses: ./.github/actions/c-abi-host
+
+      - name: mvn test
+        working-directory: bindings/jvm
+        run: mvn -B test
+
+  # PHP binding smoke. Same rationale — PHP FFI over the C ABI.
+  php-test:
+    name: PHP binding test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ffi, json
+          coverage: none
+
+      - uses: ./.github/actions/c-abi-host
+
+      - name: composer install
+        working-directory: bindings/php
+        run: composer install --no-interaction --no-progress
+
+      - name: phpunit
+        working-directory: bindings/php
+        run: vendor/bin/phpunit --no-coverage

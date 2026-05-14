@@ -14,9 +14,15 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
       '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
+      // Resolve the WASM dep to a vendored copy inside the UI tree
+      // (`vendor/datalogic/`, kept fresh by `npm run sync-wasm`). This
+      // keeps the file under the UI project root so Vite's default
+      // `server.fs.allow` covers it — no need to widen the allow-list
+      // out to the monorepo root.
+      '@goplasmatic/datalogic-wasm': resolve(__dirname, 'vendor/datalogic'),
     },
   },
   optimizeDeps: {
-    exclude: ['@goplasmatic/datalogic'],
+    exclude: ['@goplasmatic/datalogic-wasm'],
   },
 })

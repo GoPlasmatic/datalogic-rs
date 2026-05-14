@@ -1,0 +1,182 @@
+//! Example demonstrating the structured-objects (templating) feature.
+//!
+//! When templating mode is enabled, Engine treats unknown keys as
+//! literal output fields rather than operators. This enables JSON templating
+//! where the output structure mirrors the input template.
+//!
+//! Uses the v5 string-based API ([`Engine::evaluate_str`]) — no
+//! `serde_json::Value` boundary, no `compat` feature required.
+
+use datalogic_rs::Engine;
+
+fn main() {
+    println!("Structured Objects (templating) Examples\n");
+    println!("=========================================\n");
+
+    let engine = Engine::builder().with_templating(true).build();
+
+    // Example 1: Basic object template
+    println!("1. Basic Object Template");
+    println!("------------------------");
+
+    let template = r#"{
+        "name": {"var": "user.name"},
+        "email": {"var": "user.email"},
+        "active": true
+    }"#;
+    let data = r#"{
+        "user": {
+            "name": "Alice Johnson",
+            "email": "alice@example.com"
+        }
+    }"#;
+
+    let result = engine.eval_str(template, data).unwrap();
+    println!("   Template: {}", template);
+    println!("   Result:   {}\n", result);
+
+    // Example 2: Nested object structures
+    println!("2. Nested Object Structures");
+    println!("---------------------------");
+
+    let template = r#"{
+        "profile": {
+            "firstName": {"var": "first"},
+            "lastName": {"var": "last"},
+            "fullName": {"cat": [{"var": "first"}, " ", {"var": "last"}]}
+        },
+        "metadata": {
+            "createdAt": {"var": "timestamp"},
+            "version": "1.0"
+        }
+    }"#;
+    let data = r#"{
+        "first": "John",
+        "last": "Doe",
+        "timestamp": "2024-01-15T10:30:00Z"
+    }"#;
+
+    let result = engine.eval_str(template, data).unwrap();
+    println!("   Result: {}\n", result);
+
+    // Example 3: Conditional fields — compile once, evaluate against multiple
+    // payloads via the reusable `Session` handle.
+    println!("3. Conditional Fields");
+    println!("---------------------");
+
+    let template = r#"{
+        "status": {"if": [
+            {"var": "isActive"},
+            "active",
+            "inactive"
+        ]},
+        "tier": {"if": [
+            {">": [{"var": "points"}, 1000]}, "gold",
+            {"if": [
+                {">": [{"var": "points"}, 500]}, "silver",
+                "bronze"
+            ]}
+        ]},
+        "points": {"var": "points"}
+    }"#;
+
+    let compiled = engine.compile(template).unwrap();
+    let mut session = engine.session();
+
+    let result1 = session
+        .eval_str(&compiled, r#"{"isActive": true, "points": 1500}"#)
+        .unwrap();
+    println!("   User with 1500 points: {}", result1);
+
+    let result2 = session
+        .eval_str(&compiled, r#"{"isActive": false, "points": 750}"#)
+        .unwrap();
+    println!("   User with 750 points:  {}\n", result2);
+
+    // Example 4: Arrays with mapped content
+    println!("4. Arrays with Mapped Content");
+    println!("-----------------------------");
+
+    let template = r#"{
+        "items": {"map": [
+            {"var": "products"},
+            {
+                "id": {"var": ".id"},
+                "displayName": {"cat": [{"var": ".name"}, " ($", {"var": ".price"}, ")"]},
+                "inStock": {">": [{"var": ".quantity"}, 0]}
+            }
+        ]},
+        "totalProducts": {"length": {"var": "products"}}
+    }"#;
+    let data = r#"{
+        "products": [
+            {"id": 1, "name": "Widget", "price": 9.99, "quantity": 50},
+            {"id": 2, "name": "Gadget", "price": 19.99, "quantity": 0},
+            {"id": 3, "name": "Gizmo", "price": 14.99, "quantity": 25}
+        ]
+    }"#;
+
+    let result = engine.eval_str(template, data).unwrap();
+    println!("   Result: {}\n", result);
+
+    // Example 5: API response transformation
+    println!("5. API Response Transformation");
+    println!("------------------------------");
+
+    let template = r#"{
+        "success": true,
+        "data": {
+            "user": {
+                "id": {"var": "userId"},
+                "displayName": {"var": "name"},
+                "role": {"if": [
+                    {"var": "isAdmin"},
+                    "administrator",
+                    "user"
+                ]}
+            },
+            "permissions": {"filter": [
+                {"var": "allPermissions"},
+                {"var": ".enabled"}
+            ]}
+        },
+        "timestamp": {"now": []}
+    }"#;
+    let data = r#"{
+        "userId": "usr_12345",
+        "name": "Jane Smith",
+        "isAdmin": true,
+        "allPermissions": [
+            {"name": "read", "enabled": true},
+            {"name": "write", "enabled": true},
+            {"name": "delete", "enabled": false}
+        ]
+    }"#;
+
+    let result = engine.eval_str(template, data).unwrap();
+    println!("   Result: {}\n", result);
+
+    // Example 6: Comparing with vs without templating
+    println!("6. With vs Without templating");
+    println!("------------------------------");
+
+    let standard_engine = Engine::new();
+    let templating_engine = Engine::builder().with_templating(true).build();
+
+    let template = r#"{
+        "result": {"var": "x"},
+        "label": "Output"
+    }"#;
+    let data = r#"{"x": 42}"#;
+
+    let standard_result = standard_engine.eval_str(template, data);
+    println!(
+        "   Standard engine: {:?}",
+        standard_result.err().map(|e| e.to_string())
+    );
+
+    let templating_result = templating_engine.eval_str(template, data).unwrap();
+    println!("   Templating engine: {}", templating_result);
+
+    println!("\nDone!");
+}

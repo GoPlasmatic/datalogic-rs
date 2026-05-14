@@ -4,24 +4,29 @@ Common issues and solutions for datalogic-rs.
 
 ## Rust Issues
 
-### "Unknown operator: xyz"
+### "Invalid operator: xyz"
 
 **Cause:** Using an unrecognized operator name.
 
 **Solutions:**
-1. Check the operator name spelling (operators are case-sensitive)
-2. Register a custom operator if it's your own
-3. Enable `preserve_structure` mode if you're using JSONLogic for templating
+
+1. Check the operator name spelling (operators are case-sensitive).
+2. Register a custom operator on the builder.
+3. Enable templating mode (requires `feature = "templating"`) — unknown
+   keys then become literal output fields.
 
 ```rust
 // Option 1: Fix spelling
-let logic = json!({ "and": [...] }); // not "AND"
+let logic = r#"{"and": [...]}"#;  // not "AND"
 
 // Option 2: Custom operator
-engine.add_operator("xyz".to_string(), Box::new(XyzOperator));
+let engine = datalogic_rs::Engine::builder()
+    .add_operator("xyz", XyzOperator)
+    .build();
 
-// Option 3: Templating mode
-let engine = DataLogic::with_preserve_structure();
+// Option 3: Templating mode (feature = "templating")
+# #[cfg(feature = "templating")]
+let engine = datalogic_rs::Engine::builder().with_templating(true).build();
 ```
 
 ### "Variable not found"
@@ -29,76 +34,85 @@ let engine = DataLogic::with_preserve_structure();
 **Cause:** Accessing a path that doesn't exist in the data.
 
 **Solutions:**
+
 1. Check the variable path spelling
 2. Use a default value
 3. Use `missing` to check first
 
-```rust
-// Default value
-let logic = json!({ "var": ["user.name", "Anonymous"] });
+```json
+{"var": ["user.name", "Anonymous"]}
 
-// Check first
-let logic = json!({
-    "if": [
-        { "missing": ["user.name"] },
-        "No name",
-        { "var": "user.name" }
-    ]
-});
+{"if": [
+    {"missing": ["user.name"]},
+    "No name",
+    {"var": "user.name"}
+]}
 ```
 
-### "NaN" or unexpected arithmetic results
+### Unexpected `NaN` / `Thrown` errors from arithmetic
 
 **Cause:** Non-numeric values in arithmetic operations.
 
 **Solution:** Configure NaN handling:
 
 ```rust
-use datalogic_rs::{EvaluationConfig, NanHandling};
+use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
-let config = EvaluationConfig::default()
-    .with_nan_handling(NanHandling::IgnoreValue); // or CoerceToZero
-let engine = DataLogic::with_config(config);
+let config = EvaluationConfig {
+    arithmetic_nan_handling: NanHandling::IgnoreValue, // or CoerceToZero
+    ..Default::default()
+};
+let engine = Engine::builder().with_config(config).build();
 ```
 
-### Thread safety errors
+### "the trait bound `T: CustomOperator` is not satisfied" / `Send`-`Sync` errors
 
-**Cause:** Custom operators that aren't `Send + Sync`.
+**Cause:** Custom operator type that isn't `Send + Sync`.
 
-**Solution:** Ensure custom operators are thread-safe:
+**Solution:** Use thread-safe primitives. Avoid `Rc`, `RefCell`, etc., in
+operator state — wrap shared state in `Arc<Mutex<_>>` or atomics.
 
-```rust
-// This won't compile if operator uses RefCell, Rc, etc.
-engine.add_operator("my_op".to_string(), Box::new(MyOperator));
+### v4 method calls fail to compile in v5
 
-// Use Arc, Mutex, or make fields immutable
-struct MyOperator {
-    config: Arc<Config>, // Thread-safe
-}
-```
+**Cause:** v5 renamed the public surface (`DataLogic` → `Engine`,
+`CompiledLogic` → `Logic`, `Operator` → `CustomOperator`,
+`evaluate_*` → `eval_*`, etc.) and removed the pre-release `compat`
+shim. v5 is a hard cliff — there is no transitional feature flag.
+
+**Solutions:**
+
+- Follow the conceptual overview in the [Migration Guide](migration.md)
+  and the per-call cookbook in the repo-root `MIGRATION.md`.
+- Common mappings:
+  - `DataLogic::with_config(c)` → `Engine::builder().with_config(c).build()`
+  - `engine.evaluate_str(rule, data)` → `engine.eval_str(rule, data)`
+    (or `datalogic_rs::eval_str(rule, data)` for the zero-config path)
+  - `engine.evaluate_json_value(&rule, &data)` → `engine.eval_into::<Value, _, _>(&rule, &data)`
+    (requires `feature = "serde_json"`)
+  - `engine.evaluate_json_with_trace(rule, data)` → `engine.trace().eval_str(rule, data)` returning `TracedRun<String>`
 
 ### Slow compilation
 
 **Cause:** Very large or deeply nested expressions.
 
 **Solutions:**
-1. Compile once, evaluate many times
-2. Break expressions into smaller pieces
-3. Consider using `preserve_structure` for simpler parsing
+
+- Compile once, evaluate many times
+- Break expressions into smaller composable pieces
+- Profile with `feature = "trace"` to see which sub-expressions dominate
 
 ```rust
-// Compile once
-let compiled = engine.compile(&logic)?;
-
-// Evaluate many times
+let compiled = engine.compile(rule).unwrap();
+let mut session = engine.session();
 for data in dataset {
-    engine.evaluate_owned(&compiled, data)?;
+    session.eval_str(&compiled, data)?;
+    session.reset();
 }
 ```
 
 ---
 
-## JavaScript/WASM Issues
+## JavaScript / WASM Issues
 
 ### "RuntimeError: memory access out of bounds"
 
@@ -107,24 +121,24 @@ for data in dataset {
 **Solution:** Call `init()` before using any functions:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
-await init(); // Must await before using evaluate
+await init();
 evaluate(logic, data, false);
 ```
 
 ### "TypeError: Cannot read properties of undefined"
 
-**Cause:** Using the wrong import style for your environment.
+**Cause:** Wrong import style for your environment.
 
 **Solutions:**
 
 ```javascript
-// Browser/Bundler - need default import for init
-import init, { evaluate } from '@goplasmatic/datalogic';
+// Browser/Bundler — need default import for init
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
-// Node.js - no init needed
-const { evaluate } = require('@goplasmatic/datalogic');
+// Node.js — no init needed
+const { evaluate } = require('@goplasmatic/datalogic-wasm');
 ```
 
 ### "Failed to fetch" in browser
@@ -132,11 +146,12 @@ const { evaluate } = require('@goplasmatic/datalogic');
 **Cause:** WASM file not accessible from the browser.
 
 **Solutions:**
+
 1. Check your bundler configuration
-2. Ensure WASM files are being served correctly
+2. Ensure WASM files are served correctly
 3. Check CORS headers if loading from CDN
 
-For Vite, it should work automatically. For Webpack:
+For Webpack:
 
 ```javascript
 // webpack.config.js
@@ -155,7 +170,7 @@ module.exports = {
 
 ```javascript
 const resultString = evaluate(logic, data, false);
-const result = JSON.parse(resultString); // Parse to native value
+const result = JSON.parse(resultString);
 ```
 
 ### Performance issues
@@ -165,12 +180,6 @@ const result = JSON.parse(resultString); // Parse to native value
 **Solution:** Use `CompiledRule`:
 
 ```javascript
-// Slow - compiles each time
-for (const item of items) {
-  evaluate(logic, JSON.stringify(item), false);
-}
-
-// Fast - compile once
 const rule = new CompiledRule(logic, false);
 for (const item of items) {
   rule.evaluate(JSON.stringify(item));
@@ -183,25 +192,12 @@ for (const item of items) {
 
 ### "ResizeObserver loop completed with undelivered notifications"
 
-**Cause:** Container size changes rapidly.
+**Cause:** Container size changes rapidly. Usually harmless.
 
-**Solution:** This warning is usually harmless, but you can debounce size changes:
-
-```tsx
-function StableEditor({ expression }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  return (
-    <div ref={containerRef} style={{ height: '500px' }}>
-      <DataLogicEditor value={expression} />
-    </div>
-  );
-}
-```
-
-### Editor shows blank/empty
+### Editor shows blank / empty
 
 **Causes:**
+
 1. Container has no dimensions
 2. CSS not imported
 3. Expression is null
@@ -209,38 +205,35 @@ function StableEditor({ expression }) {
 **Solutions:**
 
 ```tsx
-// 1. Ensure container has dimensions
 <div style={{ width: '100%', height: '500px' }}>
   <DataLogicEditor value={expression} />
 </div>
+```
 
-// 2. Import CSS in correct order
+```tsx
 import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
-
-// 3. Check expression
-<DataLogicEditor value={expression ?? { "==": [1, 1] }} />
 ```
 
 ### Debug mode not showing results
 
 **Cause:** `data` prop not provided.
 
-**Solution:** Debug mode requires data:
+**Solution:**
 
 ```tsx
 <DataLogicEditor
   value={expression}
-  data={{ x: 1, y: 2 }} // Required for debug mode
+  data={{ x: 1, y: 2 }}
   mode="debug"
 />
 ```
 
-### SSR/Hydration errors in Next.js
+### SSR / Hydration errors in Next.js
 
 **Cause:** WASM doesn't run on server.
 
-**Solution:** Use client component:
+**Solution:** Use a client component with dynamic import:
 
 ```tsx
 'use client';
@@ -264,26 +257,17 @@ const DataLogicEditor = dynamic(
 **Solution:**
 
 ```bash
-# Install wasm-pack
 cargo install wasm-pack
-
-# Add target
 rustup target add wasm32-unknown-unknown
-
-# Build
-cd wasm && ./build.sh
+cd bindings/wasm && ./build.sh
 ```
 
 ### TypeScript errors with imports
 
-**Cause:** Missing type declarations or wrong import.
-
-**Solution:** Check your tsconfig.json:
-
 ```json
 {
   "compilerOptions": {
-    "moduleResolution": "bundler", // or "node16"
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true
   }
 }
@@ -291,17 +275,9 @@ cd wasm && ./build.sh
 
 ### Bundler can't find WASM file
 
-**Cause:** WASM file not copied to output.
-
-**Solution:** Depends on bundler:
-
 ```javascript
-// Vite - usually automatic
-
-// Webpack - enable async WASM
+// Webpack — enable async WASM
 experiments: { asyncWebAssembly: true }
-
-// Rollup - use @rollup/plugin-wasm
 ```
 
 ---
@@ -314,6 +290,6 @@ If you can't resolve an issue:
 2. Create a minimal reproduction
 3. Open a new issue with:
    - datalogic-rs version
-   - Environment (Rust/Node/Browser)
+   - Environment (Rust / Node / Browser)
    - Minimal code to reproduce
    - Expected vs actual behavior

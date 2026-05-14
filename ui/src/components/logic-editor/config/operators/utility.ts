@@ -3,7 +3,10 @@
  *
  * General-purpose utility operations.
  * - type: Get the type of a value
- * - preserve: Pass values through unchanged (templating mode)
+ *
+ * Note: the v4 `preserve` operator was removed in v5 — literal scalars and
+ * arrays pass through inline already, and templated objects are handled by
+ * templating mode (the toolbar toggle), not by an operator.
  */
 
 import type { Operator } from '../operators.types';
@@ -98,74 +101,4 @@ export const utilityOperators: Record<string, Operator> = {
     },
   },
 
-  preserve: {
-    name: 'preserve',
-    label: 'Preserve',
-    category: 'utility',
-    description: 'Pass values through unchanged (templating mode)',
-    arity: {
-      type: 'special',
-      min: 0,
-      args: [
-        {
-          name: 'value',
-          label: 'Value',
-          type: 'any',
-          required: false,
-          repeatable: true,
-          description: 'Value(s) to preserve',
-        },
-      ],
-    },
-    help: {
-      summary: 'Evaluate and return values unchanged',
-      details:
-        'Used in structure preservation (templating) mode to pass values through without interpretation as operators. With one argument, returns that value. With multiple arguments, returns an array.',
-      returnType: 'any',
-      examples: [
-        {
-          title: 'Preserve single value',
-          rule: { preserve: 42 },
-          result: 42,
-        },
-        {
-          title: 'Preserve expression result',
-          rule: { preserve: { '+': [1, 2] } },
-          result: 3,
-        },
-        {
-          title: 'Preserve multiple values',
-          rule: { preserve: [1, 2, 3] },
-          result: [1, 2, 3],
-        },
-        {
-          title: 'No arguments',
-          rule: { preserve: [] },
-          result: [],
-        },
-        {
-          title: 'In template context',
-          rule: {
-            name: { var: 'user.name' },
-            status: { preserve: 'active' },
-          },
-          data: { user: { name: 'Alice' } },
-          result: { name: 'Alice', status: 'active' },
-          note: 'With preserve_structure enabled',
-        },
-      ],
-      notes: [
-        'Used with preserve_structure mode for JSON templating',
-        'No arguments: returns empty array',
-        'One argument: returns that argument evaluated',
-        'Multiple arguments: returns array of evaluated arguments',
-      ],
-      seeAlso: ['var', 'val'],
-    },
-    ui: {
-      icon: 'lock',
-      shortLabel: 'keep',
-      nodeType: 'operator',
-    },
-  },
 };

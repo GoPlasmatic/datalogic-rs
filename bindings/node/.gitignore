@@ -1,0 +1,11 @@
+target/
+node_modules/
+
+# napi-cli outputs — generated each build, never checked in
+*.node
+index.js
+index.d.ts
+
+# Per-platform prebuilt subpackages staged by `napi prepublish` (only
+# exist transiently inside the release workflow's publish job).
+npm/

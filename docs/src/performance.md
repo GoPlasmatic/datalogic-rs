@@ -11,15 +11,17 @@ datalogic-rs uses a two-phase approach:
 1. **Compilation** (slower): Parse and optimize the JSONLogic expression
 2. **Evaluation** (faster): Execute compiled logic against data
 
-**Best practice:** Compile once, evaluate many times.
+**Best practice:** compile once, evaluate many times.
 
 ```rust
-// Compile once
-let compiled = engine.compile(&logic)?;
+use datalogic_rs::Engine;
 
-// Evaluate many times
-for data in dataset {
-    engine.evaluate_owned(&compiled, data)?;
+let engine = Engine::new();
+let compiled = engine.compile(rule_json).unwrap();
+
+let mut session = engine.session();
+for data in datasets {
+    session.eval_str(&compiled, data)?;
 }
 ```
 
@@ -28,60 +30,58 @@ for data in dataset {
 Built-in operators use direct OpCode dispatch instead of string lookups:
 
 - 59 built-in operators have direct dispatch
-- Custom operators use map lookup (still fast)
+- Custom operators use a single map lookup
 - No runtime reflection or dynamic dispatch
 
 ### Memory Efficiency
 
-v4 optimizations:
-- `SmallVec` for small arrays (avoids heap allocation)
-- `Cow` types for value passing (avoids cloning)
-- `Arc` for compiled logic (cheap cloning for threads)
+v5 optimizations:
+
+- **Arena allocation** — `&DataValue<'a>` results live in a `bumpalo::Bump`
+  for one evaluation. Read-through ops like `var` borrow zero-copy from the
+  caller's input.
+- **Reusable arenas** — `Session` reuses one `Bump` across calls; the caller
+  calls `session.reset()` between batches so peak memory tracks the largest
+  single evaluation rather than the sum.
+- **Pre-built literal singletons** — trivial literals (`Null`, `Bool`,
+  empty primitives) are static and incur no per-call allocation.
+- **`Arc<Logic>`** — cheap clone for cross-thread sharing.
 
 ## Benchmarking
 
 ### Running Benchmarks
 
-```bash
-# Run the benchmark example
-cargo run --example benchmark --release
+The benchmark harness lives in its own dev-only crate, `datalogic-bench`,
+under `tools/benchmark/`. Two binaries share a common harness:
 
-# With custom iterations
-BENCH_ITERATIONS=100000 cargo run --example benchmark --release
+```bash
+# Single-engine benchmark (datalogic-rs alone, fast arena path)
+cargo run --release -p datalogic-bench --bin self
+cargo run --release -p datalogic-bench --bin self -- --all   # every suite + JSON report
+
+# Cross-library comparison (only datalogic-rs ships by default; see
+# tools/benchmark/README.md for adding more subjects)
+cargo run --release -p datalogic-bench --bin compare -- --all
 ```
 
-### Sample Results
-
-Typical performance on modern hardware:
-
-| Operation | Time |
-|-----------|------|
-| Simple comparison | ~50ns |
-| Variable access | ~100ns |
-| Complex nested logic | ~500ns |
-| Array map (10 items) | ~2μs |
-| Large expression (50+ nodes) | ~10μs |
-
-*Results vary by CPU, expression complexity, and data size.*
+Reports land in `tools/benchmark/output/` (gitignored).
 
 ### Creating Custom Benchmarks
 
 ```rust
 use std::time::Instant;
-use datalogic_rs::DataLogic;
-use serde_json::json;
+use datalogic_rs::Engine;
 
 fn main() {
-    let engine = DataLogic::new();
-    let logic = json!({ "==": [{ "var": "x" }, 1] });
-    let compiled = engine.compile(&logic).unwrap();
-    let data = json!({ "x": 1 });
+    let engine = Engine::new();
+    let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
+    let mut session = engine.session();
 
     let iterations = 100_000;
     let start = Instant::now();
 
     for _ in 0..iterations {
-        let _ = engine.evaluate_owned(&compiled, data.clone());
+        let _ = session.eval_str(&compiled, r#"{"x": 1}"#);
     }
 
     let elapsed = start.elapsed();
@@ -90,107 +90,94 @@ fn main() {
 }
 ```
 
+For the absolute hot path, drop down to `Engine::evaluate` and manage the
+arena yourself — the result is a zero-copy `&DataValue<'a>` and avoids the
+deep-clone Session does at the boundary.
+
+```rust
+use bumpalo::Bump;
+
+let arena = Bump::new();
+let result = engine.evaluate(&compiled, r#"{"x": 1}"#, &arena).unwrap();
+// `result` is `&DataValue<'_>` — borrows from `arena`.
+```
+
 ## Optimization Tips
 
 ### 1. Reuse Compiled Rules
 
-**Bad:**
 ```rust
-for item in items {
-    let compiled = engine.compile(&logic)?; // Recompiles every time!
-    engine.evaluate_owned(&compiled, item)?;
+// Good
+let compiled = engine.compile(rule).unwrap();
+for data in datasets {
+    session.eval_str(&compiled, data)?;
+}
+
+// Bad — recompiles every iteration
+for data in datasets {
+    let compiled = engine.compile(rule).unwrap();
+    engine.eval_str(rule, data)?;
+    let _ = compiled;
 }
 ```
 
-**Good:**
-```rust
-let compiled = engine.compile(&logic)?;
-for item in items {
-    engine.evaluate_owned(&compiled, item)?;
-}
-```
+### 2. Pick the Right Entry Point
 
-### 2. Use References for Large Data
+| Caller has on hand | Best entry point |
+|--------------------|------------------|
+| JSON strings, no engine config | `datalogic_rs::eval_str(rule, data)` |
+| JSON strings (one-shot via configured engine) | `Engine::eval_str(rule, data)` |
+| JSON strings (many runs) | `Session::eval_str(&compiled, data)` |
+| `OwnedDataValue` (many runs) | `Session::eval(&compiled, &owned)` → `OwnedDataValue` |
+| Typed `T` from `serde_json` (`feature = "serde_json"`) | `Session::eval_into::<T, _>(&compiled, data)` |
+| Borrowed result, session-owned arena | `Session::eval_borrowed(&compiled, data)` |
+| Hot path, owns the `Bump` | `Engine::evaluate(&compiled, data, &arena)` |
 
-```rust
-// Clones data (fine for small data)
-engine.evaluate_owned(&compiled, large_data)
+### 3. Short-Circuit Evaluation
 
-// Uses reference (better for large data)
-engine.evaluate(&compiled, &large_data)
-```
-
-### 3. Avoid Unnecessary Cloning in Custom Operators
-
-```rust
-impl Operator for MyOperator {
-    fn evaluate(&self, args: &[Value], context: &mut ContextStack, evaluator: &dyn Evaluator) -> Result<Value> {
-        // Avoid: cloning arguments unnecessarily
-        // let value = args[0].clone();
-
-        // Better: evaluate directly
-        let value = evaluator.evaluate(&args[0], context)?;
-
-        // ...
-    }
-}
-```
-
-### 4. Short-Circuit Evaluation
-
-`and` and `or` operators short-circuit. Order conditions by:
-1. Cheapest to evaluate first
-2. Most likely to short-circuit first
+`and`, `or`, `if`, `?:`, and `??` short-circuit. Order conditions so the
+cheapest / most-likely-to-decide check comes first:
 
 ```json
 {
   "and": [
-    { "var": "isActive" },           // Simple variable check (fast)
-    { "in": ["admin", { "var": "roles" }] }  // Array search (slower)
+    {"var": "isActive"},
+    {"in": ["admin", {"var": "roles"}]}
   ]
 }
 ```
 
-### 5. Use Specific Operators
+### 4. Minimize Cloning in Custom Operators
 
-Some operators are more efficient than others:
+`CustomOperator` receives args as `&DataValue<'a>` borrows. Avoid
+materialising into owned values unless you actually need to mutate.
 
-```json
-// Less efficient: substring check
-{ "in": ["@", { "var": "email" }] }
-
-// More efficient: dedicated operator (when available)
-{ "contains": [{ "var": "email" }, "@"] }
+```rust
+let n = args[0].as_f64().unwrap_or(0.0); // cheap read
 ```
 
-### 6. Minimize Nested Variable Access
+### 5. Minimize Nested Variable Access
 
-Deep nesting requires multiple map lookups:
+Deep paths require multiple lookups:
 
 ```json
-// Slower: deep nesting
-{ "var": "user.profile.settings.theme.color" }
-
-// Faster: flatter structure
-{ "var": "themeColor" }
+{"var": "user.profile.settings.theme.color"}   // slow
+{"var": "themeColor"}                           // fast
 ```
 
-## JavaScript/WASM Performance
+## JavaScript / WASM Performance
 
 ### CompiledRule Advantage
 
 ```javascript
-// Benchmark
-const iterations = 10000;
+const iterations = 10_000;
 
-// Without CompiledRule
 console.time('evaluate');
 for (let i = 0; i < iterations; i++) {
   evaluate(logic, data, false);
 }
 console.timeEnd('evaluate');
 
-// With CompiledRule
 const rule = new CompiledRule(logic, false);
 console.time('compiled');
 for (let i = 0; i < iterations; i++) {
@@ -199,29 +186,21 @@ for (let i = 0; i < iterations; i++) {
 console.timeEnd('compiled');
 ```
 
-Typical improvement: 2-5x faster with `CompiledRule`.
-
-### WASM Considerations
-
-- **Initialization:** Call `init()` once at startup
-- **String overhead:** JSON.stringify/parse has some cost
-- **Memory:** WASM has its own memory space (efficient for large operations)
+Typical improvement: 2–5× faster with `CompiledRule`.
 
 ### React UI Performance
 
-For the DataLogicEditor component:
+For the `DataLogicEditor` component:
 
-1. **Memoize expressions:**
+1. **Memoise expressions:**
    ```tsx
    const expression = useMemo(() => ({ ... }), [deps]);
    ```
-
 2. **Debounce data changes in debug mode:**
    ```tsx
    const debouncedData = useDebouncedValue(data, 200);
    <DataLogicEditor value={expr} data={debouncedData} mode="debug" />
    ```
-
 3. **Use visualize mode when debugging isn't needed:**
    ```tsx
    <DataLogicEditor value={expr} mode="visualize" />
@@ -231,80 +210,70 @@ For the DataLogicEditor component:
 
 ### Rust Profiling
 
-Use standard Rust profiling tools:
-
 ```bash
-# With perf (Linux)
+# perf (Linux)
 cargo build --release
 perf record ./target/release/your-binary
 perf report
 
-# With Instruments (macOS)
+# Instruments (macOS)
 cargo instruments --release -t "CPU Profiler"
 ```
 
 ### Tracing for Bottlenecks
 
-Use `evaluate_with_trace` to identify slow sub-expressions:
+Enable the `trace` feature and call `engine.trace().eval_str(...)`
+to inspect every executed node.
 
-```javascript
-const trace = evaluate_with_trace(logic, data, false);
-const { steps } = JSON.parse(trace);
-
-// Analyze which steps take longest
-steps.forEach(step => {
-  console.log(step.operator, step.duration_ns);
-});
+```rust
+#[cfg(feature = "trace")]
+{
+    let run = engine.trace().eval_str(rule, data);
+    for step in &run.steps {
+        // step.node_id, step.expression, step.context, step.result, ...
+    }
+}
 ```
-
-## Comparison with Other Engines
-
-datalogic-rs is designed for high-throughput evaluation. Compared to:
-
-- **json-logic-js (JavaScript):** 10-50x faster for complex rules
-- **json-logic-py (Python):** 20-100x faster
-- **Other Rust implementations:** Competitive, with better ergonomics
-
-Actual performance depends on:
-- Expression complexity
-- Data size
-- Evaluation frequency
-- Thread utilization
 
 ## Production Recommendations
 
 1. **Pre-compile all rules at startup**
-2. **Use connection/worker pools for parallel evaluation**
+2. **Use a worker pool with per-worker Sessions** for parallel evaluation
 3. **Monitor evaluation latency in production**
 4. **Set appropriate timeouts for untrusted rules**
 5. **Consider rule complexity limits for user-defined logic**
 
 ```rust
-// Production pattern
+use datalogic_rs::{Engine, Logic};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 struct RuleEngine {
-    engine: Arc<DataLogic>,
-    rules: HashMap<String, Arc<CompiledLogic>>,
+    engine: Arc<Engine>,
+    rules: HashMap<String, Arc<Logic>>,
 }
 
 impl RuleEngine {
     pub fn new() -> Self {
-        let engine = Arc::new(DataLogic::new());
+        let engine = Arc::new(Engine::new());
         let mut rules = HashMap::new();
 
-        // Pre-compile all rules at startup
         for (name, logic) in load_rules() {
-            let compiled = engine.compile(&logic).unwrap();
+            let compiled = engine.compile_arc(&logic).unwrap();
             rules.insert(name, compiled);
         }
 
         Self { engine, rules }
     }
 
-    pub fn evaluate(&self, rule_name: &str, data: Value) -> Result<Value> {
-        let compiled = self.rules.get(rule_name).ok_or("Unknown rule")?;
-        self.engine.evaluate_owned(compiled, data)
+    pub fn evaluate(&self, rule_name: &str, data: &str) -> datalogic_rs::Result<String> {
+        let compiled = self.rules.get(rule_name)
+            .ok_or_else(|| datalogic_rs::Error::custom_message(format!("unknown rule: {rule_name}")))?;
+        let mut session = self.engine.session();
+        let result = session.eval_str(compiled, data);
+        session.reset();
+        result
     }
 }
+# fn load_rules() -> Vec<(String, String)> { Vec::new() }
 ```

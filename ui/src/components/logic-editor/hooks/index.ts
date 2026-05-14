@@ -3,7 +3,7 @@ export type { EvaluationResult, EvaluationResultsMap } from './useLogicEditor';
 export { useDebugClassName } from './useDebugClassName';
 export { useNodeCollapse } from './useNodeCollapse';
 export { useDebugEvaluation } from './useDebugEvaluation';
-export { useWasmEvaluator } from './useWasmEvaluator';
+export { useWasmEvaluator, DataLogicEvaluationError } from './useWasmEvaluator';
 export { checkDepth } from './useRecursionCheck';
 export { useContextMenu } from './useContextMenu';
 export { useSystemTheme } from './useSystemTheme';

@@ -52,7 +52,7 @@ export function convertSwitch(
         parentId: nodeId,
         argIndex: 0,
         branchType: 'branch',
-        preserveStructure: context.preserveStructure,
+        templating: context.templating,
       });
 
       context.edges.push(createBranchEdge(nodeId, discBranchId, cellIndex));
@@ -99,7 +99,7 @@ export function convertSwitch(
           parentId: nodeId,
           argIndex: cellIndex,
           branchType: 'branch',
-          preserveStructure: context.preserveStructure,
+          templating: context.templating,
         });
 
         context.edges.push(createBranchEdge(nodeId, caseBranchId, cellIndex));
@@ -131,7 +131,7 @@ export function convertSwitch(
           parentId: nodeId,
           argIndex: cellIndex,
           branchType: 'yes',
-          preserveStructure: context.preserveStructure,
+          templating: context.templating,
         });
 
         context.edges.push(createBranchEdge(nodeId, resultBranchId, cellIndex));
@@ -168,7 +168,7 @@ export function convertSwitch(
         parentId: nodeId,
         argIndex: cellIndex,
         branchType: 'no',
-        preserveStructure: context.preserveStructure,
+        templating: context.templating,
       });
 
       context.edges.push(createBranchEdge(nodeId, defaultBranchId, cellIndex));

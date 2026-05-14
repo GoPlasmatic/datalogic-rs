@@ -1,0 +1,8 @@
+# Per-run output reports written by `bin/self.rs` and (later) other
+# binaries. Regenerated; not source.
+output/
+
+# Node subprocess runner deps for `bin/compare.rs`. Installed via
+# `cd runners && npm install`. The package-lock.json is committed so
+# subject runs are reproducible across machines.
+runners/node_modules/

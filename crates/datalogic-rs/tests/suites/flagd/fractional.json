@@ -1,0 +1,270 @@
+[
+    "# fractional — mirrors flagd's canonical Go conformance suite",
+    "# Source: https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/fractional_test.go",
+    "# Algorithm: bucket = (murmurhash3_x86_32(key) as u64 * total_weight as u64) >> 32",
+    "#           variant = first bucket where cumulative_weight > bucket",
+
+    "## TestFractionalEvaluation — `headerColor` flag, key = flagKey + email, 25/25/25/25 red/blue/green/yellow",
+    {
+        "description": "rachel@faas.com → blue",
+        "rule": {
+            "if": [
+                { "in": ["@faas.com", { "var": ["email"] }] },
+                {
+                    "fractional": [
+                        { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+                        ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+                    ]
+                },
+                null
+            ]
+        },
+        "data": { "email": "rachel@faas.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "blue"
+    },
+    {
+        "description": "monica@faas.com → yellow",
+        "rule": {
+            "if": [
+                { "in": ["@faas.com", { "var": ["email"] }] },
+                {
+                    "fractional": [
+                        { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+                        ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+                    ]
+                },
+                null
+            ]
+        },
+        "data": { "email": "monica@faas.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "yellow"
+    },
+    {
+        "description": "joey@faas.com → red",
+        "rule": {
+            "if": [
+                { "in": ["@faas.com", { "var": ["email"] }] },
+                {
+                    "fractional": [
+                        { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+                        ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+                    ]
+                },
+                null
+            ]
+        },
+        "data": { "email": "joey@faas.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "red"
+    },
+    {
+        "description": "ross@faas.com → blue",
+        "rule": {
+            "if": [
+                { "in": ["@faas.com", { "var": ["email"] }] },
+                {
+                    "fractional": [
+                        { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+                        ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+                    ]
+                },
+                null
+            ]
+        },
+        "data": { "email": "ross@faas.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "blue"
+    },
+
+    "## customSeededHeaderColor — `cat`'d static seed 'my-seed' + email",
+    {
+        "description": "rachel@faas.com with custom seed → green",
+        "rule": {
+            "fractional": [
+                { "cat": ["my-seed", { "var": "email" }] },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "rachel@faas.com" },
+        "result": "green"
+    },
+    {
+        "description": "monica@faas.com with custom seed → red",
+        "rule": {
+            "fractional": [
+                { "cat": ["my-seed", { "var": "email" }] },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "monica@faas.com" },
+        "result": "red"
+    },
+    {
+        "description": "joey@faas.com with custom seed → blue",
+        "rule": {
+            "fractional": [
+                { "cat": ["my-seed", { "var": "email" }] },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "joey@faas.com" },
+        "result": "blue"
+    },
+    {
+        "description": "ross@faas.com with custom seed → green",
+        "rule": {
+            "fractional": [
+                { "cat": ["my-seed", { "var": "email" }] },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "ross@faas.com" },
+        "result": "green"
+    },
+
+    "## footerColor — bucket-by `var email` only (no flagKey concat)",
+    {
+        "description": "ross@faas.com with email-only key → red",
+        "rule": {
+            "fractional": [
+                { "var": "email" },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "ross@faas.com" },
+        "result": "red"
+    },
+
+    "## non-even split 50/25/25 with literal-string key 'email'",
+    {
+        "description": "literal 'email' string seed → green (50/25/25 red/blue/green)",
+        "rule": {
+            "fractional": ["email", ["red", 50], ["blue", 25], ["green", 25]]
+        },
+        "data": { "email": "test4@faas.com" },
+        "result": "green"
+    },
+
+    "## Implicit-key form — flagKey + targetingKey",
+    {
+        "description": "implicit (headerColor + foo@foo.com) 50/50 blue/green → green",
+        "rule": {
+            "fractional": [["blue", 50], ["green", 50]]
+        },
+        "data": { "targetingKey": "foo@foo.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "green"
+    },
+    {
+        "description": "implicit picks up targetingKey even when args[0] is var with missing field",
+        "rule": {
+            "fractional": [{ "var": "email" }, ["red", 50], ["blue", 50]]
+        },
+        "data": { "targetingKey": "foo@foo.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "blue"
+    },
+
+    "## Missing/empty/null targetingKey in implicit form → null (caller falls back to default)",
+    {
+        "description": "missing targetingKey → null",
+        "rule": { "fractional": [["blue", 50], ["green", 50]] },
+        "data": { "$flagd": { "flagKey": "headerColor" } },
+        "result": null
+    },
+    {
+        "description": "null targetingKey → null",
+        "rule": { "fractional": [["blue", 50], ["green", 50]] },
+        "data": { "targetingKey": null, "$flagd": { "flagKey": "headerColor" } },
+        "result": null
+    },
+    {
+        "description": "empty targetingKey → null",
+        "rule": { "fractional": [["blue", 50], ["green", 50]] },
+        "data": { "targetingKey": "", "$flagd": { "flagKey": "headerColor" } },
+        "result": null
+    },
+    {
+        "description": "no email and no targetingKey → null",
+        "rule": {
+            "fractional": [
+                { "var": "email" },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "$flagd": { "flagKey": "headerColor" } },
+        "result": null
+    },
+
+    "## Weight defaults and edge cases",
+    {
+        "description": "missing-weight entries default to 1 each → foo@foo.com lands on blue",
+        "rule": {
+            "fractional": [{ "var": "email" }, ["red"], ["blue"]]
+        },
+        "data": { "email": "foo@foo.com" },
+        "result": "blue"
+    },
+    {
+        "description": "weights [25,25] (sum=50) → foo@foo.com lands on blue",
+        "rule": {
+            "fractional": [{ "var": "email" }, ["red", 25], ["blue", 25]]
+        },
+        "data": { "email": "foo@foo.com" },
+        "result": "blue"
+    },
+    {
+        "description": "single entry with explicit weight returns that variant",
+        "rule": { "fractional": [["blue", 1]] },
+        "data": { "targetingKey": "any-user", "$flagd": { "flagKey": "headerColor" } },
+        "result": "blue"
+    },
+    {
+        "description": "single entry with explicit bucket-by always returns the sole variant",
+        "rule": {
+            "fractional": [{ "var": "email" }, ["green", 100]]
+        },
+        "data": { "email": "any@user.com" },
+        "result": "green"
+    },
+    {
+        "description": "single entry without weight returns that variant",
+        "rule": { "fractional": [["yellow"]] },
+        "data": { "targetingKey": "any-user", "$flagd": { "flagKey": "headerColor" } },
+        "result": "yellow"
+    },
+
+    "## Determinism — same input, same variant on every call",
+    {
+        "description": "rachel@faas.com pinned (call 1/2)",
+        "rule": {
+            "fractional": [
+                { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "rachel@faas.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "blue"
+    },
+    {
+        "description": "rachel@faas.com pinned (call 2/2)",
+        "rule": {
+            "fractional": [
+                { "cat": [{ "var": "$flagd.flagKey" }, { "var": "email" }] },
+                ["red", 25], ["blue", 25], ["green", 25], ["yellow", 25]
+            ]
+        },
+        "data": { "email": "rachel@faas.com", "$flagd": { "flagKey": "headerColor" } },
+        "result": "blue"
+    },
+
+    "## Edge cases not in the Go suite but worth pinning",
+    {
+        "description": "no args → null",
+        "rule": { "fractional": [] },
+        "data": { "targetingKey": "any" },
+        "result": null
+    },
+    {
+        "description": "explicit key but no buckets → null",
+        "rule": { "fractional": ["alice"] },
+        "data": {},
+        "result": null
+    }
+]

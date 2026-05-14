@@ -1,0 +1,82 @@
+name: _release-build-php
+
+# Internal reusable workflow — called by release.yml's `build-php`
+# job. Consumes the cdylib matrix artifacts, stages them under
+# bindings/php/lib/<os>-<arch>/ (the layout the Internal\Native loader
+# looks for), runs PHPUnit, then packs the binding into a Composer
+# distribution zip.
+
+on:
+  workflow_call:
+
+jobs:
+  package:
+    name: composer package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ffi, json
+          coverage: none
+
+      - name: Download all cdylib artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: cdylib/
+          pattern: c-cdylib-*
+          merge-multiple: true
+
+      - name: Stage native libs under bindings/php/lib/<os>-<arch>/
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A MAP=(
+            [linux-amd64]=linux-x86_64
+            [linux-arm64]=linux-aarch64
+            [darwin-amd64]=darwin-x86_64
+            [darwin-arm64]=darwin-aarch64
+            [windows-amd64]=windows-x86_64
+            [windows-arm64]=windows-aarch64
+          )
+          for plat in "${!MAP[@]}"; do
+            dest=${MAP[$plat]}
+            if [ -d "cdylib/$plat" ]; then
+              mkdir -p "bindings/php/lib/$dest"
+              cp "cdylib/$plat/"* "bindings/php/lib/$dest/"
+              echo "Staged $plat -> $dest"
+            fi
+          done
+          ls -R bindings/php/lib/
+
+      # Composite: setup Rust + cargo cache + build the host's cdylib so
+      # PHPUnit's FFI-loaded code can find it.
+      - uses: ./.github/actions/c-abi-host
+
+      - name: Composer install
+        working-directory: bindings/php
+        run: composer install --no-interaction --no-progress
+
+      - name: Test
+        working-directory: bindings/php
+        run: vendor/bin/phpunit --no-coverage
+
+      # Pack the binding into a release zip that mirrors what end users
+      # download via Composer. Packagist auto-indexes from the v* tag
+      # push, so this artifact is mainly for GitHub Release attachment.
+      - name: Pack distribution zip
+        run: |
+          STAGE=php-dist
+          mkdir -p $STAGE/goplasmatic-datalogic
+          cp -r bindings/php/src bindings/php/lib bindings/php/composer.json bindings/php/README.md \
+                $STAGE/goplasmatic-datalogic/
+          (cd $STAGE && zip -r ../goplasmatic-datalogic-php.zip goplasmatic-datalogic)
+
+      - name: Upload distribution zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: php-dist
+          path: goplasmatic-datalogic-php.zip
+          if-no-files-found: error

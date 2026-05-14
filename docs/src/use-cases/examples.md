@@ -9,31 +9,26 @@ Control feature availability based on user attributes.
 ### Basic Feature Flag
 
 ```rust
-use datalogic_rs::DataLogic;
-use serde_json::json;
-
-let engine = DataLogic::new();
-
 // Feature available to premium users in US
-let rule = json!({
+let rule = r#"{
     "and": [
-        { "==": [{ "var": "user.plan" }, "premium"] },
-        { "==": [{ "var": "user.country" }, "US"] }
+        {"==": [{"var": "user.plan"}, "premium"]},
+        {"==": [{"var": "user.country"}, "US"]}
     ]
-});
+}"#;
 
-let compiled = engine.compile(&rule).unwrap();
+let user_data = r#"{
+    "user": {"plan": "premium", "country": "US"}
+}"#;
 
-let user_data = json!({
-    "user": {
-        "plan": "premium",
-        "country": "US"
-    }
-});
-
-let enabled = engine.evaluate_owned(&compiled, user_data).unwrap();
-assert_eq!(enabled, json!(true));
+let enabled = datalogic_rs::eval_str(rule, user_data).unwrap();
+assert_eq!(enabled, "true");
 ```
+
+> The examples below show JSONLogic rules and data as JSON. Wire them
+> through `datalogic_rs::eval_str` (zero-config one-shot),
+> `Engine::eval_str` (one-shot through a configured engine), or compile
+> once and reuse with `Engine::session()`.
 
 ### Percentage Rollout
 
@@ -81,12 +76,7 @@ let rule = json!({
     ]
 });
 
-let data = json!({
-    "quantity": 75,
-    "base_price": 100
-});
-
-let price = engine.evaluate_owned(&compiled, data).unwrap();
+// Data: { "quantity": 75, "base_price": 100 }
 // Result: 90 (10% discount)
 ```
 
@@ -156,7 +146,7 @@ let rule = json!({
 ### Field Constraints
 
 ```rust
-let engine = DataLogic::with_preserve_structure();
+let engine = Engine::builder().with_templating(true).build();
 
 let rule = json!({
     "valid": { "and": [
@@ -340,7 +330,7 @@ Transform and reshape data.
 ### API Response Mapping
 
 ```rust
-let engine = DataLogic::with_preserve_structure();
+let engine = Engine::builder().with_templating(true).build();
 
 let template = json!({
     "users": {

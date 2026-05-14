@@ -1,9 +1,65 @@
 name: Release
 
+# Single unified release workflow. One `git tag v5.x.y && git push --tags`
+# fires this and ships every artifact in the monorepo.
+#
+# Flow (two phases — all builds must pass before any publish runs):
+#
+#   validate
+#      │
+#      ├─ build-wasm
+#      ├─ build-ui (needs build-wasm)
+#      ├─ python-build-wheels (matrix)
+#      ├─ python-build-sdist
+#      ├─ python-test
+#      ├─ go-build-staticlib (matrix)
+#      └─ node-build-prebuild (matrix)
+#      ↓  all builds + tests green
+#   publish-crate              ← single chokepoint; nothing publishes if any build above fails
+#      │
+#      ├─ publish-wasm   (downloads build-wasm artifact, npm publish — no rebuild)
+#      ├─ publish-python (downloads wheel/sdist artifacts, PyPI upload)
+#      ├─ publish-go     (downloads go-staticlib artifacts, tag push)
+#      └─ publish-node   (downloads node-prebuild artifacts, napi prepublish + npm publish)
+#      ↓  publish-wasm done
+#   publish-ui            (downloads build-ui artifact, npm publish)
+#      ↓
+#   github-release
+#
+# Why the build-then-publish split: once `publish-crate` succeeds, the
+# core is on crates.io and can only be yanked, not deleted. The old
+# layout had publish-wasm + publish-ui doing BUILD+PUBLISH in the same
+# job, so a build break after publish-crate would leave a partial
+# release. Now every binding produces its publishable artifact in a
+# pure build job; publish-crate waits on every build to succeed before
+# anything ships to a registry, and the publish jobs themselves just
+# download + push.
+#
+# The Go binding ships as a Git tag (`bindings/go/vX.Y.Z`) rather than
+# to a package registry — same gate applies. The C ABI matrix is
+# reusable: future PHP and JVM bindings will hang off the same
+# staticlib/cdylib outputs and slot into the same build-then-publish
+# topology.
 on:
   push:
     tags:
       - 'v*'
+  # Manual rerun for when a transient failure (npm hiccup, network blip,
+  # PyPI maintenance) caused a partial release. Trigger via the Actions
+  # UI ("Run workflow" → select tag) or:
+  #   gh workflow run release.yml --ref v5.0.0
+  # The validate job's tag-match check enforces that the chosen ref is
+  # actually a `v*` tag whose name matches the core's Cargo.toml version.
+  workflow_dispatch:
+
+# Cancel-in-progress is deliberately OFF: a half-cancelled release is
+# worse than two sequential ones. If two tags land back-to-back, the
+# second waits for the first; that's the right tradeoff for a pipeline
+# that touches crates.io / npm / PyPI and can't easily reverse partial
+# publishes.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -16,24 +72,108 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract version
         id: version
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(grep '^version = ' crates/datalogic-rs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Cargo.toml version: $VERSION"
+          echo "crates/datalogic-rs/Cargo.toml version: $VERSION"
 
       - name: Validate tag matches version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           VERSION="${{ steps.version.outputs.version }}"
           if [ "$TAG_VERSION" != "$VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $VERSION"
+            echo "::error::Tag $GITHUB_REF_NAME does not match crates/datalogic-rs/Cargo.toml version $VERSION"
             exit 1
           fi
-          echo "Tag $GITHUB_REF_NAME matches Cargo.toml version $VERSION"
+          echo "Tag $GITHUB_REF_NAME matches crates/datalogic-rs/Cargo.toml version $VERSION"
+
+      # All bindings share the same `v*` tag as core, so their version
+      # fields must agree. Catch any forgotten bump here, BEFORE core is
+      # published and the tag is impossible to retract cleanly. Loop
+      # over every (path, extractor, label) triple in one step rather
+      # than per-binding to keep the surface single-purpose.
+      - name: Validate binding versions match core
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          FAIL=0
+          check() {
+            local label="$1"
+            local actual="$2"
+            local file="$3"
+            if [ "$actual" != "$VERSION" ]; then
+              echo "::error file=${file}::${label} version is '${actual}', expected '${VERSION}' (bump together with core)"
+              FAIL=1
+            else
+              echo "  ${label}: $actual ✓"
+            fi
+          }
+
+          # Cargo.toml `version = "..."` for each Rust-side binding.
+          for crate in bindings/python/Cargo.toml \
+                       bindings/wasm/Cargo.toml \
+                       bindings/c/Cargo.toml \
+                       bindings/node/Cargo.toml; do
+            v=$(grep '^version = ' "$crate" | head -1 | sed 's/version = "\(.*\)"/\1/')
+            check "$crate" "$v" "$crate"
+          done
+
+          # Python distribution name (pyproject.toml), UI npm package
+          # (package.json), and Node binding package (package.json) each
+          # carry their own version field.
+          PY=$(grep '^version = ' bindings/python/pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          check "bindings/python/pyproject.toml" "$PY" "bindings/python/pyproject.toml"
+
+          UI=$(node -p "require('./ui/package.json').version")
+          check "ui/package.json" "$UI" "ui/package.json"
+
+          NODE_PKG=$(node -p "require('./bindings/node/package.json').version")
+          check "bindings/node/package.json" "$NODE_PKG" "bindings/node/package.json"
+
+          # .NET binding: <Version> in the csproj.
+          DOTNET=$(grep -oP '(?<=<Version>)[^<]+' bindings/dotnet/src/Datalogic/Datalogic.csproj | head -1)
+          check "bindings/dotnet/src/Datalogic/Datalogic.csproj" "$DOTNET" "bindings/dotnet/src/Datalogic/Datalogic.csproj"
+
+          # JVM binding: top-level <version> in pom.xml (first match —
+          # parent/dep versions appear later and don't matter here).
+          JVM=$(grep -oP '(?<=<version>)[^<]+' bindings/jvm/pom.xml | head -1)
+          check "bindings/jvm/pom.xml" "$JVM" "bindings/jvm/pom.xml"
+
+          # PHP binding: composer.json doesn't carry a version field
+          # (Packagist resolves from tags). Nothing to check.
+
+          # Go module: version lives implicitly in the `bindings/go/vX.Y.Z`
+          # tag pushed by publish-go — nothing in source to drift, so it's
+          # not checked here.
+
+          if [ "$FAIL" != 0 ]; then
+            echo "::error::One or more binding versions drift from core ($VERSION). Bump them together."
+            exit 1
+          fi
+          echo "All binding versions match core $VERSION"
+
+      # Catch the common "tag pushed without finalising CHANGELOG" mistake.
+      # The github-release job below extracts notes from CHANGELOG.md by
+      # section header; a missing or "- TBD" / "- Unreleased" header means
+      # we'd ship a release with placeholder notes. Fail loudly here,
+      # before crates.io publication makes the tag impossible to retract.
+      - name: Validate CHANGELOG.md entry
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          HEADER=$(grep -E "^## \[${VERSION}\]" CHANGELOG.md | head -1 || true)
+          if [ -z "$HEADER" ]; then
+            echo "::error file=CHANGELOG.md::No '## [${VERSION}]' section found"
+            exit 1
+          fi
+          # Match `## [X.Y.Z] - YYYY-MM-DD`. Reject TBD/Unreleased/missing date.
+          if ! echo "$HEADER" | grep -Eq "^## \[${VERSION}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\s*$"; then
+            echo "::error file=CHANGELOG.md::CHANGELOG entry '${HEADER}' is missing a YYYY-MM-DD release date (stamp it before tagging)"
+            exit 1
+          fi
+          echo "CHANGELOG.md entry: ${HEADER} ✓"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -41,7 +181,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -49,35 +189,64 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        # `--all-features` mirrors ci.yml so feature-gated paths
+        # (serde_json, templating, datetime, trace, error-handling, the
+        # ext-* operators) get linted. Without it, a regression there
+        # can pass release validate while failing PR clippy — drift we
+        # don't want.
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        # `--all-features` is required: most integration tests are gated
+        # behind `serde_json` and the JSONLogic suite runner needs
+        # `templating`. Without it, those tests silently skip and the
+        # step "passes" without exercising them. Matches the
+        # `cargo test --workspace --all-features` in ci.yml's check job.
+        run: cargo test --workspace --all-features
 
   publish-crate:
-    name: Publish to crates.io
-    needs: validate
+    name: Publish core to crates.io
+    # Gate: every binding's build phase must succeed before we touch
+    # crates.io. Once this job runs, crates.io has the new version and
+    # we can't un-publish — so everything that could fail downstream
+    # must have already passed. Each `build-*` here is a reusable
+    # workflow that wraps that binding's build/test jobs; if any of
+    # them fails, this gate never opens and no bindings publish.
+    needs:
+      - validate
+      - build-wasm
+      - build-ui
+      - build-python
+      - build-go
+      - build-node
+      - build-c-cdylib
+      - build-dotnet
+      - build-jvm
+      - build-php
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Check if version exists on crates.io
         id: check
+        # `cargo search` greps a prefix match, which can return a
+        # different crate that happens to start with `datalogic-rs`. The
+        # registry API is an exact lookup: 200 + `versions[].num` array
+        # gives us the authoritative answer.
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          PUBLISHED=$(cargo search datalogic-rs --limit 1 2>/dev/null | grep "^datalogic-rs" | sed 's/.*= "\(.*\)".*/\1/' || echo "")
-          if [ "$VERSION" = "$PUBLISHED" ]; then
+          if curl -sf "https://crates.io/api/v1/crates/datalogic-rs/${VERSION}" >/dev/null; then
             echo "Version $VERSION already published to crates.io, skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
@@ -87,55 +256,58 @@ jobs:
 
       - name: Publish
         if: steps.check.outputs.skip != 'true'
-        run: cargo publish
+        run: cargo publish --manifest-path crates/datalogic-rs/Cargo.toml
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
+  # =========================================================== Build phase
+  # Each `build-*` job is a thin call into a reusable workflow that owns
+  # that binding's build/test concerns. The reusable workflows live in
+  # .github/workflows/release-build-*.yml. Artifacts they upload
+  # (wasm-pkg, ui-package, python-wheels-*, python-sdist, go-staticlib-*)
+  # are accessible to the publish jobs below — workflow_call artifacts
+  # are scoped to the calling workflow's run.
+  #
+  # All four build jobs run in parallel after validate. publish-crate
+  # waits on all of them; nothing publishes if any binding's build
+  # phase fails.
+
+  build-wasm:
+    name: Build WASM
+    needs: validate
+    uses: ./.github/workflows/release-build-wasm.yml
+
   publish-wasm:
     name: Publish WASM to npm
-    needs: validate
+    # publish-crate gates the entire publish phase; this job's actual
+    # input is the build-wasm artifact.
+    needs: [validate, publish-crate, build-wasm]
     runs-on: ubuntu-latest
+    # `id-token: write` lets `npm publish --provenance` generate the
+    # SLSA build-provenance attestation tied to this workflow run.
+    # `contents: read` is needed because npm provenance includes a
+    # workflow-source link.
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Download wasm-pkg artifact
+        uses: actions/download-artifact@v8
         with:
-          targets: wasm32-unknown-unknown
-
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Install binaryen
-        run: sudo apt-get update && sudo apt-get install -y binaryen
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('wasm/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-wasm-
-
-      - name: Build WASM
-        run: cd wasm && ./build.sh
+          name: wasm-pkg
+          path: bindings/wasm/pkg/
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Check if version exists on npm
         id: check
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          if npm view "@goplasmatic/datalogic@$VERSION" version 2>/dev/null; then
+          if npm view "@goplasmatic/datalogic-wasm@$VERSION" version 2>/dev/null; then
             echo "Version $VERSION already published to npm, skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
@@ -145,50 +317,40 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd wasm/pkg && npm publish --access public
+        run: cd bindings/wasm/pkg && npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Upload wasm-pkg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wasm-pkg
-          path: wasm/pkg/
+  build-ui:
+    name: Build UI
+    needs: [validate, build-wasm]
+    uses: ./.github/workflows/release-build-ui.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
 
   publish-ui:
     name: Publish UI to npm
-    needs: [validate, publish-wasm]
+    # publish-wasm before publish-ui because the published UI's
+    # dependency on @goplasmatic/datalogic-wasm@$VERSION must be resolvable
+    # on npm at install time.
+    needs: [validate, publish-crate, build-ui, publish-wasm]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download wasm-pkg artifact
-        uses: actions/download-artifact@v4
+      - name: Download ui-package artifact
+        # The artifact tarball roots with `ui/...`. Default
+        # `path: .` reconstructs that tree under the runner root.
+        uses: actions/download-artifact@v8
         with:
-          name: wasm-pkg
-          path: wasm/pkg/
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+          name: ui-package
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Sync UI version from Cargo.toml
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          cd ui && npm version "$VERSION" --no-git-tag-version --allow-same-version
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build UI library
-        run: pnpm build:ui:lib
 
       - name: Check if version exists on npm
         id: check
@@ -204,24 +366,512 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd ui && pnpm publish --access public --no-git-checks
+        run: cd ui && npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  build-python:
+    name: Build Python
+    needs: validate
+    uses: ./.github/workflows/release-build-python.yml
+
+  publish-python:
+    name: Publish Python to PyPI
+    needs: [validate, publish-crate, build-python]
+    runs-on: ubuntu-latest
+    # `pypi` GitHub Environment provides the manual approval gate
+    # (configure in repo Settings → Environments → pypi → required
+    # reviewers). A stray tag push won't publish unattended.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/datalogic-py
+    # OIDC trusted publishing — requires a PyPI publisher (or pending
+    # publisher) configured for this repo + workflow file + environment.
+    # No API token used.
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all Python artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: python-*
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # `skip-existing` avoids a hard failure if a wheel was already
+          # uploaded by an earlier (partial) run for the same version.
+          skip-existing: true
+
+  build-go:
+    name: Build Go staticlibs
+    needs: validate
+    uses: ./.github/workflows/release-build-go.yml
+
+  build-node:
+    name: Build Node prebuilds
+    needs: validate
+    uses: ./.github/workflows/release-build-node.yml
+
+  # Shared C-ABI cdylib matrix. Java, .NET, and PHP all consume these
+  # artifacts via their respective packaging jobs. Go has its own
+  # staticlib matrix in build-go above; both run in parallel after
+  # validate.
+  build-c-cdylib:
+    name: Build C ABI cdylib (matrix)
+    needs: validate
+    uses: ./.github/workflows/release-build-c-cdylib.yml
+
+  build-dotnet:
+    name: Build .NET NuGet
+    needs: [validate, build-c-cdylib]
+    uses: ./.github/workflows/release-build-dotnet.yml
+
+  build-jvm:
+    name: Build JVM JAR
+    needs: [validate, build-c-cdylib]
+    uses: ./.github/workflows/release-build-jvm.yml
+
+  build-php:
+    name: Build PHP distribution
+    needs: [validate, build-c-cdylib]
+    uses: ./.github/workflows/release-build-php.yml
+
+  # ============================================================ Publish phase
+  # Everything below runs only after publish-crate succeeds — and
+  # publish-crate runs only when every `build-*` is green. The
+  # publish-* jobs are pure download + push: no rebuild, so a publish
+  # failure here can only be a transient registry issue.
+
+  publish-go:
+    name: Publish Go module tag
+    needs: [validate, publish-crate, build-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Need the full tag commit to base our synthetic release commit on.
+          fetch-depth: 0
+
+      - name: Download all staticlibs
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts/
+          pattern: go-staticlib-*
+          # merge-multiple: each artifact's tarball roots at <os>_<arch>/,
+          # so merging puts every platform dir directly under artifacts/.
+          merge-multiple: true
+
+      - name: Stage staticlibs into bindings/go/lib/
+        run: |
+          mkdir -p bindings/go/lib
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            mkdir -p "bindings/go/lib/${name}"
+            cp "${dir}/libdatalogic_c.a" "bindings/go/lib/${name}/"
+          done
+          echo "Staged platform directories:"
+          ls bindings/go/lib/
+
+      # The cbindgen-generated header is platform-agnostic — it has no
+      # #ifdef'd content — so we generate it once on this Linux runner
+      # rather than collecting it from every matrix output. The composite
+      # action does the cargo build for us as a side effect.
+      - uses: ./.github/actions/c-abi-host
+
+      - name: Stage header into bindings/go/include/
+        run: |
+          mkdir -p bindings/go/include
+          cp bindings/c/include/datalogic.h bindings/go/include/
+
+      - name: Commit and push Go module tag
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="bindings/go/v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `-f` because bindings/go/.gitignore excludes these dirs on main.
+          # The release tag is the only place they ever exist in the tree.
+          git add -f bindings/go/lib/ bindings/go/include/
+          git commit -m "release(go): stage artifacts for ${TAG}"
+          git tag "${TAG}"
+          # Push only the tag — the synthetic commit becomes reachable
+          # through it but never lands on a branch. Main stays binary-free.
+          git push origin "${TAG}"
+          echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/bindings/go@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
+
+  publish-node:
+    name: Publish Node bindings to npm
+    # publish-crate gates the entire publish phase; this job's actual
+    # input is the build-node artifacts (one .node per platform).
+    needs: [validate, publish-crate, build-node]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install bindings/node deps
+        working-directory: bindings/node
+        run: npm ci || npm install
+
+      - name: Download all prebuilds
+        uses: actions/download-artifact@v8
+        with:
+          # Each artifact tarball roots at the .node file directly, so
+          # merge-multiple drops every prebuild side-by-side into
+          # bindings/node/. `napi prepublish -t npm` then matches each
+          # .node to its `npm/<os>-<arch>[-<libc>]/` subpackage via the
+          # triple in the filename.
+          path: bindings/node/
+          pattern: node-prebuild-*
+          merge-multiple: true
+
+      - name: List collected prebuilds
+        run: ls -la bindings/node/*.node
+
+      - name: Check if version exists on npm
+        id: check
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          if npm view "@goplasmatic/datalogic-node@$VERSION" version 2>/dev/null; then
+            echo "Version $VERSION already published to npm, skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Publishing version $VERSION to npm"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to npm
+        if: steps.check.outputs.skip != 'true'
+        working-directory: bindings/node
+        # `napi prepublish -t npm` writes per-platform subpackages to
+        # `npm/<triple>/`, copies the matching .node, and runs
+        # `npm publish` on each subpackage plus the umbrella package.
+        # The umbrella declares the subpackages as `optionalDependencies`
+        # so consumers' npm pulls only the prebuild for their platform.
+        #
+        # `NPM_CONFIG_PROVENANCE=true` flips the `--provenance` flag on
+        # every `npm publish` invocation napi makes (umbrella + each
+        # `npm/<triple>/` subpackage), so all 9 packages carry a SLSA
+        # provenance attestation. Needs `id-token: write` (set above).
+        run: npx napi prepublish -t npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+          GITHUB_TOKEN: ${{ github.token }}
+
+  publish-dotnet:
+    name: Publish .NET to NuGet
+    needs: [validate, publish-crate, build-dotnet]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download .nupkg artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dotnet-nupkg
+          path: nupkg/
+
+      - name: Push to NuGet
+        # `--skip-duplicate` avoids a hard fail if a partial earlier run
+        # already pushed this version.
+        run: |
+          dotnet nuget push 'nupkg/*.nupkg' \
+            --api-key "${NUGET_API_KEY}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  publish-jvm:
+    name: Publish JVM to Maven Central
+    # `build-jvm` is listed explicitly even though publish-crate already
+    # transitively depends on it: it makes the dep graph readable at a
+    # glance ("the JVM smoke must pass before we deploy to Central") and
+    # prevents a future edit that loosens publish-crate's gates from
+    # silently dropping the JVM smoke check.
+    needs: [validate, publish-crate, build-c-cdylib, build-jvm]
+    runs-on: ubuntu-latest
+    # `maven-central` GitHub Environment provides a manual-approval
+    # gate — see Settings → Environments → maven-central → required
+    # reviewers. Maven Central publishes can't be cleanly retracted, so
+    # we gate them the same way as PyPI.
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # publish-jvm needs the cdylibs inside the JAR. The build-jvm
+      # output is an artifact (not a filesystem snapshot), so we
+      # re-stage from the cdylib matrix outputs here and rebuild before
+      # `mvn deploy`. This re-runs JAR assembly but it's cheap (no
+      # cargo) and avoids shipping a fat artifact between jobs.
+      - name: Download cdylib artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: cdylib/
+          pattern: c-cdylib-*
+          merge-multiple: true
+
+      - name: Stage native libs under META-INF/native/<jna-platform>/
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A JNA=(
+            [linux-amd64]=linux-x86-64
+            [linux-arm64]=linux-aarch64
+            [darwin-amd64]=darwin-x86-64
+            [darwin-arm64]=darwin-aarch64
+            [windows-amd64]=win32-x86-64
+            [windows-arm64]=win32-aarch64
+          )
+          for plat in "${!JNA[@]}"; do
+            jna=${JNA[$plat]}
+            if [ -d "cdylib/$plat" ]; then
+              mkdir -p "bindings/jvm/src/main/resources/META-INF/native/$jna"
+              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/META-INF/native/$jna/"
+            fi
+          done
+
+      - name: Configure GPG for signing
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Deploy to Central Portal
+        working-directory: bindings/jvm
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          # Inline server creds into a temporary settings.xml so we
+          # don't touch the runner's ~/.m2/settings.xml.
+          cat > settings.xml <<'EOF'
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${env.MAVEN_CENTRAL_USERNAME}</username>
+                <password>${env.MAVEN_CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          mvn -B -s settings.xml -P release -DskipTests \
+            -Dgpg.passphrase="$MAVEN_GPG_PASSPHRASE" \
+            deploy
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
+  publish-php:
+    name: Publish PHP (subtree-split + Packagist)
+    needs: [validate, publish-crate, build-php]
+    runs-on: ubuntu-latest
+    # Packagist's public service requires composer.json at the repo
+    # root, which our monorepo can't provide directly. The fix is the
+    # standard "subtree split" pattern (same shape Symfony / Doctrine /
+    # Laravel use): on each v* tag, this job re-stages the built PHP
+    # tree as the root of a sibling distribution repo
+    # (GoPlasmatic/datalogic-php), commits, tags, and pushes. Packagist
+    # watches the distribution repo and picks up the new tag — either
+    # via webhook ping (if PACKAGIST_TOKEN is configured) or its hourly
+    # crawler.
+    steps:
+      - name: Download PHP distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: php-dist
+          path: dist/
+
+      - name: Unpack distribution
+        # build-php's zip contains everything we want at the dist repo's
+        # root: src/, lib/, composer.json, README.md. Unzip into ./tree.
+        run: |
+          mkdir -p tree
+          unzip -q dist/goplasmatic-datalogic-php.zip -d tree-raw
+          # The zip wraps everything in a `goplasmatic-datalogic/` dir.
+          mv tree-raw/goplasmatic-datalogic/* tree/
+          ls -la tree/
+
+      - name: Push to GoPlasmatic/datalogic-php as v${{ needs.validate.outputs.version }}
+        env:
+          # Fine-grained PAT with Contents:write scoped to the
+          # GoPlasmatic/datalogic-php repo. The default GITHUB_TOKEN
+          # can't push across repos, so this is the one secret unique
+          # to the PHP flow.
+          PHP_DIST_PUSH_TOKEN: ${{ secrets.PHP_DIST_PUSH_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PHP_DIST_PUSH_TOKEN:-}" ]; then
+            echo "::error::PHP_DIST_PUSH_TOKEN secret is required to push to GoPlasmatic/datalogic-php"
+            exit 1
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Clone target with the PAT so push works. Default branch
+          # assumption: `main`. If empty (just-created repo), git clone
+          # still works but produces an empty working tree.
+          git clone --depth=1 \
+            "https://x-access-token:${PHP_DIST_PUSH_TOKEN}@github.com/GoPlasmatic/datalogic-php.git" \
+            target
+
+          cd target
+          # Replace tree contents wholesale. The dist repo is a derived
+          # artifact; we don't preserve cross-version diff history at
+          # file level — one release commit per tag is the contract.
+          # `git rm -rf .` cleans everything tracked; rsync then drops
+          # the new tree in place.
+          git rm -rf . 2>/dev/null || true
+          # Anything untracked (e.g. .git/) survives `git rm`. Remove
+          # leftover files except the .git dir to avoid stale content.
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -r ../tree/. .
+          git add -A
+          # Skip empty commits (e.g. a rerun of the same tag).
+          if git diff --cached --quiet; then
+            echo "Distribution tree unchanged for v${VERSION}; skipping commit."
+          else
+            git commit -m "release: v${VERSION}"
+          fi
+          # Tag must be unique; force-update if a partial earlier run
+          # left a stale tag pointing at an older commit.
+          git tag -f "v${VERSION}"
+          git push origin HEAD:main
+          git push origin "v${VERSION}" --force
+          echo "::notice::Pushed v${VERSION} to GoPlasmatic/datalogic-php"
+
+      - name: Notify Packagist (optional)
+        # If PACKAGIST_USERNAME / PACKAGIST_TOKEN are configured, ping
+        # the Packagist API to refresh the package immediately. Without
+        # them, Packagist's hourly crawler picks up the tag within ~1h.
+        if: ${{ env.PACKAGIST_USERNAME != '' && env.PACKAGIST_TOKEN != '' }}
+        env:
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+        run: |
+          curl -fsSL -XPOST \
+            -H 'content-type:application/json' \
+            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
+            -d '{"repository":{"url":"https://github.com/GoPlasmatic/datalogic-php"}}'
+
   github-release:
     name: Create GitHub Release
-    needs: [validate, publish-crate, publish-wasm, publish-ui]
+    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go, publish-node, publish-dotnet, publish-jvm, publish-php]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      # Extract just this version's section from CHANGELOG.md. Awk reads
+      # lines between `## [X.Y.Z]` and the next `## [` header (exclusive)
+      # — the validate job already enforced that the section exists and
+      # carries a real date, so we can rely on it being present.
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::Failed to extract CHANGELOG section for $VERSION (validate should have caught this)"
+            exit 1
+          fi
+          echo "Release notes preview:"
+          head -20 release-notes.md
+
+      # Download every build-phase artifact uploaded by the build-* jobs
+      # earlier in the run. We attach these to the GitHub Release as assets
+      # so air-gapped consumers can grab the .whl / .tgz / .node prebuilds
+      # without going through PyPI/npm. crates.io tarball isn't attached
+      # — `cargo publish` is the canonical source there.
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          # Skip `python-sdist` and `python-wheels-*` only if you want
+          # PyPI to be the single source; leaving them in lets users
+          # pip-install a wheel from the release page without PyPI.
+          pattern: '*'
+
+      - name: Stage assets into a flat dir
+        run: |
+          mkdir -p assets
+          # WASM npm tarball
+          if [ -d release-assets/wasm-pkg ]; then
+            cd release-assets/wasm-pkg && npm pack --pack-destination ../../assets && cd ../..
+          fi
+          # UI npm tarball — artifact roots at ui/, repack from there
+          if [ -d release-assets/ui-package/ui ]; then
+            cd release-assets/ui-package/ui && npm pack --pack-destination ../../../assets && cd ../../..
+          fi
+          # Python wheels + sdist
+          find release-assets -type f \( -name '*.whl' -o -name '*.tar.gz' \) \
+            -exec cp {} assets/ \;
+          # Node prebuilds (one .node per platform)
+          find release-assets -type f -name 'datalogic-node.*.node' \
+            -exec cp {} assets/ \;
+          # Go staticlibs — bundle each platform dir into a tarball
+          if [ -d release-assets ]; then
+            for d in release-assets/go-staticlib-*/; do
+              [ -d "$d" ] || continue
+              name=$(basename "$d")
+              tar -C "$d" -czf "assets/${name}.tar.gz" .
+            done
+          fi
+          # C ABI cdylibs — bundle each platform dir into a tarball.
+          if [ -d release-assets ]; then
+            for d in release-assets/c-cdylib-*/; do
+              [ -d "$d" ] || continue
+              name=$(basename "$d")
+              tar -C "$d" -czf "assets/${name}.tar.gz" .
+            done
+          fi
+          # .NET NuGet packages.
+          find release-assets -type f -name '*.nupkg' -exec cp {} assets/ \;
+          # JVM JARs.
+          find release-assets -type f -name 'datalogic-*.jar' -exec cp {} assets/ \;
+          # PHP distribution zip.
+          find release-assets -type f -name '*.zip' -exec cp {} assets/ \;
+          echo "Final asset set:"
+          ls -la assets/
 
       - name: Create release
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           gh release create "v$VERSION" \
             --title "v$VERSION" \
-            --generate-notes \
-            --verify-tag
+            --notes-file release-notes.md \
+            --verify-tag \
+            assets/*
         env:
           GH_TOKEN: ${{ github.token }}

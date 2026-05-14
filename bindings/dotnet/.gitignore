@@ -1,0 +1,10 @@
+# .NET build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Packaging staging
+runtimes/
+*.nupkg

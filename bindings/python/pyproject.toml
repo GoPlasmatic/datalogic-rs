@@ -1,0 +1,56 @@
+[build-system]
+# Pin the maturin floor inside the build system, but the upper bound lives
+# in the release workflow's `maturin-version:` so wheel builds stay
+# reproducible across action upgrades.
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+# Follows the `datalogic-<lang>` naming convention used for every
+# language binding (`datalogic-rs` on crates.io, `datalogic-py` on PyPI,
+# `@goplasmatic/datalogic-wasm` and `@goplasmatic/datalogic-node` on npm).
+name = "datalogic-py"
+version = "5.0.0"
+description = "Python bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Harishankar Narayanan", email = "nharishankar@gmail.com" },
+]
+keywords = ["jsonlogic", "rules", "engine", "json", "logic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/GoPlasmatic/datalogic-rs"
+Repository = "https://github.com/GoPlasmatic/datalogic-rs"
+Documentation = "https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/python"
+Issues = "https://github.com/GoPlasmatic/datalogic-rs/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.maturin]
+# `module-name` MUST match the `[lib] name` in Cargo.toml — this is how
+# maturin picks the symbol name the produced .so exports. Python's
+# distribution-vs-import naming separation lets PyPI carry `datalogic-py`
+# (hyphenated, convention-compliant) while the import is `datalogic_py`
+# (Python doesn't allow hyphens in module names).
+module-name = "datalogic_py"
+# `abi3` strips the per-CPython-minor wheel build. With
+# pyo3 features = ["abi3-py310"] one wheel per (os, arch) covers 3.10+.
+features = ["pyo3/extension-module"]
+# Strip the .so to keep wheel size down; debug info isn't useful at the
+# Python boundary anyway.
+strip = true

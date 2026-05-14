@@ -1,0 +1,7 @@
+vendor/
+composer.lock
+.phpunit.result.cache
+.phpunit.cache/
+
+# Native libs staged at release time
+lib/*/

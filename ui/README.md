@@ -1,6 +1,17 @@
 # @goplasmatic/datalogic-ui
 
-A React component library for visualizing, debugging, and editing JSONLogic expressions as interactive node-based flow diagrams.
+[![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-ui)](https://www.npmjs.com/package/@goplasmatic/datalogic-ui)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+A React component library for visualizing, debugging, and editing
+JSONLogic expressions as interactive node-based flow diagrams.
+
+This is the **React surface** of the
+[`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs) monorepo.
+It consumes the WASM binding
+([`@goplasmatic/datalogic-wasm`](../bindings/wasm/README.md)) for evaluation
+and tracing — for the engine itself and the cross-runtime overview,
+see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
 ## Features
 
@@ -9,7 +20,7 @@ A React component library for visualizing, debugging, and editing JSONLogic expr
 - Tree-based automatic layout using @dagrejs/dagre
 - Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing
 - Editing mode with node selection, properties panel, context menus, and undo/redo
-- Structure preserve mode for JSON templates with embedded JSONLogic
+- Templating mode for JSON templates with embedded JSONLogic
 - Built-in WASM-based JSONLogic evaluation with execution tracing
 - Light/dark theme support with system preference detection
 
@@ -98,8 +109,8 @@ Combine editing with live debugging:
 | `data` | `unknown` | - | Data context for evaluation. When provided, debugger controls become available |
 | `theme` | `'light' \| 'dark'` | system | Theme override. If not provided, uses system preference |
 | `className` | `string` | - | Additional CSS class |
-| `preserveStructure` | `boolean` | `false` | Enable structure preserve mode for JSON templates with embedded JSONLogic |
-| `onPreserveStructureChange` | `(value: boolean) => void` | - | Callback when preserve structure changes (from toolbar checkbox) |
+| `templating` | `boolean` | `false` | Enable templating mode: multi-key objects and arrays compile to output-shaping templates with embedded JSONLogic |
+| `onTemplatingChange` | `(value: boolean) => void` | - | Callback when templating mode changes (from toolbar checkbox) |
 | `editable` | `boolean` | `false` | Enable editing: node selection, properties panel, context menus, undo/redo |
 
 ## Exports
@@ -156,11 +167,18 @@ The component respects the `data-theme` attribute on parent elements for theming
 
 ## Development
 
+This package lives at `ui/` in the
+[datalogic-rs monorepo](https://github.com/GoPlasmatic/datalogic-rs). It
+depends on a locally-built `@goplasmatic/datalogic-wasm` WASM bundle — see
+[DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
+for the full link/install dance. Day-to-day, from the repo root:
+
 ```bash
-pnpm install      # Install dependencies
-pnpm dev:ui       # Start development server
-pnpm build:ui:lib # Build library for publishing
-pnpm lint:ui      # Run ESLint
+cd ui
+npm install       # install dependencies
+npm run dev       # start the dev playground
+npm run build:lib # build the publishable library bundle
+npm run lint      # run ESLint
 ```
 
 ## Architecture
@@ -183,7 +201,7 @@ The main component is `DataLogicEditor` which:
 
 - **OperatorNode** (UnifiedOperatorNode): Renders all operators with cell-based argument display (and, or, if, var, val, ==, +, etc.)
 - **LiteralNode**: Renders primitive values (strings, numbers, booleans, null)
-- **StructureNode**: Renders JSON objects/arrays in structure preserve mode
+- **StructureNode**: Renders JSON objects/arrays in templating mode
 
 ## Tech Stack
 
@@ -195,18 +213,20 @@ The main component is `DataLogicEditor` which:
 - lucide-react (icons)
 - @msgpack/msgpack (data serialization)
 - fflate (compression)
-- @goplasmatic/datalogic (bundled, for WASM evaluation)
+- @goplasmatic/datalogic-wasm (bundled, for WASM evaluation)
 
 ## Documentation
 
 For complete documentation including all props, customization options, and advanced usage, see the [full documentation](https://goplasmatic.github.io/datalogic-rs/react-ui/installation.html).
 
-## Links
+## Learn more
 
-- [GitHub Repository](https://github.com/GoPlasmatic/datalogic-rs)
-- [Full Documentation](https://goplasmatic.github.io/datalogic-rs/)
-- [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/)
+- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
+- [WASM binding README](../bindings/wasm/README.md) — `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
+- [Rust crate README](../crates/datalogic-rs/README.md) — engine design, the 5-tier API model
+- [Full documentation](https://goplasmatic.github.io/datalogic-rs/)
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 
 ## License
 
-MIT
+Apache-2.0

@@ -1,0 +1,50 @@
+name: _release-build-wasm
+
+# Internal reusable workflow — called by release.yml's `build-wasm` job
+# to produce the `wasm-pkg` artifact that publish-wasm and build-ui
+# consume. Not intended for direct invocation; there's no
+# workflow_dispatch trigger.
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.14.0
+
+      - name: Install binaryen
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/wasm/target/
+          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-wasm-
+
+      - name: Build WASM
+        run: cd bindings/wasm && ./build.sh
+
+      - name: Upload wasm-pkg artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-pkg
+          path: bindings/wasm/pkg/
+          if-no-files-found: error

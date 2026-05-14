@@ -1,0 +1,32 @@
+{
+    "name": "goplasmatic/datalogic",
+    "description": "PHP bindings for the datalogic-rs JSONLogic engine via PHP FFI over the shared C ABI.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/GoPlasmatic/datalogic-rs",
+    "keywords": ["jsonlogic", "rules-engine", "datalogic", "ffi"],
+    "require": {
+        "php": "^8.4",
+        "ext-ffi": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Goplasmatic\\Datalogic\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Goplasmatic\\Datalogic\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

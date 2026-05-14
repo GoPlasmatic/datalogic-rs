@@ -1,0 +1,49 @@
+//! Array operators: filter / map / reduce / merge / quantifiers / sort /
+//! slice / length.
+//!
+//! # File map
+//!
+//! - [`filter`] — `filter` (predicate-based array selection).
+//! - [`map`] — `map` (per-element transformation).
+//! - [`merge`] — `merge` (variadic array concatenation, flattening one level).
+//! - [`quantifiers`] — `all`, `some`, `none` (predicate scan with short-circuit).
+//! - [`reduce`] — `reduce` (fold over an array with `accumulator` / `current` slots).
+//! - [`length`] — `length` of strings/arrays (gated on `feature = "ext-string"`).
+//! - [`slice`] — Python-style `slice` (gated on `feature = "ext-array"`).
+//! - [`sort`] — `sort` (key-based ordering, gated on `feature = "ext-array"`).
+//! - [`helpers`] — shared infrastructure: `IterSrc`, `ResolvedInput`,
+//!   `resolve_iter_input` (used by every iterator op), `FastPredicate`
+//!   (filter / quantifier fast paths), and a few small comparison helpers.
+
+mod helpers;
+
+mod filter;
+mod map;
+mod merge;
+mod quantifiers;
+mod reduce;
+
+#[cfg(feature = "ext-string")]
+mod length;
+#[cfg(feature = "ext-array")]
+mod slice;
+#[cfg(feature = "ext-array")]
+mod sort;
+
+// Operator entry points (consumed by the dispatcher).
+pub(crate) use filter::evaluate_filter;
+pub(crate) use map::evaluate_map;
+pub(crate) use merge::evaluate_merge;
+pub(crate) use quantifiers::{evaluate_all, evaluate_none, evaluate_some};
+pub(crate) use reduce::evaluate_reduce;
+
+#[cfg(feature = "ext-string")]
+pub(crate) use length::evaluate_length;
+#[cfg(feature = "ext-array")]
+pub(crate) use slice::evaluate_slice;
+#[cfg(feature = "ext-array")]
+pub(crate) use sort::evaluate_sort;
+
+// Iterator-input infrastructure consumed by `arithmetic` (and other crate
+// callers) to compose with array results.
+pub(crate) use helpers::{FastPredicate, IterArgKind, ResolvedInput, resolve_iter_input};

@@ -1,27 +1,41 @@
-[package]
-name = "datalogic-rs"
-version = "4.0.21"
+[workspace]
+resolver = "3"
+members = [
+    "crates/datalogic-rs",
+    "tools/benchmark",
+]
+# `bindings/wasm` defines its own `[workspace]` so wasm-pack can apply its
+# WASM-specific `[profile.release]` (opt-level "z", lto, panic = "abort")
+# without contaminating the rest of the tree. `bindings/python`,
+# `bindings/c`, and `bindings/node` are excluded so contributors don't
+# need a Python / Node toolchain or have to wait on cbindgen+cdylib /
+# napi build codegen just to run `cargo test --workspace --all-features`
+# against core. `ui` is a Node package and is invisible to Cargo regardless.
+exclude = [
+    "bindings/wasm",
+    "bindings/python",
+    "bindings/c",
+    "bindings/node",
+    "ui",
+]
+
+[workspace.package]
 edition = "2024"
-exclude = [".DS_Store", "/target", ".vscode", ".github", "/docs", "/wasm", "/ui", "pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "test-wasm.cjs"]
-authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 license = "Apache-2.0"
-description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
-readme = "README.md"
-homepage = "https://github.com/GoPlasmatic/datalogic-rs"
+authors = ["Harishankar Narayanan <nharishankar@gmail.com>"]
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
-keywords = ["rules", "engine", "json", "logic"]
-categories = ["data-structures", "development-tools", "parsing"]
 
-[features]
-default = []
-wasm = ["chrono/wasmbind"]
+# `lto = "fat"` + `codegen-units = 1` lets the compiler propagate the
+# load-bearing `#[inline(always)]` decisions across crate/CGU boundaries
+# in the dispatch hot path. The WASM workspace defines its own
+# `[profile.release]` so it is unaffected.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+# Line tables let cargo-flamegraph / samply / Instruments resolve frame
+# names without bloating the binary much. Comment out for a strip-only
+# release build.
+debug = "line-tables-only"
 
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"] }
-regex = { version = "1.12.3", default-features = false, features = ["std", "perf", "unicode"] }
-
-[dev-dependencies]
-tokio = { version = "1", features = ["full"] }
-futures = "0.3"
+[profile.bench]
+inherits = "release"

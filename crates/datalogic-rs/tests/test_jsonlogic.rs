@@ -1,0 +1,276 @@
+// The full JSONLogic suite runner exercises every operator in `tests/suites/`
+// — including the gated ones (templating / datetime / try-throw / ext-*). Gate
+// behind `templating` because the runner unconditionally builds an engine with
+// `Engine::builder().with_templating(true).build()` when a test case
+// requests it; in
+// practice users running this runner will want `--all-features` to actually
+// exercise every suite.
+#![cfg(all(feature = "templating", feature = "serde_json"))]
+
+use datalogic_rs::Engine;
+use serde_json::{Value, json};
+
+use std::env;
+use std::fs;
+use std::path::Path;
+
+#[test]
+fn test_jsonlogic() {
+    // Get test file from environment variable, or run all tests from index.json
+    let test_file = env::var("JSONLOGIC_TEST_FILE");
+
+    let mut total_passed = 0;
+    let mut total_failed = 0;
+
+    match test_file {
+        Ok(file) => {
+            // Run single test file
+            println!("Running tests from: {}", file);
+            let (passed, failed) = run_test_file(&file);
+            total_passed += passed;
+            total_failed += failed;
+        }
+        Err(_) => {
+            // Run all tests from index.json
+            println!("No JSONLOGIC_TEST_FILE specified, running all tests from index.json\n");
+
+            let index_path = "tests/suites/index.json";
+            let index_contents = fs::read_to_string(index_path).expect("Failed to read index.json");
+
+            let index: Vec<String> =
+                serde_json::from_str(&index_contents).expect("Failed to parse index.json");
+
+            for test_file in index {
+                // Suites under `flagd/` exercise operators registered
+                // only under `--features flagd`. Without the feature
+                // the operator names parse as `InvalidOperator` and the
+                // suite would spuriously fail; skip explicitly so the
+                // index can stay feature-agnostic.
+                if test_file.starts_with("flagd/") && !cfg!(feature = "flagd") {
+                    println!(
+                        "WARNING: Skipping {} (requires `flagd` feature)\n",
+                        test_file
+                    );
+                    continue;
+                }
+
+                let test_path = format!("tests/suites/{}", test_file);
+
+                // Check if file exists
+                if !Path::new(&test_path).exists() {
+                    println!("WARNING: Skipping {} (file not found)\n", test_file);
+                    continue;
+                }
+
+                println!("\n=== Running tests from: {} ===", test_file);
+                let (passed, failed) = run_test_file(&test_path);
+                total_passed += passed;
+                total_failed += failed;
+
+                println!("  Results: {} passed, {} failed", passed, failed);
+            }
+        }
+    }
+
+    println!("\n========================================");
+    println!(
+        "TOTAL RESULTS: {} passed, {} failed",
+        total_passed, total_failed
+    );
+    println!("========================================");
+
+    if total_failed > 0 {
+        panic!("Some tests failed!");
+    }
+}
+
+fn run_test_file(test_file: &str) -> (usize, usize) {
+    // Read and parse test file
+    let contents = fs::read_to_string(test_file)
+        .unwrap_or_else(|e| panic!("Failed to read test file {test_file}: {e}"));
+
+    let test_cases: Value = serde_json::from_str(&contents)
+        .unwrap_or_else(|e| panic!("Failed to parse JSON from {test_file}: {e}"));
+
+    let test_array = test_cases
+        .as_array()
+        .expect("Test file should contain an array of test cases");
+
+    let mut passed = 0;
+    let mut failed = 0;
+
+    for (index, test_case) in test_array.iter().enumerate() {
+        // Skip string entries (they're usually section headers)
+        if test_case.is_string() {
+            println!("\n{}", test_case.as_str().unwrap());
+            continue;
+        }
+
+        let test_obj = test_case
+            .as_object()
+            .unwrap_or_else(|| panic!("Test case {} should be an object", index));
+
+        let description = test_obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("No description");
+
+        let rule = test_obj
+            .get("rule")
+            .unwrap_or_else(|| panic!("Test case {} missing 'rule'", index));
+
+        let data = test_obj.get("data").cloned().unwrap_or(json!({}));
+
+        // Check for templating flag
+        let templating = test_obj
+            .get("templating")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Create engine with appropriate templating setting
+        let test_engine = if templating {
+            Engine::builder().with_templating(true).build()
+        } else {
+            Engine::new()
+        };
+
+        // Check if this test expects an error or a result
+        let expects_error = test_obj.contains_key("error");
+        let expected_error = test_obj.get("error");
+        let expected_result = test_obj.get("result");
+
+        if !expects_error && expected_result.is_none() {
+            panic!("Test case {} missing 'result' or 'error'", index);
+        }
+
+        // Compile and evaluate
+        match test_engine.compile(rule) {
+            Ok(compiled) => match test_engine
+                .session()
+                .eval_into::<serde_json::Value, _>(&compiled, &data)
+            {
+                Ok(result) => {
+                    if expects_error {
+                        println!("✗ Test {}: {}", index, description);
+                        println!("  Expected error: {:?}", expected_error);
+                        println!("  Got result:     {:?}", result);
+                        failed += 1;
+                    } else if let Some(expected) = expected_result {
+                        if &result == expected {
+                            println!("✓ Test {}: {}", index, description);
+                            passed += 1;
+                        } else {
+                            println!("✗ Test {}: {}", index, description);
+                            println!("  Expected: {:?}", expected);
+                            println!("  Got:      {:?}", result);
+                            failed += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    if expects_error {
+                        // Check if the error matches expected error
+                        if let Some(expected_error_obj) = expected_error {
+                            // Extract the error type from the thrown error
+                            if let Some(thrown_value) = e.thrown_value() {
+                                let thrown_as_serde = serde_json::to_value(thrown_value)
+                                    .unwrap_or(serde_json::Value::Null);
+                                if &thrown_as_serde == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", thrown_value);
+                                    failed += 1;
+                                }
+                            } else if let datalogic_rs::ErrorKind::InvalidArguments(msg) = &e.kind {
+                                // Check if it's an InvalidArguments error
+                                let error_obj = serde_json::json!({"type": msg});
+                                if &error_obj == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", error_obj);
+                                    failed += 1;
+                                }
+                            } else if let datalogic_rs::ErrorKind::InvalidOperator(_msg) = &e.kind {
+                                // Check if it's an InvalidOperator error
+                                let error_obj = serde_json::json!({"type": "Unknown Operator"});
+                                if &error_obj == expected_error_obj {
+                                    println!(
+                                        "✓ Test {}: {} (error as expected)",
+                                        index, description
+                                    );
+                                    passed += 1;
+                                } else {
+                                    println!("✗ Test {}: {}", index, description);
+                                    println!("  Expected error: {:?}", expected_error_obj);
+                                    println!("  Got error:      {:?}", error_obj);
+                                    failed += 1;
+                                }
+                            } else {
+                                println!("✗ Test {}: {}", index, description);
+                                println!("  Expected error: {:?}", expected_error_obj);
+                                println!("  Got error:      {:?}", e);
+                                failed += 1;
+                            }
+                        } else {
+                            println!("✓ Test {}: {} (error as expected)", index, description);
+                            passed += 1;
+                        }
+                    } else {
+                        println!(
+                            "✗ Test {}: {} - Unexpected evaluation error: {}",
+                            index, description, e
+                        );
+                        failed += 1;
+                    }
+                }
+            },
+            Err(e) => {
+                if expects_error {
+                    // Check if the compilation error matches expected error
+                    if let Some(expected_error_obj) = expected_error {
+                        if let datalogic_rs::ErrorKind::InvalidOperator(_msg) = &e.kind {
+                            let error_obj = serde_json::json!({"type": "Unknown Operator"});
+                            if &error_obj == expected_error_obj {
+                                println!("✓ Test {}: {} (error as expected)", index, description);
+                                passed += 1;
+                            } else {
+                                println!("✗ Test {}: {}", index, description);
+                                println!("  Expected error: {:?}", expected_error_obj);
+                                println!("  Got error:      {:?}", error_obj);
+                                failed += 1;
+                            }
+                        } else {
+                            println!("✗ Test {}: {}", index, description);
+                            println!("  Expected error: {:?}", expected_error_obj);
+                            println!("  Got compilation error: {:?}", e);
+                            failed += 1;
+                        }
+                    } else {
+                        println!("✓ Test {}: {} (error as expected)", index, description);
+                        passed += 1;
+                    }
+                } else {
+                    println!(
+                        "✗ Test {}: {} - Compilation error: {}",
+                        index, description, e
+                    );
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    (passed, failed)
+}

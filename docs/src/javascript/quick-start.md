@@ -7,7 +7,7 @@ This guide covers the essential patterns for using JSONLogic in JavaScript/TypeS
 The simplest way to evaluate JSONLogic:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic';
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
 // Initialize WASM (required for browser/bundler)
 await init();
@@ -39,7 +39,7 @@ console.log(evaluate(priceLogic, orderData, false)); // "32.97"
 For repeated evaluation of the same logic, use `CompiledRule` for better performance:
 
 ```javascript
-import init, { CompiledRule } from '@goplasmatic/datalogic';
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 await init();
 
@@ -113,7 +113,7 @@ const result = JSON.parse(evaluate(filterLogic, data, false));
 
 ## Templating Mode
 
-Enable `preserve_structure` for JSON templating:
+Enable `templating` for JSON templating:
 
 ```javascript
 const template = JSON.stringify({
@@ -130,7 +130,7 @@ const data = JSON.stringify({
   age: 25
 });
 
-// Third parameter = true enables structure preservation
+// Third parameter = true enables templating mode
 const result = JSON.parse(evaluate(template, data, true));
 // {
 //   "user": { "fullName": "Alice Smith", "isAdult": true },
@@ -155,7 +155,7 @@ try {
 Use `evaluate_with_trace` for step-by-step debugging:
 
 ```javascript
-import init, { evaluate_with_trace } from '@goplasmatic/datalogic';
+import init, { evaluate_with_trace } from '@goplasmatic/datalogic-wasm';
 
 await init();
 

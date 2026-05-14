@@ -1,0 +1,32 @@
+name: Build C ABI (host target)
+description: |
+  Sets up the stable Rust toolchain, primes a shared cargo cache keyed on
+  the C ABI source tree, and builds bindings/c for the host platform with
+  the release profile. Used by every job that needs the host's
+  libdatalogic_c.{so,dylib,dll}/.a + cbindgen-generated header for local
+  testing or staging — dotnet/jvm/php tests, smoke jobs, and publish-go's
+  header generation.
+
+  All callers share a single cache key (no per-job `-dotnet/-jvm/-php`
+  suffix), so the first job's build warms the cache for everyone else on
+  the same SHA.
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo (C ABI host build)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          bindings/c/target/
+        key: ${{ runner.os }}-c-host-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+        restore-keys: ${{ runner.os }}-c-host-
+
+    - name: Build C ABI (release)
+      shell: bash
+      run: cargo build --release --manifest-path bindings/c/Cargo.toml

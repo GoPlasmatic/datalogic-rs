@@ -1,0 +1,55 @@
+{
+  "name": "@goplasmatic/datalogic-node",
+  "version": "5.0.0",
+  "description": "Native Node.js bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "author": "Harishankar Narayanan <nharishankar@gmail.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GoPlasmatic/datalogic-rs.git",
+    "directory": "bindings/node"
+  },
+  "keywords": [
+    "jsonlogic",
+    "rules",
+    "engine",
+    "json",
+    "logic",
+    "napi"
+  ],
+  "engines": {
+    "node": ">= 18"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "napi": {
+    "binaryName": "datalogic-node",
+    "packageName": "@goplasmatic/datalogic-node",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node --test __test__/*.test.mjs",
+    "prepublishOnly": "napi prepublish -t npm",
+    "version": "napi version"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.6.2"
+  }
+}

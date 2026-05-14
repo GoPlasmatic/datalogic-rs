@@ -8,8 +8,8 @@ import { convertValue } from './converters';
 
 // Options for converting JSONLogic to nodes
 export interface JsonLogicToNodesOptions {
-  /** Enable structure preserve mode for JSON templates with embedded JSONLogic */
-  preserveStructure?: boolean;
+  /** Enable templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic). */
+  templating?: boolean;
 }
 
 // Main conversion function
@@ -27,7 +27,7 @@ export function jsonLogicToNodes(
   const rootId = convertValue(expr, {
     nodes,
     edges,
-    preserveStructure: options.preserveStructure,
+    templating: options.templating,
   });
 
   return { nodes, edges, rootId };

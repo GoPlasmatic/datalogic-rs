@@ -1,0 +1,76 @@
+name: _release-build-dotnet
+
+# Internal reusable workflow — called by release.yml's `build-dotnet`
+# job. Consumes the cdylib matrix artifacts produced by
+# release-build-c-cdylib.yml, stages them under
+# bindings/dotnet/runtimes/<rid>/native/ (the standard NuGet layout),
+# runs `dotnet test` on the host platform (smoke check that the
+# packaged native lib loads), then `dotnet pack` and uploads the
+# .nupkg.
+
+on:
+  workflow_call:
+
+jobs:
+  pack:
+    name: dotnet pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download all cdylib artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: cdylib/
+          pattern: c-cdylib-*
+          merge-multiple: true
+
+      # Map the matrix's `<os>-<arch>` directories to NuGet runtime
+      # identifiers and stage the native libs into runtimes/<rid>/native/.
+      - name: Stage native libs under runtimes/<rid>/native/
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A RIDS=(
+            [linux-amd64]=linux-x64
+            [linux-arm64]=linux-arm64
+            [darwin-amd64]=osx-x64
+            [darwin-arm64]=osx-arm64
+            [windows-amd64]=win-x64
+            [windows-arm64]=win-arm64
+          )
+          for plat in "${!RIDS[@]}"; do
+            rid=${RIDS[$plat]}
+            if [ -d "cdylib/$plat" ]; then
+              mkdir -p "bindings/dotnet/runtimes/$rid/native"
+              cp "cdylib/$plat/"* "bindings/dotnet/runtimes/$rid/native/"
+              echo "Staged $plat -> $rid"
+            fi
+          done
+          ls -R bindings/dotnet/runtimes
+
+      # The test project uses the runtimes/ folder lookup path which
+      # `dotnet test` doesn't honor for a project reference — it needs
+      # the lib alongside the test assembly. The composite action builds
+      # the host's cdylib via cargo and lets the in-tree
+      # NativeLibraryResolver fall back to bindings/c/target/release/.
+      - uses: ./.github/actions/c-abi-host
+
+      - name: Test
+        working-directory: bindings/dotnet
+        run: dotnet test -c Release
+
+      - name: Pack
+        working-directory: bindings/dotnet
+        run: dotnet pack src/Datalogic/Datalogic.csproj -c Release -o ../../dotnet-pkg
+
+      - name: Upload .nupkg
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-nupkg
+          path: dotnet-pkg/*.nupkg
+          if-no-files-found: error

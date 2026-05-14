@@ -8,16 +8,16 @@ export const BRANCH_COLORS = {
 
 // Color mappings for operator categories (includes 'literal' for node styling)
 export const CATEGORY_COLORS: Record<NodeCategory, string> = {
-  variable: '#5C7CFA',
-  comparison: '#20C997',
-  logical: '#845EF7',
-  arithmetic: '#40C057',
-  string: '#15AABF',
-  array: '#5F3DC4',
-  control: '#F59F00',
-  datetime: '#748FFC',
-  validation: '#ADB5BD',
-  utility: '#6B7280',
-  error: '#FA5252',
-  literal: '#6B7280',
+  variable: '#6366f1',
+  comparison: '#14b8a6',
+  logical: '#8b5cf6',
+  arithmetic: '#22c55e',
+  string: '#06b6d4',
+  array: '#7c3aed',
+  control: '#f59e0b',
+  datetime: '#0ea5e9',
+  validation: '#94a3b8',
+  utility: '#64748b',
+  error: '#ef4444',
+  literal: '#64748b',
 };

@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { Sun, Moon, BookOpen, ChevronDown, Link2, Check, Plus, Menu, X } from "lucide-react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { Sun, Moon, Monitor, BookOpen, ChevronDown, Link2, Check, Plus, Menu, X } from "lucide-react";
+import { Tooltip } from "./components/Tooltip";
 
 // GitHub icon (removed from lucide-react as a brand icon)
 function GithubIcon({ size = 16 }: { size?: number }) {
@@ -15,14 +16,15 @@ import {
   type JsonLogicValue,
 } from "./components/logic-editor";
 import { DebugPanel } from "./components/debug-panel";
+import type { DebugError } from "./components/debug-panel/DebugPanel";
 import { MobileNav, type MobileTab } from "./components/mobile-nav/MobileNav";
-import { useWasmEvaluator } from "./components/logic-editor/hooks";
+import { useWasmEvaluator, DataLogicEvaluationError } from "./components/logic-editor/hooks";
 import { useTheme, useIsMobile } from "./hooks";
 import { SAMPLE_EXPRESSIONS } from "./constants/sample-expressions";
 import "./App.css";
 
 function App() {
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedTheme, themePreference, setThemePreference, toggleTheme } = useTheme();
 
   const [logicText, setLogicText] = useState<string>("");
   const [expression, setExpression] = useState<JsonLogicValue | null>(null);
@@ -33,10 +35,12 @@ function App() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [result, setResult] = useState<unknown>(undefined);
-  const [resultError, setResultError] = useState<string | null>(null);
+  const [resultError, setResultError] = useState<DebugError>(null);
 
-  // Preserve structure mode state
-  const [preserveStructure, setPreserveStructure] = useState<boolean>(false);
+  // Templating mode state — multi-key objects compile to output-shaping
+  // templates with embedded JSONLogic. Matches the v5 core API
+  // (`Engine::builder().with_templating(true)`).
+  const [templating, setTemplating] = useState<boolean>(false);
 
   // Examples dropdown state
   const [selectedExample, setSelectedExample] = useState<string>(
@@ -64,7 +68,7 @@ function App() {
     ready: wasmReady,
     loading: wasmLoading,
     evaluate,
-  } = useWasmEvaluator({ preserveStructure });
+  } = useWasmEvaluator({ templating });
 
   // Update expression when logic text changes
   const handleLogicChange = useCallback((text: string) => {
@@ -154,14 +158,14 @@ function App() {
   const handleShare = useCallback(async () => {
     if (!expression) return;
     try {
-      const url = generateShareableUrl(expression, data, preserveStructure);
+      const url = generateShareableUrl(expression, data, templating);
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy shareable URL:', err);
     }
-  }, [expression, data, preserveStructure]);
+  }, [expression, data, templating]);
 
   // Load from URL or first sample on mount
   useEffect(() => {
@@ -176,7 +180,7 @@ function App() {
       setLogicText(JSON.stringify(shared.logic, null, 2));
       setData(shared.data as object);
       setDataText(JSON.stringify(shared.data, null, 2));
-      if (shared.preserveStructure) setPreserveStructure(true);
+      if (shared.templating) setTemplating(true);
       // Clear the URL parameter after loading
       window.history.replaceState({}, '', window.location.pathname);
     } else {
@@ -230,7 +234,11 @@ function App() {
       setResultError(null);
     } catch (err) {
       setResult(undefined);
-      setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
+      if (err instanceof DataLogicEvaluationError) {
+        setResultError(err.structured);
+      } else {
+        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
+      }
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluate]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -266,6 +274,12 @@ function App() {
     };
   }, [isDragging]);
 
+  // Surface a few examples as quick-action chips in the empty state.
+  const exampleSuggestions = useMemo(
+    () => Object.keys(SAMPLE_EXPRESSIONS).slice(0, 4),
+    [],
+  );
+
   const debugPanelElement = (
     <DebugPanel
       logic={expression}
@@ -289,10 +303,12 @@ function App() {
       value={expression}
       onChange={handleExpressionChange}
       data={data}
-      theme={theme}
-      preserveStructure={preserveStructure}
-      onPreserveStructureChange={setPreserveStructure}
+      theme={resolvedTheme}
+      templating={templating}
+      onTemplatingChange={setTemplating}
       editable
+      exampleSuggestions={exampleSuggestions}
+      onSelectExample={loadSample}
     />
   );
 
@@ -303,14 +319,15 @@ function App() {
           <h1>DataLogic Studio</h1>
         </div>
         <div className="header-controls">
-          <button
-            className="new-button header-desktop-only"
-            onClick={handleNew}
-            title="Start a new project"
-          >
-            <Plus size={16} />
-            <span>New</span>
-          </button>
+          <Tooltip label="Start a new project">
+            <button
+              className="new-button header-desktop-only"
+              onClick={handleNew}
+            >
+              <Plus size={16} />
+              <span>New</span>
+            </button>
+          </Tooltip>
           <div className="examples-dropdown header-desktop-only" ref={examplesDropdownRef}>
             <button
               className="examples-dropdown-trigger"
@@ -343,43 +360,87 @@ function App() {
           </div>
           <div className="header-divider" />
           <div className="header-links">
-            <a
-              href="https://github.com/GoPlasmatic/datalogic-rs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="header-link"
-              title="DataLogic GitHub Repository"
-            >
-              <GithubIcon size={16} />
-              <span>GitHub</span>
-            </a>
-            <a
-              href="https://goplasmatic.github.io/datalogic-rs/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="header-link"
-              title="DataLogic Documentation"
-            >
-              <BookOpen size={16} />
-              <span>Docs</span>
-            </a>
+            <Tooltip label="View on GitHub">
+              <a
+                href="https://github.com/GoPlasmatic/datalogic-rs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="header-link"
+                aria-label="GitHub repository"
+              >
+                <GithubIcon size={16} />
+                <span>GitHub</span>
+              </a>
+            </Tooltip>
+            <Tooltip label="Documentation">
+              <a
+                href="https://goplasmatic.github.io/datalogic-rs/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="header-link"
+                aria-label="DataLogic documentation"
+              >
+                <BookOpen size={16} />
+                <span>Docs</span>
+              </a>
+            </Tooltip>
           </div>
           <div className="header-divider" />
+          <Tooltip label="Copy shareable link">
+            <button
+              className="share-button header-desktop-only"
+              onClick={handleShare}
+              disabled={!expression || !!logicError}
+            >
+              {copied ? <Check size={16} /> : <Link2 size={16} />}
+              <span>{copied ? 'Copied!' : 'Share'}</span>
+            </button>
+          </Tooltip>
+
+          {/* Three-way theme switch (desktop) */}
+          <div className="theme-switch header-desktop-only" role="radiogroup" aria-label="Theme">
+            <Tooltip label="Light">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={themePreference === 'light'}
+                className={`theme-switch-option ${themePreference === 'light' ? 'is-active' : ''}`}
+                onClick={() => setThemePreference('light')}
+              >
+                <Sun size={15} />
+              </button>
+            </Tooltip>
+            <Tooltip label="System">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={themePreference === 'system'}
+                className={`theme-switch-option ${themePreference === 'system' ? 'is-active' : ''}`}
+                onClick={() => setThemePreference('system')}
+              >
+                <Monitor size={15} />
+              </button>
+            </Tooltip>
+            <Tooltip label="Dark">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={themePreference === 'dark'}
+                className={`theme-switch-option ${themePreference === 'dark' ? 'is-active' : ''}`}
+                onClick={() => setThemePreference('dark')}
+              >
+                <Moon size={15} />
+              </button>
+            </Tooltip>
+          </div>
+
+          {/* Mobile binary fallback (hidden on desktop via .header-desktop-only inversion) */}
           <button
-            className="share-button header-desktop-only"
-            onClick={handleShare}
-            disabled={!expression || !!logicError}
-            title="Copy shareable link"
-          >
-            {copied ? <Check size={16} /> : <Link2 size={16} />}
-            <span>{copied ? 'Copied!' : 'Share'}</span>
-          </button>
-          <button
-            className="theme-toggle"
+            className="theme-toggle theme-toggle--mobile-only"
             onClick={toggleTheme}
-            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+            aria-label={`Switch to ${resolvedTheme === "light" ? "dark" : "light"} mode`}
           >
-            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            {resolvedTheme === "light" ? <Moon size={18} /> : <Sun size={18} />}
           </button>
           {/* Mobile overflow menu — holds actions that don't fit in compact header */}
           <div className="overflow-menu" ref={overflowMenuRef}>

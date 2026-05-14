@@ -23,7 +23,7 @@ export function convertIfElse(
       parentId: parentInfo.parentId,
       argIndex: parentInfo.argIndex,
       branchType: parentInfo.branchType,
-      preserveStructure: context.preserveStructure,
+      templating: context.templating,
     });
   }
 
@@ -44,7 +44,7 @@ export function convertIfElse(
       parentId: nodeId,
       argIndex: idx,
       branchType: 'condition',
-      preserveStructure: context.preserveStructure,
+      templating: context.templating,
     });
 
     // Create condition edge (sourceHandle uses cellIndex to match CellHandles)
@@ -75,7 +75,7 @@ export function convertIfElse(
       parentId: nodeId,
       argIndex: idx + 1,
       branchType: 'yes',
-      preserveStructure: context.preserveStructure,
+      templating: context.templating,
     });
 
     // Create then edge
@@ -114,7 +114,7 @@ export function convertIfElse(
       parentId: nodeId,
       argIndex: ifArgs.length - 1,
       branchType: 'no',
-      preserveStructure: context.preserveStructure,
+      templating: context.templating,
     });
 
     // Create else edge

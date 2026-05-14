@@ -1,0 +1,136 @@
+name: _release-build-go
+
+# Internal reusable workflow — called by release.yml's `build-go` job.
+# Builds the C ABI staticlib for every supported (os, arch), validates
+# the cgo link path on each native runner, and uploads one
+# `go-staticlib-<os>-<arch>` artifact per matrix entry for publish-go
+# to download + stage into the release tag.
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifact:
+        description: |
+          Whether to upload the staticlib artifact. release.yml needs it
+          (publish-go consumes the artifacts to stage the Go module tag);
+          ci.yml calls this workflow purely for cross-platform validation
+          and passes `false` to skip the upload step.
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  staticlib:
+    name: Go staticlib (${{ matrix.target.os }}/${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # `native: true` — the runner can execute the built binary, so we
+          # run `go test` against it before uploading.
+          # `native: false` — runner cross-compiles to the target; we
+          # validate the link step via `go build` but can't run tests.
+          - { os: linux,   arch: amd64, runner: ubuntu-latest,    cargo_target: x86_64-unknown-linux-gnu,  native: true  }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, cargo_target: aarch64-unknown-linux-gnu, native: true  }
+          # Both darwin builds run on macos-14 (arm64 host). The arm64
+          # build is native; amd64 is cross-compiled — macOS toolchains
+          # bundle both linkers, so one runner covers both targets.
+          # Cross outputs can't run here, hence `native: false`.
+          - { os: darwin,  arch: amd64, runner: macos-14,         cargo_target: x86_64-apple-darwin,       native: false }
+          - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,      native: true  }
+          # `gnu` (mingw-w64) rather than `msvc` so the produced .a is
+          # ABI-compatible with Go's default cgo toolchain on Windows.
+          # For ARM64, `gnullvm` (llvm-mingw) is the equivalent — traditional
+          # mingw-w64 has no stable ARM64 port, so llvm-mingw is the only
+          # mingw-style toolchain available. Installed explicitly below
+          # because windows-11-arm runners don't bundle it.
+          - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-gnu,     native: true  }
+          - { os: windows, arch: arm64, runner: windows-11-arm,   cargo_target: aarch64-pc-windows-gnullvm, native: true  }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.cargo_target }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      # windows-11-arm has no mingw toolchain pre-installed. Both the
+      # `aarch64-pc-windows-gnullvm` Rust target and Go's cgo need the
+      # llvm-mingw bin dir on PATH (provides `clang`, `ld.lld`, and the
+      # `aarch64-w64-mingw32-*` aliases cgo expects). Pinned release so a
+      # rerun months from now produces the same artifact.
+      - name: Install llvm-mingw (Windows ARM64)
+        if: matrix.target.cargo_target == 'aarch64-pc-windows-gnullvm'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-aarch64.zip"
+          Invoke-WebRequest -Uri $url -OutFile llvm-mingw.zip
+          Expand-Archive -Path llvm-mingw.zip -DestinationPath C:\
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\llvm-mingw-20240619-ucrt-aarch64\bin"
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            bindings/c/target/
+          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-
+
+      - name: Build C ABI staticlib
+        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+
+      # Stage straight into the package's lib/include layout so the
+      # validation step uses exactly the paths the cgo build tags reference.
+      - name: Stage staticlib + header into bindings/go/
+        shell: bash
+        run: |
+          PLATFORM=${{ matrix.target.os }}_${{ matrix.target.arch }}
+          mkdir -p bindings/go/lib/$PLATFORM bindings/go/include
+          cp bindings/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
+          cp bindings/c/include/datalogic.h bindings/go/include/
+
+      # Native: full `go test` validates the link step + runtime behavior.
+      - name: Validate via go test (native)
+        if: matrix.target.native
+        shell: bash
+        working-directory: bindings/go
+        run: go test -v ./...
+
+      # Cross-compile (darwin/amd64 from arm64 host): we can verify the
+      # link step but not run the resulting binary. `go vet` + `go build`
+      # confirm the cgo file parses and the static library resolves all
+      # referenced symbols. macOS clang covers the x86_64 cross via -arch.
+      - name: Validate via go build (cross-compile)
+        if: '!matrix.target.native'
+        shell: bash
+        working-directory: bindings/go
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: '1'
+          CGO_CFLAGS: -arch x86_64
+          CGO_LDFLAGS: -arch x86_64
+        run: |
+          go vet ./...
+          go build -v ./...
+
+      # Upload from bindings/go/lib/ so the artifact tarball roots at
+      # <os>_<arch>/libdatalogic_c.a. With download-artifact's
+      # merge-multiple, all five tarballs flatten into one artifacts/
+      # tree with five sibling <os>_<arch>/ subdirs. Skipped for CI
+      # invocations (see `inputs.upload-artifact`) which only need the
+      # cross-platform validation, not the published artifacts.
+      - name: Upload artifact
+        if: inputs.upload-artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-staticlib-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: bindings/go/lib/
+          if-no-files-found: error

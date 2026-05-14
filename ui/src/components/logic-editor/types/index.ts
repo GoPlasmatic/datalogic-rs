@@ -31,6 +31,7 @@ export type {
   ExpressionNode,
   ExecutionStep,
   TracedResult,
+  StructuredError,
 } from './trace';
 
 // Re-export CATEGORY_COLORS from constants for backward compatibility

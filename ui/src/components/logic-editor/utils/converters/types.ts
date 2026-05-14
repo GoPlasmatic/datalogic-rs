@@ -7,8 +7,8 @@ export interface ConversionContext {
   parentId?: string;
   argIndex?: number;
   branchType?: 'yes' | 'no' | 'branch' | 'condition';
-  /** Enable structure preserve mode for JSON templates with embedded JSONLogic */
-  preserveStructure?: boolean;
+  /** Enable templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic). */
+  templating?: boolean;
 }
 
 // Common parent info for node creation

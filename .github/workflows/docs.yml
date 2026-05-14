@@ -7,7 +7,7 @@ on:
     paths:
       - 'docs/**'
       - 'ui/**'
-      - 'wasm/**'
+      - 'bindings/wasm/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Build mdBook documentation
       - name: Setup mdBook
@@ -43,43 +43,68 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.14.0
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('wasm/Cargo.lock') }}
+            bindings/wasm/target/
+          # `Cargo.lock` is gitignored (this is a library), so a hashFiles
+          # over the (absent) lockfile would yield the empty hash. Key off
+          # the manifest instead to get meaningful cache busts when deps
+          # change.
+          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-wasm-
 
       - name: Build WASM
-        run: cd wasm && ./build.sh
+        run: cd bindings/wasm && ./build.sh
 
       # Build UI demo and embed bundle
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: '22'
+          # No `cache:` here — `ui/package-lock.json` is generated on first
+          # `npm install`, but isn't checked in. Add `cache: 'npm'` once
+          # a lockfile is committed.
 
-      - name: Install dependencies
-        run: pnpm install
+      # Pin the UI's `@goplasmatic/datalogic-wasm` dep to the version we just
+      # built in `bindings/wasm/pkg/` (extracted from
+      # `crates/datalogic-rs/Cargo.toml`). Without this the local link below
+      # would mismatch ui/package.json's pin and `npm install`
+      # would replace the symlink with the registry copy. docs.yml doesn't
+      # publish, so this in-memory edit is build-only.
+      - name: Pin UI -> WASM version to local build
+        run: |
+          VERSION=$(grep '^version = ' crates/datalogic-rs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          cd ui && npm pkg set "dependencies.@goplasmatic/datalogic-wasm=$VERSION"
+
+      # Wire the freshly-built local WASM into ui/node_modules
+      # BEFORE `npm install`. With the symlink already present and its
+      # version matching ui/package.json's pin, `npm install`
+      # preserves it instead of fetching the registry copy.
+      - name: Link local WASM package into UI
+        run: |
+          cd bindings/wasm/pkg && npm link
+          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
+
+      - name: Install UI dependencies
+        run: cd ui && npm install
 
       - name: Build UI demo
-        run: pnpm build:ui
+        run: cd ui && npm run build
         env:
           GITHUB_ACTIONS: true
 
       - name: Build UI embed bundle
-        run: pnpm --filter @goplasmatic/datalogic-ui build:embed
+        run: cd ui && npm run build:embed
 
       # Copy embed bundle to docs source assets (before mdbook build picks it up)
       - name: Copy embed bundle to docs source
@@ -99,10 +124,10 @@ jobs:
           cp -r ui/dist/* docs/book/playground/
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: 'docs/book'
 
@@ -115,4 +140,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

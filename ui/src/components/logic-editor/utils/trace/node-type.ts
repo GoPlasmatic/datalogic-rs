@@ -5,9 +5,9 @@ import type { NodeType } from './types';
 /**
  * Determine what kind of node to create based on expression
  */
-export function determineNodeType(expr: JsonLogicValue, preserveStructure: boolean): NodeType {
-  // In preserveStructure mode, check for data structures first
-  if (preserveStructure && isDataStructure(expr)) {
+export function determineNodeType(expr: JsonLogicValue, templating: boolean): NodeType {
+  // In templating mode, check for data structures first
+  if (templating && isDataStructure(expr)) {
     return 'structure';
   }
 

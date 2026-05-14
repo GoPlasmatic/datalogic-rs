@@ -1,20 +1,46 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown } from 'lucide-react';
-import type { JsonLogicValue } from '../logic-editor/types';
+import { ChevronDown, Copy, Check } from 'lucide-react';
+import type { JsonLogicValue, StructuredError } from '../logic-editor/types';
 import { JsonEditor, JsonDisplay } from './JsonHighlighter';
+import { Tooltip } from '../Tooltip';
 import './DebugPanel.css';
+
+/** Error shape accepted by the debug panel: a plain string for parse-level
+ * problems, or a `StructuredError` for runtime errors out of the engine. */
+export type DebugError = StructuredError | string | null;
+
+function ErrorDisplay({ error }: { error: Exclude<DebugError, null> }) {
+  if (typeof error === 'string') {
+    return (
+      <>
+        <span className="error-icon">!</span>
+        {error}
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="error-icon">!</span>
+      <span className="error-type-pill" data-kind={error.type}>{error.type}</span>
+      <span className="error-message">{error.message}</span>
+      {error.operator && (
+        <span className="error-operator-chip">op: {error.operator}</span>
+      )}
+    </>
+  );
+}
 
 interface DebugPanelProps {
   logic: JsonLogicValue | null;
   logicText: string;
   onLogicChange: (text: string) => void;
-  logicError: string | null;
+  logicError: DebugError;
   data: unknown;
   dataText: string;
   onDataChange: (text: string) => void;
-  dataError: string | null;
+  dataError: DebugError;
   result: unknown;
-  resultError: string | null;
+  resultError: DebugError;
   wasmReady: boolean;
   wasmLoading: boolean;
   accordion?: boolean;
@@ -35,10 +61,22 @@ export function DebugPanel({
   accordion = false,
 }: DebugPanelProps) {
   const [expandedSection, setExpandedSection] = useState<string>('logic');
+  const [resultCopied, setResultCopied] = useState(false);
 
   const toggleSection = useCallback((section: string) => {
     setExpandedSection(prev => prev === section ? '' : section);
   }, []);
+
+  const handleCopyResult = useCallback(async () => {
+    if (resultError !== null || result === undefined) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+      setResultCopied(true);
+      setTimeout(() => setResultCopied(false), 1500);
+    } catch (err) {
+      console.error('Failed to copy result:', err);
+    }
+  }, [result, resultError]);
 
   const isExpanded = (section: string) => !accordion || expandedSection === section;
   const sectionClass = (section: string) => {
@@ -80,13 +118,15 @@ export function DebugPanel({
             <h3>Logic</h3>
           </div>
           <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
-            <button
-              className="format-btn"
-              onClick={handleFormatLogic}
-              disabled={logic === null}
-            >
-              Format
-            </button>
+            <Tooltip label="Pretty-print this JSON" side="left">
+              <button
+                className="format-btn"
+                onClick={handleFormatLogic}
+                disabled={logic === null}
+              >
+                Format
+              </button>
+            </Tooltip>
           </div>
         </button>
         {isExpanded('logic') && (
@@ -99,8 +139,7 @@ export function DebugPanel({
             />
             {logicError && (
               <div className="debug-error">
-                <span className="error-icon">!</span>
-                {logicError}
+                <ErrorDisplay error={logicError} />
               </div>
             )}
           </div>
@@ -124,13 +163,15 @@ export function DebugPanel({
             <h3>Data</h3>
           </div>
           <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
-            <button
-              className="format-btn"
-              onClick={handleFormatData}
-              disabled={!!dataError}
-            >
-              Format
-            </button>
+            <Tooltip label="Pretty-print this JSON" side="left">
+              <button
+                className="format-btn"
+                onClick={handleFormatData}
+                disabled={!!dataError}
+              >
+                Format
+              </button>
+            </Tooltip>
           </div>
         </button>
         {isExpanded('data') && (
@@ -143,8 +184,7 @@ export function DebugPanel({
             />
             {dataError && (
               <div className="debug-error">
-                <span className="error-icon">!</span>
-                {dataError}
+                <ErrorDisplay error={dataError} />
               </div>
             )}
           </div>
@@ -168,16 +208,26 @@ export function DebugPanel({
             <h3>Result</h3>
           </div>
           <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
-            {wasmLoading && <span className="wasm-status loading">Loading WASM...</span>}
-            {wasmReady && <span className="wasm-status ready">WASM Ready</span>}
+            {wasmLoading && <span className="wasm-status loading">Loading</span>}
+            {wasmReady && (
+              <Tooltip label={resultCopied ? 'Copied' : 'Copy result'} side="left">
+                <button
+                  type="button"
+                  className={`debug-header-action ${resultCopied ? 'copied' : ''}`}
+                  onClick={handleCopyResult}
+                  disabled={resultError !== null || result === undefined}
+                >
+                  {resultCopied ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </Tooltip>
+            )}
           </div>
         </button>
         {isExpanded('result') && (
           <div className="debug-section-content">
             {resultError ? (
               <div className="debug-result error">
-                <span className="error-icon">!</span>
-                {resultError}
+                <ErrorDisplay error={resultError} />
               </div>
             ) : (
               <JsonDisplay value={result} />

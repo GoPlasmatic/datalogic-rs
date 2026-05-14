@@ -8,6 +8,7 @@
 import { memo } from 'react';
 import { Undo2, Redo2 } from 'lucide-react';
 import { useEditorContext } from './context/editor';
+import { Tooltip } from '../Tooltip';
 
 export const UndoRedoToolbar = memo(function UndoRedoToolbar() {
   const { undo, redo, canUndo, canRedo } = useEditorContext();
@@ -17,24 +18,26 @@ export const UndoRedoToolbar = memo(function UndoRedoToolbar() {
 
   return (
     <>
-      <button
-        type="button"
-        className="dl-toolbar-btn"
-        onClick={undo}
-        disabled={!canUndo}
-        title="Undo (Cmd/Ctrl+Z)"
-      >
-        <Undo2 size={15} />
-      </button>
-      <button
-        type="button"
-        className="dl-toolbar-btn"
-        onClick={redo}
-        disabled={!canRedo}
-        title="Redo (Cmd/Ctrl+Shift+Z)"
-      >
-        <Redo2 size={15} />
-      </button>
+      <Tooltip label="Undo" shortcut="⌘Z">
+        <button
+          type="button"
+          className="dl-toolbar-btn"
+          onClick={undo}
+          disabled={!canUndo}
+        >
+          <Undo2 size={15} />
+        </button>
+      </Tooltip>
+      <Tooltip label="Redo" shortcut="⌘⇧Z">
+        <button
+          type="button"
+          className="dl-toolbar-btn"
+          onClick={redo}
+          disabled={!canRedo}
+        >
+          <Redo2 size={15} />
+        </button>
+      </Tooltip>
     </>
   );
 });

@@ -1,0 +1,20 @@
+# Python build / install artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# venv (any name)
+.venv/
+venv/
+env/
+
+# maturin / setuptools-rust build outputs
+dist/
+build/
+*.egg-info/
+wheels/

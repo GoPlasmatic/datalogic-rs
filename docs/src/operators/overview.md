@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 59 built-in operators organized into logical categories. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 61 built-in operators organized into logical categories, plus two opt-in flagd-compatible operators behind the `flagd` Cargo feature. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
@@ -16,6 +16,7 @@ datalogic-rs provides 59 built-in operators organized into logical categories. T
 | [DateTime](datetime.md) | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | Date and time |
 | [Missing Values](missing.md) | `missing`, `missing_some` | Check for missing data |
 | [Error Handling](error-handling.md) | `try`, `throw` | Exception handling |
+| [flagd-Compat](flagd.md) | `fractional`, `sem_ver` | Feature-flag targeting (OpenFeature flagd spec); requires `features = ["flagd"]` |
 
 ## Operator Syntax
 
@@ -89,12 +90,21 @@ Boolean operators use configurable truthiness rules. By default (JavaScript-styl
 
 You can add your own operators. See [Custom Operators](../advanced/custom-operators.md) for details.
 
+In v5 operator registration is builder-only:
+
 ```rust
-engine.add_operator("myop".to_string(), Box::new(MyOperator));
+let engine = Engine::builder()
+    .add_operator("myop", MyOperator)
+    .build();
 ```
 
-Custom operators follow the same syntax:
+Custom operators follow the same syntax in rules:
 
 ```json
 { "myop": [arg1, arg2] }
 ```
+
+> **Note:** v5 removed the `preserve` operator. Wrap literals in
+> templating mode (`Engine::builder().with_templating(true).build()`,
+> requires `feature = "templating"`) if you need to emit a JSON object
+> verbatim from a rule. Literal scalars and arrays already work inline.

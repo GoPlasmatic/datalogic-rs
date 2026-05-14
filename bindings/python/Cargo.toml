@@ -1,0 +1,55 @@
+# `[workspace]` makes this crate its own workspace root for the same reason
+# `bindings/wasm` does: keeps the binding's optional/binding deps and
+# `crate-type = ["cdylib"]` outputs from contaminating the root workspace's
+# `cargo test --workspace --all-features` path. The parent `Cargo.toml`
+# excludes this directory.
+[workspace]
+
+[package]
+name = "datalogic-py"
+version = "5.0.0"
+edition = "2024"
+description = "Python bindings for datalogic-rs JSONLogic engine"
+license = "Apache-2.0"
+repository = "https://github.com/GoPlasmatic/datalogic-rs"
+
+[lib]
+# `cdylib` produces the importable `.so`/`.pyd`; `rlib` lets a Rust
+# consumer link this crate as a normal dep (e.g. for downstream tests).
+crate-type = ["cdylib", "rlib"]
+# `name` controls the module name Python sees (`import datalogic_py`).
+# Keep this aligned with `[tool.maturin] module-name` in `pyproject.toml`
+# and with the `#[pymodule] fn datalogic_py(...)` symbol in `src/lib.rs`.
+name = "datalogic_py"
+
+[dependencies]
+# Mirrors the `datalogic-wasm` pattern: prefer the local path during
+# in-repo development; the published version pin kicks in once the binding
+# itself is published as a downstream of the released core.
+#
+# Feature list is inlined here (rather than via an umbrella feature on the
+# core crate) so the binding owns its operator surface. `serde_json` is
+# required because the binding converts Python dicts ↔ `serde_json::Value`
+# via `pythonize`; the rest mirrors the WASM binding's surface so a rule
+# valid in the JS/UI playground also runs from Python.
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+    "serde_json",
+    "datetime",
+    "trace",
+    "templating",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-control",
+    "ext-math",
+    "flagd",
+] }
+# pyo3 0.23 is the floor for Rust edition 2024 + the `Bound<'py, T>` API.
+# `abi3-py310` produces ONE wheel per (os, arch) covering CPython 3.10+;
+# Python 3.9 went EOL in October 2025 so the floor reflects current support.
+pyo3 = { version = "0.28", features = ["abi3-py310", "extension-module"] }
+# `pythonize` MUST track pyo3 in lockstep — wrong major pair fails to
+# compile silently. Bumping pyo3 above requires bumping this too.
+pythonize = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

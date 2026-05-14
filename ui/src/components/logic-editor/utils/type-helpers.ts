@@ -14,7 +14,7 @@ export function isJsonLogicExpression(value: unknown): boolean {
 }
 
 // Check if value is a data structure (object/array that may contain JSONLogic)
-// Used in preserveStructure mode to detect template objects
+// Used in templating mode to detect template objects
 export function isDataStructure(value: unknown): boolean {
   // Arrays with content may contain JSONLogic expressions
   if (Array.isArray(value)) return value.length > 0;
