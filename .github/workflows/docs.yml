@@ -83,7 +83,11 @@ jobs:
       # the docs UI build (which runs `tsc -b && vite build`) failed even
       # though CI's `npm run build:lib` (vite-only) passed. docs.yml
       # doesn't publish, so this in-memory edit is build-only.
-      - name: Wire local WASM into ui/package.json as a file: dep
+      # Single-quoted because the unquoted step name "...as a file: dep"
+      # contained a colon+space, which YAML parses as a mapping key and
+      # caused the entire workflow to fail to load (zero jobs, 0s
+      # startup failure) when merged in #52. Don't drop the quotes.
+      - name: 'Wire local WASM into ui/package.json as a file: dep'
         run: cd ui && npm pkg set "dependencies.@goplasmatic/datalogic-wasm=file:../bindings/wasm/pkg"
 
       - name: Install UI dependencies
