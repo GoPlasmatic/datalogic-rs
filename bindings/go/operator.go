@@ -20,7 +20,17 @@ package datalogic
 // declaration in _cgo_export.h; here we just need the symbol to be
 // resolvable in datalogic_go_get_trampoline below. Match the cgo-
 // generated signature (no `const` qualifiers — cgo doesn't emit them).
+//
+// On Windows, cgo annotates exported symbols with __declspec(dllexport)
+// in its generated header. clang (used for the windows/arm64 gnullvm
+// target) refuses to add `dllexport` to a previously-declared symbol,
+// so our forward decl must carry the same attribute up front. mingw-gcc
+// (windows/amd64) is lenient about this; clang is not.
+#if defined(_WIN32)
+extern __declspec(dllexport) char* goDatalogicOpTrampoline(char* args_json, void* user_data, char** error_out);
+#else
 extern char* goDatalogicOpTrampoline(char* args_json, void* user_data, char** error_out);
+#endif
 
 // cgo treats `datalogic_op_callback` (a Rust `Option<fn ptr>`) as an
 // opaque pointer-sized type from Go; wrap the function-pointer return

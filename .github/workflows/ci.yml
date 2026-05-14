@@ -274,13 +274,26 @@ jobs:
           key: ${{ runner.os }}-python-${{ hashFiles('bindings/python/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-python-
 
+      # `maturin develop` requires a virtualenv (or conda env) — it installs
+      # the freshly-built wheel into the active interpreter's site-packages.
+      # actions/setup-python provides only the bare interpreter, so we
+      # create a local venv and propagate VIRTUAL_ENV + PATH to subsequent
+      # steps via $GITHUB_ENV / $GITHUB_PATH.
+      - name: Create venv
+        working-directory: bindings/python
+        run: |
+          python -m venv .venv
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
       - name: Install build + test deps
+        working-directory: bindings/python
         run: pip install --upgrade pip maturin pytest
 
       # `maturin develop --release` builds the binding and installs it
-      # into the current Python env in one shot. Using --release because
-      # debug builds of pyo3 + the engine's compile pass are slow enough
-      # to dominate the test run.
+      # into the active venv in one shot. Using --release because debug
+      # builds of pyo3 + the engine's compile pass are slow enough to
+      # dominate the test run.
       - name: Build + install binding
         working-directory: bindings/python
         run: maturin develop --release
@@ -360,7 +373,7 @@ jobs:
       - name: Link local WASM into UI
         run: |
           cd bindings/wasm/pkg && npm link
-          cd ../../ui && npm link @goplasmatic/datalogic-wasm
+          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
 
       - name: Install UI dependencies
         run: cd ui && npm install

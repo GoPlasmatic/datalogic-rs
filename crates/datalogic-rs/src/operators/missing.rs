@@ -49,10 +49,8 @@ pub(crate) fn evaluate_missing<'a>(
                     }
                 }
             }
-            DataValue::String(s) => {
-                if !crate::arena::value::path_exists_str(lookup, s) {
-                    missing.push(DataValue::String(arena.alloc_str(s)));
-                }
+            DataValue::String(s) if !crate::arena::value::path_exists_str(lookup, s) => {
+                missing.push(DataValue::String(arena.alloc_str(s)));
             }
             _ => {}
         }
@@ -281,10 +279,8 @@ fn accumulate_dynamic_missing<'a>(
                 }
             }
         }
-        DataValue::String(s) => {
-            if !crate::arena::value::path_exists_str(lookup, s) {
-                missing.push(DataValue::String(arena.alloc_str(s)));
-            }
+        DataValue::String(s) if !crate::arena::value::path_exists_str(lookup, s) => {
+            missing.push(DataValue::String(arena.alloc_str(s)));
         }
         _ => {}
     }

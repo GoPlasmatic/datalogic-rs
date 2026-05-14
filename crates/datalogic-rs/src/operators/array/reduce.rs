@@ -173,13 +173,7 @@ fn try_reduce_fast_path<'a>(
     {
         match reduce_hint {
             ReduceHint::Current => &[][..],
-            ReduceHint::CurrentPath => {
-                if segments.len() >= 2 {
-                    &segments[1..]
-                } else {
-                    return None;
-                }
-            }
+            ReduceHint::CurrentPath if segments.len() >= 2 => &segments[1..],
             _ => return None,
         }
     } else {

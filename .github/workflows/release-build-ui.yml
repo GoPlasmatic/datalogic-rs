@@ -47,7 +47,7 @@ jobs:
       - name: Link local WASM package into UI
         run: |
           cd bindings/wasm/pkg && npm link
-          cd ../../ui && npm link @goplasmatic/datalogic-wasm
+          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
 
       - name: Install UI dependencies
         run: cd ui && npm install
