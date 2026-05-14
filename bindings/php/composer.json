@@ -6,7 +6,7 @@
     "homepage": "https://github.com/GoPlasmatic/datalogic-rs",
     "keywords": ["jsonlogic", "rules-engine", "datalogic", "ffi"],
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "ext-ffi": "*",
         "ext-json": "*"
     },
