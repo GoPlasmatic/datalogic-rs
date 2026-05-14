@@ -1,3 +1,3 @@
 module github.com/GoPlasmatic/datalogic-rs/bindings/go
 
-go 1.22
+go 1.25
