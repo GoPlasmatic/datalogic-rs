@@ -386,7 +386,16 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip != 'true'
-        run: cd ui && npm publish --access public --provenance
+        # `--ignore-scripts` is critical: ui/package.json defines a
+        # `prepublishOnly` that re-runs `npm run build:lib`, which
+        # invokes `prebuild:lib` → `sync-wasm` → `cp -R
+        # ../bindings/wasm/pkg vendor/datalogic`. The publish-ui job
+        # only downloads the prebuilt `ui-package` artifact (which
+        # already contains `dist/`); the sibling `bindings/wasm/pkg`
+        # source tree isn't present, so sync-wasm errors out with
+        # "cannot stat". Skipping scripts publishes the already-built
+        # tree as-is, which is what we want.
+        run: cd ui && npm publish --access public --provenance --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -802,7 +811,16 @@ jobs:
         # If PACKAGIST_USERNAME / PACKAGIST_TOKEN are configured, ping
         # the Packagist API to refresh the package immediately. Without
         # them, Packagist's hourly crawler picks up the tag within ~1h.
+        #
+        # `continue-on-error: true` because Packagist's API can return
+        # 404 when the package isn't yet registered on packagist.org
+        # (first release of a new package), or transiently. The actual
+        # release work (push to GoPlasmatic/datalogic-php) is done by
+        # the previous step; Packagist's crawler will sync within ~1h
+        # regardless. Don't fail the whole job on a "nice-to-have"
+        # cache-warming ping.
         if: ${{ env.PACKAGIST_USERNAME != '' && env.PACKAGIST_TOKEN != '' }}
+        continue-on-error: true
         env:
           PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
           PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
