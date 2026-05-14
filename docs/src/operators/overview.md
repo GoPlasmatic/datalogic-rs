@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 61 built-in operators organized into logical categories, plus two opt-in flagd-compatible operators behind the `flagd` Cargo feature. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 59 built-in operators organized into logical categories — 57 in the default build plus two opt-in flagd-compatible operators (`fractional`, `sem_ver`) behind the `flagd` Cargo feature. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 

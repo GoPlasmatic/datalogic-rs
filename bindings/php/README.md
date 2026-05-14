@@ -1,7 +1,8 @@
 # `goplasmatic/datalogic` — PHP binding for [`datalogic-rs`](../../crates/datalogic-rs)
 
 PHP FFI wrapper over the shared [`bindings/c`](../c) C ABI. Requires
-PHP 8.1+ with `ext-ffi` enabled.
+PHP 8.4+ with `ext-ffi` enabled (the floor tracks `composer.json` — the
+test suite uses PHPUnit 13, which itself requires PHP 8.4+).
 
 ## Install
 

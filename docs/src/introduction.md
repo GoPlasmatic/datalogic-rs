@@ -24,7 +24,7 @@
 
 **datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a fast, memory-efficient, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
 
-The same engine ships across runtimes: **Rust, JavaScript / TypeScript (WebAssembly), Python, Go, and a React visual debugger**. Author the rule once; evaluate it anywhere. For the cross-runtime overview and per-binding install instructions, see the [repository README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+The same engine ships across runtimes: **Rust, Node.js (native), JavaScript / TypeScript (WebAssembly), Python, Go, JVM (Java/Kotlin/Scala), .NET, PHP, and a React visual debugger**. Author the rule once; evaluate it anywhere. For the cross-runtime overview and per-binding install instructions, see the [repository README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
 > **v5 is here.** v5 is a breaking release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based, switches custom operators to a pre-evaluated arena API, and removes the implicit `serde_json` dependency from the default build. v5 is a hard cliff — there is no compatibility shim. See the [Migration Guide](migration.md) for the conceptual overview and the repo-root `MIGRATION.md` for the full v4 → v5 cookbook.
 
@@ -116,4 +116,4 @@ This rule checks if `age > 18` AND `country == "US"`.
 - [Operators](operators/overview.md) - Explore all 59 built-in operators
 - [API Reference](api/reference.md) - Public Rust types and the 5-tier API model
 
-**Using another language?** This site focuses on the Rust crate; for JavaScript / TypeScript, Python, Go, and React, jump straight to the per-binding README in the [repo root](https://github.com/GoPlasmatic/datalogic-rs#readme).
+**Using another language?** This site focuses on the Rust crate; for Node.js (native), JavaScript / TypeScript (WASM), Python, Go, JVM, .NET, PHP, and React, jump straight to the per-binding README in the [repo root](https://github.com/GoPlasmatic/datalogic-rs#readme).

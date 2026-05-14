@@ -36,6 +36,7 @@ v5 splits the surface into a small core plus opt-in features:
 | `ext-control` | off | Extended control-flow operators (e.g. `inspect`). |
 | `error-handling` | off | `try` / `throw` operators. |
 | `ext-math` | off | Extended math operators. |
+| `flagd` | off | [OpenFeature flagd-compatible](https://flagd.dev/reference/custom-operations/) `fractional` (murmurhash3 percentage bucketing) and `sem_ver` (semantic-version comparison) operators. |
 | `wasm` | off | Bundle convenience for WASM builds (= `datetime` + `trace` + `templating`). |
 
 Example — opt into `serde_json::Value` interop plus templating:
@@ -60,12 +61,16 @@ The Rust crate is the engine; every other language uses its own
 binding. Click through to the binding's README for install
 instructions and the language-idiomatic API:
 
-| Language                      | Package                                                                          | Install                                                  | Deep-dive                                                                          |
-|-------------------------------|----------------------------------------------------------------------------------|----------------------------------------------------------|------------------------------------------------------------------------------------|
-| JavaScript / TypeScript (WASM) | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) | `npm i @goplasmatic/datalogic-wasm`                           | [bindings/wasm/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md) |
-| Python                        | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                         | `pip install datalogic-py`                               | [bindings/python/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/python/README.md) |
-| Go                            | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` | [bindings/go/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/go/README.md)        |
-| React (visual debugger)       | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `npm i @goplasmatic/datalogic-ui`                  | [ui/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md)                          |
+| Language                       | Package                                                                                          | Install                                                          | Deep-dive                                                                                                       |
+|--------------------------------|--------------------------------------------------------------------------------------------------|------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| Node.js (native, napi-rs)      | [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)       | `npm i @goplasmatic/datalogic-node`                              | [bindings/node/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/node/README.md)        |
+| JavaScript / TypeScript (WASM) | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)       | `npm i @goplasmatic/datalogic-wasm`                              | [bindings/wasm/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md)        |
+| Python                         | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                                         | `pip install datalogic-py`                                       | [bindings/python/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/python/README.md)    |
+| Go                             | `datalogic-go`                                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5`      | [bindings/go/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/go/README.md)            |
+| JVM (Java, Kotlin, Scala)      | [`io.github.goplasmatic:datalogic`](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | Maven Central dependency                                  | [bindings/jvm/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/jvm/README.md)          |
+| .NET                           | [`Goplasmatic.Datalogic`](https://www.nuget.org/packages/Goplasmatic.Datalogic)                  | `dotnet add package Goplasmatic.Datalogic`                       | [bindings/dotnet/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/dotnet/README.md)    |
+| PHP                            | [`goplasmatic/datalogic`](https://packagist.org/packages/goplasmatic/datalogic)                  | `composer require goplasmatic/datalogic`                         | [bindings/php/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/php/README.md)          |
+| React (visual debugger)        | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui)           | `npm i @goplasmatic/datalogic-ui`                                | [ui/README.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md)                              |
 
 Building the WASM binding from source:
 

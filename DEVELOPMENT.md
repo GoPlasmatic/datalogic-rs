@@ -212,7 +212,8 @@ vendor/bin/phpunit                  # PHPUnit
 Loads `libdatalogic_c.{so,dylib,dll}` at runtime via
 `FFI::cdef(<curated header>, <lib path>)`. The Native loader searches
 `DATALOGIC_NATIVE_LIB` → `bindings/php/lib/<os>-<arch>/` → in-tree
-`bindings/c/target/release/`. PHP 8.1+ with `ext-ffi` required. Publish
+`bindings/c/target/release/`. PHP 8.4+ with `ext-ffi` required (tracks
+`composer.json`; PHPUnit 13 in the test suite requires PHP 8.4+). Publish
 target: Packagist `goplasmatic/datalogic`. End-user API:
 [bindings/php/README.md](./bindings/php/README.md).
 
