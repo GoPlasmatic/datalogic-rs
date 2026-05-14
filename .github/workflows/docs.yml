@@ -75,25 +75,16 @@ jobs:
           # `npm install`, but isn't checked in. Add `cache: 'npm'` once
           # a lockfile is committed.
 
-      # Pin the UI's `@goplasmatic/datalogic-wasm` dep to the version we just
-      # built in `bindings/wasm/pkg/` (extracted from
-      # `crates/datalogic-rs/Cargo.toml`). Without this the local link below
-      # would mismatch ui/package.json's pin and `npm install`
-      # would replace the symlink with the registry copy. docs.yml doesn't
-      # publish, so this in-memory edit is build-only.
-      - name: Pin UI -> WASM version to local build
-        run: |
-          VERSION=$(grep '^version = ' crates/datalogic-rs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          cd ui && npm pkg set "dependencies.@goplasmatic/datalogic-wasm=$VERSION"
-
-      # Wire the freshly-built local WASM into ui/node_modules
-      # BEFORE `npm install`. With the symlink already present and its
-      # version matching ui/package.json's pin, `npm install`
-      # preserves it instead of fetching the registry copy.
-      - name: Link local WASM package into UI
-        run: |
-          cd bindings/wasm/pkg && npm link
-          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
+      # Wire the freshly-built local WASM as a `file:` dep so `npm install`
+      # installs it from disk instead of the registry. The published
+      # version may not exist yet (release tag fires later in the v5.0.0
+      # cycle), and the previous `npm link` + version-pin dance proved
+      # fragile: tsc -b couldn't resolve types through the symlink, so
+      # the docs UI build (which runs `tsc -b && vite build`) failed even
+      # though CI's `npm run build:lib` (vite-only) passed. docs.yml
+      # doesn't publish, so this in-memory edit is build-only.
+      - name: Wire local WASM into ui/package.json as a file: dep
+        run: cd ui && npm pkg set "dependencies.@goplasmatic/datalogic-wasm=file:../bindings/wasm/pkg"
 
       - name: Install UI dependencies
         run: cd ui && npm install
