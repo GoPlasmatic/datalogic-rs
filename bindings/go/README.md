@@ -17,8 +17,14 @@ overview and the API-tier model every binding implements, see the
 ## Install
 
 ```sh
-go get github.com/GoPlasmatic/datalogic-rs/bindings/go@latest
+go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@latest
 ```
+
+The `/v5` suffix is required by Go modules for any major version ≥ 2
+(see [Go modules ref — major version
+suffixes](https://go.dev/ref/mod#major-version-suffixes)); the
+binding's own version tracks the core crate's, so `v5.x.y` lives at
+`/v5`, `v6.x.y` will live at `/v6`, etc.
 
 Released tags ship prebuilt static libraries for:
 
@@ -36,7 +42,7 @@ You only need a C compiler to link — no Rust toolchain required.
 ## Module path
 
 ```go
-import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go"
+import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
 ```
 
 ## In-tree development
@@ -96,7 +102,7 @@ package main
 
 import (
     "fmt"
-    datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go"
+    datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
 )
 
 func main() {

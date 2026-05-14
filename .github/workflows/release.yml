@@ -501,7 +501,13 @@ jobs:
           # Push only the tag — the synthetic commit becomes reachable
           # through it but never lands on a branch. Main stays binary-free.
           git push origin "${TAG}"
-          echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/bindings/go@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
+          # Major-version suffix in the `go get` path is required by Go
+          # modules for v2+ when a `go.mod` is present (see
+          # https://go.dev/ref/mod#major-version-suffixes). The on-disk
+          # `go.mod` declares the module as `.../bindings/go/v5` so the
+          # suffix here is derived from the major component of VERSION.
+          GO_MAJOR="v${VERSION%%.*}"
+          echo "::notice::Go module tag pushed: ${TAG}. End consumers can now run 'go get github.com/GoPlasmatic/datalogic-rs/bindings/go/${GO_MAJOR}@v${VERSION}' (proxy.golang.org indexes the tag within a few minutes)."
 
   publish-node:
     name: Publish Node bindings to npm

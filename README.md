@@ -45,7 +45,7 @@ full API reference for that language.
 | **Node.js** service (TypeScript or JS) | [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node) | `npm i @goplasmatic/datalogic-node`             | [bindings/node/README.md](./bindings/node/README.md)            |
 | **Browser, Deno, Bun, Cloudflare Workers, edge runtimes** | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) (WebAssembly) | `npm i @goplasmatic/datalogic-wasm` | [bindings/wasm/README.md](./bindings/wasm/README.md)            |
 | **Python** service or data pipeline   | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                         | `pip install datalogic-py`                                  | [bindings/python/README.md](./bindings/python/README.md)        |
-| **Go** service                        | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go`    | [bindings/go/README.md](./bindings/go/README.md)                |
+| **Go** service                        | `datalogic-go`                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` | [bindings/go/README.md](./bindings/go/README.md)                |
 | **Java / JVM** service                | `io.github.goplasmatic:datalogic`                                                | Maven Central dependency                                    | [bindings/jvm/README.md](./bindings/jvm/README.md)              |
 | **.NET** service                      | `Goplasmatic.Datalogic`                                                          | `dotnet add package Goplasmatic.Datalogic`                  | [bindings/dotnet/README.md](./bindings/dotnet/README.md)        |
 | **PHP** service                       | `goplasmatic/datalogic`                                                          | `composer require goplasmatic/datalogic`                    | [bindings/php/README.md](./bindings/php/README.md)              |
@@ -174,7 +174,7 @@ result = apply({">": [{"var": "x"}, 10]}, {"x": 42})
 **Go** — services, CLIs:
 
 ```go
-import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go"
+import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
 
 out, _ := datalogic.Apply(`{">": [{"var": "x"}, 10]}`, `{"x": 42}`)
 // "true"

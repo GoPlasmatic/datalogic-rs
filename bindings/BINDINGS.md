@@ -18,7 +18,7 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 | Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (first-class Node target — WASM `@goplasmatic/datalogic-wasm` ships alongside for browsers / Deno / Bun / Workers) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
 | C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/JVM/.NET/PHP in-tree, not separately published) | — |
-| Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go` (in-tree module) | Go modules |
+| Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` (in-tree module; `/v5` major-version suffix required by Go modules) | Go modules |
 | JVM | (no Cargo crate — Maven module) | `io.github.goplasmatic:datalogic` | Maven Central |
 | .NET | (no Cargo crate — .NET project) | `Goplasmatic.Datalogic` | NuGet |
 | PHP | (no Cargo crate — Composer package) | `goplasmatic/datalogic` | Packagist |
@@ -87,7 +87,7 @@ a deprecation notice on `npm install` pointing them at the new name.
 | Node native | `bindings/node/` | napi-rs + napi-cli (per-platform `.node` prebuilds with `optionalDependencies`) | npm: `@goplasmatic/datalogic-node` |
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/JVM/.NET/PHP) |
-| Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go` |
+| Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` |
 | JVM | `bindings/jvm/` | JNA over `bindings/c/` cdylib | Maven Central: `io.github.goplasmatic:datalogic` |
 | .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over `bindings/c/` cdylib | NuGet: `Goplasmatic.Datalogic` |
 | PHP | `bindings/php/` | PHP FFI (`FFI::cdef`) over `bindings/c/` cdylib | Packagist: `goplasmatic/datalogic` |
