@@ -239,14 +239,14 @@ Geomeans across 44 suites (Apple M2 Pro, macOS 26.3, Rust 1.93, Node 24;
 median of 3 samples per cell, ~200 ms wall budget — see [`tools/benchmark/BENCHMARK.md`][bench]
 for the per-suite matrix, methodology, and caveats):
 
-| Subject                                              | Geomean ns/op | vs `dlrs:engine` |
-|------------------------------------------------------|--------------:|-----------------:|
-| `dlrs:engine` (datalogic-rs native, precompiled)     |           9.7 |               1× |
-| `json-logic-engine:compiled` (TotalTechGeek, JS)     |          47.2 |             4.9× |
-| `json-logic-engine` (interpreted, JS)                |         160.3 |            16.5× |
-| `jsonlogic-rs` (bestowinc, native Rust)              |         218.0 |            22.5× |
-| `json-logic-js` (jwadhams reference, JS)             |         423.5 |            43.7× |
-| `dlrs:wasm:compiled` (`@goplasmatic/datalogic-wasm`, run under Node)|         855.6 |            88.2× |
+| Library                                                  | Config / setup                            | Geomean ns/op | vs `dlrs:engine` |
+|----------------------------------------------------------|-------------------------------------------|--------------:|-----------------:|
+| `datalogic-rs` (native Rust, this repo)                  | precompiled — `dlrs:engine`               |           9.7 |               1× |
+| `json-logic-engine` (TotalTechGeek, JS)                  | compiled — `json-logic-engine:compiled`   |          47.2 |             4.9× |
+| `json-logic-engine` (TotalTechGeek, JS)                  | interpreted — `json-logic-engine`         |         160.3 |            16.5× |
+| `jsonlogic-rs` (bestowinc, native Rust)                  | default — `jsonlogic-rs`                  |         218.0 |            22.5× |
+| `json-logic-js` (jwadhams reference, JS)                 | default — `json-logic-js`                 |         423.5 |            43.7× |
+| `@goplasmatic/datalogic-wasm` (WebAssembly, run in Node) | compiled — `dlrs:wasm:compiled`           |         855.6 |            88.2× |
 
 The WASM row above measures the WebAssembly build running in Node — the
 artifact you'd ship to browsers / Deno / Bun / Cloudflare Workers, not
