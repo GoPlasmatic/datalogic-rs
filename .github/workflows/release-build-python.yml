@@ -28,14 +28,14 @@ jobs:
           - { os: windows, arch: x86_64,  libc: "",         runner: windows-latest, target: x86_64-pc-windows-msvc,      manylinux: "off" }
           - { os: windows, arch: arm64,   libc: "",         runner: windows-11-arm, target: aarch64-pc-windows-msvc,     manylinux: "off" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           # Pin maturin so a release months from now produces the same
           # wheels. Bump deliberately when needed.
-          maturin-version: "1.7.4"
+          maturin-version: "1.13.3"
           working-directory: bindings/python
           target: ${{ matrix.target.target }}
           args: --release --out dist
@@ -44,7 +44,7 @@ jobs:
           manylinux: ${{ matrix.target.manylinux }}
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-wheels-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ matrix.target.libc }}
           path: bindings/python/dist/*.whl
@@ -53,18 +53,18 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
-          maturin-version: "1.7.4"
+          maturin-version: "1.13.3"
           working-directory: bindings/python
           command: sdist
           args: --out dist
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-sdist
           path: bindings/python/dist/*.tar.gz
@@ -77,16 +77,16 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.13'
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/

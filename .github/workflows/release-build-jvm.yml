@@ -14,22 +14,22 @@ jobs:
     name: mvn package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
 
       - name: Cache Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-${{ hashFiles('bindings/jvm/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
       - name: Download all cdylib artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cdylib/
           pattern: c-cdylib-*
@@ -73,7 +73,7 @@ jobs:
         run: mvn -B -DskipTests package
 
       - name: Upload JARs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jvm-jars
           path: |

@@ -14,7 +14,7 @@ jobs:
     name: composer package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -23,7 +23,7 @@ jobs:
           coverage: none
 
       - name: Download all cdylib artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cdylib/
           pattern: c-cdylib-*
@@ -75,7 +75,7 @@ jobs:
           (cd $STAGE && zip -r ../goplasmatic-datalogic-php.zip goplasmatic-datalogic)
 
       - name: Upload distribution zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: php-dist
           path: goplasmatic-datalogic-php.zip

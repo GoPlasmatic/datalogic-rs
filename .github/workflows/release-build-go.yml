@@ -48,15 +48,15 @@ jobs:
           - { os: windows, arch: amd64, runner: windows-latest,   cargo_target: x86_64-pc-windows-gnu,     native: true  }
           - { os: windows, arch: arm64, runner: windows-11-arm,   cargo_target: aarch64-pc-windows-gnullvm, native: true  }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target.cargo_target }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.25'
 
       # windows-11-arm has no mingw toolchain pre-installed. Both the
       # `aarch64-pc-windows-gnullvm` Rust target and Go's cgo need the
@@ -73,7 +73,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "C:\llvm-mingw-20240619-ucrt-aarch64\bin"
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -129,7 +129,7 @@ jobs:
       # cross-platform validation, not the published artifacts.
       - name: Upload artifact
         if: inputs.upload-artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: go-staticlib-${{ matrix.target.os }}-${{ matrix.target.arch }}
           path: bindings/go/lib/

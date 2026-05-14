@@ -29,11 +29,11 @@ jobs:
           - { os: windows, arch: x64,   libc: msvc,  runner: windows-latest,   target: x86_64-pc-windows-msvc      }
           - { os: windows, arch: arm64, libc: msvc,  runner: windows-11-arm,   target: aarch64-pc-windows-msvc     }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           # registry-url is only needed in the publish job, but having it
           # here lets `npm install` resolve scoped packages consistently.
           registry-url: 'https://registry.npmjs.org'
@@ -53,7 +53,7 @@ jobs:
           sudo apt-get install -y musl-tools
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -89,7 +89,7 @@ jobs:
         run: npm test
 
       - name: Upload .node artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Artifact name carries the triple so publish-node can match
           # each .node to its corresponding npm/<os-arch-libc>/ subpackage.

@@ -72,7 +72,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract version
         id: version
@@ -181,7 +181,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -233,7 +233,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -292,15 +292,15 @@ jobs:
       contents: read
     steps:
       - name: Download wasm-pkg artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: wasm-pkg
           path: bindings/wasm/pkg/
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Check if version exists on npm
@@ -342,14 +342,14 @@ jobs:
       - name: Download ui-package artifact
         # The artifact tarball roots with `ui/...`. Default
         # `path: .` reconstructs that tree under the runner root.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ui-package
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Check if version exists on npm
@@ -392,7 +392,7 @@ jobs:
       id-token: write
     steps:
       - name: Download all Python artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: python-*
@@ -451,13 +451,13 @@ jobs:
     needs: [validate, publish-crate, build-go]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Need the full tag commit to base our synthetic release commit on.
           fetch-depth: 0
 
       - name: Download all staticlibs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
           pattern: go-staticlib-*
@@ -513,11 +513,11 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install bindings/node deps
@@ -525,7 +525,7 @@ jobs:
         run: npm ci || npm install
 
       - name: Download all prebuilds
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           # Each artifact tarball roots at the .node file directly, so
           # merge-multiple drops every prebuild side-by-side into
@@ -576,12 +576,12 @@ jobs:
     needs: [validate, publish-crate, build-dotnet]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
       - name: Download .nupkg artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dotnet-nupkg
           path: nupkg/
@@ -614,9 +614,9 @@ jobs:
       name: maven-central
       url: https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -627,7 +627,7 @@ jobs:
       # `mvn deploy`. This re-runs JAR assembly but it's cheap (no
       # cargo) and avoids shipping a fat artifact between jobs.
       - name: Download cdylib artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: cdylib/
           pattern: c-cdylib-*
@@ -702,7 +702,7 @@ jobs:
     # crawler.
     steps:
       - name: Download PHP distribution
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: php-dist
           path: dist/
@@ -787,7 +787,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Extract just this version's section from CHANGELOG.md. Awk reads
       # lines between `## [X.Y.Z]` and the next `## [` header (exclusive)
@@ -815,7 +815,7 @@ jobs:
       # without going through PyPI/npm. crates.io tarball isn't attached
       # — `cargo publish` is the canonical source there.
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           # Skip `python-sdist` and `python-wheels-*` only if you want
