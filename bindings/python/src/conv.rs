@@ -23,7 +23,7 @@ pub fn dict_to_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Value
     depythonize(value).map_err(|e| parse_error(py, format!("unsupported Python value: {e}")))
 }
 
-pub fn value_to_pyobject(py: Python<'_>, value: &Value) -> PyResult<PyObject> {
+pub fn value_to_pyobject(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
     pythonize(py, value)
         .map(|bound| bound.unbind())
         .map_err(|e| parse_error(py, format!("failed to convert result to Python: {e}")))

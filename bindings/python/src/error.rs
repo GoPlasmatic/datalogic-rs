@@ -69,7 +69,7 @@ pub fn engine_error_to_pyerr(py: Python<'_>, err: &Error, compiled: Option<&Logi
 /// other attributes.
 pub fn parse_error<S: Into<String>>(py: Python<'_>, message: S) -> PyErr {
     let pyerr = PyErr::new::<ParseError, _>(message.into());
-    if let Ok(value) = pyerr.value(py).downcast::<PyAny>() {
+    if let Ok(value) = pyerr.value(py).cast::<PyAny>() {
         let _ = value.setattr("error_type", "ParseError");
         let _ = value.setattr("operator", py.None());
         let _ = value.setattr("node_ids", Vec::<u32>::new());
@@ -104,7 +104,7 @@ fn attach_attrs(py: Python<'_>, pyerr: &PyErr, err: &Error, compiled: Option<&Lo
     let _ = value.setattr("path", path_value);
 }
 
-fn serialize_path(py: Python<'_>, steps: &[datalogic_rs::PathStep]) -> PyObject {
+fn serialize_path(py: Python<'_>, steps: &[datalogic_rs::PathStep]) -> Py<PyAny> {
     let list = pyo3::types::PyList::empty(py);
     for step in steps {
         let dict = pyo3::types::PyDict::new(py);

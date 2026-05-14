@@ -24,7 +24,7 @@ use crate::session::Session;
 /// rule, hold an :class:`Engine` and a :class:`Rule` instance — that
 /// path skips the per-call compile.
 #[pyfunction]
-fn apply(py: Python<'_>, rule: &Bound<'_, PyAny>, data: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+fn apply(py: Python<'_>, rule: &Bound<'_, PyAny>, data: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     let engine = std::sync::Arc::new(datalogic_rs::Engine::new());
     let logic = compile_inner(py, &engine, rule)?;
     evaluate_value(py, &engine, &logic, data)

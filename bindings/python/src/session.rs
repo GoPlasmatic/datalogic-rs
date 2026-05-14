@@ -41,14 +41,14 @@ impl Session {
         py: Python<'_>,
         rule: &Rule,
         data: &Bound<'_, PyAny>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         // Reset BEFORE each call so the previous iteration's allocations
         // don't accumulate. The previous call's result was materialised as
         // an owned `serde_json::Value` (or `String`) before returning, so
         // resetting here is safe.
         self.arena.reset();
 
-        if let Ok(s) = data.downcast::<PyString>() {
+        if let Ok(s) = data.cast::<PyString>() {
             let json = run_to_value_from_str(py, &self.engine, &mut self.arena, rule, s.to_str()?)?;
             return value_to_pyobject(py, &json);
         }
@@ -70,7 +70,7 @@ impl Session {
         // a captured field of type `&&mut Bump`. That's `!Send` because
         // `Bump: !Sync`. With `move`, the closure owns `&mut Bump`
         // directly — `&mut Bump: Send` (since `Bump: Send`).
-        py.allow_threads(move || -> Result<String, datalogic_rs::Error> {
+        py.detach(move || -> Result<String, datalogic_rs::Error> {
             let av = engine.evaluate(&logic, data_owned.as_str(), arena)?;
             Ok(av.to_string())
         })
@@ -117,7 +117,7 @@ fn run_to_value(
 ) -> PyResult<Value> {
     let engine = engine.clone();
     let logic = rule.logic().clone();
-    py.allow_threads(move || -> Result<Value, datalogic_rs::Error> {
+    py.detach(move || -> Result<Value, datalogic_rs::Error> {
         let av = engine.evaluate(&logic, value, arena)?;
         serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
     })
@@ -134,7 +134,7 @@ fn run_to_value_from_str(
     let data_owned = data.to_string();
     let engine = engine.clone();
     let logic = rule.logic().clone();
-    py.allow_threads(move || -> Result<Value, datalogic_rs::Error> {
+    py.detach(move || -> Result<Value, datalogic_rs::Error> {
         let av = engine.evaluate(&logic, data_owned.as_str(), arena)?;
         serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
     })

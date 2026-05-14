@@ -93,7 +93,7 @@ impl Engine {
         py: Python<'_>,
         rule: &Bound<'_, PyAny>,
         data: &Bound<'_, PyAny>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let logic = compile_inner(py, &self.inner, rule)?;
         evaluate_value(py, &self.inner, &logic, data)
     }
@@ -148,7 +148,7 @@ impl Rule {
     /// :param data: a Python ``dict``/``list``/scalar, or a ``str``
     ///     containing the data as JSON. The dict path uses ``pythonize``
     ///     (≈3-10× faster than a JSON round-trip).
-    fn evaluate(&self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn evaluate(&self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         evaluate_value(py, &self.engine, &self.logic, data)
     }
 
@@ -159,7 +159,7 @@ impl Rule {
         // Capture sendable references for the GIL-released closure.
         let engine: &RsEngine = &self.engine;
         let logic: &Logic = &self.logic;
-        let result = py.allow_threads(|| -> Result<String, datalogic_rs::Error> {
+        let result = py.detach(|| -> Result<String, datalogic_rs::Error> {
             let arena = Bump::new();
             let av = engine.evaluate(logic, data, &arena)?;
             Ok(av.to_string())
@@ -198,10 +198,10 @@ impl CustomOperator for PyOperator {
         }
         json.push(']');
 
-        // 2. Acquire the GIL and call the Python callable. `with_gil`
+        // 2. Acquire the GIL and call the Python callable. `Python::attach`
         //    re-acquires the GIL even if the surrounding evaluation
-        //    released it via `py.allow_threads`.
-        let result_str: String = Python::with_gil(|py| -> Result<String, DlError> {
+        //    released it via `py.detach`.
+        let result_str: String = Python::attach(|py| -> Result<String, DlError> {
             let callable = self.callback.bind(py);
             let ret = callable.call1((json.as_str(),)).map_err(|e| {
                 DlError::custom_message(format!("custom operator '{}' raised: {}", self.name, e))
@@ -234,7 +234,7 @@ pub(crate) fn compile_inner(
     engine: &Arc<RsEngine>,
     rule: &Bound<'_, PyAny>,
 ) -> PyResult<Arc<Logic>> {
-    if let Ok(s) = rule.downcast::<PyString>() {
+    if let Ok(s) = rule.cast::<PyString>() {
         let s = s.to_str()?;
         return engine
             .compile_arc(s)
@@ -251,9 +251,9 @@ pub(crate) fn evaluate_value(
     engine: &Arc<RsEngine>,
     logic: &Arc<Logic>,
     data: &Bound<'_, PyAny>,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     // Fast path: if the caller already has a JSON string, skip dict conversion.
-    if let Ok(s) = data.downcast::<PyString>() {
+    if let Ok(s) = data.cast::<PyString>() {
         let json = run_eval_to_value_from_str(py, engine, logic, s.to_str()?)?;
         return value_to_pyobject(py, &json);
     }
@@ -268,12 +268,12 @@ pub(crate) fn evaluate_str(
     logic: &Arc<Logic>,
     data: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    if let Ok(s) = data.downcast::<PyString>() {
+    if let Ok(s) = data.cast::<PyString>() {
         let s_owned = s.to_str()?.to_string();
         let engine_ref: &RsEngine = engine;
         let logic_ref: &Logic = logic;
         return py
-            .allow_threads(|| -> Result<String, datalogic_rs::Error> {
+            .detach(|| -> Result<String, datalogic_rs::Error> {
                 let arena = Bump::new();
                 let av = engine_ref.evaluate(logic_ref, s_owned.as_str(), &arena)?;
                 Ok(av.to_string())
@@ -283,7 +283,7 @@ pub(crate) fn evaluate_str(
     let value = dict_to_value(py, data)?;
     let engine_ref: &RsEngine = engine;
     let logic_ref: &Logic = logic;
-    py.allow_threads(|| -> Result<String, datalogic_rs::Error> {
+    py.detach(|| -> Result<String, datalogic_rs::Error> {
         let arena = Bump::new();
         let av = engine_ref.evaluate(logic_ref, &value, &arena)?;
         Ok(av.to_string())
@@ -299,7 +299,7 @@ fn run_eval_to_value(
 ) -> PyResult<Value> {
     let engine_ref: &RsEngine = engine;
     let logic_ref: &Logic = logic;
-    py.allow_threads(|| -> Result<Value, datalogic_rs::Error> {
+    py.detach(|| -> Result<Value, datalogic_rs::Error> {
         let arena = Bump::new();
         let av = engine_ref.evaluate(logic_ref, value, &arena)?;
         serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
@@ -316,7 +316,7 @@ fn run_eval_to_value_from_str(
     let data_owned = data.to_string();
     let engine_ref: &RsEngine = engine;
     let logic_ref: &Logic = logic;
-    py.allow_threads(|| -> Result<Value, datalogic_rs::Error> {
+    py.detach(|| -> Result<Value, datalogic_rs::Error> {
         let arena = Bump::new();
         let av = engine_ref.evaluate(logic_ref, data_owned.as_str(), &arena)?;
         serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
