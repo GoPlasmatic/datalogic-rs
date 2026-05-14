@@ -629,11 +629,22 @@ jobs:
         # every `npm publish` invocation napi makes (umbrella + each
         # `npm/<triple>/` subpackage), so all 9 packages carry a SLSA
         # provenance attestation. Needs `id-token: write` (set above).
+        #
+        # `NPM_CONFIG_ACCESS=public` is required because the per-platform
+        # subpackages are first-time publishes; npm 9+ defaults new
+        # scoped packages (`@goplasmatic/datalogic-node-<triple>`) to
+        # "restricted" and refuses to generate provenance unless access
+        # is explicitly set to public:
+        #   npm error EUSAGE Can't generate provenance for new or
+        #   private package, you must set `access` to public.
+        # napi prepublish has no --access flag; setting NPM_CONFIG_ACCESS
+        # makes every nested `npm publish` call inherit it.
         run: npx napi prepublish -t npm
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
+          NPM_CONFIG_ACCESS: 'public'
           GITHUB_TOKEN: ${{ github.token }}
 
   publish-dotnet:
