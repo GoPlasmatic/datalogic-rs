@@ -140,11 +140,17 @@ jobs:
       - name: Resolve with minimal versions
         run: cargo +nightly update -Z minimal-versions
 
+      # `tools/benchmark` is dev-only; under `--all-features` it pulls
+      # `jsonlogic-rs 0.5` → `phf 0.8` → `proc-macro-hack 0.5.4` → broken
+      # `syn 0.15.14` (AttributeArgs gating bug). We can't pin transitives
+      # we don't own, and the gate's purpose is to catch regressions in
+      # the library code we publish (`datalogic-rs`), so exclude the
+      # benchmark crate.
       - name: Build with minimal versions
-        run: cargo +stable build --workspace --all-features
+        run: cargo +stable build --workspace --all-features --exclude datalogic-bench
 
       - name: Test with minimal versions
-        run: cargo +stable test --workspace --all-features
+        run: cargo +stable test --workspace --all-features --exclude datalogic-bench
 
   # Cross-platform validation of the Go binding's full cgo path on every
   # PR and main push. Delegates to the same reusable workflow release.yml
