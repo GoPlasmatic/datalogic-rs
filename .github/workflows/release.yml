@@ -256,9 +256,24 @@ jobs:
 
       - name: Publish
         if: steps.check.outputs.skip != 'true'
-        run: cargo publish --manifest-path crates/datalogic-rs/Cargo.toml
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        # The pre-check above can fail to detect an already-published
+        # version under crates.io API flakiness or shared-runner rate
+        # limiting (we hit this on v5.0.0). Treat `cargo publish`'s
+        # "already exists" error as success — it's the authoritative
+        # source and matches what every other publish job in this file
+        # does (npm view, --skip-duplicate, skip-existing, etc.).
+        run: |
+          set -o pipefail
+          if cargo publish --manifest-path crates/datalogic-rs/Cargo.toml 2>&1 | tee /tmp/cargo-publish.log; then
+            exit 0
+          fi
+          if grep -q 'already exists on crates.io index' /tmp/cargo-publish.log; then
+            echo "::notice::datalogic-rs already on crates.io; treating as success."
+            exit 0
+          fi
+          exit 1
 
   # =========================================================== Build phase
   # Each `build-*` job is a thin call into a reusable workflow that owns
@@ -496,6 +511,15 @@ jobs:
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           TAG="bindings/go/v${VERSION}"
+          # Skip if the tag already exists on origin (idempotency for
+          # `gh run rerun` and `workflow_dispatch` against a tag whose
+          # publish-go cell succeeded in an earlier attempt). Without
+          # this, `git tag ${TAG}` errors and the job fails even though
+          # the Go module proxy already has the right artifact set.
+          if git ls-remote --tags --exit-code origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::notice::Tag ${TAG} already on origin; skipping push."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # `-f` because bindings/go/.gitignore excludes these dirs on main.
