@@ -50,8 +50,11 @@ export default defineConfig({
         inlineDynamicImports: true,
       },
     },
-    // Minify for production using esbuild
-    minify: 'esbuild',
+    // Use Vite 8's default minifier (oxc). Don't pick `'esbuild'` —
+    // Vite 8 no longer bundles esbuild, and selecting it triggers
+    // `Failed to load 'transformWithEsbuild'. It is deprecated...`
+    // unless esbuild is added as a separate devDep.
+    minify: true,
     // Generate sourcemaps for debugging
     sourcemap: true,
   },
