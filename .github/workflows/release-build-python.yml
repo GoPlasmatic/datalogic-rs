@@ -23,8 +23,14 @@ jobs:
           - { os: linux,   arch: aarch64, libc: manylinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-gnu,   manylinux: "2014" }
           - { os: linux,   arch: x86_64,  libc: musllinux, runner: ubuntu-latest,  target: x86_64-unknown-linux-musl,   manylinux: "musllinux_1_2" }
           - { os: linux,   arch: aarch64, libc: musllinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-musl,  manylinux: "musllinux_1_2" }
-          - { os: macos,   arch: x86_64,  libc: "",         runner: macos-13,       target: x86_64-apple-darwin,         manylinux: "off" }
-          - { os: macos,   arch: arm64,   libc: "",         runner: macos-14,       target: aarch64-apple-darwin,        manylinux: "off" }
+          # x86_64-apple-darwin intentionally omitted in v5.0.0. The
+          # macos-13 runner is the only native x86_64 macOS host
+          # GitHub Actions offers and its queue routinely exceeds
+          # 30 minutes — bad for a release pipeline that gates on the
+          # slowest cell. Intel-Mac Python users install the sdist
+          # (needs a local Rust toolchain). The arm64 wheel and the
+          # six linux/windows wheels still ship.
+          - { os: macos,   arch: arm64,   libc: "",         runner: macos-15,       target: aarch64-apple-darwin,        manylinux: "off" }
           - { os: windows, arch: x86_64,  libc: "",         runner: windows-latest, target: x86_64-pc-windows-msvc,      manylinux: "off" }
           - { os: windows, arch: arm64,   libc: "",         runner: windows-11-arm, target: aarch64-pc-windows-msvc,     manylinux: "off" }
     steps:

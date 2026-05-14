@@ -33,12 +33,12 @@ jobs:
           # validate the link step via `go build` but can't run tests.
           - { os: linux,   arch: amd64, runner: ubuntu-latest,    cargo_target: x86_64-unknown-linux-gnu,  native: true  }
           - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, cargo_target: aarch64-unknown-linux-gnu, native: true  }
-          # Both darwin builds run on macos-14 (arm64 host). The arm64
+          # Both darwin builds run on macos-15 (arm64 host). The arm64
           # build is native; amd64 is cross-compiled — macOS toolchains
           # bundle both linkers, so one runner covers both targets.
           # Cross outputs can't run here, hence `native: false`.
-          - { os: darwin,  arch: amd64, runner: macos-14,         cargo_target: x86_64-apple-darwin,       native: false }
-          - { os: darwin,  arch: arm64, runner: macos-14,         cargo_target: aarch64-apple-darwin,      native: true  }
+          - { os: darwin,  arch: amd64, runner: macos-15,         cargo_target: x86_64-apple-darwin,       native: false }
+          - { os: darwin,  arch: arm64, runner: macos-15,         cargo_target: aarch64-apple-darwin,      native: true  }
           # `gnu` (mingw-w64) rather than `msvc` so the produced .a is
           # ABI-compatible with Go's default cgo toolchain on Windows.
           # For ARM64, `gnullvm` (llvm-mingw) is the equivalent — traditional

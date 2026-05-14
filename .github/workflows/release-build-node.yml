@@ -31,8 +31,17 @@ jobs:
           # Re-add in v5.0.1 via the napi-rs Docker cross-compile image
           # (ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine-aarch64).
           # Alpine arm64 consumers fall back to source compile until then.
-          - { os: macos,   arch: x64,   libc: "",    runner: macos-13,         target: x86_64-apple-darwin         }
-          - { os: macos,   arch: arm64, libc: "",    runner: macos-14,         target: aarch64-apple-darwin        }
+          #
+          # x86_64-apple-darwin intentionally omitted in v5.0.0. Intel-Mac
+          # prebuilds previously needed the macos-13 runner (the only
+          # native x86_64 macOS host GitHub Actions offers), but that
+          # pool is being wound down with Apple's macOS-13 retirement
+          # and queues for it routinely exceed 30 minutes — bad for a
+          # release pipeline that gates everything on the slowest cell.
+          # macos-15 (arm64) could cross-compile to x86_64 but would
+          # lose the native smoke test. Intel-Mac Node consumers can
+          # build from source in the meantime (cargo + napi-cli).
+          - { os: macos,   arch: arm64, libc: "",    runner: macos-15,         target: aarch64-apple-darwin        }
           - { os: windows, arch: x64,   libc: msvc,  runner: windows-latest,   target: x86_64-pc-windows-msvc      }
           - { os: windows, arch: arm64, libc: msvc,  runner: windows-11-arm,   target: aarch64-pc-windows-msvc     }
     steps:
@@ -98,8 +107,7 @@ jobs:
       - name: Run node:test (native only)
         if: |
           (matrix.target.os == 'linux' && matrix.target.libc == 'gnu') ||
-          (matrix.target.os == 'macos' && matrix.target.runner == 'macos-14' && matrix.target.arch == 'arm64') ||
-          (matrix.target.os == 'macos' && matrix.target.runner == 'macos-13' && matrix.target.arch == 'x64') ||
+          (matrix.target.os == 'macos' && matrix.target.runner == 'macos-15' && matrix.target.arch == 'arm64') ||
           (matrix.target.os == 'windows' && matrix.target.runner == 'windows-latest' && matrix.target.arch == 'x64') ||
           (matrix.target.os == 'windows' && matrix.target.runner == 'windows-11-arm' && matrix.target.arch == 'arm64')
         working-directory: bindings/node
