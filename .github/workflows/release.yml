@@ -573,15 +573,36 @@ jobs:
         with:
           # Each artifact tarball roots at the .node file directly, so
           # merge-multiple drops every prebuild side-by-side into
-          # bindings/node/. `napi prepublish -t npm` then matches each
-          # .node to its `npm/<os>-<arch>[-<libc>]/` subpackage via the
-          # triple in the filename.
+          # bindings/node/.
           path: bindings/node/
           pattern: node-prebuild-*
           merge-multiple: true
 
-      - name: List collected prebuilds
-        run: ls -la bindings/node/*.node
+      # `napi prepublish -t npm` publishes the per-platform subpackages
+      # under `bindings/node/npm/<triple>/`, NOT the .node files at root.
+      # napi-cli creates the npm/ skeleton during `napi build` — but
+      # only on the same runner that built the .node. Since each .node
+      # came from a different matrix runner here, we recreate the npm/
+      # skeleton on this publish runner (from package.json's
+      # `napi.targets`) and move each .node into its target subdir.
+      - name: Create npm subpackage dirs and stage prebuilds
+        working-directory: bindings/node
+        run: |
+          set -euo pipefail
+          npx napi create-npm-dirs
+          for f in datalogic-node.*.node; do
+            [ -f "$f" ] || continue
+            triple="${f#datalogic-node.}"
+            triple="${triple%.node}"
+            if [ -d "npm/${triple}" ]; then
+              mv "$f" "npm/${triple}/"
+              echo "  staged: $f → npm/${triple}/"
+            else
+              echo "::warning::no subpackage dir for triple '${triple}' (not in napi.targets); leaving $f at root"
+            fi
+          done
+          echo "Final npm/ layout:"
+          ls -la npm/*/
 
       - name: Check if version exists on npm
         id: check
