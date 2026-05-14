@@ -23,7 +23,14 @@ jobs:
           - { os: linux,   arch: x64,   libc: gnu,   runner: ubuntu-latest,    target: x86_64-unknown-linux-gnu    }
           - { os: linux,   arch: arm64, libc: gnu,   runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu   }
           - { os: linux,   arch: x64,   libc: musl,  runner: ubuntu-latest,    target: x86_64-unknown-linux-musl   }
-          - { os: linux,   arch: arm64, libc: musl,  runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl  }
+          # aarch64-unknown-linux-musl intentionally omitted in v5.0.0.
+          # The ubuntu-24.04-arm host's apt musl-tools ships no libgcc_s
+          # and rustc's musl target hardcodes -lgcc_s as a late-link-arg,
+          # so a shared `.node` won't link. `-C link-self-contained=yes`
+          # is not enough — it only covers crt*.o, not libgcc_s.
+          # Re-add in v5.0.1 via the napi-rs Docker cross-compile image
+          # (ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine-aarch64).
+          # Alpine arm64 consumers fall back to source compile until then.
           - { os: macos,   arch: x64,   libc: "",    runner: macos-13,         target: x86_64-apple-darwin         }
           - { os: macos,   arch: arm64, libc: "",    runner: macos-14,         target: aarch64-apple-darwin        }
           - { os: windows, arch: x64,   libc: msvc,  runner: windows-latest,   target: x86_64-pc-windows-msvc      }
