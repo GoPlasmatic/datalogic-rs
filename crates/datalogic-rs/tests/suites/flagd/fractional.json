@@ -266,5 +266,302 @@
         "rule": { "fractional": ["alice"] },
         "data": {},
         "result": null
+    },
+
+    "## flagd-testbed v3.1.0–v3.5.0 conformance (PR open-feature/go-sdk-contrib#866)",
+    "## Source: https://github.com/open-feature/flagd-testbed — flags/custom-ops.json + flags/edge-case-flags.json",
+
+    "### fractional-single-entry-flag — single bucket always resolves to that variant",
+    {
+        "description": "single-entry-flag: any targetingKey → 'single'",
+        "rule": { "fractional": [["single", 1]] },
+        "data": { "targetingKey": "some-targeting-key", "$flagd": { "flagKey": "fractional-single-entry-flag" } },
+        "result": "single"
+    },
+
+    "### fractional-hash-edge-flag — bucket-boundary pins ({\"var\":\"targetingKey\"}, 50/50 lower/upper)",
+    {
+        "description": "hash-edge ejOoVL → lower",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["lower", 50], ["upper", 50]
+            ]
+        },
+        "data": { "targetingKey": "ejOoVL", "$flagd": { "flagKey": "fractional-hash-edge-flag" } },
+        "result": "lower"
+    },
+    {
+        "description": "hash-edge bY9fO- → lower",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["lower", 50], ["upper", 50]
+            ]
+        },
+        "data": { "targetingKey": "bY9fO-", "$flagd": { "flagKey": "fractional-hash-edge-flag" } },
+        "result": "lower"
+    },
+    {
+        "description": "hash-edge SI7p- → lower",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["lower", 50], ["upper", 50]
+            ]
+        },
+        "data": { "targetingKey": "SI7p-", "$flagd": { "flagKey": "fractional-hash-edge-flag" } },
+        "result": "lower"
+    },
+    {
+        "description": "hash-edge 6LvT0 → upper",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["lower", 50], ["upper", 50]
+            ]
+        },
+        "data": { "targetingKey": "6LvT0", "$flagd": { "flagKey": "fractional-hash-edge-flag" } },
+        "result": "upper"
+    },
+    {
+        "description": "hash-edge ceQdGm → upper",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["lower", 50], ["upper", 50]
+            ]
+        },
+        "data": { "targetingKey": "ceQdGm", "$flagd": { "flagKey": "fractional-hash-edge-flag" } },
+        "result": "upper"
+    },
+
+    "### fractional-nested-if-flag — nested `if` resolves the variant name in bucket0 (jon@company.com → bucket0, user1 → bucket1)",
+    {
+        "description": "nested-if jon@company.com + tier=premium → 'premium' (bucket0, if-true)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, "premium", "standard"] },
+                    50
+                ],
+                ["standard", 50]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "tier": "premium", "$flagd": { "flagKey": "fractional-nested-if-flag" } },
+        "result": "premium"
+    },
+    {
+        "description": "nested-if jon@company.com + tier=basic → 'standard' (bucket0, if-false)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, "premium", "standard"] },
+                    50
+                ],
+                ["standard", 50]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "tier": "basic", "$flagd": { "flagKey": "fractional-nested-if-flag" } },
+        "result": "standard"
+    },
+    {
+        "description": "nested-if user1 + tier=premium → 'standard' (bucket1, regardless of nested if)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, "premium", "standard"] },
+                    50
+                ],
+                ["standard", 50]
+            ]
+        },
+        "data": { "targetingKey": "user1", "tier": "premium", "$flagd": { "flagKey": "fractional-nested-if-flag" } },
+        "result": "standard"
+    },
+    {
+        "description": "nested-if user1 + tier=basic → 'standard' (bucket1)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, "premium", "standard"] },
+                    50
+                ],
+                ["standard", 50]
+            ]
+        },
+        "data": { "targetingKey": "user1", "tier": "basic", "$flagd": { "flagKey": "fractional-nested-if-flag" } },
+        "result": "standard"
+    },
+
+    "### fractional-nested-var-flag — nested `{var: color}` resolves the variant name in bucket0",
+    "###   Operator-level expectation: pass through whatever color resolves to (testbed-level falls back to defaultVariant when color is not a registered variant).",
+    {
+        "description": "nested-var jon@company.com + color=red → 'red' (bucket0)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [{ "var": "color" }, 50],
+                ["blue", 50]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "color": "red", "$flagd": { "flagKey": "fractional-nested-var-flag" } },
+        "result": "red"
+    },
+    {
+        "description": "nested-var jon@company.com + color=green → 'green' (bucket0)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [{ "var": "color" }, 50],
+                ["blue", 50]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "color": "green", "$flagd": { "flagKey": "fractional-nested-var-flag" } },
+        "result": "green"
+    },
+    {
+        "description": "nested-var user1 + color=red → 'blue' (bucket1, regardless of color)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [{ "var": "color" }, 50],
+                ["blue", 50]
+            ]
+        },
+        "data": { "targetingKey": "user1", "color": "red", "$flagd": { "flagKey": "fractional-nested-var-flag" } },
+        "result": "blue"
+    },
+    {
+        "description": "nested-var jon@company.com + color=yellow → operator returns 'yellow' (testbed flag→'fallback' via defaultVariant)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [{ "var": "color" }, 50],
+                ["blue", 50]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "color": "yellow", "$flagd": { "flagKey": "fractional-nested-var-flag" } },
+        "result": "yellow"
+    },
+    {
+        "description": "nested-var jon@company.com + color=\"\" → operator returns '' (testbed flag→'fallback' via defaultVariant)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [{ "var": "color" }, 50],
+                ["blue", 50]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "color": "", "$flagd": { "flagKey": "fractional-nested-var-flag" } },
+        "result": ""
+    },
+
+    "### fractional-nested-weight-flag — nested `if` resolves the *weight* in bucket0 (tier=premium → weight 100, basic → 0)",
+    {
+        "description": "nested-weight jon@company.com + premium → 'red' (weights 100/10, bucket0)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    "red",
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, 100, 0] }
+                ],
+                ["blue", 10]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "tier": "premium", "$flagd": { "flagKey": "fractional-nested-weight-flag" } },
+        "result": "red"
+    },
+    {
+        "description": "nested-weight jon@company.com + basic → 'blue' (weights 0/10, red weight collapses)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    "red",
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, 100, 0] }
+                ],
+                ["blue", 10]
+            ]
+        },
+        "data": { "targetingKey": "jon@company.com", "tier": "basic", "$flagd": { "flagKey": "fractional-nested-weight-flag" } },
+        "result": "blue"
+    },
+    {
+        "description": "nested-weight user1 + premium → 'red'",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    "red",
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, 100, 0] }
+                ],
+                ["blue", 10]
+            ]
+        },
+        "data": { "targetingKey": "user1", "tier": "premium", "$flagd": { "flagKey": "fractional-nested-weight-flag" } },
+        "result": "red"
+    },
+    {
+        "description": "nested-weight user1 + basic → 'blue'",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                [
+                    "red",
+                    { "if": [{ "==": [{ "var": "tier" }, "premium"] }, 100, 0] }
+                ],
+                ["blue", 10]
+            ]
+        },
+        "data": { "targetingKey": "user1", "tier": "basic", "$flagd": { "flagKey": "fractional-nested-weight-flag" } },
+        "result": "blue"
+    },
+
+    "### fractional-null-bucket-key-flag — bucket key var missing → operator returns null (testbed flag→'fallback' via defaultVariant)",
+    {
+        "description": "null-bucket-key: {var:missing_key} → null, no targetingKey for implicit fallback → null",
+        "rule": {
+            "fractional": [
+                { "var": "missing_key" },
+                ["one", 50],
+                ["two", 50]
+            ]
+        },
+        "data": { "$flagd": { "flagKey": "fractional-null-bucket-key-flag" } },
+        "result": null
+    },
+
+    "### fractional-zero-weights-flag — all-zero weights → operator returns null (testbed flag→'fallback' via defaultVariant)",
+    {
+        "description": "zero-weights any-user → null (total weight 0)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["one", 0],
+                ["two", 0]
+            ]
+        },
+        "data": { "targetingKey": "any-user", "$flagd": { "flagKey": "fractional-zero-weights-flag" } },
+        "result": null
+    },
+
+    "### fractional-negative-weight-flag — negative weight clamped to 0; survivor takes 100% of bucket space",
+    {
+        "description": "negative-weight any-user → 'two' (one clamped 0, two=100)",
+        "rule": {
+            "fractional": [
+                { "var": "targetingKey" },
+                ["one", -50],
+                ["two", 100]
+            ]
+        },
+        "data": { "targetingKey": "any-user", "$flagd": { "flagKey": "fractional-negative-weight-flag" } },
+        "result": "two"
     }
 ]
