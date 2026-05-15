@@ -23,8 +23,12 @@ name: Release
 #      └─ publish-node   (downloads node-prebuild artifacts, napi prepublish + npm publish)
 #      ↓  publish-wasm done
 #   publish-ui            (downloads build-ui artifact, npm publish)
-#      ↓
-#   github-release
+#
+# github-release runs in PARALLEL with publish-crate (gated on the same
+# build phase, not on any publish job) so a flake in one registry
+# (Maven Central, PyPI, etc.) can't strand the release page with zero
+# assets. The C binding has no other distribution channel, so the
+# release page must populate independently of registry health.
 #
 # Why the build-then-publish split: once `publish-crate` succeeds, the
 # core is on crates.io and can only be yanked, not deleted. The old
@@ -864,7 +868,26 @@ jobs:
 
   github-release:
     name: Create GitHub Release
-    needs: [validate, publish-crate, publish-wasm, publish-ui, publish-python, publish-go, publish-node, publish-dotnet, publish-jvm, publish-php]
+    # Gate on the BUILD phase only, not the publish phase. Once every
+    # binding has produced its artifact we have enough to attach to the
+    # release — whether each registry (PyPI, Maven Central, NuGet, npm,
+    # Packagist, etc.) accepts the upload is independent of whether the
+    # binaries should be discoverable on the release page. A flake in
+    # one registry (e.g. Maven Central, which is well-known unreliable)
+    # used to skip this job entirely and leave the release with no
+    # assets at all; the C binding has no other distribution channel,
+    # so an empty release blocks every downstream C/C++/Go consumer.
+    needs:
+      - validate
+      - build-wasm
+      - build-ui
+      - build-python
+      - build-go
+      - build-node
+      - build-c-cdylib
+      - build-dotnet
+      - build-jvm
+      - build-php
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -921,19 +944,32 @@ jobs:
           # Node prebuilds (one .node per platform)
           find release-assets -type f -name 'datalogic-node.*.node' \
             -exec cp {} assets/ \;
-          # Go staticlibs — bundle each platform dir into a tarball
+          # Go staticlibs — bundle each platform dir into a tarball.
+          # The artifact has a single `<os>_<arch>/` subdir; drop the
+          # cbindgen header alongside the .a so the tarball is
+          # self-contained for downstream cgo / direct-C consumers.
           if [ -d release-assets ]; then
             for d in release-assets/go-staticlib-*/; do
               [ -d "$d" ] || continue
               name=$(basename "$d")
+              for plat in "$d"*/; do
+                [ -d "$plat" ] || continue
+                cp bindings/c/include/datalogic.h "$plat"
+              done
               tar -C "$d" -czf "assets/${name}.tar.gz" .
             done
           fi
-          # C ABI cdylibs — bundle each platform dir into a tarball.
+          # C ABI cdylibs — same pattern as Go staticlibs above.
+          # Header bundled per-platform so downstream C/C++/non-Rust
+          # projects get one self-contained tarball per target.
           if [ -d release-assets ]; then
             for d in release-assets/c-cdylib-*/; do
               [ -d "$d" ] || continue
               name=$(basename "$d")
+              for plat in "$d"*/; do
+                [ -d "$plat" ] || continue
+                cp bindings/c/include/datalogic.h "$plat"
+              done
               tar -C "$d" -czf "assets/${name}.tar.gz" .
             done
           fi
