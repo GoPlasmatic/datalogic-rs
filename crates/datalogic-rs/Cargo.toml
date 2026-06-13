@@ -74,8 +74,8 @@ flagd = ["dep:semver"]
 # minimal-versions resolver may pick a too-old variant that lacks the
 # feature we use.
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.149", optional = true }
-chrono = { version = "0.4.44", default-features = false, features = ["std", "clock"], optional = true }
+serde_json = { version = "1.0.150", optional = true }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"], optional = true }
 datavalue = { version = "0.2.2", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { version = "3.20", features = ["collections"] }
 # Used by the `flagd` feature's `sem_ver` operator. `default-features =
@@ -86,7 +86,7 @@ semver = { version = "1.0", default-features = false, optional = true }
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full"] }
 futures = "0.3.32"
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 
 # Examples that depend on opt-in features. With `default = []`, these only
 # build when the user passes the matching `--features` (or `--all-features`).
