@@ -68,25 +68,12 @@ pub(crate) fn traverse_segments<'a>(
 }
 
 /// Allocation-free segments-exists check. Companion of [`traverse_segments`]
-/// for compile-time-parsed paths where the leaf value isn't consumed.
+/// for compile-time-parsed paths where the leaf value isn't consumed. A thin
+/// `.is_some()` wrapper; `traverse_segments` is `#[inline(always)]` so codegen
+/// is identical to a hand-rolled walk.
 #[inline(always)]
-pub(crate) fn path_exists_segments(av: &DataValue<'_>, segments: &[PathSegment]) -> bool {
-    // Single-segment fast path mirrors `traverse_segments`'s — the
-    // dominant `missing` / `missing_some` shape is one-segment paths.
-    match segments.len() {
-        0 => true,
-        1 => step_segment(av, &segments[0]).is_some(),
-        _ => {
-            let mut cur: &DataValue<'_> = av;
-            for seg in segments {
-                match step_segment(cur, seg) {
-                    Some(next) => cur = next,
-                    None => return false,
-                }
-            }
-            true
-        }
-    }
+pub(crate) fn path_exists_segments<'a>(av: &'a DataValue<'a>, segments: &[PathSegment]) -> bool {
+    traverse_segments(av, segments).is_some()
 }
 
 /// Walk a dot-notation `path` on `&'a DataValue<'a>`.
@@ -109,23 +96,11 @@ pub(crate) fn access_path_str_ref<'a>(
 }
 
 /// Allocation-free path-exists check on `&DataValue`. Used by `missing` /
-/// `missing_some` where the leaf value isn't consumed.
+/// `missing_some` where the leaf value isn't consumed. A thin `.is_some()`
+/// wrapper over [`access_path_str_ref`].
 #[inline]
 pub(crate) fn path_exists_str<'a>(av: &'a DataValue<'a>, path: &str) -> bool {
-    if path.is_empty() {
-        return true;
-    }
-    if !path.contains('.') {
-        return step_str(av, path).is_some();
-    }
-    let mut cur: &'a DataValue<'a> = av;
-    for seg in path.split('.') {
-        match step_str(cur, seg) {
-            Some(next) => cur = next,
-            None => return false,
-        }
-    }
-    true
+    access_path_str_ref(av, path).is_some()
 }
 
 /// Apply a single evaluated path element (string field, numeric index) to an

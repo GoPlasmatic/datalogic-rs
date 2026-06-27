@@ -315,10 +315,7 @@ fn eval_val_array_path<'a>(
         return Ok(current_data(ctx));
     }
     if arr_len >= 2 {
-        let level_opt = array_get(path_av, 0).and_then(|e| match e {
-            DataValue::Array(level_arr) if !level_arr.is_empty() => level_arr[0].as_i64(),
-            _ => None,
-        });
+        let level_opt = array_get(path_av, 0).and_then(level_marker_from_array);
         if let Some(level) = level_opt {
             if arr_len == 2 {
                 let second = array_get(path_av, 1)
