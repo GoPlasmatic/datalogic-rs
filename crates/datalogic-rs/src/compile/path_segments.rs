@@ -4,26 +4,27 @@
 
 use crate::node::{PathSegment, ReduceHint};
 
+/// Convert a single path component into a [`PathSegment`]: a component that
+/// parses as `usize` becomes `FieldOrIndex` (usable as an array index or an
+/// object key), everything else becomes `Field`.
+#[inline]
+pub(super) fn str_to_segment(s: &str) -> PathSegment {
+    if let Ok(idx) = s.parse::<usize>() {
+        PathSegment::FieldOrIndex(s.into(), idx)
+    } else {
+        PathSegment::Field(s.into())
+    }
+}
+
 /// Parse a dot-separated path into pre-parsed segments.
 pub(super) fn parse_path_segments(path: &str) -> Vec<PathSegment> {
     if path.is_empty() {
         return Vec::new();
     }
     if !path.contains('.') {
-        if let Ok(idx) = path.parse::<usize>() {
-            return vec![PathSegment::FieldOrIndex(path.into(), idx)];
-        }
-        return vec![PathSegment::Field(path.into())];
+        return vec![str_to_segment(path)];
     }
-    path.split('.')
-        .map(|part| {
-            if let Ok(idx) = part.parse::<usize>() {
-                PathSegment::FieldOrIndex(part.into(), idx)
-            } else {
-                PathSegment::Field(part.into())
-            }
-        })
-        .collect()
+    path.split('.').map(str_to_segment).collect()
 }
 
 /// Parse a var path and determine the reduce hint. Recognises the special

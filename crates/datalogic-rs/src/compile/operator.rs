@@ -8,19 +8,24 @@
 use crate::node::PathSegment;
 use crate::node::{CompileCtx, CompiledNode, MetadataHint, ReduceHint};
 
-use super::path_segments::{parse_path_segments, parse_var_path};
+use super::path_segments::{parse_path_segments, parse_var_path, str_to_segment};
+
+/// Build the empty-args `var` / `val` node: root scope, no segments, no hints.
+fn empty_var(ctx: &mut CompileCtx) -> CompiledNode {
+    CompiledNode::Var {
+        id: Some(ctx.next_id()),
+        scope_level: 0,
+        segments: Box::new([]),
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        default_value: None,
+    }
+}
 
 /// Try to compile a `var` operator into a `CompiledVar` node.
 pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::Var {
-            id: Some(ctx.next_id()),
-            scope_level: 0,
-            segments: Box::new([]),
-            reduce_hint: ReduceHint::None,
-            metadata_hint: MetadataHint::None,
-            default_value: None,
-        });
+        return Some(empty_var(ctx));
     }
 
     let (segments, reduce_hint) = match &args[0] {
@@ -61,14 +66,7 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
 /// Try to compile a `val` operator into a `CompiledVar` node.
 pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Option<CompiledNode> {
     if args.is_empty() {
-        return Some(CompiledNode::Var {
-            id: Some(ctx.next_id()),
-            scope_level: 0,
-            segments: Box::new([]),
-            reduce_hint: ReduceHint::None,
-            metadata_hint: MetadataHint::None,
-            default_value: None,
-        });
+        return Some(empty_var(ctx));
     }
 
     if args.len() == 1 {
@@ -84,7 +82,14 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
             if let Some(level) = level_num.as_i64() {
                 let scope_level = level.unsigned_abs() as u32;
                 let metadata_hint = scope_level_metadata_hint(args);
-                return try_compile_val_segments(&args[1..], scope_level, metadata_hint, ctx);
+                return finish_val(
+                    &args[1..],
+                    Vec::new(),
+                    scope_level,
+                    ReduceHint::None,
+                    metadata_hint,
+                    ctx,
+                );
             }
         }
     }
@@ -102,10 +107,15 @@ pub(super) fn try_compile_val(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
             _ => ReduceHint::None,
         };
 
-        let mut segments = vec![first_seg];
-        if let Some(compiled) =
-            try_collect_val_segments(&args[1..], &mut segments, reduce_hint, ctx)
-        {
+        let segments = vec![first_seg];
+        if let Some(compiled) = finish_val(
+            &args[1..],
+            segments,
+            0,
+            reduce_hint,
+            MetadataHint::None,
+            ctx,
+        ) {
             return Some(compiled);
         }
     }
@@ -131,11 +141,7 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
     } else {
         ReduceHint::None
     };
-    let segment = if let Ok(idx) = s.parse::<usize>() {
-        PathSegment::FieldOrIndex(s.as_str().into(), idx)
-    } else {
-        PathSegment::Field(s.as_str().into())
-    };
+    let segment = str_to_segment(s);
     Some(CompiledNode::Var {
         id: Some(ctx.next_id()),
         scope_level: 0,
@@ -168,13 +174,7 @@ fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
         CompiledNode::Value {
             value: datavalue::OwnedDataValue::String(s),
             ..
-        } => {
-            if let Ok(idx) = s.parse::<usize>() {
-                Some(PathSegment::FieldOrIndex(s.as_str().into(), idx))
-            } else {
-                Some(PathSegment::Field(s.as_str().into()))
-            }
-        }
+        } => Some(str_to_segment(s)),
         CompiledNode::Value {
             value: datavalue::OwnedDataValue::Number(n),
             ..
@@ -186,13 +186,18 @@ fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
     }
 }
 
-fn try_compile_val_segments(
+/// Append each remaining `val` arg as a path segment onto `segments` and
+/// finish a `Var` node. Shared by the `[level]`-prefixed form (seed empty,
+/// non-zero scope, metadata hint) and the leading-segment form (seed with the
+/// first segment, reduce hint). Returns `None` if any arg is not a segment.
+fn finish_val(
     args: &[CompiledNode],
+    mut segments: Vec<PathSegment>,
     scope_level: u32,
+    reduce_hint: ReduceHint,
     metadata_hint: MetadataHint,
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
-    let mut segments = Vec::new();
     for arg in args {
         segments.push(val_arg_to_segment(arg)?);
     }
@@ -201,28 +206,8 @@ fn try_compile_val_segments(
         id: Some(ctx.next_id()),
         scope_level,
         segments: segments.into_boxed_slice(),
-        reduce_hint: ReduceHint::None,
-        metadata_hint,
-        default_value: None,
-    })
-}
-
-fn try_collect_val_segments(
-    args: &[CompiledNode],
-    segments: &mut Vec<PathSegment>,
-    reduce_hint: ReduceHint,
-    ctx: &mut CompileCtx,
-) -> Option<CompiledNode> {
-    for arg in args {
-        segments.push(val_arg_to_segment(arg)?);
-    }
-
-    Some(CompiledNode::Var {
-        id: Some(ctx.next_id()),
-        scope_level: 0,
-        segments: std::mem::take(segments).into_boxed_slice(),
         reduce_hint,
-        metadata_hint: MetadataHint::None,
+        metadata_hint,
         default_value: None,
     })
 }

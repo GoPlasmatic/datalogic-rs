@@ -86,13 +86,20 @@ fn compile_operator_invocation(
     }
 
     let args = compile_args(args_value, engine, templating, ctx)?;
-    Ok(CompiledNode::CustomOperator(Box::new(
-        crate::node::CustomOperatorData {
-            id: Some(ctx.next_id()),
-            name: op_name.to_string(),
-            args,
-        },
-    )))
+    Ok(custom_operator_node(op_name, args, ctx))
+}
+
+/// Build a `CustomOperator` node from an op name and its already-compiled args.
+fn custom_operator_node(
+    op_name: &str,
+    args: Box<[CompiledNode]>,
+    ctx: &mut CompileCtx,
+) -> CompiledNode {
+    CompiledNode::CustomOperator(Box::new(crate::node::CustomOperatorData {
+        id: Some(ctx.next_id()),
+        name: op_name.to_string(),
+        args,
+    }))
 }
 
 /// Builtin operator path: handle invalid-args sentinels for `and`/`or`/`if`,
@@ -240,13 +247,7 @@ fn compile_templating_unknown(
     if let Some(eng) = engine {
         if eng.has_custom_operator(op_name) {
             let args = compile_args(args_value, engine, templating, ctx)?;
-            return Ok(CompiledNode::CustomOperator(Box::new(
-                crate::node::CustomOperatorData {
-                    id: Some(ctx.next_id()),
-                    name: op_name.to_string(),
-                    args,
-                },
-            )));
+            return Ok(custom_operator_node(op_name, args, ctx));
         }
     }
     let compiled_val = compile_node(args_value, engine, templating, ctx)?;
