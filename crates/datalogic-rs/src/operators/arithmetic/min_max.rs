@@ -36,13 +36,8 @@ fn min_max<'a>(
     }
 
     // Reject literal-array arg shape.
-    if matches!(&args[0], CompiledNode::Array { .. }) {
+    if super::helpers::is_literal_array(&args[0]) {
         return Err(crate::Error::invalid_args());
-    }
-    if let CompiledNode::Value { value, .. } = &args[0] {
-        if matches!(value, datavalue::OwnedDataValue::Array(_)) {
-            return Err(crate::Error::invalid_args());
-        }
     }
 
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {

@@ -8,7 +8,7 @@ use datavalue::NumberValue;
 
 use super::helpers::{
     ArithOp, FoldState, FoldStepOutcome, NanAction, VariadicFoldSpec, alloc_number,
-    coerce_pair_f64, coerce_pair_int, handle_nan, try_int_op, variadic_fold,
+    coerce_pair_f64, coerce_pair_int, handle_nan, is_literal_array, try_int_op, variadic_fold,
 };
 
 /// Arena-mode `+`. Handles 0-arg (identity), 1-arg array (sum elements),
@@ -338,15 +338,7 @@ fn one_arg_arith<'a>(
 ) -> Result<&'a DataValue<'a>> {
     // Literal array argument is invalid for + / *. Apply NaN config (default
     // ThrowError → propagates the error up).
-    let is_literal_array = matches!(arg, CompiledNode::Array { .. })
-        || matches!(
-            arg,
-            CompiledNode::Value {
-                value: datavalue::OwnedDataValue::Array(_),
-                ..
-            }
-        );
-    if is_literal_array {
+    if is_literal_array(arg) {
         return match handle_nan(engine)? {
             NanAction::Skip => Ok(alloc_number(
                 arena,

@@ -266,12 +266,15 @@ fn compare_ordered(
     Ok(false)
 }
 
+/// Chained equality (`==` / `===`): every arg must equal the first.
+/// `strict` selects strict vs loose `compare_equals`.
 #[inline]
-pub(crate) fn evaluate_strict_equals<'a>(
+fn equals_chain<'a>(
     args: &'a [CompiledNode],
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
+    strict: bool,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() < 2 {
         return Err(crate::Error::invalid_args());
@@ -279,11 +282,40 @@ pub(crate) fn evaluate_strict_equals<'a>(
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
-        if !compare_equals(first_av, cur_av, true, engine)? {
+        if !compare_equals(first_av, cur_av, strict, engine)? {
             return Ok(crate::arena::singletons::singleton_false());
         }
     }
     Ok(crate::arena::singletons::singleton_true())
+}
+
+/// Pairwise inequality (`!=` / `!==`) on the first two args. `strict`
+/// selects strict vs loose `compare_equals`.
+#[inline]
+fn not_equals_pair<'a>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    strict: bool,
+) -> Result<&'a DataValue<'a>> {
+    if args.len() < 2 {
+        return Err(crate::Error::invalid_args());
+    }
+    let a = engine.dispatch_node(&args[0], ctx, arena)?;
+    let b = engine.dispatch_node(&args[1], ctx, arena)?;
+    let eq = compare_equals(a, b, strict, engine)?;
+    Ok(crate::arena::singletons::singleton_bool(!eq))
+}
+
+#[inline]
+pub(crate) fn evaluate_strict_equals<'a>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    equals_chain(args, ctx, engine, arena, true)
 }
 
 #[inline]
@@ -293,13 +325,7 @@ pub(crate) fn evaluate_strict_not_equals<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-    let a = engine.dispatch_node(&args[0], ctx, arena)?;
-    let b = engine.dispatch_node(&args[1], ctx, arena)?;
-    let eq = compare_equals(a, b, true, engine)?;
-    Ok(crate::arena::singletons::singleton_bool(!eq))
+    not_equals_pair(args, ctx, engine, arena, true)
 }
 
 #[inline]
@@ -309,17 +335,7 @@ pub(crate) fn evaluate_equals<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-    let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    for arg in &args[1..] {
-        let cur_av = engine.dispatch_node(arg, ctx, arena)?;
-        if !compare_equals(first_av, cur_av, false, engine)? {
-            return Ok(crate::arena::singletons::singleton_false());
-        }
-    }
-    Ok(crate::arena::singletons::singleton_true())
+    equals_chain(args, ctx, engine, arena, false)
 }
 
 #[inline]
@@ -329,13 +345,7 @@ pub(crate) fn evaluate_not_equals<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-    let a = engine.dispatch_node(&args[0], ctx, arena)?;
-    let b = engine.dispatch_node(&args[1], ctx, arena)?;
-    let eq = compare_equals(a, b, false, engine)?;
-    Ok(crate::arena::singletons::singleton_bool(!eq))
+    not_equals_pair(args, ctx, engine, arena, false)
 }
 
 #[inline]

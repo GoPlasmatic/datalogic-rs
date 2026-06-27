@@ -241,6 +241,21 @@ impl FoldState {
 /// stricter than `subtract_variadic` / `one_arg_array_fold` — variadic
 /// `+`/`*` are dominated by native-int-only sequences and the strict path
 /// avoids paying coercion cost on every arg.
+/// True when a compiled node is a literal array — either a structural
+/// `Array` node or a `Value` wrapping an `OwnedDataValue::Array`. `+`/`*`
+/// and `min`/`max` reject a single literal-array argument with this check.
+#[inline]
+pub(super) fn is_literal_array(node: &crate::CompiledNode) -> bool {
+    matches!(node, crate::CompiledNode::Array { .. })
+        || matches!(
+            node,
+            crate::CompiledNode::Value {
+                value: datavalue::OwnedDataValue::Array(_),
+                ..
+            }
+        )
+}
+
 #[inline]
 pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],

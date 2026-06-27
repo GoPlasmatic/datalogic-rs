@@ -35,21 +35,7 @@ pub(crate) fn evaluate_missing<'a>(
 
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        match av {
-            DataValue::Array(items) => {
-                for it in *items {
-                    if let Some(path) = value_as_str(it) {
-                        if !crate::arena::value::path_exists_str(lookup, path) {
-                            missing.push(DataValue::String(arena.alloc_str(path)));
-                        }
-                    }
-                }
-            }
-            DataValue::String(s) if !crate::arena::value::path_exists_str(lookup, s) => {
-                missing.push(DataValue::String(arena.alloc_str(s)));
-            }
-            _ => {}
-        }
+        accumulate_dynamic_missing(av, lookup, &mut missing, arena);
     }
 
     if missing.is_empty() {
@@ -80,24 +66,11 @@ pub(crate) fn evaluate_missing_some<'a>(
         bumpalo::collections::Vec::new_in(arena);
     let mut present_count: usize = 0;
 
-    let process_path = |path: &str,
-                        missing: &mut bumpalo::collections::Vec<'a, DataValue<'a>>,
-                        present_count: &mut usize|
-     -> bool {
-        if !crate::arena::value::path_exists_str(lookup, path) {
-            missing.push(DataValue::String(arena.alloc_str(path)));
-        } else {
-            *present_count += 1;
-            if *present_count >= min_present {
-                return true; // short-circuit
-            }
-        }
-        false
-    };
-
     let short_circuit = match paths_av {
         DataValue::Array(items) => items.iter().any(|it| {
-            value_as_str(it).is_some_and(|p| process_path(p, &mut missing, &mut present_count))
+            value_as_str(it).is_some_and(|p| {
+                check_path(p, lookup, &mut missing, &mut present_count, min_present, arena)
+            })
         }),
         _ => false,
     };
