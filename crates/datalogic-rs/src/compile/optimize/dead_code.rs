@@ -160,10 +160,7 @@ fn eliminate_bool_chain(
     // Bail before any cloning unless at least one arg is a boolean literal:
     // with no literals every arg is "remaining" and the function would just
     // clone them all and return None.
-    if !args
-        .iter()
-        .any(|a| is_truthy_literal(a, engine).is_some())
-    {
+    if !args.iter().any(|a| is_truthy_literal(a, engine).is_some()) {
         return None;
     }
 

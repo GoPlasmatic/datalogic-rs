@@ -69,7 +69,14 @@ pub(crate) fn evaluate_missing_some<'a>(
     let short_circuit = match paths_av {
         DataValue::Array(items) => items.iter().any(|it| {
             value_as_str(it).is_some_and(|p| {
-                check_path(p, lookup, &mut missing, &mut present_count, min_present, arena)
+                check_path(
+                    p,
+                    lookup,
+                    &mut missing,
+                    &mut present_count,
+                    min_present,
+                    arena,
+                )
             })
         }),
         _ => false,
