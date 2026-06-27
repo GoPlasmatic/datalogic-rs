@@ -22,23 +22,24 @@
 
 ---
 
-**datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a fast, memory-efficient, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
+**datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a blazing-fast, memory-efficient, sandbox-safe, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
 
-The same engine ships across runtimes: **Rust, Node.js (native), JavaScript / TypeScript (WebAssembly), Python, Go, JVM (Java/Kotlin/Scala), .NET, PHP, and a React visual debugger**. Author the rule once; evaluate it anywhere. For the cross-runtime overview and per-binding install instructions, see the [repository README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+The same engine is compiled and wrapped for multiple runtimes: **Rust, Node.js (native napi), WebAssembly, Python, Go, Java, .NET, and PHP**, and features a companion **React visual debugger / editor**. Author the rule once, evaluate it anywhere with absolute semantic parity.
 
-> **v5 is here.** v5 is a breaking release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based, switches custom operators to a pre-evaluated arena API, and removes the implicit `serde_json` dependency from the default build. v5 is a hard cliff — there is no compatibility shim. See the [Migration Guide](migration.md) for the conceptual overview and the repo-root `MIGRATION.md` for the full v4 → v5 cookbook.
+For the cross-runtime installation instructions and repository details, see the [GitHub repository](https://github.com/GoPlasmatic/datalogic-rs).
+
+> **v5 is here.** v5 is a major release that renames `DataLogic` → `Engine`, makes one-shot evaluation string-based (eliminating the mandatory `serde_json` dependency), switches custom operators to a pre-evaluated arena API, and removes mutable operator registration. v5 is a hard cliff — there are no compatibility shims. See the [Migration Guide](migration.md) for details.
 
 ## Why datalogic-rs?
 
-- **Fast** - OpCode-based dispatch with compile-time optimization, plus arena allocation for zero-copy reads
-- **Thread-Safe** - Wrap `Logic` in `Arc` and share across threads (or use `Engine::compile_arc` to do it in one step)
-- **Zero `unsafe`** - The crate enforces `#![forbid(unsafe_code)]`
-- **serde_json-free by default** - The string-based API needs no `serde_json` dependency; opt into the `serde_json` feature when you need `serde_json::Value` interop or the typed `eval_into::<T>` paths
-- **Five-tier API ladder** - module-level helpers (`datalogic_rs::eval_str`, …) for one-shot use, `Engine` for configured workloads, `Session` for compile-once / evaluate-many hot loops, raw `evaluate(&Bump)` for zero-copy result pipelines, and `Engine::trace()` for debugging
-- **Cross-runtime** - same rules, same semantics across Rust, WASM, Python, Go, and the React debugger
-- **Extensible** - Register custom operators on an `EngineBuilder`
-- **Feature-Rich** - 59 built-in operators including datetime, regex, and error handling
-- **Fully Compliant** - Passes the official JSONLogic test suite
+- 🔒 **100% Sandbox-Safe:** Evaluate rules and formulas securely without arbitrary code execution (no scripting engine or `eval()`).
+- 🌐 **Single Source of Truth:** Run identical JSON rules across your entire stack (Rust, Go, Python, Node, browser, etc.) with 100% semantic parity.
+- ⚡ **Blazing Fast:** Compiles JSON logic into optimized bytecode. Evaluates using O(1) OpCode dispatch and `bumpalo` arena-based allocation for zero-copy variables and minimal heap allocations.
+- 🛠️ **Ready-Made Rule Builder:** Drop `@goplasmatic/datalogic-ui` into your React dashboard to let users edit and step-through rules visually.
+- 🦀 **Rust-First Core:** Clean, robust Rust API designed to be zero-cost, fully thread-safe (`Logic` is `Send + Sync`), and buildable with `#![forbid(unsafe_code)]`.
+- 📦 **Serde-Optional:** Compile without `serde_json` for a minimal dependency tree. Opt-in when you need direct typed JSON serialization/deserialization.
+- 🔋 **Battery-Included Operators:** Comes with 59 built-in operators (datetime, arithmetic, regex, logical) and is easily extensible with custom operators.
+
 
 ## How It Works
 

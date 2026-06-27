@@ -17,9 +17,12 @@ verifying an end-to-end change in the React debugger.
 - **Rust** 1.85 or newer (`rustup update stable`) — the core crate uses `edition = "2024"`
 - **wasm-pack** — only if you are rebuilding WASM
   (`curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`)
-- **Node.js** 20+ — only if you are working on `ui/`
+- **Node.js** 20+ — only if you are working on `ui/`, `bindings/node/` or `bindings/wasm/`
 - **Python 3.10+** with [`maturin`](https://www.maturin.rs/) — only if you are working on `bindings/python/`
 - **Go 1.22+** and a C compiler — only if you are working on `bindings/go/`
+- **Java JDK 11+ & Maven** — only if you are working on `bindings/jvm/`
+- **.NET SDK 8.0+** — only if you are working on `bindings/dotnet/`
+- **PHP 8.4+ & Composer** — only if you are working on `bindings/php/`
 - **mdbook** — only if you are building the docs site
   (`cargo install mdbook`)
 

@@ -13,12 +13,17 @@ picture (what depends on what, why the layout is shaped this way), see
 | Node.js     | 20+     | Builds and runs `ui`, `bindings/wasm`, and `bindings/node`     |
 | Python      | 3.10+   | Builds `bindings/python` via `maturin`                         |
 | Go          | 1.22+   | Builds `bindings/go` (also needs a C compiler for cgo)         |
+| Java JDK    | 11+     | Runs JVM tests and packages the JAR via Maven                  |
+| Maven       | 3.8+    | Builds `bindings/jvm` (only for JVM changes)                   |
+| .NET SDK    | 8.0+    | Builds and tests `bindings/dotnet` (only for .NET changes)     |
+| PHP         | 8.4+    | Runs PHP tests (requires `ext-ffi` enabled in `php.ini`)       |
+| Composer    | 2.0+    | Manages dependencies for `bindings/php` (only for PHP changes)  |
 | `mdbook`    | latest  | Builds the docs site under `docs/`                             |
 
 ```bash
 rustup update stable
 curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-# Node via your package manager of choice
+# Install Node, Go, Java, .NET, and PHP via your package manager of choice
 pip install maturin    # only if you are editing bindings/python/
 cargo install mdbook   # only if you are editing docs/
 ```

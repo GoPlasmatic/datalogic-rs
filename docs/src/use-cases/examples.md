@@ -25,34 +25,35 @@ let enabled = datalogic_rs::eval_str(rule, user_data).unwrap();
 assert_eq!(enabled, "true");
 ```
 
-> The examples below show JSONLogic rules and data as JSON. Wire them
-> through `datalogic_rs::eval_str` (zero-config one-shot),
-> `Engine::eval_str` (one-shot through a configured engine), or compile
-> once and reuse with `Engine::session()`.
+> **Note:** The examples below use raw string literals (`r#"{...}"#`) which work out-of-the-box with the default `datalogic-rs` setup (without requiring a `serde_json` dependency). If you have enabled the `serde_json` feature, you can also compile and evaluate directly from `serde_json::Value` (e.g. using the `json!` macro).
 
 ### Percentage Rollout
 
 ```rust
 // Enable for 20% of users (based on user ID hash)
-let rule = json!({
+let rule = r#"{
     "<": [
         { "%": [{ "var": "user.id" }, 100] },
         20
     ]
-});
+}"#;
+
+let user_data = r#"{"user": {"id": 12345}}"#;
+let enabled = datalogic_rs::eval_str(rule, user_data).unwrap();
+assert_eq!(enabled, "false"); // 12345 % 100 = 45 >= 20
 ```
 
 ### Beta Access
 
 ```rust
 // Enable for beta testers OR employees OR users who signed up before a date
-let rule = json!({
+let rule = r#"{
     "or": [
         { "==": [{ "var": "user.role" }, "beta_tester"] },
         { "ends_with": [{ "var": "user.email" }, "@company.com"] },
         { "<": [{ "var": "user.signup_date" }, "2024-01-01"] }
     ]
-});
+}"#;
 ```
 
 ---
@@ -64,7 +65,7 @@ Calculate prices based on rules.
 ### Discount by Quantity
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "if": [
         { ">=": [{ "var": "quantity" }, 100] },
         { "*": [{ "var": "base_price" }, 0.8] },  // 20% off
@@ -74,16 +75,17 @@ let rule = json!({
             { "var": "base_price" }
         ]}
     ]
-});
+}"#;
 
-// Data: { "quantity": 75, "base_price": 100 }
-// Result: 90 (10% discount)
+let data = r#"{"quantity": 75, "base_price": 100}"#;
+let result = datalogic_rs::eval_str(rule, data).unwrap();
+assert_eq!(result, "90"); // 10% discount
 ```
 
 ### Tiered Pricing
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "+": [
         // First 10 units at $10
         { "*": [{ "min": [{ "var": "quantity" }, 10] }, 10] },
@@ -98,13 +100,13 @@ let rule = json!({
             6
         ]}
     ]
-});
+}"#;
 ```
 
 ### Member Pricing
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "if": [
         { "var": "user.is_member" },
         { "*": [
@@ -113,13 +115,15 @@ let rule = json!({
         ]},
         { "var": "product.price" }
     ]
-});
+}"#;
 
-let data = json!({
+let data = r#"{
     "user": { "is_member": true, "member_discount": 15 },
     "product": { "price": 200 }
-});
-// Result: 170 (15% member discount)
+}"#;
+
+let result = datalogic_rs::eval_str(rule, data).unwrap();
+assert_eq!(result, "170"); // 15% member discount
 ```
 
 ---
@@ -131,7 +135,7 @@ Validate user input with complex rules.
 ### Required Fields
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "if": [
         { "missing": ["name", "email", "password"] },
         {
@@ -140,15 +144,18 @@ let rule = json!({
         },
         { "valid": true }
     ]
-});
+}"#;
 ```
 
 ### Field Constraints
 
 ```rust
+// Cargo.toml: features = ["templating"]
+use datalogic_rs::Engine;
+
 let engine = Engine::builder().with_templating(true).build();
 
-let rule = json!({
+let rule = r#"{
     "valid": { "and": [
         // Email format
         { "in": ["@", { "var": "email" }] },
@@ -183,14 +190,14 @@ let rule = json!({
         ],
         { "!==": [{ "var": "" }, null] }
     ]}
-});
+}"#;
 ```
 
 ### Conditional Validation
 
 ```rust
 // If business account, require company name
-let rule = json!({
+let rule = r#"{
     "if": [
         { "and": [
             { "==": [{ "var": "account_type" }, "business"] },
@@ -199,7 +206,7 @@ let rule = json!({
         { "error": "Company name required for business accounts" },
         { "valid": true }
     ]
-});
+}"#;
 ```
 
 ---
@@ -211,7 +218,7 @@ Determine user permissions.
 ### Role-Based Access
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "or": [
         { "==": [{ "var": "user.role" }, "admin"] },
         { "and": [
@@ -219,32 +226,34 @@ let rule = json!({
             { "==": [{ "var": "resource.owner_id" }, { "var": "user.id" }] }
         ]}
     ]
-});
+}"#;
 ```
 
 ### Permission Checking
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "in": [
         { "var": "required_permission" },
         { "var": "user.permissions" }
     ]
-});
+}"#;
 
-let data = json!({
+let data = r#"{
     "user": {
         "permissions": ["read", "write", "delete"]
     },
     "required_permission": "write"
-});
-// Result: true
+}"#;
+
+let result = datalogic_rs::eval_str(rule, data).unwrap();
+assert_eq!(result, "true");
 ```
 
 ### Time-Based Access
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "and": [
         // Has permission
         { "in": ["access_data", { "var": "user.permissions" }] },
@@ -256,7 +265,7 @@ let rule = json!({
         // On a weekday
         { "in": [{ "var": "current_day" }, [1, 2, 3, 4, 5]] }
     ]
-});
+}"#;
 ```
 
 ---
@@ -268,7 +277,7 @@ Score and flag potentially fraudulent transactions.
 ### Risk Scoring
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "+": [
         // High amount
         { "if": [{ ">": [{ "var": "amount" }, 1000] }, 30, 0] },
@@ -292,24 +301,26 @@ let rule = json!({
             0
         ]}
     ]
-});
+}"#;
 
 // Score > 50 = flag for review
-let data = json!({
+let data = r#"{
     "amount": 1500,
     "account_age_days": 3,
     "billing_country": "US",
     "shipping_country": "CA",
     "attempts_last_hour": 1,
     "hour": 14
-});
-// Result: 75 (high amount + new account + different country)
+}"#;
+
+let result = datalogic_rs::eval_str(rule, data).unwrap();
+assert_eq!(result, "75"); // high amount + new account + different country
 ```
 
 ### Velocity Checks
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "or": [
         // Too many transactions in short time
         { ">": [{ "var": "transactions_last_hour" }, 10] },
@@ -318,7 +329,7 @@ let rule = json!({
         // Same card used from multiple IPs
         { ">": [{ "var": "unique_ips_last_day" }, 3] }
     ]
-});
+}"#;
 ```
 
 ---
@@ -330,9 +341,12 @@ Transform and reshape data.
 ### API Response Mapping
 
 ```rust
+// Cargo.toml: features = ["templating"]
+use datalogic_rs::Engine;
+
 let engine = Engine::builder().with_templating(true).build();
 
-let template = json!({
+let template = r#"{
     "users": {
         "map": [
             { "var": "raw_users" },
@@ -351,13 +365,13 @@ let template = json!({
             { "==": [{ "var": "status" }, "active"] }
         ]
     }}
-});
+}"#;
 ```
 
 ### Report Generation
 
 ```rust
-let template = json!({
+let template = r#"{
     "report": {
         "title": { "cat": ["Sales Report - ", { "var": "period" }] },
         "generated": { "format_date": [{ "now": [] }, "%Y-%m-%d %H:%M"] },
@@ -378,7 +392,7 @@ let template = json!({
             "topCategory": { "var": "top_category" }
         }
     }
-});
+}"#;
 ```
 
 ---
@@ -390,7 +404,7 @@ Determine when and how to send notifications.
 ### Alert Conditions
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "if": [
         // Critical: immediate
         { ">": [{ "var": "error_rate" }, 10] },
@@ -407,13 +421,13 @@ let rule = json!({
             ]}
         ]}
     ]
-});
+}"#;
 ```
 
 ### User Preferences
 
 ```rust
-let rule = json!({
+let rule = r#"{
     "and": [
         // User has enabled notifications
         { "var": "user.notifications_enabled" },
@@ -428,5 +442,5 @@ let rule = json!({
             { "<": [{ "var": "current_hour" }, { "var": "user.quiet_end" }] }
         ]}}
     ]
-});
+}"#;
 ```
