@@ -141,10 +141,22 @@ impl<'engine> Session<'engine> {
     where
         D: EvalInput<'a>,
     {
+        self.eval_as(compiled, data)
+    }
+
+    /// Shared body for `eval` / `eval_str` / `eval_into`: evaluate against the
+    /// session arena and project the borrowed result through
+    /// [`crate::FromDataValue`]. The output type `R` is resolved at each call
+    /// site (owned value, JSON string, …). Mirrors [`Engine::eval_with`].
+    fn eval_as<'a, R, D>(&'a mut self, compiled: &Logic, data: D) -> Result<R>
+    where
+        R: crate::FromDataValue,
+        D: EvalInput<'a>,
+    {
         let arena: &'a Bump = &self.arena;
         let av = data.into_arena_value(arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
-        crate::FromDataValue::from_arena(result)
+        R::from_arena(result)
     }
 
     /// JSON-string convenience: evaluate against `data` and serialise
@@ -154,10 +166,7 @@ impl<'engine> Session<'engine> {
     where
         D: EvalInput<'a>,
     {
-        let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_value(arena)?;
-        let result = self.engine.evaluate(compiled, av, arena)?;
-        crate::FromDataValue::from_arena(result)
+        self.eval_as(compiled, data)
     }
 
     /// Typed convenience: evaluate and deserialise the result into
@@ -171,12 +180,7 @@ impl<'engine> Session<'engine> {
         T: serde::de::DeserializeOwned,
         D: EvalInput<'a>,
     {
-        let value: serde_json::Value = {
-            let arena: &'a Bump = &self.arena;
-            let av = data.into_arena_value(arena)?;
-            let result = self.engine.evaluate(compiled, av, arena)?;
-            crate::FromDataValue::from_arena(result)?
-        };
+        let value: serde_json::Value = self.eval_as(compiled, data)?;
         serde_json::from_value(value).map_err(crate::Error::from)
     }
 

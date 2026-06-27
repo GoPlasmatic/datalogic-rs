@@ -73,25 +73,23 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
     }
 }
 
-pub(crate) fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> String {
-    let op_str = opcode.as_str();
-    let args_str = if args.len() == 1 {
+/// Render an operator's argument list: a single arg inlines, multiple args
+/// become a JSON array. Shared by the builtin and custom operator renderers.
+fn args_to_json_string(args: &[CompiledNode]) -> String {
+    if args.len() == 1 {
         node_to_json_string(&args[0])
     } else {
         let items: Vec<String> = args.iter().map(node_to_json_string).collect();
         format!("[{}]", items.join(", "))
-    };
-    format!("{{\"{}\": {}}}", op_str, args_str)
+    }
+}
+
+pub(crate) fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> String {
+    format!("{{\"{}\": {}}}", opcode.as_str(), args_to_json_string(args))
 }
 
 pub(crate) fn custom_to_json_string(name: &str, args: &[CompiledNode]) -> String {
-    let args_str = if args.len() == 1 {
-        node_to_json_string(&args[0])
-    } else {
-        let items: Vec<String> = args.iter().map(node_to_json_string).collect();
-        format!("[{}]", items.join(", "))
-    };
-    format!("{{\"{}\": {}}}", name, args_str)
+    format!("{{\"{}\": {}}}", name, args_to_json_string(args))
 }
 
 #[cfg(feature = "templating")]
