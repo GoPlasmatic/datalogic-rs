@@ -238,7 +238,7 @@ pub(crate) fn evaluate_format_date<'a>(
     let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
 
     // Resolve the datetime — supports object form and string form.
-    let dt: Option<DataDateTime> = crate::operators::datetime::extract_datetime(dt_av);
+    let dt: Option<DataDateTime> = extract_datetime(dt_av);
 
     let fmt: &'a str =
         arg_as_str(fmt_av).ok_or_else(|| Error::invalid_arguments("Failed to format date"))?;
@@ -274,11 +274,8 @@ pub(crate) fn evaluate_date_diff<'a>(
     let d2_av = engine.dispatch_node(&args[1], ctx, arena)?;
     let unit_av = engine.dispatch_node(&args[2], ctx, arena)?;
 
-    let resolve_dt = |av: &'a DataValue<'a>| -> Option<DataDateTime> {
-        crate::operators::datetime::extract_datetime(av)
-    };
-    let dt1 = resolve_dt(d1_av);
-    let dt2 = resolve_dt(d2_av);
+    let dt1 = extract_datetime(d1_av);
+    let dt2 = extract_datetime(d2_av);
     let unit = arg_as_str(unit_av);
 
     if let (Some(a), Some(b), Some(u)) = (dt1, dt2, unit) {
