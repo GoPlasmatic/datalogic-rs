@@ -182,9 +182,9 @@ fn try_reduce_fast_path<'a>(
 
     let len = src.len();
 
-    // Integer fast path.
-    let mut acc_i = initial.as_i64();
-    if acc_i.is_some() {
+    // Integer fast path. `acc` stays a plain i64 for the duration of the
+    // block (it is only ever reassigned an integer), so no Option juggling.
+    if let Some(mut acc) = initial.as_i64() {
         let mut all_int = true;
         for i in 0..len {
             let item = src.get(i);
@@ -194,24 +194,23 @@ fn try_reduce_fast_path<'a>(
                 crate::arena::value::traverse_segments(item, current_segments)?
             };
             if let Some(cur_i) = current_val.as_i64() {
-                let a = acc_i.unwrap();
-                acc_i = Some(match opcode {
-                    OpCode::Add => a.wrapping_add(cur_i),
-                    OpCode::Multiply => a.wrapping_mul(cur_i),
-                    OpCode::Subtract => a.wrapping_sub(cur_i),
+                acc = match opcode {
+                    OpCode::Add => acc.wrapping_add(cur_i),
+                    OpCode::Multiply => acc.wrapping_mul(cur_i),
+                    OpCode::Subtract => acc.wrapping_sub(cur_i),
                     _ => return None,
-                });
+                };
             } else {
                 all_int = false;
                 break;
             }
         }
         if all_int {
-            return acc_i.map(|v| {
-                crate::arena::singletons::singleton_small_int(v).unwrap_or_else(|| {
-                    &*arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(v)))
-                })
-            });
+            return Some(
+                crate::arena::singletons::singleton_small_int(acc).unwrap_or_else(|| {
+                    &*arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(acc)))
+                }),
+            );
         }
     }
 

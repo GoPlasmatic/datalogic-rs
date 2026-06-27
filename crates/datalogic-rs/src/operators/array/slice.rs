@@ -64,6 +64,19 @@ fn slice_array<'a>(
     arena: &'a Bump,
 ) -> &'a DataValue<'a> {
     let len = items.len() as i64;
+
+    // Contiguous step==1 (the default, no explicit step): the selected
+    // indices form the run [s, e), so return a borrowed arena sub-slice
+    // directly instead of materializing an index Vec and copying elements.
+    if step == 1 {
+        let s = normalize_index(start.unwrap_or(0), len);
+        let e = normalize_index(end.unwrap_or(len), len);
+        if s >= e {
+            return crate::arena::singletons::singleton_empty_array();
+        }
+        return arena.alloc(DataValue::Array(&items[s as usize..e as usize]));
+    }
+
     let indices = slice_indices(len, start, end, step);
     if indices.is_empty() {
         return crate::arena::singletons::singleton_empty_array();
