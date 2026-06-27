@@ -27,7 +27,11 @@
     /* Path aliases */
     "paths": {
       "@/*": ["./src/*"],
-      "@logic-editor/*": ["./src/components/logic-editor/*"]
+      "@logic-editor/*": ["./src/components/logic-editor/*"],
+      // Mirror the vite.config.ts alias so `tsc` resolves the WASM dep to
+      // the vendored copy (kept fresh by the `sync-wasm` prebuild) instead
+      // of the node_modules link. Keeps `tsc -b` and `vite build` in sync.
+      "@goplasmatic/datalogic-wasm": ["./vendor/datalogic"]
     }
   },
   "include": ["src"]
