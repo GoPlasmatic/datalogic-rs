@@ -26,7 +26,6 @@ pub(crate) fn evaluate_exists_compiled<'a>(
         return Ok(crate::arena::singletons::singleton_bool(found));
     }
 
-    use crate::arena::context::ContextRef;
     let aref = if scope_level == 0 {
         ctx.current()
     } else {
@@ -35,10 +34,7 @@ pub(crate) fn evaluate_exists_compiled<'a>(
             None => return Ok(crate::arena::singletons::singleton_false()),
         }
     };
-    let av = match aref {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    };
+    let av = aref.data();
     let found =
         segments.is_empty() || crate::arena::value::traverse_segments(av, segments).is_some();
     Ok(crate::arena::singletons::singleton_bool(found))

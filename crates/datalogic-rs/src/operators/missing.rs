@@ -14,11 +14,7 @@ use bumpalo::Bump;
 #[inline(always)]
 fn lookup_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
     if ctx.depth() > 0 {
-        use crate::arena::context::ContextRef;
-        match ctx.current() {
-            ContextRef::Frame(f) => f.data(),
-            ContextRef::Root(av) => av,
-        }
+        ctx.current().data()
     } else {
         ctx.root_input()
     }

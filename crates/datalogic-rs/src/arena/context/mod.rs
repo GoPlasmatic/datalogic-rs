@@ -121,10 +121,7 @@ impl<'a> ContextStack<'a> {
     /// can record the context that operator saw.
     #[cfg(all(feature = "trace", feature = "serde_json"))]
     pub(crate) fn current_data_as_value(&self) -> serde_json::Value {
-        match self.current() {
-            ContextRef::Root(av) => crate::arena::data_to_value(av),
-            ContextRef::Frame(f) => crate::arena::data_to_value(f.data()),
-        }
+        crate::arena::data_to_value(self.current().data())
     }
 
     /// Record the result of a node into the attached tracer. No-op if no

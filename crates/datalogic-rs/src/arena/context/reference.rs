@@ -11,6 +11,17 @@ pub(crate) enum ContextRef<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> ContextRef<'a, 'ctx> {
+    /// The data value this reference points at — the frame's data for a
+    /// `Frame`, or the root input for `Root`. Collapses the `Frame`/`Root`
+    /// match that call sites would otherwise hand-roll.
+    #[inline]
+    pub(crate) fn data(&self) -> &'a DataValue<'a> {
+        match self {
+            Self::Frame(f) => f.data(),
+            Self::Root(av) => av,
+        }
+    }
+
     #[inline]
     pub(crate) fn get_index(&self) -> Option<usize> {
         match self {

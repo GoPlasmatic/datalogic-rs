@@ -161,17 +161,13 @@ fn resolve_via_context_stack<'a>(
     arena: &'a Bump,
     default_value: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
-    use crate::arena::context::ContextRef;
     let aref = if scope_level == 0 {
         ctx.current()
     } else {
         ctx.get_at_level(scope_level as isize)
             .ok_or(Error::invalid_context_level(scope_level as isize))?
     };
-    let av = match aref {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    };
+    let av = aref.data();
     if segments.is_empty() {
         return Ok(av);
     }

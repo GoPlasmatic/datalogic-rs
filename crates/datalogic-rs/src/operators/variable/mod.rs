@@ -57,11 +57,7 @@ fn metadata_hint_lookup<'a>(
 /// allocation.
 #[inline(always)]
 fn current_data<'a>(ctx: &ContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
-    use crate::arena::context::ContextRef;
-    match ctx.current() {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    }
+    ctx.current().data()
 }
 
 /// Frame data at a given level (or `None` if the level walks past the root).
@@ -71,12 +67,7 @@ fn frame_data_at_level<'a>(
     level: isize,
     _arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    use crate::arena::context::ContextRef;
-    let aref = ctx.get_at_level(level)?;
-    Some(match aref {
-        ContextRef::Frame(f) => f.data(),
-        ContextRef::Root(av) => av,
-    })
+    Some(ctx.get_at_level(level)?.data())
 }
 
 /// Stringified small integers, indexed by their value. Returned as
