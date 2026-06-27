@@ -64,8 +64,15 @@ fn try_partial_fold(
     args: &[CompiledNode],
     engine: &Engine,
 ) -> Option<CompiledNode> {
-    let mut static_args: Vec<CompiledNode> = Vec::new();
-    let mut dynamic_args: Vec<CompiledNode> = Vec::new();
+    // Count first (no cloning): need at least 2 static args to fold, and at
+    // least 1 dynamic to be "partial". Bail before cloning any subtree.
+    let static_count = args.iter().filter(|a| node_is_static(a)).count();
+    if static_count < 2 || static_count == args.len() {
+        return None;
+    }
+
+    let mut static_args: Vec<CompiledNode> = Vec::with_capacity(static_count);
+    let mut dynamic_args: Vec<CompiledNode> = Vec::with_capacity(args.len() - static_count);
 
     for arg in args {
         if node_is_static(arg) {
@@ -73,11 +80,6 @@ fn try_partial_fold(
         } else {
             dynamic_args.push(arg.clone());
         }
-    }
-
-    // Need at least 2 static args to fold, and at least 1 dynamic to be "partial"
-    if static_args.len() < 2 || dynamic_args.is_empty() {
-        return None;
     }
 
     // Evaluate the static portion. The transient node is purely local — it
@@ -110,6 +112,27 @@ fn try_partial_fold(
 /// Try to fold adjacent static strings in cat operator.
 /// `{"cat": ["hello ", "world", {"var": "x"}]}` → `{"cat": ["hello world", {"var": "x"}]}`
 fn try_fold_concat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Option<CompiledNode> {
+    // Bail before cloning unless two adjacent string literals exist — that
+    // adjacency is the only thing that sets `folded_any` below.
+    let has_adjacent_strings = args.windows(2).any(|w| {
+        matches!(
+            (&w[0], &w[1]),
+            (
+                CompiledNode::Value {
+                    value: OwnedDataValue::String(_),
+                    ..
+                },
+                CompiledNode::Value {
+                    value: OwnedDataValue::String(_),
+                    ..
+                },
+            )
+        )
+    });
+    if !has_adjacent_strings {
+        return None;
+    }
+
     let mut new_args: Vec<CompiledNode> = Vec::new();
     let mut current_static_str: Option<String> = None;
     let mut folded_any = false;
@@ -170,6 +193,22 @@ fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
     } = node
     {
         if !is_arithmetic(opcode) {
+            return None;
+        }
+
+        // Bail before cloning the whole arg list unless at least one arg is a
+        // numeric string literal — the only thing that triggers a rewrite.
+        let has_numeric_string = args.iter().any(|arg| {
+            matches!(
+                arg,
+                CompiledNode::Value {
+                    value: OwnedDataValue::String(s),
+                    ..
+                } if s.parse::<i64>().is_ok()
+                    || s.parse::<f64>().is_ok_and(f64::is_finite)
+            )
+        });
+        if !has_numeric_string {
             return None;
         }
 
