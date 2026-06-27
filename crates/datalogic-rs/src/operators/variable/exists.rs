@@ -53,11 +53,7 @@ fn object_contains(av: &DataValue<'_>, key: &str) -> bool {
 /// Step into an arena Object at `key`. Returns `None` for non-objects or
 /// missing keys.
 #[inline]
-fn object_step<'a>(
-    av: &'a DataValue<'a>,
-    key: &str,
-    _arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
+fn object_step<'a>(av: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue<'a>> {
     match av {
         DataValue::Object(pairs) => crate::arena::value::object_lookup_field(pairs, key),
         _ => None,
@@ -78,7 +74,7 @@ pub(crate) fn evaluate_exists<'a>(
         return Ok(crate::arena::singletons::singleton_false());
     }
 
-    let cur = current_data(ctx, arena);
+    let cur = current_data(ctx);
 
     if args.len() == 1 {
         let arg = engine.dispatch_node(&args[0], ctx, arena)?;
@@ -103,7 +99,7 @@ pub(crate) fn evaluate_exists<'a>(
                         walk, seg,
                     )));
                 }
-                match object_step(walk, seg, arena) {
+                match object_step(walk, seg) {
                     Some(next) => walk = next,
                     None => return Ok(crate::arena::singletons::singleton_false()),
                 }
@@ -132,7 +128,7 @@ pub(crate) fn evaluate_exists<'a>(
                 walk, seg,
             )));
         }
-        match object_step(walk, seg, arena) {
+        match object_step(walk, seg) {
             Some(next) => walk = next,
             None => return Ok(crate::arena::singletons::singleton_false()),
         }

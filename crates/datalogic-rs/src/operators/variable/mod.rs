@@ -56,17 +56,13 @@ fn metadata_hint_lookup<'a>(
 /// branches both return their stored `&DataValue` directly — no per-call
 /// allocation.
 #[inline(always)]
-fn current_data<'a>(ctx: &ContextStack<'a>, _arena: &'a Bump) -> &'a DataValue<'a> {
+fn current_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
     ctx.current().data()
 }
 
 /// Frame data at a given level (or `None` if the level walks past the root).
 #[inline]
-fn frame_data_at_level<'a>(
-    ctx: &ContextStack<'a>,
-    level: isize,
-    _arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
+fn frame_data_at_level<'a>(ctx: &ContextStack<'a>, level: isize) -> Option<&'a DataValue<'a>> {
     Some(ctx.get_at_level(level)?.data())
 }
 

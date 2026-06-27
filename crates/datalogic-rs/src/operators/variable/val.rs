@@ -200,19 +200,19 @@ pub(crate) fn evaluate_val<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(current_data(ctx, arena));
+        return Ok(current_data(ctx));
     }
     if args.len() >= 2 {
         return eval_val_multiarg(args, ctx, engine, arena);
     }
     let path_av = engine.dispatch_node(&args[0], ctx, arena)?;
     if matches!(path_av, DataValue::Null) {
-        return Ok(current_data(ctx, arena));
+        return Ok(current_data(ctx));
     }
     if let Some(arr_len) = array_len(path_av) {
         return eval_val_array_path(path_av, arr_len, ctx, arena);
     }
-    eval_val_scalar_path(path_av, ctx, arena)
+    eval_val_scalar_path(path_av, ctx)
 }
 
 /// Multi-arg `val` form (`args.len() >= 2`). Evaluates `args[0]` once and
@@ -241,7 +241,7 @@ fn eval_val_multiarg<'a>(
             }
 
             let path_str = path_str_from_data(path_av, arena);
-            let frame_data = frame_data_at_level(ctx, level as isize, arena)
+            let frame_data = frame_data_at_level(ctx, level as isize)
                 .ok_or(Error::invalid_context_level(level as isize))?;
             return Ok(access_path_str_ref(frame_data, path_str)
                 .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
@@ -254,7 +254,7 @@ fn eval_val_multiarg<'a>(
             let av = engine.dispatch_node(item, ctx, arena)?;
             paths.push(path_str_from_data(av, arena));
         }
-        let mut cur = frame_data_at_level(ctx, level as isize, arena)
+        let mut cur = frame_data_at_level(ctx, level as isize)
             .ok_or(Error::invalid_context_level(level as isize))?;
         for path in paths.iter() {
             match access_path_str_ref(cur, path) {
@@ -289,7 +289,7 @@ fn eval_val_multiarg<'a>(
 
     let (mut cur, rest_start) = match start {
         Some(s) => (s, 1),
-        None => (current_data(ctx, arena), 0),
+        None => (current_data(ctx), 0),
     };
     for elem in &evaluated[rest_start..] {
         match apply_path_element(cur, elem) {
@@ -312,7 +312,7 @@ fn eval_val_array_path<'a>(
     use crate::arena::value::{access_path_str_ref, apply_path_element};
 
     if arr_len == 0 {
-        return Ok(current_data(ctx, arena));
+        return Ok(current_data(ctx));
     }
     if arr_len >= 2 {
         let level_opt = array_get(path_av, 0).and_then(|e| match e {
@@ -329,7 +329,7 @@ fn eval_val_array_path<'a>(
                 }
             }
 
-            let mut cur = frame_data_at_level(ctx, level as isize, arena)
+            let mut cur = frame_data_at_level(ctx, level as isize)
                 .ok_or(Error::invalid_context_level(level as isize))?;
             for i in 1..arr_len {
                 let item = array_get(path_av, i)
@@ -347,7 +347,7 @@ fn eval_val_array_path<'a>(
     }
 
     // Plain path-chain array.
-    let mut cur = current_data(ctx, arena);
+    let mut cur = current_data(ctx);
     for i in 0..arr_len {
         let elem =
             array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
@@ -366,7 +366,6 @@ fn eval_val_array_path<'a>(
 fn eval_val_scalar_path<'a>(
     path_av: &'a DataValue<'a>,
     ctx: &ContextStack<'a>,
-    arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     use crate::arena::context::ContextRef;
     use crate::arena::value::access_path_str_ref;
@@ -394,7 +393,7 @@ fn eval_val_scalar_path<'a>(
             }
         }
 
-        let cur = current_data(ctx, arena);
+        let cur = current_data(ctx);
         // Direct object key lookup beats dot-path traversal so empty keys and
         // keys containing dots resolve correctly.
         if let DataValue::Object(pairs) = cur {
@@ -408,7 +407,7 @@ fn eval_val_scalar_path<'a>(
 
     if let Some(i) = path_av.as_i64() {
         if i >= 0 {
-            let cur = current_data(ctx, arena);
+            let cur = current_data(ctx);
             // Common small indices (0..100) hit the static `&'static str`
             // cache; only larger keys pay the heap `String` allocation.
             if let Some(static_key) = super::small_int_str(i) {
