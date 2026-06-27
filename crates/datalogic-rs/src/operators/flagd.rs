@@ -132,7 +132,7 @@ pub(crate) fn evaluate_fractional<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.is_empty() {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::singletons::singleton_null());
     }
 
     // Evaluate the first arg eagerly; its shape tells us which call form
@@ -152,7 +152,7 @@ pub(crate) fn evaluate_fractional<'a>(
                 // Missing/null/empty targetingKey → return null and let
                 // the flagd evaluator (or the caller's `??`) substitute
                 // the default variant.
-                None => return Ok(arena.alloc(DataValue::Null)),
+                None => return Ok(crate::arena::singletons::singleton_null()),
             };
             if matches!(first, DataValue::Null) {
                 (implicit, &args[1..], true)
@@ -162,7 +162,7 @@ pub(crate) fn evaluate_fractional<'a>(
         };
 
     if distribution_args.is_empty() {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::singletons::singleton_null());
     }
 
     // Collect (variant, weight) pairs. flagd Go errors on malformed
@@ -181,14 +181,14 @@ pub(crate) fn evaluate_fractional<'a>(
         };
         let arr = match v.as_array() {
             Some(a) => a,
-            None => return Ok(arena.alloc(DataValue::Null)),
+            None => return Ok(crate::arena::singletons::singleton_null()),
         };
         if arr.is_empty() {
-            return Ok(arena.alloc(DataValue::Null));
+            return Ok(crate::arena::singletons::singleton_null());
         }
         let variant = match arr[0].as_str() {
             Some(s) => s,
-            None => return Ok(arena.alloc(DataValue::Null)),
+            None => return Ok(crate::arena::singletons::singleton_null()),
         };
         // Weight defaults to 1 when omitted; clamp negatives to 0.
         let weight = if arr.len() >= 2 {
@@ -201,7 +201,7 @@ pub(crate) fn evaluate_fractional<'a>(
     }
 
     if buckets.is_empty() || total_weight <= 0 {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::singletons::singleton_null());
     }
 
     let hash = murmurhash3_x86_32(bucket_key.as_bytes(), 0);
@@ -223,7 +223,7 @@ pub(crate) fn evaluate_fractional<'a>(
 
     // Unreachable: bucket < total_weight by construction, and the loop
     // covers the full range. Return null defensively rather than panic.
-    Ok(arena.alloc(DataValue::Null))
+    Ok(crate::arena::singletons::singleton_null())
 }
 
 /// Build the implicit bucketing key from the root context. Returns
@@ -299,7 +299,7 @@ pub(crate) fn evaluate_sem_ver<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     if args.len() != 3 {
-        return Ok(arena.alloc(DataValue::Null));
+        return Ok(crate::arena::singletons::singleton_null());
     }
     let v1_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let op_av = engine.dispatch_node(&args[1], ctx, arena)?;
@@ -308,16 +308,16 @@ pub(crate) fn evaluate_sem_ver<'a>(
     // Normalize both version strings; bail to Null on parse failure.
     let v1 = match parse_version(v1_av, arena) {
         Some(v) => v,
-        None => return Ok(arena.alloc(DataValue::Null)),
+        None => return Ok(crate::arena::singletons::singleton_null()),
     };
     let v2 = match parse_version(v2_av, arena) {
         Some(v) => v,
-        None => return Ok(arena.alloc(DataValue::Null)),
+        None => return Ok(crate::arena::singletons::singleton_null()),
     };
 
     let op = match op_av.as_str() {
         Some(s) => s,
-        None => return Ok(arena.alloc(DataValue::Null)),
+        None => return Ok(crate::arena::singletons::singleton_null()),
     };
 
     let result = match op {
@@ -333,7 +333,7 @@ pub(crate) fn evaluate_sem_ver<'a>(
         "^" => v1.major == v2.major,
         // Tilde: same major + minor.
         "~" => v1.major == v2.major && v1.minor == v2.minor,
-        _ => return Ok(arena.alloc(DataValue::Null)),
+        _ => return Ok(crate::arena::singletons::singleton_null()),
     };
     Ok(crate::arena::singletons::singleton_bool(result))
 }

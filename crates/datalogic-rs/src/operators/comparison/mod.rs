@@ -194,17 +194,12 @@ fn compare_ordered(
     op: OrdOp,
     engine: &Engine,
 ) -> Result<bool> {
-    // Number vs Number — most common case. Both operands are guaranteed
-    // numeric by the `matches!` guards, so `as_f64()` cannot return None
-    // (every NumberValue variant converts losslessly to f64).
-    if let (DataValue::Number(_), DataValue::Number(_)) = (left, right) {
-        let lf = left
-            .as_f64()
-            .expect("DataValue::Number is always f64-convertible");
-        let rf = right
-            .as_f64()
-            .expect("DataValue::Number is always f64-convertible");
-        return Ok(op.apply_f64(lf, rf));
+    // Number vs Number — most common case. Bind the `NumberValue`s and use
+    // the infallible `NumberValue::as_f64` (every variant converts losslessly
+    // to f64), matching `compare_equals` and avoiding the `Option` + `.expect()`
+    // panic-path codegen of the `DataValue::as_f64` round-trip.
+    if let (DataValue::Number(a), DataValue::Number(b)) = (left, right) {
+        return Ok(op.apply_f64(a.as_f64(), b.as_f64()));
     }
 
     // String vs String (non-datetime fast path).

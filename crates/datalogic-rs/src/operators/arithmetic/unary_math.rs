@@ -62,26 +62,28 @@ pub(crate) fn unary_math<'a>(
         return Err(crate::Error::invalid_args());
     }
 
-    let to_arena = |x: f64, arena: &'a Bump| -> &'a DataValue<'a> {
+    let to_number = |x: f64| -> NumberValue {
         if op.returns_int() {
-            alloc_number(arena, NumberValue::from_i64(x as i64))
+            NumberValue::from_i64(x as i64)
         } else {
-            alloc_number(arena, NumberValue::from_f64(x))
+            NumberValue::from_f64(x)
         }
     };
 
     if args.len() == 1 {
         let av = engine.dispatch_node(&args[0], ctx, arena)?;
         let n = value_strict_f64(av).ok_or_else(crate::Error::invalid_args)?;
-        return Ok(to_arena(op.apply(n), arena));
+        return Ok(alloc_number(arena, to_number(op.apply(n))));
     }
 
     let mut items = bvec::<DataValue<'a>>(arena, args.len());
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
         let n = value_strict_f64(av).ok_or_else(crate::Error::invalid_args)?;
-        let r = to_arena(op.apply(n), arena);
-        items.push(*r);
+        // Push the Number straight into the result Vec; the previous code
+        // arena-allocated each element via `alloc_number` then copied it in,
+        // discarding the throwaway allocation.
+        items.push(DataValue::Number(to_number(op.apply(n))));
     }
     Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
 }
