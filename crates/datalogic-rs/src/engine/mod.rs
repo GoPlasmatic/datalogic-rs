@@ -6,10 +6,11 @@ use crate::config::EvaluationConfig;
 use crate::{CompiledNode, Logic, Result};
 
 thread_local! {
-    /// Per-thread `dispatch_node` recursion counter. Incremented at the
-    /// top of `dispatch_node` (after the literal fast path) and decremented
-    /// on the way out, so the value reflects the current sync call-stack
-    /// depth across nested `Engine::evaluate(...)` invocations.
+    /// Per-thread re-entry counter for the `Engine::evaluate` boundary.
+    /// Bumped by `enter_dispatch_boundary` on entry and restored by the
+    /// `DepthGuard` on drop (not touched by `dispatch_node` itself), so the
+    /// value reflects how many nested `Engine::evaluate(...)` calls are
+    /// currently live on the sync call stack.
     ///
     /// Why thread-local rather than a `ContextStack` field: a custom
     /// operator can hold `Arc<Engine>` and call `engine.evaluate(...)`
@@ -169,14 +170,15 @@ pub struct Engine {
 
 mod dispatch;
 
-/// Cold fallback for `CompiledNode::Value { lit: None, .. }` — only
-/// reached by ad-hoc `synthetic_value` wrappers (test helpers, trace nodes
-/// built outside `Logic::new`). Outlined so the inliner doesn't
-/// Convert an `OwnedDataValue` to an arena-resident `DataValue` reference.
-/// Trivial cases (Null, Bool, empties) hit shared singletons with no
-/// allocation; non-empty Strings allocate a single `DataValue` wrapper into
-/// the per-call arena (the `&str` is borrowed from the owned source);
-/// non-empty Arrays/Objects deep-convert via `value.to_arena`.
+/// Convert an `OwnedDataValue` literal to an arena-resident `DataValue`
+/// reference. Reached from the `dispatch_node` literal path for any
+/// `CompiledNode::Value` whose `lit` was not precomputed — non-empty
+/// String/Array/Object literals (and ad-hoc `synthetic_value` wrappers built
+/// outside the compile pipeline). Trivial cases (Null, Bool, empty
+/// primitives) hit shared singletons with no allocation; a non-empty String
+/// allocates a single `DataValue` wrapper into the per-call arena (the `&str`
+/// is borrowed from the owned source); non-empty Arrays/Objects deep-convert
+/// via `value.to_arena`.
 #[inline]
 fn literal_fallback<'a>(
     value: &'a datavalue::OwnedDataValue,
@@ -275,7 +277,7 @@ impl Engine {
         }
     }
 
-    /// Creates a new Engine engine with all built-in operators.
+    /// Creates a new Engine with all built-in operators.
     ///
     /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
     /// Templating mode is disabled by default. For non-default

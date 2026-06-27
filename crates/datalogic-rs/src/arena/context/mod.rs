@@ -31,7 +31,6 @@ pub struct ContextStack<'a> {
     root: &'a DataValue<'a>,
     frames: Vec<ContextFrame<'a>>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
-    /// Mirrors `ContextStack::error_path`.
     error_path: Vec<u32>,
     /// Optional trace collector, owned by this stack while a traced
     /// evaluation is in flight. The trace driver moves a fresh collector

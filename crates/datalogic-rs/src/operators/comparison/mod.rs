@@ -186,7 +186,7 @@ pub(crate) fn compare_equals(
     Ok(left == right)
 }
 
-/// Arena-native ordered comparison. Mirrors `compare_ordered` exactly.
+/// Arena-native ordered comparison (`<`, `<=`, `>`, `>=`).
 #[inline]
 fn compare_ordered(
     left: &DataValue<'_>,

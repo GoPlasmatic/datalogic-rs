@@ -66,9 +66,9 @@ use crate::{CompiledNode, Error, Result};
 /// Adding an operator touches three files in lockstep:
 /// `crates/datalogic-rs/src/opcode.rs` (OpCode variant + `OPCODE_NAMES` entry),
 /// the implementation file under `crates/datalogic-rs/src/operators/`, and one
-/// arm here. The OpCode round-trip test at `opcode.rs:412` catches name
-/// drift; missing dispatch arms surface as a non-exhaustive match
-/// (compile error).
+/// arm here. The OpCode round-trip test `as_str_round_trips_through_from_str`
+/// in `opcode.rs` catches name drift; missing dispatch arms surface as a
+/// non-exhaustive match (compile error).
 macro_rules! dispatch {
     (
         node: $node:expr,

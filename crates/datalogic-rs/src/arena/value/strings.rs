@@ -11,9 +11,8 @@ use bumpalo::Bump;
 use super::DataValue;
 
 /// Render an `DataValue` as a `&'a str` allocated in the arena (or borrowed
-/// when already a string). Mirrors `helpers::to_string_cow` but produces
-/// arena-resident strings so string-building operators (cat, substr) can
-/// chain without heap traffic.
+/// when already a string). Produces arena-resident strings so string-building
+/// operators (cat, substr) can chain without heap traffic.
 pub(crate) fn data_to_str<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
     match v {
         DataValue::String(s) => s,
@@ -37,7 +36,7 @@ pub(crate) fn data_to_str<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
     }
 }
 
-/// Config-aware truthiness for `DataValue`. Mirrors `helpers::truthy_arena`.
+/// Config-aware truthiness for `DataValue`.
 ///
 /// `#[inline(always)]` because the function ends up inside the per-iteration
 /// general path of every quantifier/filter — outlining was paying a real call

@@ -63,6 +63,7 @@ impl FromDataValue for serde_json::Value {
 // `serde_json::Value` is also `DeserializeOwned`). The typed path is
 // therefore exposed as an inherent method
 // `Engine::eval_into::<T>(...)` / `Session::eval_into::<T>(...)` /
-// `datalogic::eval_into::<T>(...)`, which calls
-// `serde_json::from_value(value.to_serde_json())?` directly. See
-// `top_level::eval_into` and the `Engine::eval_into` definition.
+// `datalogic::eval_into::<T>(...)`, which projects the result to a
+// `serde_json::Value` (via `crate::arena::data_to_value`) and then calls
+// `serde_json::from_value`. See `top_level::eval_into` and the
+// `Engine::eval_into` definition.

@@ -78,9 +78,7 @@ impl IntoLogic for &serde_json::Value {
 
 // Note: a blanket `impl<T: Serialize> IntoLogic for &T` would conflict
 // with the per-type impls above (every &T is also an &T: Serialize when
-// `serde` is in scope). We therefore expose the typed-Serialize path as
-// an explicit `IntoLogic::from_serializable<T>(...)` constructor on the
-// module level (see `top_level::from_serializable`) rather than as a
-// blanket impl. Callers that already hold a `&T: Serialize` either use
-// `serde_json::to_value(&t)?` first (yielding `&serde_json::Value`) or
-// reach for the helper function.
+// `serde` is in scope). So there is no blanket impl and no typed-Serialize
+// constructor: a caller holding a `&T: Serialize` converts it first with
+// `serde_json::to_value(&t)?` (yielding a `serde_json::Value`, which does
+// impl `IntoLogic`) and passes that to `Engine::compile`.
