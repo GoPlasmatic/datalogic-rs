@@ -20,9 +20,19 @@ pub(crate) fn data_to_str<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
         DataValue::Null => "",
         DataValue::Bool(true) => "true",
         DataValue::Bool(false) => "false",
-        DataValue::Number(n) => arena.alloc_str(&n.to_string()),
+        // Render the number straight into an arena buffer, skipping the
+        // intermediate heap `String` that `to_string()` + `alloc_str` paid.
+        // 24 bytes covers every i64 and typical f64 Display, so the buffer
+        // does not re-grow in the common case.
+        DataValue::Number(n) => {
+            use std::fmt::Write as _;
+            let mut buf = bumpalo::collections::String::with_capacity_in(24, arena);
+            let _ = write!(&mut buf, "{n}");
+            buf.into_bump_str()
+        }
         // Composite types: serialize as JSON via `datavalue`'s native
-        // `Display` emitter. Rare path; cost acceptable.
+        // `Display` emitter. Rare path of unbounded length, so keep the
+        // amortized heap `String` build + single exact-size arena copy.
         other => arena.alloc_str(&other.to_string()),
     }
 }

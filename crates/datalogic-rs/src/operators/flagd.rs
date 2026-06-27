@@ -215,8 +215,9 @@ pub(crate) fn evaluate_fractional<'a>(
     for (variant, weight) in &buckets {
         range_end += *weight as u64;
         if bucket < range_end {
-            let s_in_arena = arena.alloc_str(variant);
-            return Ok(arena.alloc(DataValue::String(s_in_arena)));
+            // `variant` already borrows the arena-resident input string, so
+            // return it directly instead of copying it back into the arena.
+            return Ok(arena.alloc(DataValue::String(variant)));
         }
     }
 

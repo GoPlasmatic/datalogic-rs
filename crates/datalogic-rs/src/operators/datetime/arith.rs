@@ -16,7 +16,7 @@ use std::fmt::Display;
 /// `to_iso_string`) still pay that intermediate string upstream — the savings
 /// only land for streaming `Display` impls like `DataDuration::fmt`.
 #[inline]
-fn write_into_arena<'a>(arena: &'a Bump, value: impl Display) -> &'a DataValue<'a> {
+pub(super) fn write_into_arena<'a>(arena: &'a Bump, value: impl Display) -> &'a DataValue<'a> {
     use std::fmt::Write;
     let mut buf = bumpalo::collections::String::new_in(arena);
     // `bumpalo::collections::String` writes never fail; `expect` rather than

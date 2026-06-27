@@ -63,34 +63,34 @@ pub(crate) fn evaluate_substr<'a>(
         (start as usize).min(char_count)
     };
 
-    let result_str: String = if let Some(len) = length {
-        if len < 0 {
-            // Negative length = end position from end of string.
+    // How many chars to take after skipping `actual_start`; `None` = take
+    // the rest. Equivalent to the previous per-branch `.collect()` logic.
+    let take: Option<usize> = match length {
+        // Negative length = end position from the end of the string.
+        Some(len) if len < 0 => {
             let abs_end = len.saturating_abs() as usize;
             let end_pos = char_count.saturating_sub(abs_end);
-            if end_pos > actual_start {
-                string
-                    .chars()
-                    .skip(actual_start)
-                    .take(end_pos - actual_start)
-                    .collect()
-            } else {
-                String::new()
-            }
-        } else if len == 0 {
-            String::new()
-        } else {
-            let take_count = (len as usize).min(char_count.saturating_sub(actual_start));
-            string.chars().skip(actual_start).take(take_count).collect()
+            Some(end_pos.saturating_sub(actual_start))
         }
-    } else {
-        string.chars().skip(actual_start).collect()
+        Some(0) => Some(0),
+        Some(len) => Some((len as usize).min(char_count.saturating_sub(actual_start))),
+        None => None,
     };
 
-    if result_str.is_empty() {
+    // Build the slice straight into the arena rather than collecting into a
+    // heap `String` and copying it in. The result is a sub-slice of `string`,
+    // so its byte length is bounded by the source; pre-size to avoid re-grows.
+    let mut buf = bumpalo::collections::String::with_capacity_in(string.len(), arena);
+    let chars = string.chars().skip(actual_start);
+    match take {
+        Some(n) => chars.take(n).for_each(|c| buf.push(c)),
+        None => chars.for_each(|c| buf.push(c)),
+    }
+
+    if buf.is_empty() {
         return Ok(crate::arena::singletons::singleton_empty_string());
     }
-    Ok(arena.alloc(DataValue::String(arena.alloc_str(&result_str))))
+    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
 }
 
 /// Resolve a substr `start` / `length` argument as `Option<i64>`. Literal
@@ -203,7 +203,17 @@ pub(crate) fn evaluate_upper<'a>(
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
-    Ok(arena.alloc(DataValue::String(arena.alloc_str(&s.to_uppercase()))))
+    // Build the upper-cased text straight into the arena instead of
+    // allocating a heap `String` via `to_uppercase()` then copying it in.
+    // Pre-size to the source byte length so the common (ASCII, length-
+    // preserving) case never re-grows the arena buffer.
+    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), arena);
+    for c in s.chars() {
+        for u in c.to_uppercase() {
+            buf.push(u);
+        }
+    }
+    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
 }
 
 #[cfg(feature = "ext-string")]
@@ -219,7 +229,17 @@ pub(crate) fn evaluate_lower<'a>(
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
-    Ok(arena.alloc(DataValue::String(arena.alloc_str(&s.to_lowercase()))))
+    // Build the lower-cased text straight into the arena instead of
+    // allocating a heap `String` via `to_lowercase()` then copying it in.
+    // Pre-size to the source byte length so the common (ASCII, length-
+    // preserving) case never re-grows the arena buffer.
+    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), arena);
+    for c in s.chars() {
+        for l in c.to_lowercase() {
+            buf.push(l);
+        }
+    }
+    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
 }
 
 #[cfg(feature = "ext-string")]
@@ -235,7 +255,9 @@ pub(crate) fn evaluate_trim<'a>(
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
-    Ok(arena.alloc(DataValue::String(arena.alloc_str(s.trim()))))
+    // `s` is already arena-resident, so `s.trim()` is an arena `&'a str`
+    // sub-slice; no re-copy needed.
+    Ok(arena.alloc(DataValue::String(s.trim())))
 }
 
 /// Native arena-mode `split`. Splits text by a plain string delimiter,

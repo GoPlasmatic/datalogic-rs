@@ -174,8 +174,9 @@ pub(crate) fn evaluate_timestamp<'a>(
 
     if let Some(s) = arg_as_str(av) {
         if let Some(duration) = DataDuration::parse(s) {
-            let s: &'a str = arena.alloc_str(&duration.to_string());
-            return Ok(arena.alloc(DataValue::String(s)));
+            // `DataDuration` has a streaming `Display`, so render it straight
+            // into the arena rather than through a heap `String`.
+            return Ok(arith::write_into_arena(arena, duration));
         }
     }
 
