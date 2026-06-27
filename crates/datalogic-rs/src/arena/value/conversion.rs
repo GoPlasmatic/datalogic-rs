@@ -40,7 +40,7 @@ mod serde_impl {
             // through the sentinel-aware arms above.
             DataValue::Array(items) => Value::Array(items.iter().map(data_to_value).collect()),
             DataValue::Object(pairs) => {
-                let mut map = serde_json::Map::new();
+                let mut map = serde_json::Map::with_capacity(pairs.len());
                 for (k, v) in *pairs {
                     map.insert((*k).to_string(), data_to_value(v));
                 }

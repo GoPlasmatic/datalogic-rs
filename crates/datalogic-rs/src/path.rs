@@ -91,14 +91,6 @@ fn walk(
     let id = node.id();
     let operator = node.operator_name();
     let json_pointer = build_pointer(parent_pointer, parent_op, arg_index);
-    out.insert(
-        id,
-        NodeInfo {
-            operator: operator.clone(),
-            arg_index,
-            json_pointer: json_pointer.clone(),
-        },
-    );
 
     // Children of an `Array` form pointers like "/<idx>"; for every other
     // variant the current node's operator name is the pointer prefix.
@@ -108,9 +100,21 @@ fn walk(
         operator.as_deref()
     };
 
+    // Recurse first while borrowing `operator` / `json_pointer`, then move
+    // both owned values into the map — node ids are unique, so insertion
+    // order does not matter, and this avoids cloning them per node.
     node.visit_indexed_children(&mut |i, child| {
         walk(child, child_parent_op, Some(i), &json_pointer, out);
     });
+
+    out.insert(
+        id,
+        NodeInfo {
+            operator,
+            arg_index,
+            json_pointer,
+        },
+    );
 }
 
 #[inline]

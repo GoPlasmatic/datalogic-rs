@@ -5,7 +5,6 @@
 use super::Error;
 use super::kind::ErrorKind;
 use serde::ser::{Serialize, SerializeMap, Serializer};
-use std::borrow::Cow;
 use std::fmt;
 
 impl fmt::Display for Error {
@@ -89,13 +88,13 @@ impl std::error::Error for Error {
 #[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
-        Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
+        Error::parse_error(err.to_string())
     }
 }
 
 impl From<datavalue::ParseError> for Error {
     fn from(err: datavalue::ParseError) -> Self {
-        Error::new(ErrorKind::ParseError(Cow::Owned(err.to_string())))
+        Error::parse_error(err.to_string())
     }
 }
 
@@ -114,8 +113,10 @@ impl Serialize for Error {
         map.serialize_entry("type", self.tag())?;
         // The Display impl appends "(in operator: ...)" when set; for the
         // `message` field we want the kind portion only, so render kind
-        // without the operator suffix.
-        map.serialize_entry("message", &KindDisplay(&self.kind).to_string())?;
+        // without the operator suffix. `KindDisplay`'s Serialize impl streams
+        // the Display straight into the output via `collect_str`, avoiding an
+        // intermediate heap `String`.
+        map.serialize_entry("message", &KindDisplay(&self.kind))?;
         match &self.kind {
             ErrorKind::VariableNotFound(name) => map.serialize_entry("variable", name)?,
             ErrorKind::InvalidContextLevel(level) => map.serialize_entry("level", level)?,
@@ -144,5 +145,13 @@ struct KindDisplay<'a>(&'a ErrorKind);
 impl<'a> fmt::Display for KindDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_kind_message(f, self.0)
+    }
+}
+
+impl Serialize for KindDisplay<'_> {
+    /// Stream the kind message straight into the serializer via `collect_str`
+    /// instead of allocating an intermediate `String` with `to_string()`.
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
     }
 }

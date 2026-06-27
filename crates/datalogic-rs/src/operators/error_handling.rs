@@ -109,7 +109,7 @@ pub(crate) fn evaluate_try<'a>(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| Error::invalid_arguments(crate::error::INVALID_ARGS)))
+    Err(last_err.unwrap_or_else(Error::invalid_args))
 }
 
 /// Pushes the thrown error object onto the arena context stack as the
