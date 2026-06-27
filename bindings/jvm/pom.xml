@@ -43,7 +43,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <jna.version>5.17.0</jna.version>
-        <jackson.version>2.21.3</jackson.version>
+        <jackson.version>2.22.0</jackson.version>
         <junit.version>5.14.4</junit.version>
     </properties>
 
