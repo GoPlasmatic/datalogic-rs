@@ -18,8 +18,8 @@ pub fn suites_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
-        .join("packages")
-        .join("core")
+        .join("crates")
+        .join("datalogic-rs")
         .join("tests")
         .join("suites")
 }
