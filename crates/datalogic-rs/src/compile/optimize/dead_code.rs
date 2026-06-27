@@ -25,8 +25,10 @@ pub fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
         } => {
             let rewritten = match opcode {
                 OpCode::If => eliminate_if(*id, args, engine),
-                OpCode::And => eliminate_and(*id, args, engine),
-                OpCode::Or => eliminate_or(*id, args, engine),
+                // `and` short-circuits on a falsy literal (absorbing = false);
+                // `or` short-circuits on a truthy literal (absorbing = true).
+                OpCode::And => eliminate_bool_chain(*id, args, engine, false, OpCode::And),
+                OpCode::Or => eliminate_bool_chain(*id, args, engine, true, OpCode::Or),
                 _ => None,
             };
             match rewritten {
@@ -49,6 +51,20 @@ fn eliminate_if(
         return Some(CompiledNode::synthetic_value(
             datavalue::OwnedDataValue::Null,
         ));
+    }
+
+    // For a 2+ arg chain, the only rewrite is when some condition position
+    // (even index with a following then-branch) is a static literal;
+    // otherwise the walk just rebuilds the same arg list and returns None.
+    // Bail before that cloning. The single-arg `{"if":[else]}` unwrap below
+    // does not need a static condition, so it is excluded from the guard.
+    if args.len() >= 2
+        && !(0..args.len())
+            .step_by(2)
+            .filter(|&i| i + 1 < args.len())
+            .any(|i| is_truthy_literal(&args[i], engine).is_some())
+    {
+        return None;
     }
 
     let mut i = 0;
@@ -124,13 +140,30 @@ fn eliminate_if(
     })
 }
 
-/// Eliminate identity/absorbing elements in `and`.
-fn eliminate_and(
+/// Eliminate identity/absorbing elements in a boolean chain (`and` / `or`).
+///
+/// `absorbing` is the literal truthiness that short-circuits the chain and is
+/// returned as-is (`false` for `and`, `true` for `or`); the opposite literal
+/// is the identity element and gets stripped. `opcode` is the operator to
+/// rebuild when only some elements were stripped.
+fn eliminate_bool_chain(
     outer_id: crate::node::NodeId,
     args: &[CompiledNode],
     engine: &Engine,
+    absorbing: bool,
+    opcode: OpCode,
 ) -> Option<CompiledNode> {
     if args.is_empty() {
+        return None;
+    }
+
+    // Bail before any cloning unless at least one arg is a boolean literal:
+    // with no literals every arg is "remaining" and the function would just
+    // clone them all and return None.
+    if !args
+        .iter()
+        .any(|a| is_truthy_literal(a, engine).is_some())
+    {
         return None;
     }
 
@@ -138,12 +171,12 @@ fn eliminate_and(
 
     for arg in args {
         match is_truthy_literal(arg, engine) {
-            Some(false) => {
-                // Absorbing element — and short-circuits, returns the falsy value
+            Some(b) if b == absorbing => {
+                // Absorbing element — the chain short-circuits to this value.
                 return Some(arg.clone());
             }
-            Some(true) => {
-                // Identity element — skip (and returns the value, not bool)
+            Some(_) => {
+                // Identity element — skip (the op returns the value, not bool).
                 continue;
             }
             None => {
@@ -153,7 +186,7 @@ fn eliminate_and(
     }
 
     if remaining.is_empty() {
-        // All elements were truthy literals — return the last one
+        // Every element was an identity literal — return the last one.
         return Some(args.last().unwrap().clone());
     }
 
@@ -162,63 +195,13 @@ fn eliminate_and(
     }
 
     if remaining.len() == args.len() {
-        // Nothing stripped — no change
+        // Nothing stripped — no change.
         return None;
     }
 
     Some(CompiledNode::BuiltinOperator {
         id: outer_id,
-        opcode: OpCode::And,
-        args: remaining.into_boxed_slice(),
-        predicate_hint: None,
-        iter_arg_kind: crate::operators::array::IterArgKind::General,
-    })
-}
-
-/// Eliminate identity/absorbing elements in `or`.
-fn eliminate_or(
-    outer_id: crate::node::NodeId,
-    args: &[CompiledNode],
-    engine: &Engine,
-) -> Option<CompiledNode> {
-    if args.is_empty() {
-        return None;
-    }
-
-    let mut remaining: Vec<CompiledNode> = Vec::new();
-
-    for arg in args {
-        match is_truthy_literal(arg, engine) {
-            Some(true) => {
-                // Absorbing element — or short-circuits, returns the truthy value
-                return Some(arg.clone());
-            }
-            Some(false) => {
-                // Identity element — skip
-                continue;
-            }
-            None => {
-                remaining.push(arg.clone());
-            }
-        }
-    }
-
-    if remaining.is_empty() {
-        // All elements were falsy literals — return the last one
-        return Some(args.last().unwrap().clone());
-    }
-
-    if remaining.len() == 1 {
-        return Some(remaining.into_iter().next().unwrap());
-    }
-
-    if remaining.len() == args.len() {
-        return None;
-    }
-
-    Some(CompiledNode::BuiltinOperator {
-        id: outer_id,
-        opcode: OpCode::Or,
+        opcode,
         args: remaining.into_boxed_slice(),
         predicate_hint: None,
         iter_arg_kind: crate::operators::array::IterArgKind::General,
