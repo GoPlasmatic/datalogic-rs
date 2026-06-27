@@ -91,9 +91,10 @@ fn reduce_general<'a>(
     Ok(acc_av)
 }
 
-/// Reduce Bridge case — Object inputs iterate (key, value) pairs; inline
-/// arena Array inputs iterate items. Non-array non-object non-null inputs
-/// return the initial value.
+/// Reduce Bridge case — Object inputs iterate (key, value) pairs. The Bridge
+/// variant is only produced for non-null, non-array values (`value_as_iter`
+/// routes Null to Empty and Array to Iterable), so every other shape returns
+/// the initial value.
 #[inline]
 fn reduce_arena_bridge<'a>(
     input: &'a DataValue<'a>,
@@ -115,18 +116,8 @@ fn reduce_arena_bridge<'a>(
             drop(guard);
             Ok(acc_av)
         }
-        DataValue::Array(items) => {
-            let total = items.len() as u32;
-            let mut acc_av: &'a DataValue<'a> = initial;
-            let mut guard = IterGuard::new(ctx);
-            for (i, item_av) in items.iter().enumerate() {
-                guard.step_reduce(item_av, acc_av);
-                acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
-            }
-            drop(guard);
-            Ok(acc_av)
-        }
-        // Anything else — return initial.
+        // Anything else (scalars, strings) — return initial. Null and Array
+        // never reach the Bridge variant, so they are not handled here.
         _ => Ok(initial),
     }
 }

@@ -110,7 +110,7 @@ fn compile_builtin(
 ) -> Result<CompiledNode> {
     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
     if requires_array && !matches!(args_value, OwnedDataValue::Array(_)) {
-        return Ok(invalid_args_marker(opcode, args_value, ctx));
+        return Ok(invalid_args_marker(opcode, ctx));
     }
 
     let args = compile_args(args_value, engine, templating, ctx)?;
@@ -189,11 +189,7 @@ fn try_specialised(
 /// `if` invoked with a non-array argument. Carries the op name forward so
 /// the dispatcher can produce an error that names the failing op rather
 /// than a generic "Invalid Arguments".
-fn invalid_args_marker(
-    opcode: OpCode,
-    _args_value: &OwnedDataValue,
-    ctx: &mut CompileCtx,
-) -> CompiledNode {
+fn invalid_args_marker(opcode: OpCode, ctx: &mut CompileCtx) -> CompiledNode {
     CompiledNode::InvalidArgs {
         id: Some(ctx.next_id()),
         op_name: opcode.as_str(),

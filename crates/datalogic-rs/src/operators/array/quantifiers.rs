@@ -100,8 +100,10 @@ fn evaluate_quantifier<'a>(
     Ok(singleton_bool(shape.finalize(found_short)))
 }
 
-/// Quantifier Bridge case — Object inputs iterate (key, value) pairs;
-/// inline arena Array inputs iterate items.
+/// Quantifier Bridge case — Object inputs iterate (key, value) pairs. The
+/// Bridge variant is only produced for non-null, non-array values
+/// (`value_as_iter` routes Null to Empty and Array to Iterable), so every
+/// other shape is treated as empty.
 #[inline]
 fn quantifier_arena_bridge<'a>(
     input: &'a DataValue<'a>,
@@ -133,21 +135,8 @@ fn quantifier_arena_bridge<'a>(
             )?;
             Ok(singleton_bool(shape.finalize(found_short)))
         }
-        DataValue::Array(items) => {
-            if items.is_empty() {
-                return Ok(singleton_bool(shape.empty_result));
-            }
-            let mut found_short = false;
-            for_each_iter_array(items, predicate, ctx, engine, arena, |_, _item, av| {
-                if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
-                    found_short = true;
-                    return Ok(ControlFlow::Break(()));
-                }
-                Ok(ControlFlow::Continue(()))
-            })?;
-            Ok(singleton_bool(shape.finalize(found_short)))
-        }
-        // Anything else — treated as empty (returns empty_result).
+        // Anything else (scalars, strings) — treated as empty. Null and Array
+        // never reach the Bridge variant, so they are not handled here.
         _ => Ok(singleton_bool(shape.empty_result)),
     }
 }

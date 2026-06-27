@@ -34,7 +34,6 @@ pub(super) fn precompute_lit(value: &OwnedDataValue) -> Option<Box<DataValue<'st
 /// not currently route through `resolve_iter_input`.
 #[inline]
 fn iterates_args0(opcode: OpCode) -> bool {
-    let _opcode = opcode;
     #[cfg(feature = "ext-array")]
     if matches!(opcode, OpCode::Sort) {
         return true;

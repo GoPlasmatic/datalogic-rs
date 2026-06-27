@@ -31,11 +31,9 @@ pub(crate) fn evaluate_if<'a>(
         }
         let cond = engine.dispatch_node(&args[i], ctx, arena)?;
         if truthy_arena(cond, engine) {
-            if i + 1 < args.len() {
-                return engine.dispatch_node(&args[i + 1], ctx, arena);
-            } else {
-                return Ok(cond);
-            }
+            // The `i == len - 1` guard above already returned, so here
+            // `i < len - 1` and a then-branch at `i + 1` always exists.
+            return engine.dispatch_node(&args[i + 1], ctx, arena);
         }
         i += 2;
     }
