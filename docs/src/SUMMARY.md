@@ -8,6 +8,7 @@
 - [Installation](getting-started/installation.md)
 - [Quick Start](getting-started/quick-start.md)
 - [Basic Concepts](getting-started/basic-concepts.md)
+- [Starter Boilerplates](getting-started/boilerplates.md)
 
 # Operators
 
@@ -24,20 +25,28 @@
     - [Error Handling](operators/error-handling.md)
     - [flagd-Compat (`fractional`, `sem_ver`)](operators/flagd.md)
 
-# JavaScript / TypeScript
+# Language & UI Bindings
 
-- [Installation](javascript/installation.md)
-- [Quick Start](javascript/quick-start.md)
-- [API Reference](javascript/api-reference.md)
-- [Framework Integration](javascript/frameworks.md)
-
-# React Visual Debugger
-
-- [Installation](react-ui/installation.md)
-- [Quick Start](react-ui/quick-start.md)
-- [Modes](react-ui/modes.md)
-- [Props & API](react-ui/props-api.md)
-- [Customization](react-ui/customization.md)
+- [JavaScript / TypeScript](javascript/installation.md)
+    - [Quick Start](javascript/quick-start.md)
+    - [API Reference](javascript/api-reference.md)
+    - [Framework Integration](javascript/frameworks.md)
+- [Python (datalogic-py)](python/installation.md)
+    - [Quick Start](python/quick-start.md)
+    - [API & GIL Management](python/api-gil.md)
+- [Go (datalogic-go)](go/installation.md)
+    - [Quick Start](go/quick-start.md)
+    - [Concurrency & Sessions](go/concurrency.md)
+- [C-FFI (Java, .NET, PHP)](ffi/overview.md)
+    - [Java / Kotlin (JNA)](ffi/jvm.md)
+    - [.NET / C# (P/Invoke)](ffi/dotnet.md)
+    - [PHP (FFI)](ffi/php.md)
+    - [Memory & Safety](ffi/memory-safety.md)
+- [React Visual Debugger](react-ui/installation.md)
+    - [Quick Start](react-ui/quick-start.md)
+    - [Modes](react-ui/modes.md)
+    - [Props & API](react-ui/props-api.md)
+    - [Customization](react-ui/customization.md)
 
 # Advanced
 

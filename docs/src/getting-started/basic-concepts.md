@@ -35,97 +35,168 @@ Arguments can be:
 
 ## Compilation vs Evaluation
 
-datalogic-rs separates rule processing into two phases.
+`datalogic` separates rule processing into two distinct phases for maximum execution speed.
 
 ### Compilation Phase
 
-When you call `engine.compile(rule_str)`, the library:
+When you compile a rule, the engine parses the JSON rule, resolves string operator names to integer OpCodes, performs strength reduction and constant folding, and produces a reusable, immutable compiled logic AST:
 
-1. **Parses** the JSON rule into an internal representation
-2. **Assigns OpCodes** to operators for fast dispatch
-3. **Pre-evaluates** constant sub-expressions
-4. Produces a reusable `Logic` (no `Arc` wrap by default — wrap explicitly when sharing across threads)
+<div class="codetabs">
 
 ```rust
+// Compiles to a reusable Logic AST
 let compiled = engine.compile(r#"{">": [{"var": "x"}, 10]}"#).unwrap();
 
-// Wrap when you want to share across threads:
+// Logic is Send + Sync; wrap in Arc for cross-thread sharing
 let shared = std::sync::Arc::new(compiled);
 ```
 
+```javascript
+// Compiles to a reusable CompiledRule
+const rule = engine.compile('{">": [{"var": "x"}, 10]}');
+```
+
+```python
+# Compiles to a reusable Rule object
+rule = engine.compile({">": [{"var": "x"}, 10]})
+```
+
+```go
+// Compiles to a reusable *Rule
+rule, _ := engine.Compile(`{">": [{"var": "x"}, 10]}`)
+defer rule.Close()
+```
+
+</div>
+
 ### Evaluation Phase
 
-When you evaluate, the engine:
+During evaluation, the engine dispatches operations via OpCodes and walks the data context. The actual evaluation buffers are allocated within a transient or session-scoped memory arena.
 
-1. **Dispatches** operations via `OpCode` (O(1)) for built-ins
-2. **Walks** the context stack for variable lookups
-3. **Returns** an arena-resident `&DataValue<'a>` (or an owned `String` /
-   `OwnedDataValue` / `serde_json::Value` depending on the entry point)
+Here is how you evaluate a compiled rule against data using a reusable session:
 
-There are four entry points, picked by what the caller has on hand and
-how much arena lifetime they want to manage:
-
-| Entry point | When to use | Returns |
-|-------------|-------------|---------|
-| `datalogic_rs::eval_str(rule, data)` (and `eval` / `eval_into` / `compile`) | One-shot, no engine config needed. Uses a shared default engine internally. | `String` (or `OwnedDataValue` / `T`) |
-| `Engine::eval_str(rule, data)` (and `eval` / `eval_into`) | One-shot through a configured engine — custom operators, non-default config, templating. | `String` (or `OwnedDataValue` / `T`) |
-| `Engine::session().eval*` | Repeated calls — the session owns a reusable arena. Caller calls `session.reset()` between batches. | `String` / `OwnedDataValue` / `T` / borrowed `&DataValue<'a>` (`eval_borrowed`) |
-| `Engine::evaluate(logic, data, &arena)` | Hot path. You own the `bumpalo::Bump` and want zero-copy `&DataValue<'a>` results. | `&DataValue<'a>` |
+<div class="codetabs">
 
 ```rust
-use bumpalo::Bump;
-use datalogic_rs::Engine;
-
 let engine = Engine::new();
 let compiled = engine.compile(r#"{">": [{"var": "x"}, 10]}"#).unwrap();
 
-// Reusable session — caller resets between batches.
+// Reusable session — reuses the memory buffer across calls.
 let mut session = engine.session();
-let _ = session.eval_str(&compiled, r#"{"x": 42}"#).unwrap();
-session.reset();
-
-// Or manage the arena yourself for zero-copy results.
-let arena = Bump::new();
-let r = engine.evaluate(&compiled, r#"{"x": 42}"#, &arena).unwrap();
-assert_eq!(r.as_bool(), Some(true));
+let result = session.eval_str(&compiled, r#"{"x": 42}"#).unwrap();
+assert_eq!(result, "true");
+session.reset(); // Reset between batches
 ```
+
+```javascript
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
+await init();
+
+const rule = new CompiledRule('{">": [{"var": "x"}, 10]}', false);
+const result = rule.evaluate('{"x": 42}');
+console.log(result); // "true"
+```
+
+```python
+from datalogic_py import Engine
+
+engine = Engine()
+rule = engine.compile({">": [{"var": "x"}, 10]})
+
+# Direct evaluation against python dictionaries
+result = rule.evaluate({"x": 42})
+print(result) # True
+```
+
+```go
+engine := datalogic.NewEngine()
+defer engine.Close()
+
+rule, _ := engine.Compile(`{">": [{"var": "x"}, 10]}`)
+defer rule.Close()
+
+session := engine.Session()
+defer session.Close()
+
+result, _ := session.Evaluate(rule, `{"x": 42}`)
+fmt.Println(result) // "true"
+```
+
+</div>
 
 ## The Engine
 
-The `Engine` struct is your main entry point. It is built via `Engine::new`
-or the `EngineBuilder`:
+The `Engine` is the central component that holds custom configurations and registered operators. Once constructed, the engine is frozen and immutable.
+
+Here is how to construct and configure an engine across runtimes:
+
+<div class="codetabs">
 
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig};
 
-// Default engine
+// 1. Default engine
 let engine = Engine::new();
 
-// Engine with custom configuration
+// 2. Engine with custom configurations
 let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .build();
 
-// Engine with templating mode — needs feature = ["templating"]
-# #[cfg(feature = "templating")]
-let engine = Engine::builder().with_templating(true).build();
-
-// Engine with custom operators
-# struct MyOp;
-# impl datalogic_rs::CustomOperator for MyOp {
-#     fn evaluate<'a>(
-#         &self,
-#         _args: &[&'a datalogic_rs::DataValue<'a>],
-#         _ctx: &mut datalogic_rs::operator::EvalContext<'_, 'a>,
-#         arena: &'a bumpalo::Bump,
-#     ) -> datalogic_rs::Result<&'a datalogic_rs::DataValue<'a>> {
-#         Ok(arena.alloc(datalogic_rs::DataValue::Null))
-#     }
-# }
+// 3. Engine with custom operators
 let engine = Engine::builder()
-    .add_operator("my_op", MyOp)
+    .add_operator("double", DoubleOperator)
     .build();
 ```
+
+```javascript
+import { Engine } from '@goplasmatic/datalogic-node';
+
+// 1. Default engine
+const engine = new Engine();
+
+// 2. Engine with custom operators
+const engineWithOps = new Engine({}, {
+  double: (argsJson) => {
+    const args = JSON.parse(argsJson);
+    return JSON.stringify(args[0] * 2);
+  }
+});
+```
+
+```python
+from datalogic_py import Engine
+
+# 1. Default engine
+engine = Engine()
+
+# 2. Configured engine with custom operators
+engine_with_ops = Engine(
+    templating=True, # Enable JSON templating mode
+    custom_operators={
+        "double": lambda args_json: json.dumps(json.loads(args_json)[0] * 2)
+    }
+)
+```
+
+```go
+import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
+
+// 1. Default engine
+engine := datalogic.NewEngine()
+defer engine.Close()
+
+// 2. Engine with custom operators via a fluent builder
+engineWithOps := datalogic.NewEngineBuilder().
+    AddOperator("double", func(argsJson string) (string, error) {
+        // implementation
+        return "result", nil
+    }).
+    Build()
+defer engineWithOps.Close()
+```
+
+</div>
 
 The engine:
 - Owns the registered custom operators (frozen at `build()`)

@@ -60,10 +60,14 @@ impl CustomOperator for DoubleOperator {
 
 ## Registering Custom Operators
 
-Operator registration is builder-only. Once `build()` is called the engine's
-operator set is frozen:
+Operator registration is builder-only. Once the engine is built, its operator set is frozen and immutable.
+
+Select your language to see how to register a custom operator:
+
+<div class="codetabs">
 
 ```rust
+// Rust
 let engine = Engine::builder()
     .add_operator("double", DoubleOperator)
     .build();
@@ -72,14 +76,60 @@ let result = engine.eval_str(r#"{"double": 21}"#, r#"{}"#).unwrap();
 assert_eq!(result, "42");
 ```
 
-`add_operator` accepts both typed operators (`T: CustomOperator + 'static`)
-and pre-boxed trait objects (`Box<dyn CustomOperator>`) — the box
-itself implements `CustomOperator` by delegating to its contents, so
-the same entry point covers both shapes.
+```javascript
+// Node.js (native FFI)
+import { Engine } from '@goplasmatic/datalogic-node';
+const engine = new Engine({}, {
+  double: (argsJson) => {
+    const args = JSON.parse(argsJson);
+    return JSON.stringify(args[0] * 2);
+  }
+});
 
-The builder is consumed by `.build()`; the operator set is then frozen.
-There is no `remove_operator` in v5 — rebuild the builder if you need a
-different set.
+// WASM (browser / bundler)
+import init, { Engine as WasmEngine } from '@goplasmatic/datalogic-wasm';
+await init();
+const engineWasm = new WasmEngine({
+  customOperators: {
+    double: (argsJson) => {
+      const args = JSON.parse(argsJson);
+      return JSON.stringify(args[0] * 2);
+    }
+  }
+});
+```
+
+```python
+# Python
+from datalogic_py import Engine
+import json
+
+engine = Engine(custom_operators={
+    "double": lambda args_json: json.dumps(json.loads(args_json)[0] * 2)
+})
+```
+
+```go
+// Go
+import (
+    "encoding/json"
+    "fmt"
+    datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
+)
+
+engine := datalogic.NewEngineBuilder().
+    AddOperator("double", func(argsJson string) (string, error) {
+        var args []float64
+        if err := json.Unmarshal([]byte(argsJson), &args); err != nil {
+            return "", err
+        }
+        return fmt.Sprintf("%g", args[0]*2), nil
+    }).
+    Build()
+defer engine.Close()
+```
+
+</div>
 
 ## Reading Argument Types
 

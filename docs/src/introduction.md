@@ -55,7 +55,11 @@ datalogic-rs uses a two-phase approach:
    - Arena-allocated `&DataValue<'a>` results that can borrow zero-copy from the input
    - Context stack for nested operations (`map`, `filter`, `reduce`)
 
-## Quick Example
+## Quick Example: One-Shot Helper
+
+For quick one-off evaluations with zero setup, use the library's module-level helpers:
+
+<div class="codetabs">
 
 ```rust
 // One-shot evaluation: returns a JSON string.
@@ -66,21 +70,108 @@ let result = datalogic_rs::eval_str(
 assert_eq!(result, "true");
 ```
 
-For repeated evaluation, compile once and reuse via a session:
+```javascript
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+await init();
+
+// One-shot evaluation: returns a JSON string.
+const result = evaluate(
+  '{">": [{"var": "age"}, 18]}',
+  '{"age": 21}',
+  false
+);
+console.log(result); // "true"
+```
+
+```python
+from datalogic_py import apply
+
+# One-shot evaluation: returns native boolean.
+result = apply(
+    {">": [{"var": "age"}, 18]},
+    {"age": 21}
+)
+print(result) # True
+```
+
+```go
+result, _ := datalogic.Apply(
+    `{">": [{"var": "age"}, 18]}`,
+    `{"age": 21}`,
+)
+fmt.Println(result) // "true"
+```
+
+</div>
+
+## Quick Example: Compiled Rule (Production Loop)
+
+For repeated evaluation of the same logic against thousands of records, compile the rule once. This compiles the JSON Logic to optimized bytecode, enabling sub-microsecond evaluations:
+
+<div class="codetabs">
 
 ```rust
 use datalogic_rs::Engine;
 
 let engine = Engine::new();
+// Compile once (returns Logic bytecode)
 let compiled = engine.compile(r#"{">": [{"var": "age"}, 18]}"#).unwrap();
+
+// Create a session to reuse allocation buffers
 let mut session = engine.session();
 
 let r1 = session.eval_str(&compiled, r#"{"age": 21}"#).unwrap();
 let r2 = session.eval_str(&compiled, r#"{"age": 16}"#).unwrap();
 assert_eq!(r1, "true");
 assert_eq!(r2, "false");
-session.reset();
+
+session.reset(); // Reset between batches
 ```
+
+```javascript
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
+await init();
+
+// Compile once
+const rule = new CompiledRule('{">": [{"var": "age"}, 18]}', false);
+
+// Evaluate many times
+const r1 = rule.evaluate('{"age": 21}');
+const r2 = rule.evaluate('{"age": 16}');
+console.log(r1, r2); // "true" "false"
+```
+
+```python
+from datalogic_py import Engine
+
+engine = Engine()
+# Compile once
+rule = engine.compile({">": [{"var": "age"}, 18]})
+
+# Evaluate many times
+r1 = rule.evaluate({"age": 21})
+r2 = rule.evaluate({"age": 16})
+print(r1, r2) # True False
+```
+
+```go
+engine := datalogic.NewEngine()
+defer engine.Close()
+
+// Compile once
+rule, _ := engine.Compile(`{">": [{"var": "age"}, 18]}`)
+defer rule.Close()
+
+// Open a session for arena recycling
+session := engine.Session()
+defer session.Close()
+
+r1, _ := session.Evaluate(rule, `{"age": 21}`)
+r2, _ := session.Evaluate(rule, `{"age": 16}`)
+fmt.Println(r1, r2) // "true" "false"
+```
+
+</div>
 
 ## What is JSONLogic?
 
@@ -111,10 +202,9 @@ This rule checks if `age > 18` AND `country == "US"`.
 
 ## Next Steps
 
-- [Installation](getting-started/installation.md) - Add datalogic-rs to your project
+- [Installation](getting-started/installation.md) - Add datalogic to your project
 - [Quick Start](getting-started/quick-start.md) - Get up and running in minutes
 - [Migration Guide](migration.md) - Move from v4 to v5
 - [Operators](operators/overview.md) - Explore all 59 built-in operators
 - [API Reference](api/reference.md) - Public Rust types and the 5-tier API model
-
-**Using another language?** This site focuses on the Rust crate; for Node.js (native), JavaScript / TypeScript (WASM), Python, Go, JVM, .NET, PHP, and React, jump straight to the per-binding README in the [repo root](https://github.com/GoPlasmatic/datalogic-rs#readme).
+- [Starter Boilerplates](getting-started/boilerplates.md) - Deploy microservices in Express, FastAPI, and Axum.

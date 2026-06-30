@@ -119,3 +119,55 @@
 .content main [data-datalogic-playground] {
   max-width: 100%;
 }
+
+/* ============================================
+   Code Tabs Styles
+   ============================================ */
+
+.codetabs {
+  margin: 1.5rem 0;
+  border: 1px solid var(--datalogic-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--datalogic-bg);
+}
+
+.codetabs .tab-menu {
+  display: flex;
+  background: var(--datalogic-bg-secondary);
+  border-bottom: 1px solid var(--datalogic-border);
+  padding: 0 0.5rem;
+}
+
+.codetabs .tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--datalogic-text-muted);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.codetabs .tab-btn:hover {
+  color: var(--datalogic-text);
+}
+
+.codetabs .tab-btn.active {
+  color: var(--datalogic-primary);
+  border-bottom-color: var(--datalogic-primary);
+}
+
+.codetabs .tab-content {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+.codetabs .tab-content pre {
+  margin: 0 !important;
+  border-radius: 0 !important;
+}

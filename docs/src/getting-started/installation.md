@@ -2,20 +2,39 @@
 
 ## Adding to Your Project
 
-Add `datalogic-rs` to your `Cargo.toml`:
+Select your target language to see package installation instructions:
 
-```toml
+<div class="codetabs">
+
+```rust
+// Cargo.toml
 [dependencies]
 datalogic-rs = "5.0"
+
+# Or run in terminal:
+# cargo add datalogic-rs
 ```
 
-Or use cargo add:
-
-```bash
-cargo add datalogic-rs
+```javascript
+// npm
+npm install @goplasmatic/datalogic-node # for Node.js services (native FFI)
+# or:
+npm install @goplasmatic/datalogic-wasm # for Browsers / Bun / Workers (WASM)
 ```
 
-> **Note:** v5 does **not** require `serde_json` by default — the canonical
+```python
+# pip
+pip install datalogic-py
+```
+
+```go
+// go.mod
+go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5
+```
+
+</div>
+
+> **Note for Rust users:** v5 does **not** require `serde_json` by default — the canonical
 > entry points (`Engine::eval_str`, `Engine::compile(&str)`,
 > `datalogic_rs::eval_str`) are string-based. Add the `serde_json` feature
 > only if you need `serde_json::Value` interop or the typed
@@ -86,21 +105,53 @@ required. The crate is built with `#![forbid(unsafe_code)]`.
 
 ## Verifying Installation
 
-Create a simple test:
+Create a simple script or test file to verify everything works:
+
+<div class="codetabs">
 
 ```rust
+// main.rs
 fn main() {
     let result = datalogic_rs::eval_str(r#"{"+": [1, 2]}"#, r#"{}"#).unwrap();
-
     println!("1 + 2 = {}", result);
     assert_eq!(result, "3");
 }
+// Run in terminal: cargo run
 ```
 
-Run with:
+```javascript
+// index.js
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
-```bash
-cargo run
+async function run() {
+  await init();
+  const result = evaluate('{"+": [1, 2]}', '{}', false);
+  console.log(`1 + 2 = ${result}`); // 1 + 2 = 3
+}
+run();
 ```
 
-You should see: `1 + 2 = 3`
+```python
+# test.py
+from datalogic_py import apply
+
+result = apply({"+": [1, 2]}, {})
+print(f"1 + 2 = {result}") # 1 + 2 = 3.0
+```
+
+```go
+// main.go
+package main
+
+import (
+    "fmt"
+    datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
+)
+
+func main() {
+    result, _ := datalogic.Apply(`{"+": [1, 2]}`, `{}`)
+    fmt.Printf("1 + 2 = %s\n", result) // 1 + 2 = 3
+}
+```
+
+</div>

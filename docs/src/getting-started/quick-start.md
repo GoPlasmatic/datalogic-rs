@@ -2,11 +2,11 @@
 
 This guide will get you evaluating JSONLogic rules in minutes.
 
-## The simplest path: module-level helpers
+## The simplest path: one-shot helpers
 
-For one-off evaluations with no custom operators or configuration, skip
-the engine entirely. The crate exposes module-level helpers that share a
-default engine under the hood:
+For one-off evaluations with no custom operators or custom configurations, you can evaluate rules directly without manually initializing an engine. 
+
+<div class="codetabs">
 
 ```rust
 let result = datalogic_rs::eval_str(
@@ -16,17 +16,45 @@ let result = datalogic_rs::eval_str(
 assert_eq!(result, "true");
 ```
 
-The `datalogic_rs::eval_str` / `eval` / `eval_into` / `compile`
-functions all delegate to a lazily-constructed default engine. They are
-the right starting point for tutorials, scripts, and code that doesn't
-need custom operators or non-default configuration.
+```javascript
+import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+await init();
+
+const result = evaluate(
+  '{">": [{"var": "score"}, 50]}',
+  '{"score": 75}',
+  false
+);
+console.log(result); // "true"
+```
+
+```python
+from datalogic_py import apply
+
+result = apply(
+    {">": [{"var": "score"}, 50]},
+    {"score": 75}
+)
+print(result) # True
+```
+
+```go
+result, _ := datalogic.Apply(
+    `{">": [{"var": "score"}, 50]}`,
+    `{"score": 75}`,
+)
+fmt.Println(result) // "true"
+```
+
+</div>
+
+These functions delegate to a lazily-constructed default engine under the hood. They are the right starting point for tutorials, scripts, and code that doesn't need custom operators or non-default configurations.
 
 ## When you need an Engine
 
-Construct an [`Engine`](../api/reference.md#engine) when you need any of:
-custom operators, a non-default `EvaluationConfig`, templating mode, a
-long-lived `Session` for hot loops, or the raw `evaluate` path with a
-caller-owned `&Bump`.
+Construct an `Engine` when you need any of: custom operators, custom configurations, templating mode, or a long-lived `Session` to recycle memory in hot loops.
+
+<div class="codetabs">
 
 ```rust
 use datalogic_rs::Engine;
@@ -34,15 +62,60 @@ use datalogic_rs::Engine;
 // 1. Create an engine
 let engine = Engine::new();
 
-// 2. Compile a rule (string in, Logic out)
+// 2. Compile a rule once (returns reusable compiled Logic)
 let compiled = engine.compile(r#"{">": [{"var": "score"}, 50]}"#).unwrap();
 
-// 3. Evaluate against data via a Session — owned String result
+// 3. Evaluate against data via a Session (reuses memory buffer)
 let mut session = engine.session();
 let result = session.eval_str(&compiled, r#"{"score": 75}"#).unwrap();
 assert_eq!(result, "true");
-session.reset();
+session.reset(); // Reset between evaluations to prevent memory growth
 ```
+
+```javascript
+import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
+await init();
+
+// 1. Compile once
+const rule = new CompiledRule('{">": [{"var": "score"}, 50]}', false);
+
+// 2. Evaluate many times
+const result = rule.evaluate('{"score": 75}');
+console.log(result); // "true"
+```
+
+```python
+from datalogic_py import Engine
+
+# 1. Create an engine
+engine = Engine()
+
+# 2. Compile once
+rule = engine.compile({">": [{"var": "score"}, 50]})
+
+# 3. Evaluate
+result = rule.evaluate({"score": 75})
+print(result) # True
+```
+
+```go
+// 1. Create engine (defer close to prevent FFI leak)
+engine := datalogic.NewEngine()
+defer engine.Close()
+
+// 2. Compile once (defer close to prevent FFI leak)
+rule, _ := engine.Compile(`{">": [{"var": "score"}, 50]}`)
+defer rule.Close()
+
+// 3. Open session for evaluation (defer close to prevent FFI leak)
+session := engine.Session()
+defer session.Close()
+
+result, _ := session.Evaluate(rule, `{"score": 75}`)
+fmt.Println(result) // "true"
+```
+
+</div>
 
 Sessions reuse the same `bumpalo::Bump` across calls. They never
 auto-reset — `session.reset()` between batches keeps peak memory bounded

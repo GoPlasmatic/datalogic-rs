@@ -181,10 +181,108 @@
             window.DataLogicEmbed.renderWidgets();
           }
         }
+        
+        // Always check for new code tabs on navigation
+        initCodeTabs();
       }, 100);
     });
 
     observer.observe(content, { childList: true, subtree: true });
+  }
+
+  /**
+   * Initialize code tabs dynamically
+   */
+  function initCodeTabs() {
+    const containers = document.querySelectorAll('.codetabs');
+    const preferredLang = localStorage.getItem('datalogic-preferred-lang') || 'rust';
+
+    containers.forEach((container) => {
+      if (container.classList.contains('tabs-initialized')) return;
+      container.classList.add('tabs-initialized');
+
+      // Extract all code blocks inside the container
+      const codeBlocks = Array.from(container.children).filter(el => el.tagName === 'PRE');
+      if (codeBlocks.length === 0) return;
+
+      // Map code block class to friendly labels
+      const langMapping = {
+        'language-rust': { id: 'rust', label: 'Rust' },
+        'language-javascript': { id: 'javascript', label: 'JavaScript' },
+        'language-typescript': { id: 'typescript', label: 'TypeScript' },
+        'language-python': { id: 'python', label: 'Python' },
+        'language-go': { id: 'go', label: 'Go' },
+        'language-java': { id: 'java', label: 'Java' },
+        'language-csharp': { id: 'csharp', label: 'C# / .NET' },
+        'language-php': { id: 'php', label: 'PHP' }
+      };
+
+      // Create Tab Menu header
+      const menu = document.createElement('div');
+      menu.className = 'tab-menu';
+      
+      let activeTabId = preferredLang;
+      let matchedTab = false;
+
+      codeBlocks.forEach((block, idx) => {
+        const codeClass = block.querySelector('code')?.className || '';
+        const match = Object.keys(langMapping).find(k => codeClass.includes(k));
+        const langInfo = match ? langMapping[match] : { id: `lang-${idx}`, label: `Lang ${idx}` };
+        
+        block.setAttribute('data-lang-id', langInfo.id);
+        block.classList.add('tab-content');
+
+        const btn = document.createElement('button');
+        btn.className = 'tab-btn';
+        btn.textContent = langInfo.label;
+        btn.setAttribute('data-target-id', langInfo.id);
+        
+        btn.addEventListener('click', (e) => {
+          switchTab(container, langInfo.id);
+        });
+
+        menu.appendChild(btn);
+        
+        if (langInfo.id === preferredLang) {
+          matchedTab = true;
+        }
+      });
+
+      // Default fallback if preference doesn't match any tab
+      if (!matchedTab) {
+        const firstBlock = codeBlocks[0];
+        activeTabId = firstBlock.getAttribute('data-lang-id');
+      }
+
+      container.insertBefore(menu, codeBlocks[0]);
+      switchTab(container, activeTabId);
+    });
+  }
+
+  /**
+   * Switch the active tab in a container and synchronize preferences
+   */
+  function switchTab(container, langId) {
+    // Save preference
+    localStorage.setItem('datalogic-preferred-lang', langId);
+    
+    // Synchronize ALL tab groups on the page
+    document.querySelectorAll('.codetabs').forEach((grp) => {
+      const btns = grp.querySelectorAll('.tab-btn');
+      const blocks = grp.querySelectorAll('.tab-content');
+      
+      let hasTargetTab = Array.from(blocks).some(b => b.getAttribute('data-lang-id') === langId);
+      let targetId = hasTargetTab ? langId : (blocks[0]?.getAttribute('data-lang-id') || '');
+
+      btns.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-target-id') === targetId);
+      });
+
+      blocks.forEach(block => {
+        const isVisible = block.getAttribute('data-lang-id') === targetId;
+        block.style.display = isVisible ? 'block' : 'none';
+      });
+    });
   }
 
   /**
@@ -197,6 +295,9 @@
     if (hasContainers) {
       loadDependencies();
     }
+
+    // Initialize code tabs
+    initCodeTabs();
 
     // Set up observer for page navigation
     setupNavigationObserver();
