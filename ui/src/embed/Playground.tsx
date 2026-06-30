@@ -26,7 +26,7 @@ export function Playground({ editable = false }: PlaygroundProps) {
   // Detect theme
   const theme = detectTheme();
 
-  const { ready: wasmReady, loading: wasmLoading, evaluate } = useWasmEvaluator({});
+  const { ready: wasmReady, loading: wasmLoading, error: wasmError, evaluate } = useWasmEvaluator({});
 
   // Handle logic text changes
   const handleLogicChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -168,8 +168,10 @@ export function Playground({ editable = false }: PlaygroundProps) {
 
         <div className="playground-column">
           <div className="playground-column-header">Result</div>
-          <div className={`playground-result ${resultError ? 'has-error' : ''}`}>
-            {resultError ? (
+          <div className={`playground-result ${resultError || wasmError ? 'has-error' : ''}`}>
+            {wasmError ? (
+              <span className="playground-result-error">Failed to load WASM: {wasmError}</span>
+            ) : resultError ? (
               <span className="playground-result-error">{resultError}</span>
             ) : wasmLoading ? (
               <span className="json-highlight json-null">Loading WASM...</span>

@@ -904,3 +904,39 @@ pre:hover .buttons {
 .light .codetabs .tab-content pre {
     background: #ffffff !important;
 }
+
+/* ==========================================================================
+   DataLogic Playground / Widget
+   --------------------------------------------------------------------------
+   The global `pre` card styling above (border, 12px radius, shadow and a
+   1.6rem padding, all `!important`) bleeds into the embedded playground. Its
+   editors are a syntax-highlight `<pre>` overlay sitting behind a transparent
+   `<textarea>`, and the result pane is a `<pre>` too — so the card chrome makes
+   the inputs read as floating cards, and the 1.6rem padding shoves the
+   highlighted text out of alignment with the caret and selection underneath.
+   Strip the chrome back off and hand padding control back to the embed layout
+   so Logic, Data and Result stay consistent. Loaded last, so these win.
+   ========================================================================== */
+
+.datalogic-playground pre,
+.datalogic-widget pre {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transition: none !important;
+}
+
+.datalogic-playground pre:hover,
+.datalogic-widget pre:hover {
+    box-shadow: none !important;
+}
+
+/* The highlight overlay must line up pixel-for-pixel with the textarea it sits
+   behind, so its padding has to match `.json-editor-input` exactly. */
+.datalogic-playground .json-editor-highlight,
+.datalogic-widget .json-editor-highlight {
+    padding: 0.5rem 0.75rem !important;
+}

@@ -735,17 +735,20 @@
   --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
-/* Debugger control icons - ensure visibility in dark mode */
-.datalogic-widget[data-theme="dark"] .dl-debugger-btn,
-.datalogic-playground[data-theme="dark"] .dl-debugger-btn {
+/* Secondary nav buttons - readable in dark mode. Scoped with :not() so the
+   primary (play) button keeps its indigo brand fill defined further below
+   instead of being flattened to grey. A translucent white tint sits more
+   naturally on the dark toolbar than an opaque slate swatch. */
+.datalogic-widget[data-theme="dark"] .dl-debugger-btn:not(.dl-debugger-btn-primary),
+.datalogic-playground[data-theme="dark"] .dl-debugger-btn:not(.dl-debugger-btn-primary) {
   color: #e5e5e5;
-  background: rgba(75, 85, 99, 0.8);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.datalogic-widget[data-theme="dark"] .dl-debugger-btn:hover:not(:disabled),
-.datalogic-playground[data-theme="dark"] .dl-debugger-btn:hover:not(:disabled) {
+.datalogic-widget[data-theme="dark"] .dl-debugger-btn:not(.dl-debugger-btn-primary):hover:not(:disabled),
+.datalogic-playground[data-theme="dark"] .dl-debugger-btn:not(.dl-debugger-btn-primary):hover:not(:disabled) {
   color: #ffffff;
-  background: rgba(107, 114, 128, 0.9);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .datalogic-widget[data-theme="dark"] .dl-debugger-btn svg,
@@ -815,9 +818,11 @@
   color: #e5e5e5;
 }
 
-/* Debugger controls container */
-.datalogic-widget[data-theme="dark"] .dl-debugger-controls-inner,
-.datalogic-playground[data-theme="dark"] .dl-debugger-controls-inner {
+/* Debugger controls container - only the floating overlay variant carries its
+   own panel chrome. The inline variant lives directly on the toolbar band, so
+   this must not leak a slate box behind it. */
+.datalogic-widget[data-theme="dark"] .dl-debugger-controls--floating .dl-debugger-controls-inner,
+.datalogic-playground[data-theme="dark"] .dl-debugger-controls--floating .dl-debugger-controls-inner {
   background: rgba(31, 41, 55, 0.95);
   border-color: #4b5563;
 }
@@ -972,4 +977,45 @@
 .datalogic-widget[data-theme="dark"] .variable-operator,
 .datalogic-playground[data-theme="dark"] .variable-operator {
   color: #d1d5db;
+}
+
+/* ============================================
+   Debugger Toolbar - blend with playground chrome
+   --------------------------------------------
+   The playback toolbar (bug icon, transport buttons, step counter, speed
+   slider) is rendered by the embedded editor with its own standalone palette,
+   which left it reading as a detached grey slab. These rules, scoped to the
+   embed containers, align the toolbar band with the surrounding surfaces and
+   restore the indigo brand accent on the primary control. They sit last in the
+   bundle so they win the ties against the editor's own theme rules.
+   ============================================ */
+
+/* Toolbar band sits flush on the editor surface, separated only by a hairline
+   divider - same treatment as the input row above it. */
+.datalogic-playground .logic-editor-toolbar,
+.datalogic-widget .logic-editor-toolbar {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+/* Primary play/pause button keeps the indigo brand fill in every theme. */
+.datalogic-playground .dl-debugger-btn-primary,
+.datalogic-widget .dl-debugger-btn-primary {
+  background: var(--accent-blue);
+  color: #ffffff;
+}
+
+.datalogic-playground .dl-debugger-btn-primary:hover:not(:disabled),
+.datalogic-widget .dl-debugger-btn-primary:hover:not(:disabled) {
+  background: var(--accent-blue-hover);
+  color: #ffffff;
+}
+
+/* Inline controls live directly on the toolbar band - never a panel of
+   their own. */
+.datalogic-playground .dl-debugger-controls--inline .dl-debugger-controls-inner,
+.datalogic-widget .dl-debugger-controls--inline .dl-debugger-controls-inner {
+  background: none;
+  border: none;
+  box-shadow: none;
 }

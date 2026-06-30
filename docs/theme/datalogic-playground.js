@@ -55,6 +55,11 @@
       }
 
       const script = document.createElement('script');
+      // The embed bundle is built as an ES module (so wasm-bindgen's
+      // `new URL('…', import.meta.url)` resolves against a valid module URL).
+      // It must be loaded with type="module"; it sets window.DataLogicEmbed as
+      // a load-time side effect, which is available once onload fires.
+      script.type = 'module';
       script.src = url;
       script.crossOrigin = 'anonymous';
       script.onload = resolve;

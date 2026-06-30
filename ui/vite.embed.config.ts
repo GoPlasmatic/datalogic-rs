@@ -34,7 +34,16 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'src/embed.tsx'),
       name: 'DataLogicEmbed',
-      formats: ['iife'],
+      // ES module, NOT iife. wasm-bindgen's web-target init uses
+      // `new URL('datalogic_wasm_bg.wasm', import.meta.url)`. Vite 8's Rolldown
+      // bundler cannot represent `import.meta` in an iife and rewrites it to an
+      // empty object, so `import.meta.url` becomes the string "undefined" and
+      // `new URL(<inlined wasm data: URI>, "undefined")` throws
+      // `TypeError: Invalid URL`, breaking WASM init. In an ES module
+      // `import.meta.url` is the real, valid module URL. The bundle is loaded
+      // via `<script type="module">` by docs/theme/datalogic-playground.js and
+      // still exposes `window.DataLogicEmbed` as a load-time side effect.
+      formats: ['es'],
       fileName: () => 'datalogic-embed.js',
     },
     rollupOptions: {
@@ -50,13 +59,14 @@ export default defineConfig({
         inlineDynamicImports: true,
       },
     },
-    // Use Vite 8's default minifier (oxc). Don't pick `'esbuild'` —
-    // Vite 8 no longer bundles esbuild, and selecting it triggers
-    // `Failed to load 'transformWithEsbuild'. It is deprecated...`
-    // unless esbuild is added as a separate devDep.
+    // Vite 8's default minifier (oxc) is fine for the ES-module output above:
+    // `import.meta` is valid ESM syntax, so it's preserved (unlike the iife
+    // output, where it was rewritten to an empty object and broke WASM init).
     minify: true,
-    // Generate sourcemaps for debugging
-    sourcemap: true,
+    // No sourcemap: the embed is a generated artifact and the deploy workflow
+    // copies only the .js/.css (not the .map), so a `//# sourceMappingURL`
+    // reference just 404s for `datalogic-embed.js.map` in the browser.
+    sourcemap: false,
   },
   optimizeDeps: {
     exclude: ['@goplasmatic/datalogic-wasm'],
