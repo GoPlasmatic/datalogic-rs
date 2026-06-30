@@ -5,9 +5,13 @@
 
 **A fast, production-ready Rust engine for JSONLogic.**
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
 [![Crates.io](https://img.shields.io/crates/v/datalogic-rs.svg)](https://crates.io/crates/datalogic-rs)
 [![Documentation](https://docs.rs/datalogic-rs/badge.svg)](https://docs.rs/datalogic-rs)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![npm (node)](https://img.shields.io/npm/v/@goplasmatic/datalogic-node?label=npm%20%40datalogic-node)](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
+[![npm (wasm)](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm?label=npm%20%40datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
+[![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/)
 
 </div>
 
