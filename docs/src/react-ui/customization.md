@@ -24,14 +24,12 @@ Override with the `theme` prop:
 <DataLogicEditor value={expression} theme="light" />
 ```
 
-### Parent-Based Theme
+### Theme Resolution
 
-The component respects `data-theme` on parent elements:
+The component sets `data-theme` on its own `.logic-editor` root element based on the `theme` prop (or system preference when the prop is omitted). It does **not** read `data-theme` from a parent or ancestor element, so wrapping the editor in `<div data-theme="dark">` has no effect. To force a theme, use the `theme` prop:
 
 ```tsx
-<div data-theme="dark">
-  <DataLogicEditor value={expression} />
-</div>
+<DataLogicEditor value={expression} theme="dark" />
 ```
 
 ### Dynamic Theme Switching
@@ -71,31 +69,56 @@ Use the `className` prop for container styling:
 
 ### CSS Variables
 
-Override CSS variables for global styling:
+The component's theme variables are scoped to its `.logic-editor` root element (not `:root`), so they do not leak into the rest of your app. To override them, target the same scope. The dark theme is applied via `.logic-editor[data-theme="dark"]`.
+
+These are the real variable names defined by the component. The values below are the light-theme defaults:
 
 ```css
-:root {
-  /* Node colors by category */
-  --datalogic-logical-bg: #4caf50;
-  --datalogic-comparison-bg: #2196f3;
-  --datalogic-arithmetic-bg: #ff9800;
-  --datalogic-string-bg: #9c27b0;
-  --datalogic-array-bg: #00bcd4;
-  --datalogic-variable-bg: #607d8b;
-  --datalogic-literal-bg: #795548;
+.logic-editor {
+  /* Backgrounds */
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f6f6f7;
+  --bg-hover: #f0f0f1;
+  --bg-active: #e8e8ea;
 
-  /* General theming */
-  --datalogic-bg: #ffffff;
-  --datalogic-text: #1a1a1a;
-  --datalogic-border: #e5e7eb;
-  --datalogic-node-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  /* Text */
+  --text-primary: #18181b;
+  --text-secondary: #3f3f46;
+  --text-tertiary: #71717a;
+  --text-muted: #a1a1aa;
+  --text-placeholder: #c4c4c7;
+
+  /* Borders */
+  --border-primary: rgba(0, 0, 0, 0.10);
+  --border-secondary: rgba(0, 0, 0, 0.06);
+  --border-light: rgba(0, 0, 0, 0.04);
+
+  /* Accents */
+  --accent-blue: #6366f1;
+  --accent-blue-light: #e0e7ff;
+  --accent-blue-hover: #4f46e5;
+  --accent-amber: #f59e0b;
+  --accent-amber-light: #fef3c7;
+
+  /* Nodes */
+  --node-bg: #ffffff;
+  --node-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --node-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+```
+
+Override any of them by re-declaring on the same scope (the dark variant lives on `.logic-editor[data-theme="dark"]`):
+
+```css
+.logic-editor {
+  --accent-blue: #3b82f6;
+  --node-bg: #ffffff;
 }
 
-[data-theme="dark"] {
-  --datalogic-bg: #1a1a1a;
-  --datalogic-text: #ffffff;
-  --datalogic-border: #374151;
-  --datalogic-node-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+.logic-editor[data-theme="dark"] {
+  --node-bg: #18181b;
+  --node-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 ```
 
@@ -109,21 +132,23 @@ Target specific node types:
   font-family: 'Inter', sans-serif;
 }
 
-/* Operator nodes */
+/* Operator nodes (and, or, if, var, val, ==, +, etc.) */
 .react-flow__node-operator {
   border-width: 2px;
 }
 
-/* Variable nodes */
-.react-flow__node-variable {
-  font-style: italic;
-}
-
-/* Literal nodes */
+/* Literal nodes (strings, numbers, booleans, null) */
 .react-flow__node-literal {
   font-weight: bold;
 }
+
+/* Structure nodes (JSON objects/arrays in templating mode) */
+.react-flow__node-structure {
+  font-style: italic;
+}
 ```
+
+> **Note:** There are three node types: `operator`, `literal`, and `structure`. There is no `variable` node type, variables (`var` / `val`) render as operator nodes, so a `.react-flow__node-variable` selector matches nothing.
 
 ### Edge Styling
 
@@ -243,16 +268,18 @@ import { CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
 // Default colors
 console.log(CATEGORY_COLORS);
 // {
-//   logical: '#4CAF50',
-//   comparison: '#2196F3',
-//   arithmetic: '#FF9800',
-//   string: '#9C27B0',
-//   array: '#00BCD4',
-//   control: '#F44336',
-//   variable: '#607D8B',
-//   literal: '#795548',
-//   datetime: '#3F51B5',
-//   misc: '#9E9E9E'
+//   variable: '#6366f1',
+//   comparison: '#14b8a6',
+//   logical: '#8b5cf6',
+//   arithmetic: '#22c55e',
+//   string: '#06b6d4',
+//   array: '#7c3aed',
+//   control: '#f59e0b',
+//   datetime: '#0ea5e9',
+//   validation: '#94a3b8',
+//   utility: '#64748b',
+//   error: '#ef4444',
+//   literal: '#64748b'
 // }
 
 // Use in custom components
@@ -338,7 +365,6 @@ function DebugWithDeferred({ expression, data }) {
     <DataLogicEditor
       value={expression}
       data={deferredData}
-      mode="debug"
     />
   );
 }

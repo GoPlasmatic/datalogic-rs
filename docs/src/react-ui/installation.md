@@ -100,7 +100,6 @@ Types are included in the package. Import types as needed:
 ```tsx
 import type {
   DataLogicEditorProps,
-  DataLogicEditorMode,
   JsonLogicValue,
 } from '@goplasmatic/datalogic-ui';
 ```

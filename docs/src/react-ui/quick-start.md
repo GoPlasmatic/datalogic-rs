@@ -28,9 +28,9 @@ function App() {
 }
 ```
 
-## Debug Mode
+## Debugging
 
-Add evaluation results by providing data context:
+Add evaluation results by providing a `data` context. When `data` is present, the editor exposes debugger controls with a step-through execution trace:
 
 ```tsx
 function DebugExample() {
@@ -51,14 +51,13 @@ function DebugExample() {
       <DataLogicEditor
         value={expression}
         data={userData}
-        mode="debug"
       />
     </div>
   );
 }
 ```
 
-In debug mode, each node displays its evaluated result, making it easy to trace how the final value was computed.
+With `data` provided, each node displays its evaluated result, making it easy to trace how the final value was computed.
 
 ## Dynamic Data
 
@@ -99,7 +98,6 @@ function DynamicDebugger() {
         <DataLogicEditor
           value={expression}
           data={{ score }}
-          mode="debug"
         />
       </div>
     </div>
@@ -137,7 +135,6 @@ function ComplexExample() {
       <DataLogicEditor
         value={expression}
         data={data}
-        mode="debug"
       />
     </div>
   );
@@ -170,12 +167,37 @@ function ArrayExample() {
       <DataLogicEditor
         value={expression}
         data={data}
-        mode="debug"
       />
     </div>
   );
 }
 ```
+
+## Editing
+
+Set `editable` to turn on the visual builder: node selection, a properties panel, context menus, and undo/redo. Pair it with `value` and `onChange` to keep your own state in sync (`onChange` fires debounced, about 300ms, with the rebuilt JSONLogic):
+
+```tsx
+import { useState } from 'react';
+
+function EditableExample() {
+  const [expression, setExpression] = useState({
+    ">": [{ "var": "cart.total" }, 100]
+  });
+
+  return (
+    <div style={{ width: '100%', height: '600px' }}>
+      <DataLogicEditor
+        value={expression}
+        onChange={setExpression}
+        editable
+      />
+    </div>
+  );
+}
+```
+
+Add `data` to combine editing with live debugging in the same view.
 
 ## Theme Support
 
@@ -190,12 +212,9 @@ The editor supports light and dark themes:
 
 // System preference (default)
 <DataLogicEditor value={expression} />
-
-// Or set data-theme on a parent element
-<div data-theme="dark">
-  <DataLogicEditor value={expression} />
-</div>
 ```
+
+The component sets `data-theme` on its own `.logic-editor` root, so a `data-theme` on a parent or ancestor is not read. Use the `theme` prop to force a theme.
 
 ## Handling Null/Empty Expressions
 

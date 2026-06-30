@@ -206,10 +206,8 @@ Use the `NanHandling` configuration:
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::IgnoreValue,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue);
 let engine = Engine::builder().with_config(config).build();
 ```
 
@@ -220,10 +218,8 @@ Options: `ThrowError` (default), `CoerceToZero`, `IgnoreValue`, `ReturnNull`.
 ```rust
 use datalogic_rs::{EvaluationConfig, DivisionByZeroHandling};
 
-let config = EvaluationConfig {
-    division_by_zero: DivisionByZeroHandling::ReturnNull,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_division_by_zero(DivisionByZeroHandling::ReturnNull);
 ```
 
 Options: `ReturnSaturated` (default — `f64::MAX/MIN`), `ThrowError`,

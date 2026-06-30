@@ -162,10 +162,10 @@ Check if at least N fields are missing from a set.
 ```json
 { "if": [
     { "missing": ["username", "password"] },
-    { "throw": { "code": "VALIDATION_ERROR", "missing": { "missing": ["username", "password"] } } },
+    { "throw": "VALIDATION_ERROR" },
     { "if": [
         { "missing_some": [1, ["email", "phone"]] },
-        { "throw": { "code": "CONTACT_REQUIRED", "message": "Provide email or phone" } },
+        { "throw": "CONTACT_REQUIRED" },
         "valid"
     ]}
 ]}

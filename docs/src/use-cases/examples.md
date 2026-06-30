@@ -46,6 +46,7 @@ assert_eq!(enabled, "false"); // 12345 % 100 = 45 >= 20
 ### Beta Access
 
 ```rust
+// Cargo.toml: features = ["ext-string"]  (for `ends_with`)
 // Enable for beta testers OR employees OR users who signed up before a date
 let rule = r#"{
     "or": [
@@ -341,7 +342,7 @@ Transform and reshape data.
 ### API Response Mapping
 
 ```rust
-// Cargo.toml: features = ["templating"]
+// Cargo.toml: features = ["templating", "ext-string"]  (`lower` / `length`)
 use datalogic_rs::Engine;
 
 let engine = Engine::builder().with_templating(true).build();
@@ -371,6 +372,8 @@ let template = r#"{
 ### Report Generation
 
 ```rust
+// Cargo.toml: features = ["templating", "datetime", "ext-string"]
+// datetime -> `format_date` / `now`; ext-string -> `length`
 let template = r#"{
     "report": {
         "title": { "cat": ["Sales Report - ", { "var": "period" }] },

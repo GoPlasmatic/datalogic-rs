@@ -109,6 +109,10 @@ async def get_discount(context: CartContext):
 
 A high-performance feature-flag evaluator that uses transient session recycling to achieve sub-microsecond latency.
 
+> **Cargo note:** `session.eval_into::<T, _>(...)` is gated behind the
+> `serde_json` feature. Add it in `Cargo.toml`:
+> `datalogic-rs = { version = "5.0", features = ["serde_json"] }`.
+
 ```rust
 use axum::{routing::post, Json, Router};
 use datalogic_rs::{Engine, Logic};
@@ -140,7 +144,7 @@ async fn check_flag(
     let mut session = state.engine.session();
     
     // 2. Evaluate
-    let result = session.eval_into::<bool, _, _>(
+    let result = session.eval_into::<bool, _>(
         &state.rule,
         &serde_json::to_value(payload).unwrap()
     ).unwrap_or(false);

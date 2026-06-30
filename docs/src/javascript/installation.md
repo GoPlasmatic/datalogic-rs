@@ -73,7 +73,7 @@ const result = evaluate('{"==": [1, 1]}', '{}', false);
 The package includes TypeScript declarations. No additional `@types` package is needed.
 
 ```typescript
-import init, { evaluate, CompiledRule, evaluate_with_trace } from '@goplasmatic/datalogic-wasm';
+import init, { evaluate, CompiledRule, evaluateWithTrace } from '@goplasmatic/datalogic-wasm';
 
 // Full type inference for all exports
 const result: string = evaluate('{"==": [1, 1]}', '{}', false);
@@ -81,7 +81,7 @@ const result: string = evaluate('{"==": [1, 1]}', '{}', false);
 
 ## Bundle Size
 
-The WASM binary is approximately 50KB gzipped, making it suitable for web applications where performance is critical.
+The WASM binary is a single self-contained module: roughly 1.6 MB uncompressed, around 400 to 500 KB gzipped, making it suitable for web applications where performance is critical.
 
 ## CDN Usage
 

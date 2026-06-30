@@ -50,7 +50,7 @@ func main() {
 Errors are returned as `*datalogic.Error` structs, which carry detailed debugging metadata:
 *   `Type`: The error class name (e.g. `ParseError`, `Thrown`, `TypeError`).
 *   `Operator`: The outermost operator where the execution failed.
-*   `PathJSON`: A JSON array of path segments leading to the failing node in the compiled rule AST.
+*   `PathJSON`: A JSON-array string describing the path from the rule root to the failing node, where elements carry fields like `operator` and `json_pointer`.
 
 ```go
 _, err := rule.Evaluate(`{}`)

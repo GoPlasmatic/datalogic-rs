@@ -32,7 +32,7 @@ Loose equality comparison with type coercion.
 // Result: true
 
 { "==": ["", false] }
-// Result: true
+// Result: false (a String and a Bool are compared as strings, with no JS numeric coercion)
 
 // Null comparison
 { "==": [null, null] }

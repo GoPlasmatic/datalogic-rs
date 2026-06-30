@@ -95,7 +95,7 @@ When sharing compiled logic across multiple threads, remember the following thre
 | **`Engine`** | **Yes** | Construct once globally; share across all threads/goroutines. |
 | **`Rule`** | **Yes** | Compile once; share and call `Evaluate()` concurrently. |
 | **`Session`** | ❌ **No** | **Never share sessions.** Keep one `Session` instance per thread. |
-| **`TracedSession`** | ❌ **No** | Keep local to individual threads. |
+| **`TracedSession`** | **Yes** | Open once; evaluate concurrently. |
 
 ### Why `Session` is Not Thread-Safe
 `Session` contains a fast, zero-copy `bumpalo` arena allocator. It works by moving a cursor forward on a pre-allocated memory page. If two threads evaluate logic concurrently using the same session, they will overwrite each other's memory, leading to crashes or data corruption.

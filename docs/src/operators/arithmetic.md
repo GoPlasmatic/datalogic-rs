@@ -179,9 +179,9 @@ Divide numbers.
 { "/": [7, 2] }
 // Result: 3.5
 
-// Division by zero (configurable behavior)
+// Division by zero with two integer operands throws an error (error type "NaN")
 { "/": [10, 0] }
-// Result: Infinity (default) or error
+// Result: error
 
 // With coercion
 { "/": ["100", "4"] }
@@ -198,8 +198,9 @@ Divide numbers.
 </div>
 
 **Notes:**
-- Division by zero behavior is configurable via `EvaluationConfig`
-- Default returns `Infinity` or `-Infinity`
+- Two integer operands with a zero divisor always throw an error (error type "NaN"), regardless of config
+- Only a float zero-divisor honors `EvaluationConfig`. The default is `DivisionByZeroHandling::ReturnSaturated`, which returns `f64::MAX` (or `f64::MIN` for a negative dividend), not `Infinity`
+- Other modes (`ReturnInfinity`, `ReturnNull`, `ThrowError`) are selectable via `EvaluationConfig`
 
 ---
 
@@ -257,7 +258,7 @@ Find the maximum value.
 
 **Arguments:**
 - `a`, `b`, ... - Values to compare, or
-- `array` - Single array of values
+- `array` - A single value (such as a `var`) that resolves to an array. It must be a resolved array, not a literal array written inline
 
 **Returns:** The largest value.
 
@@ -268,18 +269,14 @@ Find the maximum value.
 { "max": [1, 5, 3] }
 // Result: 5
 
-// Single array
-{ "max": [[1, 5, 3]] }
-// Result: 5
-
-// With variables
-{ "max": [{ "var": "scores" }] }
+// A single argument that resolves to an array (data-driven)
+{ "max": { "var": "scores" } }
 // Data: { "scores": [85, 92, 78] }
 // Result: 92
 
-// Empty array
-{ "max": [[]] }
-// Result: null
+// Note: a literal nested array passed positionally, e.g. { "max": [[1, 5, 3]] }
+// or { "max": [[]] }, is an invalid operand and throws Invalid Arguments.
+// Pass scalars directly, or a value that resolves to an array.
 ```
 
 **Try it:**
@@ -301,7 +298,7 @@ Find the minimum value.
 
 **Arguments:**
 - `a`, `b`, ... - Values to compare, or
-- `array` - Single array of values
+- `array` - A single value (such as a `var`) that resolves to an array. It must be a resolved array, not a literal array written inline
 
 **Returns:** The smallest value.
 
@@ -312,18 +309,14 @@ Find the minimum value.
 { "min": [5, 1, 3] }
 // Result: 1
 
-// Single array
-{ "min": [[5, 1, 3]] }
-// Result: 1
-
-// With variables
-{ "min": [{ "var": "prices" }] }
+// A single argument that resolves to an array (data-driven)
+{ "min": { "var": "prices" } }
 // Data: { "prices": [29.99, 19.99, 39.99] }
 // Result: 19.99
 
-// Empty array
-{ "min": [[]] }
-// Result: null
+// Note: a literal nested array passed positionally, e.g. { "min": [[5, 1, 3]] }
+// or { "min": [[]] }, is an invalid operand and throws Invalid Arguments.
+// Pass scalars directly, or a value that resolves to an array.
 ```
 
 **Try it:**

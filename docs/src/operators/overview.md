@@ -1,16 +1,16 @@
 # Operators Overview
 
-datalogic-rs provides 59 built-in operators organized into logical categories — 57 in the default build plus two opt-in flagd-compatible operators (`fractional`, `sem_ver`) behind the `flagd` Cargo feature. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 59 built-in operators organized into logical categories: 57 canonical operators in the default build plus two opt-in flagd-compatible operators (`fractional`, `sem_ver`) behind the `flagd` Cargo feature. Counts are by canonical operator. `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
 | Category | Operators | Description |
 |----------|-----------|-------------|
-| [Variable Access](variable-access.md) | `var`, `val`, `exists` | Access and check data |
+| [Variable Access](variable-access.md) | `val` (alias `var`), `exists` | Access and check data |
 | [Comparison](comparison.md) | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=` | Compare values |
 | [Logical](logical.md) | `!`, `!!`, `and`, `or` | Boolean logic |
 | [Arithmetic](arithmetic.md) | `+`, `-`, `*`, `/`, `%`, `max`, `min`, `abs`, `ceil`, `floor` | Math operations |
-| [Control Flow](control-flow.md) | `if`, `?:`, `??` | Conditional branching |
+| [Control Flow](control-flow.md) | `if` (alias `?:`), `??`, `switch` (alias `match`), `type` | Conditional branching |
 | [String](string.md) | `cat`, `substr`, `in`, `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` | String manipulation |
 | [Array](array.md) | `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`, `sort`, `slice` | Array operations |
 | [DateTime](datetime.md) | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | Date and time |
@@ -83,7 +83,7 @@ Arithmetic operators attempt to convert values to numbers:
 
 Boolean operators use configurable truthiness rules. By default (JavaScript-style):
 
-- **Falsy**: `false`, `0`, `""`, `null`, `[]`
+- **Falsy**: `false`, `0`, `""`, `null`, `[]`, `{}`
 - **Truthy**: Everything else
 
 ## Custom Operators

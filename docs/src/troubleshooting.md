@@ -58,10 +58,8 @@ let engine = datalogic_rs::Engine::builder().with_templating(true).build();
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::IgnoreValue, // or CoerceToZero
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue); // or CoerceToZero
 let engine = Engine::builder().with_config(config).build();
 ```
 
@@ -225,7 +223,6 @@ import '@goplasmatic/datalogic-ui/styles.css';
 <DataLogicEditor
   value={expression}
   data={{ x: 1, y: 2 }}
-  mode="debug"
 />
 ```
 

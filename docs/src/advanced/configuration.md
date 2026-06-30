@@ -12,10 +12,8 @@ use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 let engine = Engine::new();
 
 // Custom configuration
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::IgnoreValue,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue);
 let engine = Engine::builder().with_config(config).build();
 ```
 
@@ -26,18 +24,17 @@ let engine = Engine::builder().with_config(config).build();
 
 ## Configuration Options
 
-`EvaluationConfig` is a plain struct — set fields directly with struct
-update syntax:
+`EvaluationConfig` is `#[non_exhaustive]`. Construct it with `default()`
+(or a preset such as `safe_arithmetic()` / `strict()`), then chain the
+`with_*` setters:
 
 ```rust
 use datalogic_rs::{EvaluationConfig, NanHandling, DivisionByZeroHandling};
 
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::IgnoreValue,
-    division_by_zero: DivisionByZeroHandling::ReturnNull,
-    loose_equality_errors: false,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue)
+    .with_division_by_zero(DivisionByZeroHandling::ReturnNull)
+    .with_loose_equality_errors(false);
 ```
 
 ### NaN Handling
@@ -48,10 +45,8 @@ Control how non-numeric values are handled in arithmetic operations.
 use datalogic_rs::{EvaluationConfig, NanHandling};
 
 // ThrowError (default), IgnoreValue, CoerceToZero, ReturnNull
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::IgnoreValue,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue);
 ```
 
 **Behavior comparison** for `{"+": [1, "text", 2]}`:
@@ -69,10 +64,8 @@ let config = EvaluationConfig {
 use datalogic_rs::{EvaluationConfig, DivisionByZeroHandling};
 
 // ReturnSaturated (default), ThrowError, ReturnNull, ReturnInfinity
-let config = EvaluationConfig {
-    division_by_zero: DivisionByZeroHandling::ThrowError,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_division_by_zero(DivisionByZeroHandling::ThrowError);
 ```
 
 **Behavior comparison** for `{"/": [10, 0]}`:
@@ -92,19 +85,15 @@ use datalogic_rs::{EvaluationConfig, TruthyEvaluator};
 use datalogic_rs::datavalue::OwnedDataValue;
 
 // JavaScript (default), Python, StrictBoolean, Custom
-let config = EvaluationConfig {
-    truthy_evaluator: TruthyEvaluator::Python,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_truthy_evaluator(TruthyEvaluator::Python);
 
 // Custom truthy: receives an OwnedDataValue (no serde_json required)
 let custom = Arc::new(|value: &OwnedDataValue| -> bool {
     value.as_f64().map_or(false, |n| n > 0.0)
 });
-let config = EvaluationConfig {
-    truthy_evaluator: TruthyEvaluator::Custom(custom),
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_truthy_evaluator(TruthyEvaluator::Custom(custom));
 ```
 
 > **v5 change:** `TruthyEvaluator::Custom` now takes
@@ -130,27 +119,45 @@ let config = EvaluationConfig {
 Control whether loose equality (`==`) raises errors for incompatible types.
 
 ```rust
-let config = EvaluationConfig {
-    loose_equality_errors: true,   // default
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_loose_equality_errors(true);   // default
 ```
 
 ### Numeric Coercion
 
+`NumericCoercionConfig` is `#[non_exhaustive]` too: start from
+`default()` and chain its own `with_*` setters, then pass it through
+`with_numeric_coercion`.
+
 ```rust
 use datalogic_rs::{EvaluationConfig, NumericCoercionConfig};
 
-let config = EvaluationConfig {
-    numeric_coercion: NumericCoercionConfig {
-        empty_string_to_zero: false,
-        null_to_zero: false,
-        bool_to_number: false,
-        reject_non_numeric: true,
-        undefined_to_zero: false,
-    },
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_numeric_coercion(
+        NumericCoercionConfig::default()
+            .with_empty_string_to_zero(false)
+            .with_null_to_zero(false)
+            .with_bool_to_number(false)
+            .with_reject_non_numeric(true)
+            .with_undefined_to_zero(false),
+    );
+```
+
+### Max Recursion Depth
+
+Cap the number of nested evaluation-boundary calls before the engine
+bails with a `ConfigurationError`. The limit is tracked per thread and
+guards against custom operators that hold an `Arc<Engine>` and re-enter
+via `engine.evaluate(...)`. Pure built-in workloads skip the check
+entirely, so they pay nothing.
+
+```rust
+use datalogic_rs::EvaluationConfig;
+
+// Default is 256: raise it for deeply nested custom-operator graphs,
+// lower it to bail sooner.
+let config = EvaluationConfig::default()
+    .with_max_recursion_depth(256);
 ```
 
 ## Configuration Presets
@@ -175,10 +182,8 @@ Use both configuration and templating mode (requires
 `feature = "templating"`):
 
 ```rust
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::CoerceToZero,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::CoerceToZero);
 
 let engine = Engine::builder()
     .with_config(config)
@@ -191,11 +196,9 @@ let engine = Engine::builder()
 ### Lenient Data Processing
 
 ```rust
-let config = EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::IgnoreValue,
-    division_by_zero: DivisionByZeroHandling::ReturnNull,
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue)
+    .with_division_by_zero(DivisionByZeroHandling::ReturnNull);
 
 let engine = Engine::builder().with_config(config).build();
 
@@ -232,10 +235,8 @@ let custom_truthy = Arc::new(|value: &OwnedDataValue| -> bool {
     }
 });
 
-let config = EvaluationConfig {
-    truthy_evaluator: TruthyEvaluator::Custom(custom_truthy),
-    ..Default::default()
-};
+let config = EvaluationConfig::default()
+    .with_truthy_evaluator(TruthyEvaluator::Custom(custom_truthy));
 
 let engine = Engine::builder().with_config(config).build();
 // {"if": [0,  "yes", "no"]}  ⇒ "no"

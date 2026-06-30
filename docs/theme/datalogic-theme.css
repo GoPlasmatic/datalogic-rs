@@ -1,0 +1,906 @@
+/* ==========================================================================
+   Plasmatic brand aesthetic theme for mdBook
+   ========================================================================== */
+
+/* ==========================================================================
+   Design Tokens & Themes
+   ========================================================================== */
+
+.light {
+    --bg: #f4f8fa;
+    --fg: #3b5d6e;
+    --text-heading: #07111a;
+
+    --sidebar-bg: #e3ebf0;
+    --sidebar-fg: #3b5d6e;
+    --sidebar-non-existant: #8ca3ae;
+    --sidebar-active: #119fcd; /* Cyan link/accent color */
+    --sidebar-spacer: rgba(17, 159, 205, 0.15);
+
+    --scrollbar: rgba(17, 159, 205, 0.3);
+
+    --icons: #3b5d6e;
+    --icons-hover: #07111a;
+
+    --links: #119fcd;
+
+    --inline-code-color: #b45309; /* Warm orange-brown for light mode code readability */
+
+    --theme-popup-bg: #ffffff;
+    --theme-popup-border: rgba(17, 159, 205, 0.25);
+    --theme-hover: rgba(17, 159, 205, 0.1);
+
+    --quote-bg: rgba(17, 159, 205, 0.05);
+    --quote-border: rgba(17, 159, 205, 0.2);
+
+    --warning-border: #ef476f;
+
+    --table-border-color: rgba(17, 159, 205, 0.15);
+    --table-header-bg: #e3ebf0;
+    --table-alternate-bg: #edf2f5;
+
+    --searchbar-border-color: rgba(17, 159, 205, 0.25);
+    --searchbar-bg: #ffffff;
+    --searchbar-fg: #07111a;
+    --searchbar-shadow-color: rgba(17, 159, 205, 0.1);
+    --searchresults-header-fg: #5f8da0;
+    --searchresults-border-color: rgba(17, 159, 205, 0.2);
+    --searchresults-li-bg: #edf2f5;
+    --search-mark-bg: rgba(6, 214, 160, 0.3);
+
+    --color-scheme: light;
+
+    --copy-button-filter: invert(36%) sepia(21%) saturate(760%)
+        hue-rotate(159deg) brightness(91%) contrast(85%);
+    --copy-button-filter-hover: invert(53%) sepia(76%) saturate(1450%)
+        hue-rotate(159deg) brightness(92%) contrast(89%);
+
+    --footnote-highlight: #119fcd;
+
+    --overlay-bg: rgba(244, 248, 250, 0.7);
+
+    --blockquote-note-color: #119fcd;
+    --blockquote-tip-color: #06d6a0;
+    --blockquote-important-color: #4cbd97;
+    --blockquote-warning-color: #ffd167;
+    --blockquote-caution-color: #ef476f;
+
+    --sidebar-header-border-color: rgba(17, 159, 205, 0.25);
+}
+
+.navy {
+    --bg: #07111a;
+    --fg: #7fafc0;
+    --text-heading: #ecf4f8;
+
+    --sidebar-bg: #0f2030;
+    --sidebar-fg: #7fafc0;
+    --sidebar-non-existant: #5f8da0;
+    --sidebar-active: #06d6a0; /* Teal/accent-green */
+    --sidebar-spacer: rgba(17, 159, 205, 0.15);
+
+    --scrollbar: rgba(17, 159, 205, 0.3);
+
+    --icons: #7fafc0;
+    --icons-hover: #ecf4f8;
+
+    --links: #119fcd; /* Cyan/accent-blue */
+
+    --inline-code-color: #ffd167; /* Warm yellow/accent-yellow */
+
+    --theme-popup-bg: #0f2030;
+    --theme-popup-border: rgba(17, 159, 205, 0.25);
+    --theme-hover: rgba(17, 159, 205, 0.15);
+
+    --quote-bg: rgba(17, 159, 205, 0.05);
+    --quote-border: rgba(17, 159, 205, 0.2);
+
+    --warning-border: #ef476f;
+
+    --table-border-color: rgba(17, 159, 205, 0.15);
+    --table-header-bg: #0f2030;
+    --table-alternate-bg: #091522;
+
+    --searchbar-border-color: rgba(17, 159, 205, 0.25);
+    --searchbar-bg: #0f2030;
+    --searchbar-fg: #ecf4f8;
+    --searchbar-shadow-color: rgba(17, 159, 205, 0.15);
+    --searchresults-header-fg: #5f8da0;
+    --searchresults-border-color: rgba(17, 159, 205, 0.2);
+    --searchresults-li-bg: #0f2030;
+    --search-mark-bg: rgba(6, 214, 160, 0.3);
+
+    --color-scheme: dark;
+
+    --copy-button-filter: invert(72%) sepia(21%) saturate(543%)
+        hue-rotate(156deg) brightness(87%) contrast(90%);
+    --copy-button-filter-hover: invert(70%) sepia(85%) saturate(394%)
+        hue-rotate(113deg) brightness(98%) contrast(97%);
+
+    --footnote-highlight: #119fcd;
+
+    --overlay-bg: rgba(7, 17, 26, 0.7);
+
+    --blockquote-note-color: #119fcd;
+    --blockquote-tip-color: #06d6a0;
+    --blockquote-important-color: #4cbd97;
+    --blockquote-warning-color: #ffd167;
+    --blockquote-caution-color: #ef476f;
+
+    --sidebar-header-border-color: rgba(17, 159, 205, 0.25);
+}
+
+.coal {
+    --bg: #040b11;
+    --fg: #7fafc0;
+    --text-heading: #ecf4f8;
+
+    --sidebar-bg: #07111a;
+    --sidebar-fg: #7fafc0;
+    --sidebar-non-existant: #3d6b7d;
+    --sidebar-active: #06d6a0;
+    --sidebar-spacer: rgba(17, 159, 205, 0.12);
+
+    --scrollbar: rgba(17, 159, 205, 0.25);
+
+    --icons: #7fafc0;
+    --icons-hover: #ecf4f8;
+
+    --links: #119fcd;
+
+    --inline-code-color: #ffd167;
+
+    --theme-popup-bg: #07111a;
+    --theme-popup-border: rgba(17, 159, 205, 0.2);
+    --theme-hover: rgba(17, 159, 205, 0.1);
+
+    --quote-bg: rgba(17, 159, 205, 0.04);
+    --quote-border: rgba(17, 159, 205, 0.15);
+
+    --warning-border: #ef476f;
+
+    --table-border-color: rgba(17, 159, 205, 0.12);
+    --table-header-bg: #07111a;
+    --table-alternate-bg: #03080d;
+
+    --searchbar-border-color: rgba(17, 159, 205, 0.2);
+    --searchbar-bg: #07111a;
+    --searchbar-fg: #ecf4f8;
+    --searchbar-shadow-color: rgba(17, 159, 205, 0.1);
+    --searchresults-header-fg: #5f8da0;
+    --searchresults-border-color: rgba(17, 159, 205, 0.15);
+    --searchresults-li-bg: #07111a;
+    --search-mark-bg: rgba(6, 214, 160, 0.25);
+
+    --color-scheme: dark;
+
+    --copy-button-filter: invert(72%) sepia(21%) saturate(543%)
+        hue-rotate(156deg) brightness(87%) contrast(90%);
+    --copy-button-filter-hover: invert(70%) sepia(85%) saturate(394%)
+        hue-rotate(113deg) brightness(98%) contrast(97%);
+
+    --footnote-highlight: #119fcd;
+
+    --overlay-bg: rgba(4, 11, 17, 0.7);
+
+    --blockquote-note-color: #119fcd;
+    --blockquote-tip-color: #06d6a0;
+    --blockquote-important-color: #4cbd97;
+    --blockquote-warning-color: #ffd167;
+    --blockquote-caution-color: #ef476f;
+
+    --sidebar-header-border-color: rgba(17, 159, 205, 0.2);
+}
+
+.ayu {
+    --bg: #020508;
+    --fg: #7fafc0;
+    --text-heading: #ecf4f8;
+
+    --sidebar-bg: #050a0f;
+    --sidebar-fg: #7fafc0;
+    --sidebar-non-existant: #3d6b7d;
+    --sidebar-active: #06d6a0;
+    --sidebar-spacer: rgba(17, 159, 205, 0.12);
+
+    --scrollbar: rgba(17, 159, 205, 0.25);
+
+    --icons: #7fafc0;
+    --icons-hover: #ecf4f8;
+
+    --links: #119fcd;
+
+    --inline-code-color: #ffd167;
+
+    --theme-popup-bg: #050a0f;
+    --theme-popup-border: rgba(17, 159, 205, 0.2);
+    --theme-hover: rgba(17, 159, 205, 0.1);
+
+    --quote-bg: rgba(17, 159, 205, 0.04);
+    --quote-border: rgba(17, 159, 205, 0.15);
+
+    --warning-border: #ef476f;
+
+    --table-border-color: rgba(17, 159, 205, 0.12);
+    --table-header-bg: #050a0f;
+    --table-alternate-bg: #010203;
+
+    --searchbar-border-color: rgba(17, 159, 205, 0.2);
+    --searchbar-bg: #050a0f;
+    --searchbar-fg: #ecf4f8;
+    --searchbar-shadow-color: rgba(17, 159, 205, 0.1);
+    --searchresults-header-fg: #5f8da0;
+    --searchresults-border-color: rgba(17, 159, 205, 0.15);
+    --searchresults-li-bg: #050a0f;
+    --search-mark-bg: rgba(6, 214, 160, 0.25);
+
+    --color-scheme: dark;
+
+    --copy-button-filter: invert(72%) sepia(21%) saturate(543%)
+        hue-rotate(156deg) brightness(87%) contrast(90%);
+    --copy-button-filter-hover: invert(70%) sepia(85%) saturate(394%)
+        hue-rotate(113deg) brightness(98%) contrast(97%);
+
+    --footnote-highlight: #119fcd;
+
+    --overlay-bg: rgba(2, 5, 8, 0.7);
+
+    --blockquote-note-color: #119fcd;
+    --blockquote-tip-color: #06d6a0;
+    --blockquote-important-color: #4cbd97;
+    --blockquote-warning-color: #ffd167;
+    --blockquote-caution-color: #ef476f;
+
+    --sidebar-header-border-color: rgba(17, 159, 205, 0.2);
+}
+
+.rust {
+    --bg: #080f14;
+    --fg: #7fafc0;
+    --text-heading: #ecf4f8;
+
+    --sidebar-bg: #14171a;
+    --sidebar-fg: #7fafc0;
+    --sidebar-non-existant: #3d6b7d;
+    --sidebar-active: #ffd167; /* Yellow active */
+    --sidebar-spacer: rgba(255, 209, 103, 0.15);
+
+    --scrollbar: rgba(255, 209, 103, 0.3);
+
+    --icons: #7fafc0;
+    --icons-hover: #ecf4f8;
+
+    --links: #ffd167; /* Yellow links for Rust theme */
+
+    --inline-code-color: #06d6a0; /* Teal inline code */
+
+    --theme-popup-bg: #14171a;
+    --theme-popup-border: rgba(255, 209, 103, 0.25);
+    --theme-hover: rgba(255, 209, 103, 0.15);
+
+    --quote-bg: rgba(255, 209, 103, 0.05);
+    --quote-border: rgba(255, 209, 103, 0.2);
+
+    --warning-border: #ef476f;
+
+    --table-border-color: rgba(255, 209, 103, 0.15);
+    --table-header-bg: #14171a;
+    --table-alternate-bg: #090b0d;
+
+    --searchbar-border-color: rgba(255, 209, 103, 0.25);
+    --searchbar-bg: #14171a;
+    --searchbar-fg: #ecf4f8;
+    --searchbar-shadow-color: rgba(255, 209, 103, 0.15);
+    --searchresults-header-fg: #5f8da0;
+    --searchresults-border-color: rgba(255, 209, 103, 0.2);
+    --searchresults-li-bg: #14171a;
+    --search-mark-bg: rgba(255, 209, 103, 0.3);
+
+    --color-scheme: dark;
+
+    --copy-button-filter: invert(72%) sepia(21%) saturate(543%)
+        hue-rotate(156deg) brightness(87%) contrast(90%);
+    --copy-button-filter-hover: invert(70%) sepia(85%) saturate(394%)
+        hue-rotate(113deg) brightness(98%) contrast(97%);
+
+    --footnote-highlight: #ffd167;
+
+    --overlay-bg: rgba(8, 15, 20, 0.7);
+
+    --blockquote-note-color: #ffd167;
+    --blockquote-tip-color: #06d6a0;
+    --blockquote-important-color: #4cbd97;
+    --blockquote-warning-color: #ffd167;
+    --blockquote-caution-color: #ef476f;
+
+    --sidebar-header-border-color: rgba(255, 209, 103, 0.25);
+}
+
+/* Set global content max width slightly larger for better readability */
+:root {
+    --content-max-width: 820px !important;
+}
+
+/* ==========================================================================
+   Typography Overrides
+   ========================================================================== */
+html,
+body {
+    font-family:
+        "DM Sans",
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif !important;
+    font-weight: 400;
+    line-height: 1.625;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family:
+        "Montserrat",
+        "DM Sans",
+        -apple-system,
+        BlinkMacSystemFont,
+        sans-serif !important;
+    font-weight: 700 !important;
+    color: var(--text-heading) !important;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+}
+
+h1 {
+    font-size: 2.8rem;
+    margin-bottom: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+h2 {
+    font-size: 2.1rem;
+    border-bottom: 1px solid rgba(17, 159, 205, 0.12) !important;
+    padding-bottom: 0.6rem;
+    margin-top: 2.75rem;
+    margin-bottom: 1.1rem;
+}
+
+.light h2 {
+    border-bottom: 1px solid rgba(17, 159, 205, 0.08) !important;
+}
+
+h3 {
+    font-size: 1.7rem;
+    margin-top: 2rem;
+    margin-bottom: 0.7rem;
+}
+
+h4 {
+    font-size: 1.4rem;
+    margin-top: 1.75rem;
+    margin-bottom: 0.6rem;
+}
+
+a {
+    color: var(--links);
+    transition: color 0.2s ease;
+}
+
+/* ==========================================================================
+   Chrome / Layout Enhancements
+   ========================================================================== */
+
+/* Menu bar (Navbar) */
+.menu-bar {
+    background: rgba(7, 17, 26, 0.7) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(17, 159, 205, 0.1) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25);
+    z-index: 10;
+}
+
+.light .menu-bar {
+    background: rgba(244, 248, 250, 0.7) !important;
+    border-bottom: 1px solid rgba(17, 159, 205, 0.08) !important;
+    box-shadow: 0 4px 20px rgba(17, 159, 205, 0.04);
+}
+
+.menu-bar .icon-button {
+    color: var(--icons) !important;
+    transition: color 0.25s ease !important;
+}
+
+.menu-bar .icon-button:hover {
+    color: var(--icons-hover) !important;
+}
+
+/* Sidebar */
+.sidebar {
+    border-right: 1px solid rgba(17, 159, 205, 0.1) !important;
+    box-shadow: 4px 0 30px rgba(0, 0, 0, 0.15);
+}
+
+.light .sidebar {
+    border-right: 1px solid rgba(17, 159, 205, 0.08) !important;
+    box-shadow: 4px 0 20px rgba(17, 159, 205, 0.02);
+}
+
+/* Sidebar navigation
+   --------------------------------------------------------------------------
+   mdBook's defaults leave a large gap between entries
+   (`.chapter-item { margin-block-start: 0.6em }` and `.section { line-height:
+   1.9em }`). We tighten that rhythm and treat the flex row that wraps each
+   link (`.chapter-link-wrapper`) as the highlight pill, so the whole row —
+   link plus fold chevron — reacts to hover and active state together. */
+
+.sidebar .chapter li.chapter-item {
+    line-height: 1.3;
+    margin-block-start: 5px;
+}
+
+.sidebar .chapter .section {
+    line-height: 1.3;
+    padding-inline-start: 14px;
+}
+
+/* Section labels (the part titles between groups of pages) */
+.sidebar .chapter li.part-title {
+    margin: 1.5rem 8px 0.35rem;
+    padding: 0 12px;
+    font-size: 1.02rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--sidebar-non-existant);
+}
+
+/* The flex row that wraps the link (and optional chevron) is the pill */
+.sidebar .chapter .chapter-link-wrapper {
+    border-radius: 7px;
+    margin: 0 8px;
+    transition: background 0.18s ease;
+}
+
+.sidebar .chapter .chapter-link-wrapper:hover {
+    background: var(--theme-hover);
+}
+
+.sidebar .chapter .chapter-link-wrapper:has(a.active) {
+    background: rgba(17, 159, 205, 0.14);
+}
+
+/* The navigation link itself fills the pill for a wide click target */
+.sidebar .chapter li a:not(.chapter-fold-toggle) {
+    flex: 1;
+    padding: 5px 12px;
+    font-size: 1.35rem;
+    font-weight: 400;
+    border-radius: 7px;
+    transition: color 0.18s ease;
+}
+
+.sidebar .chapter .chapter-link-wrapper:hover a:not(.chapter-fold-toggle) {
+    color: var(--sidebar-active) !important;
+}
+
+.sidebar .chapter li a.active {
+    color: var(--sidebar-active) !important;
+    font-weight: 600;
+}
+
+/* Fold chevron: subtle, brightens with the row */
+.sidebar .chapter .chapter-fold-toggle {
+    display: flex;
+    align-items: center;
+    opacity: 0.5;
+    transition: opacity 0.18s ease;
+}
+
+.sidebar .chapter .chapter-link-wrapper:hover .chapter-fold-toggle {
+    opacity: 0.9;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar);
+    border-radius: 99px;
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--links);
+}
+
+/* ==========================================================================
+   Code Blocks & Inline Code
+   ========================================================================== */
+
+/* Inline code elements */
+:not(pre) > code {
+    background: rgba(17, 159, 205, 0.06) !important;
+    border: 1px solid rgba(17, 159, 205, 0.15) !important;
+    border-radius: 6px !important;
+    padding: 2px 6px !important;
+    font-size: 0.85em !important;
+    color: var(--inline-code-color) !important;
+    font-family: "DM Mono", var(--mono-font) !important;
+}
+
+/* Preformatted code blocks - styled like the website's cards */
+.navy pre,
+.coal pre,
+.ayu pre,
+.rust pre {
+    background:
+        linear-gradient(135deg, rgba(15, 27, 44, 0.65), rgba(7, 17, 26, 0.85))
+            padding-box,
+        linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.08),
+                rgba(255, 255, 255, 0.02)
+            )
+            border-box !important;
+    border: 1px solid transparent !important;
+    border-radius: 12px !important;
+    box-shadow:
+        0 4px 30px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+        0 0 0 1px rgba(17, 159, 205, 0.12) !important;
+    padding: 1.6rem !important;
+    margin: 1.5rem 0 !important;
+    transition:
+        box-shadow 0.3s ease,
+        border-color 0.3s ease;
+}
+
+.navy pre:hover,
+.coal pre:hover,
+.ayu pre:hover,
+.rust pre:hover {
+    box-shadow:
+        0 8px 36px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+        0 0 0 1px rgba(17, 159, 205, 0.22),
+        0 0 20px -5px rgba(17, 159, 205, 0.15) !important;
+}
+
+.light pre {
+    background: #ffffff !important;
+    border: 1px solid rgba(17, 159, 205, 0.12) !important;
+    border-radius: 12px !important;
+    box-shadow:
+        0 4px 15px rgba(17, 159, 205, 0.04),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.8) !important;
+    padding: 1.6rem !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* Hide line numbers default background */
+pre code {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    font-family: "DM Mono", var(--mono-font) !important;
+    font-size: 0.85em !important;
+}
+
+/* ==========================================================================
+   Blockquotes / Callouts
+   ========================================================================== */
+blockquote {
+    border-radius: 8px;
+    padding: 1.2rem 1.8rem !important;
+    border: none !important;
+    border-left: 4px solid var(--quote-border) !important;
+    background-color: var(--quote-bg) !important;
+    margin: 1.5rem 0 !important;
+    color: var(--fg) !important;
+}
+
+/* Blockquote contents */
+blockquote p {
+    margin: 0 !important;
+}
+
+.blockquote-tag {
+    border-radius: 8px;
+    padding: 1.2rem 1.8rem !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+table {
+    width: 100%;
+    margin: 1.75rem 0 !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    border: 1px solid var(--table-border-color) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.light table {
+    box-shadow: 0 4px 12px rgba(17, 159, 205, 0.02);
+}
+
+th,
+td {
+    padding: 14px 18px !important;
+    text-align: left !important;
+    border: none !important;
+    border-bottom: 1px solid var(--table-border-color) !important;
+    font-size: 1.45rem;
+}
+
+tr:last-child td {
+    border-bottom: none !important;
+}
+
+thead {
+    background: var(--table-header-bg) !important;
+    color: var(--text-heading) !important;
+}
+
+thead th {
+    font-weight: 600 !important;
+    border-bottom: 2px solid var(--table-border-color) !important;
+}
+
+tbody tr:nth-child(2n) {
+    background: var(--table-alternate-bg) !important;
+}
+
+/* Pre-hover buttons styling (like copy code) */
+.buttons {
+    opacity: 0.3;
+    transition: opacity 0.25s ease;
+}
+
+pre:hover .buttons {
+    opacity: 0.9;
+}
+
+.buttons button {
+    border-radius: 6px !important;
+    border: 1px solid var(--sidebar-spacer) !important;
+    background-color: var(--theme-popup-bg) !important;
+    padding: 4px 8px !important;
+    transition: all 0.2s ease !important;
+}
+
+.buttons button:hover {
+    background-color: var(--theme-hover) !important;
+}
+
+/* Search Input */
+#searchbar {
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    font-size: 1.4rem !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 1px solid var(--searchbar-border-color) !important;
+}
+
+#searchbar:focus {
+    outline: none !important;
+    border-color: var(--links) !important;
+    box-shadow: 0 0 0 3px rgba(17, 159, 205, 0.2) !important;
+}
+
+/* ==========================================================================
+   Menu Bar Layout Adjustments (Reducing Gaps & Spacing)
+   ========================================================================== */
+
+#mdbook-menu-bar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    /* Constrain the active menu elements to the content max-width grid */
+    padding: 0 max(24px, calc((100% - var(--content-max-width)) / 2)) !important;
+    box-sizing: border-box !important;
+    height: var(--menu-bar-height) !important;
+}
+
+#mdbook-menu-bar .fa-svg {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.left-buttons {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important; /* Extremely tight gap between icons */
+    margin: 0 !important;
+}
+
+.left-buttons .icon-button,
+.left-buttons label {
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 32px !important;
+    width: 32px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    background: transparent !important;
+    transition: background 0.2s ease !important;
+}
+
+.left-buttons .icon-button:hover,
+.left-buttons label:hover {
+    background: rgba(17, 159, 205, 0.08) !important;
+}
+
+.menu-title {
+    flex: none !important;
+    margin: 0 0 0 12px !important;
+    font-size: 1.65rem !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    color: var(--text-heading) !important;
+    opacity: 0.95;
+    line-height: normal !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.right-buttons {
+    margin-left: auto !important; /* Push to the right side of the constrained content area */
+    margin-right: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important; /* Extremely tight gap between icons */
+}
+
+.right-buttons a {
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 32px !important;
+    width: 32px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: background 0.2s ease !important;
+}
+
+.right-buttons a:hover {
+    background: rgba(17, 159, 205, 0.08) !important;
+}
+
+/* Fix inner icons margin */
+.menu-bar .icon-button .fa-svg,
+.menu-bar a .fa-svg {
+    margin: 0 !important;
+    line-height: 1 !important;
+}
+
+/* Adjustments for smaller screen viewports */
+@media only screen and (max-width: 680px) {
+    #mdbook-menu-bar {
+        padding: 0 16px !important;
+    }
+}
+
+@media only screen and (max-width: 550px) {
+    .menu-title {
+        font-size: 1.45rem !important;
+        margin-left: 10px !important;
+        max-width: 180px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+@media only screen and (max-width: 440px) {
+    .menu-title {
+        display: none !important; /* Hide title on very narrow displays to prevent overcrowding */
+    }
+}
+
+/* ==========================================================================
+   Multi-language Code Tabs
+   --------------------------------------------------------------------------
+   datalogic-playground.css ships generic indigo defaults sized for a 16px
+   root, but mdBook sets the root to 62.5% (1rem = 10px), so those rem values
+   render ~38% too small. This block (loaded last) recolors the tabs to the
+   brand palette, restores legible sizing, and merges the active code panel
+   with the menu so it reads as one card.
+   ========================================================================== */
+
+.codetabs {
+    margin: 1.5rem 0;
+    border: 1px solid rgba(17, 159, 205, 0.18);
+    border-radius: 12px;
+    overflow: hidden;
+    background: transparent;
+}
+
+.codetabs .tab-menu {
+    background: var(--table-header-bg);
+    border-bottom: 1px solid rgba(17, 159, 205, 0.18);
+    padding: 0 0.4rem;
+    gap: 2px;
+}
+
+.codetabs .tab-btn {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--fg);
+    opacity: 0.7;
+    padding: 0.7rem 1.2rem;
+    font-family: "DM Sans", sans-serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        color 0.18s ease,
+        border-color 0.18s ease,
+        opacity 0.18s ease;
+}
+
+.codetabs .tab-btn:hover {
+    opacity: 1;
+    color: var(--text-heading);
+}
+
+.codetabs .tab-btn.active {
+    opacity: 1;
+    color: var(--links) !important;
+    border-bottom-color: var(--links);
+}
+
+/* Strip the standalone-card chrome off the code panel inside a tab so it
+   blends seamlessly under the tab strip. */
+.codetabs .tab-content,
+.codetabs .tab-content pre {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.navy .codetabs .tab-content pre,
+.coal .codetabs .tab-content pre,
+.ayu .codetabs .tab-content pre,
+.rust .codetabs .tab-content pre {
+    background: rgba(7, 17, 26, 0.55) !important;
+}
+
+.light .codetabs {
+    background: #ffffff;
+}
+
+.light .codetabs .tab-content pre {
+    background: #ffffff !important;
+}

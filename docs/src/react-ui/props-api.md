@@ -34,23 +34,9 @@ Accepts any valid JSONLogic expression or `null` for an empty state.
 
 ### Optional Props
 
-#### `mode`
-
-The editor mode.
-
-```tsx
-mode?: 'visualize' | 'debug' | 'edit'
-```
-
-Default: `'visualize'`
-
-```tsx
-<DataLogicEditor value={expr} mode="debug" />
-```
-
 #### `data`
 
-Data context for evaluation (required for debug mode).
+Data context for evaluation. When provided, the debugger controls become available and each node shows its evaluated result via the WASM trace API.
 
 ```tsx
 data?: unknown
@@ -60,25 +46,91 @@ data?: unknown
 <DataLogicEditor
   value={{ "var": "user.name" }}
   data={{ user: { name: "Alice" } }}
-  mode="debug"
 />
 ```
 
 #### `onChange`
 
-Callback when expression changes (for future edit mode).
+Callback fired when the expression changes. It is active whenever `editable` is set: edits in the canvas are debounced (about 300ms) and the rebuilt JSONLogic expression is passed back.
 
 ```tsx
-onChange?: (expression: JsonLogicValue | null) => void
+onChange?: (expr: JsonLogicValue | null) => void
 ```
 
 ```tsx
-// Future usage
 <DataLogicEditor
   value={expression}
   onChange={setExpression}
-  mode="edit"
+  editable
 />
+```
+
+#### `editable`
+
+Enable editing: node selection, properties panel, context menus, and undo/redo.
+
+```tsx
+editable?: boolean
+```
+
+Default: `false`
+
+```tsx
+<DataLogicEditor value={expr} onChange={setExpr} editable />
+```
+
+#### `templating`
+
+Enable templating mode: multi-key objects and arrays in compiled rules become output-shaping templates with embedded JSONLogic expressions, rather than being rejected as invalid JSONLogic. Matches the v5 core API (`Engine::builder().with_templating(true)`).
+
+```tsx
+templating?: boolean
+```
+
+Default: `false`
+
+```tsx
+<DataLogicEditor value={expr} templating />
+```
+
+#### `onTemplatingChange`
+
+Callback fired when templating mode changes from the toolbar checkbox.
+
+```tsx
+onTemplatingChange?: (value: boolean) => void
+```
+
+```tsx
+<DataLogicEditor
+  value={expr}
+  templating={templating}
+  onTemplatingChange={setTemplating}
+/>
+```
+
+#### `exampleSuggestions`
+
+Optional list of example names to surface as quick-action chips in the empty state. Each chip, when clicked, calls `onSelectExample` with the corresponding name. Ignored when the editor is non-empty.
+
+```tsx
+exampleSuggestions?: string[]
+```
+
+```tsx
+<DataLogicEditor
+  value={null}
+  exampleSuggestions={['Age check', 'Discount rule']}
+  onSelectExample={loadExample}
+/>
+```
+
+#### `onSelectExample`
+
+Callback invoked when a user clicks an empty-state example chip. Receives the example name from `exampleSuggestions`.
+
+```tsx
+onSelectExample?: (name: string) => void
 ```
 
 #### `theme`
@@ -125,71 +177,90 @@ type JsonLogicValue =
   | { [operator: string]: JsonLogicValue };
 ```
 
-### DataLogicEditorMode
-
-```tsx
-type DataLogicEditorMode = 'visualize' | 'debug' | 'edit';
-```
-
 ### DataLogicEditorProps
 
 ```tsx
 interface DataLogicEditorProps {
   value: JsonLogicValue | null;
-  onChange?: (expression: JsonLogicValue | null) => void;
+  onChange?: (expr: JsonLogicValue | null) => void;
   data?: unknown;
-  mode?: DataLogicEditorMode;
   theme?: 'light' | 'dark';
   className?: string;
+  templating?: boolean;
+  onTemplatingChange?: (value: boolean) => void;
+  editable?: boolean;
+  exampleSuggestions?: string[];
+  onSelectExample?: (name: string) => void;
 }
 ```
 
 ### LogicNode
 
-Internal node type (for advanced customization):
+A React Flow node carrying our custom node data (for advanced customization):
 
 ```tsx
-interface LogicNode {
-  id: string;
-  type: string;
-  position: { x: number; y: number };
-  data: {
-    label: string;
-    category: OperatorCategory;
-    value?: unknown;
-    result?: unknown;
-  };
+import type { Node } from '@xyflow/react';
+
+type LogicNode = Node<LogicNodeData>;
+
+type LogicNodeData = OperatorNodeData | LiteralNodeData | StructureNodeData;
+```
+
+The `data` payload is one of three shapes, discriminated by its `type` field:
+
+```tsx
+interface OperatorNodeData {
+  type: 'operator';
+  operator: string;
+  category: OperatorCategory;
+  label: string;
+  icon: IconName;
+  cells: CellData[];        // all arguments as rows
+  collapsed?: boolean;
+  expressionText?: string;  // single-line text when collapsed
+}
+
+interface LiteralNodeData {
+  type: 'literal';
+  value: JsonLogicValue;
+  valueType: 'string' | 'number' | 'boolean' | 'null' | 'array';
+}
+
+interface StructureNodeData {
+  type: 'structure';
+  isArray: boolean;
+  formattedJson: string;
+  elements: StructureElement[];
+  collapsed?: boolean;
+  expressionText?: string;
 }
 ```
 
 ### LogicEdge
 
-Internal edge type:
+An alias for the React Flow `Edge` type:
 
 ```tsx
-interface LogicEdge {
-  id: string;
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-}
+import type { Edge } from '@xyflow/react';
+
+type LogicEdge = Edge;
 ```
 
 ### OperatorCategory
 
 ```tsx
 type OperatorCategory =
-  | 'logical'
+  | 'variable'
   | 'comparison'
+  | 'logical'
   | 'arithmetic'
+  | 'control'
   | 'string'
   | 'array'
-  | 'control'
-  | 'variable'
-  | 'literal'
   | 'datetime'
-  | 'misc';
+  | 'validation'
+  | 'error'
+  | 'utility';
 ```
 
 ---
@@ -207,10 +278,15 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 ```tsx
 import type {
   DataLogicEditorProps,
-  DataLogicEditorMode,
   JsonLogicValue,
   LogicNode,
   LogicEdge,
+  LogicNodeData,
+  OperatorNodeData,
+  VariableNodeData,
+  LiteralNodeData,
+  NodeEvaluationResult,
+  EvaluationResultsMap,
   OperatorCategory,
 } from '@goplasmatic/datalogic-ui';
 ```
@@ -234,13 +310,13 @@ import { jsonLogicToNodes, applyTreeLayout } from '@goplasmatic/datalogic-ui';
 **jsonLogicToNodes:** Convert JSONLogic expression to React Flow nodes/edges
 
 ```tsx
-const { nodes, edges } = jsonLogicToNodes(expression, traceData?);
+const { nodes, edges, rootId } = jsonLogicToNodes(expression, { templating });
 ```
 
 **applyTreeLayout:** Apply dagre tree layout to nodes
 
 ```tsx
-const layoutedNodes = applyTreeLayout(nodes, edges, direction?);
+const layoutedNodes = applyTreeLayout(nodes, edges);
 ```
 
 ---
@@ -253,30 +329,37 @@ Convert a JSONLogic expression to React Flow nodes and edges.
 
 ```tsx
 function jsonLogicToNodes(
-  expression: JsonLogicValue,
-  trace?: TraceData
-): { nodes: LogicNode[]; edges: LogicEdge[] }
+  expr: JsonLogicValue | null,
+  options?: { templating?: boolean }
+): ConversionResult
+
+interface ConversionResult {
+  nodes: LogicNode[];
+  edges: LogicEdge[];
+  rootId: string | null;
+}
 ```
 
 **Parameters:**
-- `expression` - JSONLogic expression to convert
-- `trace` - Optional trace data for debug mode
+- `expr` - JSONLogic expression to convert (`null` yields an empty result)
+- `options.templating` - When `true`, multi-key objects compile to output-shaping templates with embedded JSONLogic
 
-**Returns:** Object with `nodes` and `edges` arrays
+**Returns:** A `ConversionResult` with `nodes`, `edges`, and `rootId` (the id of the root node, or `null` for an empty expression)
 
 **Example:**
 ```tsx
 import { jsonLogicToNodes } from '@goplasmatic/datalogic-ui';
 
 const expr = { "==": [{ "var": "x" }, 1] };
-const { nodes, edges } = jsonLogicToNodes(expr);
+const { nodes, edges, rootId } = jsonLogicToNodes(expr);
 
-console.log(nodes);
-// [
-//   { id: '0', type: 'operator', data: { label: '==', category: 'comparison' }, ... },
-//   { id: '1', type: 'variable', data: { label: 'x', category: 'variable' }, ... },
-//   { id: '2', type: 'literal', data: { label: '1', category: 'literal' }, ... }
-// ]
+// nodes: LogicNode[], React Flow nodes whose `data` is
+//   OperatorNodeData | LiteralNodeData | StructureNodeData (node `type` is
+//   'operator' | 'literal' | 'structure'). The `==` and `var` expressions
+//   become operator nodes (categories 'comparison' and 'variable'); the
+//   `1` becomes a literal node.
+// edges: LogicEdge[], React Flow edges linking each operator to its arguments
+// rootId: string, id of the root `==` node
 ```
 
 ### applyTreeLayout
@@ -286,17 +369,15 @@ Apply dagre-based tree layout to nodes.
 ```tsx
 function applyTreeLayout(
   nodes: LogicNode[],
-  edges: LogicEdge[],
-  direction?: 'TB' | 'LR'
+  edges?: LogicEdge[]
 ): LogicNode[]
 ```
 
 **Parameters:**
 - `nodes` - Array of nodes
-- `edges` - Array of edges
-- `direction` - Layout direction (default: `'TB'` for top-to-bottom)
+- `edges` - Optional array of edges. When omitted, edges are derived from the node relationships
 
-**Returns:** Nodes with updated positions
+**Returns:** Nodes with updated positions and dimensions. The layout flows left-to-right.
 
 ---
 
@@ -331,7 +412,7 @@ function CustomEditor({ expression }) {
 import { CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
 
 // Use in custom styling
-const logicalColor = CATEGORY_COLORS.logical;  // e.g., '#4CAF50'
+const logicalColor = CATEGORY_COLORS.logical;  // '#8b5cf6'
 ```
 
 ## Next Steps

@@ -152,14 +152,14 @@ try {
 
 ## Debugging
 
-Use `evaluate_with_trace` for step-by-step debugging:
+Use `evaluateWithTrace` for step-by-step debugging:
 
 ```javascript
-import init, { evaluate_with_trace } from '@goplasmatic/datalogic-wasm';
+import init, { evaluateWithTrace } from '@goplasmatic/datalogic-wasm';
 
 await init();
 
-const trace = evaluate_with_trace(
+const trace = evaluateWithTrace(
   '{"and": [{"var": "a"}, {"var": "b"}]}',
   '{"a": true, "b": false}',
   false

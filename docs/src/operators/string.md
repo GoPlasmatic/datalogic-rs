@@ -172,15 +172,18 @@ Get the length of a string or array.
 { "length": "Hello" }
 // Result: 5
 
-// Array length
-{ "length": [1, 2, 3, 4, 5] }
+// Array length (pass a value that resolves to an array)
+{ "length": { "var": "nums" } }
+// Data: { "nums": [1, 2, 3, 4, 5] }
 // Result: 5
 
-// Empty values
+// Empty string
 { "length": "" }
 // Result: 0
 
-{ "length": [] }
+// Empty array (data-driven)
+{ "length": { "var": "empty" } }
+// Data: { "empty": [] }
 // Result: 0
 
 // With variables
@@ -193,6 +196,9 @@ Get the length of a string or array.
 // Data: { "password": "secret123" }
 // Result: true
 ```
+
+**Notes:**
+- `length` takes exactly one argument. A literal array such as `{ "length": [1, 2, 3] }` is parsed as a multi-argument call and throws Invalid Arguments. Pass a single value that resolves to an array (for example `{ "length": { "var": "items" } }`).
 
 **Try it:**
 
@@ -429,10 +435,13 @@ Split a string into an array.
 // Data: { "tags": "rust,json,logic" }
 // Result: ["rust", "json", "logic"]
 
-// Get first part
-{ "var": "0" }
-// Applied to: { "split": ["user@example.com", "@"] }
-// Result: "user"
+// The split result is an array you can index into.
+{ "split": ["user@example.com", "@"] }
+// Result: ["user", "example.com"]
+// To select a specific element, index into that array in a later step (for
+// example bind the result in your data, or use it inside an array operator).
+// The snippet { "var": "0" } is illustrative of selecting the first element
+// ("user") from the split result; it is not a standalone rule on its own.
 ```
 
 **Try it:**

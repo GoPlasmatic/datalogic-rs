@@ -91,17 +91,19 @@ interface TracedResult {
   expression_tree: {        // Tree structure of the expression
     id: number;
     expression: string;
-    children?: ExpressionNode[];
+    children: ExpressionNode[];
   };
   steps: Step[];            // Execution steps
 }
 
 interface Step {
+  step_id: number;
   node_id: number;
-  operator: string;
-  input_values: any[];
-  output_value: any;
   context: any;
+  result?: any;   // present on success
+  error?: string;  // present on failure
+  iteration_index?: number;
+  iteration_total?: number;
 }
 ```
 

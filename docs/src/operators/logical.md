@@ -169,7 +169,7 @@ Logical AND with short-circuit evaluation.
 **Notes:**
 - Short-circuits: stops at first falsy value
 - Returns the actual value, not necessarily a boolean
-- Empty `and` returns `true` (vacuous truth)
+- Empty `and` returns `null`
 
 ---
 
@@ -229,7 +229,7 @@ Logical OR with short-circuit evaluation.
 - Short-circuits: stops at first truthy value
 - Returns the actual value, not necessarily a boolean
 - Useful for default value patterns
-- Empty `or` returns `false`
+- Empty `or` returns `null`
 
 ---
 
@@ -247,6 +247,7 @@ The default JavaScript-style truthiness:
 | `""` | No |
 | `[1, 2]`, `{"a": 1}` | Yes |
 | `[]` | No |
+| `{}` | No |
 | `null` | No |
 
 This can be customized via `EvaluationConfig`. See [Configuration](../advanced/configuration.md).

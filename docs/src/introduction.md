@@ -38,7 +38,7 @@ For the cross-runtime installation instructions and repository details, see the 
 - 🛠️ **Ready-Made Rule Builder:** Drop `@goplasmatic/datalogic-ui` into your React dashboard to let users edit and step-through rules visually.
 - 🦀 **Rust-First Core:** Clean, robust Rust API designed to be zero-cost, fully thread-safe (`Logic` is `Send + Sync`), and buildable with `#![forbid(unsafe_code)]`.
 - 📦 **Serde-Optional:** Compile without `serde_json` for a minimal dependency tree. Opt-in when you need direct typed JSON serialization/deserialization.
-- 🔋 **Battery-Included Operators:** Comes with 59 built-in operators (datetime, arithmetic, regex, logical) and is easily extensible with custom operators.
+- 🔋 **Battery-Included Operators:** Comes with 50+ built-in operators (59 with all operator features enabled), spanning datetime, arithmetic, regex, and logical categories, and is easily extensible with custom operators.
 
 
 ## How It Works
@@ -205,6 +205,6 @@ This rule checks if `age > 18` AND `country == "US"`.
 - [Installation](getting-started/installation.md) - Add datalogic to your project
 - [Quick Start](getting-started/quick-start.md) - Get up and running in minutes
 - [Migration Guide](migration.md) - Move from v4 to v5
-- [Operators](operators/overview.md) - Explore all 59 built-in operators
+- [Operators](operators/overview.md) - Explore all built-in operators (59 with all operator features enabled)
 - [API Reference](api/reference.md) - Public Rust types and the 5-tier API model
 - [Starter Boilerplates](getting-started/boilerplates.md) - Deploy microservices in Express, FastAPI, and Axum.

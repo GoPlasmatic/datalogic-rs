@@ -156,7 +156,7 @@ pub fn session(&self) -> Session<'_>;
 
 #### `trace` (feature = "trace")
 
-Open a [`TracedSession`](#tracedsession-feature--trace) that records
+Open a [`TracedSession`](#tracedsession) that records
 execution steps. Mirrors `session()` 1:1 — every `eval*` returns a
 `TracedRun<R>` carrying the result, steps, and compile-time expression
 tree.
@@ -266,13 +266,12 @@ The trait is sealed — external crates cannot add new shapes.
 enum DataValue<'a> {
     Null,
     Bool(bool),
-    Number(NumberRepr),
+    Number(NumberValue),
     String(&'a str),
     Array(&'a [DataValue<'a>]),
     Object(&'a [(&'a str, DataValue<'a>)]),
     DateTime(...),  // feature = "datetime"
     Duration(...),  // feature = "datetime"
-    InputRef(...),  // borrow-through into caller input
 }
 ```
 
@@ -286,17 +285,29 @@ heap-allocated owned tree (e.g. as the return of `Engine::eval` /
 
 ## EvaluationConfig
 
-Configuration for evaluation behavior. All fields are public — set them
-with struct update syntax:
+Configuration for evaluation behavior. The struct is `#[non_exhaustive]`,
+so it cannot be built with a struct literal from outside the crate.
+Construct it via `default()` (or a preset) and chain the `with_*` setters:
 
 ```rust
-EvaluationConfig {
-    arithmetic_nan_handling: NanHandling::ThrowError,
-    division_by_zero: DivisionByZeroHandling::ReturnSaturated,
-    loose_equality_errors: true,
-    truthy_evaluator: TruthyEvaluator::JavaScript,
-    numeric_coercion: NumericCoercionConfig::default(),
+// #[non_exhaustive]: fields shown for reference, not for direct literals.
+pub struct EvaluationConfig {
+    pub arithmetic_nan_handling: NanHandling,        // default: ThrowError
+    pub division_by_zero: DivisionByZeroHandling,    // default: ReturnSaturated
+    pub loose_equality_errors: bool,                 // default: true
+    pub truthy_evaluator: TruthyEvaluator,           // default: JavaScript
+    pub numeric_coercion: NumericCoercionConfig,     // default: NumericCoercionConfig::default()
+    pub max_recursion_depth: u32,                    // default: 256
+    // more fields may be added in 5.x
 }
+
+let config = EvaluationConfig::default()
+    .with_arithmetic_nan_handling(NanHandling::ThrowError)
+    .with_division_by_zero(DivisionByZeroHandling::ReturnSaturated)
+    .with_loose_equality_errors(true)
+    .with_truthy_evaluator(TruthyEvaluator::JavaScript)
+    .with_numeric_coercion(NumericCoercionConfig::default())
+    .with_max_recursion_depth(256);
 ```
 
 Presets:
@@ -383,25 +394,32 @@ is hidden so it can evolve without breaking the trait contract.
 Structured error type:
 
 ```rust
+#[non_exhaustive]
 pub struct Error {
     pub kind: ErrorKind,
-    pub operator: Option<String>,
-    pub path: Vec<u32>,
+    /* private fields: operator, node_ids */
 }
 
+// Read the contextual metadata via accessor methods, not fields:
+impl Error {
+    pub fn operator(&self) -> Option<&str>;  // outermost failing operator, when known
+    pub fn node_ids(&self) -> &[u32];         // compiled-node breadcrumb, leaf-to-root
+}
+
+// ErrorKind variants carry `Cow<'static, str>` payloads (not `String`):
 pub enum ErrorKind {
-    InvalidOperator(String),
-    InvalidArguments(String),
-    VariableNotFound(String),
+    InvalidOperator(Cow<'static, str>),
+    InvalidArguments(Cow<'static, str>),
+    VariableNotFound(Cow<'static, str>),
     InvalidContextLevel(isize),
-    TypeError(String),
-    ArithmeticError(String),
+    TypeError(Cow<'static, str>),
+    ArithmeticError(Cow<'static, str>),
     Custom(CustomErrorSource),
-    ParseError(String),
+    ParseError(Cow<'static, str>),
     Thrown(OwnedDataValue),
-    FormatError(String),
+    FormatError(Cow<'static, str>),
     IndexOutOfBounds { index: isize, length: usize },
-    ConfigurationError(String),
+    ConfigurationError(Cow<'static, str>),
 }
 ```
 
@@ -514,10 +532,10 @@ use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::builder()
-        .with_config(EvaluationConfig {
-            arithmetic_nan_handling: NanHandling::IgnoreValue,
-            ..Default::default()
-        })
+        .with_config(
+            EvaluationConfig::default()
+                .with_arithmetic_nan_handling(NanHandling::IgnoreValue),
+        )
         .build();
 
     let compiled = engine.compile_arc(

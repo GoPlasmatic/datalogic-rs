@@ -290,9 +290,9 @@ Check if all elements satisfy a condition.
 // Data: { "users": [{ "active": true }, { "active": true }] }
 // Result: true
 
-// Empty array returns true (vacuous truth)
+// Empty array returns false (in this engine, all-of-empty is false)
 { "all": [[], { ">": [{ "var": "" }, 0] }] }
-// Result: true
+// Result: false
 ```
 
 **Try it:**
@@ -417,21 +417,22 @@ Sort an array.
 
 **Syntax:**
 ```json
-{ "sort": array }
 { "sort": [array] }
-{ "sort": [array, comparator] }
+{ "sort": [array, ascending] }
+{ "sort": [array, ascending, key_extractor] }
 ```
 
 **Arguments:**
-- `array` - Array to sort
-- `comparator` - Optional comparison logic
+- `array` - Array to sort (a value that resolves to an array)
+- `ascending` - Optional direction boolean: `true` (or omitted) sorts ascending, `false` sorts descending
+- `key_extractor` - Optional per-element expression that produces the sort key for each element
 
 **Returns:** Sorted array.
 
 **Examples:**
 
 ```json
-// Sort numbers
+// Sort numbers (ascending by default)
 { "sort": [[3, 1, 4, 1, 5, 9]] }
 // Result: [1, 1, 3, 4, 5, 9]
 
@@ -439,10 +440,16 @@ Sort an array.
 { "sort": [["banana", "apple", "cherry"]] }
 // Result: ["apple", "banana", "cherry"]
 
-// Sort with custom comparator
+// Sort descending
+{ "sort": [{ "var": "nums" }, false] }
+// Data: { "nums": [3, 1, 4, 1, 5, 9] }
+// Result: [9, 5, 4, 3, 1, 1]
+
+// Sort objects ascending by a key extractor
 { "sort": [
     { "var": "items" },
-    { "-": [{ "var": "a.price" }, { "var": "b.price" }] }
+    true,
+    { "var": "price" }
 ]}
 // Data: {
 //   "items": [
@@ -457,6 +464,10 @@ Sort an array.
 
 <div class="playground-widget" data-logic='{"sort": [[3, 1, 4, 1, 5, 9]]}' data-data='{}'>
 </div>
+
+**Notes:**
+- The second argument is a direction boolean, not a comparator: `true` (or omitted) sorts ascending, `false` descending. A non-boolean direction falls back to ascending.
+- The optional third argument is a per-element key extractor (evaluated with each element as its context), not an `a`/`b` binary comparator. There is no `a`/`b` comparator form.
 
 ---
 

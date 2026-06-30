@@ -196,14 +196,14 @@ For the `DataLogicEditor` component:
    ```tsx
    const expression = useMemo(() => ({ ... }), [deps]);
    ```
-2. **Debounce data changes in debug mode:**
+2. **Debounce data changes when debugging:** providing `data` enables the debugger, so debounce it to avoid re-evaluating on every keystroke.
    ```tsx
    const debouncedData = useDebouncedValue(data, 200);
-   <DataLogicEditor value={expr} data={debouncedData} mode="debug" />
+   <DataLogicEditor value={expr} data={debouncedData} />
    ```
-3. **Use visualize mode when debugging isn't needed:**
+3. **Omit `data` when debugging isn't needed:** without it the component renders the expression as a read-only tree, skipping evaluation.
    ```tsx
-   <DataLogicEditor value={expr} mode="visualize" />
+   <DataLogicEditor value={expr} />
    ```
 
 ## Profiling

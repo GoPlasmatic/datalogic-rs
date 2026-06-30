@@ -1,24 +1,24 @@
-# Editor Modes
+# Usage Modes
 
-The DataLogicEditor supports three modes, each providing different levels of functionality.
+The DataLogicEditor has no `mode` enum. Its behavior is driven entirely by which props you pass. The same component is a read-only viewer, a live debugger, a visual editor, or any combination of those, depending on `data`, `editable`, and `templating`.
 
-## Mode Overview
+## Behavior Overview
 
-| Mode | API Value | Description | Requires Data |
-|------|-----------|-------------|---------------|
-| ReadOnly | `'visualize'` | Static diagram visualization | No |
-| Debugger | `'debug'` | Diagram with evaluation results | Yes |
-| Editor | `'edit'` | Visual builder (coming soon) | Optional |
+| Behavior | Enabled by | Description | Requires `data` |
+|----------|------------|-------------|-----------------|
+| Read-only | (none) | Static diagram visualization | No |
+| Debugger | `data` | Diagram with per-node evaluation results and a step-through trace | Yes |
+| Editing | `editable` | Visual builder: node selection, properties panel, context menus, undo/redo | No |
+| Templating | `templating` | Multi-key objects and arrays become output-shaping templates | No |
 
-## Visualize Mode (Default)
+These are not mutually exclusive. Setting `editable` and providing `data` at the same time gives you live debugging while you edit.
 
-The default mode renders a static flow diagram of the JSONLogic expression.
+## Read-only (Default)
+
+With only a `value`, the editor renders a static flow diagram of the JSONLogic expression.
 
 ```tsx
-<DataLogicEditor
-  value={expression}
-  mode="visualize"  // Optional, this is the default
-/>
+<DataLogicEditor value={expression} />
 ```
 
 **Use cases:**
@@ -32,15 +32,14 @@ The default mode renders a static flow diagram of the JSONLogic expression.
 - Tree-based automatic layout
 - Color-coded operator categories
 
-## Debug Mode
+## Debugging
 
-Debug mode adds evaluation results to each node, showing how the expression evaluates against provided data.
+Provide a `data` prop and the editor overlays evaluation results on each node, showing how the expression evaluates against the data, and exposes debugger controls for stepping through the execution trace.
 
 ```tsx
 <DataLogicEditor
   value={expression}
   data={contextData}
-  mode="debug"
 />
 ```
 
@@ -51,117 +50,108 @@ Debug mode adds evaluation results to each node, showing how the expression eval
 - Learning JSONLogic
 
 **Features:**
-- All visualization features, plus:
+- All read-only features, plus:
 - Evaluation results displayed on each node
-- Step-by-step execution visibility
+- Step-by-step execution visibility via debugger controls
 - Context values shown for variable nodes
 - Highlighted execution path
 
-### Debug Mode Requirements
+Internally, when `data` is provided the component uses the WASM `evaluateWithTrace` API to capture the result of each sub-expression, the order of evaluation, context values at each step, and the final computed result.
 
-Debug mode requires the `data` prop. Without it, the component falls back to visualize mode:
+## Editing
 
-```tsx
-// This will work in debug mode
-<DataLogicEditor
-  value={expression}
-  data={{ x: 1 }}
-  mode="debug"
-/>
-
-// This falls back to visualize mode (no data)
-<DataLogicEditor
-  value={expression}
-  mode="debug"
-/>
-```
-
-### Tracing Execution
-
-In debug mode, the component uses `evaluate_with_trace` internally to capture:
-
-- The result of each sub-expression
-- The order of evaluation
-- Context values at each step
-- Final computed result
-
-## Edit Mode (Coming Soon)
-
-Edit mode will provide a full visual builder for creating and modifying JSONLogic expressions.
+Set `editable` to turn on the full visual builder.
 
 ```tsx
-// Planned API
 <DataLogicEditor
   value={expression}
   onChange={setExpression}
-  data={contextData}  // Optional, for live preview
-  mode="edit"
+  editable
 />
 ```
 
-**Planned features:**
-- Drag-and-drop node creation
-- Visual connection editing
-- Operator palette
-- Live evaluation preview
-- Undo/redo support
-- Expression validation
+**Features:**
+- Node selection
+- Properties panel for the selected node
+- Context menus (right-click a node or the canvas)
+- Undo/redo
 
-> **Note:** Using `mode="edit"` currently renders the component in read-only mode. If `data` is provided, it shows debug evaluation. A console warning indicates this limitation.
+When `editable` is set, `onChange` is active: edits are debounced (about 300ms) and the rebuilt JSONLogic expression is passed back so you can keep your own state in sync.
 
-## Mode Comparison
+## Editing with Live Debugging
 
-### Visual Differences
+Combine `editable` with `data` to edit and debug in the same view: each node shows its evaluated result while you build the expression.
 
-| Aspect | Visualize | Debug | Edit (Planned) |
-|--------|-----------|-------|----------------|
+```tsx
+<DataLogicEditor
+  value={expression}
+  onChange={setExpression}
+  data={contextData}
+  editable
+/>
+```
+
+## Templating
+
+Set `templating` so that multi-key objects and arrays in the compiled rule become output-shaping templates with embedded JSONLogic, rather than being rejected as invalid JSONLogic. This matches the v5 core API (`Engine::builder().with_templating(true)`). The toolbar also surfaces a templating checkbox; wire `onTemplatingChange` to keep your state in sync.
+
+```tsx
+<DataLogicEditor
+  value={expression}
+  templating={templating}
+  onTemplatingChange={setTemplating}
+/>
+```
+
+## Behavior Comparison
+
+| Aspect | Read-only | Debugger (`data`) | Editing (`editable`) |
+|--------|-----------|-------------------|----------------------|
 | Node display | Structure only | Structure + values | Editable nodes |
 | Interactivity | Pan/zoom | Pan/zoom + inspection | Full editing |
-| Data required | No | Yes | Optional |
-| Output | Static | Static + trace | Two-way bound |
+| `data` required | No | Yes | No |
+| Output | Static | Static + trace | Two-way bound via `onChange` |
 
 ### Performance Considerations
 
-- **Visualize mode** is fastest - no evaluation overhead
-- **Debug mode** runs evaluation on every data change
-- **Edit mode** will include validation and preview costs
+- **Read-only** is fastest: no evaluation overhead.
+- **Debugger** runs evaluation on every `data` change.
+- **Editing** rebuilds the expression on each change (debounced before `onChange` fires).
 
-For large expressions or frequent data updates, consider debouncing:
+For large expressions or frequent data updates, consider debouncing the `data` you pass in:
 
 ```tsx
-import { useMemo } from 'react';
-import { useDebouncedValue } from './hooks';
+import { useDeferredValue } from 'react';
 
-function DebugWithDebounce({ expression, data }) {
-  const debouncedData = useDebouncedValue(data, 200);
+function DebugWithDeferred({ expression, data }) {
+  const deferredData = useDeferredValue(data);
 
   return (
     <DataLogicEditor
       value={expression}
-      data={debouncedData}
-      mode="debug"
+      data={deferredData}
     />
   );
 }
 ```
 
-## Switching Modes
+## Toggling Behavior at Runtime
 
-You can dynamically switch between modes:
+Because behavior is prop-driven, you toggle it by toggling props. For example, to switch between plain visualization and debugging, conditionally pass `data`:
 
 ```tsx
-function ModeToggle() {
-  const [mode, setMode] = useState<'visualize' | 'debug'>('visualize');
+function DebugToggle() {
+  const [debug, setDebug] = useState(false);
 
   return (
     <div>
-      <button onClick={() => setMode('visualize')}>Visualize</button>
-      <button onClick={() => setMode('debug')}>Debug</button>
+      <button onClick={() => setDebug((d) => !d)}>
+        {debug ? 'Hide results' : 'Show results'}
+      </button>
 
       <DataLogicEditor
         value={expression}
-        data={mode === 'debug' ? data : undefined}
-        mode={mode}
+        data={debug ? data : undefined}
       />
     </div>
   );

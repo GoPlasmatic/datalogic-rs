@@ -84,20 +84,29 @@ Alternative variable access with additional path navigation capabilities.
 // Data: { "name": "Bob" }
 // Result: "Bob"
 
-// Nested access
-{ "val": "config.settings.enabled" }
+// Nested access (use the array form; a dot string is NOT split)
+{ "val": ["config", "settings", "enabled"] }
 // Data: { "config": { "settings": { "enabled": true } } }
 // Result: true
+
+// A dot-path string is treated as a single literal key, so it does NOT navigate
+{ "val": "config.settings.enabled" }
+// Data: { "config": { "settings": { "enabled": true } } }
+// Result: null (looks up the key "config.settings.enabled", which is absent)
 ```
 
 **Try it:**
 
-<div class="playground-widget" data-logic='{"val": "config.settings.enabled"}' data-data='{"config": {"settings": {"enabled": true}}}'>
+<div class="playground-widget" data-logic='{"val": ["config", "settings", "enabled"]}' data-data='{"config": {"settings": {"enabled": true}}}'>
 </div>
 
 **Notes:**
-- Similar to `var` but with extended path syntax support
-- Useful for complex data navigation scenarios
+- `val` does NOT support `var`'s dot-path strings: a string argument is a single
+  literal key, so `{ "val": "a.b" }` looks up the key `"a.b"`, it does not descend
+  into `a` then `b`
+- For nested access use the array form `{ "val": ["a", "b"] }`, where each element
+  is one path segment
+- Useful for complex data navigation where path segments are computed
 
 ---
 
@@ -107,12 +116,15 @@ Check if a variable path exists in the data.
 
 **Syntax:**
 ```json
-{ "exists": "path" }
+{ "exists": "key" }
+{ "exists": ["key1", "key2", ...] }
 { "exists": { "var": "path" } }
 ```
 
 **Arguments:**
-- `path` - Path to check (string or var operation)
+- `key` - A single top-level key (string), or
+- `["key1", "key2", ...]` - An array of path segments for nested access, or
+- A `var` operation that resolves to the key/path to check
 
 **Returns:** `true` if the path exists, `false` otherwise.
 
@@ -129,10 +141,15 @@ Check if a variable path exists in the data.
 // Data: { "name": "Alice" }
 // Result: false
 
-// Check nested path
-{ "exists": "user.profile" }
+// Check nested path (use the array form; a dot string is one literal key)
+{ "exists": ["user", "profile"] }
 // Data: { "user": { "profile": { "name": "Bob" } } }
 // Result: true
+
+// A dot-path string checks a single literal key, so it does not descend
+{ "exists": "user.profile" }
+// Data: { "user": { "profile": { "name": "Bob" } } }
+// Result: false (no top-level key named "user.profile")
 
 // Check with var
 { "exists": { "var": "fieldName" } }

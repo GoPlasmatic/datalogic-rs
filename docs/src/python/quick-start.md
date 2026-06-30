@@ -11,7 +11,7 @@ from datalogic_py import apply
 
 # Arithmetic
 result = apply({"+": [1, 2, 3]}, {})
-print(result) # 6.0
+print(result) # 6
 
 # Variable Access
 result = apply(

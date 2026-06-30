@@ -19,10 +19,13 @@ Catch errors and provide fallback values.
 **Returns:** Result of expression if successful, or fallback value/expression result if an error occurs.
 
 **Context in Catch:**
-When an error is caught, the catch expression can access error details via `var`:
-- `{ "var": "message" }` - Error message
-- `{ "var": "code" }` - Error code (if thrown with one)
-- `{ "var": "" }` - Entire error object
+When an error is caught, the catch expression evaluates with the thrown error
+object as its context, so its fields are read via `var` / `val`:
+- A string `throw` produces the error object `{ "type": <string> }`, so the
+  message is read with `{ "var": "type" }`.
+- An object `throw` (sourced from data) preserves its own keys, so fields such
+  as `{ "var": "code" }` or `{ "var": "message" }` read those keys directly.
+- `{ "var": "" }` returns the entire error object.
 
 **Examples:**
 
@@ -41,18 +44,26 @@ When an error is caught, the catch expression can access error details via `var`
 ]}
 // Result: 3 (no error, normal result)
 
-// Catch with error access
+// Catch a string error: the string becomes the error object's "type" field
 { "try": [
-    { "throw": { "code": "NOT_FOUND", "message": "User not found" } },
-    { "cat": ["Error: ", { "var": "message" }] }
+    { "throw": "User not found" },
+    { "cat": ["Error: ", { "var": "type" }] }
 ]}
 // Result: "Error: User not found"
 
-// Access error code
+// Canonical pattern: read a thrown string back via "type"
 { "try": [
-    { "throw": { "code": 404 } },
+    { "throw": "Some error" },
+    { "val": "type" }
+]}
+// Result: "Some error"
+
+// Throw an object sourced from data, then read its fields by key
+{ "try": [
+    { "throw": { "var": "err" } },
     { "var": "code" }
 ]}
+// Data: { "err": { "code": 404, "message": "User not found" } }
 // Result: 404
 
 // Nested try for multiple error sources
@@ -87,8 +98,10 @@ When an error is caught, the catch expression can access error details via `var`
 ```json
 { "try": [
     { "risky_operation": [] },
-    { "cat": ["Operation failed: ", { "var": "message" }] }
+    { "cat": ["Operation failed: ", { "var": "type" }] }
 ]}
+// For a string throw, the thrown text is in the "type" field. If the operation
+// throws a structured object instead, read the relevant key (e.g. "message").
 ```
 
 **Try it:**
@@ -105,43 +118,47 @@ Throw an error with optional details.
 **Syntax:**
 ```json
 { "throw": message }
-{ "throw": { "code": code, "message": message, ...} }
+{ "throw": error_object }
 ```
 
 **Arguments:**
-- `message` - Error message string, or
-- Error object with `code`, `message`, and additional properties
+- `message` - Error message string. The string becomes the error object's `type` field, or
+- `error_object` - An error object value (sourced from data, or built in templating mode) with arbitrary keys such as `code` and `message`. A multi-key object written inline as a literal does NOT compile in the default engine, because it is parsed as an operator map.
 
 **Returns:** Never returns normally; throws an error that must be caught by `try`.
 
 **Examples:**
 
 ```json
-// Simple string error
+// Simple string error (the string lands in the error object's "type" field)
 { "throw": "Something went wrong" }
-// Throws error with message "Something went wrong"
+// Throws the error object { "type": "Something went wrong" }
 
-// Error with code
-{ "throw": { "code": "INVALID_INPUT", "message": "Age must be positive" } }
-// Throws error with code and message
+// Error object sourced from data. A literal multi-key object written inline
+// would be parsed as an operator map and fail to compile in the default engine.
+{ "throw": { "var": "err" } }
+// Data: { "err": { "code": "INVALID_INPUT", "message": "Age must be positive" } }
+// Throws an error carrying the object's fields
 
-// Error with additional data
-{ "throw": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid email format",
-    "field": "email",
-    "value": { "var": "email" }
-}}
-// Throws detailed error with context
+// Richer error: build the object in your data (or enable templating mode) and
+// throw it by reference.
+{ "throw": { "var": "validationError" } }
+// Data: {
+//   "validationError": {
+//     "code": "VALIDATION_ERROR",
+//     "message": "Invalid email format",
+//     "field": "email"
+//   }
+// }
 
-// Conditional throw
+// Conditional throw (string form)
 { "if": [
     { "<": [{ "var": "age" }, 0] },
-    { "throw": { "code": "INVALID_AGE", "message": "Age cannot be negative" } },
+    { "throw": "Age cannot be negative" },
     { "var": "age" }
 ]}
 // Data: { "age": -5 }
-// Throws error
+// Throws the error object { "type": "Age cannot be negative" }
 
 // Data: { "age": 25 }
 // Result: 25
@@ -153,11 +170,7 @@ Throw an error with optional details.
 ```json
 { "if": [
     { "missing": ["name", "email"] },
-    { "throw": {
-        "code": "MISSING_FIELDS",
-        "message": "Required fields missing",
-        "fields": { "missing": ["name", "email"] }
-    }},
+    { "throw": "Required fields missing" },
     "valid"
 ]}
 ```
@@ -166,12 +179,7 @@ Throw an error with optional details.
 ```json
 { "if": [
     { ">": [{ "var": "amount" }, { "var": "balance" }] },
-    { "throw": {
-        "code": "INSUFFICIENT_FUNDS",
-        "message": "Amount exceeds balance",
-        "requested": { "var": "amount" },
-        "available": { "var": "balance" }
-    }},
+    { "throw": "Amount exceeds balance" },
     { "-": [{ "var": "balance" }, { "var": "amount" }] }
 ]}
 ```
@@ -180,7 +188,7 @@ Throw an error with optional details.
 ```json
 { "if": [
     { "!==": [{ "type": { "var": "value" } }, "number"] },
-    { "throw": { "code": "TYPE_ERROR", "message": "Expected number" } },
+    { "throw": "Expected number" },
     { "*": [{ "var": "value" }, 2] }
 ]}
 ```
@@ -213,14 +221,14 @@ Throw an error with optional details.
 { "try": [
     { "if": [
         { "!": { "var": "input" } },
-        { "throw": { "code": "EMPTY", "message": "Input required" } },
+        { "throw": "Input required" },
         { "if": [
             { "<": [{ "length": { "var": "input" } }, 3] },
-            { "throw": { "code": "TOO_SHORT", "message": "Minimum 3 characters" } },
+            { "throw": "Minimum 3 characters" },
             { "var": "input" }
         ]}
     ]},
-    { "cat": ["Validation error: ", { "var": "message" }] }
+    { "cat": ["Validation error: ", { "var": "type" }] }
 ]}
 ```
 

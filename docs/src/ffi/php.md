@@ -31,7 +31,7 @@ use Goplasmatic\Datalogic\Engine;
 
 $engine = new Engine();
 $result = $engine->apply('{"+": [1, 2, 3]}', '{}');
-echo $result; // "3"
+echo $result; // "6"
 ```
 
 ### Reusable Compiled Rules

@@ -198,6 +198,97 @@ Return the first non-null value.
 
 ---
 
+## switch / match
+
+Match a value against a list of cases, returning the result of the first case
+whose key strictly equals the value, or a default. `match` is an alias of
+`switch`.
+
+> **Experimental / known issue:** in the current build this operator does not
+> match cases correctly; every input falls through to the default. The syntax
+> and behavior below describe the intended design. See the note at the end of
+> this section.
+
+**Syntax:**
+```json
+{ "switch": [value, [[case, result], ...]] }
+{ "switch": [value, [[case, result], ...], default] }
+```
+
+**Arguments:**
+- `value` - The discriminant, evaluated once
+- `[[case, result], ...]` - Array of `[case, result]` pairs; the first case that strictly equals `value` selects its result
+- `default` - Optional value used when no case matches (omitted: returns `null`)
+
+**Returns:** The matched case's result, the default, or `null`.
+
+**Examples (intended behavior):**
+
+```json
+{ "switch": [
+    { "var": "color" },
+    [["red", "stop"], ["green", "go"]],
+    "unknown"
+]}
+// Data: { "color": "green" }
+// Intended result: "go"
+
+// Alias `match`
+{ "match": [
+    { "var": "status" },
+    [[200, "OK"], [404, "Not Found"]],
+    "Unknown"
+]}
+// Data: { "status": 404 }
+// Intended result: "Not Found"
+```
+
+**Notes:**
+- Case comparison is strict (no type coercion): the number `1` does not match the string `"1"`.
+- The discriminant is evaluated once and compared against each case in order.
+- Only the matching case's result (or the default) is evaluated.
+- **Known issue:** this operator is currently broken in this build, falling through to the default for every input. Avoid relying on it until it is fixed.
+
+---
+
+## type
+
+Return the runtime type of a value as a string.
+
+**Syntax:**
+```json
+{ "type": value }
+```
+
+**Arguments:**
+- `value` - Any value to inspect
+
+**Returns:** One of `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"`, `"datetime"`, or `"duration"`.
+
+**Examples:**
+
+```json
+{ "type": 42 }
+// Result: "number"
+
+{ "type": "hello" }
+// Result: "string"
+
+// A value that resolves to an array
+{ "type": { "var": "items" } }
+// Data: { "items": [1, 2, 3] }
+// Result: "array"
+
+{ "type": { "now": [] } }
+// Result: "datetime"
+```
+
+**Notes:**
+- `type` reads exactly one argument. A literal array such as `{ "type": [1, 2, 3] }` is parsed as a multi-argument call, so it inspects the first element (here, `"number"`). Pass a single value that resolves to an array, e.g. `{ "type": { "var": "items" } }`.
+- Datetime and duration values (from `now`, `datetime`, `timestamp`) report `"datetime"` / `"duration"`, even though they render as strings in JSON output.
+
+---
+
 ## Comparison: if vs ?: vs ?? vs or
 
 | Operator | Use Case | Falsy Handling |

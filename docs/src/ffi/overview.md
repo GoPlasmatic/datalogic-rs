@@ -16,7 +16,7 @@ This ABI is consumed by the **Go, JVM (Java/Kotlin), .NET (C#), and PHP** bindin
      |    |    |    +---> PHP FFI (goplasmatic/datalogic)
      |    |    +--------> .NET P/Invoke (Goplasmatic.Datalogic)
      |    +-------------> JVM JNA (io.github.goplasmatic:datalogic)
-     +------------------> Go cgo (github.com/GoPlasmatic/datalogic-rs/bindings/go)
+     +------------------> Go cgo (github.com/GoPlasmatic/datalogic-rs/bindings/go/v5)
 ```
 
 ## Binary Distribution

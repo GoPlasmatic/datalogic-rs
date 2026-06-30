@@ -256,7 +256,7 @@ let handles: Vec<_> = (0..4).map(|_| {
 for h in handles {
     match h.join().expect("thread panicked") {
         Ok(value) => println!("{}", value),
-        Err(e) => eprintln!("error: {} (operator: {:?}, path: {:?})", e, e.operator, e.path),
+        Err(e) => eprintln!("error: {} (operator: {:?}, node_ids: {:?})", e, e.operator(), e.node_ids()),
     }
 }
 ```

@@ -13,7 +13,7 @@ Get the current UTC datetime.
 
 **Arguments:** None
 
-**Returns:** Current UTC datetime as ISO 8601 string.
+**Returns:** The current UTC datetime as a datetime value (rendered as an ISO 8601 string in JSON output).
 
 **Examples:**
 
@@ -39,8 +39,8 @@ Get the current UTC datetime.
 </div>
 
 **Notes:**
-- Returns ISO 8601 formatted string (e.g., "2024-01-15T14:30:00Z")
-- Always returns UTC time
+- Produces a datetime value, rendered as an ISO 8601 string (e.g., "2024-01-15T14:30:00Z"); its `type` is "datetime", not "string"
+- Always uses UTC time
 - Useful for time-based conditions and comparisons
 
 ---
@@ -57,7 +57,7 @@ Parse or validate a datetime value.
 **Arguments:**
 - `value` - ISO 8601 datetime string
 
-**Returns:** The validated datetime string (preserving timezone information).
+**Returns:** A datetime value (rendered as an ISO 8601 string, preserving timezone information); its `type` is "datetime", not "string".
 
 **Examples:**
 

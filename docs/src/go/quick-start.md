@@ -26,7 +26,7 @@ func main() {
 
 ## Reusable Compiled Rules
 
-For performance-critical code paths, compile the rule once. This stores the parsed rule in memory as optimized Rust bytecodes.
+For performance-critical code paths, compile the rule once. This parses the rule a single time into a reusable, optimized compiled form (an arena-allocated node tree), so repeated evaluations skip re-parsing.
 
 > **Important:** Always defer `.Close()` on engines and rules to prevent C FFI memory leaks!
 

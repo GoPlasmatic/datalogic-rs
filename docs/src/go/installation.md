@@ -27,6 +27,7 @@ import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
 | macOS | amd64 (Intel) | `darwin_amd64/` |
 | macOS | arm64 (Apple Silicon) | `darwin_arm64/` |
 | Windows | amd64 | `windows_amd64/` |
+| Windows | arm64 | `windows_arm64/` |
 
 cgo build tags automatically select the correct static library (`libdatalogic_c.a`) at build time. 
 
