@@ -2,7 +2,7 @@ name: _release-build-python
 
 # Internal reusable workflow — called by release.yml's `build-python` job.
 # Owns the three Python build-phase concerns:
-#   - wheels (matrix per os/arch/libc — 7 entries)
+#   - wheels (matrix per os/arch/libc — 8 entries)
 #   - sdist
 #   - pytest (single platform; logical behavior is platform-agnostic)
 #
@@ -23,13 +23,8 @@ jobs:
           - { os: linux,   arch: aarch64, libc: manylinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-gnu,   manylinux: "2014" }
           - { os: linux,   arch: x86_64,  libc: musllinux, runner: ubuntu-latest,  target: x86_64-unknown-linux-musl,   manylinux: "musllinux_1_2" }
           - { os: linux,   arch: aarch64, libc: musllinux, runner: ubuntu-latest,  target: aarch64-unknown-linux-musl,  manylinux: "musllinux_1_2" }
-          # x86_64-apple-darwin intentionally omitted in v5.0.0. The
-          # macos-13 runner is the only native x86_64 macOS host
-          # GitHub Actions offers and its queue routinely exceeds
-          # 30 minutes — bad for a release pipeline that gates on the
-          # slowest cell. Intel-Mac Python users install the sdist
-          # (needs a local Rust toolchain). The arm64 wheel and the
-          # six linux/windows wheels still ship.
+          # x86_64 macOS cross-compiles on the arm64 macos-15 runner (maturin-action runs `rustup target add` itself; abi3 needs no target interpreter), avoiding Intel-native macos-13 and its 30-minute queues.
+          - { os: macos,   arch: x86_64,  libc: "",         runner: macos-15,       target: x86_64-apple-darwin,         manylinux: "off" }
           - { os: macos,   arch: arm64,   libc: "",         runner: macos-15,       target: aarch64-apple-darwin,        manylinux: "off" }
           - { os: windows, arch: x86_64,  libc: "",         runner: windows-latest, target: x86_64-pc-windows-msvc,      manylinux: "off" }
           - { os: windows, arch: arm64,   libc: "",         runner: windows-11-arm, target: aarch64-pc-windows-msvc,     manylinux: "off" }

@@ -2,7 +2,8 @@ name: _release-build-node
 
 # Internal reusable workflow — called by release.yml's `build-node` job.
 # Owns the Node binding's build-phase concerns:
-#   - per-platform .node prebuilds via napi-cli (matrix: 8 entries)
+#   - per-platform .node prebuilds via napi-cli (7-entry matrix plus an
+#     alpine aarch64-musl docker job)
 #   - node:test smoke run on the host-native platform (single job)
 #
 # Each matrix entry uploads its own artifact (one .node file) for
@@ -23,24 +24,9 @@ jobs:
           - { os: linux,   arch: x64,   libc: gnu,   runner: ubuntu-latest,    target: x86_64-unknown-linux-gnu    }
           - { os: linux,   arch: arm64, libc: gnu,   runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu   }
           - { os: linux,   arch: x64,   libc: musl,  runner: ubuntu-latest,    target: x86_64-unknown-linux-musl   }
-          # aarch64-unknown-linux-musl intentionally omitted in v5.0.0.
-          # The ubuntu-24.04-arm host's apt musl-tools ships no libgcc_s
-          # and rustc's musl target hardcodes -lgcc_s as a late-link-arg,
-          # so a shared `.node` won't link. `-C link-self-contained=yes`
-          # is not enough — it only covers crt*.o, not libgcc_s.
-          # Re-add in v5.0.1 via the napi-rs Docker cross-compile image
-          # (ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine-aarch64).
-          # Alpine arm64 consumers fall back to source compile until then.
-          #
-          # x86_64-apple-darwin intentionally omitted in v5.0.0. Intel-Mac
-          # prebuilds previously needed the macos-13 runner (the only
-          # native x86_64 macOS host GitHub Actions offers), but that
-          # pool is being wound down with Apple's macOS-13 retirement
-          # and queues for it routinely exceed 30 minutes — bad for a
-          # release pipeline that gates everything on the slowest cell.
-          # macos-15 (arm64) could cross-compile to x86_64 but would
-          # lose the native smoke test. Intel-Mac Node consumers can
-          # build from source in the meantime (cargo + napi-cli).
+          # linux/arm64/musl is not a matrix row: apt musl-tools can't link a shared aarch64 .node, so it builds inside the napi-rs alpine image (prebuild-linux-arm64-musl job below).
+          # macos/x64 cross-compiles on the arm64 macos-15 runner (napi-rs's documented `napi build --target` pattern), avoiding Intel-native macos-13 and its 30-minute queues; the native-only smoke test skips, as on every cross-compiled cell.
+          - { os: macos,   arch: x64,   libc: "",    runner: macos-15,         target: x86_64-apple-darwin         }
           - { os: macos,   arch: arm64, libc: "",    runner: macos-15,         target: aarch64-apple-darwin        }
           - { os: windows, arch: x64,   libc: msvc,  runner: windows-latest,   target: x86_64-pc-windows-msvc      }
           - { os: windows, arch: arm64, libc: msvc,  runner: windows-11-arm,   target: aarch64-pc-windows-msvc     }
@@ -119,5 +105,26 @@ jobs:
           # Artifact name carries the triple so publish-node can match
           # each .node to its corresponding npm/<os-arch-libc>/ subpackage.
           name: node-prebuild-${{ matrix.target.os }}-${{ matrix.target.arch }}${{ matrix.target.libc && format('-{0}', matrix.target.libc) || '' }}
+          path: bindings/node/*.node
+          if-no-files-found: error
+
+  # aarch64-musl prebuild, built inside the napi-rs alpine image via plain `docker run` so the image's baked env (rustup toolchain under /root, RUSTFLAGS=-C target-feature=-crt-static, the aarch64-unknown-linux-musl target) applies as designed; a GHA `container:` job would override HOME and break rustup's toolchain lookup.
+  # A dedicated lts-alpine-aarch64 tag does not exist on ghcr.io; lts-alpine is multi-arch, and on this arm64 runner docker pulls the arm64 variant, so both the build and node:test run natively (no QEMU).
+  prebuild-linux-arm64-musl:
+    name: Build (linux / arm64 / musl)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build .node prebuild + run node:test (alpine container)
+        run: |
+          docker run --rm -v "$PWD":/build -w /build/bindings/node \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -c 'set -e; npm ci || npm install; npx napi build --platform --release --target aarch64-unknown-linux-musl; npm test'
+
+      - name: Upload .node artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-prebuild-linux-arm64-musl
           path: bindings/node/*.node
           if-no-files-found: error
