@@ -16,7 +16,26 @@ use super::operator;
 use super::optimize;
 
 /// Compile a single value into a [`CompiledNode`].
+///
+/// Wraps the recursive descent in a depth guard: each nesting level bumps the
+/// compile-time depth counter and bails with a `ConfigurationError` once it
+/// passes `MAX_COMPILE_DEPTH`. This bounds a programmatically-built rule
+/// (which reaches the compiler via `IntoLogic` without the JSON parser's own
+/// depth cap) so it can't overflow the stack here, in dispatch, or in the
+/// recursive `Drop` of the compiled tree.
 pub(super) fn compile_node(
+    value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    ctx.enter()?;
+    let result = compile_node_inner(value, engine, templating, ctx);
+    ctx.leave();
+    result
+}
+
+fn compile_node_inner(
     value: &OwnedDataValue,
     engine: Option<&Engine>,
     templating: bool,

@@ -173,7 +173,7 @@ rule.evaluate('{"age": 16}'); // "false"
 
 Evaluate and return a step-by-step execution trace. Useful for
 inspector UIs and debugging — the React debugger
-([`@goplasmatic/datalogic-ui`](../../ui/README.md)) consumes this shape
+([`@goplasmatic/datalogic-ui`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md)) consumes this shape
 directly.
 
 **Returns** — JSON string containing a `TracedResult`:
@@ -188,6 +188,30 @@ JSON.parse(trace);
 //   "steps": [ /* per-node execution steps */ ]
 // }
 ```
+
+## Engine and custom operators
+
+For custom operators (or templating without the boolean flag), construct an
+`Engine` with an options object. Each operator callback receives the
+pre-evaluated arguments as a JSON-array string and returns a JSON-value
+string:
+
+```javascript
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
+await init();
+
+const engine = new Engine({
+  customOperators: {
+    double: (argsJson) => String(JSON.parse(argsJson)[0] * 2),
+  },
+});
+engine.evalStr('{"double": [21]}', '{}'); // "42"
+```
+
+`Engine` also exposes `compile(logic)` returning a `Rule` for compile-once
+reuse. **Built-ins win**: a custom registration of a built-in name (`+`,
+`if`, `var`, ...) never dispatches. A custom-operator engine is confined to
+the Worker that created it (see Threading below).
 
 ## Error handling
 
@@ -282,8 +306,8 @@ wasm-pack test --headless --firefox
 ## Learn more
 
 - [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [Rust crate README](../../crates/datalogic-rs/README.md) — engine design, the 5-tier API model, custom operators
-- [React debugger](../../ui/README.md) — `@goplasmatic/datalogic-ui`, consumes this binding
+- [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md) — engine design, the 5-tier API model, custom operators
+- [React debugger](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md) — `@goplasmatic/datalogic-ui`, consumes this binding
 - [Full documentation](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/) — try rules live
 - [JSONLogic specification](https://jsonlogic.com/)

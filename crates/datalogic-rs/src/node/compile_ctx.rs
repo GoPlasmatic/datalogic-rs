@@ -33,6 +33,7 @@ pub(crate) const SYNTHETIC_ID: NodeId = None;
 pub(crate) struct CompileCtx {
     next_id: NonZeroU32,
     skip_fold: bool,
+    depth: usize,
 }
 
 const ID_ONE: NonZeroU32 = match NonZeroU32::new(1) {
@@ -40,11 +41,19 @@ const ID_ONE: NonZeroU32 = match NonZeroU32::new(1) {
     None => unreachable!(),
 };
 
+/// Maximum rule-tree nesting accepted at compile time. Mirrors the JSON
+/// parser's own depth cap so a programmatically-built `OwnedDataValue` rule
+/// (which reaches the compiler via `IntoLogic` without going through the
+/// string parser) can't drive unbounded recursion in `compile_node`,
+/// dispatch, or the recursive `Drop` of the resulting `CompiledNode` tree.
+pub(crate) const MAX_COMPILE_DEPTH: usize = 256;
+
 impl CompileCtx {
     pub(crate) fn new() -> Self {
         Self {
             next_id: ID_ONE,
             skip_fold: false,
+            depth: 0,
         }
     }
 
@@ -57,7 +66,30 @@ impl CompileCtx {
         Self {
             next_id: ID_ONE,
             skip_fold: true,
+            depth: 0,
         }
+    }
+
+    /// Enter one level of rule nesting during compilation. Errors once
+    /// nesting passes [`MAX_COMPILE_DEPTH`], bounding recursion for
+    /// programmatically-built rules that skip the JSON parser's own cap.
+    /// Every successful `enter()` must be paired with a [`Self::leave`] so
+    /// sibling subtrees are accounted from the correct depth.
+    #[inline]
+    pub(crate) fn enter(&mut self) -> crate::Result<()> {
+        self.depth += 1;
+        if self.depth > MAX_COMPILE_DEPTH {
+            return Err(crate::Error::configuration_error(format!(
+                "rule nesting exceeds the maximum compile depth of {MAX_COMPILE_DEPTH}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Leave one level of rule nesting. Pairs with [`Self::enter`].
+    #[inline]
+    pub(crate) fn leave(&mut self) {
+        self.depth -= 1;
     }
 
     /// Allocate a fresh node id. Returns the bare [`NonZeroU32`] — callers

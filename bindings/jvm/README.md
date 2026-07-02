@@ -19,9 +19,9 @@ JNA wrapper over the shared [`bindings/c`](../c) C ABI. Targets JDK 11+.
 </dependency>
 ```
 
-The JAR ships platform binaries under `META-INF/native/<jna-platform>/`
-(JNA's standard JAR-resource layout); the runtime auto-extracts and
-loads the right one for the host OS/arch.
+The JAR ships platform binaries at the classpath root under
+`<jna-platform>/` (where JNA's `Native.load` auto-extracts them); the
+runtime picks and loads the right one for the host OS/arch.
 
 ## Quick start
 

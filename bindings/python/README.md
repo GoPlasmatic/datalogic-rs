@@ -61,7 +61,7 @@ The Python binding mirrors the Rust engine's
 | Tier         | Entry point                              | Use when                                                      |
 |--------------|------------------------------------------|---------------------------------------------------------------|
 | One-shot     | `apply(rule, data)`                      | Ad-hoc evaluation, one rule + one data shape                  |
-| Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, future operator extensions) |
+| Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, custom operators)           |
 | Compile once | `Engine().compile(rule).evaluate(data)`  | Same rule evaluated against many data inputs                  |
 | Session      | `with engine.session() as sess: …`       | Hot loops — amortise arena reset across iterations            |
 
@@ -140,6 +140,25 @@ The arena that makes it fast can't be shared across threads (the same
 way a database connection is per-task in a connection-pool model);
 `Engine` and `Rule` are both thread-safe, so share those.
 
+## Custom operators
+
+Pass `custom_operators={"name": callable}` to `Engine(...)`. Each callable
+receives the operator's pre-evaluated arguments as a JSON-array string and
+returns a JSON string of the result:
+
+```python
+import json
+from datalogic_py import Engine
+
+engine = Engine(custom_operators={
+    "double": lambda args_json: json.dumps(json.loads(args_json)[0] * 2),
+})
+engine.eval_str('{"double": [21]}', '{}')  # "42"
+```
+
+**Built-ins win**: a custom registration of a built-in name (`+`, `if`,
+`var`, ...) never dispatches. Callbacks run with the GIL held.
+
 ## Error handling
 
 All exceptions descend from `DataLogicError`:
@@ -214,7 +233,7 @@ native speed.
 ## Learn more
 
 - [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [Rust crate README](../../crates/datalogic-rs/README.md) — engine design, custom operators, configuration knobs
+- [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md) — engine design, custom operators, configuration knobs
 - [Full documentation](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com/)

@@ -75,6 +75,39 @@ jobs:
         working-directory: bindings/jvm
         run: mvn -B -DskipTests package
 
+      # Load the natives the way a Maven Central consumer does: from the
+      # packaged JAR's classpath-root <jna-platform>/ resources, with
+      # jna.library.path UNSET. `mvn test` above points jna.library.path at
+      # the in-tree cdylib, so it never exercises the packaged layout; this
+      # step is the only guard on the resource path staged into the JAR.
+      - name: Smoke-test the packaged JAR (classpath-root native load)
+        working-directory: bindings/jvm
+        run: |
+          set -euo pipefail
+          JAR=$(ls target/datalogic-*.jar | grep -Ev '(sources|javadoc)' | head -1)
+          echo "Testing packaged JAR: $JAR"
+          mvn -B -q dependency:build-classpath -Dmdep.outputFile=deps-cp.txt
+          CP="$JAR:$(cat deps-cp.txt)"
+          mkdir -p smoke
+          cat > smoke/Smoke.java <<'EOF'
+          import com.goplasmatic.datalogic.Engine;
+          public class Smoke {
+              public static void main(String[] args) {
+                  try (Engine engine = new Engine()) {
+                      String out = engine.apply("{\"+\":[1,2]}", "{}");
+                      if (!"3".equals(out)) {
+                          throw new RuntimeException("unexpected result: " + out);
+                      }
+                      System.out.println("packaged-JAR native load OK: " + out);
+                  }
+              }
+          }
+          EOF
+          javac -cp "$CP" -d smoke smoke/Smoke.java
+          # No -Djna.library.path: force JNA to extract the native from the
+          # JAR's classpath-root resources, exactly as a published consumer would.
+          java -cp "$CP:smoke" Smoke
+
       - name: Upload JARs
         uses: actions/upload-artifact@v7
         with:

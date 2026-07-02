@@ -139,6 +139,30 @@ new Engine({ templating: true })
 `templating: true` enables the engine's output-shaping templating mode —
 multi-key objects in a rule compile to templates with embedded JSONLogic.
 
+## Custom operators
+
+Register host-language operators by passing a `{ name: fn }` map as the
+second constructor argument. Each callback receives the operator's
+pre-evaluated arguments as a JSON-array string and returns a JSON-value
+string:
+
+```js
+import { Engine } from '@goplasmatic/datalogic-node';
+
+const engine = new Engine({}, {
+  double: (argsJson) => String(JSON.parse(argsJson)[0] * 2),
+});
+const rule = engine.compile({ double: [21] });
+rule.evaluate({}); // 42
+```
+
+Callbacks run synchronously on the thread that created the engine.
+**Built-ins win**: registering a name that collides with a built-in
+operator (`+`, `if`, `var`, ...) has no effect. An engine carrying custom
+operators is **not** safe to share across worker threads (the JS callback
+is pinned to its originating thread); create one per worker. A plain
+engine or a compiled `Rule` with no custom operators is thread-safe.
+
 ## Performance
 
 This package wraps the same Rust engine measured as `dlrs:engine` in the

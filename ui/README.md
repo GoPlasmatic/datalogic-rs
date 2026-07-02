@@ -9,7 +9,7 @@ JSONLogic expressions as interactive node-based flow diagrams.
 This is the **React surface** of the
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs) monorepo.
 It consumes the WASM binding
-([`@goplasmatic/datalogic-wasm`](../bindings/wasm/README.md)) for evaluation
+([`@goplasmatic/datalogic-wasm`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md)) for evaluation
 and tracing — for the engine itself and the cross-runtime overview,
 see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
@@ -222,8 +222,8 @@ For complete documentation including all props, customization options, and advan
 ## Learn more
 
 - [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [WASM binding README](../bindings/wasm/README.md) — `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
-- [Rust crate README](../crates/datalogic-rs/README.md) — engine design, the 5-tier API model
+- [WASM binding README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md) — `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
+- [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md) — engine design, the 5-tier API model
 - [Full documentation](https://goplasmatic.github.io/datalogic-rs/)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 

@@ -130,6 +130,31 @@ func main() {
 }
 ```
 
+## Custom operators
+
+Build an engine with host-language operators via the fluent builder. Each
+`OperatorFunc` (`func(argsJSON string) (string, error)`) receives the
+pre-evaluated arguments as a JSON-array string and returns a JSON-value
+string:
+
+```go
+engine, _ := datalogic.NewEngineBuilder().
+    AddOperator("double", func(argsJSON string) (string, error) {
+        var args []float64
+        if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+            return "", err
+        }
+        return fmt.Sprintf("%v", args[0]*2), nil
+    }).
+    Build()
+defer engine.Close()
+
+out, _ := engine.Apply(`{"double":[21]}`, `{}`) // "42"
+```
+
+**Built-ins win**: a custom registration of a built-in name (`+`, `if`,
+`var`, ...) never dispatches.
+
 ## Error handling
 
 Every fallible operation returns a `*datalogic.Error` on failure,

@@ -13,10 +13,11 @@ evaluator**.
 
 This is the **Rust core** of the
 [`datalogic-rs` monorepo](https://github.com/GoPlasmatic/datalogic-rs).
-The repo also ships [WASM](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm),
-[Python](https://pypi.org/project/datalogic-py/), Go, and
-[React](https://www.npmjs.com/package/@goplasmatic/datalogic-ui)
-bindings — same rules, same semantics. For the cross-runtime overview
+The repo also ships official bindings for Node.js, the browser
+([WASM](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)),
+[Python](https://pypi.org/project/datalogic-py/), Go, Java, .NET, and PHP,
+plus a [React visual debugger](https://www.npmjs.com/package/@goplasmatic/datalogic-ui):
+same rules, same semantics. For the cross-runtime overview
 and the per-binding READMEs, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
@@ -143,7 +144,7 @@ a warm-up pass, use `session.allocated_bytes()` +
 `Send + Sync`), one `Session` per task (it's `Send` but `!Sync`, moves
 with the task across `.await` points).
 
-Full pattern: [`examples/compile_once_evaluate_many.rs`](./examples/compile_once_evaluate_many.rs).
+Full pattern: [`examples/compile_once_evaluate_many.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/compile_once_evaluate_many.rs).
 
 ### Tier 3 — Zero-copy `evaluate(&Bump)`
 
@@ -186,7 +187,7 @@ let result_string = traced.result.unwrap();
 // (drop into the React debugger or process programmatically).
 ```
 
-Full pattern: [`examples/tracing.rs`](./examples/tracing.rs).
+Full pattern: [`examples/tracing.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/tracing.rs).
 
 ## Input shapes
 
@@ -210,7 +211,7 @@ The Tier 0 / Tier 1 one-shot methods (`eval`, `eval_str`,
 `eval_into`) accept a similar set via the [`OwnedInput`] trait, which
 omits the `DataValue<'a>` shapes (no caller arena to borrow from).
 
-Runnable example: [`examples/zero_copy_input.rs`](./examples/zero_copy_input.rs).
+Runnable example: [`examples/zero_copy_input.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/zero_copy_input.rs).
 
 [`EvalInput`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/trait.EvalInput.html
 [`OwnedInput`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/trait.OwnedInput.html
@@ -304,7 +305,7 @@ let result = engine.eval_str(r#"{"double": 21}"#, "null").unwrap();
 assert_eq!(result, "42");
 ```
 
-Runnable example: [`examples/custom_operator.rs`](./examples/custom_operator.rs).
+Runnable example: [`examples/custom_operator.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/custom_operator.rs).
 Full guide: [Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
 
 The `CustomOperator` trait is the headline extension point and is
@@ -327,7 +328,7 @@ signature changes.
 Presets like `EvaluationConfig::safe_arithmetic()` and
 `EvaluationConfig::strict()` cover common postures. See the
 [Configuration guide](https://goplasmatic.github.io/datalogic-rs/advanced/configuration.html)
-and the runnable [`examples/configuration.rs`](./examples/configuration.rs).
+and the runnable [`examples/configuration.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/configuration.rs).
 
 ## Templating mode
 
@@ -352,7 +353,7 @@ let result = engine.eval_str(
 The 4.x JSONLogic `preserve` *operator* was removed in v5: literal
 scalars / arrays work inline already; templated objects belong in
 templating mode. Runnable example:
-[`examples/structured_objects.rs`](./examples/structured_objects.rs).
+[`examples/structured_objects.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/structured_objects.rs).
 
 ## Error model
 
@@ -374,7 +375,7 @@ let err = engine.eval_str(r#"{"var": "missing"}"#, r#"{}"#);
 // Switch to a strict config to surface them as `VariableNotFound`.
 ```
 
-Runnable example: [`examples/error_handling.rs`](./examples/error_handling.rs).
+Runnable example: [`examples/error_handling.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/error_handling.rs).
 
 ## Thread safety
 
@@ -393,7 +394,7 @@ enforces this at compile time — there's no runtime hazard.
 | `CustomOperator` implementors  | Register on the builder; live inside the shared `Engine` (`Send + Sync` bound) |
 | `Session`                      | One per task / per goroutine — the per-task workhorse                          |
 
-Runnable example: [`examples/thread_safety.rs`](./examples/thread_safety.rs).
+Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/thread_safety.rs).
 
 ## Feature flags
 
@@ -459,7 +460,7 @@ let result: String = engine.eval_str(
 ```
 
 Conformance test suites under
-[`tests/suites/flagd/`](./tests/suites/) mirror the canonical Go test
+[`tests/suites/flagd/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/tests/suites/) mirror the canonical Go test
 files in `open-feature/flagd` so every release is checked against the
 upstream behaviour.
 
@@ -470,7 +471,7 @@ lookups), values live in a `bumpalo::Bump` arena (no per-result heap
 allocation), and read-through operators like `var` borrow zero-copy
 from the caller's input. Geomean ~9.7 ns/op across 44 operator suites
 on Apple M2 Pro — see the cross-library comparison in
-[`tools/benchmark/BENCHMARK.md`](../../tools/benchmark/BENCHMARK.md).
+[`tools/benchmark/BENCHMARK.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).
 
 ## Migrating from v4
 
@@ -479,7 +480,7 @@ deprecated method shims. Headline renames: `DataLogic` → `Engine`,
 `evaluate_json` → `eval_str` / `eval_into::<T>`, `Operator` →
 `CustomOperator`, `with_config(...)` →
 `Engine::builder().with_config(...).build()`. See
-[`MIGRATION.md`](../../MIGRATION.md) for the full v4 → v5 cookbook and
+[`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md) for the full v4 → v5 cookbook and
 [`CHANGELOG.md`](CHANGELOG.md) for the chronological breakage list.
 
 ## Learn more
@@ -488,9 +489,9 @@ deprecated method shims. Headline renames: `DataLogic` → `Engine`,
 - [Documentation site](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference, advanced topics
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/) — try rules live in the visual debugger
 - [`docs.rs/datalogic-rs`](https://docs.rs/datalogic-rs) — Rust API reference
-- [`examples/README.md`](./examples/README.md) — index of runnable examples
-- [`tests/README.md`](./tests/README.md) — JSONLogic suite format
+- [`examples/README.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/README.md) — index of runnable examples
+- [`tests/README.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/tests/README.md) — JSONLogic suite format
 
 ## License
 
-Apache 2.0 — see [LICENSE](../../LICENSE).
+Apache 2.0 — see [LICENSE](https://github.com/GoPlasmatic/datalogic-rs/blob/main/LICENSE).
