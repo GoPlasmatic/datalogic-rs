@@ -1,6 +1,7 @@
 //! `slice` — array and string slicing with optional start/end/step.
 
 use crate::arena::{ContextStack, DataValue, bvec};
+use crate::operators::string::char_to_byte_offset;
 use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
@@ -88,20 +89,36 @@ fn slice_array<'a>(
     arena.alloc(DataValue::Array(out.into_bump_slice()))
 }
 
-/// String slice — allocate result in the arena.
+/// String slice — char-indexed; the contiguous `step == 1` case borrows a
+/// sub-slice of the source, other steps allocate the result in the arena.
 #[inline]
 fn slice_string<'a>(
-    s: &str,
+    s: &'a str,
     start: Option<i64>,
     end: Option<i64>,
     step: i64,
     arena: &'a Bump,
 ) -> &'a DataValue<'a> {
+    // Contiguous step==1: mirror the array arm. The selected chars form the
+    // run [a, b), and `s` is already an arena `&'a str`, so return a borrowed
+    // sub-slice at the char boundaries instead of collecting chars.
+    if step == 1 {
+        let char_len = s.chars().count() as i64;
+        let a = normalize_index(start.unwrap_or(0), char_len);
+        let b = normalize_index(end.unwrap_or(char_len), char_len);
+        if a >= b {
+            return crate::arena::singletons::singleton_empty_string();
+        }
+        let byte_a = char_to_byte_offset(s, a as usize);
+        let byte_b = byte_a + char_to_byte_offset(&s[byte_a..], (b - a) as usize);
+        return arena.alloc(DataValue::String(&s[byte_a..byte_b]));
+    }
+
     let chars: Vec<char> = s.chars().collect();
     let indices = slice_indices(chars.len() as i64, start, end, step);
     let result_string: String = indices.iter().map(|&i| chars[i as usize]).collect();
-    let s: &'a str = arena.alloc_str(&result_string);
-    arena.alloc(DataValue::String(s))
+    let out: &'a str = arena.alloc_str(&result_string);
+    arena.alloc(DataValue::String(out))
 }
 
 #[inline]

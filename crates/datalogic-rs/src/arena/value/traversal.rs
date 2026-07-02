@@ -118,7 +118,9 @@ pub(crate) fn apply_path_element<'a>(
             let idx = i as usize;
             return match *cur {
                 DataValue::Array(items) => items.get(idx),
-                DataValue::Object(_) => access_path_str_ref(cur, &i.to_string()),
+                // itoa renders the numeric key on the stack, skipping the
+                // heap `String` that `i.to_string()` paid per lookup.
+                DataValue::Object(_) => access_path_str_ref(cur, itoa::Buffer::new().format(i)),
                 _ => None,
             };
         }

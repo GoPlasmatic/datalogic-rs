@@ -78,6 +78,16 @@ serde_json = { version = "1.0.150", optional = true }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"], optional = true }
 datavalue = { version = "0.2.2", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { version = "3.20", features = ["collections"] }
+# Number -> string rendering on the `cat` / string-coercion hot path
+# (`arena::value::strings`). Both render digits without the `core::fmt`
+# machinery; ryu is used only where its output provably matches `Display`
+# (see `float_to_str`).
+itoa = "1"
+ryu = "1"
+# Inline-capacity frame stack for `ContextStack`, so iterator operators
+# (map/filter/reduce/quantifiers) never touch the heap at typical nesting
+# depths. Floor 1.6.1 avoids RUSTSEC-2021-0003 under minimal-versions.
+smallvec = "1.6.1"
 # Used by the `flagd` feature's `sem_ver` operator. `default-features =
 # false` strips `serde` / `serde1` integration we don't need — the
 # operator only uses `Version::parse` + `PartialOrd`.

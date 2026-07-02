@@ -307,7 +307,6 @@ impl NumericCoercionConfig {
         self.reject_non_numeric = value;
         self
     }
-
 }
 
 impl EvaluationConfig {

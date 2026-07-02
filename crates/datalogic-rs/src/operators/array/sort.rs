@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::arena::{ContextStack, DataValue, IterGuard};
+use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
 use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
@@ -16,6 +16,10 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 ///
 /// Fast path (extractor is a root-scope `var`): keys come from
 /// `traverse_segments` returning `&DataValue` directly, no key clones.
+///
+/// Scratch (index and key vectors) is bump-allocated in the eval arena,
+/// which the session resets wholesale after each evaluation, so sorting
+/// makes no per-call heap round-trips for its own buffers.
 #[inline]
 pub(crate) fn evaluate_sort<'a>(
     args: &'a [CompiledNode],
@@ -92,12 +96,13 @@ fn sort_direction<'a>(
 #[inline]
 fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) -> &'a DataValue<'a> {
     let len = src.len();
-    let mut indices: Vec<usize> = (0..len).collect();
+    let mut indices = bvec::<usize>(arena, len);
+    indices.extend(0..len);
     indices.sort_by(|&a, &b| {
         let cmp = compare_values(src.get(a), src.get(b));
         if ascending { cmp } else { cmp.reverse() }
     });
-    let slice = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| *src.get(i)));
+    let slice = arena.alloc_slice_fill_iter(indices.iter().map(|&i| *src.get(i)));
     arena.alloc(DataValue::Array(slice))
 }
 
@@ -125,14 +130,13 @@ fn sort_fast_path_var_extractor<'a>(
     }
 
     let len = src.len();
-    let mut keyed: Vec<(usize, Option<&DataValue<'a>>)> = (0..len)
-        .map(|i| {
-            (
-                i,
-                crate::arena::value::traverse_segments(src.get(i), segments),
-            )
-        })
-        .collect();
+    let mut keyed = bvec::<(usize, Option<&'a DataValue<'a>>)>(arena, len);
+    keyed.extend((0..len).map(|i| {
+        (
+            i,
+            crate::arena::value::traverse_segments(src.get(i), segments),
+        )
+    }));
     keyed.sort_by(|(_, ka), (_, kb)| {
         let cmp = match (ka, kb) {
             (Some(a), Some(b)) => compare_values(a, b),
@@ -142,7 +146,7 @@ fn sort_fast_path_var_extractor<'a>(
         };
         if ascending { cmp } else { cmp.reverse() }
     });
-    let slice = arena.alloc_slice_fill_iter(keyed.into_iter().map(|(i, _)| *src.get(i)));
+    let slice = arena.alloc_slice_fill_iter(keyed.iter().map(|&(i, _)| *src.get(i)));
     Some(arena.alloc(DataValue::Array(slice)))
 }
 
@@ -156,7 +160,7 @@ fn sort_general_extractor<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
-    let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(len);
+    let mut keys = bvec::<DataValue<'a>>(arena, len);
     let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
@@ -166,12 +170,13 @@ fn sort_general_extractor<'a>(
     }
     drop(guard);
 
-    let mut indices: Vec<usize> = (0..len).collect();
+    let mut indices = bvec::<usize>(arena, len);
+    indices.extend(0..len);
     indices.sort_by(|&a, &b| {
         let cmp = compare_values(&keys[a], &keys[b]);
         if ascending { cmp } else { cmp.reverse() }
     });
-    let slice = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| *src.get(i)));
+    let slice = arena.alloc_slice_fill_iter(indices.iter().map(|&i| *src.get(i)));
     Ok(arena.alloc(DataValue::Array(slice)))
 }
 

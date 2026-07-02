@@ -77,20 +77,32 @@ pub(crate) fn evaluate_substr<'a>(
         None => None,
     };
 
-    // Build the slice straight into the arena rather than collecting into a
-    // heap `String` and copying it in. The result is a sub-slice of `string`,
-    // so its byte length is bounded by the source; pre-size to avoid re-grows.
-    let mut buf = bumpalo::collections::String::with_capacity_in(string.len(), arena);
-    let chars = string.chars().skip(actual_start);
-    match take {
-        Some(n) => chars.take(n).for_each(|c| buf.push(c)),
-        None => chars.for_each(|c| buf.push(c)),
-    }
+    // The selected chars form one contiguous run of `string`, and `string`
+    // is already arena-resident (`data_to_str` returns `&'a str`), so the
+    // result is a borrowed sub-slice: walk to the char boundaries and slice,
+    // no copy.
+    let byte_start = char_to_byte_offset(string, actual_start);
+    let byte_end = match take {
+        Some(n) => byte_start + char_to_byte_offset(&string[byte_start..], n),
+        None => string.len(),
+    };
 
-    if buf.is_empty() {
+    let result = &string[byte_start..byte_end];
+    if result.is_empty() {
         return Ok(crate::arena::singletons::singleton_empty_string());
     }
-    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
+    Ok(arena.alloc(DataValue::String(result)))
+}
+
+/// Byte offset of the `n`-th char of `s`, or `s.len()` when `n` is at or
+/// past the end. `char_indices` yields char boundaries only, so the offset
+/// is always safe to slice at.
+#[inline]
+pub(crate) fn char_to_byte_offset(s: &str, n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+    s.char_indices().nth(n).map_or(s.len(), |(b, _)| b)
 }
 
 /// Resolve a substr `start` / `length` argument as `Option<i64>`. Literal
