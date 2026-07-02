@@ -166,7 +166,7 @@ impl CompiledNode {
     /// (test helpers, `eager_apply` value wrappers) carry [`SYNTHETIC_ID`]
     /// and round-trip to `0` here.
     #[inline]
-    pub fn id(&self) -> u32 {
+    pub(crate) fn id(&self) -> u32 {
         self.node_id().map(NonZeroU32::get).unwrap_or(0)
     }
 
@@ -315,7 +315,7 @@ impl CompiledNode {
     /// observed by tracing or error reporting, so assigning a real id would
     /// be misleading.
     #[inline]
-    pub fn synthetic_value(value: OwnedDataValue) -> Self {
+    pub(crate) fn synthetic_value(value: OwnedDataValue) -> Self {
         Self::value_with_id(SYNTHETIC_ID, value)
     }
 
@@ -326,7 +326,7 @@ impl CompiledNode {
     /// a new precomputable variant only requires editing
     /// [`populate::precompute_lit`].
     #[inline]
-    pub fn value_with_id(id: NodeId, value: OwnedDataValue) -> Self {
+    pub(crate) fn value_with_id(id: NodeId, value: OwnedDataValue) -> Self {
         let lit = precompute_lit(&value);
         CompiledNode::Value { id, value, lit }
     }
@@ -335,7 +335,7 @@ impl CompiledNode {
     ///
     /// Used when wrapping an error with structured context — we only report
     /// the outermost operator, not the full nested call chain.
-    pub fn operator_name(&self) -> Option<String> {
+    pub(crate) fn operator_name(&self) -> Option<String> {
         match self {
             CompiledNode::BuiltinOperator { opcode, .. } => Some(opcode.as_str().to_string()),
             CompiledNode::CustomOperator(data) => Some(data.name.clone()),

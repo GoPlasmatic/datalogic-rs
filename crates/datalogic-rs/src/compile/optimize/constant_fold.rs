@@ -16,7 +16,7 @@ use datavalue::{NumberValue, OwnedDataValue};
 ///
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
-pub fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
+pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator { .. } => {
             // First: pre-coerce numeric strings in arithmetic operators

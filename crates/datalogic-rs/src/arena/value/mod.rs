@@ -16,9 +16,9 @@ mod traversal;
 pub(crate) use coercion::coerce_to_number;
 pub(crate) use coercion::{coerce_to_number_cfg, try_coerce_to_integer_cfg};
 #[cfg(feature = "serde_json")]
-pub use conversion::data_to_value;
+pub(crate) use conversion::data_to_value;
 #[cfg(feature = "serde_json")]
-pub use conversion::value_to_data;
+pub(crate) use conversion::value_to_data;
 pub(crate) use lookup::object_lookup_field;
 pub(crate) use strings::{data_to_str, truthy_arena};
 pub(crate) use traversal::apply_path_element;

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+#![warn(unreachable_pub)]
 // Enable the `#[doc(cfg(...))]` attribute on docs.rs builds so feature-gated
 // public items render with a "Available on crate feature X only" badge. The
 // matching `--cfg docsrs` is passed by `[package.metadata.docs.rs]` in

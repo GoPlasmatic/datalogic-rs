@@ -17,7 +17,7 @@ pub(crate) mod singletons;
 pub(crate) mod util;
 pub(crate) mod value;
 
-pub use context::ContextStack;
+pub(crate) use context::ContextStack;
 pub(crate) use context::IterGuard;
 pub(crate) use util::bvec;
 pub use value::DataValue;

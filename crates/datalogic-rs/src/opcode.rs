@@ -51,7 +51,7 @@ use std::str::FromStr;
 /// OpCode enum for fast built-in operator lookup
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpCode {
+pub(crate) enum OpCode {
     // === Core: Variable Access ===
     Val = 1,
 
@@ -312,7 +312,7 @@ impl OpCode {
     ///
     /// When adding a new variant, add the canonical name here AND an entry
     /// to [`OPCODE_NAMES`] (the latter governs `from_str`).
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             // Core: variable access. `val` is canonical; `var` is an alias.
             OpCode::Val => "val",

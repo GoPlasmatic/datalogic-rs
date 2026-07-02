@@ -11,7 +11,7 @@ use crate::opcode::OpCode;
 ///
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
-pub fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
+pub(crate) fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator {
             id, opcode, args, ..

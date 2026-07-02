@@ -18,7 +18,7 @@ use super::helpers::is_truthy_literal;
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Only transforms the top-level node — recursive application
 /// is driven by the optimiser pipeline's fixpoint loop.
-pub fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
+pub(crate) fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
     match &node {
         CompiledNode::BuiltinOperator {
             id, opcode, args, ..

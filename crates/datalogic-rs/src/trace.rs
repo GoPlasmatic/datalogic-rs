@@ -191,7 +191,7 @@ pub(crate) struct TraceCollector {
 
 impl TraceCollector {
     /// Create a new trace collector
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             steps: Vec::new(),
             step_counter: 0,
@@ -200,7 +200,7 @@ impl TraceCollector {
     }
 
     /// Record a successful execution step
-    pub fn record_step(&mut self, node_id: u32, context: Value, result: Value) {
+    pub(crate) fn record_step(&mut self, node_id: u32, context: Value, result: Value) {
         let (iteration_index, iteration_total) = self.current_iteration();
         let step = ExecutionStep {
             step_id: self.step_counter,
@@ -216,7 +216,7 @@ impl TraceCollector {
     }
 
     /// Record an error execution step
-    pub fn record_error(&mut self, node_id: u32, context: Value, error: String) {
+    pub(crate) fn record_error(&mut self, node_id: u32, context: Value, error: String) {
         let (iteration_index, iteration_total) = self.current_iteration();
         let step = ExecutionStep {
             step_id: self.step_counter,
@@ -232,12 +232,12 @@ impl TraceCollector {
     }
 
     /// Push iteration context for map/filter/reduce operations
-    pub fn push_iteration(&mut self, index: u32, total: u32) {
+    pub(crate) fn push_iteration(&mut self, index: u32, total: u32) {
         self.iteration_stack.push((index, total));
     }
 
     /// Pop iteration context
-    pub fn pop_iteration(&mut self) {
+    pub(crate) fn pop_iteration(&mut self) {
         self.iteration_stack.pop();
     }
 
@@ -250,7 +250,7 @@ impl TraceCollector {
     }
 
     /// Consume the collector and return the recorded steps
-    pub fn into_steps(self) -> Vec<ExecutionStep> {
+    pub(crate) fn into_steps(self) -> Vec<ExecutionStep> {
         self.steps
     }
 }

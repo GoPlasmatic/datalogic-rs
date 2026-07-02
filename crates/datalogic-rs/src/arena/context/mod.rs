@@ -27,7 +27,7 @@ use bumpalo::Bump;
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
 /// root is `&'a DataValue<'a>` (deep-converted from `&Value` for the public
 /// API, or supplied directly by arena-native callers).
-pub struct ContextStack<'a> {
+pub(crate) struct ContextStack<'a> {
     root: &'a DataValue<'a>,
     frames: Vec<ContextFrame<'a>>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
@@ -161,13 +161,13 @@ impl<'a> ContextStack<'a> {
 
     /// Get the root input data (borrowed for the call's duration).
     #[inline]
-    pub fn root_input(&self) -> &'a DataValue<'a> {
+    pub(crate) fn root_input(&self) -> &'a DataValue<'a> {
         self.root
     }
 
     /// Current depth (number of pushed iteration frames).
     #[inline]
-    pub fn depth(&self) -> usize {
+    pub(crate) fn depth(&self) -> usize {
         self.frames.len()
     }
 

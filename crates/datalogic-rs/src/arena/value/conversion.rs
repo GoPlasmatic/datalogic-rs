@@ -9,9 +9,9 @@
 //! datavalue does not preserve.
 
 #[cfg(feature = "serde_json")]
-pub use serde_impl::data_to_value;
+pub(crate) use serde_impl::data_to_value;
 #[cfg(feature = "serde_json")]
-pub use serde_impl::value_to_data;
+pub(crate) use serde_impl::value_to_data;
 
 #[cfg(feature = "serde_json")]
 mod serde_impl {
@@ -24,7 +24,7 @@ mod serde_impl {
     /// shapes; wraps DateTime/Duration in the datalogic sentinel form so
     /// values produced inside the engine round-trip back through the input
     /// boundary.
-    pub fn data_to_value(v: &DataValue<'_>) -> Value {
+    pub(crate) fn data_to_value(v: &DataValue<'_>) -> Value {
         match v {
             #[cfg(feature = "datetime")]
             DataValue::DateTime(dt) => {
@@ -53,7 +53,7 @@ mod serde_impl {
 
     /// Deep-convert a `&Value` into an arena-resident `DataValue`. Thin
     /// wrapper over `datavalue::DataValue::from_serde_value_in`.
-    pub fn value_to_data<'a>(v: &Value, arena: &'a Bump) -> DataValue<'a> {
+    pub(crate) fn value_to_data<'a>(v: &Value, arena: &'a Bump) -> DataValue<'a> {
         DataValue::from_serde_value_in(v, arena)
     }
 }
