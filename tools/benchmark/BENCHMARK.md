@@ -42,6 +42,12 @@ own tier-by-tier numbers, see `bin/self.rs`.
   ~200 ms target — large N for the fast subjects, small N for the slow
   ones. ns/op normalises across iteration counts so cells stay
   comparable.
+- **Self benchmark (`bin/self.rs`)**: same median-of-3 discipline, with
+  the min/max spread printed per suite (`±n%`), and the evaluation
+  result passed through `std::hint::black_box` inside the timed loop so
+  the optimizer cannot elide unused work. Numbers from reports generated
+  before this change are slightly flattered; regenerate before
+  comparing.
 - **Pre-parse where possible**: subjects with a "compile" or "parse"
   step do it in setup (outside the timed loop). The cells measure
   per-call evaluation work, not per-call API shape.
@@ -196,4 +202,16 @@ reference and the recipe to add more subjects.
   detection. The 3-sample median rejects single-event outliers but
   doesn't bound systematic drift; rerun a few times before drawing
   fine-grained conclusions.
+- **The benchmark build is not the published-artifact build.** The Rust
+  rows compile with the root workspace's `lto = "fat"`,
+  `codegen-units = 1` release profile on the host CPU; published wheels,
+  prebuilds, and the WASM package are built by the release matrix with
+  their own profiles (the WASM workspace optimises for size). Treat the
+  matrix as engine-vs-engine on equal footing, not as a promise for a
+  specific packaged binary.
+- **Suite payloads are small** (hundreds of bytes). The matrix says
+  nothing yet about 1k+-element arrays, 100+-key objects, or deep
+  nesting; a macro-benchmark tier is tracked as future work. The honest
+  headline: single-digit nanoseconds for folded/scalar rules, 10-120 ns
+  for context-dependent rules.
 - Local-only by design — never run in CI.

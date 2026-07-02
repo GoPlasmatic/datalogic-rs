@@ -33,7 +33,22 @@ use datalogic_rs::{DataValue, Engine};
 
 const ITERATIONS: u32 = 100_000;
 
-fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, usize)> {
+/// Timed repetitions per suite. The median rep feeds `SuiteResult` (and
+/// the report); min/max give the spread so a single noisy run is visible
+/// instead of silently becoming the headline number.
+const TIMED_REPS: usize = 3;
+
+/// Spread of the timed reps around the median, as half the min-max range
+/// in percent. Small (under ~2%) means the median is trustworthy.
+fn spread_pct(min: f64, median: f64, max: f64) -> f64 {
+    if median == 0.0 {
+        0.0
+    } else {
+        (max - min) / 2.0 / median * 100.0
+    }
+}
+
+fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, usize, f64)> {
     let path = suites_root().join(suite_name);
     let cases = load_suite(&path)?;
 
@@ -82,16 +97,31 @@ fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, us
     let warmed_size = session.allocated_bytes();
     session.reset_with_capacity(warmed_size);
 
-    let start = Instant::now();
-    for (rule, data) in compiled.iter().zip(inputs.iter()) {
-        for _ in 0..ITERATIONS {
-            let _ = session.eval_borrowed(rule, *data);
-            session.reset();
+    // Median of TIMED_REPS timed passes. `black_box` the evaluation
+    // result inside the loop so the optimizer can't elide the eval as
+    // unused work (the result borrows the session arena and drops at
+    // statement end, before the reset).
+    let mut rep_times = Vec::with_capacity(TIMED_REPS);
+    for _ in 0..TIMED_REPS {
+        let start = Instant::now();
+        for (rule, data) in compiled.iter().zip(inputs.iter()) {
+            for _ in 0..ITERATIONS {
+                std::hint::black_box(session.eval_borrowed(rule, *data).ok());
+                session.reset();
+            }
         }
+        rep_times.push(start.elapsed());
     }
     std::hint::black_box((&inputs, &data_arena));
-    let total_time = start.elapsed();
+    rep_times.sort();
+    let total_time = rep_times[TIMED_REPS / 2];
     let total_ops = ITERATIONS as u64 * compiled.len() as u64;
+    let ns_of = |t: &std::time::Duration| t.as_nanos() as f64 / total_ops as f64;
+    let spread = spread_pct(
+        ns_of(&rep_times[0]),
+        ns_of(&total_time),
+        ns_of(&rep_times[TIMED_REPS - 1]),
+    );
 
     Some((
         SuiteResult::new(
@@ -101,6 +131,7 @@ fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<(SuiteResult, us
             total_time,
         ),
         warmed_size,
+        spread,
     ))
 }
 
@@ -133,11 +164,12 @@ fn main() {
             print!("  {suite:<48}");
             std::io::stdout().flush().unwrap();
             match benchmark_suite(&engine, suite) {
-                Some((r, warmed_size)) => {
+                Some((r, warmed_size, spread)) => {
                     println!(
-                        "{:>4} tests | avg {:>8.2} ns/op | total {:>10.1?} | arena {:>9}",
+                        "{:>4} tests | avg {:>8.2} ns/op ±{:>4.1}% | total {:>10.1?} | arena {:>9}",
                         r.test_count,
                         r.avg_op_ns,
+                        spread,
                         r.total_time,
                         fmt_bytes(warmed_size)
                     );
@@ -157,13 +189,17 @@ fn main() {
             .unwrap_or_else(|| "compatible.json".into());
         println!("Benchmark file: {suite} ({label})");
         match benchmark_suite(&engine, &suite) {
-            Some((r, warmed_size)) => {
+            Some((r, warmed_size, spread)) => {
                 println!("\n=== Benchmark Results ===");
                 println!("Test cases:          {}", r.test_count);
                 println!("Iterations per test: {ITERATIONS}");
+                println!("Timed reps (median): {TIMED_REPS}");
                 println!("Total operations:    {}", r.total_ops);
                 println!("Total time:          {:.2?}", r.total_time);
-                println!("Average op time:     {:.2} ns", r.avg_op_ns);
+                println!(
+                    "Average op time:     {:.2} ns (±{spread:.1}% across reps)",
+                    r.avg_op_ns
+                );
                 println!(
                     "Arena bytes:         {} ({warmed_size} B)",
                     fmt_bytes(warmed_size)
