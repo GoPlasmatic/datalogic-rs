@@ -147,11 +147,12 @@ Headline takeaways:
   what hurts. To go below this number you'd have to bypass V8 entirely
   (e.g. host the WASM in `wasmtime` from native Rust) — out of scope.
 - **`ERR` cells reflect operator-set differences**, not raw failure:
-  - The published `@goplasmatic/datalogic-wasm` ships a curated feature
-    set (`datetime + trace + templating`); suites needing operators
-    outside that (`try`, `length`, `sort`, `slice`, `coalesce`,
-    `exists`, `arithmetic/{abs,ceil,floor}`, `string/string.json`,
-    `datetime/now.json`) ERR on `dlrs:wasm:compiled`.
+  - Note: the `dlrs:wasm:compiled` ERR cells are stale. This matrix was
+    captured when `@goplasmatic/datalogic-wasm` shipped a curated feature
+    set; the build now enables every operator family plus `flagd`, `trace`,
+    and `templating`, so these cells should be re-captured. The suites
+    affected: `try`, `length`, `sort`, `slice`, `coalesce`, `exists`,
+    `arithmetic/{abs,ceil,floor}`, `string/string.json`, `datetime/now.json`.
   - `json-logic-js` ERRs on extension suites (it ships only the spec).
   - `json-logic-engine`'s compiled mode (`engine.build`) eagerly
     validates operator names and ERRs on unknown ones; the interpreted

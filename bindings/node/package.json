@@ -13,8 +13,9 @@
   },
   "keywords": [
     "jsonlogic",
-    "rules",
-    "engine",
+    "rules-engine",
+    "business-rules",
+    "feature-flags",
     "json",
     "logic",
     "napi"

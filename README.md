@@ -198,7 +198,7 @@ Geomean execution time across 44 benchmark suites (Apple M2 Pro, macOS 26.3, Rus
 datalogic-rs (native Rust)              | 9.7 ns   (■) 1x
 json-logic-engine (JS, compiled)        | 47.2 ns  (■■■■■) 4.9x
 json-logic-engine (JS, interpreted)     | 160.3 ns (■■■■■■■■■■■■■■■■) 16.5x
-jsonlogic-rs (bestowinc Rust engine)    | 218.0 ns (■■■■■■■■■■■■■■■~22.5x
+jsonlogic-rs (bestowinc Rust engine)    | 218.0 ns (■■■■■■■■■■■■■■■■■■■■■) 22.5x
 json-logic-js (Reference JS library)    | 423.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 43.7x
 @goplasmatic/datalogic-wasm (in Node)   | 855.6 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 88.2x
 ```

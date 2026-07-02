@@ -64,6 +64,13 @@ jobs:
         # exercising them.
         run: cargo test --workspace --all-features
 
+      - name: Run tests (no default features)
+        # The default (feature-free) build ships only the JSONLogic baseline
+        # and no external deps. Its behavioral tests are gated on `serde_json`,
+        # so this mainly guards that the minimal build keeps compiling and its
+        # doctests pass; the `--all-features` run above never exercises it.
+        run: cargo test -p datalogic-rs --no-default-features
+
       - name: Build examples (all features)
         # Catches example drift on any feature-gated example
         # (serde_json / templating / datetime / trace / error-handling).
@@ -236,6 +243,12 @@ jobs:
 
       - name: Build WASM
         run: cd bindings/wasm && ./build.sh
+
+      - name: Test WASM (node)
+        # Runs the committed `#[wasm_bindgen_test]` cases (tests/web.rs),
+        # including custom-operator coverage, which the build step alone
+        # never executes.
+        run: cd bindings/wasm && wasm-pack test --node
 
       # Hand the built pkg/ to the ui-build job below — saves it the cost
       # of repeating the wasm build from scratch.

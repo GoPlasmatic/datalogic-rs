@@ -104,7 +104,10 @@ cat > pkg/package.json << EOF
     "rules-engine",
     "wasm",
     "webassembly",
-    "business-rules"
+    "business-rules",
+    "feature-flags",
+    "openfeature",
+    "flagd"
   ],
   "type": "module",
   "main": "./nodejs/datalogic_wasm.js",
