@@ -17,6 +17,9 @@ exclude = [
     "bindings/c",
     "bindings/node",
     "ui",
+    # cargo-fuzz crate: needs nightly + libfuzzer, run explicitly via
+    # `cargo +nightly fuzz run eval_str` from crates/datalogic-rs/.
+    "crates/datalogic-rs/fuzz",
 ]
 
 [workspace.package]

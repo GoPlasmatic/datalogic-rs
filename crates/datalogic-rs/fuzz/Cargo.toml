@@ -1,0 +1,37 @@
+# Standalone workspace: keeps the sanitizer-instrumented fuzz build (and
+# its nightly-only flags) out of the root workspace's lockfile and builds.
+[workspace]
+
+[package]
+name = "datalogic-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.datalogic-rs]
+path = ".."
+features = [
+    "serde_json",
+    "templating",
+    "trace",
+    "datetime",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-control",
+    "ext-math",
+    "flagd",
+]
+
+[[bin]]
+name = "eval_str"
+path = "fuzz_targets/eval_str.rs"
+test = false
+doc = false
+bench = false
