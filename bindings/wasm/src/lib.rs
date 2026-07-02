@@ -3,32 +3,38 @@ use std::sync::Arc;
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
-    CustomOperator, DataValue, Engine as RsEngine, Error, Logic, Result as DlResult,
+    CustomOperator, DataValue, Engine as RsEngine, Error, EvaluationConfig, Logic,
+    Result as DlResult,
 };
 use js_sys::{Function, Object, Reflect};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-/// Build an [`RsEngine`] honoring the `templating` flag.
-fn make_engine(templating: bool) -> RsEngine {
+/// Build an [`RsEngine`] honoring the `templating` flag and an optional
+/// [`EvaluationConfig`] override.
+fn make_engine(templating: bool, config: Option<EvaluationConfig>) -> RsEngine {
+    let mut builder = RsEngine::builder();
     if templating {
-        RsEngine::builder().with_templating(true).build()
-    } else {
-        RsEngine::new()
+        builder = builder.with_templating(true);
     }
+    if let Some(config) = config {
+        builder = builder.with_config(config);
+    }
+    builder.build()
 }
 
 /// Serialize an `Error` (the merged structured form) for the JS boundary.
 /// Falls back to the Display string if JSON serialisation somehow fails so
-/// callers always receive *something* informative.
+/// callers always receive *something* informative. Feeds the `detailJson`
+/// property of the thrown JS `Error` (see [`build_js_error`]).
 fn err_to_json(err: &Error) -> String {
     serde_json::to_string(err).unwrap_or_else(|_| err.to_string())
 }
 
 /// Wrap a parse-stage failure into the same `{ type: "ParseError", ... }`
 /// JSON shape used for runtime errors. Used when the WASM boundary itself
-/// fails to parse user input (logic JSON / data JSON) before the engine ever
-/// runs.
+/// fails to parse user input (logic JSON / data JSON / options) before the
+/// engine ever runs.
 fn input_err_to_json(stage: &str, message: impl std::fmt::Display) -> String {
     #[derive(Serialize)]
     struct Wire<'a> {
@@ -45,6 +51,92 @@ fn input_err_to_json(stage: &str, message: impl std::fmt::Display) -> String {
     .unwrap_or_else(|_| message.to_string())
 }
 
+// =============== JS error bridge ===============
+
+/// Build the JS `Error` object every export rejects with.
+///
+/// Shape (single source of truth, shared by every export):
+/// - `name`: the stable error-kind tag ([`Error::tag`] values such as
+///   `"ParseError"`, `"Thrown"`, `"ConfigurationError"`), so callers can
+///   switch on `e.name`.
+/// - `message`: the human-readable Display string, including the
+///   `(in operator: ...)` suffix when the failing operator is known.
+/// - own properties: every field of the structured error JSON (`type`,
+///   variant extras like `variable` / `thrown` / `index` / `length`,
+///   optional `operator` / `node_ids` / `stage`) attached via
+///   `Reflect::set`.
+/// - `detailJson`: the raw JSON string that releases up to 5.0.x used as
+///   the rejection value, kept so existing consumers migrate with one
+///   property access instead of restructuring their catch blocks.
+fn build_js_error(name: &str, message: &str, detail_json: &str) -> JsValue {
+    let error = js_sys::Error::new(message);
+    error.set_name(name);
+    // Copy the structured fields onto the Error as own properties. Parsing
+    // our own serialisation cannot realistically fail; if it somehow does,
+    // callers still get `name` / `message` / `detailJson`.
+    if let Ok(parsed) = js_sys::JSON::parse(detail_json)
+        && let Some(obj) = parsed.dyn_ref::<Object>()
+    {
+        let keys = Object::keys(obj);
+        for i in 0..keys.length() {
+            let key = keys.get(i);
+            // The JSON `message` field is the kind-only form; the Error
+            // constructor already set the fuller Display string. Skip it.
+            if key.as_string().as_deref() == Some("message") {
+                continue;
+            }
+            if let Ok(value) = Reflect::get(obj, &key) {
+                let _ = Reflect::set(&error, &key, &value);
+            }
+        }
+    }
+    let _ = Reflect::set(
+        &error,
+        &JsValue::from_str("detailJson"),
+        &JsValue::from_str(detail_json),
+    );
+    error.into()
+}
+
+/// Convert an engine [`Error`] into the thrown JS `Error`.
+fn engine_err_to_js(err: &Error) -> JsValue {
+    build_js_error(err.tag(), &err.to_string(), &err_to_json(err))
+}
+
+/// Convert a boundary input failure (bad logic / data / options before the
+/// engine runs) into the thrown JS `Error`. Always named `ParseError`; the
+/// `stage` property says which input was bad.
+fn input_err_to_js(stage: &str, message: impl std::fmt::Display) -> JsValue {
+    let message = message.to_string();
+    build_js_error("ParseError", &message, &input_err_to_json(stage, &message))
+}
+
+/// Decode an optional engine-config input. Accepts `undefined` / `null`
+/// (no override), a JSON string, or a plain JS object (stringified via
+/// `JSON.stringify`), then parses it with
+/// [`EvaluationConfig::from_json_str`]. Unknown keys or values reject with
+/// a `ConfigurationError`.
+fn parse_config_value(value: &JsValue) -> Result<Option<EvaluationConfig>, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        return Ok(None);
+    }
+    let json = match value.as_string() {
+        Some(s) => s,
+        // `JSON.stringify` returns `undefined` (not a string) for
+        // non-serialisable inputs such as bare functions; `.as_string()`
+        // filters that case into the error arm below.
+        None => js_sys::JSON::stringify(value)
+            .ok()
+            .and_then(|s| s.as_string())
+            .ok_or_else(|| {
+                input_err_to_js("parse-config", "config must be a JSON string or a plain object")
+            })?,
+    };
+    EvaluationConfig::from_json_str(&json)
+        .map(Some)
+        .map_err(|e| engine_err_to_js(&e))
+}
+
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
@@ -58,12 +150,18 @@ pub fn init() {
 /// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 ///
 /// # Returns
-/// JSON string result, or the merged structured `Error` JSON on failure.
+/// JSON string result.
+///
+/// # Throws
+/// A real `Error` object on failure: `name` is the error-kind tag (for
+/// example `"ParseError"`), `message` is human-readable, and the
+/// structured fields (`type`, `operator`, `node_ids`, variant extras,
+/// `detailJson`) ride along as own properties.
 #[wasm_bindgen]
-pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, String> {
-    make_engine(templating)
+pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
+    make_engine(templating, None)
         .eval_str(logic, data)
-        .map_err(|e| err_to_json(&e))
+        .map_err(|e| engine_err_to_js(&e))
 }
 
 /// Evaluate a JSONLogic expression with execution trace for debugging.
@@ -82,8 +180,8 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, Str
 /// runtime failure the `error` field carries the merged structured `Error`
 /// JSON (`type`, `message`, variant extras, optional `operator`/`path`).
 #[wasm_bindgen(js_name = evaluateWithTrace)]
-pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, String> {
-    let engine = make_engine(templating);
+pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
+    let engine = make_engine(templating, None);
     let run = engine.trace().eval_str(logic, data);
     Ok(traced_run_to_json(&run))
 }
@@ -150,10 +248,27 @@ impl CompiledRule {
     /// # Arguments
     /// * `logic` - JSON string containing the JSONLogic expression
     /// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
+    /// * `config` - Optional evaluation config: a JSON string or a plain
+    ///   object with keys such as `preset` (`"default"` | `"safe_arithmetic"`
+    ///   | `"strict"`), `division_by_zero`, `truthy_evaluator`,
+    ///   `numeric_coercion`, `max_recursion_depth`. Omit (or pass
+    ///   `undefined` / `null`) for default semantics.
+    ///
+    /// # Throws
+    /// An `Error` named `ParseError` for malformed logic, or
+    /// `ConfigurationError` for an invalid config.
     #[wasm_bindgen(constructor)]
-    pub fn new(logic: &str, templating: bool) -> Result<CompiledRule, String> {
-        let engine = make_engine(templating);
-        let compiled = engine.compile_arc(logic).map_err(|e| err_to_json(&e))?;
+    pub fn new(
+        logic: &str,
+        templating: bool,
+        config: Option<JsValue>,
+    ) -> Result<CompiledRule, JsValue> {
+        let config = match &config {
+            Some(value) => parse_config_value(value)?,
+            None => None,
+        };
+        let engine = make_engine(templating, config);
+        let compiled = engine.compile_arc(logic).map_err(|e| engine_err_to_js(&e))?;
         Ok(CompiledRule { engine, compiled })
     }
 
@@ -163,15 +278,18 @@ impl CompiledRule {
     /// * `data` - JSON string containing the data to evaluate against
     ///
     /// # Returns
-    /// JSON string result or merged structured `Error` JSON on failure.
-    pub fn evaluate(&self, data: &str) -> Result<String, String> {
+    /// JSON string result.
+    ///
+    /// # Throws
+    /// An `Error` object carrying the structured fields (see [`evaluate`]).
+    pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
         let arena = Bump::new();
         let data_dv = DataValue::from_str(data, &arena)
-            .map_err(|e| input_err_to_json("parse-data", format!("{:?}", e)))?;
+            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
         let result = self
             .engine
             .evaluate(&self.compiled, data_dv, &arena)
-            .map_err(|e| err_to_json(&e))?;
+            .map_err(|e| engine_err_to_js(&e))?;
         Ok(result.to_string())
     }
 }
@@ -257,9 +375,17 @@ impl CustomOperator for JsOperator {
 /// ```ts
 /// {
 ///   templating?: boolean,
-///   customOperators?: Record<string, (argsJson: string) => string>
+///   customOperators?: Record<string, (argsJson: string) => string>,
+///   config?: string | object
 /// }
 /// ```
+///
+/// `config` tunes evaluation semantics. Pass either a JSON string or a
+/// plain object; accepted keys (all optional): `preset` (`"default"` |
+/// `"safe_arithmetic"` | `"strict"`), `arithmetic_nan_handling`,
+/// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
+/// `numeric_coercion`, `max_recursion_depth`. Unknown keys or values
+/// reject with a `ConfigurationError`.
 ///
 /// `customOperators` registers a JS function under each name. The function
 /// receives the evaluated args as a JSON-array string (e.g. `"[1, 2, \"x\"]"`)
@@ -278,11 +404,14 @@ pub struct Engine {
 #[wasm_bindgen]
 impl Engine {
     #[wasm_bindgen(constructor)]
-    pub fn new(options: JsValue) -> Result<Engine, String> {
-        let (templating, custom_ops) = parse_engine_options(&options)?;
+    pub fn new(options: JsValue) -> Result<Engine, JsValue> {
+        let (templating, custom_ops, config) = parse_engine_options(&options)?;
         let mut builder = RsEngine::builder();
         if templating {
             builder = builder.with_templating(true);
+        }
+        if let Some(config) = config {
+            builder = builder.with_config(config);
         }
         for (name, callback) in custom_ops {
             builder = builder.add_operator(name.clone(), JsOperator { name, callback });
@@ -293,8 +422,11 @@ impl Engine {
     }
 
     /// Compile a JSONLogic rule into a reusable [`Rule`].
-    pub fn compile(&self, logic: &str) -> Result<Rule, String> {
-        let compiled = self.inner.compile_arc(logic).map_err(|e| err_to_json(&e))?;
+    pub fn compile(&self, logic: &str) -> Result<Rule, JsValue> {
+        let compiled = self
+            .inner
+            .compile_arc(logic)
+            .map_err(|e| engine_err_to_js(&e))?;
         Ok(Rule {
             engine: self.inner.clone(),
             compiled,
@@ -304,10 +436,21 @@ impl Engine {
     /// One-shot: compile `logic` and evaluate against `data` in a single
     /// call. Returns the result as a JSON string.
     #[wasm_bindgen(js_name = evalStr)]
-    pub fn eval_str(&self, logic: &str, data: &str) -> Result<String, String> {
+    pub fn eval_str(&self, logic: &str, data: &str) -> Result<String, JsValue> {
         self.inner
             .eval_str(logic, data)
-            .map_err(|e| err_to_json(&e))
+            .map_err(|e| engine_err_to_js(&e))
+    }
+
+    /// Open a [`Session`]: a reusable evaluation handle that owns a bump
+    /// arena and resets it at the start of every `evaluate` call. This is
+    /// the hot-loop tier: steady-state evaluation reuses the arena chunks
+    /// instead of allocating a fresh arena per call like `Rule.evaluate`.
+    pub fn session(&self) -> Session {
+        Session {
+            engine: self.inner.clone(),
+            arena: Bump::new(),
+        }
     }
 }
 
@@ -322,34 +465,96 @@ pub struct Rule {
 #[wasm_bindgen]
 impl Rule {
     /// Evaluate the compiled rule against `data` (a JSON string).
-    pub fn evaluate(&self, data: &str) -> Result<String, String> {
+    pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
         let arena = Bump::new();
         let data_dv = DataValue::from_str(data, &arena)
-            .map_err(|e| input_err_to_json("parse-data", format!("{:?}", e)))?;
+            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
         let result = self
             .engine
             .evaluate(&self.compiled, data_dv, &arena)
-            .map_err(|e| err_to_json(&e))?;
+            .map_err(|e| engine_err_to_js(&e))?;
         Ok(result.to_string())
+    }
+}
+
+// =============== Session (arena reuse) ===============
+
+/// Reusable evaluation handle that owns a bump arena: the hot-loop tier.
+///
+/// Created via `engine.session()`. Each `evaluate` call resets the arena
+/// at the start (constant-time; the allocated chunks are retained), so a
+/// tight loop reuses memory instead of allocating a fresh arena per call.
+/// Results are returned as owned JSON strings, so they stay valid across
+/// subsequent calls and resets.
+///
+/// Like everything in this module, a session is single-threaded: share it
+/// across calls within one Worker, never across Workers.
+#[wasm_bindgen]
+pub struct Session {
+    engine: Arc<RsEngine>,
+    arena: Bump,
+}
+
+#[wasm_bindgen]
+impl Session {
+    /// Evaluate a compiled [`Rule`] against `data` (a JSON string),
+    /// reusing this session's arena. The arena is reset at the start of
+    /// each call, so the previous call's allocations never accumulate.
+    ///
+    /// # Returns
+    /// JSON string result.
+    ///
+    /// # Throws
+    /// An `Error` object carrying the structured fields (see [`evaluate`]).
+    pub fn evaluate(&mut self, rule: &Rule, data: &str) -> Result<String, JsValue> {
+        // Reset BEFORE each call so the previous iteration's allocations
+        // don't pile up. The previous call's result was already
+        // materialised as an owned JS string, so resetting here is safe.
+        self.arena.reset();
+        let data_dv = DataValue::from_str(data, &self.arena)
+            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
+        let result = self
+            .engine
+            .evaluate(&rule.compiled, data_dv, &self.arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(result.to_string())
+    }
+
+    /// Reset the underlying arena, returning every chunk to its start
+    /// position without freeing OS memory. Calling this is optional:
+    /// `evaluate` resets at the start of each call.
+    pub fn reset(&mut self) {
+        self.arena.reset();
+    }
+
+    /// Bytes currently held by the session's arena chunks. Useful for
+    /// sizing or diagnostics.
+    #[wasm_bindgen(js_name = allocatedBytes)]
+    pub fn allocated_bytes(&self) -> usize {
+        self.arena.allocated_bytes()
     }
 }
 
 // =============== options-bag parsing ===============
 
-/// Pull `{ templating, customOperators }` out of a JS options object.
-/// Anything missing falls back to the zero value (no templating, no ops).
-fn parse_engine_options(options: &JsValue) -> Result<(bool, Vec<(String, Function)>), String> {
+/// Pull `{ templating, customOperators, config }` out of a JS options
+/// object. Anything missing falls back to the zero value (no templating,
+/// no ops, default config).
+#[allow(clippy::type_complexity)]
+fn parse_engine_options(
+    options: &JsValue,
+) -> Result<(bool, Vec<(String, Function)>, Option<EvaluationConfig>), JsValue> {
     if options.is_null() || options.is_undefined() {
-        return Ok((false, Vec::new()));
+        return Ok((false, Vec::new(), None));
     }
     let obj: &Object = options
         .dyn_ref::<Object>()
-        .ok_or_else(|| input_err_to_json("parse-options", "options must be an object"))?;
+        .ok_or_else(|| input_err_to_js("parse-options", "options must be an object"))?;
 
     let templating = match Reflect::get(obj, &JsValue::from_str("templating")) {
         Ok(v) if v.is_undefined() || v.is_null() => false,
         Ok(v) => v.as_bool().ok_or_else(|| {
-            input_err_to_json("parse-options", "options.templating must be a boolean")
+            input_err_to_js("parse-options", "options.templating must be a boolean")
         })?,
         Err(_) => false,
     };
@@ -360,12 +565,17 @@ fn parse_engine_options(options: &JsValue) -> Result<(bool, Vec<(String, Functio
         Err(_) => Vec::new(),
     };
 
-    Ok((templating, custom_ops))
+    let config = match Reflect::get(obj, &JsValue::from_str("config")) {
+        Ok(v) => parse_config_value(&v)?,
+        Err(_) => None,
+    };
+
+    Ok((templating, custom_ops, config))
 }
 
-fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, String> {
+fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, JsValue> {
     let obj: &Object = v.dyn_ref::<Object>().ok_or_else(|| {
-        input_err_to_json(
+        input_err_to_js(
             "parse-options",
             "options.customOperators must be an object of {name: function}",
         )
@@ -376,16 +586,16 @@ fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, String
     for i in 0..keys.length() {
         let key = keys.get(i);
         let name = key.as_string().ok_or_else(|| {
-            input_err_to_json("parse-options", "customOperators keys must be strings")
+            input_err_to_js("parse-options", "customOperators keys must be strings")
         })?;
         let value = Reflect::get(obj, &key).map_err(|e| {
-            input_err_to_json(
+            input_err_to_js(
                 "parse-options",
                 format!("failed to read customOperators['{}']: {:?}", name, e),
             )
         })?;
         let function = value.dyn_into::<Function>().map_err(|_| {
-            input_err_to_json(
+            input_err_to_js(
                 "parse-options",
                 format!("customOperators['{}'] must be a function", name),
             )

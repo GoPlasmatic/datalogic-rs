@@ -18,6 +18,19 @@ overview and the API-tier model that every binding implements, see the
 > [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md#javascript--npm-consumers)
 > for the cookbook.
 
+> **Breaking change in the next release: errors are now real `Error`
+> objects.** Up to and including 5.0.x, every API rejected with a plain
+> JSON *string*, so `e instanceof Error` was `false` and callers had to
+> `JSON.parse` the rejection value. Failures now throw a proper `Error`
+> whose `name` is the error kind (for example `"ParseError"`), whose
+> `message` is human-readable, and whose structured fields (`type`,
+> `operator`, `node_ids`, variant extras) are attached as own
+> properties. The old JSON string is preserved verbatim on
+> `e.detailJson`, so existing parsing code migrates with one property
+> access. Because the rejection shape changed, the next npm release of
+> this package requires a semver-major bump. Details and migration
+> snippets in [Error handling](#error-handling).
+
 > **On Node.js? Use the native binding instead.**
 > [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
 > ships a per-platform native build via [napi-rs](https://napi.rs) and is
@@ -111,12 +124,13 @@ import { evaluate }       from '@goplasmatic/datalogic-wasm/nodejs';   // nodejs
 
 The WASM binding mirrors the Rust engine's
 [API tier model](https://github.com/GoPlasmatic/datalogic-rs#choosing-your-api-five-tiers-one-engine).
-JavaScript surfaces three of the five tiers:
+JavaScript surfaces four of the five tiers:
 
 | Tier        | Entry point                            | Use when                                                     |
 |-------------|----------------------------------------|--------------------------------------------------------------|
 | One-shot    | `evaluate(logic, data, templating)`    | Ad-hoc evaluation, one rule + one data shape                 |
 | Compile once | `new CompiledRule(logic, templating)` | Same rule evaluated against many data inputs                 |
+| Hot loop    | `engine.session()`                     | Tight loops; one arena reused across evaluations             |
 | Traced       | `evaluateWithTrace(logic, data, …)`   | Debugging, inspector UIs, anything that visualises execution |
 
 ### `evaluate(logic, data, templating)`
@@ -133,8 +147,8 @@ but reach for `CompiledRule` if you call this in a loop.
 
 **Returns** — JSON string with the result.
 
-**Throws** — `Error` (with a string message) on invalid JSON or
-evaluation failure.
+**Throws:** a real `Error` object on invalid JSON or evaluation
+failure; see [Error handling](#error-handling) for the shape.
 
 ```javascript
 evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}', false);             // "true"
@@ -159,10 +173,21 @@ rule.evaluate('{"age": 21}'); // "true"
 rule.evaluate('{"age": 16}'); // "false"
 ```
 
-**Constructor** — `new CompiledRule(logic, templating)`
+**Constructor:** `new CompiledRule(logic, templating, config?)`
 
 - `logic` *(string)* — JSON string containing the JSONLogic expression.
 - `templating` *(boolean)* — Enable templating mode.
+- `config` *(string | object, optional)*: Evaluation config for this
+  rule's internal engine, as a JSON string or a plain object. Same keys
+  as the engine-level config; see
+  [Engine configuration](#engine-configuration). `CompiledRule` is the
+  engine-free fast path, so this is how you get, say, strict semantics
+  without constructing an `Engine`:
+
+  ```javascript
+  const rule = new CompiledRule('{"+": [null, 1]}', false, { preset: 'strict' });
+  rule.evaluate('{}'); // throws: strict mode rejects the null operand
+  ```
 
 **Methods**
 
@@ -213,28 +238,132 @@ reuse. **Built-ins win**: a custom registration of a built-in name (`+`,
 `if`, `var`, ...) never dispatches. A custom-operator engine is confined to
 the Worker that created it (see Threading below).
 
+The full options bag is
+`{ templating?: boolean, customOperators?: Record<string, fn>, config?: string | object }`.
+See [Engine configuration](#engine-configuration) for `config`.
+
+### Sessions: hot-loop arena reuse
+
+`engine.session()` opens a `Session`, the hot-loop tier that every other
+binding already ships. A session owns one bump arena and resets it at the
+start of each `evaluate` call, so a tight loop reuses the same memory
+chunks instead of allocating and dropping a fresh arena per call (which
+is what `rule.evaluate(data)` does):
+
+```javascript
+const engine = new Engine({});
+const rule = engine.compile('{"+": [{"var": "a"}, {"var": "b"}]}');
+const session = engine.session();
+
+for (const item of batch) {
+  const out = session.evaluate(rule, JSON.stringify(item)); // JSON string
+  // ...
+}
+```
+
+**Methods**
+
+- `evaluate(rule: Rule, data: string): string`: evaluate a compiled
+  `Rule` against a JSON data string, reusing the session's arena. The
+  arena is reset at the start of each call; results are returned as
+  owned JSON strings, so they stay valid across later calls.
+- `reset(): void`: reset the arena explicitly, returning its chunks to
+  their start position without freeing memory. Optional, since
+  `evaluate` resets automatically.
+- `allocatedBytes(): number`: bytes currently held by the arena's
+  chunks. Useful for sizing and diagnostics.
+
+Sessions follow the same threading rule as everything else here: use a
+session within the Worker that created it, never across Workers.
+
+## Engine configuration
+
+Both `new Engine({ config })` and `new CompiledRule(logic, templating,
+config)` accept an optional evaluation config, either as a JSON string or
+as a plain JS object. It maps 1:1 to the Rust engine's
+`EvaluationConfig::from_json_str`. All keys are optional; unknown keys or
+values throw a `ConfigurationError`:
+
+| Key | Value |
+|-----|-------|
+| `preset` | `"default"` \| `"safe_arithmetic"` \| `"strict"` |
+| `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
+| `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
+| `loose_equality_errors` | boolean |
+| `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
+| `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+| `max_recursion_depth` | integer >= 1 |
+
+`preset` applies first; the remaining keys override it individually.
+
+```javascript
+// Strict semantics: no silent null-to-zero coercion. The default engine
+// evaluates {"+": [null, 1]} to "1"; the strict one throws instead.
+const engine = new Engine({ config: { preset: 'strict' } });
+engine.evalStr('{"+": [null, 1]}', '{}');
+// throws Error { name: "Thrown", thrown: { type: "NaN" }, operator: "+", ... }
+
+// The same config as a JSON string, through the engine-free fast path.
+const rule = new CompiledRule('{"+": [null, 1]}', false, '{"preset": "strict"}');
+```
+
 ## Error handling
 
-Both `evaluate` and `CompiledRule.evaluate` throw on failure. The thrown
-`Error.message` carries a JSON-formatted error shape — useful for
-distinguishing parse errors from runtime errors programmatically:
+**Breaking relative to 5.0.x:** every API now throws a real `Error`
+object. Previous releases rejected with a plain JSON string, so
+`e instanceof Error` was `false` and `e.name` / `e.message` did not
+exist. The thrown object carries:
+
+| Property | Contents |
+|----------|----------|
+| `name` | Stable error-kind tag: `"ParseError"`, `"InvalidArguments"`, `"VariableNotFound"`, `"TypeError"`, `"ArithmeticError"`, `"Thrown"`, `"IndexOutOfBounds"`, `"ConfigurationError"`, `"Custom"`, ... |
+| `message` | Human-readable message, including the failing operator when known |
+| `type` | Same tag as `name` (mirrors the wire JSON, kept for migration) |
+| `operator` | Outermost failing operator (runtime errors only) |
+| `node_ids` | Breadcrumb of compiled-node ids from the failure site toward the root (runtime errors only) |
+| variant extras | Kind-specific fields: `variable` (VariableNotFound), `thrown` (Thrown, as a parsed JS value), `index` / `length` (IndexOutOfBounds), `stage` (boundary input errors, e.g. `"parse-data"`) |
+| `detailJson` | The exact JSON string that 5.0.x used as the rejection value |
 
 ```javascript
 try {
-  evaluate('not valid json', '{}', false);
+  evaluate('{"throw": "limit_exceeded"}', '{}', false);
 } catch (e) {
-  // e.message contains the engine's error shape
-  console.error(e.message);
+  e instanceof Error; // true
+  e.name;             // "Thrown"
+  e.message;          // 'Thrown: {"type":"limit_exceeded"} (in operator: throw)'
+  e.thrown;           // { type: "limit_exceeded" }  (a real JS object)
+  e.operator;         // "throw"
 }
 ```
 
 The two broad categories:
 
-- **Parse errors** — malformed JSON in either argument, or unsupported
-  operator names. Surface immediately.
-- **Runtime errors** — `var` misses (under a strict config),
-  arithmetic on non-numbers, explicit `throw` operators. Carry the
-  failing operator and the node path through the compiled tree.
+- **Parse errors** (`e.name === "ParseError"`): malformed JSON in either
+  argument, or unsupported operator names. Surface immediately.
+- **Runtime errors** (everything else): `var` misses (under a strict
+  config), arithmetic on non-numbers, explicit `throw` operators. Carry
+  the failing `operator` and the `node_ids` path through the compiled
+  tree.
+
+### Migrating from 5.0.x
+
+Code that parsed the rejection value keeps working with one property
+access:
+
+```javascript
+try {
+  evaluate(logic, data, false);
+} catch (e) {
+  // Before (5.0.x): the rejection value was the JSON string itself.
+  // const info = JSON.parse(e);
+
+  // After: the fields are already on the error...
+  console.error(e.name, e.operator, e.node_ids);
+
+  // ...or re-parse the old payload verbatim if you prefer.
+  const info = JSON.parse(e.detailJson);
+}
+```
 
 ## Threading & Web Workers
 
@@ -299,9 +428,13 @@ cd bindings/wasm
 ### Tests
 
 ```bash
-wasm-pack test --headless --chrome
-wasm-pack test --headless --firefox
+wasm-pack test --node
 ```
+
+This is exactly what CI runs. The suite uses no DOM APIs and is
+node-configured on purpose: adding
+`wasm_bindgen_test_configure!(run_in_browser)` back would make the node
+runner skip every test.
 
 ## Learn more
 
