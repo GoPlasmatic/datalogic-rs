@@ -90,6 +90,25 @@ cargo run -p datalogic-rs --example zero_copy_input   --features serde_json
 See [crates/datalogic-rs/examples/README.md](./crates/datalogic-rs/examples/README.md)
 for the full table.
 
+### Fuzzing (optional, nightly only)
+
+`crates/datalogic-rs/fuzz/` holds a cargo-fuzz target that feeds arbitrary
+(rule, data) strings into `Engine::eval_str` (plain and templating engines);
+errors are expected, panics/aborts are findings. It complements the bounded
+proptest generator in `tests/property_test.rs` with coverage-guided byte
+mutation. The fuzz crate is excluded from the workspace and needs a nightly
+toolchain plus `cargo install cargo-fuzz`:
+
+```bash
+cd crates/datalogic-rs
+cargo +nightly fuzz run eval_str                    # until interrupted
+cargo +nightly fuzz run eval_str -- -max_total_time=300   # bounded run
+```
+
+Crashing inputs land in `fuzz/artifacts/`; minimize with
+`cargo +nightly fuzz tmin eval_str <artifact>` and turn the minimized case
+into a regression test before fixing.
+
 ## `bindings/wasm` — WebAssembly bindings (browser / Deno / Bun / Workers)
 
 ```bash
@@ -262,6 +281,33 @@ PyPI, `io.github.goplasmatic:datalogic` to Maven Central, `Goplasmatic.Datalogic
 to NuGet, `goplasmatic/datalogic` to Packagist, the Go module tag, and
 `@goplasmatic/datalogic-ui`) → cuts the GitHub Release. There are no local
 publish scripts; do not run `npm publish` or `cargo publish` by hand.
+Use `scripts/bump-version.sh <x.y.z>` to update every versioned file the
+validate job checks.
+
+### One-time checklist for the next release (added 2026-07-02)
+
+The 5.0.x cycle landed changes whose release legs have never executed;
+whoever cuts the next tag should watch these once, then delete this list:
+
+- **Version choice:** removing the inert `undefined_to_zero` config field is
+  technically breaking for code that merely named it (CHANGELOG "Removed"),
+  and `@goplasmatic/datalogic-wasm` now rejects with structured `Error`
+  objects instead of JSON strings (breaking; migration note in its README).
+  Decide 5.1.0 (pragmatic) vs 6.0.0 (strict semver) accordingly.
+- **JVM publish leg:** local packaged-JAR validation passes (classpath-root
+  staging via `scripts/stage-jvm-natives.sh`, JNA loads with
+  `jna.library.path` unset), but `publish-jvm`'s Maven Central deploy has
+  never run with the corrected layout. Verify the published JAR loads
+  natives on a clean machine.
+- **First run of new matrix entries:** x86_64-apple-darwin Python wheel
+  (maturin cross on macos-15), x86_64-apple-darwin Node prebuild, and the
+  aarch64-musl Node prebuild (docker run of the napi-rs `lts-alpine` image
+  on ubuntu-24.04-arm). npm staging depends on the two new triples in
+  `bindings/node/package.json` `napi.targets`.
+- **CI sanity:** `wasm-pack test --node` must report 21 tests (it silently
+  ran zero before `run_in_browser` was removed from the WASM test suite).
+- **NuGet signing** remains unimplemented: needs org certificates and a
+  signing decision (README embedding, SourceLink, and snupkg already ship).
 
 ## `tools/benchmark` — performance harness
 

@@ -49,6 +49,3 @@ flamegraph.svg
 *.trace/
 cargo-flamegraph.*
 perf.data*
-
-# Local analysis artifact, not part of the repo
-/improvements.md
