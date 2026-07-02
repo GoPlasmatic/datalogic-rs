@@ -39,7 +39,10 @@ pub(crate) fn evaluate_sort<'a>(
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_null()),
         ResolvedInput::Bridge(av) => {
-            return sort_arena_from_value(av, args, ctx, engine, arena);
+            // Bridge is never Array/Null (see ResolvedInput::Bridge), so a sort
+            // input reaching here is a scalar or object: not sortable.
+            debug_assert!(!matches!(av, DataValue::Array(_) | DataValue::Null));
+            return Err(crate::Error::invalid_args());
         }
     };
 
@@ -170,64 +173,6 @@ fn sort_general_extractor<'a>(
     });
     let slice = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| *src.get(i)));
     Ok(arena.alloc(DataValue::Array(slice)))
-}
-
-/// Sort a resolved arena value when the input wasn't borrowable as a
-/// flat `&[Value]` — falls into one of: Null (→ Null), Array (→ sort),
-/// anything else (→ error). Re-uses the same direction/extractor logic
-/// as the borrowed path.
-#[inline]
-fn sort_arena_from_value<'a>(
-    av: &'a DataValue<'a>,
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let items_slice: &'a [DataValue<'a>] = match av {
-        DataValue::Null => {
-            return Ok(crate::arena::singletons::singleton_null());
-        }
-        DataValue::Array(items) => items,
-        _ => return Err(crate::Error::invalid_args()),
-    };
-    if items_slice.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
-
-    let ascending = sort_direction(args, ctx, engine, arena)?;
-    let n = items_slice.len();
-
-    if args.len() <= 2 {
-        let mut indices: Vec<usize> = (0..n).collect();
-        indices.sort_by(|&a, &b| {
-            let cmp = compare_values(&items_slice[a], &items_slice[b]);
-            if ascending { cmp } else { cmp.reverse() }
-        });
-        let items = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| items_slice[i]));
-        return Ok(arena.alloc(DataValue::Array(items)));
-    }
-
-    // Extractor present — push items into arena context, evaluate,
-    // collect keys, sort indices.
-    let extractor = &args[2];
-    let mut keys: Vec<DataValue<'a>> = Vec::with_capacity(n);
-    let mut guard = IterGuard::new(ctx);
-    for (i, item_av) in items_slice.iter().enumerate() {
-        guard.step_indexed(item_av, i);
-        let key_av = engine.dispatch_node(extractor, guard.stack(), arena)?;
-        keys.push(*key_av);
-    }
-    drop(guard);
-
-    let mut indices: Vec<usize> = (0..n).collect();
-    indices.sort_by(|&a, &b| {
-        let cmp = compare_values(&keys[a], &keys[b]);
-        if ascending { cmp } else { cmp.reverse() }
-    });
-
-    let out = arena.alloc_slice_fill_iter(indices.into_iter().map(|i| items_slice[i]));
-    Ok(arena.alloc(DataValue::Array(out)))
 }
 
 /// Compare arena values for sorting.

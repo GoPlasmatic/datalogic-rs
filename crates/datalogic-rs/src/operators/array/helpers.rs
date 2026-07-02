@@ -338,9 +338,14 @@ pub(crate) enum ResolvedInput<'a> {
     Iterable(IterSrc<'a>),
     /// Empty/null input — caller returns its empty-collection result.
     Empty,
-    /// Object or other non-array input. Carries the resolved arena value
-    /// so callers can dispatch natively (object-iteration / error / etc.)
-    /// without re-evaluating the arg.
+    /// A non-array, non-null resolved value (Object, scalar, datetime, ...).
+    /// Carries the resolved arena value so callers can dispatch natively
+    /// (object-iteration / error / ...) without re-evaluating the arg.
+    ///
+    /// **Invariant:** `value_as_iter` routes arrays to [`Self::Iterable`] and
+    /// null to [`Self::Empty`], so a `Bridge` payload is never
+    /// `DataValue::Array` or `DataValue::Null`. Consumers rely on this to omit
+    /// those match arms.
     Bridge(&'a DataValue<'a>),
 }
 

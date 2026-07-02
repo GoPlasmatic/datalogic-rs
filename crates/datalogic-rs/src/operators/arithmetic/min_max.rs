@@ -44,11 +44,9 @@ fn min_max<'a>(
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Err(crate::Error::invalid_args()),
         ResolvedInput::Bridge(av) => {
-            // Array-shaped bridges iterate natively.
-            if matches!(av, DataValue::Array(_)) {
-                return min_max_from_av(av, init, pick_better, arena);
-            }
-            // Single non-array arg: must be a `Number`; returned unchanged.
+            // Bridge is never Array/Null (see ResolvedInput::Bridge). A single
+            // non-array arg must be a `Number`, returned unchanged.
+            debug_assert!(!matches!(av, DataValue::Array(_) | DataValue::Null));
             if !matches!(av, DataValue::Number(_)) {
                 return Err(crate::Error::invalid_args());
             }
@@ -108,37 +106,6 @@ fn min_max_variadic<'a>(
     }
     match best_av {
         Some(av) => Ok(av),
-        None => Ok(crate::arena::singletons::singleton_null()),
-    }
-}
-
-/// Iterate an `&'a DataValue<'a>` (Array variant) for min/max. Used when
-/// the input came from a composed arena op (e.g. `merge`).
-#[inline]
-fn min_max_from_av<'a>(
-    av: &'a DataValue<'a>,
-    init: f64,
-    pick_better: fn(f64, f64) -> bool,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let items: &[DataValue<'a>] = match av {
-        DataValue::Array(items) => items,
-        _ => return Err(crate::Error::invalid_args()),
-    };
-    if items.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-    let mut best_f = init;
-    let mut best_idx: Option<usize> = None;
-    for (i, it) in items.iter().enumerate() {
-        let f = it.as_f64().ok_or_else(crate::Error::invalid_args)?;
-        if pick_better(f, best_f) {
-            best_f = f;
-            best_idx = Some(i);
-        }
-    }
-    match best_idx {
-        Some(i) => Ok(arena.alloc(items[i])),
         None => Ok(crate::arena::singletons::singleton_null()),
     }
 }

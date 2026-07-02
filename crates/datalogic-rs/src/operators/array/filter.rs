@@ -164,9 +164,12 @@ fn filter_arena_bridge<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
+    debug_assert!(
+        !matches!(input, DataValue::Array(_) | DataValue::Null),
+        "Bridge is never Array/Null (see ResolvedInput::Bridge)"
+    );
     match input {
         DataValue::Object(pairs) => filter_bridge_object(pairs, predicate, ctx, engine, arena),
-        DataValue::Array(items) => filter_bridge_array(items, predicate, ctx, engine, arena),
         _ => Err(crate::Error::invalid_args()),
     }
 }
@@ -190,25 +193,4 @@ fn filter_bridge_object<'a>(
         return Ok(crate::arena::singletons::singleton_empty_object());
     }
     Ok(arena.alloc(DataValue::Object(kept.into_bump_slice())))
-}
-
-#[inline]
-fn filter_bridge_array<'a>(
-    items: &'a [DataValue<'a>],
-    predicate: &'a CompiledNode,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let mut kept = bvec::<DataValue<'a>>(arena, items.len());
-    for_each_iter_array(items, predicate, ctx, engine, arena, |_, item, av| {
-        if crate::arena::truthy_arena(av, engine) {
-            kept.push(*item);
-        }
-        Ok(ControlFlow::Continue(()))
-    })?;
-    if kept.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
-    Ok(arena.alloc(DataValue::Array(kept.into_bump_slice())))
 }

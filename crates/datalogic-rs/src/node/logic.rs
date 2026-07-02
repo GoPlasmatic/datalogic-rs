@@ -65,30 +65,6 @@ impl std::fmt::Debug for Logic {
     }
 }
 
-/// Static operator-name lookup for the root node. Returns `Cow::Borrowed`
-/// for built-ins and the named compiled-node forms (`var`, `missing`,
-/// etc.) — these never allocate at compile time. `CustomOperator`
-/// returns `Cow::Owned` (one allocation per compile, then re-cloneable as
-/// many times as the rule errors). `Value` literals have no operator and
-/// return `None`.
-#[inline]
-fn root_op_name(node: &CompiledNode) -> Option<std::borrow::Cow<'static, str>> {
-    use std::borrow::Cow;
-    match node {
-        CompiledNode::BuiltinOperator { opcode, .. } => Some(Cow::Borrowed(opcode.as_str())),
-        CompiledNode::Var { .. } => Some(Cow::Borrowed("var")),
-        CompiledNode::Missing(_) => Some(Cow::Borrowed("missing")),
-        CompiledNode::MissingSome(_) => Some(Cow::Borrowed("missing_some")),
-        #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(_) => Some(Cow::Borrowed("exists")),
-        #[cfg(feature = "error-handling")]
-        CompiledNode::Throw(_) => Some(Cow::Borrowed("throw")),
-        CompiledNode::CustomOperator(data) => Some(Cow::Owned(data.name.clone())),
-        CompiledNode::InvalidArgs { op_name, .. } => Some(Cow::Borrowed(op_name)),
-        _ => None,
-    }
-}
-
 impl Logic {
     /// Creates a new compiled logic from a root node.
     ///
@@ -103,7 +79,7 @@ impl Logic {
     /// * `root` - The root node of the compiled logic tree
     pub(crate) fn new(mut root: CompiledNode) -> Self {
         populate_lits(&mut root);
-        let root_op_name = root_op_name(&root);
+        let root_op_name = root.operator_name();
         Self { root, root_op_name }
     }
 

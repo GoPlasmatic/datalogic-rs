@@ -334,18 +334,23 @@ impl CompiledNode {
     /// Returns the name of this node's top-level operator, if any.
     ///
     /// Used when wrapping an error with structured context — we only report
-    /// the outermost operator, not the full nested call chain.
-    pub(crate) fn operator_name(&self) -> Option<String> {
+    /// the outermost operator, not the full nested call chain. Borrows a
+    /// static name for built-ins and the named compiled forms; allocates
+    /// only for `CustomOperator` (the user-supplied name). `Logic` caches the
+    /// root node's result at compile time (see `Logic::new`).
+    pub(crate) fn operator_name(&self) -> Option<std::borrow::Cow<'static, str>> {
+        use std::borrow::Cow;
         match self {
-            CompiledNode::BuiltinOperator { opcode, .. } => Some(opcode.as_str().to_string()),
-            CompiledNode::CustomOperator(data) => Some(data.name.clone()),
-            CompiledNode::Var { .. } => Some("var".to_string()),
+            CompiledNode::BuiltinOperator { opcode, .. } => Some(Cow::Borrowed(opcode.as_str())),
+            CompiledNode::CustomOperator(data) => Some(Cow::Owned(data.name.clone())),
+            CompiledNode::Var { .. } => Some(Cow::Borrowed("var")),
             #[cfg(feature = "ext-control")]
-            CompiledNode::Exists(_) => Some("exists".to_string()),
+            CompiledNode::Exists(_) => Some(Cow::Borrowed("exists")),
             #[cfg(feature = "error-handling")]
-            CompiledNode::Throw(_) => Some("throw".to_string()),
-            CompiledNode::Missing(_) => Some("missing".to_string()),
-            CompiledNode::MissingSome(_) => Some("missing_some".to_string()),
+            CompiledNode::Throw(_) => Some(Cow::Borrowed("throw")),
+            CompiledNode::Missing(_) => Some(Cow::Borrowed("missing")),
+            CompiledNode::MissingSome(_) => Some(Cow::Borrowed("missing_some")),
+            CompiledNode::InvalidArgs { op_name, .. } => Some(Cow::Borrowed(op_name)),
             _ => None,
         }
     }

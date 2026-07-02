@@ -89,7 +89,7 @@ fn walk(
     out: &mut HashMap<u32, NodeInfo>,
 ) {
     let id = node.id();
-    let operator = node.operator_name();
+    let operator = node.operator_name().map(|c| c.into_owned());
     let json_pointer = build_pointer(parent_pointer, parent_op, arg_index);
 
     // Children of an `Array` form pointers like "/<idx>"; for every other

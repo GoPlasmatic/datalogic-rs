@@ -251,9 +251,12 @@ fn map_arena_bridge<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
+    debug_assert!(
+        !matches!(input, DataValue::Array(_) | DataValue::Null),
+        "Bridge is never Array/Null (see ResolvedInput::Bridge)"
+    );
     match input {
         DataValue::Object(pairs) => map_bridge_object(pairs, body, ctx, engine, arena),
-        DataValue::Array(items) => map_bridge_array(items, body, ctx, engine, arena),
         // Single-element collection (number, string, bool primitive input).
         _ => map_bridge_single(input, body, ctx, engine, arena),
     }
@@ -269,22 +272,6 @@ fn map_bridge_object<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let mut results = bvec::<DataValue<'a>>(arena, pairs.len());
     for_each_iter_object(pairs, body, ctx, engine, arena, |_, _item, _key, av| {
-        results.push(*av);
-        Ok(ControlFlow::Continue(()))
-    })?;
-    Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
-}
-
-#[inline]
-fn map_bridge_array<'a>(
-    items: &'a [DataValue<'a>],
-    body: &'a CompiledNode,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let mut results = bvec::<DataValue<'a>>(arena, items.len());
-    for_each_iter_array(items, body, ctx, engine, arena, |_, _item, av| {
         results.push(*av);
         Ok(ControlFlow::Continue(()))
     })?;
