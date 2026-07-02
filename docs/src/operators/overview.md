@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 59 built-in operators organized into logical categories: 57 canonical operators in the default build plus two opt-in flagd-compatible operators (`fractional`, `sem_ver`) behind the `flagd` Cargo feature. Counts are by canonical operator. `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 59 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 24 canonical operators are enabled by opt-in Cargo features, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so the full set is available out of the box outside Rust. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
@@ -17,6 +17,21 @@ datalogic-rs provides 59 built-in operators organized into logical categories: 5
 | [Missing Values](missing.md) | `missing`, `missing_some` | Check for missing data |
 | [Error Handling](error-handling.md) | `try`, `throw` | Exception handling |
 | [flagd-Compat](flagd.md) | `fractional`, `sem_ver` | Feature-flag targeting (OpenFeature flagd spec); requires `features = ["flagd"]` |
+
+## Which operators need which Cargo feature
+
+This split only affects the **Rust crate**: only the baseline set compiles in the default build (`default = []`), and using any other operator against an engine compiled without its feature errors at compile time as `InvalidOperator`. Every language binding enables all operator features, so the full set is always available there.
+
+| Cargo feature | Operators |
+|---------------|-----------|
+| *baseline* (always on) | `val`/`var`, comparison (`==` … `<=`), `and`, `or`, `!`, `!!`, `if`/`?:`, `+ - * / %`, `min`, `max`, `cat`, `substr`, `in`, `map`, `filter`, `reduce`, `merge`, `all`, `some`, `none`, `missing`, `missing_some` |
+| `ext-string` | `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` |
+| `ext-array` | `sort`, `slice` |
+| `ext-math` | `abs`, `ceil`, `floor` |
+| `ext-control` | `exists`, `??`, `switch`/`match`, `type` |
+| `error-handling` | `try`, `throw` |
+| `datetime` | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` |
+| `flagd` | `fractional`, `sem_ver` |
 
 ## Operator Syntax
 

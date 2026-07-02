@@ -19,9 +19,9 @@ categories = ["data-structures", "development-tools", "parsing"]
 exclude = [".DS_Store"]
 
 # docs.rs builds with the default feature set unless told otherwise. Our
-# `default = []` means a vanilla docs.rs build would hide `compat`,
-# `preserve`, `datetime`, `trace`, and the `ext-*` operator surface, so we
-# turn everything on. The `--cfg docsrs` flag pairs with the
+# `default = []` means a vanilla docs.rs build would hide `serde_json`,
+# `templating`, `datetime`, `trace`, and the `ext-*` / `flagd` operator
+# surface, so we turn everything on. The `--cfg docsrs` flag pairs with the
 # `cfg_attr(docsrs, doc(cfg(...)))` annotations on feature-gated public
 # items in `lib.rs` — that gives each item a "Available on crate feature
 # X only" badge in the rendered docs.
@@ -33,7 +33,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 # Empty default: the crate is `serde_json`-free out of the box. Opt-in
 # features below add interop, optional operators, or templating — see
 # `serde_json`, `templating`, `datetime`, `trace`, `error-handling`,
-# `ext-string`, `ext-array`, `ext-control`, `ext-math`, `wasm`. Keeping
+# `ext-string`, `ext-array`, `ext-control`, `ext-math`, `flagd`. Keeping
 # `default = []` means a minimal build pulls only the JSONLogic baseline
 # operators and no optional dependencies.
 default = []

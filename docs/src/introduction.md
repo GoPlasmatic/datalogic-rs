@@ -42,7 +42,7 @@ For the cross-runtime installation instructions and repository details, see the 
 - 🛠️ **Ready-Made Rule Builder:** Drop `@goplasmatic/datalogic-ui` into your React dashboard to let users edit and step-through rules visually.
 - 🦀 **Rust-First Core:** Clean, robust Rust API designed to be zero-cost, fully thread-safe (`Logic` is `Send + Sync`), and buildable with `#![forbid(unsafe_code)]`.
 - 📦 **Serde-Optional:** Compile without `serde_json` for a minimal dependency tree. Opt-in when you need direct typed JSON serialization/deserialization.
-- 🔋 **Battery-Included Operators:** Comes with 50+ built-in operators (59 with all operator features enabled), spanning datetime, arithmetic, regex, and logical categories, and is easily extensible with custom operators.
+- 🔋 **Battery-Included Operators:** Comes with 50+ built-in operators (59 with all operator features enabled), spanning datetime, arithmetic, string, array, and logical categories, and is easily extensible with custom operators.
 
 
 ## How It Works

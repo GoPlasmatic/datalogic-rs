@@ -104,7 +104,7 @@ use std::sync::Arc;
 
 let engine = Arc::new(Engine::new());
 let compiled = engine
-    .compile_arc(r#"{"filter": [{"var": "items"}, {">": [{"var": ".value"}, 50]}]}"#)
+    .compile_arc(r#"{"filter": [{"var": "items"}, {">": [{"var": "value"}, 50]}]}"#)
     .unwrap();
 
 let datasets: Vec<String> = (0..1000)

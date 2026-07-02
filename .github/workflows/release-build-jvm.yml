@@ -2,9 +2,11 @@ name: _release-build-jvm
 
 # Internal reusable workflow — called by release.yml's `build-jvm`
 # job. Consumes the cdylib matrix artifacts, stages them under
-# bindings/jvm/src/main/resources/META-INF/native/<jna-platform>/ (the
-# layout JNA's auto-loader extracts from), runs `mvn test`, then
-# `mvn package` and uploads the resulting JAR.
+# bindings/jvm/src/main/resources/<jna-platform>/ (the classpath-root
+# layout JNA's auto-loader extracts from — `Native.load` searches
+# `<Platform.RESOURCE_PREFIX>/<libname>` at the classpath root, NOT
+# `META-INF/native/`), runs `mvn test`, then `mvn package` and uploads
+# the resulting JAR.
 
 on:
   workflow_call:
@@ -36,9 +38,10 @@ jobs:
           merge-multiple: true
 
       # Map the matrix's `<os>-<arch>` to JNA's platform-resource
-      # naming (Platform.RESOURCE_PREFIX) and stage native libs into
-      # META-INF/native/<jna-platform>/.
-      - name: Stage native libs under META-INF/native/<jna-platform>/
+      # naming (Platform.RESOURCE_PREFIX) and stage native libs at the
+      # classpath root under <jna-platform>/, which is where JNA's
+      # `Native.load` auto-extracts from.
+      - name: Stage native libs under <jna-platform>/ (classpath root)
         shell: bash
         run: |
           set -euo pipefail
@@ -53,12 +56,12 @@ jobs:
           for plat in "${!JNA[@]}"; do
             jna=${JNA[$plat]}
             if [ -d "cdylib/$plat" ]; then
-              mkdir -p "bindings/jvm/src/main/resources/META-INF/native/$jna"
-              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/META-INF/native/$jna/"
+              mkdir -p "bindings/jvm/src/main/resources/$jna"
+              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/$jna/"
               echo "Staged $plat -> $jna"
             fi
           done
-          ls -R bindings/jvm/src/main/resources/META-INF/native/
+          ls -R bindings/jvm/src/main/resources/
 
       # Composite: setup Rust + cargo cache + build the host's cdylib so
       # `mvn test` can dlopen() it during the smoke run.

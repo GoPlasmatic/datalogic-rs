@@ -154,10 +154,10 @@ from datalogic_py import Engine, EvaluateError
 
 engine = Engine()
 try:
-    engine.eval({"var": "missing"}, {})
+    engine.eval({"+": ["x", 1]}, {})  # arithmetic on a non-numeric string raises
 except EvaluateError as e:
-    print(e.error_type)  # e.g. "VariableNotFound"
-    print(e.operator)    # "var"
+    print(e.error_type)  # a runtime error tag
+    print(e.operator)    # "+"
     print(e.path)        # JSON-pointer-style path through the compiled tree
 ```
 

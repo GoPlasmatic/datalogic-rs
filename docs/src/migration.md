@@ -95,10 +95,11 @@ let engine = Engine::builder()
     .with_config(my_config)
     .add_operator("double", MyOp)
     .build();
-let compiled = engine.compile(&rule_value)?;             // accepts &Value via `serde_json`
-let result = engine.eval(&compiled, &data_value);        // OwnedDataValue
-let result_str = engine.eval_str(&compiled, data_str)?;  // String (JSON)
-let v: serde_json::Value = engine.eval_into(&compiled, &data_value)?;  // typed
+let compiled = engine.compile(&rule_value)?;               // accepts &Value via `serde_json`
+let mut session = engine.session();                        // reuse one arena for the compiled logic
+let result = session.eval(&compiled, &data_value)?;        // OwnedDataValue
+let result_str = session.eval_str(&compiled, data_str)?;   // String (JSON)
+let v: serde_json::Value = session.eval_into(&compiled, &data_value)?;  // typed
 ```
 
 ### Custom operators

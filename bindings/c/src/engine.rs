@@ -23,18 +23,21 @@ pub struct Engine {
 /// output-shaping templates).
 ///
 /// Returns an owned handle the caller must release via
-/// [`datalogic_engine_free`]. Never returns `NULL`.
+/// [`datalogic_engine_free`]. Returns `NULL` only if engine construction
+/// panics internally (with `"InternalError"` set on the last-error block).
 #[unsafe(no_mangle)]
 pub extern "C" fn datalogic_engine_new(templating: i32) -> *mut Engine {
-    clear_error_state();
-    let engine = if templating != 0 {
-        RsEngine::builder().with_templating(true).build()
-    } else {
-        RsEngine::new()
-    };
-    Box::into_raw(Box::new(Engine {
-        inner: Arc::new(engine),
-    }))
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let engine = if templating != 0 {
+            RsEngine::builder().with_templating(true).build()
+        } else {
+            RsEngine::new()
+        };
+        Box::into_raw(Box::new(Engine {
+            inner: Arc::new(engine),
+        }))
+    })
 }
 
 /// Release an engine handle. Safe to call with `NULL`.
@@ -67,32 +70,34 @@ pub unsafe extern "C" fn datalogic_engine_compile(
     engine: *mut Engine,
     rule_json: *const c_char,
 ) -> *mut Rule {
-    clear_error_state();
-    let engine = match unsafe { engine.as_ref() } {
-        Some(e) => e,
-        None => {
-            set_error_message("engine pointer is null", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
-    let rule_json = match cstr_to_str(rule_json) {
-        Some(s) => s,
-        None => {
-            set_error_message("rule_json is null or not valid UTF-8", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let engine = match unsafe { engine.as_ref() } {
+            Some(e) => e,
+            None => {
+                set_error_message("engine pointer is null", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
+        let rule_json = match cstr_to_str(rule_json) {
+            Some(s) => s,
+            None => {
+                set_error_message("rule_json is null or not valid UTF-8", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
 
-    match engine.inner.compile_arc(rule_json) {
-        Ok(logic) => Box::into_raw(Box::new(Rule {
-            engine: engine.inner.clone(),
-            logic,
-        })),
-        Err(e) => {
-            set_error(&e, None);
-            std::ptr::null_mut()
+        match engine.inner.compile_arc(rule_json) {
+            Ok(logic) => Box::into_raw(Box::new(Rule {
+                engine: engine.inner.clone(),
+                logic,
+            })),
+            Err(e) => {
+                set_error(&e, None);
+                std::ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 /// One-shot: compile `rule_json` and evaluate against `data_json` in a
@@ -113,45 +118,47 @@ pub unsafe extern "C" fn datalogic_engine_apply(
     rule_json: *const c_char,
     data_json: *const c_char,
 ) -> *mut c_char {
-    clear_error_state();
-    let engine = match unsafe { engine.as_ref() } {
-        Some(e) => e,
-        None => {
-            set_error_message("engine pointer is null", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
-    let rule_json = match cstr_to_str(rule_json) {
-        Some(s) => s,
-        None => {
-            set_error_message("rule_json is null or not valid UTF-8", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
-    let data_json = match cstr_to_str(data_json) {
-        Some(s) => s,
-        None => {
-            set_error_message("data_json is null or not valid UTF-8", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let engine = match unsafe { engine.as_ref() } {
+            Some(e) => e,
+            None => {
+                set_error_message("engine pointer is null", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
+        let rule_json = match cstr_to_str(rule_json) {
+            Some(s) => s,
+            None => {
+                set_error_message("rule_json is null or not valid UTF-8", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
+        let data_json = match cstr_to_str(data_json) {
+            Some(s) => s,
+            None => {
+                set_error_message("data_json is null or not valid UTF-8", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
 
-    // Compile first so we have `&Logic` available for error path resolution.
-    let logic = match engine.inner.compile_arc(rule_json) {
-        Ok(l) => l,
-        Err(e) => {
-            set_error(&e, None);
-            return std::ptr::null_mut();
+        // Compile first so we have `&Logic` available for error path resolution.
+        let logic = match engine.inner.compile_arc(rule_json) {
+            Ok(l) => l,
+            Err(e) => {
+                set_error(&e, None);
+                return std::ptr::null_mut();
+            }
+        };
+        let arena = Bump::new();
+        match engine.inner.evaluate(&logic, data_json, &arena) {
+            Ok(av) => string_to_cstring(av.to_string()),
+            Err(e) => {
+                set_error(&e, Some(&logic));
+                std::ptr::null_mut()
+            }
         }
-    };
-    let arena = Bump::new();
-    match engine.inner.evaluate(&logic, data_json, &arena) {
-        Ok(av) => string_to_cstring(av.to_string()),
-        Err(e) => {
-            set_error(&e, Some(&logic));
-            std::ptr::null_mut()
-        }
-    }
+    })
 }
 
 /// Open a hot-loop [`Session`] bound to this engine. The session reuses
@@ -165,13 +172,15 @@ pub unsafe extern "C" fn datalogic_engine_apply(
 /// `engine` must be a valid pointer returned by [`datalogic_engine_new`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_engine_session(engine: *mut Engine) -> *mut Session {
-    clear_error_state();
-    let engine = match unsafe { engine.as_ref() } {
-        Some(e) => e,
-        None => {
-            set_error_message("engine pointer is null", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
-    Box::into_raw(Box::new(Session::new(engine.inner.clone())))
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let engine = match unsafe { engine.as_ref() } {
+            Some(e) => e,
+            None => {
+                set_error_message("engine pointer is null", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
+        Box::into_raw(Box::new(Session::new(engine.inner.clone())))
+    })
 }

@@ -7,8 +7,10 @@
  * Native lookup:
  *   1. `jna.library.path` system property (set by Maven surefire for in-tree
  *      tests; users can set it themselves to override).
- *   2. JNA's JAR-resource auto-extract from `META-INF/native/<jna-platform>/`
- *      (populated by the release workflow before `mvn package`).
+ *   2. JNA's JAR-resource auto-extract from `<jna-platform>/` at the
+ *      classpath root (populated by the release workflow before
+ *      `mvn package`). `Native.load` searches
+ *      `<Platform.RESOURCE_PREFIX>/<libname>`, e.g. `darwin-aarch64/`.
  *   3. `java.library.path` and the OS's default loader paths.
  */
 

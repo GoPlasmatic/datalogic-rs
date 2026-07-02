@@ -13,7 +13,7 @@ specification is available at [jsonlogic.com](https://jsonlogic.com).
 
 - **Performance** — significantly faster than JS implementations
 - **Thread Safety** — `Logic` is `Send + Sync`; wrap in `Arc` to share
-- **Extended Operators** — datetime, regex, error handling, more
+- **Extended Operators** — datetime, string operations, error handling, more
 - **Type Safety** — full Rust type system benefits
 - **WASM Support** — same engine in browsers and Node.js
 - **Zero `unsafe`** — the crate is built with `#![forbid(unsafe_code)]`

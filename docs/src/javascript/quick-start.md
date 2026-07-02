@@ -94,7 +94,7 @@ Process arrays with map, filter, and reduce:
 const filterLogic = JSON.stringify({
   "filter": [
     { "var": "items" },
-    { ">": [{ "var": ".price" }, 20] }
+    { ">": [{ "var": "price" }, 20] }
   ]
 });
 

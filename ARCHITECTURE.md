@@ -146,7 +146,6 @@ opt in via their dependency line.
 | `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, C, `error_handling` example |
 | `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python, C; opt-in per Rust consumer |
 | `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit). See [flagd docs](https://flagd.dev/reference/custom-operations/) |
-| `wasm`            | Convenience meta-feature: `datetime + trace + templating`         | `bindings/wasm` only — Node, Python, and C inline the feature list rather than using the meta-feature |
 
 The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
 `bindings/c` is compiled with — they don't have their own Cargo
@@ -154,8 +153,8 @@ manifest. To turn an operator family on or off for those bindings, edit
 `bindings/c/Cargo.toml` and rebuild the cdylib.
 
 The `datalogic-bench` crate enables `serde_json` because it reads the
-JSON test-suite files via `serde_json::Value`; it does not need `wasm`
-or `templating`.
+JSON test-suite files via `serde_json::Value`; it does not need
+`templating`.
 
 ## Where things live
 
@@ -164,7 +163,7 @@ or `templating`.
 | Public Rust API                | `crates/datalogic-rs/src/lib.rs`                  |
 | Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                 |
 | Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                |
-| OpCode enum (61 builtins)      | `crates/datalogic-rs/src/opcode.rs`               |
+| OpCode enum (59 builtins)      | `crates/datalogic-rs/src/opcode.rs`               |
 | Operator implementations       | `crates/datalogic-rs/src/operators/`              |
 | Arena value types & context    | `crates/datalogic-rs/src/arena/`                  |
 | Rust integration tests         | `crates/datalogic-rs/tests/`                      |

@@ -55,27 +55,29 @@ pub unsafe extern "C" fn datalogic_rule_evaluate(
     rule: *mut Rule,
     data_json: *const c_char,
 ) -> *mut c_char {
-    clear_error_state();
-    let rule = match unsafe { rule.as_ref() } {
-        Some(r) => r,
-        None => {
-            set_error_message("rule pointer is null", "ParseError");
-            return std::ptr::null_mut();
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let rule = match unsafe { rule.as_ref() } {
+            Some(r) => r,
+            None => {
+                set_error_message("rule pointer is null", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
+        let data_json = match cstr_to_str(data_json) {
+            Some(s) => s,
+            None => {
+                set_error_message("data_json is null or not valid UTF-8", "ParseError");
+                return std::ptr::null_mut();
+            }
+        };
+        let arena = Bump::new();
+        match rule.engine.evaluate(&rule.logic, data_json, &arena) {
+            Ok(av) => string_to_cstring(av.to_string()),
+            Err(e) => {
+                set_error(&e, Some(&rule.logic));
+                std::ptr::null_mut()
+            }
         }
-    };
-    let data_json = match cstr_to_str(data_json) {
-        Some(s) => s,
-        None => {
-            set_error_message("data_json is null or not valid UTF-8", "ParseError");
-            return std::ptr::null_mut();
-        }
-    };
-    let arena = Bump::new();
-    match rule.engine.evaluate(&rule.logic, data_json, &arena) {
-        Ok(av) => string_to_cstring(av.to_string()),
-        Err(e) => {
-            set_error(&e, Some(&rule.logic));
-            std::ptr::null_mut()
-        }
-    }
+    })
 }

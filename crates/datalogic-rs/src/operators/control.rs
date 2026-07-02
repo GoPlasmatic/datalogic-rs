@@ -80,15 +80,17 @@ pub(crate) fn evaluate_switch<'a>(
                 match case_node {
                     CompiledNode::Array { nodes: pair, .. } if pair.len() >= 2 => {
                         let cv_av = engine.dispatch_node(&pair[0], ctx, arena)?;
-                        if compare_equals(disc_av, cv_av, true, engine).unwrap_or(false) {
+                        // Propagate comparison errors rather than treating them
+                        // as "no match": a failed compare is a real error, not
+                        // a silent fall-through to the default arm.
+                        if compare_equals(disc_av, cv_av, true, engine)? {
                             return engine.dispatch_node(&pair[1], ctx, arena);
                         }
                     }
                     CompiledNode::Value { lit: Some(av), .. } => {
                         if let DataValue::Array(pair_av) = av.as_ref() {
                             if pair_av.len() >= 2
-                                && compare_equals(disc_av, &pair_av[0], true, engine)
-                                    .unwrap_or(false)
+                                && compare_equals(disc_av, &pair_av[0], true, engine)?
                             {
                                 return Ok(&pair_av[1]);
                             }
@@ -103,7 +105,7 @@ pub(crate) fn evaluate_switch<'a>(
                 for case_av in cases_av.iter() {
                     if let DataValue::Array(pair_av) = case_av {
                         if pair_av.len() >= 2
-                            && compare_equals(disc_av, &pair_av[0], true, engine).unwrap_or(false)
+                            && compare_equals(disc_av, &pair_av[0], true, engine)?
                         {
                             return Ok(&pair_av[1]);
                         }

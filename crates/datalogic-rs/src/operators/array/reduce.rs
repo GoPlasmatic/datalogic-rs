@@ -185,12 +185,23 @@ fn try_reduce_fast_path<'a>(
                 crate::arena::value::traverse_segments(item, current_segments)?
             };
             if let Some(cur_i) = current_val.as_i64() {
-                acc = match opcode {
-                    OpCode::Add => acc.wrapping_add(cur_i),
-                    OpCode::Multiply => acc.wrapping_mul(cur_i),
-                    OpCode::Subtract => acc.wrapping_sub(cur_i),
+                let checked = match opcode {
+                    OpCode::Add => acc.checked_add(cur_i),
+                    OpCode::Multiply => acc.checked_mul(cur_i),
+                    OpCode::Subtract => acc.checked_sub(cur_i),
                     _ => return None,
                 };
+                match checked {
+                    Some(next) => acc = next,
+                    // On i64 overflow, abandon the integer path and let the
+                    // f64 fallback recompute from `initial`. This matches the
+                    // general arithmetic path, which promotes to f64 rather
+                    // than wrapping.
+                    None => {
+                        all_int = false;
+                        break;
+                    }
+                }
             } else {
                 all_int = false;
                 break;

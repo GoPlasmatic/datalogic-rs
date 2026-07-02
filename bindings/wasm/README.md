@@ -117,7 +117,7 @@ JavaScript surfaces three of the five tiers:
 |-------------|----------------------------------------|--------------------------------------------------------------|
 | One-shot    | `evaluate(logic, data, templating)`    | Ad-hoc evaluation, one rule + one data shape                 |
 | Compile once | `new CompiledRule(logic, templating)` | Same rule evaluated against many data inputs                 |
-| Traced       | `evaluate_with_trace(logic, data, …)` | Debugging, inspector UIs, anything that visualises execution |
+| Traced       | `evaluateWithTrace(logic, data, …)`   | Debugging, inspector UIs, anything that visualises execution |
 
 ### `evaluate(logic, data, templating)`
 
@@ -169,7 +169,7 @@ rule.evaluate('{"age": 16}'); // "false"
 - `evaluate(data: string): string` — evaluate the compiled rule against
   a JSON data string. Returns a JSON string.
 
-### `evaluate_with_trace(logic, data, templating)`
+### `evaluateWithTrace(logic, data, templating)`
 
 Evaluate and return a step-by-step execution trace. Useful for
 inspector UIs and debugging — the React debugger
@@ -179,8 +179,8 @@ directly.
 **Returns** — JSON string containing a `TracedResult`:
 
 ```javascript
-const trace = evaluate_with_trace('{"and": [true, {"var": "x"}]}',
-                                  '{"x": true}', false);
+const trace = evaluateWithTrace('{"and": [true, {"var": "x"}]}',
+                                '{"x": true}', false);
 JSON.parse(trace);
 // {
 //   "result": true,
@@ -231,13 +231,14 @@ This binding exposes all 59 built-in operators from the Rust engine:
 **Logical** — `and`, `or`, `!`, `!!`
 **Comparison** — `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
 **Arithmetic** — `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
-**Control flow** — `if`, `?:`, `??` (coalesce)
+**Control flow** — `if`, `?:`, `??` (coalesce), `switch` / `match`
 **Array** — `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`
 **String** — `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
 **Data access** — `var`, `val`, `exists`, `missing`, `missing_some`
 **Date/time** — `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`
 **Error handling** — `try`, `throw`
 **Type** — `type`
+**Feature flags (flagd)** — `fractional`, `sem_ver`
 
 > **Templating mode:** v5 removed the `preserve` *operator*. To enable
 > JSON templates with embedded JSONLogic (multi-key objects become
@@ -251,7 +252,7 @@ For the full operator reference and semantics, see the
 
 - **Compiled rules** are significantly faster for repeated evaluations
 - **Zero-copy** between JS strings and WASM where possible
-- **Small bundle** — ~50 KB gzipped
+- **Self-contained module** — roughly 1.6 MB uncompressed, around 400 to 500 KB gzipped
 
 For numbers, see the cross-library benchmark matrix in
 [`tools/benchmark/BENCHMARK.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).

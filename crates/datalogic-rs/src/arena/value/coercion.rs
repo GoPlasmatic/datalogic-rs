@@ -19,22 +19,32 @@ use super::DataValue;
 
 /// Config-aware arena-native f64 coercion. Honours the engine's
 /// [`crate::EvaluationConfig::numeric_coercion`] flags
-/// (`empty_string_to_zero`, `bool_to_number`, `null_to_zero`).
+/// (`reject_non_numeric`, `empty_string_to_zero`, `bool_to_number`,
+/// `null_to_zero`).
 #[inline]
 pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::Engine) -> Option<f64> {
+    let coercion = &engine.config().numeric_coercion;
+    // `reject_non_numeric` overrides the fabricated coercions: only real
+    // numbers and numeric-looking strings are accepted; empty strings,
+    // nulls, and booleans become type errors.
+    if coercion.reject_non_numeric {
+        return match v {
+            DataValue::Number(n) => Some(n.as_f64()),
+            DataValue::String(s) => s.parse().ok(),
+            _ => None,
+        };
+    }
     match v {
         DataValue::Number(n) => Some(n.as_f64()),
         DataValue::String(s) => {
-            if s.is_empty() && engine.config().numeric_coercion.empty_string_to_zero {
+            if s.is_empty() && coercion.empty_string_to_zero {
                 Some(0.0)
             } else {
                 s.parse().ok()
             }
         }
-        DataValue::Bool(b) if engine.config().numeric_coercion.bool_to_number => {
-            Some(if *b { 1.0 } else { 0.0 })
-        }
-        DataValue::Null if engine.config().numeric_coercion.null_to_zero => Some(0.0),
+        DataValue::Bool(b) if coercion.bool_to_number => Some(if *b { 1.0 } else { 0.0 }),
+        DataValue::Null if coercion.null_to_zero => Some(0.0),
         _ => None,
     }
 }
@@ -44,19 +54,28 @@ pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::Engine) ->
 /// fractional values.
 #[inline]
 pub(crate) fn try_coerce_to_integer_cfg(v: &DataValue<'_>, engine: &crate::Engine) -> Option<i64> {
+    let coercion = &engine.config().numeric_coercion;
+    // `reject_non_numeric` overrides the fabricated coercions (see
+    // `coerce_to_number_cfg`): only real numbers and numeric-looking strings
+    // are accepted.
+    if coercion.reject_non_numeric {
+        return match v {
+            DataValue::Number(n) => n.as_i64(),
+            DataValue::String(s) => s.parse().ok(),
+            _ => None,
+        };
+    }
     match v {
         DataValue::Number(n) => n.as_i64(),
         DataValue::String(s) => {
-            if s.is_empty() && engine.config().numeric_coercion.empty_string_to_zero {
+            if s.is_empty() && coercion.empty_string_to_zero {
                 Some(0)
             } else {
                 s.parse().ok()
             }
         }
-        DataValue::Bool(b) if engine.config().numeric_coercion.bool_to_number => {
-            Some(if *b { 1 } else { 0 })
-        }
-        DataValue::Null if engine.config().numeric_coercion.null_to_zero => Some(0),
+        DataValue::Bool(b) if coercion.bool_to_number => Some(if *b { 1 } else { 0 }),
+        DataValue::Null if coercion.null_to_zero => Some(0),
         _ => None,
     }
 }

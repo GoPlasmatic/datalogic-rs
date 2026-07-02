@@ -203,7 +203,8 @@ int32_t datalogic_engine_builder_add_operator(datalogic_engine_builder *builder,
  * output-shaping templates).
  *
  * Returns an owned handle the caller must release via
- * [`datalogic_engine_free`]. Never returns `NULL`.
+ * [`datalogic_engine_free`]. Returns `NULL` only if engine construction
+ * panics internally (with `"InternalError"` set on the last-error block).
  */
  datalogic_engine *datalogic_engine_new(int32_t templating);
 

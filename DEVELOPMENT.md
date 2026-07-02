@@ -201,8 +201,9 @@ mvn package                        # produces target/datalogic-*.jar + sources +
 JNA `Library` interface mirrors `bindings/c/include/datalogic.h`. The
 Surefire plugin sets `jna.library.path` to `../c/target/release` so
 local tests pick up the in-tree cdylib. Publishable JARs ship the
-native libs under `META-INF/native/<jna-platform>/`. Target: Maven
-Central as `com.goplasmatic:datalogic`. End-user API:
+native libs at the classpath root under `<jna-platform>/` (where JNA's
+`Native.load` auto-extracts them). Target: Maven
+Central as `io.github.goplasmatic:datalogic`. End-user API:
 [bindings/jvm/README.md](./bindings/jvm/README.md).
 
 ## `bindings/php` — PHP binding (PHP FFI over C ABI)
@@ -255,8 +256,10 @@ cd ../../ui && npm run dev        # predev re-vendors the fresh pkg/
 All publishing flows through `.github/workflows/release.yml`, triggered by
 pushing a `v*` tag whose version matches `crates/datalogic-rs/Cargo.toml`. The
 workflow validates → publishes the crate to crates.io → builds and publishes
-every binding (`@goplasmatic/datalogic-wasm` WASM, `@goplasmatic/datalogic-node`
-napi-rs prebuilds, `datalogic-py` to PyPI, the Go module tag, and
+every binding (`@goplasmatic/datalogic-wasm` WASM and
+`@goplasmatic/datalogic-node` napi-rs prebuilds to npm, `datalogic-py` to
+PyPI, `io.github.goplasmatic:datalogic` to Maven Central, `Goplasmatic.Datalogic`
+to NuGet, `goplasmatic/datalogic` to Packagist, the Go module tag, and
 `@goplasmatic/datalogic-ui`) → cuts the GitHub Release. There are no local
 publish scripts; do not run `npm publish` or `cargo publish` by hand.
 

@@ -55,14 +55,16 @@ pub struct TracedSession {
 pub unsafe extern "C" fn datalogic_engine_traced_session(
     engine: *mut Engine,
 ) -> *mut TracedSession {
-    clear_error_state();
-    let Some(engine) = (unsafe { engine.as_ref() }) else {
-        set_error_message("engine pointer is null", "ParseError");
-        return std::ptr::null_mut();
-    };
-    Box::into_raw(Box::new(TracedSession {
-        engine: Arc::clone(&engine.inner),
-    }))
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let Some(engine) = (unsafe { engine.as_ref() }) else {
+            set_error_message("engine pointer is null", "ParseError");
+            return std::ptr::null_mut();
+        };
+        Box::into_raw(Box::new(TracedSession {
+            engine: Arc::clone(&engine.inner),
+        }))
+    })
 }
 
 /// Release a traced-session handle. Safe to call with `NULL`.
@@ -99,21 +101,23 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
     rule_json: *const c_char,
     data_json: *const c_char,
 ) -> *mut c_char {
-    clear_error_state();
-    let Some(session) = (unsafe { session.as_ref() }) else {
-        set_error_message("traced session pointer is null", "ParseError");
-        return std::ptr::null_mut();
-    };
-    let Some(rule_json) = cstr_to_str(rule_json) else {
-        set_error_message("rule_json is null or not valid UTF-8", "ParseError");
-        return std::ptr::null_mut();
-    };
-    let Some(data_json) = cstr_to_str(data_json) else {
-        set_error_message("data_json is null or not valid UTF-8", "ParseError");
-        return std::ptr::null_mut();
-    };
-    let run = session.engine.trace().eval_str(rule_json, data_json);
-    string_to_cstring(traced_run_to_json(&run))
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let Some(session) = (unsafe { session.as_ref() }) else {
+            set_error_message("traced session pointer is null", "ParseError");
+            return std::ptr::null_mut();
+        };
+        let Some(rule_json) = cstr_to_str(rule_json) else {
+            set_error_message("rule_json is null or not valid UTF-8", "ParseError");
+            return std::ptr::null_mut();
+        };
+        let Some(data_json) = cstr_to_str(data_json) else {
+            set_error_message("data_json is null or not valid UTF-8", "ParseError");
+            return std::ptr::null_mut();
+        };
+        let run = session.engine.trace().eval_str(rule_json, data_json);
+        string_to_cstring(traced_run_to_json(&run))
+    })
 }
 
 /// Render a [`datalogic_rs::TracedRun`] into the cross-binding wire JSON

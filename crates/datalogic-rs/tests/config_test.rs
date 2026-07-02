@@ -468,3 +468,85 @@ fn test_evaluation_config_fluent_setters() {
         .unwrap();
     assert_eq!(result, json!(3));
 }
+
+#[test]
+fn test_reject_non_numeric_alone_changes_behavior() {
+    // With only `reject_non_numeric` set (all other coercion flags at their
+    // permissive defaults and NaN handling at the default ThrowError), the
+    // fabricated coercions must turn into errors.
+    let config = EvaluationConfig::default().with_numeric_coercion(
+        NumericCoercionConfig::default().with_reject_non_numeric(true),
+    );
+    let engine = Engine::builder().with_config(config).build();
+
+    // Baseline (no flag): "" coerces to 0, so "" + 1 == 1.
+    let base = Engine::new();
+    assert_eq!(
+        base.eval_into::<serde_json::Value, _, _>(&json!({"+": ["", 1]}), &json!({}))
+            .unwrap()
+            .as_f64(),
+        Some(1.0)
+    );
+
+    // With the flag alone: empty string / null / bool all become type errors.
+    for rule in [
+        json!({"+": ["", 1]}),
+        json!({"+": [null, 1]}),
+        json!({"+": [true, 1]}),
+    ] {
+        assert!(
+            engine
+                .eval_into::<serde_json::Value, _, _>(&rule, &json!({}))
+                .is_err(),
+            "expected {rule} to error under reject_non_numeric"
+        );
+    }
+
+    // Real numbers and numeric-looking strings still coerce.
+    assert_eq!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"+": ["5", 1]}), &json!({}))
+            .unwrap()
+            .as_f64(),
+        Some(6.0)
+    );
+}
+
+#[test]
+fn test_div_by_zero_fold_and_variadic_honor_config() {
+    // Float operands take the configurable div-by-zero path in every arity,
+    // not just the 2-arg form.
+    let engine = Engine::builder()
+        .with_config(
+            EvaluationConfig::default().with_division_by_zero(DivisionByZeroHandling::ReturnNull),
+        )
+        .build();
+
+    // Variadic (3+ args), fractional dividend → float path → ReturnNull.
+    assert_eq!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [10.5, 3.0, 0]}), &json!({}))
+            .unwrap(),
+        json!(null)
+    );
+    // 1-arg array fold, fractional dividend → float path → ReturnNull.
+    assert_eq!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [[10.5, 0]]}), &json!({}))
+            .unwrap(),
+        json!(null)
+    );
+
+    // Integer operands always error regardless of config (carve-out); this
+    // preserves the JSONLogic conformance behavior for {"/": [8, 2, 0]}.
+    assert!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [8, 2, 0]}), &json!({}))
+            .is_err()
+    );
+    assert!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [[10, 0]]}), &json!({}))
+            .is_err()
+    );
+}

@@ -19,7 +19,7 @@
 //!
 //! - **Compilation-based optimization**: Parse once, evaluate many times
 //! - **Thread-safe by design**: Share compiled logic across threads with `Arc`
-//! - **50+ built-in operators**: Complete JSONLogic compatibility plus extensions
+//! - **59 built-in operators**: Complete JSONLogic compatibility plus extensions
 //! - **Arena-allocated evaluation**: Results live in a `bumpalo::Bump` arena and can borrow directly into caller input for zero-copy paths
 //! - **Extensible**: Add custom operators via the [`CustomOperator`] trait
 //! - **Structured templates**: Preserve object structure for dynamic outputs

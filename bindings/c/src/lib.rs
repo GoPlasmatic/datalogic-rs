@@ -27,6 +27,32 @@ pub use traced_session::*;
 
 use std::ffi::{CStr, CString, c_char};
 
+/// Run a C ABI entry-point body, converting any panic into the thread-local
+/// last-error block (tagged `"InternalError"`) and returning `default`
+/// instead of unwinding across the `extern "C"` boundary.
+///
+/// Since Rust 1.81 an unwind that escapes an `extern "C"` function aborts the
+/// process, which would take down the host JVM / .NET runtime / PHP-FPM
+/// worker / Go binary with no catchable error. Wrapping each fallible entry
+/// point in this guard turns an internal panic (engine bug, arena OOM, a
+/// panicking custom-operator callback) into an ordinary `NULL`/`0` return
+/// that consumers already handle via the last-error block.
+pub(crate) fn ffi_guard<T>(default: T, body: impl FnOnce() -> T) -> T {
+    // `AssertUnwindSafe`: on panic we discard all captured state and return a
+    // fixed default, observing nothing beyond the last-error block, so the
+    // usual `UnwindSafe` concerns don't apply at this boundary.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(value) => value,
+        Err(_) => {
+            error::set_error_message(
+                "internal error: a panic was caught at the datalogic FFI boundary",
+                "InternalError",
+            );
+            default
+        }
+    }
+}
+
 /// Return the binding's version as a static, NUL-terminated UTF-8 string.
 ///
 /// The returned pointer is valid for the program's lifetime — never free it.

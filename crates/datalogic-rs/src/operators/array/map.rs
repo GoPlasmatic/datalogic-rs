@@ -301,9 +301,13 @@ fn map_bridge_single<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let item_av: &'a DataValue<'a> = input;
     ctx.push_with_index(item_av, 0);
-    let av = engine.run_iter_body(body, ctx, arena, 0, 1)?;
-    let owned = *av;
+    // Pop before propagating errors. A bare `?` on `run_iter_body` would skip
+    // the `pop` and leak this frame; when a surrounding `try` catches the
+    // error, later evaluation would then resolve `var`/`val` against the
+    // stale frame instead of the real context.
+    let result = engine.run_iter_body(body, ctx, arena, 0, 1);
     ctx.pop();
+    let owned = *result?;
     let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));
     Ok(arena.alloc(DataValue::Array(slice)))
 }

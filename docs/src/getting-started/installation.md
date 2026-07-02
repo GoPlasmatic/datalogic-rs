@@ -52,7 +52,7 @@ v5 splits the surface into a small core plus opt-in features:
 | `trace` | off | Per-evaluation execution tracing (`engine.trace()…`). Transitively enables `serde_json`. |
 | `ext-string` | off | Extended string operators. |
 | `ext-array` | off | Extended array operators (e.g. `sort`). |
-| `ext-control` | off | Extended control-flow operators (e.g. `inspect`). |
+| `ext-control` | off | Extended control-flow operators (`exists`, `??`, `switch`/`match`, `type`). |
 | `error-handling` | off | `try` / `throw` operators. |
 | `ext-math` | off | Extended math operators. |
 | `flagd` | off | [OpenFeature flagd-compatible](https://flagd.dev/reference/custom-operations/) `fractional` (murmurhash3 percentage bucketing) and `sem_ver` (semantic-version comparison) operators. |

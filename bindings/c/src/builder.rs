@@ -125,32 +125,34 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
     callback: DatalogicOpCallback,
     user_data: *mut c_void,
 ) -> i32 {
-    clear_error_state();
-    let Some(handle) = (unsafe { builder.as_mut() }) else {
-        set_error_message("engine builder pointer is null", "ParseError");
-        return -1;
-    };
-    let Some(callback) = callback else {
-        // No-op: NULL callback. Could also error, but consistent with
-        // the "permissive" feel of the other set_* entry points.
-        return 0;
-    };
-    let Some(name_str) = cstr_to_str(name) else {
-        set_error_message("operator name is null or not valid UTF-8", "ParseError");
-        return -1;
-    };
-    let name_owned = name_str.to_string();
-    if let Some(b) = handle.inner.take() {
-        handle.inner = Some(b.add_operator(
-            name_owned.clone(),
-            CCustomOperator {
-                name: name_owned,
-                callback,
-                user_data: AtomicPtr::new(user_data),
-            },
-        ));
-    }
-    0
+    crate::ffi_guard(-1, || {
+        clear_error_state();
+        let Some(handle) = (unsafe { builder.as_mut() }) else {
+            set_error_message("engine builder pointer is null", "ParseError");
+            return -1;
+        };
+        let Some(callback) = callback else {
+            // No-op: NULL callback. Could also error, but consistent with
+            // the "permissive" feel of the other set_* entry points.
+            return 0;
+        };
+        let Some(name_str) = cstr_to_str(name) else {
+            set_error_message("operator name is null or not valid UTF-8", "ParseError");
+            return -1;
+        };
+        let name_owned = name_str.to_string();
+        if let Some(b) = handle.inner.take() {
+            handle.inner = Some(b.add_operator(
+                name_owned.clone(),
+                CCustomOperator {
+                    name: name_owned,
+                    callback,
+                    user_data: AtomicPtr::new(user_data),
+                },
+            ));
+        }
+        0
+    })
 }
 
 /// Finalise the builder into an [`Engine`]. The builder handle is left
@@ -167,18 +169,20 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
 pub unsafe extern "C" fn datalogic_engine_builder_build(
     builder: *mut EngineBuilder,
 ) -> *mut Engine {
-    clear_error_state();
-    let Some(handle) = (unsafe { builder.as_mut() }) else {
-        set_error_message("engine builder pointer is null", "ParseError");
-        return std::ptr::null_mut();
-    };
-    let Some(b) = handle.inner.take() else {
-        set_error_message("engine builder already built", "ParseError");
-        return std::ptr::null_mut();
-    };
-    Box::into_raw(Box::new(Engine {
-        inner: std::sync::Arc::new(b.build()),
-    }))
+    crate::ffi_guard(std::ptr::null_mut(), || {
+        clear_error_state();
+        let Some(handle) = (unsafe { builder.as_mut() }) else {
+            set_error_message("engine builder pointer is null", "ParseError");
+            return std::ptr::null_mut();
+        };
+        let Some(b) = handle.inner.take() else {
+            set_error_message("engine builder already built", "ParseError");
+            return std::ptr::null_mut();
+        };
+        Box::into_raw(Box::new(Engine {
+            inner: std::sync::Arc::new(b.build()),
+        }))
+    })
 }
 
 // =============== custom-operator adapter ===============

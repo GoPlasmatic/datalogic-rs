@@ -13,19 +13,19 @@
 //!
 //! | Operator(s) | Required feature |
 //! |---|---|
-//! | `var`, `val`, `exists` (path forms) | *baseline* (always available) |
+//! | `var`, `val` | *baseline* (always available) |
 //! | `==`, `===`, `!=`, `!==`, `>`, `>=`, `<`, `<=` | *baseline* |
-//! | `and`, `or`, `!`, `!!`, `if`, `?:`, `??` | *baseline* |
+//! | `and`, `or`, `!`, `!!`, `if`, `?:` | *baseline* |
 //! | `+`, `-`, `*`, `/`, `%`, `min`, `max` | *baseline* |
 //! | `cat`, `substr`, `in` | *baseline* |
 //! | `map`, `filter`, `reduce`, `merge`, `all`, `some`, `none` | *baseline* |
-//! | `missing`, `missing_some`, `type` | *baseline* |
+//! | `missing`, `missing_some` | *baseline* |
 //! | `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` | `ext-string` |
 //! | `sort`, `slice` | `ext-array` |
 //! | `abs`, `ceil`, `floor` | `ext-math` |
+//! | `exists`, `??`, `switch`/`match`, `type` | `ext-control` |
 //! | `try`, `throw` | `error-handling` |
 //! | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | `datetime` |
-//! | `exists` (raw / multi-arg form) | `ext-control` |
 //! | `fractional`, `sem_ver` ([flagd-compat][flagd]) | `flagd` |
 //!
 //! [flagd]: https://flagd.dev/reference/custom-operations/

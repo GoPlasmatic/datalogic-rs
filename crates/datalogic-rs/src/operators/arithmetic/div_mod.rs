@@ -149,7 +149,7 @@ fn one_arg_div_mod<'a>(
         for elem in &items[1..] {
             let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::Error::nan)?;
             if n == 0.0 {
-                return Err(crate::Error::nan());
+                return fold_divbyzero(arena, result, elem, engine);
             }
             result = op.apply_f64(result, n);
         }
@@ -195,9 +195,30 @@ fn variadic_div_mod<'a>(
         let av = engine.dispatch_node(arg, ctx, arena)?;
         let n = coerce_to_number_cfg(av, engine).ok_or_else(crate::Error::nan)?;
         if n == 0.0 {
-            return Err(crate::Error::nan());
+            return fold_divbyzero(arena, result, av, engine);
         }
         result = op.apply_f64(result, n);
     }
     Ok(alloc_number(arena, NumberValue::from_f64(result)))
+}
+
+/// Zero-divisor policy for the array-fold and variadic paths. Mirrors the
+/// carve-out in [`div_mod_two_arg`]: an integer dividend divided by an
+/// integer zero is always an error, while any other (float) case honours the
+/// engine's [`DivisionByZeroHandling`] config. The running fold accumulator
+/// `dividend` stands in for the left operand; `divisor` is the DataValue that
+/// coerced to zero.
+#[inline]
+fn fold_divbyzero<'a>(
+    arena: &'a Bump,
+    dividend: f64,
+    divisor: &DataValue<'_>,
+    engine: &Engine,
+) -> Result<&'a DataValue<'a>> {
+    let dividend_is_int =
+        dividend.fract() == 0.0 && dividend >= i64::MIN as f64 && dividend <= i64::MAX as f64;
+    if dividend_is_int && divisor.as_i64().is_some() {
+        return Err(crate::Error::nan());
+    }
+    divbyzero(arena, dividend, engine)
 }

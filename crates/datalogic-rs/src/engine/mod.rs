@@ -239,9 +239,11 @@ impl Engine {
     /// [`bumpalo::Bump`] themselves.
     ///
     /// Use this when you want the throughput of arena reuse without the
-    /// lifetime juggling of [`Self::evaluate`]. The arena resets at the start
-    /// of every `eval*` call; results are deep-cloned out of the arena
-    /// before returning, so they outlive the next reset.
+    /// lifetime juggling of [`Self::evaluate`]. Results are deep-cloned out
+    /// of the arena before returning, so they survive later calls and resets.
+    /// The session does **not** auto-reset: allocations accumulate until you
+    /// call [`crate::Session::reset`], which you should do between logical
+    /// batches to bound peak memory in long-running services.
     ///
     /// # Example
     ///

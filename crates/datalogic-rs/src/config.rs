@@ -53,11 +53,17 @@ pub struct EvaluationConfig {
     /// to `null`).
     pub arithmetic_nan_handling: NanHandling,
 
-    /// What `/` and `%` do when the divisor is zero. Default:
-    /// [`DivisionByZeroHandling::ReturnSaturated`] (the JavaScript-style
-    /// `±f64::MAX` / `±f64::MIN` per dividend sign). Switch to
-    /// [`DivisionByZeroHandling::ThrowError`] if you'd rather see a
-    /// surface error than a sentinel value.
+    /// What `/` and `%` do when the divisor is zero, on the **float** path.
+    /// Default: [`DivisionByZeroHandling::ReturnSaturated`] (the
+    /// JavaScript-style `±f64::MAX` / `±f64::MIN` per dividend sign). Switch
+    /// to [`DivisionByZeroHandling::ThrowError`] if you'd rather see a
+    /// surface error than a sentinel value. Applies uniformly to the 2-arg,
+    /// array-fold, and variadic forms.
+    ///
+    /// Carve-out: an **integer** dividend divided by an integer zero always
+    /// errors with `{"type": "NaN"}`, regardless of this setting, since
+    /// there is no in-range integer sentinel to return. Only genuinely
+    /// fractional operands take the configurable float path.
     pub division_by_zero: DivisionByZeroHandling,
 
     /// Whether `==` / `!=` (loose equality) raise an error on values
@@ -87,8 +93,9 @@ pub struct EvaluationConfig {
     ///    type error. Overrides every other flag.
     /// 2. `null_to_zero` — only consulted on `null` values.
     /// 3. `bool_to_number` — only consulted on `true` / `false`.
-    /// 4. `empty_string_to_zero` / `undefined_to_zero` — consulted on
-    ///    empty strings and missing-var slots respectively.
+    /// 4. `empty_string_to_zero` — consulted on empty strings.
+    ///    (`undefined_to_zero` is reserved and not yet effective; see its
+    ///    field docs.)
     ///
     /// Each path is independent in practice (the type filters above
     /// don't overlap), so the precedence only matters when reasoning
@@ -240,10 +247,15 @@ pub struct NumericCoercionConfig {
     /// the coercion knobs in this struct.
     pub reject_non_numeric: bool,
 
-    /// Missing variable lookups (the `var` operator returning `null`
-    /// because the path didn't resolve) → `0` in numeric context.
-    /// Default: `false`. Distinct from `null_to_zero` because the var
-    /// machinery distinguishes "explicitly null" from "no such field".
+    /// Reserved and not currently effective. Intended to coerce a *missing*
+    /// variable lookup (the `var` operator returning `null` because the path
+    /// didn't resolve) to `0` in numeric context, as distinct from an
+    /// *explicit* `null`. The value model surfaces both as `null` — a var
+    /// miss returns the shared `null` singleton — so this cannot be honoured
+    /// independently of [`Self::null_to_zero`]; a full implementation needs an
+    /// `undefined`-vs-`null` distinction in the value model. With the default
+    /// `null_to_zero = true`, a missing var already coerces to `0`.
+    /// Default: `false`.
     pub undefined_to_zero: bool,
 }
 

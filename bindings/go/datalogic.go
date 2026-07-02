@@ -108,10 +108,20 @@ func (e *Engine) Close() {
 func (e *Engine) Compile(ruleJSON string) (*Rule, error) {
 	cRule := C.CString(ruleJSON)
 	defer C.free(unsafe.Pointer(cRule))
+	// Pin the goroutine to its OS thread across the call and the last-error
+	// read: the C ABI's last-error block is thread-local, so a reschedule
+	// between the NULL return and lastError() could read another thread's
+	// error (or none). See lastError().
+	runtime.LockOSThread()
 	ptr := C.datalogic_engine_compile(e.ptr, cRule)
+	var err error
+	if ptr == nil {
+		err = lastError()
+	}
+	runtime.UnlockOSThread()
 	runtime.KeepAlive(e)
 	if ptr == nil {
-		return nil, lastError()
+		return nil, err
 	}
 	r := &Rule{ptr: ptr}
 	runtime.SetFinalizer(r, (*Rule).Close)
@@ -128,10 +138,17 @@ func (e *Engine) Apply(ruleJSON, dataJSON string) (string, error) {
 	defer C.free(unsafe.Pointer(cRule))
 	cData := C.CString(dataJSON)
 	defer C.free(unsafe.Pointer(cData))
+	// Keep the call and the thread-local last-error read on one OS thread.
+	runtime.LockOSThread()
 	out := C.datalogic_engine_apply(e.ptr, cRule, cData)
+	var err error
+	if out == nil {
+		err = lastError()
+	}
+	runtime.UnlockOSThread()
 	runtime.KeepAlive(e)
 	if out == nil {
-		return "", lastError()
+		return "", err
 	}
 	defer C.datalogic_string_free(out)
 	return C.GoString(out), nil
@@ -173,10 +190,17 @@ func (r *Rule) Close() {
 func (r *Rule) Evaluate(dataJSON string) (string, error) {
 	cData := C.CString(dataJSON)
 	defer C.free(unsafe.Pointer(cData))
+	// Keep the call and the thread-local last-error read on one OS thread.
+	runtime.LockOSThread()
 	out := C.datalogic_rule_evaluate(r.ptr, cData)
+	var err error
+	if out == nil {
+		err = lastError()
+	}
+	runtime.UnlockOSThread()
 	runtime.KeepAlive(r)
 	if out == nil {
-		return "", lastError()
+		return "", err
 	}
 	defer C.datalogic_string_free(out)
 	return C.GoString(out), nil
@@ -205,11 +229,18 @@ func (s *Session) Close() {
 func (s *Session) Evaluate(rule *Rule, dataJSON string) (string, error) {
 	cData := C.CString(dataJSON)
 	defer C.free(unsafe.Pointer(cData))
+	// Keep the call and the thread-local last-error read on one OS thread.
+	runtime.LockOSThread()
 	out := C.datalogic_session_evaluate(s.ptr, rule.ptr, cData)
+	var err error
+	if out == nil {
+		err = lastError()
+	}
+	runtime.UnlockOSThread()
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(rule)
 	if out == nil {
-		return "", lastError()
+		return "", err
 	}
 	defer C.datalogic_string_free(out)
 	return C.GoString(out), nil

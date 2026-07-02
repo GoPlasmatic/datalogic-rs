@@ -155,7 +155,7 @@ input goes via `serde_json::to_value(&t)?` first.
 
 | v4                                                      | v5                                                                                          |
 |---------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| `engine.evaluate(&logic, Arc<Value>)` → `Value`         | `engine.eval_into::<serde_json::Value, _, _>(&compiled, &*arc)` (one-shot) or open a session |
+| `engine.evaluate(&logic, Arc<Value>)` → `Value`         | `engine.session().eval_into::<serde_json::Value, _, _>(&compiled, &*arc)` (compiled logic evaluates through a session) |
 | `engine.evaluate_arc_value(&logic, Arc<Value>)`         | same                                                                                         |
 | `engine.evaluate_ref(&logic, &Value)`                   | `let v: serde_json::Value = engine.session().eval_into(&compiled, value)?`                  |
 | `engine.evaluate_owned(&logic, value)`                  | `let v: serde_json::Value = engine.session().eval_into(&compiled, &value)?`                 |
@@ -349,7 +349,7 @@ match engine.eval_str(rule, data) {
     Ok(json) => println!("ok: {json}"),
     Err(e) => {
         eprintln!("op: {:?}", e.operator());
-        eprintln!("kind: {:?}", e.kind());
+        eprintln!("kind: {:?}", &e.kind);
         // For a JSONLogic-style path of node ids:
         eprintln!("node ids (leaf→root): {:?}", e.node_ids());
         // Resolve to structured PathSteps (root→leaf):

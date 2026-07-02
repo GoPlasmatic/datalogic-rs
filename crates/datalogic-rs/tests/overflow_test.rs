@@ -369,3 +369,46 @@ fn test_duration_parsing_overflow_protection() {
     let result = engine.eval_into::<serde_json::Value, _, _>(&logic, &json!({}));
     assert!(result.is_ok() || result.is_err());
 }
+
+#[test]
+fn test_reduce_add_overflow_promotes_to_float() {
+    let engine = Engine::new();
+
+    // acc = 0 + i64::MAX + 1 overflows i64. The reduce integer fast path must
+    // promote to f64 (matching the general arithmetic path) rather than
+    // wrapping to i64::MIN.
+    let logic = json!({
+        "reduce": [
+            [i64::MAX, 1],
+            {"+": [{"var": "current"}, {"var": "accumulator"}]},
+            0
+        ]
+    });
+    let result = engine
+        .eval_into::<serde_json::Value, _, _>(&logic, &json!({}))
+        .unwrap();
+    let n = result.as_f64().expect("numeric result");
+    // Promoted positive value near 9.22e18, not the wrapped negative i64::MIN.
+    assert!(n > 9.2e18, "expected promoted float near 9.22e18, got {n}");
+    assert_ne!(result, json!(i64::MIN));
+}
+
+#[test]
+fn test_reduce_multiply_overflow_promotes_to_float() {
+    let engine = Engine::new();
+
+    // 1 * 1e9 * 1e9 * 1e9 = 1e27, which overflows i64 (max ~9.22e18). The
+    // fast path must promote instead of wrapping.
+    let logic = json!({
+        "reduce": [
+            [1_000_000_000i64, 1_000_000_000i64, 1_000_000_000i64],
+            {"*": [{"var": "current"}, {"var": "accumulator"}]},
+            1
+        ]
+    });
+    let result = engine
+        .eval_into::<serde_json::Value, _, _>(&logic, &json!({}))
+        .unwrap();
+    let n = result.as_f64().expect("numeric result");
+    assert!(n > 9.9e26, "expected ~1e27, got {n}");
+}
