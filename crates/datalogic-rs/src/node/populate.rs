@@ -1,30 +1,39 @@
 //! Post-compile pass that caches per-operator analysis results onto every
-//! `BuiltinOperator` node, plus the small helper that pre-builds inline
-//! literals at construction time.
+//! `BuiltinOperator` node and pre-builds literals onto every `Value` node,
+//! plus the small helper that pre-builds trivial literals at construction
+//! time.
 
 use super::CompiledNode;
+use super::prelit::PreLit;
 use crate::arena::DataValue;
 use crate::opcode::OpCode;
 use datavalue::OwnedDataValue;
 
-/// Pre-build a `DataValue<'static>` for every literal whose payload either
-/// fits inline (Null, Bool, Number) or borrows static slices (empty string,
-/// empty array, empty object). Non-empty Strings/Arrays/Objects can't be
-/// pre-built without either external self-cell crates or transmute-based
-/// self-reference, so they fall through to `literal_fallback` at dispatch
-/// time and pay one bumpalo alloc (string) or a deep-convert pass
-/// (non-empty array/object) per evaluation.
+/// Pre-build a [`PreLit`] for every literal whose payload either fits
+/// inline (Null, Bool, Number, and the datetime scalars) or borrows static
+/// slices (empty string, empty array, empty object). Called from every
+/// `CompiledNode::Value` construction site — including the runtime
+/// `synthetic_value` wrappers — so it stays cheap: one small box, no
+/// clones. Non-empty Strings/Arrays/Objects are pre-built separately by
+/// [`populate_lits`] at `Logic::new` (compile time only); a synthetic
+/// composite wrapper keeps `lit = None` and falls through to
+/// `literal_fallback` at dispatch time.
 #[inline]
-pub(super) fn precompute_lit(value: &OwnedDataValue) -> Option<Box<DataValue<'static>>> {
-    match value {
-        OwnedDataValue::Null => Some(Box::new(DataValue::Null)),
-        OwnedDataValue::Bool(b) => Some(Box::new(DataValue::Bool(*b))),
-        OwnedDataValue::Number(n) => Some(Box::new(DataValue::Number(*n))),
-        OwnedDataValue::String(s) if s.is_empty() => Some(Box::new(DataValue::String(""))),
-        OwnedDataValue::Array(a) if a.is_empty() => Some(Box::new(DataValue::Array(&[]))),
-        OwnedDataValue::Object(o) if o.is_empty() => Some(Box::new(DataValue::Object(&[]))),
-        _ => None,
-    }
+pub(super) fn precompute_lit(value: &OwnedDataValue) -> Option<PreLit> {
+    let dv = match value {
+        OwnedDataValue::Null => DataValue::Null,
+        OwnedDataValue::Bool(b) => DataValue::Bool(*b),
+        OwnedDataValue::Number(n) => DataValue::Number(*n),
+        OwnedDataValue::String(s) if s.is_empty() => DataValue::String(""),
+        OwnedDataValue::Array(a) if a.is_empty() => DataValue::Array(&[]),
+        OwnedDataValue::Object(o) if o.is_empty() => DataValue::Object(&[]),
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::DateTime(d) => DataValue::DateTime(*d),
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::Duration(d) => DataValue::Duration(*d),
+        _ => return None,
+    };
+    Some(PreLit::from_static(dv))
 }
 
 /// Opcodes that consume `args[0]` as an iterator input via
@@ -52,15 +61,28 @@ fn iterates_args0(opcode: OpCode) -> bool {
 }
 
 /// Walk the compiled tree and cache per-operator analysis results
-/// (`predicate_hint`, `iter_arg_kind`) onto every `BuiltinOperator` node.
-/// Pure compile-time bookkeeping — no arena, no unsafe.
+/// (`predicate_hint`, `iter_arg_kind`) onto every `BuiltinOperator` node,
+/// plus a pre-built [`PreLit`] onto every `Value` node holding a
+/// non-trivial literal. Pure compile-time bookkeeping — no arena, no
+/// unsafe.
 ///
-/// Non-trivial literals (non-empty Strings/Arrays/Objects) are NOT
-/// pre-allocated; they fall through to `literal_fallback` at dispatch time.
 /// Trivial literals (Null/Bool/Number/empty primitives) are handled by
-/// [`precompute_lit`] at node construction.
+/// [`precompute_lit`] at node construction; this pass covers the non-empty
+/// Strings/Arrays/Objects, paying one clone + spine build per literal per
+/// compile so dispatch returns a borrow instead of re-converting the
+/// literal into the arena on every evaluation. Guarded by `is_none`
+/// because a clone of an already-populated tree carries a correct
+/// rebuilt `PreLit` (see `PreLit::clone`) and `value` never mutates after
+/// construction.
 pub(crate) fn populate_lits(node: &mut CompiledNode) {
     node.visit_children_mut(&mut populate_lits);
+
+    if let CompiledNode::Value { value, lit, .. } = node {
+        if lit.is_none() {
+            *lit = PreLit::composite(value);
+        }
+        return;
+    }
 
     if let CompiledNode::BuiltinOperator {
         opcode,

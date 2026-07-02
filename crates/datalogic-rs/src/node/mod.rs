@@ -6,7 +6,10 @@
 //! - [`payload`] — boxed payload structs and small helper enums
 //!   referenced by `CompiledNode` variants.
 //! - [`populate`] — post-compile pass that caches per-operator analysis
-//!   results onto every `BuiltinOperator` node.
+//!   results onto every `BuiltinOperator` node and pre-builds composite
+//!   literals onto every `Value` node.
+//! - [`prelit`] — `PreLit`, the pre-built literal view returned by the
+//!   dispatch literal fast path without per-call arena work.
 //! - [`logic`] — `Logic`, the public compiled-rule snapshot, and the
 //!   static-evaluation predicates the optimizer consults.
 //!
@@ -17,6 +20,7 @@ mod compile_ctx;
 mod logic;
 mod payload;
 mod populate;
+mod prelit;
 
 pub use logic::Logic;
 
@@ -33,8 +37,8 @@ pub(crate) use payload::{
     CompiledMissingSomeData, CustomOperatorData, MetadataHint, PathSegment, ReduceHint,
 };
 pub(crate) use populate::populate_lits;
+pub(crate) use prelit::PreLit;
 
-use crate::arena::DataValue;
 use crate::opcode::OpCode;
 use datavalue::OwnedDataValue;
 use populate::precompute_lit;
@@ -54,20 +58,24 @@ use std::num::NonZeroU32;
 pub(crate) enum CompiledNode {
     /// A static JSON value that requires no evaluation.
     ///
-    /// Used for literals like numbers, strings, booleans, and null.
+    /// Used for literals like numbers, strings, booleans, and null —
+    /// and for composite literals (arrays/objects) folded at compile time.
     ///
-    /// `lit` holds a pre-built `DataValue` for primitive literals
-    /// that don't borrow from a per-call arena (e.g. Number). The arena
-    /// dispatch hot path returns this borrow directly, skipping
-    /// `value_to_data` and the per-call `arena.alloc`. `None` for
-    /// composite literals (Array/Object) and for primitives already
-    /// covered by static singletons (Null/Bool/empty string/empty array).
-    /// Read-only after compile — safe to share across threads via
+    /// `lit` holds a pre-built [`PreLit`] view of the literal. The arena
+    /// dispatch hot path returns its borrow directly, skipping the
+    /// per-call conversion and `arena.alloc`. Trivial literals
+    /// (Null/Bool/Number/empty composites) are populated at node
+    /// construction by [`populate::precompute_lit`]; non-trivial ones
+    /// (non-empty Strings/Arrays/Objects) by the [`populate_lits`] pass
+    /// at `Logic::new`, so runtime `synthetic_value` wrappers never pay
+    /// the prebuild cost. `None` only for those synthetic composite
+    /// wrappers, which fall through to `literal_fallback` at dispatch
+    /// time. Read-only after compile — safe to share across threads via
     /// `Arc<Logic>`.
     Value {
         id: NodeId,
         value: OwnedDataValue,
-        lit: Option<Box<DataValue<'static>>>,
+        lit: Option<PreLit>,
     },
 
     /// An array of compiled nodes.
@@ -329,6 +337,25 @@ impl CompiledNode {
     pub(crate) fn value_with_id(id: NodeId, value: OwnedDataValue) -> Self {
         let lit = precompute_lit(&value);
         CompiledNode::Value { id, value, lit }
+    }
+
+    /// [`Self::value_with_id`] plus an eager [`PreLit`] build for
+    /// non-trivial composites. Compile-pipeline sites that fold a static
+    /// sub-expression to a literal use this instead of `value_with_id` so
+    /// the prebuilt view exists *before* any enclosing static operator is
+    /// itself constant-folded — `evaluate_switch`'s folded-case-table arms
+    /// match on `lit: Some` structurally, so a compile-time evaluation of
+    /// a fully-static `switch` needs the table's `PreLit` already in
+    /// place. Never called at runtime (composite prebuilds clone the
+    /// literal); runtime wrappers go through [`Self::synthetic_value`].
+    pub(crate) fn compile_time_value(id: NodeId, value: OwnedDataValue) -> Self {
+        let mut node = Self::value_with_id(id, value);
+        if let CompiledNode::Value { value, lit, .. } = &mut node {
+            if lit.is_none() {
+                *lit = PreLit::composite(value);
+            }
+        }
+        node
     }
 
     /// Returns the name of this node's top-level operator, if any.

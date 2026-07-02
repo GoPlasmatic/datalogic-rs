@@ -172,14 +172,23 @@ mod dispatch;
 
 /// Convert an `OwnedDataValue` literal to an arena-resident `DataValue`
 /// reference. Reached from the `dispatch_node` literal path for any
-/// `CompiledNode::Value` whose `lit` was not precomputed — non-empty
-/// String/Array/Object literals (and ad-hoc `synthetic_value` wrappers built
-/// outside the compile pipeline). Trivial cases (Null, Bool, empty
-/// primitives) hit shared singletons with no allocation; a non-empty String
-/// allocates a single `DataValue` wrapper into the per-call arena (the `&str`
-/// is borrowed from the owned source); non-empty Arrays/Objects deep-convert
-/// via `value.to_arena`.
-#[inline]
+/// `CompiledNode::Value` whose `lit` was not precomputed — in practice
+/// only ad-hoc `synthetic_value` wrappers built outside the compile
+/// pipeline, since `populate_lits` pre-builds every literal reachable from
+/// a `Logic`. Trivial cases (Null, Bool, empty primitives) hit shared
+/// singletons with no allocation; a non-empty String allocates a single
+/// `DataValue` wrapper into the per-call arena (the `&str` is borrowed from
+/// the owned source); non-empty Arrays/Objects rebuild their spine in the
+/// arena via [`borrow_to_arena`], borrowing string bytes from the owned
+/// source instead of copying them.
+///
+/// `#[cold]` + `#[inline(never)]`: `dispatch_node` is `#[inline(always)]`,
+/// so its literal path is stamped into every operator's dispatch site —
+/// keeping this fallback outlined keeps those sites small (I-cache), and
+/// the cold hint steers the branch layout toward the pre-built `lit` path
+/// that every compiled literal takes.
+#[cold]
+#[inline(never)]
 fn literal_fallback<'a>(
     value: &'a datavalue::OwnedDataValue,
     arena: &'a bumpalo::Bump,
@@ -198,7 +207,42 @@ fn literal_fallback<'a>(
             crate::arena::singletons::singleton_empty_object()
         }
         OwnedDataValue::String(s) => arena.alloc(crate::arena::DataValue::String(s.as_str())),
-        _ => arena.alloc(value.to_arena(arena)),
+        _ => arena.alloc(borrow_to_arena(value, arena)),
+    }
+}
+
+/// Convert an owned composite literal into an arena `DataValue`, borrowing
+/// string bytes (element strings and object keys) from the owned source
+/// instead of copying them into the arena the way
+/// `OwnedDataValue::to_arena` does. Only the array/object spine is built in
+/// the arena. Sound because the compiled node — and therefore `value` —
+/// outlives the evaluation: `dispatch_node` borrows the node at the same
+/// `'a` as the arena. Recursion depth mirrors the value's nesting, which is
+/// bounded by the JSON parser / compile-time depth caps upstream.
+fn borrow_to_arena<'a>(
+    value: &'a datavalue::OwnedDataValue,
+    arena: &'a bumpalo::Bump,
+) -> crate::arena::DataValue<'a> {
+    use crate::arena::DataValue;
+    use datavalue::OwnedDataValue;
+    match value {
+        OwnedDataValue::Null => DataValue::Null,
+        OwnedDataValue::Bool(b) => DataValue::Bool(*b),
+        OwnedDataValue::Number(n) => DataValue::Number(*n),
+        OwnedDataValue::String(s) => DataValue::String(s.as_str()),
+        OwnedDataValue::Array(items) => DataValue::Array(
+            arena.alloc_slice_fill_with(items.len(), |i| borrow_to_arena(&items[i], arena)),
+        ),
+        OwnedDataValue::Object(pairs) => {
+            DataValue::Object(arena.alloc_slice_fill_with(pairs.len(), |i| {
+                let (k, v) = &pairs[i];
+                (k.as_str(), borrow_to_arena(v, arena))
+            }))
+        }
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::DateTime(d) => DataValue::DateTime(*d),
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::Duration(d) => DataValue::Duration(*d),
     }
 }
 
@@ -627,16 +671,15 @@ impl Engine {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         // Literal fast path — no breadcrumb push, no trace step.
         if let CompiledNode::Value { value, lit, .. } = node {
-            // Trivial literals (Null/Bool/Number/empty primitives) are
-            // pre-built `DataValue<'static>` by `precompute_lit` at node
-            // construction; covariance lets `&'a DataValue<'static>`
-            // satisfy `&'a DataValue<'a>` directly.
+            // Every literal reachable from a `Logic` carries a pre-built
+            // `PreLit` — trivial ones from `precompute_lit` at node
+            // construction, composites from the `populate_lits` pass —
+            // so the hot path is a borrow, not a conversion.
             if let Some(av) = lit {
-                return Ok(av);
+                return Ok(av.as_ref());
             }
-            // Non-trivial literals (non-empty Strings/Arrays/Objects) and
-            // synthetic nodes built outside the compile pipeline fall
-            // through to per-call arena allocation here.
+            // Synthetic composite wrappers built outside the compile
+            // pipeline fall through to per-call arena conversion here.
             return Ok(literal_fallback(value, arena));
         }
 

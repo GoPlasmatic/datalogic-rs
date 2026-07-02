@@ -69,10 +69,12 @@ impl Logic {
     /// Creates a new compiled logic from a root node.
     ///
     /// Caches per-operator analysis results onto every `BuiltinOperator`
-    /// node. Trivial literals (Null/Bool/Number/empty) are pre-built by
-    /// [`super::populate::precompute_lit`] at construction; non-trivial literals
-    /// (non-empty Strings/Arrays/Objects) fall through to `literal_fallback`
-    /// at dispatch time.
+    /// node and pre-builds every literal onto its `Value` node. Trivial
+    /// literals (Null/Bool/Number/empty) are pre-built by
+    /// [`super::populate::precompute_lit`] at construction; non-trivial
+    /// literals (non-empty Strings/Arrays/Objects) by the
+    /// [`super::populate::populate_lits`] pass here, so dispatch returns a
+    /// borrow instead of re-converting the literal per evaluation.
     ///
     /// # Arguments
     ///
@@ -298,5 +300,67 @@ mod tests {
         let div = engine.compile(r#"{"/": [1, 0]}"#).unwrap();
         assert!(div.is_static());
         assert!(!div.is_constant());
+    }
+
+    /// Composite literals are pre-built (`PreLit`) at compile time; a
+    /// deep `Logic::clone` rebuilds the cells rather than sharing them,
+    /// and both copies must evaluate identically even after the original
+    /// is dropped.
+    #[test]
+    fn cloned_logic_keeps_prebuilt_composite_literals() {
+        let engine = Engine::new();
+        let rule = r#"{"in": [{"var": "x"}, ["a", "b", "c"]]}"#;
+        let original = engine.compile(rule).unwrap();
+        let cloned = original.clone();
+        drop(original);
+        assert_eq!(
+            engine.eval_str(rule, r#"{"x": "b"}"#).unwrap(),
+            "true",
+            "sanity: rule matches via one-shot path"
+        );
+        let mut session = engine.session();
+        assert_eq!(session.eval_str(&cloned, r#"{"x": "b"}"#).unwrap(), "true");
+        session.reset();
+        assert_eq!(session.eval_str(&cloned, r#"{"x": "z"}"#).unwrap(), "false");
+    }
+
+    /// A `switch` whose case table folds to a composite literal must still
+    /// match its cases. The folded table's `PreLit` powers
+    /// `evaluate_switch`'s `Value { lit: Some(..) }` arms — both for a
+    /// dynamic discriminant (table folded, switch kept) and for a fully
+    /// static switch (table folded, then the whole switch constant-folded
+    /// at compile time, which requires the table's prebuilt view to exist
+    /// *during* the fold — see `CompiledNode::compile_time_value`).
+    #[cfg(feature = "ext-control")]
+    #[test]
+    fn folded_switch_case_tables_match() {
+        let engine = Engine::new();
+
+        // Dynamic discriminant, static (folded) case table.
+        let rule = r#"{"switch": [{"var": "x"}, [[1, "one"], [2, "two"]], "dflt"]}"#;
+        assert_eq!(engine.eval_str(rule, r#"{"x": 1}"#).unwrap(), "\"one\"");
+        assert_eq!(engine.eval_str(rule, r#"{"x": 2}"#).unwrap(), "\"two\"");
+        assert_eq!(engine.eval_str(rule, r#"{"x": 3}"#).unwrap(), "\"dflt\"");
+
+        // Fully static switch: constant-folded at compile time.
+        let folded = engine
+            .compile(r#"{"switch": ["b", [["a", 1], ["b", 2]], 0]}"#)
+            .unwrap();
+        assert!(folded.is_constant());
+        assert_eq!(
+            engine.eval_str(folded.to_json().as_str(), "null").unwrap(),
+            "2"
+        );
+
+        // Mixed table: one static (folded) pair among dynamic ones.
+        let mixed = r#"{"switch": [{"var": "x"}, [["s", "static-hit"], [{"var": "k"}, "dyn-hit"]], "none"]}"#;
+        assert_eq!(
+            engine.eval_str(mixed, r#"{"x": "s", "k": "?"}"#).unwrap(),
+            "\"static-hit\""
+        );
+        assert_eq!(
+            engine.eval_str(mixed, r#"{"x": "d", "k": "d"}"#).unwrap(),
+            "\"dyn-hit\""
+        );
     }
 }

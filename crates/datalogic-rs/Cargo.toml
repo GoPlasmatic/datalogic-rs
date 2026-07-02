@@ -92,6 +92,15 @@ smallvec = "1.6.1"
 # false` strips `serde` / `serde1` integration we don't need — the
 # operator only uses `Version::parse` + `PartialOrd`.
 semver = { version = "1.0", default-features = false, optional = true }
+# Safe self-referential structs for `node::prelit::PreLit`: a compiled
+# composite literal owns its string/child storage together with the
+# pre-built arena-shaped `DataValue` view that borrows from it, so the
+# dispatch literal path returns a borrow instead of deep-converting the
+# literal into the per-evaluation arena. Chosen over an embedded
+# `bumpalo::Bump` in `Logic` (a `Bump` is `!Sync` by type and would cost
+# `Logic: Sync`) and over hand-rolled self-reference (the crate is
+# `#![forbid(unsafe_code)]`; `self_cell` keeps the unsafe outside).
+self_cell = "1.2.2"
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full"] }

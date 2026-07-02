@@ -167,12 +167,16 @@ fn compile_builtin(
 
     // Optimization + static-fold passes (engine-dependent and gated on
     // the compile context's `skip_fold` flag, which the trace path sets).
+    // Folded literals are built with `compile_time_value` so composite
+    // results carry their prebuilt view immediately — an enclosing static
+    // operator folded right after this consumes it structurally (e.g.
+    // `evaluate_switch`'s folded-case-table arms).
     if let Some(eng) = engine {
         if !ctx.skip_fold() {
             node = optimize::optimize(node, eng);
             if node_is_static(&node) {
                 if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
-                    return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+                    return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
                 }
             }
         }
@@ -301,7 +305,12 @@ fn compile_array(
     if let Some(eng) = engine {
         if !ctx.skip_fold() && node_is_static(&node) {
             if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
-                return Ok(CompiledNode::value_with_id(Some(ctx.next_id()), value));
+                // `compile_time_value`: the folded array carries its
+                // prebuilt composite view immediately, so an enclosing
+                // static operator folded during this same compile (e.g. a
+                // literal-discriminant `switch` matching its case table
+                // via `lit: Some`) evaluates correctly at fold time.
+                return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
             }
         }
     }
