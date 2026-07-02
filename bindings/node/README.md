@@ -122,6 +122,7 @@ try {
 | `Engine.compile(rule)` → `Rule` | Parse a rule into a reusable handle |
 | `Engine.eval(rule, data)` | One-shot, returns JS value |
 | `Engine.evalStr(rule, data)` | One-shot, returns JSON string |
+| `Engine.evaluateWithTrace(logic, data)` | One-shot with execution trace, returns JSON string |
 | `Engine.session()` → `Session` | Open a hot-loop arena |
 | `Rule.evaluate(data)` | Evaluate, returns JS value |
 | `Rule.evaluateStr(data)` | Evaluate, returns JSON string |
@@ -130,14 +131,48 @@ try {
 | `Session.reset()` | Explicit arena reset (optional) |
 | `Session.allocatedBytes()` | High-water mark for the arena |
 
-Constructor option:
+Constructor options:
 
 ```ts
-new Engine({ templating: true })
+new Engine({ templating: true, config: { preset: 'strict' } })
 ```
 
 `templating: true` enables the engine's output-shaping templating mode —
 multi-key objects in a rule compile to templates with embedded JSONLogic.
+`config` sets the engine's evaluation configuration; see
+[Engine configuration](#engine-configuration).
+
+## Engine configuration
+
+The `config` constructor option changes evaluation semantics. It accepts
+a plain object or a JSON-encoded string; both use the wire format every
+binding shares, parsed by the core crate's
+[`EvaluationConfig::from_json_str`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+All keys are optional:
+
+| Key | Values |
+|---|---|
+| `preset` | `'default'`, `'safe_arithmetic'`, `'strict'` |
+| `arithmetic_nan_handling` | `'throw_error'`, `'ignore_value'`, `'coerce_to_zero'`, `'return_null'` |
+| `division_by_zero` | `'return_saturated'`, `'throw_error'`, `'return_null'`, `'return_infinity'` |
+| `loose_equality_errors` | boolean |
+| `truthy_evaluator` | `'javascript'`, `'python'`, `'strict_boolean'` |
+| `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+| `max_recursion_depth` | integer >= 1 |
+
+`preset` selects the starting point and the remaining keys override
+individual fields on top of it:
+
+```js
+const engine = new Engine({ config: { preset: 'strict' } });
+
+// The default engine coerces booleans to numbers; strict rejects them:
+engine.evalStr('{"+": [1, true]}', 'null'); // throws EvaluateError
+```
+
+Unknown keys or values throw at construction with
+`errorType: 'ConfigurationError'`, so typos fail loudly instead of being
+silently ignored.
 
 ## Custom operators
 
@@ -160,8 +195,35 @@ Callbacks run synchronously on the thread that created the engine.
 **Built-ins win**: registering a name that collides with a built-in
 operator (`+`, `if`, `var`, ...) has no effect. An engine carrying custom
 operators is **not** safe to share across worker threads (the JS callback
-is pinned to its originating thread); create one per worker. A plain
-engine or a compiled `Rule` with no custom operators is thread-safe.
+is pinned to its originating thread); create one per worker. If a custom
+operator is ever invoked from a different thread than the one that
+registered it, evaluation fails with an `EvaluateError` naming the
+operator rather than risking undefined behavior. A plain engine or a
+compiled `Rule` with no custom operators is thread-safe.
+
+## Tracing
+
+`Engine.evaluateWithTrace(logic, data)` evaluates with a step-by-step
+execution trace. Both arguments are JSON strings. The return value is a
+JSON string with the same envelope the WASM package
+(`@goplasmatic/datalogic-wasm`) produces, so trace consumers such as the
+React debugger component accept output from either package:
+
+```js
+const engine = new Engine();
+const run = JSON.parse(
+  engine.evaluateWithTrace('{"+": [1, 2, 3]}', 'null')
+);
+run.result;          // 6
+run.steps;           // per-node log: { step_id, node_id, context, result, ... }
+run.expression_tree; // compile-time tree: { id, expression, children }
+```
+
+Failures do not throw. Instead `result` is `null`, `error` carries the
+message, and `structured_error` the structured form. The rule is
+compiled with optimization disabled so every operator surfaces a step;
+expect it to be slower than `evalStr`. Use it for debugging, not hot
+paths.
 
 ## Performance
 
