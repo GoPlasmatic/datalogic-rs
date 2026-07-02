@@ -201,33 +201,34 @@ impl TraceCollector {
 
     /// Record a successful execution step
     pub(crate) fn record_step(&mut self, node_id: u32, context: Value, result: Value) {
-        let (iteration_index, iteration_total) = self.current_iteration();
-        let step = ExecutionStep {
-            step_id: self.step_counter,
-            node_id,
-            context,
-            result: Some(result),
-            error: None,
-            iteration_index,
-            iteration_total,
-        };
-        self.steps.push(step);
-        self.step_counter += 1;
+        self.record(node_id, context, Some(result), None);
     }
 
     /// Record an error execution step
     pub(crate) fn record_error(&mut self, node_id: u32, context: Value, error: String) {
+        self.record(node_id, context, None, Some(error));
+    }
+
+    /// Shared step constructor behind [`Self::record_step`] /
+    /// [`Self::record_error`]: stamp the step with the next sequential id
+    /// and the current iteration context.
+    fn record(
+        &mut self,
+        node_id: u32,
+        context: Value,
+        result: Option<Value>,
+        error: Option<String>,
+    ) {
         let (iteration_index, iteration_total) = self.current_iteration();
-        let step = ExecutionStep {
+        self.steps.push(ExecutionStep {
             step_id: self.step_counter,
             node_id,
             context,
-            result: None,
-            error: Some(error),
+            result,
+            error,
             iteration_index,
             iteration_total,
-        };
-        self.steps.push(step);
+        });
         self.step_counter += 1;
     }
 
@@ -279,6 +280,20 @@ pub struct TracedRun<R> {
     pub expression_tree: ExpressionNode,
 }
 
+impl<R> TracedRun<R> {
+    /// Rebuild the run around a converted result, preserving the recorded
+    /// steps and expression tree. Internal helper shared by the
+    /// owned-result entry points, which each project the arena-borrowed
+    /// result into an owned shape before the arena drops.
+    fn convert<T>(self, f: impl FnOnce(Result<R, Error>) -> Result<T, Error>) -> TracedRun<T> {
+        TracedRun {
+            result: f(self.result),
+            steps: self.steps,
+            expression_tree: self.expression_tree,
+        }
+    }
+}
+
 /// Trace-enabled view over a [`crate::Engine`] engine. Constructed via
 /// [`crate::Engine::trace`]. Mirrors [`crate::Session`] 1:1 — every
 /// `eval*` returns a [`TracedRun<R>`] carrying the trace alongside the
@@ -312,12 +327,8 @@ impl<'e> TracedSession<'e> {
             Err(e) => return Self::compile_failed(e),
         };
         let arena = bumpalo::Bump::new();
-        let inner = self.eval_borrowed_in(compiled, &owned_data, &arena);
-        TracedRun {
-            result: inner.result.and_then(crate::FromDataValue::from_arena),
-            steps: inner.steps,
-            expression_tree: inner.expression_tree,
-        }
+        self.eval_borrowed_in(compiled, &owned_data, &arena)
+            .convert(|result| result.and_then(crate::FromDataValue::from_arena))
     }
 
     /// One-shot traced evaluation with JSON-string boundary on both
@@ -329,25 +340,13 @@ impl<'e> TracedSession<'e> {
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let owned = match rule.into_owned_logic() {
-            Ok(o) => o,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let compiled = match crate::Logic::compile_for_trace(&owned, self.engine) {
-            Ok(c) => c,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let owned_data = match data.into_owned_input() {
-            Ok(d) => d,
+        let (compiled, owned_data) = match self.prepare(rule, data) {
+            Ok(prepared) => prepared,
             Err(e) => return Self::compile_failed(e),
         };
         let arena = bumpalo::Bump::new();
-        let inner = self.eval_borrowed_in(&compiled, &owned_data, &arena);
-        TracedRun {
-            result: inner.result.map(|v| v.to_string()),
-            steps: inner.steps,
-            expression_tree: inner.expression_tree,
-        }
+        self.eval_borrowed_in(&compiled, &owned_data, &arena)
+            .convert(|result| result.map(|v| v.to_string()))
     }
 
     /// Typed traced evaluation: deserialise the result into
@@ -360,29 +359,37 @@ impl<'e> TracedSession<'e> {
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let owned = match rule.into_owned_logic() {
-            Ok(o) => o,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let compiled = match crate::Logic::compile_for_trace(&owned, self.engine) {
-            Ok(c) => c,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let owned_data = match data.into_owned_input() {
-            Ok(d) => d,
+        let (compiled, owned_data) = match self.prepare(rule, data) {
+            Ok(prepared) => prepared,
             Err(e) => return Self::compile_failed(e),
         };
         let arena = bumpalo::Bump::new();
-        let inner = self.eval_borrowed_in(&compiled, &owned_data, &arena);
-        let result = inner.result.and_then(|v| {
-            let value: serde_json::Value = crate::FromDataValue::from_arena(v)?;
-            serde_json::from_value(value).map_err(crate::Error::from)
-        });
-        TracedRun {
-            result,
-            steps: inner.steps,
-            expression_tree: inner.expression_tree,
-        }
+        self.eval_borrowed_in(&compiled, &owned_data, &arena)
+            .convert(|result| {
+                result.and_then(|v| {
+                    let value: serde_json::Value = crate::FromDataValue::from_arena(v)?;
+                    serde_json::from_value(value).map_err(crate::Error::from)
+                })
+            })
+    }
+
+    /// Shared front half of the one-shot traced entry points
+    /// ([`Self::eval_str`] / [`Self::eval_into`]): normalise the rule,
+    /// compile it with the optimizer + constant-fold passes disabled, and
+    /// normalise the data into an owned value the arena run can borrow.
+    fn prepare<R, D>(
+        &self,
+        rule: R,
+        data: D,
+    ) -> crate::Result<(crate::Logic, datavalue::OwnedDataValue)>
+    where
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        let owned = rule.into_owned_logic()?;
+        let compiled = crate::Logic::compile_for_trace(&owned, self.engine)?;
+        let owned_data = data.into_owned_input()?;
+        Ok((compiled, owned_data))
     }
 
     /// Traced borrowed evaluation against a caller-owned arena. Mirrors
@@ -414,23 +421,11 @@ impl<'e> TracedSession<'e> {
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let _depth_guard = match self.engine.enter_dispatch_boundary() {
             Ok(g) => g,
-            Err(e) => {
-                return TracedRun {
-                    expression_tree,
-                    steps: TraceCollector::new().into_steps(),
-                    result: Err(e),
-                };
-            }
+            Err(e) => return Self::failed(expression_tree, e),
         };
         let data_ref = match data.into_arena_value(arena) {
             Ok(av) => av,
-            Err(e) => {
-                return TracedRun {
-                    expression_tree,
-                    steps: TraceCollector::new().into_steps(),
-                    result: Err(e),
-                };
-            }
+            Err(e) => return Self::failed(expression_tree, e),
         };
         let mut ctx = crate::arena::ContextStack::new(data_ref);
         ctx.attach_tracer(TraceCollector::new());
@@ -448,16 +443,28 @@ impl<'e> TracedSession<'e> {
         }
     }
 
-    fn compile_failed<R>(error: crate::Error) -> TracedRun<R> {
+    /// A run that failed before any step could be recorded: carries the
+    /// given expression tree and an empty step log.
+    fn failed<R>(expression_tree: ExpressionNode, error: crate::Error) -> TracedRun<R> {
         TracedRun {
             result: Err(error),
             steps: Vec::new(),
-            expression_tree: ExpressionNode {
+            expression_tree,
+        }
+    }
+
+    /// [`Self::failed`] for errors raised before an expression tree exists
+    /// (rule normalisation / compilation / data conversion): the tree is an
+    /// empty placeholder.
+    fn compile_failed<R>(error: crate::Error) -> TracedRun<R> {
+        Self::failed(
+            ExpressionNode {
                 id: 0,
                 expression: String::new(),
                 children: Vec::new(),
             },
-        }
+            error,
+        )
     }
 }
 

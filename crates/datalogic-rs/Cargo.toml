@@ -87,6 +87,9 @@ semver = { version = "1.0", default-features = false, optional = true }
 tokio = { version = "1.52", features = ["full"] }
 futures = "0.3.32"
 serde_json = "1.0.150"
+# Property-based tests (`tests/property_test.rs`). Floor kept current for
+# the same minimal-versions reason as [dependencies] above.
+proptest = "1.11"
 
 # Examples that depend on opt-in features. With `default = []`, these only
 # build when the user passes the matching `--features` (or `--all-features`).

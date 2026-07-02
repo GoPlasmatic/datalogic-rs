@@ -355,3 +355,20 @@ impl CompiledNode {
         }
     }
 }
+
+#[cfg(test)]
+mod layout_tests {
+    /// `CompiledNode` is the hot dispatch type — every evaluation walks
+    /// slices of it, so its size directly drives cache behaviour. 48
+    /// bytes is the current all-features size on 64-bit; a variant that
+    /// pushes it past that belongs behind a `Box`.
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn compiled_node_stays_small() {
+        assert!(
+            std::mem::size_of::<super::CompiledNode>() <= 48,
+            "CompiledNode grew past 48 bytes ({}); box the payload of the offending variant",
+            std::mem::size_of::<super::CompiledNode>()
+        );
+    }
+}

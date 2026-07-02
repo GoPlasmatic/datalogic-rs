@@ -474,9 +474,8 @@ fn test_reject_non_numeric_alone_changes_behavior() {
     // With only `reject_non_numeric` set (all other coercion flags at their
     // permissive defaults and NaN handling at the default ThrowError), the
     // fabricated coercions must turn into errors.
-    let config = EvaluationConfig::default().with_numeric_coercion(
-        NumericCoercionConfig::default().with_reject_non_numeric(true),
-    );
+    let config = EvaluationConfig::default()
+        .with_numeric_coercion(NumericCoercionConfig::default().with_reject_non_numeric(true));
     let engine = Engine::builder().with_config(config).build();
 
     // Baseline (no flag): "" coerces to 0, so "" + 1 == 1.
