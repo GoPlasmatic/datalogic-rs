@@ -170,7 +170,7 @@ channel.
 | Lang | Distribution shape | Lib type | Path in artifact |
 |---|---|---|---|
 | Go | Git tag `bindings/go/vX.Y.Z` with binaries staged in source tree | `.a` static | `bindings/go/lib/<os>_<arch>/libdatalogic_c.a` |
-| JVM | JAR with platform binaries under `META-INF/native/` | `.so` / `.dylib` / `.dll` | `META-INF/native/<jna-platform>/` (loaded via JNA `Native.load`) |
+| JVM | JAR with platform binaries at the classpath root | `.so` / `.dylib` / `.dll` | `<jna-platform>/` (loaded via JNA `Native.load`) |
 | .NET | NuGet package with platform binaries under `runtimes/<rid>/native/` | `.so` / `.dylib` / `.dll` | `runtimes/{linux,osx,win}-{x64,arm64}/native/` |
 | PHP | Composer package with platform binaries under `lib/<os>-<arch>/` | `.so` / `.dylib` / `.dll` | `lib/<os>-<arch>/` (loaded via `FFI::cdef`) |
 

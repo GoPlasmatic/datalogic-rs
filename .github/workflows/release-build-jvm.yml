@@ -40,28 +40,11 @@ jobs:
       # Map the matrix's `<os>-<arch>` to JNA's platform-resource
       # naming (Platform.RESOURCE_PREFIX) and stage native libs at the
       # classpath root under <jna-platform>/, which is where JNA's
-      # `Native.load` auto-extracts from.
+      # `Native.load` auto-extracts from. Shared with release.yml's
+      # publish-jvm job so the two layouts cannot drift apart.
       - name: Stage native libs under <jna-platform>/ (classpath root)
         shell: bash
-        run: |
-          set -euo pipefail
-          declare -A JNA=(
-            [linux-amd64]=linux-x86-64
-            [linux-arm64]=linux-aarch64
-            [darwin-amd64]=darwin-x86-64
-            [darwin-arm64]=darwin-aarch64
-            [windows-amd64]=win32-x86-64
-            [windows-arm64]=win32-aarch64
-          )
-          for plat in "${!JNA[@]}"; do
-            jna=${JNA[$plat]}
-            if [ -d "cdylib/$plat" ]; then
-              mkdir -p "bindings/jvm/src/main/resources/$jna"
-              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/$jna/"
-              echo "Staged $plat -> $jna"
-            fi
-          done
-          ls -R bindings/jvm/src/main/resources/
+        run: bash scripts/stage-jvm-natives.sh cdylib
 
       # Composite: setup Rust + cargo cache + build the host's cdylib so
       # `mvn test` can dlopen() it during the smoke run.

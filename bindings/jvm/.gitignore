@@ -5,5 +5,7 @@ target/
 .project
 .settings/
 
-# Native libs staged at release time
-src/main/resources/META-INF/native/*/
+# Native libs staged at release time (classpath-root <jna-platform>/ dirs)
+src/main/resources/linux-*/
+src/main/resources/darwin-*/
+src/main/resources/win32-*/

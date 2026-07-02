@@ -713,25 +713,12 @@ jobs:
           pattern: c-cdylib-*
           merge-multiple: true
 
-      - name: Stage native libs under META-INF/native/<jna-platform>/
+      # Same classpath-root <jna-platform>/ layout the packaged-JAR
+      # smoke test in release-build-jvm.yml validates — JNA's
+      # `Native.load` does not search META-INF/native/.
+      - name: Stage native libs under <jna-platform>/ (classpath root)
         shell: bash
-        run: |
-          set -euo pipefail
-          declare -A JNA=(
-            [linux-amd64]=linux-x86-64
-            [linux-arm64]=linux-aarch64
-            [darwin-amd64]=darwin-x86-64
-            [darwin-arm64]=darwin-aarch64
-            [windows-amd64]=win32-x86-64
-            [windows-arm64]=win32-aarch64
-          )
-          for plat in "${!JNA[@]}"; do
-            jna=${JNA[$plat]}
-            if [ -d "cdylib/$plat" ]; then
-              mkdir -p "bindings/jvm/src/main/resources/META-INF/native/$jna"
-              cp "cdylib/$plat/"* "bindings/jvm/src/main/resources/META-INF/native/$jna/"
-            fi
-          done
+        run: bash scripts/stage-jvm-natives.sh cdylib
 
       - name: Configure GPG for signing
         env:

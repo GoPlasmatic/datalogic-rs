@@ -111,8 +111,8 @@ bindings/jvm/
 │   ├── DatalogicException.java + ParseException + EvaluateException
 │   └── internal/
 │       └── DatalogicNative.java     # JNA Library interface
-├── src/main/resources/META-INF/native/
-│   └── (populated at release time)
+├── src/main/resources/<jna-platform>/
+│   └── (native cdylibs staged at release time, e.g. darwin-aarch64/)
 └── src/test/java/com/goplasmatic/datalogic/
     └── EngineTest.java              # JUnit 5
 ```

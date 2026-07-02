@@ -88,8 +88,8 @@
                 <configuration>
                     <!-- In-tree dev: surface the C ABI's cargo target
                          dir so JNA can resolve libdatalogic_c.* without
-                         the META-INF/native/<platform>/ JAR layout (the
-                         release workflow stages those at packaging
+                         the classpath-root <jna-platform>/ JAR layout
+                         (the release workflow stages those at packaging
                          time; locally they're absent on a fresh clone). -->
                     <systemPropertyVariables>
                         <jna.library.path>${project.basedir}/../c/target/release</jna.library.path>

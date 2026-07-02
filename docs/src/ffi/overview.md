@@ -26,7 +26,7 @@ Because these bindings rely on compiled shared/static libraries, the release pip
 | Ecosystem | Packaging | Binaries Layout | Loading Mechanism |
 |---|---|---|---|
 | **Go** | Go Module | Static libraries in `lib/<os>_<arch>/` | cgo static linking at compile time |
-| **JVM** | Maven JAR | Shared libraries under `META-INF/native/<platform>/` | JNA `Native.load` at runtime |
+| **JVM** | Maven JAR | Shared libraries at the classpath root under `<jna-platform>/` | JNA `Native.load` at runtime |
 | **.NET** | NuGet | Shared libraries under `runtimes/<rid>/native/` | P/Invoke `LibraryImport` at runtime |
 | **PHP** | Composer | Shared libraries under `lib/<os>-<arch>/` | PHP `FFI::cdef` at runtime |
 
