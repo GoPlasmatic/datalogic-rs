@@ -1,8 +1,9 @@
 [build-system]
 # Pin the maturin floor inside the build system, but the upper bound lives
 # in the release workflow's `maturin-version:` so wheel builds stay
-# reproducible across action upgrades.
-requires = ["maturin>=1.7,<2.0"]
+# reproducible across action upgrades. 1.8 is the floor for PEP 639
+# `license-files` support (the release workflow pins 1.13.3).
+requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -14,7 +15,12 @@ version = "5.0.0"
 description = "Python bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+# PEP 639 SPDX expression + license-files: maturin embeds the matched
+# files in the wheel's `.dist-info/licenses/`. `LICENSE` here is a
+# symlink to the repo-root LICENSE (same convention as `bindings/wasm`),
+# so the wheel ships the actual license text, not just the metadata tag.
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Harishankar Narayanan", email = "nharishankar@gmail.com" },
 ]

@@ -61,7 +61,7 @@ The Python binding mirrors the Rust engine's
 | Tier         | Entry point                              | Use when                                                      |
 |--------------|------------------------------------------|---------------------------------------------------------------|
 | One-shot     | `apply(rule, data)`                      | Ad-hoc evaluation, one rule + one data shape                  |
-| Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, custom operators)           |
+| Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, custom operators, config)   |
 | Compile once | `Engine().compile(rule).evaluate(data)`  | Same rule evaluated against many data inputs                  |
 | Session      | `with engine.session() as sess: …`       | Hot loops — amortise arena reset across iterations            |
 
@@ -159,6 +159,42 @@ engine.eval_str('{"double": [21]}', '{}')  # "42"
 **Built-ins win**: a custom registration of a built-in name (`+`, `if`,
 `var`, ...) never dispatches. Callbacks run with the GIL held.
 
+## Engine configuration
+
+Pass `config=` to `Engine(...)` to change evaluation semantics. The value
+is a `dict` (or a JSON string) with an optional `preset` plus per-field
+overrides. Unknown keys raise `EvaluateError`, so typos fail loudly:
+
+```python
+from datalogic_py import Engine, EvaluateError
+
+strict = Engine(config={"preset": "strict"})
+try:
+    strict.eval({"+": ["", 1]}, {})   # strict rejects non-numeric coercion
+except EvaluateError as e:
+    print(e.error_type)
+
+lenient = Engine(config={"division_by_zero": "return_null"})
+lenient.eval({"/": [1.5, 0]}, {})     # None
+```
+
+| Key | Values |
+|-----|--------|
+| `preset` | `"default"`, `"safe_arithmetic"`, `"strict"` |
+| `arithmetic_nan_handling` | `"throw_error"`, `"ignore_value"`, `"coerce_to_zero"`, `"return_null"` |
+| `division_by_zero` | `"return_saturated"`, `"throw_error"`, `"return_null"`, `"return_infinity"` |
+| `loose_equality_errors` | `bool` |
+| `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
+| `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+| `max_recursion_depth` | integer >= 1 |
+
+The `preset` applies first; the remaining keys override individual fields
+on top of it. Every binding shares this JSON schema and parses it with
+the same core code, so a config that works here works in the WASM and
+Node bindings too. The full semantics of each knob are documented on the
+Rust crate's
+[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+
 ## Error handling
 
 All exceptions descend from `DataLogicError`:
@@ -216,6 +252,34 @@ rule = engine.compile({
 rule.evaluate({"user": {"name": "Ada"}, "score": 99})
 # -> {"name": "Ada", "ok": True}
 ```
+
+## Execution tracing
+
+`Engine.evaluate_with_trace(logic, data)` evaluates with step-by-step
+tracing and returns a JSON string envelope. The shape is identical to the
+WASM binding's `evaluateWithTrace`, so the
+[React debugger component](https://github.com/GoPlasmatic/datalogic-rs/tree/main/ui)
+can consume it directly:
+
+```python
+import json
+from datalogic_py import Engine
+
+engine = Engine()
+trace = json.loads(engine.evaluate_with_trace(
+    '{">": [{"var": "score"}, 50]}',
+    '{"score": 75}',
+))
+trace["result"]           # True
+trace["expression_tree"]  # {"id", "expression", "children"} tree
+trace["steps"]            # per-node execution log, in evaluation order
+```
+
+Both arguments are JSON strings. Runtime failures do not raise: the
+envelope carries an `error` message and a `structured_error` object
+instead, alongside the steps recorded up to the failure. Tracing skips
+the optimizer so every operator in the rule appears in the trace; use it
+for debugging, not hot paths.
 
 ## Performance
 

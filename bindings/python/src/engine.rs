@@ -6,7 +6,8 @@ use std::sync::Arc;
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
-    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, Logic, Result as DlResult,
+    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig, Logic,
+    Result as DlResult,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyString};
@@ -53,22 +54,49 @@ impl Engine {
     /// :param custom_operators: optional dict ``{name: callable}`` whose
     ///     values are ``Callable[[str], str]`` — JSON-array string in,
     ///     JSON value string out.
+    /// :param config: optional evaluation configuration, as a ``dict`` or
+    ///     a JSON ``str``. Accepts an optional ``"preset"`` key
+    ///     (``"default"``, ``"safe_arithmetic"``, or ``"strict"``) plus
+    ///     per-field overrides: ``arithmetic_nan_handling``,
+    ///     ``division_by_zero``, ``loose_equality_errors``,
+    ///     ``truthy_evaluator``, ``numeric_coercion``, and
+    ///     ``max_recursion_depth``. Unknown keys or values raise
+    ///     :class:`EvaluateError` with the engine's message.
     #[new]
-    #[pyo3(signature = (*, templating = false, custom_operators = None))]
-    fn new(templating: bool, custom_operators: Option<HashMap<String, Py<PyAny>>>) -> Self {
+    #[pyo3(signature = (*, templating = false, custom_operators = None, config = None))]
+    fn new(
+        py: Python<'_>,
+        templating: bool,
+        custom_operators: Option<HashMap<String, Py<PyAny>>>,
+        config: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
         } else {
             RsEngine::builder()
         };
+        if let Some(cfg) = config {
+            // Accept a JSON string as-is; anything else (normally a dict)
+            // is serialised to JSON first. Both forms funnel into the
+            // core's shared config parser so every binding rejects the
+            // same typos with the same messages.
+            let json = if let Ok(s) = cfg.cast::<PyString>() {
+                s.to_str()?.to_string()
+            } else {
+                dict_to_value(py, cfg)?.to_string()
+            };
+            let parsed = EvaluationConfig::from_json_str(&json)
+                .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
+            builder = builder.with_config(parsed);
+        }
         if let Some(map) = custom_operators {
             for (name, callback) in map {
                 builder = builder.add_operator(name.clone(), PyOperator { name, callback });
             }
         }
-        Self {
+        Ok(Self {
             inner: Arc::new(builder.build()),
-        }
+        })
     }
 
     /// Compile a JSONLogic rule into a reusable [`Rule`].
@@ -107,6 +135,28 @@ impl Engine {
     ) -> PyResult<String> {
         let logic = compile_inner(py, &self.inner, rule)?;
         evaluate_str(py, &self.inner, &logic, data)
+    }
+
+    /// Evaluate ``logic`` against ``data`` with step-by-step execution
+    /// tracing. Both arguments are JSON ``str``.
+    ///
+    /// Returns a JSON ``str`` envelope of the form
+    /// ``{"result", "expression_tree", "steps", "error"?, "structured_error"?}``,
+    /// identical to the WASM binding's ``evaluateWithTrace`` so the React
+    /// debugger UI can consume it directly. Runtime failures do not raise:
+    /// the envelope's ``error`` (message string) and ``structured_error``
+    /// (structured form) fields carry them instead, alongside the steps
+    /// recorded up to the failure.
+    fn evaluate_with_trace(&self, py: Python<'_>, logic: &str, data: &str) -> PyResult<String> {
+        let engine = self.inner.clone();
+        let logic_owned = logic.to_string();
+        let data_owned = data.to_string();
+        Ok(py.detach(move || {
+            let run = engine
+                .trace()
+                .eval_str(logic_owned.as_str(), data_owned.as_str());
+            traced_run_to_json(&run)
+        }))
     }
 
     /// Open a hot-loop [`Session`] bound to this engine. The session
@@ -228,6 +278,49 @@ impl CustomOperator for PyOperator {
 }
 
 // ---------------- shared helpers ----------------
+
+/// Render a [`datalogic_rs::TracedRun`] into the wire shape shared with the
+/// WASM binding's `evaluateWithTrace`: `{ result, expression_tree, steps,
+/// error?, structured_error? }`. Keep this key-for-key aligned with
+/// `traced_run_to_json` in `bindings/wasm/src/lib.rs`; the React debugger
+/// consumes both.
+fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
+    #[derive(serde::Serialize)]
+    struct Wire<'a> {
+        result: Value,
+        expression_tree: &'a datalogic_rs::ExpressionNode,
+        steps: &'a [datalogic_rs::ExecutionStep],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        structured_error: Option<&'a DlError>,
+    }
+
+    let result_json: Value;
+    let mut error_msg: Option<String> = None;
+    let mut error_struct: Option<&DlError> = None;
+    match &run.result {
+        Ok(s) => {
+            // The String is already JSON; surface it as the parsed value
+            // when possible, falling back to a JSON string otherwise.
+            result_json = serde_json::from_str::<Value>(s.as_str())
+                .unwrap_or_else(|_| Value::String(s.to_string()));
+        }
+        Err(e) => {
+            result_json = Value::Null;
+            error_msg = Some(e.to_string());
+            error_struct = Some(e);
+        }
+    }
+    serde_json::to_string(&Wire {
+        result: result_json,
+        expression_tree: &run.expression_tree,
+        steps: &run.steps,
+        error: error_msg,
+        structured_error: error_struct,
+    })
+    .unwrap_or_default()
+}
 
 pub(crate) fn compile_inner(
     py: Python<'_>,
