@@ -52,6 +52,7 @@ datalogic_traced_session *datalogic_engine_traced_session(datalogic_engine *engi
 datalogic_engine_builder *datalogic_engine_builder_new(void);
 void datalogic_engine_builder_free(datalogic_engine_builder *builder);
 void datalogic_engine_builder_set_templating(datalogic_engine_builder *builder, int enabled);
+int datalogic_engine_builder_set_config_json(datalogic_engine_builder *builder, const char *config_json);
 int datalogic_engine_builder_add_operator(datalogic_engine_builder *builder, const char *name, datalogic_op_callback callback, void *user_data);
 datalogic_engine *datalogic_engine_builder_build(datalogic_engine_builder *builder);
 

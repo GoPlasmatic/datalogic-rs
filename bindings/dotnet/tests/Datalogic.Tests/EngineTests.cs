@@ -158,3 +158,46 @@ public class CustomOperatorTests
         Assert.Contains("custom-failure", ex.Message);
     }
 }
+
+public class BuilderConfigTests
+{
+    [Fact]
+    public void SetConfigJson_strict_preset_takes_effect()
+    {
+        // Default config: null coerces to 0 and the sum evaluates.
+        using var lenient = new Engine();
+        Assert.Equal("1", lenient.Apply("""{"+":[null,1]}""", "{}"));
+
+        // Strict preset: the same rule rejects the non-numeric null.
+        using var strict = Engine.Builder()
+            .SetConfigJson("""{"preset":"strict"}""")
+            .Build();
+        Assert.Throws<EvaluateException>(() => strict.Apply("""{"+":[null,1]}""", "{}"));
+    }
+
+    [Fact]
+    public void SetConfigJson_rejects_bad_input()
+    {
+        // Malformed JSON surfaces the parser's message.
+        var malformed = Assert.Throws<EvaluateException>(
+            () => Engine.Builder().SetConfigJson("not-json{{"));
+        Assert.Equal("ConfigurationError", malformed.ErrorType);
+        Assert.False(string.IsNullOrEmpty(malformed.Message));
+
+        // Unknown enum values fail loudly instead of being ignored.
+        var bogus = Assert.Throws<EvaluateException>(
+            () => Engine.Builder().SetConfigJson("""{"preset":"bogus"}"""));
+        Assert.Contains("bogus", bogus.Message);
+    }
+
+    [Fact]
+    public void SetConfigJson_chains_with_templating()
+    {
+        using var engine = Engine.Builder()
+            .WithTemplating(true)
+            .SetConfigJson("""{"preset":"strict"}""")
+            .Build();
+        Assert.Equal("3", engine.Apply("""{"+":[1,2]}""", "{}"));
+        Assert.Throws<EvaluateException>(() => engine.Apply("""{"+":[null,1]}""", "{}"));
+    }
+}

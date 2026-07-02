@@ -64,6 +64,9 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_templating")]
     internal static partial void datalogic_engine_builder_set_templating(IntPtr builder, int enabled);
 
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_config_json", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int datalogic_engine_builder_set_config_json(IntPtr builder, string config_json);
+
     /// <summary>
     /// Callback signature for user-defined operators. Mirrors the C
     /// `datalogic_op_callback` typedef. Returns a freshly-allocated UTF-8

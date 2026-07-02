@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace Goplasmatic\Datalogic\Tests;
 
 use Goplasmatic\Datalogic\Engine;
+use Goplasmatic\Datalogic\Exception\DatalogicException;
 use Goplasmatic\Datalogic\Exception\EvaluateException;
 use Goplasmatic\Datalogic\Exception\ParseException;
 use PHPUnit\Framework\TestCase;
@@ -127,5 +128,51 @@ final class EngineTest extends TestCase
         } catch (EvaluateException $ex) {
             self::assertStringContainsString('custom-failure', $ex->getMessage());
         }
+    }
+
+    public function test_builder_set_config_json_strict_preset_takes_effect(): void
+    {
+        // Default config: null coerces to 0 and the sum evaluates.
+        $lenient = new Engine();
+        self::assertSame('1', $lenient->apply('{"+":[null,1]}', '{}'));
+
+        // Strict preset: the same rule rejects the non-numeric null.
+        $strict = Engine::builder()
+            ->setConfigJson('{"preset":"strict"}')
+            ->build();
+        $this->expectException(EvaluateException::class);
+        $strict->apply('{"+":[null,1]}', '{}');
+    }
+
+    public function test_builder_set_config_json_rejects_bad_input(): void
+    {
+        // Malformed JSON surfaces the parser's message.
+        try {
+            Engine::builder()->setConfigJson('not-json{{');
+            self::fail('expected DatalogicException');
+        } catch (DatalogicException $ex) {
+            self::assertSame('ConfigurationError', $ex->errorType);
+            self::assertNotSame('', $ex->getMessage());
+        }
+
+        // Unknown enum values fail loudly instead of being ignored.
+        try {
+            Engine::builder()->setConfigJson('{"preset":"bogus"}');
+            self::fail('expected DatalogicException');
+        } catch (DatalogicException $ex) {
+            self::assertStringContainsString('bogus', $ex->getMessage());
+        }
+    }
+
+    public function test_builder_set_config_json_chains_with_templating(): void
+    {
+        $engine = Engine::builder()
+            ->withTemplating(true)
+            ->setConfigJson('{"preset":"strict"}')
+            ->build();
+        self::assertSame('3', $engine->apply('{"+":[1,2]}', '{}'));
+
+        $this->expectException(EvaluateException::class);
+        $engine->apply('{"+":[null,1]}', '{}');
     }
 }

@@ -62,6 +62,9 @@ public interface DatalogicNative extends Library {
 
     void datalogic_engine_builder_set_templating(Pointer builder, int enabled);
 
+    /** Returns 0 on success, -1 on error (last-error state populated). */
+    int datalogic_engine_builder_set_config_json(Pointer builder, String config_json);
+
     /**
      * Callback type for custom operators. JNA invokes this on whatever thread
      * the engine calls our trampoline from.

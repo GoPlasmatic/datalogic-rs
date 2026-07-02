@@ -40,6 +40,35 @@ public final class EngineBuilder {
     }
 
     /**
+     * Set the engine's evaluation configuration from a JSON object
+     * string, parsed by the core crate's shared config parser (the same
+     * wire format every binding uses). All keys are optional; an
+     * optional {@code "preset"} ({@code "default"} |
+     * {@code "safe_arithmetic"} | {@code "strict"}) selects the starting
+     * point and the remaining keys ({@code arithmetic_nan_handling},
+     * {@code division_by_zero}, {@code loose_equality_errors},
+     * {@code truthy_evaluator}, {@code numeric_coercion} as an object of
+     * bools, {@code max_recursion_depth}) override individual fields on
+     * top of it. Unknown keys and values are rejected (error type
+     * {@code "ConfigurationError"}) so typos fail loudly instead of
+     * being silently ignored. Each call replaces the builder's entire
+     * evaluation config; templating and registered operators are
+     * unaffected.
+     *
+     * @throws EvaluateException if the config JSON is malformed or
+     *         contains unknown keys or values
+     */
+    public EngineBuilder setConfigJson(String json) {
+        if (json == null) throw new NullPointerException("json");
+        ensureFresh();
+        int rc = DatalogicNative.INSTANCE.datalogic_engine_builder_set_config_json(handle, json);
+        if (rc != 0) {
+            throw DatalogicException.fromLastError("set_config_json failed");
+        }
+        return this;
+    }
+
+    /**
      * Register a custom JSONLogic operator under {@code name}. The
      * {@link CustomOperator} contract takes a JSON-array string of
      * pre-evaluated arguments and returns a JSON-value string.

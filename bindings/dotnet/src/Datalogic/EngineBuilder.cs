@@ -53,6 +53,37 @@ public sealed class EngineBuilder
     }
 
     /// <summary>
+    /// Set the engine's evaluation configuration from a JSON object
+    /// string, parsed by the core crate's shared config parser (the same
+    /// wire format every binding uses). All keys are optional; an
+    /// optional <c>"preset"</c> (<c>"default"</c> |
+    /// <c>"safe_arithmetic"</c> | <c>"strict"</c>) selects the starting
+    /// point and the remaining keys (<c>arithmetic_nan_handling</c>,
+    /// <c>division_by_zero</c>, <c>loose_equality_errors</c>,
+    /// <c>truthy_evaluator</c>, <c>numeric_coercion</c> as an object of
+    /// bools, <c>max_recursion_depth</c>) override individual fields on
+    /// top of it. Unknown keys and values are rejected (error type
+    /// <c>"ConfigurationError"</c>) so typos fail loudly instead of
+    /// being silently ignored. Each call replaces the builder's entire
+    /// evaluation config; templating and registered operators are
+    /// unaffected.
+    /// </summary>
+    /// <exception cref="EvaluateException">
+    /// The config JSON is malformed or contains unknown keys or values.
+    /// </exception>
+    public EngineBuilder SetConfigJson(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        EnsureFresh();
+        var rc = NativeMethods.datalogic_engine_builder_set_config_json(_handle, json);
+        if (rc != 0)
+        {
+            throw DatalogicException.FromLastError("set_config_json failed");
+        }
+        return this;
+    }
+
+    /// <summary>
     /// Register a custom JSONLogic operator under <paramref name="name"/>.
     /// </summary>
     public EngineBuilder AddOperator(string name, CustomOperator op)

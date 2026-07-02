@@ -124,4 +124,44 @@ class EngineTest {
             assertTrue(ex.getMessage().contains("custom-failure"), "got: " + ex.getMessage());
         }
     }
+
+    @Test
+    void builder_set_config_json_strict_preset_takes_effect() {
+        // Default config: null coerces to 0 and the sum evaluates.
+        try (Engine engine = new Engine()) {
+            assertEquals("1", engine.apply("{\"+\":[null,1]}", "{}"));
+        }
+        // Strict preset: the same rule rejects the non-numeric null.
+        try (Engine engine = Engine.builder()
+                .setConfigJson("{\"preset\":\"strict\"}")
+                .build()) {
+            assertThrows(EvaluateException.class, () -> engine.apply("{\"+\":[null,1]}", "{}"));
+        }
+    }
+
+    @Test
+    void builder_set_config_json_rejects_bad_input() {
+        // Malformed JSON surfaces the parser's message.
+        EvaluateException malformed = assertThrows(EvaluateException.class,
+                () -> Engine.builder().setConfigJson("not-json{{"));
+        assertEquals("ConfigurationError", malformed.errorType());
+        assertNotNull(malformed.getMessage());
+        assertFalse(malformed.getMessage().isEmpty());
+
+        // Unknown enum values fail loudly instead of being ignored.
+        EvaluateException bogus = assertThrows(EvaluateException.class,
+                () -> Engine.builder().setConfigJson("{\"preset\":\"bogus\"}"));
+        assertTrue(bogus.getMessage().contains("bogus"), "got: " + bogus.getMessage());
+    }
+
+    @Test
+    void builder_set_config_json_chains_with_templating() {
+        try (Engine engine = Engine.builder()
+                .withTemplating(true)
+                .setConfigJson("{\"preset\":\"strict\"}")
+                .build()) {
+            assertEquals("3", engine.apply("{\"+\":[1,2]}", "{}"));
+            assertThrows(EvaluateException.class, () -> engine.apply("{\"+\":[null,1]}", "{}"));
+        }
+    }
 }
