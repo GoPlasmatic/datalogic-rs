@@ -162,6 +162,44 @@ extern void free(void *ptr);
  void datalogic_engine_builder_set_templating(datalogic_engine_builder *builder, int32_t enabled);
 
 /**
+ * Set the engine's evaluation configuration from a JSON object string.
+ *
+ * `config_json` is parsed by the core crate's shared config parser
+ * ([`EvaluationConfig::from_json_str`]) — the same wire format every
+ * binding uses. All keys are optional; an optional `"preset"`
+ * (`"default"` | `"safe_arithmetic"` | `"strict"`) selects the starting
+ * point and the remaining keys override individual fields on top of it:
+ *
+ * | Key | Value |
+ * |-----|-------|
+ * | `preset` | `"default"` \| `"safe_arithmetic"` \| `"strict"` |
+ * | `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
+ * | `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
+ * | `loose_equality_errors` | bool |
+ * | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
+ * | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+ * | `max_recursion_depth` | integer ≥ 1 |
+ *
+ * Unknown keys, unknown enum strings, and type mismatches are rejected
+ * (tag `"ConfigurationError"`) so typos fail loudly instead of being
+ * silently ignored. Each call replaces the builder's entire evaluation
+ * config; templating and registered operators are unaffected.
+ *
+ * Returns `0` on success, `-1` on failure with the thread-local
+ * last-error block populated (query
+ * [`crate::datalogic_last_error_message`]).
+ *
+ * # Safety
+ *
+ * `builder` must be a valid pointer returned by
+ * [`datalogic_engine_builder_new`]; `config_json` must be a valid
+ * NUL-terminated UTF-8 string.
+ */
+
+int32_t datalogic_engine_builder_set_config_json(datalogic_engine_builder *builder,
+                                                 const char *config_json);
+
+/**
  * Register a custom operator. The callback is invoked on every match of
  * the operator name during evaluation. See [`DatalogicOpCallback`] for
  * the contract.

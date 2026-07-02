@@ -291,6 +291,76 @@ fn builder_set_templating_takes_effect() {
 }
 
 #[test]
+fn builder_set_config_json_strict_preset_takes_effect() {
+    // Default config: `{"+": [null, 1]}` coerces null to 0 and returns 1.
+    let engine = datalogic_engine_new(0);
+    let rule = cstr(r#"{"+":[null,1]}"#);
+    let data = cstr("{}");
+    let out = unsafe { datalogic_engine_apply(engine, rule.as_ptr(), data.as_ptr()) };
+    let s = unsafe { take_string(out) };
+    assert_eq!(s, "1");
+    unsafe { datalogic_engine_free(engine) };
+
+    // Strict preset: the same rule rejects the non-numeric null.
+    datalogic_last_error_clear();
+    let b = datalogic_engine_builder_new();
+    let config = cstr(r#"{"preset":"strict"}"#);
+    let rc = unsafe { datalogic_engine_builder_set_config_json(b, config.as_ptr()) };
+    assert_eq!(rc, 0);
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    assert!(!engine.is_null());
+    unsafe { datalogic_engine_builder_free(b) };
+
+    let out = unsafe { datalogic_engine_apply(engine, rule.as_ptr(), data.as_ptr()) };
+    assert!(out.is_null(), "strict config should reject null operand");
+    let msg = unsafe { CStr::from_ptr(datalogic_last_error_message()) }
+        .to_str()
+        .unwrap();
+    assert!(!msg.is_empty());
+    unsafe { datalogic_engine_free(engine) };
+}
+
+#[test]
+fn builder_set_config_json_rejects_bad_input() {
+    // Malformed JSON -> -1 + last-error message.
+    datalogic_last_error_clear();
+    let b = datalogic_engine_builder_new();
+    let bad = cstr("not-json{{");
+    let rc = unsafe { datalogic_engine_builder_set_config_json(b, bad.as_ptr()) };
+    assert_eq!(rc, -1);
+    let msg = unsafe { CStr::from_ptr(datalogic_last_error_message()) }
+        .to_str()
+        .unwrap();
+    assert!(!msg.is_empty());
+
+    // Unknown enum value -> -1 (the shared parser fails loudly on typos).
+    let bogus = cstr(r#"{"preset":"bogus"}"#);
+    let rc = unsafe { datalogic_engine_builder_set_config_json(b, bogus.as_ptr()) };
+    assert_eq!(rc, -1);
+    let msg = unsafe { CStr::from_ptr(datalogic_last_error_message()) }
+        .to_str()
+        .unwrap();
+    assert!(msg.contains("bogus"), "got message: {msg}");
+
+    // NULL config pointer -> -1.
+    let rc = unsafe { datalogic_engine_builder_set_config_json(b, std::ptr::null()) };
+    assert_eq!(rc, -1);
+
+    // NULL builder pointer -> -1.
+    let good = cstr(r#"{"preset":"strict"}"#);
+    let rc =
+        unsafe { datalogic_engine_builder_set_config_json(std::ptr::null_mut(), good.as_ptr()) };
+    assert_eq!(rc, -1);
+
+    // A failed set_config_json leaves the builder usable: it still builds
+    // (with whatever config it had) rather than being poisoned.
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    assert!(!engine.is_null());
+    unsafe { datalogic_engine_free(engine) };
+    unsafe { datalogic_engine_builder_free(b) };
+}
+
+#[test]
 fn builder_build_twice_returns_null_and_sets_error() {
     let b = datalogic_engine_builder_new();
     let engine = unsafe { datalogic_engine_builder_build(b) };

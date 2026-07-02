@@ -11,12 +11,13 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
-    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, Result as DlResult,
+    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig,
+    Result as DlResult,
 };
 
 use crate::cstr_to_str;
 use crate::engine::Engine;
-use crate::error::{clear_error_state, set_error_message};
+use crate::error::{clear_error_state, set_error, set_error_message};
 
 unsafe extern "C" {
     /// `free(3)` from libc. The Rust default allocator on `cdylib` targets
@@ -102,6 +103,67 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_templating(
     if let Some(b) = handle.inner.take() {
         handle.inner = Some(b.with_templating(enabled != 0));
     }
+}
+
+/// Set the engine's evaluation configuration from a JSON object string.
+///
+/// `config_json` is parsed by the core crate's shared config parser
+/// ([`EvaluationConfig::from_json_str`]) — the same wire format every
+/// binding uses. All keys are optional; an optional `"preset"`
+/// (`"default"` | `"safe_arithmetic"` | `"strict"`) selects the starting
+/// point and the remaining keys override individual fields on top of it:
+///
+/// | Key | Value |
+/// |-----|-------|
+/// | `preset` | `"default"` \| `"safe_arithmetic"` \| `"strict"` |
+/// | `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
+/// | `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
+/// | `loose_equality_errors` | bool |
+/// | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
+/// | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+/// | `max_recursion_depth` | integer ≥ 1 |
+///
+/// Unknown keys, unknown enum strings, and type mismatches are rejected
+/// (tag `"ConfigurationError"`) so typos fail loudly instead of being
+/// silently ignored. Each call replaces the builder's entire evaluation
+/// config; templating and registered operators are unaffected.
+///
+/// Returns `0` on success, `-1` on failure with the thread-local
+/// last-error block populated (query
+/// [`crate::datalogic_last_error_message`]).
+///
+/// # Safety
+///
+/// `builder` must be a valid pointer returned by
+/// [`datalogic_engine_builder_new`]; `config_json` must be a valid
+/// NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_engine_builder_set_config_json(
+    builder: *mut EngineBuilder,
+    config_json: *const c_char,
+) -> i32 {
+    crate::ffi_guard(-1, || {
+        clear_error_state();
+        let Some(handle) = (unsafe { builder.as_mut() }) else {
+            set_error_message("engine builder pointer is null", "ParseError");
+            return -1;
+        };
+        let Some(config_str) = cstr_to_str(config_json) else {
+            set_error_message("config_json is null or not valid UTF-8", "ParseError");
+            return -1;
+        };
+        let config = match EvaluationConfig::from_json_str(config_str) {
+            Ok(c) => c,
+            Err(e) => {
+                set_error(&e, None);
+                return -1;
+            }
+        };
+        if let Some(b) = handle.inner.take() {
+            handle.inner = Some(b.with_config(config));
+        }
+        0
+    })
 }
 
 /// Register a custom operator. The callback is invoked on every match of
