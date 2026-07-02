@@ -142,11 +142,10 @@ public sealed class EngineBuilder
             }
             var argsJson = Marshal.PtrToStringUTF8(argsJsonPtr) ?? "[]";
             var result = op(argsJson);
-            // Allocate with libc malloc so the Rust side's `free()` works
-            // (`Marshal.StringToCoTaskMemUTF8` uses CoTaskMemAlloc on
-            // Windows — not safe for `free()`). Use libc strdup
-            // equivalent via Marshal.AllocHGlobal which on every platform
-            // .NET supports calls into the C runtime's allocator.
+            // Allocate with the C runtime's malloc (NativeMemory.Alloc
+            // inside AllocLibcUtf8) so the Rust side's libc `free()` is
+            // valid. See AllocLibcUtf8 for why Marshal.AllocHGlobal
+            // would not be safe here.
             return AllocLibcUtf8(result);
         }
         catch (Exception ex)

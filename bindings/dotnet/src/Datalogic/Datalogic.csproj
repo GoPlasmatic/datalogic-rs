@@ -21,8 +21,16 @@
     <RepositoryUrl>https://github.com/GoPlasmatic/datalogic-rs</RepositoryUrl>
     <PackageProjectUrl>https://github.com/GoPlasmatic/datalogic-rs</PackageProjectUrl>
     <PackageTags>jsonlogic;rules-engine;datalogic;native</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeBuildOutput>true</IncludeBuildOutput>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- SourceLink: stamp repo/commit metadata into the PDB so consumers
+         can step into binding sources; symbols ship as a separate
+         .snupkg next to the .nupkg. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!-- The README explains how `runtimes/<rid>/native/` populates the
          native libs in CI. Local dev resolves the lib from the C ABI's
          cargo target dir via the DllImportResolver in
@@ -38,7 +46,15 @@
     <None Include="..\..\runtimes\**\*" Pack="true" PackagePath="runtimes" Condition="Exists('..\..\runtimes')" />
   </ItemGroup>
 
+  <!-- Binding README, shipped as the NuGet package readme (see
+       PackageReadmeFile above). PackagePath="\" puts it at the package
+       root, where nuget.org expects it. -->
   <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" Version="10.0.8" />
   </ItemGroup>
 

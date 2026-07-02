@@ -72,6 +72,9 @@ jobs:
           mkdir -p $STAGE/goplasmatic-datalogic
           cp -r bindings/php/src bindings/php/lib bindings/php/composer.json bindings/php/README.md \
                 $STAGE/goplasmatic-datalogic/
+          # Repo-root LICENSE: the binding directory carries no copy of
+          # its own, and the zip must ship the license text.
+          cp LICENSE $STAGE/goplasmatic-datalogic/
           (cd $STAGE && zip -r ../goplasmatic-datalogic-php.zip goplasmatic-datalogic)
 
       - name: Upload distribution zip
