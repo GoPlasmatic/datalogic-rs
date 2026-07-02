@@ -99,6 +99,45 @@ func (b *EngineBuilder) Templating(on bool) *EngineBuilder {
 	return b
 }
 
+// SetConfigJSON sets the engine's evaluation configuration from a JSON
+// object string, parsed by the core crate's shared config parser (the
+// same wire format every binding uses). All keys are optional; an
+// optional "preset" ("default", "safe_arithmetic", or "strict") selects
+// the starting point and the remaining keys override individual fields
+// on top of it:
+//
+//   - arithmetic_nan_handling: "throw_error" | "ignore_value" |
+//     "coerce_to_zero" | "return_null"
+//   - division_by_zero: "return_saturated" | "throw_error" |
+//     "return_null" | "return_infinity"
+//   - loose_equality_errors: bool
+//   - truthy_evaluator: "javascript" | "python" | "strict_boolean"
+//   - numeric_coercion: object with bool keys empty_string_to_zero,
+//     null_to_zero, bool_to_number, reject_non_numeric
+//   - max_recursion_depth: integer >= 1
+//
+// Unknown keys, unknown enum strings, and type mismatches are rejected
+// with a *Error (Type "ConfigurationError") so typos fail loudly
+// instead of being silently ignored. Each call replaces the builder's
+// entire evaluation config; templating and registered operators are
+// unaffected.
+func (b *EngineBuilder) SetConfigJSON(configJSON string) error {
+	cConfig := C.CString(configJSON)
+	defer C.free(unsafe.Pointer(cConfig))
+	// Keep the call and the thread-local last-error read on one OS thread.
+	runtime.LockOSThread()
+	rc := C.datalogic_engine_builder_set_config_json(b.ptr, cConfig)
+	var err error
+	if rc != 0 {
+		err = lastError()
+	}
+	runtime.UnlockOSThread()
+	if rc != 0 {
+		return err
+	}
+	return nil
+}
+
 // AddOperator registers a custom JSONLogic operator under `name`.
 // Registering a name that collides with a built-in (`+`, `if`, `var`,
 // …) silently does nothing at evaluation time — the built-in dispatches

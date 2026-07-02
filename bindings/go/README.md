@@ -94,6 +94,7 @@ The Go binding mirrors the Rust engine's
 | Engine       | `datalogic.NewEngine().Apply(rule, data)`    | Engine reuse without compile-once                       |
 | Compile once | `engine.Compile(rule)` → `rule.Evaluate(data)` | Same rule evaluated against many data inputs          |
 | Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops — arena reuse per goroutine            |
+| Traced       | `engine.TracedSession()` → `ts.Evaluate(rule, data)` | Step-level execution traces for debuggers and tooling |
 
 ### Quick start
 
@@ -155,6 +156,62 @@ out, _ := engine.Apply(`{"double":[21]}`, `{}`) // "42"
 **Built-ins win**: a custom registration of a built-in name (`+`, `if`,
 `var`, ...) never dispatches.
 
+## Engine configuration
+
+Non-default evaluation behavior (strict arithmetic, division-by-zero
+policy, truthiness flavor, recursion limits) is set on the builder as a
+JSON object string, parsed by the same shared config parser every
+binding uses:
+
+```go
+b := datalogic.NewEngineBuilder()
+if err := b.SetConfigJSON(`{"preset": "strict", "division_by_zero": "return_null"}`); err != nil {
+    log.Fatal(err) // unknown keys and values fail loudly, not silently
+}
+engine, _ := b.Build()
+defer engine.Close()
+
+_, err := engine.Apply(`{"+":[null,1]}`, `{}`)
+// err != nil: the strict preset rejects non-numeric operands
+```
+
+All keys are optional. `preset` (`"default"`, `"safe_arithmetic"`, or
+`"strict"`) picks the starting point; the remaining keys override
+individual fields on top of it: `arithmetic_nan_handling`,
+`division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
+`numeric_coercion`, and `max_recursion_depth`. The accepted values for
+each key are listed on the `SetConfigJSON` doc comment; the underlying
+knobs are described in the
+[Rust crate README](../../crates/datalogic-rs/README.md).
+
+## Traced evaluation
+
+`Engine.TracedSession()` mirrors the engine's trace tier: each
+`Evaluate` compiles the rule with the optimizer disabled, so every
+operator in the rule surfaces as an execution step, and returns a JSON
+envelope instead of a bare result:
+
+```go
+ts := engine.TracedSession()
+defer ts.Close()
+
+out, _ := ts.Evaluate(`{"+":[{"var":"x"},1]}`, `{"x":41}`)
+// {"result":42,"expression_tree":{...},"steps":[...]}
+```
+
+The envelope shape is shared with the WASM binding, so trace consumers
+(debuggers, visualizers) see one format across languages:
+
+| Field | Contents |
+|---|---|
+| `result` | The evaluation result, `null` on engine error |
+| `expression_tree` | The compiled expression tree |
+| `steps` | Ordered execution steps with per-node results |
+| `error`, `structured_error` | Present only when the engine failed. Rule parse and evaluation errors land here, not in the Go error return, which is reserved for binding-level failures. |
+
+Tracing pays for compile-per-call plus step recording. Use it for
+debugging and tooling, not hot paths.
+
 ## Error handling
 
 Every fallible operation returns a `*datalogic.Error` on failure,
@@ -178,6 +235,7 @@ if err != nil {
 | `Engine`  | Construct once; share across goroutines                                            |
 | `Rule`    | Compile once; share across goroutines — `Evaluate` is safe to call from many       |
 | `Session` | One per goroutine — the per-task workhorse                                         |
+| `TracedSession` | Share across goroutines; every `Evaluate` uses a fresh internal arena        |
 
 ## Performance
 
@@ -198,7 +256,8 @@ datalogic-rs (Rust)  →  bindings/c/  →  libdatalogic_c.a  →  cgo → Go
 ```
 
 `make build` keeps `lib/` and `include/` in sync with the Rust source.
-The same staticlib will eventually back the PHP and JVM bindings.
+Go is the only binding that links the staticlib; the JVM, .NET, and PHP
+bindings consume the same C ABI as a shared library (cdylib).
 
 ## Learn more
 

@@ -262,6 +262,81 @@ func (s *Session) AllocatedBytes() uint64 {
 	return n
 }
 
+// TracedSession is a trace-enabled evaluation handle bound to one
+// Engine. Each Evaluate call compiles the rule internally with the
+// optimizer disabled, so every operator in the rule surfaces as an
+// execution step, and returns a JSON envelope instead of a bare result:
+//
+//	{
+//	  "result": <value, or null on error>,
+//	  "expression_tree": <compiled expression node>,
+//	  "steps": [<execution step>, ...],
+//	  "error": "<message>",              // only present on engine errors
+//	  "structured_error": {<Error>}      // only present on engine errors
+//	}
+//
+// The envelope matches the WASM binding's wire format, so trace
+// consumers (debuggers, visualizers) see one shape across every
+// language. Engine errors (rule parse or evaluation failures) surface
+// inside the envelope's "error"/"structured_error" fields with a null
+// "result" — the Go error return is reserved for binding-level
+// failures such as invalid handles.
+//
+// TracedSessions hold their own reference on the underlying engine and
+// keep working even if the Engine is closed first. Unlike Session,
+// TracedSession is safe to share across goroutines — every Evaluate
+// uses a fresh internal arena.
+type TracedSession struct {
+	ptr *C.datalogic_traced_session
+}
+
+// TracedSession opens a trace-enabled session bound to this engine.
+// Every Evaluate call returns the JSON trace envelope documented on
+// TracedSession.
+//
+// Tracing pays for compile-per-call plus step recording — use it for
+// debugging and tooling, not hot paths.
+func (e *Engine) TracedSession() *TracedSession {
+	ts := &TracedSession{ptr: C.datalogic_engine_traced_session(e.ptr)}
+	runtime.KeepAlive(e)
+	runtime.SetFinalizer(ts, (*TracedSession).Close)
+	return ts
+}
+
+// Close releases the traced-session handle. Safe to call multiple times.
+func (ts *TracedSession) Close() {
+	if ts == nil || ts.ptr == nil {
+		return
+	}
+	C.datalogic_traced_session_free(ts.ptr)
+	ts.ptr = nil
+	runtime.SetFinalizer(ts, nil)
+}
+
+// Evaluate compiles ruleJSON (optimizer disabled), evaluates it against
+// dataJSON, and returns the trace envelope documented on TracedSession
+// as a JSON string.
+func (ts *TracedSession) Evaluate(ruleJSON, dataJSON string) (string, error) {
+	cRule := C.CString(ruleJSON)
+	defer C.free(unsafe.Pointer(cRule))
+	cData := C.CString(dataJSON)
+	defer C.free(unsafe.Pointer(cData))
+	// Keep the call and the thread-local last-error read on one OS thread.
+	runtime.LockOSThread()
+	out := C.datalogic_traced_session_evaluate(ts.ptr, cRule, cData)
+	var err error
+	if out == nil {
+		err = lastError()
+	}
+	runtime.UnlockOSThread()
+	runtime.KeepAlive(ts)
+	if out == nil {
+		return "", err
+	}
+	defer C.datalogic_string_free(out)
+	return C.GoString(out), nil
+}
+
 // Apply is a top-level convenience equivalent to:
 //
 //	e := NewEngine(); defer e.Close(); return e.Apply(rule, data)

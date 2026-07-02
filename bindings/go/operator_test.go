@@ -191,6 +191,73 @@ func TestBuilderRuleSurvivesAcrossEvaluations(t *testing.T) {
 	}
 }
 
+func TestBuilderSetConfigJSON(t *testing.T) {
+	// Default config: null coerces to 0 and the sum evaluates.
+	got, err := Apply(`{"+":[null,1]}`, `{}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "1" {
+		t.Fatalf("default config: want 1, got %q", got)
+	}
+
+	// Strict preset: the same rule rejects the non-numeric null.
+	b := NewEngineBuilder()
+	if err := b.SetConfigJSON(`{"preset":"strict"}`); err != nil {
+		t.Fatal(err)
+	}
+	e, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+
+	_, err = e.Apply(`{"+":[null,1]}`, `{}`)
+	if err == nil {
+		t.Fatal("strict config should reject null operand, got nil error")
+	}
+}
+
+func TestBuilderSetConfigJSONInvalid(t *testing.T) {
+	b := NewEngineBuilder()
+
+	// Malformed JSON surfaces the parser's message.
+	err := b.SetConfigJSON("not-json{{")
+	if err == nil {
+		t.Fatal("expected error for malformed config JSON, got nil")
+	}
+	derr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("want *Error, got %T (%v)", err, err)
+	}
+	if derr.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+
+	// Unknown enum values fail loudly instead of being ignored.
+	err = b.SetConfigJSON(`{"preset":"bogus"}`)
+	if err == nil {
+		t.Fatal("expected error for unknown preset, got nil")
+	}
+	if !strings.Contains(err.Error(), "bogus") {
+		t.Errorf("want 'bogus' in error, got %q", err.Error())
+	}
+
+	// A failed SetConfigJSON leaves the builder usable.
+	e, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	got, err := e.Apply(`{"+":[1,2]}`, `{}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "3" {
+		t.Fatalf("want 3, got %q", got)
+	}
+}
+
 func TestBuilderTemplating(t *testing.T) {
 	e, err := NewEngineBuilder().Templating(true).Build()
 	if err != nil {

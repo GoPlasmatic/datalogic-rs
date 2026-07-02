@@ -1,6 +1,7 @@
 package datalogic
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -166,6 +167,73 @@ func TestRuleEvaluateConcurrent(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+}
+
+func TestTracedSessionEvaluate(t *testing.T) {
+	e := NewEngine()
+	defer e.Close()
+
+	ts := e.TracedSession()
+	defer ts.Close()
+
+	out, err := ts.Evaluate(`{"+":[{"var":"x"},1]}`, `{"x":41}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var envelope struct {
+		Result         json.RawMessage   `json:"result"`
+		ExpressionTree json.RawMessage   `json:"expression_tree"`
+		Steps          []json.RawMessage `json:"steps"`
+		Error          *string           `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("trace envelope is not JSON: %v\n%s", err, out)
+	}
+	if string(envelope.Result) != "42" {
+		t.Errorf("want result 42, got %s", envelope.Result)
+	}
+	if len(envelope.Steps) == 0 {
+		t.Error("expected non-empty steps for a non-trivial rule")
+	}
+	if len(envelope.ExpressionTree) == 0 {
+		t.Error("expected an expression_tree node")
+	}
+	if envelope.Error != nil {
+		t.Errorf("unexpected error in envelope: %s", *envelope.Error)
+	}
+}
+
+func TestTracedSessionSurfacesEngineErrorInEnvelope(t *testing.T) {
+	e := NewEngine()
+	defer e.Close()
+
+	ts := e.TracedSession()
+	defer ts.Close()
+
+	// Engine errors land inside the envelope, not in the Go error return.
+	out, err := ts.Evaluate(`{"throw":"boom"}`, `{}`)
+	if err != nil {
+		t.Fatalf("engine errors should not surface as Go errors, got %v", err)
+	}
+
+	var envelope struct {
+		Result          json.RawMessage `json:"result"`
+		Error           *string         `json:"error"`
+		StructuredError json.RawMessage `json:"structured_error"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("trace envelope is not JSON: %v\n%s", err, out)
+	}
+	if string(envelope.Result) != "null" {
+		t.Errorf("want null result on error, got %s", envelope.Result)
+	}
+	if envelope.Error == nil || *envelope.Error == "" {
+		t.Error("expected non-empty envelope error message")
+	}
+	if len(envelope.StructuredError) == 0 {
+		t.Error("expected structured_error in envelope")
 	}
 }
 
