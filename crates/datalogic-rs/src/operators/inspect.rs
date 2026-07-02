@@ -27,10 +27,15 @@
 //! ```json
 //! {"type": 42}                          // Returns: "number"
 //! {"type": "hello"}                     // Returns: "string"
-//! {"type": [1, 2, 3]}                   // Returns: "array"
+//! {"type": [[1, 2, 3]]}                 // Returns: "array"
 //! {"type": "2024-01-15T10:30:00Z"}      // Returns: "datetime"
 //! {"type": "2h30m"}                     // Returns: "duration"
 //! ```
+//!
+//! Note the wrapping in the array example: as with every operator, a
+//! bare array is the argument LIST (`{"type": [1, 2, 3]}` inspects `1`),
+//! so a literal array operand must be wrapped. A `var` that resolves to
+//! an array needs no wrapping.
 
 use crate::{CompiledNode, Engine, Result};
 

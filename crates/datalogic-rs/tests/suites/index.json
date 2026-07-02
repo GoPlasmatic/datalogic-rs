@@ -19,6 +19,7 @@
     "control/if.json",
     "control/and.json",
     "control/or.json",
+    "control/switch.json",
     "truthiness.json",
     "additional.json",
     "coalesce.json",
@@ -42,10 +43,13 @@
     "sort.json",
     "slice.json",
     "array/map.json",
+    "array/merge.json",
+    "array/reduce.json",
     "string/string.json",
     "arithmetic/abs.json",
     "arithmetic/ceil.json",
     "arithmetic/floor.json",
     "flagd/fractional.json",
-    "flagd/sem_ver.json"
+    "flagd/sem_ver.json",
+    "type.json"
 ]
