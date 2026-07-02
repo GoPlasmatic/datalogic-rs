@@ -94,8 +94,6 @@ pub struct EvaluationConfig {
     /// 2. `null_to_zero` — only consulted on `null` values.
     /// 3. `bool_to_number` — only consulted on `true` / `false`.
     /// 4. `empty_string_to_zero` — consulted on empty strings.
-    ///    (`undefined_to_zero` is reserved and not yet effective; see its
-    ///    field docs.)
     ///
     /// Each path is independent in practice (the type filters above
     /// don't overlap), so the precedence only matters when reasoning
@@ -245,18 +243,14 @@ pub struct NumericCoercionConfig {
     /// flag in this struct — empty strings, nulls, and booleans all
     /// raise rather than coerce. Acts as a kill switch for the rest of
     /// the coercion knobs in this struct.
+    ///
+    /// Note: earlier versions also declared a reserved `undefined_to_zero`
+    /// flag here. It never had an effect (JSONLogic does not distinguish a
+    /// missing key from an explicit `null` — the reference `missing`
+    /// operator treats `{"a": null}` exactly like `{}`) and it has been
+    /// removed. A missing var already coerces to `0` under the default
+    /// [`Self::null_to_zero`]` = true`.
     pub reject_non_numeric: bool,
-
-    /// Reserved and not currently effective. Intended to coerce a *missing*
-    /// variable lookup (the `var` operator returning `null` because the path
-    /// didn't resolve) to `0` in numeric context, as distinct from an
-    /// *explicit* `null`. The value model surfaces both as `null` — a var
-    /// miss returns the shared `null` singleton — so this cannot be honoured
-    /// independently of [`Self::null_to_zero`]; a full implementation needs an
-    /// `undefined`-vs-`null` distinction in the value model. With the default
-    /// `null_to_zero = true`, a missing var already coerces to `0`.
-    /// Default: `false`.
-    pub undefined_to_zero: bool,
 }
 
 impl Default for EvaluationConfig {
@@ -279,7 +273,6 @@ impl Default for NumericCoercionConfig {
             null_to_zero: true,
             bool_to_number: true,
             reject_non_numeric: false,
-            undefined_to_zero: false,
         }
     }
 }
@@ -315,12 +308,6 @@ impl NumericCoercionConfig {
         self
     }
 
-    /// Set [`Self::undefined_to_zero`].
-    #[must_use]
-    pub fn with_undefined_to_zero(mut self, value: bool) -> Self {
-        self.undefined_to_zero = value;
-        self
-    }
 }
 
 impl EvaluationConfig {
@@ -387,9 +374,192 @@ impl EvaluationConfig {
                 null_to_zero: false,
                 bool_to_number: false,
                 reject_non_numeric: true,
-                undefined_to_zero: false,
             },
             ..Default::default()
         }
+    }
+}
+
+#[cfg(feature = "serde_json")]
+impl EvaluationConfig {
+    /// Build a configuration from a JSON object (string form).
+    ///
+    /// This is the wire format the language bindings use to pass engine
+    /// configuration across FFI boundaries through one shared parser;
+    /// Rust callers normally use the typed `with_*` setters instead.
+    ///
+    /// All keys are optional. An optional `"preset"` key (`"default"`,
+    /// `"safe_arithmetic"`, or `"strict"`) selects the starting point;
+    /// the remaining keys override individual fields on top of it.
+    /// Unknown keys, unknown enum strings, and type mismatches are
+    /// rejected with
+    /// [`ErrorKind::ConfigurationError`](crate::ErrorKind::ConfigurationError)
+    /// so typos fail loudly instead of being silently ignored.
+    /// [`TruthyEvaluator::Custom`] cannot be expressed in JSON — custom
+    /// truthiness is only available through the Rust API.
+    ///
+    /// Accepted keys and values (all enum strings are snake_case):
+    ///
+    /// | Key | Value |
+    /// |-----|-------|
+    /// | `preset` | `"default"` \| `"safe_arithmetic"` \| `"strict"` |
+    /// | `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
+    /// | `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
+    /// | `loose_equality_errors` | bool |
+    /// | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
+    /// | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+    /// | `max_recursion_depth` | integer ≥ 1 |
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{Engine, EvaluationConfig};
+    ///
+    /// let config = EvaluationConfig::from_json_str(r#"{
+    ///     "preset": "strict",
+    ///     "division_by_zero": "return_null",
+    ///     "numeric_coercion": {"null_to_zero": true},
+    ///     "max_recursion_depth": 64
+    /// }"#).unwrap();
+    /// let engine = Engine::builder().with_config(config).build();
+    /// // 1.5 keeps this on the configurable float path (an integer
+    /// // dividend over an integer zero always errors).
+    /// let result = engine.eval_str(r#"{"/": [1.5, 0]}"#, "null").unwrap();
+    /// assert_eq!(result, "null");
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorKind::ConfigurationError`](crate::ErrorKind::ConfigurationError)
+    /// if the string is not a JSON object or any key or value is
+    /// unrecognized.
+    pub fn from_json_str(json: &str) -> crate::Result<Self> {
+        use serde_json::Value;
+
+        fn cfg_err(msg: String) -> crate::Error {
+            crate::Error::configuration_error(msg)
+        }
+        fn expect_str<'v>(key: &str, value: &'v Value) -> crate::Result<&'v str> {
+            value
+                .as_str()
+                .ok_or_else(|| cfg_err(format!("config key {key:?} must be a string")))
+        }
+        fn expect_bool(key: &str, value: &Value) -> crate::Result<bool> {
+            value
+                .as_bool()
+                .ok_or_else(|| cfg_err(format!("config key {key:?} must be a boolean")))
+        }
+
+        let root: Value = serde_json::from_str(json)
+            .map_err(|e| cfg_err(format!("config is not valid JSON: {e}")))?;
+        let Value::Object(map) = root else {
+            return Err(cfg_err("config must be a JSON object".to_string()));
+        };
+
+        let mut config = match map.get("preset") {
+            None => Self::default(),
+            Some(preset) => match expect_str("preset", preset)? {
+                "default" => Self::default(),
+                "safe_arithmetic" => Self::safe_arithmetic(),
+                "strict" => Self::strict(),
+                other => {
+                    return Err(cfg_err(format!(
+                        "unknown preset {other:?} (expected \"default\", \"safe_arithmetic\", or \"strict\")"
+                    )));
+                }
+            },
+        };
+
+        for (key, value) in &map {
+            match key.as_str() {
+                "preset" => {} // applied above, before the overrides
+                "arithmetic_nan_handling" => {
+                    config.arithmetic_nan_handling = match expect_str(key, value)? {
+                        "throw_error" => NanHandling::ThrowError,
+                        "ignore_value" => NanHandling::IgnoreValue,
+                        "coerce_to_zero" => NanHandling::CoerceToZero,
+                        "return_null" => NanHandling::ReturnNull,
+                        other => {
+                            return Err(cfg_err(format!(
+                                "unknown arithmetic_nan_handling {other:?} (expected \"throw_error\", \"ignore_value\", \"coerce_to_zero\", or \"return_null\")"
+                            )));
+                        }
+                    };
+                }
+                "division_by_zero" => {
+                    config.division_by_zero = match expect_str(key, value)? {
+                        "return_saturated" => DivisionByZeroHandling::ReturnSaturated,
+                        "throw_error" => DivisionByZeroHandling::ThrowError,
+                        "return_null" => DivisionByZeroHandling::ReturnNull,
+                        "return_infinity" => DivisionByZeroHandling::ReturnInfinity,
+                        other => {
+                            return Err(cfg_err(format!(
+                                "unknown division_by_zero {other:?} (expected \"return_saturated\", \"throw_error\", \"return_null\", or \"return_infinity\")"
+                            )));
+                        }
+                    };
+                }
+                "loose_equality_errors" => {
+                    config.loose_equality_errors = expect_bool(key, value)?;
+                }
+                "truthy_evaluator" => {
+                    config.truthy_evaluator = match expect_str(key, value)? {
+                        "javascript" => TruthyEvaluator::JavaScript,
+                        "python" => TruthyEvaluator::Python,
+                        "strict_boolean" => TruthyEvaluator::StrictBoolean,
+                        other => {
+                            return Err(cfg_err(format!(
+                                "unknown truthy_evaluator {other:?} (expected \"javascript\", \"python\", or \"strict_boolean\"; custom evaluators are Rust-only)"
+                            )));
+                        }
+                    };
+                }
+                "numeric_coercion" => {
+                    let Value::Object(coercion) = value else {
+                        return Err(cfg_err(
+                            "config key \"numeric_coercion\" must be an object".to_string(),
+                        ));
+                    };
+                    for (ck, cv) in coercion {
+                        match ck.as_str() {
+                            "empty_string_to_zero" => {
+                                config.numeric_coercion.empty_string_to_zero = expect_bool(ck, cv)?;
+                            }
+                            "null_to_zero" => {
+                                config.numeric_coercion.null_to_zero = expect_bool(ck, cv)?;
+                            }
+                            "bool_to_number" => {
+                                config.numeric_coercion.bool_to_number = expect_bool(ck, cv)?;
+                            }
+                            "reject_non_numeric" => {
+                                config.numeric_coercion.reject_non_numeric = expect_bool(ck, cv)?;
+                            }
+                            other => {
+                                return Err(cfg_err(format!(
+                                    "unknown numeric_coercion key {other:?}"
+                                )));
+                            }
+                        }
+                    }
+                }
+                "max_recursion_depth" => {
+                    let depth = value
+                        .as_u64()
+                        .filter(|n| (1..=u64::from(u32::MAX)).contains(n))
+                        .ok_or_else(|| {
+                            cfg_err(format!(
+                                "config key \"max_recursion_depth\" must be an integer between 1 and {}",
+                                u32::MAX
+                            ))
+                        })?;
+                    config.max_recursion_depth = depth as u32;
+                }
+                other => {
+                    return Err(cfg_err(format!("unknown config key {other:?}")));
+                }
+            }
+        }
+
+        Ok(config)
     }
 }

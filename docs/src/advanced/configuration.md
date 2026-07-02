@@ -138,8 +138,7 @@ let config = EvaluationConfig::default()
             .with_empty_string_to_zero(false)
             .with_null_to_zero(false)
             .with_bool_to_number(false)
-            .with_reject_non_numeric(true)
-            .with_undefined_to_zero(false),
+            .with_reject_non_numeric(true),
     );
 ```
 
@@ -174,6 +173,59 @@ let engine = Engine::builder()
 let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .build();
+```
+
+## Configuring from JSON
+
+`EvaluationConfig::from_json_str` (requires `feature = "serde_json"`)
+builds a configuration from a JSON object. This is the wire format the
+language bindings use to pass engine configuration across FFI
+boundaries through one shared parser; Rust callers normally use the
+typed `with_*` setters above.
+
+All keys are optional. The `"preset"` key is applied first, then the
+remaining keys override individual fields on top of it. Unknown keys
+and unknown enum strings are rejected with a `ConfigurationError`, so
+typos fail loudly instead of being silently ignored.
+
+| Key | Value |
+|-----|-------|
+| `preset` | `"default"`, `"safe_arithmetic"`, or `"strict"` |
+| `arithmetic_nan_handling` | `"throw_error"`, `"ignore_value"`, `"coerce_to_zero"`, or `"return_null"` |
+| `division_by_zero` | `"return_saturated"`, `"throw_error"`, `"return_null"`, or `"return_infinity"` |
+| `loose_equality_errors` | bool |
+| `truthy_evaluator` | `"javascript"`, `"python"`, or `"strict_boolean"` |
+| `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
+| `max_recursion_depth` | integer >= 1 |
+
+Custom truthiness closures (`TruthyEvaluator::Custom`) cannot be
+expressed in JSON; they are available through the Rust API only.
+
+From Rust:
+
+```rust
+use datalogic_rs::{Engine, EvaluationConfig};
+
+let config = EvaluationConfig::from_json_str(r#"{
+    "preset": "strict",
+    "division_by_zero": "return_null",
+    "numeric_coercion": {"null_to_zero": true},
+    "max_recursion_depth": 64
+}"#).unwrap();
+
+let engine = Engine::builder().with_config(config).build();
+```
+
+The same JSON object is what you hand to a binding's engine
+constructor. For example, to start from the lenient preset but use
+strict-boolean truthiness:
+
+```json
+{
+  "preset": "safe_arithmetic",
+  "truthy_evaluator": "strict_boolean",
+  "max_recursion_depth": 128
+}
 ```
 
 ## Combining with Templating Mode

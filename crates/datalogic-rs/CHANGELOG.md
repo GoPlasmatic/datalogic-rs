@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`EvaluationConfig::from_json_str`** (requires `serde_json`) — build a
+  configuration from a JSON object. This is the wire format the language
+  bindings use to pass engine configuration across FFI boundaries through
+  one shared parser: an optional `"preset"` key (`"default"` /
+  `"safe_arithmetic"` / `"strict"`) plus per-field overrides. Unknown
+  keys and enum strings are rejected loudly.
 - **`flagd` Cargo feature** — opt-in OpenFeature flagd-compatible operators
   ([spec](https://flagd.dev/reference/custom-operations/)):
   `fractional` (deterministic murmurhash3-x86-32 percentage bucketing,
@@ -17,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version / numeric-coercion / build-metadata normalizations, backed by
   the [`semver`](https://docs.rs/semver) crate). Conformance test
   suites under `tests/suites/flagd/` mirror the upstream Go tests.
+
+### Removed
+
+- **`NumericCoercionConfig::undefined_to_zero`** and its
+  `with_undefined_to_zero` setter. The flag was documented as reserved
+  and was never read: JSONLogic does not distinguish a missing key from
+  an explicit `null` (the reference `missing` operator treats
+  `{"a": null}` like `{}`), so there was nothing for it to control. A
+  missing var already coerces to `0` under the default
+  `null_to_zero = true`. Removing an inert public field is technically
+  a breaking change for code that merely named it; delete the field
+  access or setter call, nothing changes behaviourally.
 
 ## [5.0.0] - 2026-05-09
 
