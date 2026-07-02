@@ -11,10 +11,11 @@ Two binaries share a common suite loader and reporter (`src/lib.rs`):
 | `self`    | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
 | `compare` | Cross-library **matrix** — runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
 
-Both read JSON suites from `crates/datalogic-rs/tests/suites/`. Both
-write JSON reports to `tools/benchmark/output/` (gitignored):
+Both read JSON suites from `crates/datalogic-rs/tests/suites/`, and both
+accept `--macro` to swap those for the synthesized macro suites instead.
+Both write JSON reports to `tools/benchmark/output/` (gitignored):
 `report-self-*.json` for `--all` runs of `self`, `report-compare-*.json`
-for `compare`.
+for `compare`, `report-compare-macro-*.json` for `compare --macro`.
 
 ## `self` — regression baseline
 
@@ -42,8 +43,7 @@ and the rest. The per-suite line shows the split
 overall / folded-only / non-folded-only geomeans, so constant-folded
 rules can't flatter the data-dependent number. The macro tier scales
 its per-suite iteration count from a pilot pass so one timed rep lands
-near ~250 ms; see
-[`BENCHMARK.md`](./BENCHMARK.md#macro-tier-self-benchmark) for the
+near ~250 ms; see [`BENCHMARK.md`](./BENCHMARK.md#macro-tier) for the
 suite list.
 
 ## `compare` — cross-library matrix
@@ -118,6 +118,10 @@ cargo run --release -p datalogic-bench --bin compare -- arithmetic/plus.json
 # Every suite from tests/suites/index.json
 cargo run --release -p datalogic-bench --bin compare -- --all
 
+# Synthesized macro suites (large payloads) across all subjects; report
+# lands in output/report-compare-macro-<timestamp>.json
+cargo run --release -p datalogic-bench --bin compare -- --macro
+
 # With the gated Rust competitor
 cargo run --release -p datalogic-bench --bin compare \
   --features subject-jsonlogic-rs -- --all
@@ -166,7 +170,8 @@ suites where **both** subjects have finite cells. The per-column mean
 rows in the matrix cover different suite subsets when subjects `ERR` on
 different suites, so quotients of column geomeans mix incomparable
 sets; the pairwise ratios never do. Matrix cells, per-column means, and
-these ratios are also written to `output/report-compare-<timestamp>.json`.
+these ratios are also written to `output/report-compare-<timestamp>.json`
+(`output/report-compare-macro-<timestamp>.json` for `--macro` runs).
 
 ### Native-CPU build (optional, host-only numbers)
 

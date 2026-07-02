@@ -7,6 +7,12 @@
 //! suite, with a per-cell wall-time budget so slow subjects don't drag
 //! `--all` runs into the tens of minutes.
 //!
+//! `--macro` swaps the file suites for the synthesized macro tier
+//! (`datalogic_bench::macro_suites`, the same large-payload suites
+//! `bin/self.rs --macro` times). The cases reach subjects through the
+//! identical in-memory protocol, so no suite files are written; the
+//! report lands in `report-compare-macro-<timestamp>.json`.
+//!
 //! datalogic-rs is represented by a single column, `dlrs:engine` —
 //! precompiled `Logic` + pre-parsed inputs in a `Bump` + `Engine::evaluate`
 //! with a caller-owned arena that resets between iterations. This is the
@@ -35,8 +41,8 @@ use std::time::{Duration, Instant};
 use bumpalo::Bump;
 use datalogic_bench::{
     MatrixCell, MatrixRow, SubjectRun, SuiteCase, load_index, load_suite_for_compare,
-    pairwise_shared_ratios, render_matrix, render_pairwise_ratios, suites_root,
-    write_matrix_report,
+    macro_suites::macro_suites, pairwise_shared_ratios, render_matrix, render_pairwise_ratios,
+    suites_root, write_matrix_report,
 };
 use datalogic_rs::{DataValue, Engine, Logic};
 
@@ -422,10 +428,13 @@ fn build_subjects() -> SubjectAvailability {
 // Matrix runner
 // ============================================================
 
-fn run_one_suite(subjects: &mut [Box<dyn Subject>], suite_name: &str) -> Option<MatrixRow> {
-    let path = suites_root().join(suite_name);
-    let cases = load_suite_for_compare(&path)?;
-    let test_count = cases.len();
+/// Run one named case set (from a suite file or synthesized in code)
+/// against every subject and collect the row of cells.
+fn run_cases(
+    subjects: &mut [Box<dyn Subject>],
+    suite_name: &str,
+    cases: &[SuiteCase],
+) -> MatrixRow {
     let target = Duration::from_millis(TARGET_MS_PER_CELL as u64);
 
     print!("  {suite_name:<40}");
@@ -433,7 +442,7 @@ fn run_one_suite(subjects: &mut [Box<dyn Subject>], suite_name: &str) -> Option<
 
     let mut cells = Vec::with_capacity(subjects.len());
     for subject in subjects.iter_mut() {
-        let cell = match subject.run_suite(&cases, target) {
+        let cell = match subject.run_suite(cases, target) {
             Some(run) => {
                 let total = run.ok_count + run.err_count;
                 let err_frac = if total == 0 {
@@ -456,11 +465,17 @@ fn run_one_suite(subjects: &mut [Box<dyn Subject>], suite_name: &str) -> Option<
     }
     println!(" done");
 
-    Some(MatrixRow {
+    MatrixRow {
         suite: suite_name.to_string(),
-        test_count,
+        test_count: cases.len(),
         cells,
-    })
+    }
+}
+
+fn run_one_suite(subjects: &mut [Box<dyn Subject>], suite_name: &str) -> Option<MatrixRow> {
+    let path = suites_root().join(suite_name);
+    let cases = load_suite_for_compare(&path)?;
+    Some(run_cases(subjects, suite_name, &cases))
 }
 
 // ============================================================
@@ -470,16 +485,24 @@ fn run_one_suite(subjects: &mut [Box<dyn Subject>], suite_name: &str) -> Option<
 struct CliArgs {
     suites: Vec<String>,
     allow_missing_subjects: bool,
+    /// Run the synthesized macro suites (`macro_suites::macro_suites`)
+    /// instead of file suites. Same subjects, same per-cell budget; the
+    /// cases go to subjects through the identical in-memory protocol
+    /// (`SuiteCase` slices, stdin JSON for Node), so nothing is written
+    /// to disk.
+    macro_mode: bool,
 }
 
 fn parse_args() -> CliArgs {
     let mut suites: Vec<String> = Vec::new();
     let mut all = false;
     let mut allow_missing = false;
+    let mut macro_mode = false;
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "--all" => all = true,
             "--allow-missing-subjects" => allow_missing = true,
+            "--macro" => macro_mode = true,
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);
@@ -492,7 +515,12 @@ fn parse_args() -> CliArgs {
             s => suites.push(s.to_string()),
         }
     }
-    if all {
+    if macro_mode {
+        if all || !suites.is_empty() {
+            eprintln!("--macro selects the synthesized macro suites; drop --all / suite names");
+            std::process::exit(2);
+        }
+    } else if all {
         suites = load_index();
     } else if suites.is_empty() {
         suites.push("compatible.json".to_string());
@@ -500,6 +528,7 @@ fn parse_args() -> CliArgs {
     CliArgs {
         suites,
         allow_missing_subjects: allow_missing,
+        macro_mode,
     }
 }
 
@@ -511,6 +540,10 @@ fn print_help() {
          \x20 cargo run --release -p datalogic-bench --bin compare -- --all\n\n\
          Flags:\n\
          \x20 --all                        Run every suite from tests/suites/index.json\n\
+         \x20 --macro                      Run the synthesized macro suites (1k/10k arrays,\n\
+         \x20                              128-key object, deep nesting, 10 KB strings,\n\
+         \x20                              eligibility) instead of file suites; report saved\n\
+         \x20                              as report-compare-macro-<timestamp>.json\n\
          \x20 --allow-missing-subjects     Skip Node subjects whose runtime isn't installed\n\
          \x20                              (default is hard-fail when any are missing)\n\
          \x20 -h, --help                   This help text\n\n\
@@ -553,20 +586,37 @@ fn main() {
         }
     }
 
+    let macro_set = if args.macro_mode {
+        macro_suites()
+    } else {
+        Vec::new()
+    };
+    let n_suites = if args.macro_mode {
+        macro_set.len()
+    } else {
+        args.suites.len()
+    };
+
     let subject_names: Vec<&str> = subjects.iter().map(|s| s.name()).collect();
     println!(
-        "Running {n_suites} suite(s) × {n_subjects} subject(s) ({samples} samples × ~{target}ms each)",
-        n_suites = args.suites.len(),
+        "Running {n_suites} {kind}suite(s) × {n_subjects} subject(s) ({samples} samples × ~{target}ms each)",
+        kind = if args.macro_mode { "macro " } else { "" },
         n_subjects = subjects.len(),
         samples = SAMPLES_PER_CELL,
         target = TARGET_MS_PER_CELL,
     );
 
     let mut rows: Vec<MatrixRow> = Vec::new();
-    for suite_name in &args.suites {
-        match run_one_suite(&mut subjects, suite_name) {
-            Some(row) => rows.push(row),
-            None => println!("  {suite_name:<40} (skipped — no valid cases)"),
+    if args.macro_mode {
+        for suite in &macro_set {
+            rows.push(run_cases(&mut subjects, suite.name, &suite.cases));
+        }
+    } else {
+        for suite_name in &args.suites {
+            match run_one_suite(&mut subjects, suite_name) {
+                Some(row) => rows.push(row),
+                None => println!("  {suite_name:<40} (skipped — no valid cases)"),
+            }
         }
     }
 
@@ -585,7 +635,13 @@ fn main() {
     let ratios = pairwise_shared_ratios(subject_names.len(), &rows);
     render_pairwise_ratios(&subject_names, &ratios);
 
+    let label = if args.macro_mode {
+        "compare-macro"
+    } else {
+        "compare"
+    };
     let report_path = write_matrix_report(
+        label,
         &subject_names,
         &rows,
         &ratios,

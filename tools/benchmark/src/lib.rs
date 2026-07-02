@@ -601,8 +601,11 @@ pub fn render_pairwise_ratios(subject_names: &[&str], ratios: &[PairRatio]) {
 /// Write the cross-library matrix (cells, per-column means, pairwise
 /// shared-suite ratios) as a JSON report into `tools/benchmark/output/`.
 /// The `self` report format is untouched; this is a separate
-/// `report-compare-<timestamp>.json` file.
+/// `report-<label>-<timestamp>.json` file. `bin/compare.rs` passes
+/// `"compare"` for the file-suite matrix and `"compare-macro"` for the
+/// synthesized macro tier, keeping the two report streams distinct.
 pub fn write_matrix_report(
+    label: &str,
     subject_names: &[&str],
     rows: &[MatrixRow],
     ratios: &[PairRatio],
@@ -676,7 +679,7 @@ pub fn write_matrix_report(
         .collect();
 
     let report = serde_json::json!({
-        "label": "compare",
+        "label": label,
         "timestamp": timestamp,
         "target_ms_per_cell": target_wall_time_ms,
         "samples_per_cell": samples_per_cell,
@@ -686,7 +689,7 @@ pub fn write_matrix_report(
         "pairwise_shared_ratios": ratio_entries,
     });
 
-    let path = out_dir.join(format!("report-compare-{timestamp}.json"));
+    let path = out_dir.join(format!("report-{label}-{timestamp}.json"));
     fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).expect("write report");
     path
 }

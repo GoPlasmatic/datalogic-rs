@@ -216,12 +216,12 @@ Pass a single suite name (e.g. `arithmetic/plus.json`) instead of `--all`
 for fast iteration. See `tools/benchmark/README.md` for the full flag
 reference and the recipe to add more subjects.
 
-## Macro tier (self benchmark)
+## Macro tier
 
 The operator suites use payloads of at most a few hundred bytes, so the
 matrix above measures operator dispatch, not data-volume behaviour. The
-self benchmark's macro tier fills that gap with suites **synthesized in
-code** (`tools/benchmark/src/macro_suites.rs`, nothing large checked in):
+macro tier fills that gap with suites **synthesized in code**
+(`tools/benchmark/src/macro_suites.rs`, nothing large checked in):
 
 | Suite                 | Payload and rules                                                                          |
 |-----------------------|--------------------------------------------------------------------------------------------|
@@ -232,7 +232,7 @@ code** (`tools/benchmark/src/macro_suites.rs`, nothing large checked in):
 | `macro/string-10kb`   | Two ~10 KB strings; `cat`, `substr` (middle and negative-start), substring `in`            |
 | `macro/eligibility`   | Realistic eligibility rule: and/or/comparisons/`missing`/`reduce` over a medium object     |
 
-Run it with:
+Run it against datalogic-rs alone with:
 
 ```bash
 cargo run --release -p datalogic-bench --bin self -- --macro
@@ -248,8 +248,85 @@ instead of silently timing the error path. ns/op is per whole-rule
 evaluation: `macro/array-10k` at ~120 µs/op means one filter/map/sort
 pass over 10k elements costs ~120 µs, i.e. ~12 ns per element touched.
 
-The macro tier is currently self-benchmark only; a cross-engine macro
-comparison remains future work.
+### Cross-engine macro matrix
+
+The same six suites also run across every subject of the matrix above:
+
+```bash
+cargo run --release -p datalogic-bench --bin compare \
+  --features subject-jsonlogic-rs -- --macro
+```
+
+The synthesized cases reach subjects through the same in-memory protocol
+as the file suites (in-process `SuiteCase` slices for Rust subjects,
+stdin JSON for the Node runners), so nothing is written to disk. The
+matrix cells, per-column means, and pairwise ratios land in
+`output/report-compare-macro-<timestamp>.json`. A full run finishes in
+well under a minute (about 7 s on the capture host), so no reduced
+per-cell budget or suite subset is needed.
+
+Captured 2026-07-02, Apple M2 Pro (arm64), Rust 1.96.0, Node v22.22.2,
+release build from the repo root (no `target-cpu=native`):
+
+```
+=== Cross-Library Matrix — avg ns/op (median of 3, ~200ms target/cell, 6 suites) ===
+
+| Suite               | dlrs:engine | jsonlogic-rs | dlrs:wasm:compiled | json-logic-js | json-logic-engine | json-logic-engine:compiled |
+|---------------------|------------:|-------------:|-------------------:|--------------:|------------------:|---------------------------:|
+| macro/array-1k      |      9986.2 |     368156.0 |           222517.3 |     152706.2* |          31717.5* |                    7072.3* |
+| macro/array-10k     |    129948.1 |    4225527.8 |          2315503.4 |    1495594.5* |         275151.8* |                   67019.5* |
+| macro/object-128key |       126.0 |       5112.4 |             9528.3 |         304.6 |             284.3 |                      110.9 |
+| macro/deep-48       |       129.6 |      61067.9 |             4216.8 |        1342.3 |            1324.4 |                      139.1 |
+| macro/string-10kb   |      2789.1 |       2160.6 |            42352.6 |         740.1 |             500.1 |                       51.0 |
+| macro/eligibility   |       296.2 |      29657.4 |             8728.2 |        6795.5 |            5015.1 |                     1166.5 |
+| arithmetic mean     |     23879.2 |     781947.0 |           433807.8 |      276247.2 |           52332.2 |                    12593.2 |
+| geometric mean      |      1611.5 |      56084.5 |            44391.8 |        8816.5 |            4494.4 |                      870.3 |
+
+* partial coverage — subject errored on some cases in this suite.
+
+=== Pairwise shared-suite ratios ===
+
+  jsonlogic-rs                   34.8x slower than dlrs:engine                over  6 shared suites
+  dlrs:wasm:compiled             27.5x slower than dlrs:engine                over  6 shared suites
+  json-logic-js                   5.5x slower than dlrs:engine                over  6 shared suites
+  json-logic-engine               2.8x slower than dlrs:engine                over  6 shared suites
+  dlrs:engine                     1.9x slower than json-logic-engine:compiled over  6 shared suites
+  jsonlogic-rs                    1.3x slower than dlrs:wasm:compiled         over  6 shared suites
+  jsonlogic-rs                    6.4x slower than json-logic-js              over  6 shared suites
+  jsonlogic-rs                   12.5x slower than json-logic-engine          over  6 shared suites
+  jsonlogic-rs                   64.4x slower than json-logic-engine:compiled over  6 shared suites
+  dlrs:wasm:compiled              5.0x slower than json-logic-js              over  6 shared suites
+  dlrs:wasm:compiled              9.9x slower than json-logic-engine          over  6 shared suites
+  dlrs:wasm:compiled             51.0x slower than json-logic-engine:compiled over  6 shared suites
+  json-logic-js                   2.0x slower than json-logic-engine          over  6 shared suites
+  json-logic-js                  10.1x slower than json-logic-engine:compiled over  6 shared suites
+  json-logic-engine               5.2x slower than json-logic-engine:compiled over  6 shared suites
+```
+
+Reading the macro matrix honestly:
+
+- `dlrs:engine` matches its self-benchmark macro numbers within a few
+  percent (e.g. `macro/array-10k` at about 130 microseconds per op,
+  roughly 13 ns per element), so the two tiers cross-validate.
+- **Partial cells skip real work.** None of the JS subjects implement
+  the non-spec `sort` operator, so their `*` cells on the two array
+  suites replace the most expensive case with a cheap throw. That
+  deflates their array averages relative to the subjects that actually
+  sort (`dlrs:engine`, `dlrs:wasm:compiled`), and it flatters
+  `json-logic-engine:compiled` in the ratio table above.
+- `jsonlogic-rs` shows full coverage on the array suites but does no
+  sorting either: it treats an object whose key is not a known
+  operation as a raw literal and returns it unchanged, so the `sort`
+  case "succeeds" without touching the array.
+- `macro/string-10kb` is the one suite the JS engines win outright. V8
+  represents concatenation and slicing as rope/sliced strings (O(1))
+  where `dlrs:engine` materialises a 20 KB `cat` result per eval;
+  `json-logic-engine:compiled` at ~51 ns/op is measuring V8's lazy
+  string machinery, not byte copies.
+- `dlrs:wasm:compiled` pays the V8-to-WASM string marshalling per call,
+  and that cost scales with payload size: ~42 microseconds per op on
+  `string-10kb` and ~2.3 ms per op on `array-10k` are boundary cost,
+  not engine cost.
 
 ## Caveats
 
@@ -269,31 +346,65 @@ comparison remains future work.
   matrix as engine-vs-engine on equal footing, not as a promise for a
   specific packaged binary.
 - **Matrix suite payloads are small** (hundreds of bytes). The matrix
-  says nothing about 1k+-element arrays, 100+-key objects, or deep
-  nesting; for datalogic-rs itself those are covered by the
-  [macro tier](#macro-tier-self-benchmark) of the self benchmark.
-  Cross-engine macro comparison remains future work. The honest micro
-  headline: single-digit nanoseconds for folded/scalar rules, 10-120 ns
-  for context-dependent rules.
+  above says nothing about 1k+-element arrays, 100+-key objects, or
+  deep nesting; those are covered by the [macro tier](#macro-tier),
+  both self-only (`self --macro`) and cross-engine (`compare --macro`).
+  The honest micro headline: single-digit nanoseconds for folded/scalar
+  rules, 10-120 ns for context-dependent rules.
 - Local-only by design — never run in CI.
 
-## Optimization backlog (candidates, not yet implemented)
+## Optimization notes: completed passes and deferred designs
 
-Remaining engine-level candidates from the 2026-07 performance pass
-(implemented that pass: zero-copy `substr`/string-`slice`, arena-backed
-sort scratch, `itoa`/`ryu` number rendering, split context stack — corpus
-geomean -2.3%, targeted suites -12% to -45%). Guardrails for anyone
-picking these up: the conformance suite, the optimized-vs-traced
-differential property test, `tests/layout_test.rs`, and the folded /
-non-folded split above (quote the non-folded geomean).
+All nine candidates from the 2026-07 performance backlog are implemented.
+First wave: zero-copy `substr`/string-`slice` (-45% slice suite),
+arena-backed sort scratch (-25%), `itoa`/`ryu` number rendering (parity-
+gated), split context stack (map -17%, scopes -16%). Second wave:
+borrowed thrown-value channel + interned NaN (try.json -32%,
+try.extra.json -49%), ISO-datetime byte-compare fast path (var-driven
+datetime compares -37%, naive forms -92%), compile-time literal
+pre-conversion via `self_cell` (50-element literal `in` lists -51%,
+which also fixed a latent switch-case-table bug), optimistic ordered
+probe for wide objects (object-128key -48%), and `Error` shrunk
+80 -> 40 bytes (every operator `Result` slot halved). Guardrails for
+future work: the conformance suite, the optimized-vs-traced differential
+property test, `tests/layout_test.rs`, and the folded / non-folded split
+above (quote the non-folded geomean).
 
-| # | Candidate | Where | Expected gain | Effort |
-|---|-----------|-------|---------------|--------|
-| 1 | Pre-convert composite literals at compile time (give `Logic` a private `Bump`, or a borrowing `to_arena` that reuses `&str`) | `engine/mod.rs`, `node/populate.rs` | Large on membership lists / switch tables / templated objects; measurable via `--macro` | M |
-| 3 | Stop heap round-trips in throw/try and NaN errors (`Arc` the payload, intern NaN, borrowed thrown-value channel) | `dispatch.rs`, `error_handling.rs`, `error/mod.rs` | 30-50% on try/throw-heavy rules (`try.json` ~121 ns is the slowest tier) | M |
-| 7 | Fast path for ISO-date string comparison (datetime feature) | `operators/comparison/mod.rs`, `datetime/mod.rs` | Large on date-field filters/sorts | M |
-| 8 | Shrink `Error` so `Result` returns are thin (currently 80 bytes, guarded by `tests/layout_test.rs`) | `error/mod.rs`, `error/kind.rs` | 1-5% geomean | M |
-| 9 | Indexed lookup / O(n log n) equality for wide objects | `arena/value/lookup.rs`, datavalue crate | Large on 100+ key payloads; measurable via `--macro` object-128key | L |
+Deferred designs, recorded for future owners:
 
-Also open: running the macro tier cross-engine (it currently exists for
-the self benchmark only).
+- **Escaping-throw deferral**: throws that escape to the API boundary
+  still build the owned payload eagerly; materializing from the context
+  slot at the two boundaries (`engine/mod.rs`, `trace.rs`) would recover
+  that cost (~3 lines per boundary plus a `pub(crate)` materialize
+  helper). Would also claw back most of the meta-box cost below on
+  throw-heavy profiles.
+- **The `Error` meta box (tried, measured, reverted)**: boxing the
+  operator/path metadata shrank `Error` to 40 bytes but cost one 48-byte
+  box (~14 ns) per boundary-escaping error, regressing error-dense
+  suites 15-45%; corpus geomean was +3.9% with the box vs -6.3% without,
+  so the inline layout shipped. Notable datapoint for future work: the
+  box variant was 25-30% FASTER on deep Ok-path suites (scopes, val,
+  string), meaning those paths are sensitive to the `Result` slot width;
+  a targeted fix (e.g. `Option`-returning hot helpers with cold `Err`
+  construction at the edges) could capture that win without taxing the
+  error path.
+- **Open integration regression**: relative to the pre-second-wave
+  baseline, three suites regressed with the combined second-wave changes
+  (scopes +28%, string/string +33%, val.extra +13%) through an
+  interaction not attributable to a single candidate (each change
+  measured clean in isolation); the corpus still nets -6.3%. Worth a
+  dedicated bisect: suspects are the context-stack catch/thrown fields,
+  the literal-dispatch tag branch, and codegen layout shifts.
+- **`ErrorKind` below 32 bytes** requires boxing the public
+  `Thrown(OwnedDataValue)` payload: breaking (next major); would take
+  `ErrorKind` to 16 and `Error` to 24.
+- **Comparison/datetime NaN sites** still build owned payloads eagerly
+  when caught; switching them to `Error::nan_at` needs `ctx` threaded
+  through the `compare_equals`/`compare_ordered` fan-out (invasive, low
+  value until a profile shows it).
+- **datavalue object equality** (sibling crate, read-only from here):
+  the `PartialEq` object arm is O(n^2) (two 131-pair objects cost
+  ~21.5 us via `===`) and is asymmetric under duplicate keys, which
+  violates the `PartialEq` contract. Recommended: same-order zip fast
+  path now; key canonicalization or a sorted-flag variant as the
+  long-term fix (both breaking for the sibling crate).

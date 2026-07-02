@@ -18,6 +18,16 @@
 
 import { readFileSync } from 'node:fs';
 
+// Stand-in apply for a case whose precompile failed (e.g. the non-spec
+// `sort` rule in the macro array suites on json-logic-engine). Throws
+// per call, so the timed loop counts the case toward err_count and the
+// cell renders as partial coverage, the same way the interpreted
+// subjects surface an unsupported operator. Setup only fails the whole
+// suite when *every* case fails to precompile.
+const unsupportedCase = () => {
+  throw new Error('precompile failed for this case');
+};
+
 // Dispatch table — `setup(cases)` is async (can `await import()` and
 // pre-compile per case), returns a callable `apply(case)` that throws on
 // error and returns the result on success. Both error paths are equally
@@ -46,12 +56,24 @@ const LIBS = {
   'json-logic-engine-compiled': {
     // Pre-compiled — fair compare to `dlrs:engine` and `dlrs:session`.
     // `engine.build(rule)` returns a JS function closed over the rule;
-    // calling it with data alone runs the optimised path.
+    // calling it with data alone runs the optimised path. `build`
+    // eagerly validates operator names and throws on unknown ones, so
+    // failed cases fall back to `unsupportedCase` instead of voiding
+    // the whole cell.
     setup: async (cases) => {
       const { LogicEngine } = await import('json-logic-engine');
       const engine = new LogicEngine();
+      let built = 0;
       for (const c of cases) {
-        c._jle_compiled = engine.build(c.rule);
+        try {
+          c._jle_compiled = engine.build(c.rule);
+          built += 1;
+        } catch {
+          c._jle_compiled = unsupportedCase;
+        }
+      }
+      if (built === 0) {
+        throw new Error('json-logic-engine: every case failed to build');
       }
       return (c) => c._jle_compiled(c.data);
     },
@@ -70,8 +92,17 @@ const LIBS = {
           '@goplasmatic/datalogic-wasm: `CompiledRule` not found on module. Build pkg/ via `cd bindings/wasm && ./build.sh`.',
         );
       }
+      let built = 0;
       for (const c of cases) {
-        c._wasm_compiled = new CompiledRule(c.rule_str, false);
+        try {
+          c._wasm_compiled = new CompiledRule(c.rule_str, false);
+          built += 1;
+        } catch {
+          c._wasm_compiled = { evaluate: unsupportedCase };
+        }
+      }
+      if (built === 0) {
+        throw new Error('@goplasmatic/datalogic-wasm: every case failed to compile');
       }
       return (c) => c._wasm_compiled.evaluate(c.data_str);
     },
