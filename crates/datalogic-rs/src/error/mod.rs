@@ -71,18 +71,22 @@ impl std::error::Error for MessageError {}
 pub struct Error {
     /// What went wrong. Pattern-matched by callers; stays public.
     pub kind: ErrorKind,
-    /// Outermost operator that produced this error, when known.
-    /// Read via [`Self::operator`]. Stored as `Cow<'static, str>` so
-    /// built-in op names (the dominant case) are zero-allocation
-    /// `Cow::Borrowed` references; only dynamic custom-operator names
-    /// carry an owned `String` via `Cow::Owned`.
+    /// Outermost operator that produced the error, when known. Stored as
+    /// `Cow<'static, str>` so built-in op names (the dominant case) are
+    /// zero-allocation `Cow::Borrowed` references; only dynamic
+    /// custom-operator names carry an owned `String` via `Cow::Owned`.
+    /// Read via [`Self::operator`].
+    ///
+    /// Kept inline rather than boxed: a boxed-metadata variant (Error at
+    /// 40 bytes instead of 80) was measured and rejected — the box cost
+    /// ~14 ns per boundary-escaping error, regressing error-dense
+    /// workloads 15-45%, while the thinner `Result` slot produced no
+    /// measurable win on error-free suites.
     operator: Option<Cow<'static, str>>,
     /// Breadcrumb of compiled-node ids from the failure site toward the
     /// root (leaf-to-root). Empty when the error came from parse/compile
-    /// or wasn't routed through the public `evaluate*` path. Stored
-    /// inline (no `Box`) so attaching the breadcrumb at the boundary is
-    /// just a move — heap-allocating per error showed up as a +30%
-    /// regression on error-heavy suites (try/throw/datetime/string).
+    /// or wasn't routed through the public `evaluate*` path. Read via
+    /// [`Self::node_ids`].
     node_ids: ErrorPath,
 }
 
@@ -93,7 +97,7 @@ impl Error {
         Self {
             kind,
             operator: None,
-            node_ids: ErrorPath::new(),
+            node_ids: ErrorPath::default(),
         }
     }
 
@@ -146,8 +150,8 @@ impl Error {
     /// Attach the breadcrumb path and return self.
     ///
     /// Takes a `Vec<u32>` of compiled-node ids (leaf-to-root). The internal
-    /// storage is currently a plain `Vec<u32>`; future versions may swap to
-    /// an inline-buffer / smallvec layout without an API change.
+    /// storage is private; future versions may swap its layout without an
+    /// API change.
     #[must_use = "builder methods return the modified Error; bind or return it"]
     pub fn with_node_ids(mut self, ids: Vec<u32>) -> Self {
         self.node_ids = ids.into();
@@ -170,7 +174,7 @@ impl Error {
     /// the data — and most callers either inspect raw [`Self::node_ids`]
     /// only, or already hold the compiled `Logic` at the catch site.
     pub fn resolve_path(&self, compiled: &crate::Logic) -> Vec<crate::PathStep> {
-        compiled.resolve_node_ids(self.node_ids.as_slice())
+        compiled.resolve_node_ids(self.node_ids())
     }
 
     // ---- 4.x convenience constructors ----
@@ -324,7 +328,7 @@ impl Error {
         compiled: &crate::Logic,
         prefer_existing_op: bool,
     ) -> Self {
-        self = self.with_node_ids(node_ids);
+        self.node_ids = node_ids.into();
         if !prefer_existing_op || self.operator.is_none() {
             if let Some(name) = compiled.root_op_name.clone() {
                 self.operator = Some(name);
@@ -339,7 +343,56 @@ impl Error {
     pub(crate) fn nan() -> Self {
         Error::thrown(OwnedDataValue::object([("type", NAN_ERROR)]))
     }
+
+    /// Placeholder `Thrown` error for the deferred fast lane.
+    ///
+    /// **Invariant:** only construct this while
+    /// `ContextStack::in_catch_scope()` is `true` (inside a protected —
+    /// non-final — arm of a multi-arg `try`), with the real payload parked
+    /// in the context's thrown slot via `ContextStack::set_thrown_slot`.
+    /// Under that invariant the error is guaranteed to be consumed by the
+    /// nearest enclosing `try`'s arm loop, so the `Null` payload is never
+    /// observable: `try`'s catch arm reads the slot, and the error never
+    /// reaches a public boundary or user code. Escaping throws must go
+    /// through [`Error::thrown`] with the fully built owned payload.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn deferred_thrown() -> Self {
+        ErrorKind::Thrown(OwnedDataValue::Null).into()
+    }
+
+    /// NaN error with the deferred fast lane: inside a `try` protected arm
+    /// (and when no tracer is attached — traced steps render the payload),
+    /// park the static arena-form `{"type": "NaN"}` object in the context's
+    /// thrown slot and skip the three-allocation owned build entirely.
+    /// Anywhere else this is exactly [`Error::nan`].
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn nan_at(ctx: &mut crate::arena::ContextStack<'_>) -> Self {
+        if ctx.in_catch_scope() && !ctx.is_tracing() {
+            ctx.set_thrown_slot(&NAN_THROWN);
+            return Self::deferred_thrown();
+        }
+        Self::nan()
+    }
+
+    /// Fallback when `try`/`throw` are compiled out: no catch scope can
+    /// exist, so this is always the eager [`Error::nan`].
+    #[cfg(not(feature = "error-handling"))]
+    #[inline]
+    pub(crate) fn nan_at(_ctx: &mut crate::arena::ContextStack<'_>) -> Self {
+        Self::nan()
+    }
 }
+
+/// Arena-form of the canonical NaN error object, `{"type": "NaN"}` — the
+/// payload [`Error::nan_at`] parks in the context's thrown slot instead of
+/// heap-building the owned form. `'static` and arena-free, so it can be
+/// borrowed at any arena lifetime (same soundness argument as
+/// `crate::arena::singletons`).
+#[cfg(feature = "error-handling")]
+static NAN_THROWN: crate::arena::DataValue<'static> =
+    crate::arena::DataValue::Object(&[("type", crate::arena::DataValue::String(NAN_ERROR))]);
 
 #[cfg(test)]
 mod tests {
@@ -395,7 +448,7 @@ mod tests {
 
     #[test]
     fn error_path_default_is_empty() {
-        let p = ErrorPath::new();
+        let p = ErrorPath::default();
         assert!(p.as_slice().is_empty());
         assert_eq!(p.as_slice(), &[] as &[u32]);
     }
@@ -407,10 +460,12 @@ mod tests {
     }
 
     #[test]
-    fn with_node_ids_stores_inline_no_box() {
-        // Engine boundary calls `with_node_ids` once per error; storage
-        // is inline `Vec<u32>` so this is just a move, not a heap alloc.
+    fn with_node_ids_round_trips() {
+        // Engine boundary calls `with_node_ids` once per escaping error;
+        // the ids land in the boxed metadata slot and read back unchanged.
         let err = Error::invalid_arguments("x").with_node_ids(vec![1, 2, 3]);
         assert_eq!(err.node_ids(), &[1, 2, 3]);
+        // Metadata-free errors read back as empty without allocating.
+        assert!(Error::invalid_arguments("x").node_ids().is_empty());
     }
 }

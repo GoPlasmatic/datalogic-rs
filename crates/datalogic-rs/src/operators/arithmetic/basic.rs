@@ -88,7 +88,7 @@ fn add_two_arg<'a>(
         if let Some(f) = coerce_to_number_cfg(av, engine) {
             sum += f;
         } else {
-            match handle_nan(engine)? {
+            match handle_nan(ctx, engine)? {
                 NanAction::Skip => {}
                 NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
@@ -173,7 +173,7 @@ fn multiply_two_arg<'a>(
         if let Some(f) = coerce_to_number_cfg(av, engine) {
             product *= f;
         } else {
-            match handle_nan(engine)? {
+            match handle_nan(ctx, engine)? {
                 NanAction::Skip => {}
                 NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
@@ -217,9 +217,10 @@ fn subtract_one_arg<'a>(
         if items.is_empty() {
             return Err(crate::Error::invalid_args());
         }
-        let mut result = coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
+        let mut result =
+            coerce_to_number_cfg(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
         for elem in &items[1..] {
-            let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::Error::nan)?;
+            let n = coerce_to_number_cfg(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
             result -= n;
         }
         return Ok(alloc_number(arena, NumberValue::from_f64(result)));
@@ -236,7 +237,7 @@ fn subtract_one_arg<'a>(
     if let Some(f) = coerce_to_number_cfg(av, engine) {
         return Ok(alloc_number(arena, NumberValue::from_f64(-f)));
     }
-    Err(crate::Error::nan())
+    Err(crate::Error::nan_at(ctx))
 }
 
 #[inline]
@@ -276,7 +277,7 @@ fn subtract_two_arg<'a>(
         }
     }
 
-    Err(crate::Error::nan())
+    Err(crate::Error::nan_at(ctx))
 }
 
 /// Variadic (>2) subtract: integer fast path with overflow promotion.
@@ -299,7 +300,7 @@ fn subtract_variadic<'a>(
         .or_else(|| try_coerce_to_integer_cfg(first_av, engine));
     let float_init = match coerce_to_number_cfg(first_av, engine) {
         Some(f) => f,
-        None => return Err(crate::Error::nan()),
+        None => return Err(crate::Error::nan_at(ctx)),
     };
     let mut state = FoldState::new(int_init.unwrap_or_default(), float_init);
     state.all_int = int_init.is_some();
@@ -319,6 +320,7 @@ fn subtract_variadic<'a>(
             float_opt,
             i64::checked_sub,
             std::ops::Sub::sub,
+            ctx,
             engine,
         )? {
             return Ok(crate::arena::singletons::singleton_null());
@@ -339,7 +341,7 @@ fn one_arg_arith<'a>(
     // Literal array argument is invalid for + / *. Apply NaN config (default
     // ThrowError → propagates the error up).
     if is_literal_array(arg) {
-        return match handle_nan(engine)? {
+        return match handle_nan(ctx, engine)? {
             NanAction::Skip => Ok(alloc_number(
                 arena,
                 NumberValue::from_i64(op.identity_int()),
@@ -352,7 +354,7 @@ fn one_arg_arith<'a>(
 
     // Array result (e.g. from `var "items"`): fold all elements.
     if let DataValue::Array(items) = av {
-        return one_arg_array_fold(items, engine, arena, op);
+        return one_arg_array_fold(items, ctx, engine, arena, op);
     }
 
     // Non-array single value: coerce and return (op identity * coerced).
@@ -371,7 +373,7 @@ fn one_arg_arith<'a>(
             NumberValue::from_f64(op.combine_f(op.identity_int() as f64, f)),
         ));
     }
-    match handle_nan(engine)? {
+    match handle_nan(ctx, engine)? {
         NanAction::Skip => Ok(alloc_number(
             arena,
             NumberValue::from_i64(op.identity_int()),
@@ -391,6 +393,7 @@ fn one_arg_arith<'a>(
 #[inline]
 fn one_arg_array_fold<'a>(
     items: &[DataValue<'a>],
+    ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
     op: ArithOp,
@@ -415,6 +418,7 @@ fn one_arg_array_fold<'a>(
             float_opt,
             |a, b| op.combine_int(a, b),
             |a, b| op.combine_f(a, b),
+            ctx,
             engine,
         )? {
             return Ok(crate::arena::singletons::singleton_null());

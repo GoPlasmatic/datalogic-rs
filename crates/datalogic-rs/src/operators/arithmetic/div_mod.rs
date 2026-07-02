@@ -83,28 +83,33 @@ fn div_mod_two_arg<'a>(
         }
     }
 
-    let af = coerce_to_number_cfg(a_av, engine).ok_or_else(crate::Error::nan)?;
-    let bf = coerce_to_number_cfg(b_av, engine).ok_or_else(crate::Error::nan)?;
+    let af = coerce_to_number_cfg(a_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+    let bf = coerce_to_number_cfg(b_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
     let na = NumberValue::from_f64(af);
     let nb = NumberValue::from_f64(bf);
     if nb.is_zero() {
         // Integer/integer with divisor=0 errors regardless of the
         // `division_by_zero` config (config only governs the float path).
         if a_av.as_i64().is_some() && b_av.as_i64().is_some() {
-            return Err(crate::Error::nan());
+            return Err(crate::Error::nan_at(ctx));
         }
-        return divbyzero(arena, na.as_f64(), engine);
+        return divbyzero(ctx, arena, na.as_f64(), engine);
     }
     match op.apply_number(&na, &nb) {
         Some(r) => Ok(alloc_number(arena, r)),
-        None => Err(crate::Error::nan()),
+        None => Err(crate::Error::nan_at(ctx)),
     }
 }
 
 #[inline]
-fn divbyzero<'a>(arena: &'a Bump, dividend: f64, engine: &Engine) -> Result<&'a DataValue<'a>> {
+fn divbyzero<'a>(
+    ctx: &mut ContextStack<'_>,
+    arena: &'a Bump,
+    dividend: f64,
+    engine: &Engine,
+) -> Result<&'a DataValue<'a>> {
     match engine.config().division_by_zero {
-        DivisionByZeroHandling::ThrowError => Err(crate::Error::nan()),
+        DivisionByZeroHandling::ThrowError => Err(crate::Error::nan_at(ctx)),
         DivisionByZeroHandling::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
         DivisionByZeroHandling::ReturnInfinity => {
             let v = if dividend >= 0.0 {
@@ -145,11 +150,12 @@ fn one_arg_div_mod<'a>(
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::Error::invalid_args());
         }
-        let mut result = coerce_to_number_cfg(&items[0], engine).ok_or_else(crate::Error::nan)?;
+        let mut result =
+            coerce_to_number_cfg(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
         for elem in &items[1..] {
-            let n = coerce_to_number_cfg(elem, engine).ok_or_else(crate::Error::nan)?;
+            let n = coerce_to_number_cfg(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
             if n == 0.0 {
-                return fold_divbyzero(arena, result, elem, engine);
+                return fold_divbyzero(ctx, arena, result, elem, engine);
             }
             result = op.apply_f64(result, n);
         }
@@ -163,7 +169,7 @@ fn one_arg_div_mod<'a>(
     // 1/x with integer-preserving fast path.
     if let Some(i) = av.as_i64() {
         if i == 0 {
-            return Err(crate::Error::nan());
+            return Err(crate::Error::nan_at(ctx));
         }
         if i == -1 {
             return Ok(alloc_number(arena, NumberValue::from_i64(-1)));
@@ -173,9 +179,9 @@ fn one_arg_div_mod<'a>(
         }
         return Ok(alloc_number(arena, NumberValue::from_f64(1.0 / i as f64)));
     }
-    let f = coerce_to_number_cfg(av, engine).ok_or_else(crate::Error::nan)?;
+    let f = coerce_to_number_cfg(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
     if f == 0.0 {
-        return Err(crate::Error::nan());
+        return Err(crate::Error::nan_at(ctx));
     }
     Ok(alloc_number(arena, NumberValue::from_f64(1.0 / f)))
 }
@@ -190,12 +196,13 @@ fn variadic_div_mod<'a>(
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let mut result = coerce_to_number_cfg(first_av, engine).ok_or_else(crate::Error::nan)?;
+    let mut result =
+        coerce_to_number_cfg(first_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
     for arg in args.iter().skip(1) {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        let n = coerce_to_number_cfg(av, engine).ok_or_else(crate::Error::nan)?;
+        let n = coerce_to_number_cfg(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
         if n == 0.0 {
-            return fold_divbyzero(arena, result, av, engine);
+            return fold_divbyzero(ctx, arena, result, av, engine);
         }
         result = op.apply_f64(result, n);
     }
@@ -210,6 +217,7 @@ fn variadic_div_mod<'a>(
 /// coerced to zero.
 #[inline]
 fn fold_divbyzero<'a>(
+    ctx: &mut ContextStack<'_>,
     arena: &'a Bump,
     dividend: f64,
     divisor: &DataValue<'_>,
@@ -218,7 +226,7 @@ fn fold_divbyzero<'a>(
     let dividend_is_int =
         dividend.fract() == 0.0 && dividend >= i64::MIN as f64 && dividend <= i64::MAX as f64;
     if dividend_is_int && divisor.as_i64().is_some() {
-        return Err(crate::Error::nan());
+        return Err(crate::Error::nan_at(ctx));
     }
-    divbyzero(arena, dividend, engine)
+    divbyzero(ctx, arena, dividend, engine)
 }

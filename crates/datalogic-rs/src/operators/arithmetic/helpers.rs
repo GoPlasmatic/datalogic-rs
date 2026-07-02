@@ -12,7 +12,7 @@
 
 use crate::Engine;
 use crate::Result;
-use crate::arena::{DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
+use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::NanHandling;
 use bumpalo::Bump;
 use datavalue::NumberValue;
@@ -26,11 +26,13 @@ pub(super) enum NanAction {
 }
 
 /// Check the engine's NaN handling config and return the appropriate action.
-/// Returns `Err` for `ThrowError`, `Ok(NanAction)` otherwise.
+/// Returns `Err` for `ThrowError`, `Ok(NanAction)` otherwise. Takes the
+/// context so the `ThrowError` arm can use the deferred thrown-payload fast
+/// lane ([`crate::Error::nan_at`]) when a `try` is guaranteed to catch it.
 #[inline]
-pub(super) fn handle_nan(engine: &Engine) -> Result<NanAction> {
+pub(super) fn handle_nan(ctx: &mut ContextStack<'_>, engine: &Engine) -> Result<NanAction> {
     match engine.config().arithmetic_nan_handling {
-        NanHandling::ThrowError => Err(crate::Error::nan()),
+        NanHandling::ThrowError => Err(crate::Error::nan_at(ctx)),
         NanHandling::IgnoreValue | NanHandling::CoerceToZero => Ok(NanAction::Skip),
         NanHandling::ReturnNull => Ok(NanAction::ReturnNull),
     }
@@ -184,6 +186,7 @@ impl FoldState {
         float_opt: Option<f64>,
         i_combine: I,
         f_combine: F,
+        ctx: &mut ContextStack<'_>,
         engine: &Engine,
     ) -> Result<FoldStepOutcome>
     where
@@ -215,7 +218,7 @@ impl FoldState {
             }
             return Ok(FoldStepOutcome::Continue);
         }
-        match handle_nan(engine)? {
+        match handle_nan(ctx, engine)? {
             NanAction::Skip => Ok(FoldStepOutcome::Continue),
             NanAction::ReturnNull => Ok(FoldStepOutcome::ReturnNull),
         }
@@ -273,9 +276,14 @@ pub(super) fn variadic_fold<'a>(
         } else {
             av.as_f64().or_else(|| coerce_to_number_cfg(av, engine))
         };
-        if let FoldStepOutcome::ReturnNull =
-            state.step(int_opt, float_opt, spec.i_combine, spec.f_combine, engine)?
-        {
+        if let FoldStepOutcome::ReturnNull = state.step(
+            int_opt,
+            float_opt,
+            spec.i_combine,
+            spec.f_combine,
+            ctx,
+            engine,
+        )? {
             return Ok(crate::arena::singletons::singleton_null());
         }
     }

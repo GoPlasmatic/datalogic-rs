@@ -57,6 +57,23 @@ pub(crate) struct ContextStack<'a> {
     parents: SmallVec<[ContextFrame<'a>; INLINE_FRAMES]>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     error_path: Vec<u32>,
+    /// Depth of enclosing `try` *protected* arms (every arm of a multi-arg
+    /// `try` except the final catch arm). While > 0, any error raised is
+    /// guaranteed to be consumed by the nearest enclosing `try`'s arm loop
+    /// before it can reach a public boundary — which unlocks the deferred
+    /// thrown-payload fast lane (`thrown_slot`).
+    #[cfg(feature = "error-handling")]
+    catch_depth: u32,
+    /// Deferred thrown-payload channel: the arena-resident error object of
+    /// an in-flight `Thrown` error raised inside a protected `try` arm.
+    /// Written by the `throw` / NaN fast lanes together with a
+    /// placeholder-payload `Error` (see `Error::deferred_thrown`); consumed
+    /// by `try`'s catch arm, which pushes it as the error context without
+    /// round-tripping through the owned payload. `try` clears it before
+    /// each protected arm so a stale payload can never pair with an
+    /// unrelated `Thrown` error from a non-deferring producer.
+    #[cfg(feature = "error-handling")]
+    thrown_slot: Option<&'a DataValue<'a>>,
     /// Optional trace collector, owned by this stack while a traced
     /// evaluation is in flight. The trace driver moves a fresh collector
     /// in via [`Self::attach_tracer`] before dispatch and pulls it back out
@@ -77,6 +94,10 @@ impl<'a> ContextStack<'a> {
             top: None,
             parents: SmallVec::new(),
             error_path: Vec::new(),
+            #[cfg(feature = "error-handling")]
+            catch_depth: 0,
+            #[cfg(feature = "error-handling")]
+            thrown_slot: None,
             #[cfg(feature = "trace")]
             tracer: None,
         }
@@ -323,6 +344,59 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
+    }
+
+    // ----- deferred thrown-payload channel (see field docs) ------------------
+
+    /// True while evaluation is inside a protected (non-final) arm of a
+    /// multi-arg `try` — i.e. any error raised now is guaranteed to be
+    /// caught by the enclosing `try`'s arm loop.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn in_catch_scope(&self) -> bool {
+        self.catch_depth > 0
+    }
+
+    /// Enter a protected `try` arm. Must be paired with
+    /// [`Self::exit_catch_scope`] on every path out of the arm.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn enter_catch_scope(&mut self) {
+        self.catch_depth += 1;
+    }
+
+    /// Leave a protected `try` arm.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn exit_catch_scope(&mut self) {
+        debug_assert!(self.catch_depth > 0, "unbalanced exit_catch_scope");
+        self.catch_depth -= 1;
+    }
+
+    /// Park the arena-form payload of an in-flight deferred `Thrown` error.
+    /// Only call together with constructing `Error::deferred_thrown()` while
+    /// [`Self::in_catch_scope`] is true.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn set_thrown_slot(&mut self, payload: &'a DataValue<'a>) {
+        self.thrown_slot = Some(payload);
+    }
+
+    /// Consume the deferred thrown payload, if any.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn take_thrown_slot(&mut self) -> Option<&'a DataValue<'a>> {
+        self.thrown_slot.take()
+    }
+
+    /// Drop any deferred thrown payload. `try` calls this before each
+    /// protected arm so a stale payload from an earlier arm (or an
+    /// enclosing `try`) can't pair with an unrelated `Thrown` error raised
+    /// through a non-deferring site.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn clear_thrown_slot(&mut self) {
+        self.thrown_slot = None;
     }
 }
 
@@ -633,5 +707,35 @@ mod tests {
         ctx.truncate_error_path(1);
         let p = ctx.take_error_path();
         assert_eq!(p, vec![1]);
+    }
+
+    #[cfg(feature = "error-handling")]
+    #[test]
+    fn thrown_slot_and_catch_scope_round_trip() {
+        let arena = Bump::new();
+        let root_val = Value::Null;
+        let mut ctx = ContextStack::from_value(&root_val, &arena);
+
+        assert!(!ctx.in_catch_scope());
+        ctx.enter_catch_scope();
+        ctx.enter_catch_scope();
+        assert!(ctx.in_catch_scope());
+        ctx.exit_catch_scope();
+        assert!(ctx.in_catch_scope(), "nested scopes count");
+        ctx.exit_catch_scope();
+        assert!(!ctx.in_catch_scope());
+
+        assert!(ctx.take_thrown_slot().is_none());
+        let payload: &DataValue = arena.alloc(DataValue::Bool(true));
+        ctx.set_thrown_slot(payload);
+        assert!(std::ptr::eq(
+            ctx.take_thrown_slot().expect("slot set"),
+            payload
+        ));
+        assert!(ctx.take_thrown_slot().is_none(), "take consumes");
+
+        ctx.set_thrown_slot(payload);
+        ctx.clear_thrown_slot();
+        assert!(ctx.take_thrown_slot().is_none(), "clear drops");
     }
 }

@@ -190,9 +190,22 @@ pub(super) fn dispatch_node_inner<'a>(
                 Err(crate::Error::invalid_args().with_operator(*op_name))
             }
 
-            // CompiledThrow — constant-folded error literal.
+            // CompiledThrow — constant-folded error literal. Inside a
+            // protected `try` arm (and untraced) the error can't escape:
+            // park the payload arena-borrowed in the context's thrown slot
+            // and skip the owned deep clone — `try`'s catch arm reads the
+            // slot back without an owned→arena round-trip. `data.error` is
+            // already normalized (`{"type": ...}`) by the compile-time fold.
             #[cfg(feature = "error-handling")]
-            CompiledNode::Throw(data) => Err(Error::thrown(data.error.clone())),
+            CompiledNode::Throw(data) => {
+                if ctx.in_catch_scope() && !ctx.is_tracing() {
+                    let av: &crate::arena::DataValue = arena.alloc(data.error.to_arena(arena));
+                    ctx.set_thrown_slot(av);
+                    Err(Error::deferred_thrown())
+                } else {
+                    Err(Error::thrown(data.error.clone()))
+                }
+            }
 
             // Out-of-line — bumpalo::Vec construction would otherwise force
             // a large stack frame on every dispatch arm via worst-case
