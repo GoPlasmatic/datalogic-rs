@@ -6,6 +6,8 @@
 //! defined here. Engine-specific timing loops live in their respective
 //! binaries because the inner loop differs (arena reuse vs string round-trip).
 
+pub mod macro_suites;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -113,6 +115,20 @@ pub struct SuiteResult {
     /// sub-nanosecond resolution — the exact range that distinguishes
     /// benchmark runs.
     pub avg_op_ns: f64,
+    /// Number of rules the compiler constant-folded to a literal
+    /// (`Logic::is_constant`). `None` when the run didn't classify (the
+    /// whole-suite headline number is unaffected either way).
+    pub folded_count: Option<usize>,
+    /// Median avg ns/op over just the folded rules; `None` when the suite
+    /// has no folded rules (or the split wasn't measured).
+    pub folded_avg_op_ns: Option<f64>,
+    /// Median total wall time of the folded-subset pass.
+    pub folded_total_time: Option<Duration>,
+    /// Median avg ns/op over just the non-folded rules; `None` when every
+    /// rule folded (or the split wasn't measured).
+    pub non_folded_avg_op_ns: Option<f64>,
+    /// Median total wall time of the non-folded-subset pass.
+    pub non_folded_total_time: Option<Duration>,
 }
 
 impl SuiteResult {
@@ -128,6 +144,11 @@ impl SuiteResult {
             total_ops,
             total_time,
             avg_op_ns,
+            folded_count: None,
+            folded_avg_op_ns: None,
+            folded_total_time: None,
+            non_folded_avg_op_ns: None,
+            non_folded_total_time: None,
         }
     }
 }
@@ -154,6 +175,44 @@ pub fn print_summary(label: &str, results: &[SuiteResult]) {
     println!("Total time:          {total_time:.2?}");
     println!("Total operations:    {total_ops}");
     println!("Average op time:     {avg:.2} ns");
+
+    // Geomeans give each suite equal weight (the arithmetic average above
+    // is dominated by big suites) and split the folded and non-folded rule
+    // populations so constant-folded rules can't flatter the number for
+    // genuinely data-dependent work.
+    let (overall, folded, non_folded) = summary_geomeans(results);
+    println!(
+        "Geomean op time:     {:.2} ns (per-suite avg, {} suites)",
+        geomean(&overall),
+        overall.len()
+    );
+    if !folded.is_empty() {
+        println!(
+            "Geomean folded:      {:.2} ns ({} suites with folded rules)",
+            geomean(&folded),
+            folded.len()
+        );
+    }
+    if !non_folded.is_empty() {
+        println!(
+            "Geomean non-folded:  {:.2} ns ({} suites with non-folded rules)",
+            geomean(&non_folded),
+            non_folded.len()
+        );
+    }
+}
+
+/// Per-suite avg ns/op vectors feeding the three summary geomeans:
+/// (overall, folded-only, non-folded-only). Suites without the relevant
+/// subset simply don't contribute to that geomean.
+fn summary_geomeans(results: &[SuiteResult]) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let overall: Vec<f64> = results.iter().map(|r| r.avg_op_ns).collect();
+    let folded: Vec<f64> = results.iter().filter_map(|r| r.folded_avg_op_ns).collect();
+    let non_folded: Vec<f64> = results
+        .iter()
+        .filter_map(|r| r.non_folded_avg_op_ns)
+        .collect();
+    (overall, folded, non_folded)
 }
 
 /// Write a JSON report into `tools/benchmark/output/`.
@@ -177,26 +236,58 @@ pub fn write_report(label: &str, iterations: u32, results: &[SuiteResult]) -> Pa
     let suite_entries: Vec<Value> = results
         .iter()
         .map(|r| {
-            serde_json::json!({
+            // Additive folded/non-folded split fields: absent (not null)
+            // when the run didn't measure the corresponding subset, so
+            // pre-split reports and post-split reports stay diffable on
+            // the shared fields.
+            let mut entry = serde_json::json!({
                 "suite": r.name,
                 "test_count": r.test_count,
                 "total_ops": r.total_ops,
                 "total_time_ms": r.total_time.as_secs_f64() * 1000.0,
                 "avg_op_time_ns": r.avg_op_ns,
-            })
+            });
+            if let Some(count) = r.folded_count {
+                entry["folded_test_count"] = count.into();
+            }
+            if let Some(ns) = r.folded_avg_op_ns {
+                entry["folded_avg_op_time_ns"] = ns.into();
+            }
+            if let Some(t) = r.folded_total_time {
+                entry["folded_total_time_ms"] = (t.as_secs_f64() * 1000.0).into();
+            }
+            if let Some(ns) = r.non_folded_avg_op_ns {
+                entry["non_folded_avg_op_time_ns"] = ns.into();
+            }
+            if let Some(t) = r.non_folded_total_time {
+                entry["non_folded_total_time_ms"] = (t.as_secs_f64() * 1000.0).into();
+            }
+            entry
         })
         .collect();
+
+    let (overall, folded, non_folded) = summary_geomeans(results);
+    let mut summary = serde_json::json!({
+        "suites": results.len(),
+        "total_time_ms": total_time.as_secs_f64() * 1000.0,
+        "total_ops": total_ops,
+        "avg_op_time_ns": avg,
+        "geomean_avg_op_time_ns": geomean(&overall),
+    });
+    if !folded.is_empty() {
+        summary["geomean_folded_avg_op_time_ns"] = geomean(&folded).into();
+        summary["geomean_folded_suites"] = folded.len().into();
+    }
+    if !non_folded.is_empty() {
+        summary["geomean_non_folded_avg_op_time_ns"] = geomean(&non_folded).into();
+        summary["geomean_non_folded_suites"] = non_folded.len().into();
+    }
 
     let report = serde_json::json!({
         "label": label,
         "timestamp": timestamp,
         "iterations_per_test": iterations,
-        "summary": {
-            "suites": results.len(),
-            "total_time_ms": total_time.as_secs_f64() * 1000.0,
-            "total_ops": total_ops,
-            "avg_op_time_ns": avg,
-        },
+        "summary": summary,
         "suites": suite_entries,
     });
 
@@ -418,4 +509,184 @@ fn aggregations(num_subjects: usize, rows: &[MatrixRow]) -> [(Vec<f64>, ()); 2] 
         geo[j] = geomean(&col_values);
     }
     [(arith, ()), (geo, ())]
+}
+
+/// A pairwise shared-suite comparison between two matrix columns.
+///
+/// The per-column mean rows at the bottom of the matrix average over
+/// whatever suites each column happened to complete, so when subjects
+/// error on different suites, dividing two column geomeans compares
+/// incomparable suite sets. A `PairRatio` avoids that: it is the geomean
+/// of per-suite ratios computed **only** over suites where both subjects
+/// have finite cells, so every contributing number pairs like with like.
+#[derive(Clone, Copy, Debug)]
+pub struct PairRatio {
+    /// Column index of the baseline subject (denominator).
+    pub base_idx: usize,
+    /// Column index of the compared subject (numerator).
+    pub other_idx: usize,
+    /// Geomean of per-suite `other ns/op ÷ base ns/op`. Greater than 1
+    /// means `other` is slower than `base` on the shared suites.
+    pub ratio: f64,
+    /// Number of suites where both subjects produced a finite cell.
+    pub shared_suites: usize,
+}
+
+/// Compute [`PairRatio`]s for every unordered subject pair (the baseline
+/// is always the lower column index, so with the datalogic-rs reference
+/// in column 0 the first block of pairs reads "subject vs reference").
+/// Pairs with zero shared suites are omitted.
+pub fn pairwise_shared_ratios(num_subjects: usize, rows: &[MatrixRow]) -> Vec<PairRatio> {
+    let finite = |cell: Option<&MatrixCell>| match cell {
+        Some(MatrixCell::Value { ns_per_op, .. }) if ns_per_op.is_finite() && *ns_per_op > 0.0 => {
+            Some(*ns_per_op)
+        }
+        _ => None,
+    };
+
+    let mut out = Vec::new();
+    for base in 0..num_subjects {
+        for other in (base + 1)..num_subjects {
+            let ratios: Vec<f64> = rows
+                .iter()
+                .filter_map(|r| {
+                    let base_ns = finite(r.cells.get(base))?;
+                    let other_ns = finite(r.cells.get(other))?;
+                    Some(other_ns / base_ns)
+                })
+                .collect();
+            if ratios.is_empty() {
+                continue;
+            }
+            out.push(PairRatio {
+                base_idx: base,
+                other_idx: other,
+                ratio: geomean(&ratios),
+                shared_suites: ratios.len(),
+            });
+        }
+    }
+    out
+}
+
+/// Print the pairwise shared-suite ratio table produced by
+/// [`pairwise_shared_ratios`]. Each line is normalised so the printed
+/// multiplier is >= 1 and the direction is spelled out ("slower than").
+pub fn render_pairwise_ratios(subject_names: &[&str], ratios: &[PairRatio]) {
+    if ratios.is_empty() {
+        return;
+    }
+    let name_width = subject_names.iter().map(|n| n.len()).max().unwrap_or(12);
+    println!("\n=== Pairwise shared-suite ratios ===\n");
+    println!(
+        "Geomean of per-suite ns/op ratios, computed only over suites where both\n\
+         subjects have finite cells. The per-column mean rows above cover different\n\
+         suite subsets when a subject errors; these ratios never mix subsets.\n"
+    );
+    for pr in ratios {
+        // Normalise so the multiplier reads naturally regardless of which
+        // side of the pair is faster on the shared set.
+        let (slow, fast, mult) = if pr.ratio >= 1.0 {
+            (pr.other_idx, pr.base_idx, pr.ratio)
+        } else {
+            (pr.base_idx, pr.other_idx, 1.0 / pr.ratio)
+        };
+        println!(
+            "  {:<name_width$}  {:>7.1}x slower than {:<name_width$} over {:>2} shared suites",
+            subject_names[slow], mult, subject_names[fast], pr.shared_suites
+        );
+    }
+}
+
+/// Write the cross-library matrix (cells, per-column means, pairwise
+/// shared-suite ratios) as a JSON report into `tools/benchmark/output/`.
+/// The `self` report format is untouched; this is a separate
+/// `report-compare-<timestamp>.json` file.
+pub fn write_matrix_report(
+    subject_names: &[&str],
+    rows: &[MatrixRow],
+    ratios: &[PairRatio],
+    target_wall_time_ms: u32,
+    samples_per_cell: u32,
+) -> PathBuf {
+    let out_dir = output_root();
+    fs::create_dir_all(&out_dir).expect("create output dir");
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock went backwards")
+        .as_secs();
+
+    let cell_json = |cell: &MatrixCell| match cell {
+        MatrixCell::Value { ns_per_op, partial } => serde_json::json!({
+            "avg_op_time_ns": ns_per_op,
+            "partial": partial,
+        }),
+        MatrixCell::Error => serde_json::json!({ "status": "error" }),
+        MatrixCell::Unavailable => serde_json::json!({ "status": "unavailable" }),
+    };
+
+    let suite_entries: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            let cells: serde_json::Map<String, Value> = subject_names
+                .iter()
+                .zip(row.cells.iter())
+                .map(|(name, cell)| ((*name).to_string(), cell_json(cell)))
+                .collect();
+            serde_json::json!({
+                "suite": row.suite,
+                "test_count": row.test_count,
+                "cells": cells,
+            })
+        })
+        .collect();
+
+    let [(arith, _), (geo, _)] = aggregations(subject_names.len(), rows);
+    let f64_or_null = |v: f64| -> Value { if v.is_finite() { v.into() } else { Value::Null } };
+    let column_means: serde_json::Map<String, Value> = subject_names
+        .iter()
+        .enumerate()
+        .map(|(j, name)| {
+            let finite_suites = rows
+                .iter()
+                .filter(|r| matches!(r.cells.get(j), Some(MatrixCell::Value { .. })))
+                .count();
+            (
+                (*name).to_string(),
+                serde_json::json!({
+                    "arithmetic_mean_ns": f64_or_null(arith[j]),
+                    "geometric_mean_ns": f64_or_null(geo[j]),
+                    "finite_suites": finite_suites,
+                }),
+            )
+        })
+        .collect();
+
+    let ratio_entries: Vec<Value> = ratios
+        .iter()
+        .map(|pr| {
+            serde_json::json!({
+                "base": subject_names[pr.base_idx],
+                "other": subject_names[pr.other_idx],
+                "geomean_ratio_other_over_base": pr.ratio,
+                "shared_suites": pr.shared_suites,
+            })
+        })
+        .collect();
+
+    let report = serde_json::json!({
+        "label": "compare",
+        "timestamp": timestamp,
+        "target_ms_per_cell": target_wall_time_ms,
+        "samples_per_cell": samples_per_cell,
+        "subjects": subject_names,
+        "suites": suite_entries,
+        "column_means": column_means,
+        "pairwise_shared_ratios": ratio_entries,
+    });
+
+    let path = out_dir.join(format!("report-compare-{timestamp}.json"));
+    fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).expect("write report");
+    path
 }

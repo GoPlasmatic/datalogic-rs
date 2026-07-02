@@ -11,9 +11,10 @@ Two binaries share a common suite loader and reporter (`src/lib.rs`):
 | `self`    | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
 | `compare` | Cross-library **matrix** — runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
 
-Both read JSON suites from `crates/datalogic-rs/tests/suites/`. `self` writes a
-JSON report to `tools/benchmark/output/` (gitignored); `compare` only
-prints to stdout.
+Both read JSON suites from `crates/datalogic-rs/tests/suites/`. Both
+write JSON reports to `tools/benchmark/output/` (gitignored):
+`report-self-*.json` for `--all` runs of `self`, `report-compare-*.json`
+for `compare`.
 
 ## `self` — regression baseline
 
@@ -26,7 +27,24 @@ cargo run --release -p datalogic-bench --bin self -- --all
 
 # Specific suite
 cargo run --release -p datalogic-bench --bin self -- arithmetic/plus.json
+
+# Macro tier: synthesized large-payload suites (1k/10k arrays, 128-key
+# objects, 48-level nesting, 10 KB strings, one eligibility rule)
+cargo run --release -p datalogic-bench --bin self -- --macro
 ```
+
+Each suite is timed three ways with the same discipline (median of 3
+reps, `black_box`, session reset per iteration, pre-sized arena): the
+whole suite (the headline, comparable with older reports), just the
+rules the compiler constant-folded to a literal (`Logic::is_constant`),
+and the rest. The per-suite line shows the split
+(`folded 23/32 @ 2.94 ns, rest @ 75.75 ns`) and the summary reports
+overall / folded-only / non-folded-only geomeans, so constant-folded
+rules can't flatter the data-dependent number. The macro tier scales
+its per-suite iteration count from a pilot pass so one timed rep lands
+near ~250 ms; see
+[`BENCHMARK.md`](./BENCHMARK.md#macro-tier-self-benchmark) for the
+suite list.
 
 ## `compare` — cross-library matrix
 
@@ -133,6 +151,22 @@ cargo run --release -p datalogic-bench --bin compare -- --all --allow-missing-su
   filtered out of compare runs — engines disagree on what "errors"
   and how expensive their error path is, so including them would
   unfairly penalise verbose-error subjects.
+
+After the matrix, a pairwise ratio table is printed:
+
+```
+=== Pairwise shared-suite ratios ===
+
+  json-logic-engine:compiled      9.4x slower than dlrs:engine  over  3 shared suites
+  ...
+```
+
+Each line is the geomean of per-suite ns/op ratios computed only over
+suites where **both** subjects have finite cells. The per-column mean
+rows in the matrix cover different suite subsets when subjects `ERR` on
+different suites, so quotients of column geomeans mix incomparable
+sets; the pairwise ratios never do. Matrix cells, per-column means, and
+these ratios are also written to `output/report-compare-<timestamp>.json`.
 
 ### Native-CPU build (optional, host-only numbers)
 

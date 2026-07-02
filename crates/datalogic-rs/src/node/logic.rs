@@ -88,6 +88,44 @@ impl Logic {
         node_is_static(&self.root)
     }
 
+    /// Check if compilation reduced this rule to a compile-time constant.
+    ///
+    /// The compiler constant-folds every static sub-expression it can
+    /// prove, so a rule with no data dependency usually compiles down to a
+    /// single literal node. `is_constant` reports whether that happened
+    /// for the *whole* rule: evaluating a constant rule returns the
+    /// pre-computed value without executing any operator, so its cost is
+    /// literal-return overhead, not engine work.
+    ///
+    /// Contrast with [`Self::is_static`]: `is_static` asks whether the
+    /// tree *could* be evaluated without a data context, while
+    /// `is_constant` reports whether the compiler actually *did* collapse
+    /// the root to a literal. The two can differ; for example
+    /// `{"/": [1, 0]}` is static, but folding it fails (division by zero
+    /// errors under the default configuration), so the operator node is
+    /// kept and the error surfaces at evaluation time. Benchmarks and
+    /// rule-analysis tooling use this accessor to separate folded rules
+    /// from genuinely data-dependent ones.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    ///
+    /// // No data dependency: the compiler folds `1 + 2` to the literal `3`.
+    /// let folded = engine.compile(r#"{"+": [1, 2]}"#).unwrap();
+    /// assert!(folded.is_constant());
+    ///
+    /// // Reads the data context, so it stays an operator node.
+    /// let dynamic = engine.compile(r#"{"var": "x"}"#).unwrap();
+    /// assert!(!dynamic.is_constant());
+    /// ```
+    pub fn is_constant(&self) -> bool {
+        matches!(self.root, CompiledNode::Value { .. })
+    }
+
     /// Reconstruct a JSONLogic string from this compiled tree.
     ///
     /// Reflects the *compiled* shape — constant-folded sub-expressions
@@ -220,5 +258,45 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         // Pure operators: Static when all arguments are static. These perform
         // deterministic transformations without side effects or context access.
         _ => args_static(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Engine;
+
+    #[test]
+    fn is_constant_tracks_folding() {
+        let engine = Engine::new();
+
+        // Static expressions fold all the way down to a literal.
+        let folded = engine.compile(r#"{"+": [1, {"*": [2, 3]}]}"#).unwrap();
+        assert!(folded.is_constant());
+        assert!(folded.is_static());
+
+        // Bare literals (including composite ones) compile to Value nodes.
+        assert!(engine.compile("42").unwrap().is_constant());
+        assert!(engine.compile("[1, 2, 3]").unwrap().is_constant());
+
+        // Data-dependent rules stay operator nodes.
+        let dynamic = engine.compile(r#"{"var": "x"}"#).unwrap();
+        assert!(!dynamic.is_constant());
+        assert!(!dynamic.is_static());
+
+        // `merge` needs runtime disambiguation, so it is classified
+        // non-static and never folded even with literal args.
+        assert!(
+            !engine
+                .compile(r#"{"merge": [[1], [2]]}"#)
+                .unwrap()
+                .is_constant()
+        );
+
+        // Static but not constant: folding `1 / 0` fails (NaN error under
+        // the default config), so the operator node is kept and the error
+        // is deferred to evaluation time.
+        let div = engine.compile(r#"{"/": [1, 0]}"#).unwrap();
+        assert!(div.is_static());
+        assert!(!div.is_constant());
     }
 }

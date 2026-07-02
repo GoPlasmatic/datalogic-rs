@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`Logic::is_constant`**: reports whether compilation constant-folded
+  the entire rule to a literal (`{"+": [1, 2]}` compiles to the literal
+  `3`; `{"var": "x"}` stays an operator node). Complements
+  `Logic::is_static`: `is_static` asks whether a rule *could* be
+  evaluated without a data context, `is_constant` reports whether the
+  compiler actually *did* reduce it to one (folding can fail, e.g.
+  `{"/": [1, 0]}` stays an operator node so the error surfaces at
+  evaluation time). The benchmark harness uses it to time folded and
+  non-folded rules separately.
 - **`EvaluationConfig::from_json_str`** (requires `serde_json`) — build a
   configuration from a JSON object. This is the wire format the language
   bindings use to pass engine configuration across FFI boundaries through

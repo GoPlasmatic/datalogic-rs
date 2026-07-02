@@ -35,7 +35,8 @@ use std::time::{Duration, Instant};
 use bumpalo::Bump;
 use datalogic_bench::{
     MatrixCell, MatrixRow, SubjectRun, SuiteCase, load_index, load_suite_for_compare,
-    render_matrix, suites_root,
+    pairwise_shared_ratios, render_matrix, render_pairwise_ratios, suites_root,
+    write_matrix_report,
 };
 use datalogic_rs::{DataValue, Engine, Logic};
 
@@ -575,4 +576,21 @@ fn main() {
     }
 
     render_matrix(&subject_names, &rows, TARGET_MS_PER_CELL, SAMPLES_PER_CELL);
+
+    // Pairwise shared-suite ratios. The per-column mean rows in the matrix
+    // aggregate whatever suites each column completed, so when subjects
+    // ERR on different suites, dividing two column geomeans compares
+    // incomparable suite sets. These ratios are computed per pair, only
+    // over suites where both subjects have finite cells.
+    let ratios = pairwise_shared_ratios(subject_names.len(), &rows);
+    render_pairwise_ratios(&subject_names, &ratios);
+
+    let report_path = write_matrix_report(
+        &subject_names,
+        &rows,
+        &ratios,
+        TARGET_MS_PER_CELL,
+        SAMPLES_PER_CELL,
+    );
+    println!("\nReport saved to {}", report_path.display());
 }

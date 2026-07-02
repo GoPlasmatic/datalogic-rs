@@ -48,6 +48,23 @@ own tier-by-tier numbers, see `bin/self.rs`.
   the optimizer cannot elide unused work. Numbers from reports generated
   before this change are slightly flattered; regenerate before
   comparing.
+- **Folded vs non-folded split (`bin/self.rs`)**: many suite rules have
+  no data dependency, so the compiler constant-folds them to a literal
+  (`Logic::is_constant`) and their timed cost is literal-return
+  overhead, not engine work. The whole-suite number stays the headline
+  (comparable with older reports), and two additional passes with the
+  same discipline time the folded rules and the rest separately. The
+  summary reports three geomeans of per-suite averages: overall,
+  folded-only, non-folded-only. Quote the non-folded geomean when the
+  claim is about evaluating data-dependent rules.
+- **Pairwise shared-suite ratios (`bin/compare.rs`)**: the per-column
+  mean rows aggregate whatever suites each column completed, so when
+  subjects `ERR` on different suites, dividing two column geomeans
+  compares incomparable suite sets. After the matrix, the runner prints
+  a ratio table where each pair's number is the geomean of per-suite
+  ratios computed only over suites where **both** subjects have finite
+  cells, along with the shared-suite count. Quote these ratios, not
+  column-geomean quotients.
 - **Pre-parse where possible**: subjects with a "compile" or "parse"
   step do it in setup (outside the timed loop). The cells measure
   per-call evaluation work, not per-call API shape.
@@ -138,6 +155,13 @@ Geomeans across all 44 suites (lower is better):
 | `json-logic-js`                |         423.5 | 43.7×                     |
 | `dlrs:wasm:compiled`           |         855.6 | 88.2×                     |
 
+The "Relative to" column above divides column geomeans that cover
+different suite subsets (each column skips the suites it `ERR`ed on), so
+treat it as a rough read. The compare binary now prints pairwise
+shared-suite ratios (geomean of per-suite ratios over suites both
+subjects completed, with the shared-suite count); quote those when the
+ratio is the claim. Re-capture this section to include them.
+
 Headline takeaways:
 
 - **`dlrs:engine` is the fastest cell on nearly every suite** — single-digit
@@ -192,6 +216,41 @@ Pass a single suite name (e.g. `arithmetic/plus.json`) instead of `--all`
 for fast iteration. See `tools/benchmark/README.md` for the full flag
 reference and the recipe to add more subjects.
 
+## Macro tier (self benchmark)
+
+The operator suites use payloads of at most a few hundred bytes, so the
+matrix above measures operator dispatch, not data-volume behaviour. The
+self benchmark's macro tier fills that gap with suites **synthesized in
+code** (`tools/benchmark/src/macro_suites.rs`, nothing large checked in):
+
+| Suite                 | Payload and rules                                                                          |
+|-----------------------|--------------------------------------------------------------------------------------------|
+| `macro/array-1k`      | 1,000-element numeric permutation + object rows; filter / map / reduce / sort / `in` scans |
+| `macro/array-10k`     | Same rules over 10,000 elements                                                            |
+| `macro/object-128key` | 128-key object; shallow + dotted-deep `var` lookups, `merge` of two 64-element arrays      |
+| `macro/deep-48`       | 48 levels of nesting; one 49-segment dotted `var` path                                     |
+| `macro/string-10kb`   | Two ~10 KB strings; `cat`, `substr` (middle and negative-start), substring `in`            |
+| `macro/eligibility`   | Realistic eligibility rule: and/or/comparisons/`missing`/`reduce` over a medium object     |
+
+Run it with:
+
+```bash
+cargo run --release -p datalogic-bench --bin self -- --macro
+```
+
+Timing discipline matches the micro suites (median of 3 reps, `black_box`
+around every evaluation, session reset per iteration, arena pre-sized
+from warm-up), except the per-suite iteration count is scaled from a
+pilot pass so one timed rep lands near ~250 ms; a fixed 100k iterations
+on a 10k-element array would run for minutes per suite. Every macro case
+is sanity-evaluated before timing; a rule that errors aborts the run
+instead of silently timing the error path. ns/op is per whole-rule
+evaluation: `macro/array-10k` at ~120 µs/op means one filter/map/sort
+pass over 10k elements costs ~120 µs, i.e. ~12 ns per element touched.
+
+The macro tier is currently self-benchmark only; a cross-engine macro
+comparison remains future work.
+
 ## Caveats
 
 - Numbers are macOS / Apple Silicon. Linux x86_64 will produce a
@@ -209,9 +268,32 @@ reference and the recipe to add more subjects.
   their own profiles (the WASM workspace optimises for size). Treat the
   matrix as engine-vs-engine on equal footing, not as a promise for a
   specific packaged binary.
-- **Suite payloads are small** (hundreds of bytes). The matrix says
-  nothing yet about 1k+-element arrays, 100+-key objects, or deep
-  nesting; a macro-benchmark tier is tracked as future work. The honest
+- **Matrix suite payloads are small** (hundreds of bytes). The matrix
+  says nothing about 1k+-element arrays, 100+-key objects, or deep
+  nesting; for datalogic-rs itself those are covered by the
+  [macro tier](#macro-tier-self-benchmark) of the self benchmark.
+  Cross-engine macro comparison remains future work. The honest micro
   headline: single-digit nanoseconds for folded/scalar rules, 10-120 ns
   for context-dependent rules.
 - Local-only by design — never run in CI.
+
+## Optimization backlog (candidates, not yet implemented)
+
+Remaining engine-level candidates from the 2026-07 performance pass
+(implemented that pass: zero-copy `substr`/string-`slice`, arena-backed
+sort scratch, `itoa`/`ryu` number rendering, split context stack — corpus
+geomean -2.3%, targeted suites -12% to -45%). Guardrails for anyone
+picking these up: the conformance suite, the optimized-vs-traced
+differential property test, `tests/layout_test.rs`, and the folded /
+non-folded split above (quote the non-folded geomean).
+
+| # | Candidate | Where | Expected gain | Effort |
+|---|-----------|-------|---------------|--------|
+| 1 | Pre-convert composite literals at compile time (give `Logic` a private `Bump`, or a borrowing `to_arena` that reuses `&str`) | `engine/mod.rs`, `node/populate.rs` | Large on membership lists / switch tables / templated objects; measurable via `--macro` | M |
+| 3 | Stop heap round-trips in throw/try and NaN errors (`Arc` the payload, intern NaN, borrowed thrown-value channel) | `dispatch.rs`, `error_handling.rs`, `error/mod.rs` | 30-50% on try/throw-heavy rules (`try.json` ~121 ns is the slowest tier) | M |
+| 7 | Fast path for ISO-date string comparison (datetime feature) | `operators/comparison/mod.rs`, `datetime/mod.rs` | Large on date-field filters/sorts | M |
+| 8 | Shrink `Error` so `Result` returns are thin (currently 80 bytes, guarded by `tests/layout_test.rs`) | `error/mod.rs`, `error/kind.rs` | 1-5% geomean | M |
+| 9 | Indexed lookup / O(n log n) equality for wide objects | `arena/value/lookup.rs`, datavalue crate | Large on 100+ key payloads; measurable via `--macro` object-128key | L |
+
+Also open: running the macro tier cross-engine (it currently exists for
+the self benchmark only).
