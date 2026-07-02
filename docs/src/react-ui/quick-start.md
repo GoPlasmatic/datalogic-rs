@@ -150,7 +150,7 @@ function ArrayExample() {
   const expression = {
     "filter": [
       { "var": "items" },
-      { ">": [{ "var": ".price" }, 20] }
+      { ">": [{ "var": "price" }, 20] }
     ]
   };
 

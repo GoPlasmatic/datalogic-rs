@@ -83,9 +83,9 @@ shim. v5 is a hard cliff — there is no transitional feature flag.
   and the per-call cookbook in the repo-root `MIGRATION.md`.
 - Common mappings:
   - `DataLogic::with_config(c)` → `Engine::builder().with_config(c).build()`
-  - `engine.evaluate_str(rule, data)` → `engine.eval_str(rule, data)`
+  - `engine.evaluate_json(rule, data)` → `engine.eval_str(rule, data)`
     (or `datalogic_rs::eval_str(rule, data)` for the zero-config path)
-  - `engine.evaluate_json_value(&rule, &data)` → `engine.eval_into::<Value, _, _>(&rule, &data)`
+  - `engine.evaluate_owned(&rule, data)` → `engine.eval_into::<Value, _, _>(&rule, &data)`
     (requires `feature = "serde_json"`)
   - `engine.evaluate_json_with_trace(rule, data)` → `engine.trace().eval_str(rule, data)` returning `TracedRun<String>`
 

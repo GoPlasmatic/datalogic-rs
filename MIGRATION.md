@@ -156,12 +156,8 @@ input goes via `serde_json::to_value(&t)?` first.
 | v4                                                      | v5                                                                                          |
 |---------------------------------------------------------|---------------------------------------------------------------------------------------------|
 | `engine.evaluate(&logic, Arc<Value>)` → `Value`         | `engine.session().eval_into::<serde_json::Value, _, _>(&compiled, &*arc)` (compiled logic evaluates through a session) |
-| `engine.evaluate_arc_value(&logic, Arc<Value>)`         | same                                                                                         |
-| `engine.evaluate_ref(&logic, &Value)`                   | `let v: serde_json::Value = engine.session().eval_into(&compiled, value)?`                  |
 | `engine.evaluate_owned(&logic, value)`                  | `let v: serde_json::Value = engine.session().eval_into(&compiled, &value)?`                 |
 | `engine.evaluate_json(rule_str, data_str)` → `Value`    | `let v: serde_json::Value = engine.eval_into(rule_str, data_str)?` *or* `engine.eval_str(...)` for String result |
-| `engine.evaluate_structured(...)`                       | `engine.eval_str(...)` — `Error` already carries operator/path                              |
-| `engine.evaluate_json_structured(...)`                  | `engine.eval_str(...)` — same                                                                |
 
 The v5 `eval_into::<T>` has three generic parameters (`T`, `R`, `D`).
 You can either annotate the binding (`let v: T = ...`) and let
@@ -172,8 +168,7 @@ inference fill in `R`/`D`, or use turbofish placeholders:
 
 | v4                                                            | v5                                                              |
 |---------------------------------------------------------------|-----------------------------------------------------------------|
-| `engine.evaluate_json_with_trace(rule, data) -> TracedResult` | `engine.trace().eval_str(rule, data) -> TracedRun<String>`      |
-| `engine.evaluate_json_with_trace_structured(...)`             | `engine.trace().eval_str(rule, data)` — same shape; the outer Result collapses into `TracedRun.result` |
+| `engine.evaluate_json_with_trace(rule, data) -> TracedResult` | `engine.trace().eval_str(rule, data) -> TracedRun<String>` — the outer Result collapses into `TracedRun.result` |
 
 `TracedResult` is gone. `TracedRun<R>` shape:
 

@@ -27,7 +27,7 @@
 
 # Language & UI Bindings
 
-- [JavaScript / TypeScript](javascript/installation.md)
+- [JavaScript / TypeScript (WASM)](javascript/installation.md)
     - [Quick Start](javascript/quick-start.md)
     - [API Reference](javascript/api-reference.md)
     - [Framework Integration](javascript/frameworks.md)

@@ -113,9 +113,9 @@ let template = r#"{
         "map": [
             {"var": "userList"},
             {
-                "id": {"var": ".id"},
-                "name": {"var": ".name"},
-                "isActive": {"var": ".active"}
+                "id": {"var": "id"},
+                "name": {"var": "name"},
+                "isActive": {"var": "active"}
             }
         ]
     }
@@ -212,10 +212,10 @@ let template = r#"{
             "map": [
                 {"var": "fieldDefinitions"},
                 {
-                    "name": {"var": ".name"},
-                    "type": {"var": ".type"},
-                    "required": {"var": ".required"},
-                    "label": {"cat": [{"var": ".name"}, {"if": [{"var": ".required"}, " *", ""]}]}
+                    "name": {"var": "name"},
+                    "type": {"var": "type"},
+                    "required": {"var": "required"},
+                    "label": {"cat": [{"var": "name"}, {"if": [{"var": "required"}, " *", ""]}]}
                 }
             ]
         }

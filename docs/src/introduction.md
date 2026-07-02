@@ -12,6 +12,10 @@
 [![npm (node)](https://img.shields.io/npm/v/@goplasmatic/datalogic-node?label=npm%20%40datalogic-node)](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
 [![npm (wasm)](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm?label=npm%20%40datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
 [![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.goplasmatic/datalogic.svg?label=maven)](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic)
+[![NuGet](https://img.shields.io/nuget/v/Goplasmatic.Datalogic.svg?label=nuget)](https://www.nuget.org/packages/Goplasmatic.Datalogic)
+[![Packagist](https://img.shields.io/packagist/v/goplasmatic/datalogic.svg?label=packagist)](https://packagist.org/packages/goplasmatic/datalogic)
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5.svg)](https://pkg.go.dev/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5)
 
 </div>
 
@@ -26,9 +30,9 @@
 
 ---
 
-**datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a blazing-fast, memory-efficient, sandbox-safe, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more.
+**One rule. Every runtime. Identical results.** Write a JSONLogic rule once and evaluate it with the exact same engine in Rust, Node.js, Python, Go, Java, .NET, PHP, and the browser via WASM. Not eight reimplementations that drift apart: one Rust core under every binding.
 
-The same engine is compiled and wrapped for multiple runtimes: **Rust, Node.js (native napi), WebAssembly, Python, Go, Java, .NET, and PHP**, and features a companion **React visual debugger / editor**. Author the rule once, evaluate it anywhere with absolute semantic parity.
+**datalogic-rs** is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com) for evaluating logical rules expressed as JSON. It provides a blazing-fast, memory-efficient, sandbox-safe, and thread-safe way to evaluate complex business rules, feature flags, dynamic pricing logic, and more. It passes the full official JSONLogic test suite. A companion **React visual debugger / editor** rounds out the toolkit.
 
 For the cross-runtime installation instructions and repository details, see the [GitHub repository](https://github.com/GoPlasmatic/datalogic-rs).
 
@@ -40,9 +44,9 @@ For the cross-runtime installation instructions and repository details, see the 
 - 🌐 **Single Source of Truth:** Run identical JSON rules across your entire stack (Rust, Go, Python, Node, browser, etc.) with 100% semantic parity.
 - ⚡ **Blazing Fast:** Compiles JSON logic into optimized bytecode. Evaluates using O(1) OpCode dispatch and `bumpalo` arena-based allocation for zero-copy variables and minimal heap allocations.
 - 🛠️ **Ready-Made Rule Builder:** Drop `@goplasmatic/datalogic-ui` into your React dashboard to let users edit and step-through rules visually.
-- 🦀 **Rust-First Core:** Clean, robust Rust API designed to be zero-cost, fully thread-safe (`Logic` is `Send + Sync`), and buildable with `#![forbid(unsafe_code)]`.
+- 🦀 **Rust-First Core:** Clean, robust Rust API designed to be zero-cost and fully thread-safe (`Logic` is `Send + Sync`); the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).
 - 📦 **Serde-Optional:** Compile without `serde_json` for a minimal dependency tree. Opt-in when you need direct typed JSON serialization/deserialization.
-- 🔋 **Battery-Included Operators:** Comes with 59 built-in operators (33 in the default build, the rest behind opt-in feature flags), spanning datetime, arithmetic, string, array, and logical categories, and is easily extensible with custom operators.
+- 🔋 **Battery-Included Operators:** Comes with 59 built-in operators (33 in the default build, the rest behind opt-in feature flags), spanning datetime, arithmetic, string, array, and logical categories, and is easily extensible with custom operators authored per host language.
 
 
 ## How It Works

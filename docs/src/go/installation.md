@@ -4,7 +4,7 @@ The Go binding `datalogic-go` bridges Go and the underlying Rust core statically
 
 ## Go Module Path
 
-To add the Go module dependency (note the `/v5` major-version suffix required by Go Modules for versions $\ge 2$):
+To add the Go module dependency (note the `/v5` major-version suffix required by Go Modules for versions 2 and above):
 
 ```bash
 go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@latest

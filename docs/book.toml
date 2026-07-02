@@ -9,12 +9,18 @@ src = "src"
 build-dir = "book"
 
 [output.html]
+site-url = "/datalogic-rs/"
 git-repository-url = "https://github.com/GoPlasmatic/datalogic-rs"
 default-theme = "navy"
 preferred-dark-theme = "navy"
 edit-url-template = "https://github.com/GoPlasmatic/datalogic-rs/edit/main/docs/{path}"
 additional-js = ["theme/datalogic-playground.js"]
 additional-css = ["theme/datalogic-playground.css", "theme/datalogic-theme.css"]
+
+# Rust code blocks are not runnable on play.rust-lang.org (the crate is
+# not available there), so hide the Run button.
+[output.html.playground]
+runnable = false
 
 [output.html.fold]
 enable = true

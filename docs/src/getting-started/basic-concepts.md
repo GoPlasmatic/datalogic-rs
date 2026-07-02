@@ -52,7 +52,7 @@ let shared = std::sync::Arc::new(compiled);
 ```
 
 ```javascript
-// Compiles to a reusable CompiledRule
+// Compiles to a reusable Rule (the engine-less CompiledRule class is separate)
 const rule = engine.compile('{">": [{"var": "x"}, 10]}');
 ```
 

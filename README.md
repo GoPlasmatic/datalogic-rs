@@ -3,7 +3,9 @@
 
 # datalogic-rs
 
-**A blazing fast, production-ready JSONLogic evaluation engine written in Rust, with cross-language bindings for Node.js, Python, Go, WebAssembly, and a companion React visual debugger.**
+**Business rules as data. Decisions in nanoseconds.**
+
+A JSONLogic rules engine with one Rust core and official bindings for Node.js, Python, Go, Java, .NET, PHP, Rust, and the browser (WASM), plus an official React visual debugger. Store rules as JSON, change pricing, eligibility, and flag logic in production, and never redeploy to do it.
 
   [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
   [![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
@@ -61,11 +63,11 @@ The core Rust engine handles compilation and execution. Choose the language bind
 
 ---
 
-## Three things you can build with Rust
+## Three things you can build
 
 ### 1. Dynamic Business Rules
 
-Encode pricing logic, access control, or form validation rules as JSON. Store them in databases or fetch them from APIs, changing logic dynamically without redeploying code.
+Encode pricing logic, fee schedules, eligibility and underwriting rules, transaction risk scoring, payment routing, access control, or form validation as JSON. Store them in databases or fetch them from APIs, changing logic dynamically without redeploying code.
 
 ```rust
 let result = datalogic_rs::eval_str(
@@ -178,19 +180,23 @@ Read the [Rust crate deep-dive](./crates/datalogic-rs/README.md) for detailed de
 ## Highlights
 
 - **Cross-platform** — Native Rust engine wrapped for Node.js (napi), browsers + edge (WASM), Python, Go, Java, .NET, and PHP.
-- **59 built-in operators** — 100% JSONLogic compliance out of the box, with opt-in support for OpenFeature flagd-compatible operators (`fractional`, `sem_ver`) via the `flagd` feature.
+- **59 built-in operators** — passes the full official JSONLogic test suite, plus opt-in flagd-compatible operators (see [OpenFeature / flagd](#openfeature--flagd) below).
 - **Thread-safe evaluation** — Compiled `Logic` is `Send + Sync`; share compiled logic across threads via `Arc`.
-- **Zero `unsafe`** — Explicitly built with `#![forbid(unsafe_code)]` for maximum safety.
+- **Zero `unsafe`** — the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).
 - **Zero-copy variables** — Employs `bumpalo`-backed evaluation; read-through operations like `var` borrow directly from the input representation.
 - **Serde-optional** — The default builder has no dependency on `serde_json`. Enable the `serde_json` feature only when you need direct interop or typed JSON deserialization.
 - **Highly Configurable** — Customize division-by-zero behaviors, NaN handling, truthiness rules, and numeric coercions.
-- **Extensible custom operators** — Register custom operations easily via a Rust trait, and expose them to all downstream bindings.
+- **Extensible custom operators** — custom operators are authored per host language: implement a Rust trait in the core, or register native callbacks in each binding.
+
+### OpenFeature / flagd
+
+The opt-in `flagd` cargo feature (enabled in every language binding) ships the `fractional` and `sem_ver` operators used by [OpenFeature flagd](https://flagd.dev) flag definitions. `fractional` implements murmurhash3 bucketing that is byte-compatible with the canonical Go evaluator, so users land in the same variant buckets across implementations. That makes the engine usable as an OpenFeature-style feature-flag evaluator in all eight runtimes.
 
 ---
 
 ## Performance
 
-`datalogic-rs` is optimized for microsecond-scale hot-path execution. Compiled rules parse into a simple AST with OpCode dispatch (no runtime string matches) and execute inside a reusable memory arena.
+`datalogic-rs` is optimized for nanosecond-scale hot-path execution: single-digit nanoseconds for folded/scalar rules, 10-120 ns for context-dependent rules. Compiled rules parse into a simple AST with OpCode dispatch (no runtime string matches) and execute inside a reusable memory arena.
 
 Geomean execution time across 44 benchmark suites (Apple M2 Pro, macOS 26.3, Rust 1.93, Node 24; median of 3 samples, see [`tools/benchmark/BENCHMARK.md`][bench] for methodology):
 
@@ -200,10 +206,11 @@ json-logic-engine (JS, compiled)        | 47.2 ns  (■■■■■) 4.9x
 json-logic-engine (JS, interpreted)     | 160.3 ns (■■■■■■■■■■■■■■■■) 16.5x
 jsonlogic-rs (bestowinc Rust engine)    | 218.0 ns (■■■■■■■■■■■■■■■■■■■■■) 22.5x
 json-logic-js (Reference JS library)    | 423.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 43.7x
-@goplasmatic/datalogic-wasm (in Node)   | 855.6 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 88.2x
 ```
 
-*Note: Node.js consumers should use `@goplasmatic/datalogic-node` for production, which relies on the Rust core via native N-API and runs close to native Rust performance (rather than the WASM engine).*
+### Choosing between our two npm packages
+
+In Node.js, the native `@goplasmatic/datalogic-node` package is the fast path: it calls the Rust core directly via N-API and runs close to native Rust performance. The WASM build (`@goplasmatic/datalogic-wasm`) trades speed for portability: the same geomean workload measures 855.6 ns (88.2x native Rust) when run inside Node, but it runs anywhere JavaScript does, including browsers, edge runtimes, and Deno. Use the native package on Node servers; use WASM where you cannot ship a native binary.
 
 [bench]: ./tools/benchmark/BENCHMARK.md
 
@@ -223,6 +230,12 @@ v5 contains breaking API updates: `DataLogic` is renamed to `Engine`, `CompiledL
 - [JSONLogic Specification](https://jsonlogic.com)
 - [Architecture Overview](./ARCHITECTURE.md) — Module layout and binding structure
 - [Development Guide](./DEVELOPMENT.md) — Local builds, testing, and contribution setup
+
+---
+
+## Who is using datalogic-rs?
+
+If your team runs datalogic-rs in production, we would love to hear about it. Open a [pull request or issue](https://github.com/GoPlasmatic/datalogic-rs/issues) to get your company or project listed here.
 
 ---
 
