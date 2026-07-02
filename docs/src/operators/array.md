@@ -2,6 +2,8 @@
 
 Operations for working with arrays, including iteration and transformation.
 
+> **Feature flags (Rust crate).** All array operators are baseline except `sort` and `slice`, which require the `ext-array` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## merge
 
 Merge multiple arrays into one.

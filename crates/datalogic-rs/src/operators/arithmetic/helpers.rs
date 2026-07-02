@@ -232,15 +232,6 @@ impl FoldState {
     }
 }
 
-/// Variadic fold over arena-evaluated args with integer-fast-path and
-/// overflow promotion to `f64`. Used by `+` and `*` for the 2+ arg form.
-/// Non-numeric args trigger NaN handling per engine config.
-///
-/// Coercion strategy: strict `as_i64()` for the int path; native `as_f64()`
-/// then config-aware coercion for the float path. This is intentionally
-/// stricter than `subtract_variadic` / `one_arg_array_fold` — variadic
-/// `+`/`*` are dominated by native-int-only sequences and the strict path
-/// avoids paying coercion cost on every arg.
 /// True when a compiled node is a literal array — either a structural
 /// `Array` node or a `Value` wrapping an `OwnedDataValue::Array`. `+`/`*`
 /// and `min`/`max` reject a single literal-array argument with this check.
@@ -256,6 +247,15 @@ pub(super) fn is_literal_array(node: &crate::CompiledNode) -> bool {
         )
 }
 
+/// Variadic fold over arena-evaluated args with integer-fast-path and
+/// overflow promotion to `f64`. Used by `+` and `*` for the 2+ arg form.
+/// Non-numeric args trigger NaN handling per engine config.
+///
+/// Coercion strategy: strict `as_i64()` for the int path; native `as_f64()`
+/// then config-aware coercion for the float path. This is intentionally
+/// stricter than `subtract_variadic` / `one_arg_array_fold` — variadic
+/// `+`/`*` are dominated by native-int-only sequences and the strict path
+/// avoids paying coercion cost on every arg.
 #[inline]
 pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],

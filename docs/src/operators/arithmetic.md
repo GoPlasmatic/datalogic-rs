@@ -2,6 +2,8 @@
 
 Mathematical operations with type coercion support.
 
+> **Feature flags (Rust crate).** `+`, `-`, `*`, `/`, `%`, `min`, and `max` are baseline; `abs`, `ceil`, and `floor` require the `ext-math` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## + (Add)
 
 Add numbers together, or concatenate strings.

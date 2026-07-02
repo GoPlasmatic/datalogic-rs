@@ -54,12 +54,15 @@
 - [Configuration](advanced/configuration.md)
 - [Structured Objects](advanced/structured-objects.md)
 - [Thread Safety](advanced/threading.md)
+- [Security & Sandboxing](advanced/security.md)
 
 # Reference
 
 - [API Reference](api/reference.md)
 - [Use Cases & Examples](use-cases/examples.md)
 - [Performance](performance.md)
+- [How It Compares](comparison.md)
 - [Migration Guide](migration.md)
+- [Coming from json-logic-js](coming-from-json-logic-js.md)
 - [FAQ](faq.md)
 - [Troubleshooting](troubleshooting.md)

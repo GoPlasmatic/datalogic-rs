@@ -240,7 +240,10 @@ to inspect every executed node.
 1. **Pre-compile all rules at startup**
 2. **Use a worker pool with per-worker Sessions** for parallel evaluation
 3. **Monitor evaluation latency in production**
-4. **Set appropriate timeouts for untrusted rules**
+4. **Bound untrusted rules and their input data.** The engine has no
+   built-in timeout; iteration and output size scale with the input, so cap
+   array lengths and payload size. See
+   [Security & Sandboxing](advanced/security.md) for the full guidance.
 5. **Consider rule complexity limits for user-defined logic**
 
 ```rust

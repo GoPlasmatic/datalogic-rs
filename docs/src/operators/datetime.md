@@ -2,6 +2,8 @@
 
 Operations for working with dates, times, and durations.
 
+> **Feature flag (Rust crate).** All datetime operators require the `datetime` feature (which pulls in `chrono`). Every language binding enables it. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## now
 
 Get the current UTC datetime.

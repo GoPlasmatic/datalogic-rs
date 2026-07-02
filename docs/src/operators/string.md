@@ -2,6 +2,8 @@
 
 String manipulation and searching operations.
 
+> **Feature flags (Rust crate).** `cat`, `substr`, and `in` are baseline. `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, and `split` require the `ext-string` feature. Every language binding enables all operator features, so this only affects the Rust crate. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## cat
 
 Concatenate strings together.

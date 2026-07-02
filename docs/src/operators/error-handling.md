@@ -2,6 +2,8 @@
 
 Operators for throwing and catching errors, providing exception-like error handling in JSONLogic.
 
+> **Feature flag (Rust crate).** `try` and `throw` require the `error-handling` feature. Every language binding enables it. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## try
 
 Catch errors and provide fallback values.

@@ -2,6 +2,8 @@
 
 These operators access data from the evaluation context.
 
+> **Feature flags (Rust crate).** `var` and `val` are baseline; `exists` requires the `ext-control` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## var
 
 Access a value from the data object using dot notation.

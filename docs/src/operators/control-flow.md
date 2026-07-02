@@ -2,6 +2,8 @@
 
 Conditional branching and value selection operators.
 
+> **Feature flags (Rust crate).** `if` and `?:` are baseline; `??`, `switch`/`match`, and `type` require the `ext-control` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## if
 
 Conditional branching with if/then/else chains.

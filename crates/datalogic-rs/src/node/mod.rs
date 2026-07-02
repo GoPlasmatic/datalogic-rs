@@ -253,14 +253,7 @@ impl CompiledNode {
         }
     }
 
-    /// Convenience wrapper over [`Self::visit_indexed_children`] for callers
-    /// that don't care about the positional index.
-    #[inline]
-    pub(crate) fn visit_children<F: FnMut(&CompiledNode)>(&self, f: &mut F) {
-        self.visit_indexed_children(&mut |_, child| f(child));
-    }
-
-    /// Mutable mirror of [`Self::visit_children`]. Used by the post-compile
+    /// Mutable mirror of [`Self::visit_indexed_children`]. Used by the post-compile
     /// populate pass to walk the tree once for both per-variant local work
     /// and recursion.
     pub(crate) fn visit_children_mut<F: FnMut(&mut CompiledNode)>(&mut self, f: &mut F) {

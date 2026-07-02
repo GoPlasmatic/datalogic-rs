@@ -3,9 +3,7 @@
 //! consults to decide whether a sub-expression can be folded.
 
 use super::{CompiledNode, populate_lits};
-use crate::arena::DataValue;
 use crate::opcode::OpCode;
-use datavalue::OwnedDataValue;
 
 /// Compiled logic that can be evaluated multiple times across different data.
 ///
@@ -49,11 +47,6 @@ use datavalue::OwnedDataValue;
 pub struct Logic {
     /// The root node of the compiled logic tree.
     pub(crate) root: CompiledNode,
-    /// Conservative upper bound on the static portion of arena allocations
-    /// this rule will need (literals, structured-object skeletons, etc.).
-    /// Used to size the per-call `Bump` so the first chunk is large enough.
-    /// `pub(crate)` — internal arena infrastructure.
-    pub(crate) arena_static_bytes: usize,
     /// Pre-resolved operator name for the root node, attached to every
     /// `Error` returned from the public `evaluate*` API. Cached at compile
     /// time so the error-unwind path does no tree walk. `Cow::Borrowed`
@@ -67,7 +60,6 @@ impl std::fmt::Debug for Logic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Logic")
             .field("root", &self.root)
-            .field("arena_static_bytes", &self.arena_static_bytes)
             .field("root_op_name", &self.root_op_name)
             .finish_non_exhaustive()
     }
@@ -110,14 +102,9 @@ impl Logic {
     ///
     /// * `root` - The root node of the compiled logic tree
     pub(crate) fn new(mut root: CompiledNode) -> Self {
-        let arena_static_bytes = estimate_arena_static_bytes(&root);
         populate_lits(&mut root);
         let root_op_name = root_op_name(&root);
-        Self {
-            root,
-            arena_static_bytes,
-            root_op_name,
-        }
+        Self { root, root_op_name }
     }
 
     /// Check if this compiled logic is static (can be evaluated without context)
@@ -163,65 +150,6 @@ impl Logic {
 impl std::fmt::Display for Logic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.to_json())
-    }
-}
-
-/// Estimate the static (rule-dependent, data-independent) portion of arena
-/// bytes this rule will need at evaluation time. Conservative — overestimating
-/// is harmless (one larger bumpalo chunk), underestimating costs an extra
-/// chunk allocation. Data-dependent allocations (filter results, map outputs)
-/// can't be predicted here.
-fn estimate_arena_static_bytes(node: &CompiledNode) -> usize {
-    // Base cost per node when promoted to `DataValue`: the enum itself plus
-    // a slice-header fudge for nodes whose payload lives as `&[…]` in the
-    // arena (Array, Object, structured-object fields). The DataValue-size
-    // term tracks layout changes automatically — without datetime it's
-    // typically 24 bytes (8-byte discriminant + 16-byte fat-pointer
-    // payload), with datetime it grows to fit `DataDateTime`. String
-    // content for literals is added separately by `estimate_value_bytes`.
-    const PER_NODE: usize =
-        std::mem::size_of::<DataValue<'static>>() + std::mem::size_of::<&[u8]>();
-    let mut bytes = PER_NODE;
-
-    // Per-variant size contributions that aren't covered by recursing into
-    // AST children (literal payloads, structured-object key strings, etc.).
-    match node {
-        CompiledNode::Value { value, .. } => {
-            bytes += estimate_value_bytes(value);
-        }
-        #[cfg(feature = "error-handling")]
-        CompiledNode::Throw(data) => {
-            bytes += estimate_value_bytes(&data.error);
-        }
-        #[cfg(feature = "templating")]
-        CompiledNode::StructuredObject(data) => {
-            for (k, _) in data.fields.iter() {
-                bytes += k.len();
-            }
-        }
-        _ => {}
-    }
-
-    // Recurse into AST children via the shared visitor — single source of
-    // truth for "what are this node's children".
-    node.visit_children(&mut |child| {
-        bytes += estimate_arena_static_bytes(child);
-    });
-
-    bytes
-}
-
-fn estimate_value_bytes(v: &OwnedDataValue) -> usize {
-    match v {
-        OwnedDataValue::String(s) => s.len() + 16,
-        OwnedDataValue::Array(arr) => 16 + arr.iter().map(estimate_value_bytes).sum::<usize>(),
-        OwnedDataValue::Object(pairs) => {
-            16 + pairs
-                .iter()
-                .map(|(k, v)| k.len() + estimate_value_bytes(v))
-                .sum::<usize>()
-        }
-        _ => 0,
     }
 }
 

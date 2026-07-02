@@ -36,7 +36,12 @@ pub enum ErrorKind {
     /// Invalid format string or pattern
     FormatError(Cow<'static, str>),
     /// Index out of bounds for array operations
-    IndexOutOfBounds { index: isize, length: usize },
+    IndexOutOfBounds {
+        /// The out-of-range index that was requested.
+        index: isize,
+        /// The length of the array being indexed.
+        length: usize,
+    },
     /// Invalid operator configuration
     ConfigurationError(Cow<'static, str>),
 }
