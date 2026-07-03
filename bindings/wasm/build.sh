@@ -12,18 +12,42 @@ cd "$SCRIPT_DIR"
 VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 echo "Building @goplasmatic/datalogic-wasm version $VERSION"
 
+# Build-profile selection. The default is the size-optimized release
+# profile (opt-level "z" + wasm-opt -Oz) — a plain `./build.sh` behaves
+# exactly as it always has. `WASM_PROFILE=speed ./build.sh` opts into the
+# speed profile ([profile.speed] in Cargo.toml: opt-level 3, paired with
+# wasm-opt -O3): a larger module that evaluates faster. Measured
+# size/speed tradeoff in the README's "Build profiles" section.
+WASM_PROFILE="${WASM_PROFILE:-release}"
+case "$WASM_PROFILE" in
+  release)
+    CARGO_PROFILE_FLAG="--release"
+    WASM_OPT_LEVEL="-Oz"
+    ;;
+  speed)
+    CARGO_PROFILE_FLAG="--profile speed"
+    WASM_OPT_LEVEL="-O3"
+    echo "  build profile: speed (opt-in; default is release / -Oz)"
+    ;;
+  *)
+    echo "error: WASM_PROFILE must be 'release' (default) or 'speed', got '$WASM_PROFILE'" >&2
+    exit 1
+    ;;
+esac
+
 # Clean previous builds
 rm -rf pkg pkg-web pkg-bundler pkg-nodejs
 
-# Build for each target
+# Build for each target ($CARGO_PROFILE_FLAG is intentionally unquoted:
+# the speed variant expands to two words, `--profile speed`).
 echo "Building for web target..."
-wasm-pack build --target web --out-dir pkg-web --release
+wasm-pack build --target web --out-dir pkg-web $CARGO_PROFILE_FLAG
 
 echo "Building for bundler target..."
-wasm-pack build --target bundler --out-dir pkg-bundler --release
+wasm-pack build --target bundler --out-dir pkg-bundler $CARGO_PROFILE_FLAG
 
 echo "Building for nodejs target..."
-wasm-pack build --target nodejs --out-dir pkg-nodejs --release
+wasm-pack build --target nodejs --out-dir pkg-nodejs $CARGO_PROFILE_FLAG
 
 # Create unified package structure
 echo "Creating unified package..."
@@ -56,10 +80,11 @@ cp pkg-nodejs/datalogic_wasm_bg.wasm.d.ts pkg/nodejs/
 echo '{"type":"commonjs"}' > pkg/nodejs/package.json
 echo '{"type":"commonjs"}' > pkg/bundler/package.json
 
-# Optimize WASM binaries with wasm-opt if available
+# Optimize WASM binaries with wasm-opt if available (-Oz for the default
+# release profile, -O3 for the opt-in speed profile).
 if command -v wasm-opt &> /dev/null; then
     echo "Optimizing WASM binaries with wasm-opt..."
-    WASM_OPT_FLAGS="-Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext"
+    WASM_OPT_FLAGS="$WASM_OPT_LEVEL --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext"
 
     for target in web bundler nodejs; do
         WASM_FILE="pkg/$target/datalogic_wasm_bg.wasm"

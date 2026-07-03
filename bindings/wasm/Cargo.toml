@@ -16,6 +16,14 @@ repository = "https://github.com/GoPlasmatic/datalogic-rs"
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
+# Applies to any `wasm-pack build --profile <name>` (wasm-pack has one
+# `custom` bucket for all user-defined cargo profiles — used here by the
+# opt-in speed profile). Same reason as above: build.sh runs its own
+# wasm-opt pass with the feature flags the module needs; wasm-pack's
+# built-in pass would fail on bulk-memory ops.
+[package.metadata.wasm-pack.profile.custom]
+wasm-opt = false
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -68,3 +76,14 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Opt-in speed profile (`WASM_PROFILE=speed ./build.sh`): identical to
+# release except the optimizer chases speed instead of size (and build.sh
+# pairs it with `wasm-opt -O3` instead of `-Oz`). The published package
+# stays on the default size-optimized release profile; this exists for
+# consumers who care more about ns/op than KB — measured size/speed
+# tradeoff in the README's "Build profiles" section. Inert unless
+# explicitly selected.
+[profile.speed]
+inherits = "release"
+opt-level = 3

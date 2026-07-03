@@ -1,12 +1,14 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
-    CustomOperator, DataValue, Engine as RsEngine, Error, EvaluationConfig, Logic,
+    CustomOperator, DataValue, Engine as RsEngine, Error, EvaluationConfig, Logic, ParsedData,
     Result as DlResult,
 };
-use js_sys::{Function, Object, Reflect};
+use js_sys::{Array, Function, Object, Reflect};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -109,6 +111,43 @@ fn engine_err_to_js(err: &Error) -> JsValue {
 fn input_err_to_js(stage: &str, message: impl std::fmt::Display) -> JsValue {
     let message = message.to_string();
     build_js_error("ParseError", &message, &input_err_to_json(stage, &message))
+}
+
+/// JSON type name for `TypeMismatch` messages. Wording is copied from the
+/// C ABI binding (`bindings/c/src/session.rs`) so every wrapper reports
+/// the same thing for the same result.
+fn type_of(v: &DataValue<'_>) -> &'static str {
+    if v.is_null() {
+        "null"
+    } else if v.is_bool() {
+        "boolean"
+    } else if v.is_number() {
+        "number"
+    } else if v.is_string() {
+        "string"
+    } else if v.is_array() {
+        "array"
+    } else {
+        "object"
+    }
+}
+
+/// Build the thrown JS `Error` for a typed-evaluation result of the wrong
+/// type: `name` / `type` are `"TypeMismatch"`, mirroring the C ABI's
+/// `DATALOGIC_STATUS_TYPE_MISMATCH` status + `"TypeMismatch"` tag.
+fn type_mismatch_err_to_js(message: &str) -> JsValue {
+    #[derive(Serialize)]
+    struct Wire<'a> {
+        #[serde(rename = "type")]
+        kind: &'a str,
+        message: &'a str,
+    }
+    let detail = serde_json::to_string(&Wire {
+        kind: "TypeMismatch",
+        message,
+    })
+    .unwrap_or_else(|_| message.to_string());
+    build_js_error("TypeMismatch", message, &detail)
 }
 
 /// Decode an optional engine-config input. Accepts `undefined` / `null`
@@ -289,6 +328,25 @@ impl CompiledRule {
         let result = self
             .engine
             .evaluate(&self.compiled, data_dv, &arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(result.to_string())
+    }
+
+    /// Evaluate the compiled rule against a pre-parsed [`DataHandle`] —
+    /// no data copy or parse per call; only the result JSON string
+    /// crosses back to JS.
+    ///
+    /// # Returns
+    /// JSON string result.
+    ///
+    /// # Throws
+    /// An `Error` object carrying the structured fields (see [`evaluate`]).
+    #[wasm_bindgen(js_name = evaluateData)]
+    pub fn evaluate_data(&self, data: &DataHandle) -> Result<String, JsValue> {
+        let arena = Bump::new();
+        let result = self
+            .engine
+            .evaluate(&self.compiled, &*data.parsed, &arena)
             .map_err(|e| engine_err_to_js(&e))?;
         Ok(result.to_string())
     }
@@ -475,6 +533,36 @@ impl Rule {
             .map_err(|e| engine_err_to_js(&e))?;
         Ok(result.to_string())
     }
+
+    /// Evaluate the compiled rule against a pre-parsed [`DataHandle`] —
+    /// no data copy or parse per call; only the result JSON string
+    /// crosses back to JS.
+    #[wasm_bindgen(js_name = evaluateData)]
+    pub fn evaluate_data(&self, data: &DataHandle) -> Result<String, JsValue> {
+        let arena = Bump::new();
+        let result = self
+            .engine
+            .evaluate(&self.compiled, &*data.parsed, &arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(result.to_string())
+    }
+
+    /// Internal: deposit a cheap reference-counted duplicate (two `Arc`
+    /// clones) into the batch stash. Called through the JS prototype by
+    /// [`Session::evaluate_many`] to snapshot rules out of a JS array
+    /// without consuming the caller's objects (wasm-bindgen's only
+    /// supported `JsValue` → Rust conversion for exported classes takes
+    /// ownership of the JS object). Not part of the public API.
+    #[doc(hidden)]
+    #[wasm_bindgen(js_name = "__dlrsStashRule", skip_typescript)]
+    pub fn stash_for_batch(&self) {
+        RULE_STASH.with(|stash| {
+            *stash.borrow_mut() = Some(Rule {
+                engine: self.engine.clone(),
+                compiled: self.compiled.clone(),
+            });
+        });
+    }
 }
 
 // =============== Session (arena reuse) ===============
@@ -520,6 +608,183 @@ impl Session {
         Ok(result.to_string())
     }
 
+    /// Evaluate a compiled [`Rule`] against a pre-parsed [`DataHandle`],
+    /// reusing this session's arena — the hot path of the parse-once
+    /// tier: zero data copy or parse per call; only the result JSON
+    /// string crosses back to JS.
+    ///
+    /// # Returns
+    /// JSON string result.
+    ///
+    /// # Throws
+    /// An `Error` object carrying the structured fields (see [`evaluate`]).
+    #[wasm_bindgen(js_name = evaluateData)]
+    pub fn evaluate_data(&mut self, rule: &Rule, data: &DataHandle) -> Result<String, JsValue> {
+        self.arena.reset();
+        let result = self
+            .engine
+            .evaluate(&rule.compiled, &*data.parsed, &self.arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(result.to_string())
+    }
+
+    /// Evaluate and read the result as a strict JSON boolean. Any other
+    /// result type throws an `Error` named `TypeMismatch`; for
+    /// JSONLogic truthiness coercion use `evaluateTruthy`.
+    ///
+    /// Handle-input only, like every typed evaluation: the
+    /// predicate-heavy flows that want typed results are exactly the
+    /// flows that parse data once. No JSON serialization at all.
+    #[wasm_bindgen(js_name = evaluateBool)]
+    pub fn evaluate_bool(&mut self, rule: &Rule, data: &DataHandle) -> Result<bool, JsValue> {
+        self.arena.reset();
+        let av = self
+            .engine
+            .evaluate(&rule.compiled, &*data.parsed, &self.arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        av.as_bool().ok_or_else(|| {
+            type_mismatch_err_to_js(&format!("result is not a boolean (got {})", type_of(av)))
+        })
+    }
+
+    /// Evaluate and read the result as a number (JS has one number
+    /// type; any JSON number is accepted). A non-number result throws
+    /// an `Error` named `TypeMismatch`.
+    #[wasm_bindgen(js_name = evaluateNumber)]
+    pub fn evaluate_number(&mut self, rule: &Rule, data: &DataHandle) -> Result<f64, JsValue> {
+        self.arena.reset();
+        let av = self
+            .engine
+            .evaluate(&rule.compiled, &*data.parsed, &self.arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        av.as_f64().ok_or_else(|| {
+            type_mismatch_err_to_js(&format!("result is not a number (got {})", type_of(av)))
+        })
+    }
+
+    /// Evaluate and collapse the result to a boolean via the engine's
+    /// configured truthiness rules (the same coercion `if` / `and` /
+    /// `or` apply). Never type-mismatches — any result truthy-converts.
+    #[wasm_bindgen(js_name = evaluateTruthy)]
+    pub fn evaluate_truthy(&mut self, rule: &Rule, data: &DataHandle) -> Result<bool, JsValue> {
+        self.arena.reset();
+        let av = self
+            .engine
+            .evaluate(&rule.compiled, &*data.parsed, &self.arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(self.engine.truthy(av))
+    }
+
+    /// Evaluate one rule against many pre-parsed [`DataHandle`]s in a
+    /// single boundary call — the bulk-scoring shape.
+    ///
+    /// Returns one `Promise.allSettled`-style plain object per input,
+    /// in order:
+    /// - `{ status: "fulfilled", value }` where `value` is the item's
+    ///   result as a JSON string, or
+    /// - `{ status: "rejected", reason }` where `reason` is
+    ///   `{ tag, message, operator? }` (`tag` is the stable error-kind
+    ///   tag, `operator` the outermost failing operator when known).
+    ///
+    /// Item failures are independent — a failing item (including a
+    /// non-`DataHandle` element in `handles`) never fails the call or
+    /// its neighbours. The call itself only throws for argument
+    /// problems (e.g. `handles` not being an array).
+    #[wasm_bindgen(
+        js_name = evaluateBatch,
+        unchecked_return_type = "({ status: \"fulfilled\"; value: string } | { status: \"rejected\"; reason: { tag: string; message: string; operator?: string } })[]"
+    )]
+    pub fn evaluate_batch(
+        &mut self,
+        rule: &Rule,
+        #[wasm_bindgen(unchecked_param_type = "DataHandle[]")] handles: &JsValue,
+    ) -> Result<Array, JsValue> {
+        let handles = as_batch_array(handles, "evaluate-batch", "handles")?;
+        // One JS string for the prototype lookup, hoisted out of the
+        // per-item loop (marshalling it per element costs an encode +
+        // allocation each time).
+        let stash_method = JsValue::from_str(DATA_STASH_METHOD);
+        let mut outcomes: Vec<BatchOutcome> = Vec::with_capacity(handles.length() as usize);
+        for i in 0..handles.length() {
+            let outcome = match stash_element(
+                &DATA_STASH,
+                &handles.get(i),
+                &stash_method,
+                "handles",
+                "DataHandle",
+                i,
+            ) {
+                Ok(handle) => {
+                    self.arena.reset();
+                    match self
+                        .engine
+                        .evaluate(&rule.compiled, &*handle.parsed, &self.arena)
+                    {
+                        Ok(av) => BatchOutcome::Fulfilled {
+                            value: av.to_string(),
+                        },
+                        Err(e) => BatchOutcome::Rejected {
+                            reason: ItemError::from_engine(&e),
+                        },
+                    }
+                }
+                Err(reason) => BatchOutcome::Rejected { reason },
+            };
+            outcomes.push(outcome);
+        }
+        outcomes_to_js(&outcomes)
+    }
+
+    /// Evaluate many rules against one pre-parsed [`DataHandle`] in a
+    /// single boundary call — the rule-set / feature-flag shape.
+    ///
+    /// `rules` must be an array of [`Rule`]s from `engine.compile(...)`
+    /// (not standalone `CompiledRule`s). Same per-item
+    /// `Promise.allSettled`-style outcome objects, independence
+    /// guarantees, and call-level error contract as `evaluateBatch`.
+    #[wasm_bindgen(
+        js_name = evaluateMany,
+        unchecked_return_type = "({ status: \"fulfilled\"; value: string } | { status: \"rejected\"; reason: { tag: string; message: string; operator?: string } })[]"
+    )]
+    pub fn evaluate_many(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "Rule[]")] rules: &JsValue,
+        data: &DataHandle,
+    ) -> Result<Array, JsValue> {
+        let rules = as_batch_array(rules, "evaluate-many", "rules")?;
+        // See evaluateBatch: hoisted prototype-lookup key.
+        let stash_method = JsValue::from_str(RULE_STASH_METHOD);
+        let mut outcomes: Vec<BatchOutcome> = Vec::with_capacity(rules.length() as usize);
+        for i in 0..rules.length() {
+            let outcome = match stash_element(
+                &RULE_STASH,
+                &rules.get(i),
+                &stash_method,
+                "rules",
+                "Rule",
+                i,
+            ) {
+                Ok(rule) => {
+                    self.arena.reset();
+                    match self
+                        .engine
+                        .evaluate(&rule.compiled, &*data.parsed, &self.arena)
+                    {
+                        Ok(av) => BatchOutcome::Fulfilled {
+                            value: av.to_string(),
+                        },
+                        Err(e) => BatchOutcome::Rejected {
+                            reason: ItemError::from_engine(&e),
+                        },
+                    }
+                }
+                Err(reason) => BatchOutcome::Rejected { reason },
+            };
+            outcomes.push(outcome);
+        }
+        outcomes_to_js(&outcomes)
+    }
+
     /// Reset the underlying arena, returning every chunk to its start
     /// position without freeing OS memory. Calling this is optional:
     /// `evaluate` resets at the start of each call.
@@ -533,6 +798,193 @@ impl Session {
     pub fn allocated_bytes(&self) -> usize {
         self.arena.allocated_bytes()
     }
+}
+
+// =============== DataHandle (parse-once data) ===============
+
+/// An immutable, pre-parsed JSON document resident in WASM linear
+/// memory — the parse-once tier every other binding ships (ABI v2).
+///
+/// Every string-taking evaluation copies the data JSON across the
+/// JS↔WASM boundary and re-parses it inside the module on each call; on
+/// kilobyte payloads that copy + parse dominates the round trip. A
+/// `DataHandle` pays it once: construct the handle from a JSON string,
+/// then evaluate any number of rules against the resident tree — per
+/// call only the rule dispatch and the (usually small) result cross the
+/// boundary.
+///
+/// Handles are immutable, never consumed by evaluation, and independent
+/// of any [`Engine`]: one handle can feed rules and sessions of
+/// different engines, as long as everything lives in the same module
+/// instance (WASM modules are isolated per Worker, like everything
+/// else here). Call `free()` after the last evaluation to release the
+/// linear memory eagerly; if you don't, the generated
+/// `FinalizationRegistry` glue reclaims it when the JS object is
+/// collected (best-effort), the same as every other class in this
+/// package.
+#[wasm_bindgen]
+pub struct DataHandle {
+    /// `Rc`, not `Arc`: `wasm32-unknown-unknown` is single-threaded and
+    /// `ParsedData` is `!Sync`. The `Rc` is what makes the hidden
+    /// `__dlrsDataDup` duplication O(1) for the batch entry points.
+    parsed: Rc<ParsedData>,
+}
+
+impl std::fmt::Debug for DataHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("DataHandle").field(&self.parsed).finish()
+    }
+}
+
+#[wasm_bindgen]
+impl DataHandle {
+    /// Parse `json` into a resident document.
+    ///
+    /// # Throws
+    /// An `Error` named `ParseError` on malformed JSON, carrying the
+    /// same structured fields as every other error in this binding.
+    #[wasm_bindgen(constructor)]
+    pub fn new(json: &str) -> Result<DataHandle, JsValue> {
+        ParsedData::from_json(json)
+            .map(|parsed| DataHandle {
+                parsed: Rc::new(parsed),
+            })
+            .map_err(|e| engine_err_to_js(&e))
+    }
+
+    /// Bytes held by the handle's backing arena (input copy + parsed
+    /// tree). Useful for sizing and diagnostics.
+    #[wasm_bindgen(getter, js_name = allocatedBytes)]
+    pub fn allocated_bytes(&self) -> usize {
+        self.parsed.allocated_bytes()
+    }
+
+    /// Internal: deposit a cheap reference-counted duplicate (one `Rc`
+    /// clone) into the batch stash. Called through the JS prototype by
+    /// [`Session::evaluate_batch`] to snapshot handles out of a JS
+    /// array without consuming the caller's objects. Not part of the
+    /// public API.
+    #[doc(hidden)]
+    #[wasm_bindgen(js_name = "__dlrsStashData", skip_typescript)]
+    pub fn stash_for_batch(&self) {
+        DATA_STASH.with(|stash| {
+            *stash.borrow_mut() = Some(DataHandle {
+                parsed: Rc::clone(&self.parsed),
+            });
+        });
+    }
+}
+
+// =============== batch plumbing ===============
+
+/// Hidden prototype-method names the batch extractors call — see
+/// [`Rule::stash_for_batch`] / [`DataHandle::stash_for_batch`].
+const RULE_STASH_METHOD: &str = "__dlrsStashRule";
+const DATA_STASH_METHOD: &str = "__dlrsStashData";
+
+thread_local! {
+    /// Single-slot transfer stashes for the batch extractors.
+    /// `wasm32-unknown-unknown` is single-threaded and each slot is
+    /// cleared, filled, and drained within one `stash_element` call, so
+    /// a slot never carries state across items (or across re-entrant
+    /// engine callbacks — extraction completes before an item runs).
+    static RULE_STASH: RefCell<Option<Rule>> = const { RefCell::new(None) };
+    static DATA_STASH: RefCell<Option<DataHandle>> = const { RefCell::new(None) };
+}
+
+/// Per-item failure inside a batch result: the `reason` of a rejected
+/// entry. Field set mirrors the C ABI's item-error JSON
+/// (`{tag, message, operator?}`) exactly, so batch consumers see the
+/// same shape in every binding.
+#[derive(Serialize)]
+struct ItemError {
+    tag: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    operator: Option<String>,
+}
+
+impl ItemError {
+    fn from_engine(err: &Error) -> Self {
+        Self {
+            tag: err.tag().to_string(),
+            message: err.to_string(),
+            operator: err.operator().map(str::to_owned),
+        }
+    }
+
+    fn invalid_argument(message: String) -> Self {
+        Self {
+            tag: "InvalidArgument".to_string(),
+            message,
+            operator: None,
+        }
+    }
+}
+
+/// One entry of a batch result, in `Promise.allSettled` shape.
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+enum BatchOutcome {
+    Fulfilled { value: String },
+    Rejected { reason: ItemError },
+}
+
+/// Decode the array argument of a batch entry point (call-level check:
+/// a non-array rejects the whole call, unlike per-item problems).
+fn as_batch_array<'v>(value: &'v JsValue, stage: &str, arg: &str) -> Result<&'v Array, JsValue> {
+    value
+        .dyn_ref::<Array>()
+        .ok_or_else(|| input_err_to_js(stage, format!("{arg} must be an Array")))
+}
+
+/// Snapshot one element of a batch input array as an owned `T`.
+///
+/// wasm-bindgen's only supported `JsValue` → Rust conversion for
+/// exported classes (`TryFromJsValue`) consumes the JS object, which
+/// would destroy the caller's rules/handles on first use. Instead each
+/// class exposes a hidden prototype method that deposits a cheap
+/// reference-counted duplicate into a single-slot stash; calling it
+/// through the boundary and draining the slot borrows the element
+/// without a temporary JS wrapper (no allocation, no
+/// `FinalizationRegistry` churn). Costs two small JS calls per element
+/// — the boundary benchmarks fold that into the batch numbers.
+///
+/// Failures (missing method, non-instance element, freed object) are
+/// per-item errors, never call failures.
+fn stash_element<T>(
+    stash: &'static std::thread::LocalKey<RefCell<Option<T>>>,
+    elem: &JsValue,
+    stash_method: &JsValue,
+    arg: &str,
+    class: &str,
+    index: u32,
+) -> Result<T, ItemError> {
+    let not_a = || ItemError::invalid_argument(format!("{arg}[{index}] is not a {class}"));
+    // Drop anything stale (e.g. a caller invoking the hidden method by
+    // hand) so a leftover value can never masquerade as this element.
+    stash.with(|slot| slot.borrow_mut().take());
+    let stash_fn: Function = Reflect::get(elem, stash_method)
+        .ok()
+        .and_then(|v| v.dyn_into::<Function>().ok())
+        .ok_or_else(not_a)?;
+    // The call throws for a freed (`.free()`d) object; treat that as an
+    // invalid element too.
+    stash_fn.call0(elem).map_err(|_| not_a())?;
+    stash.with(|slot| slot.borrow_mut().take()).ok_or_else(not_a)
+}
+
+/// Materialise batch outcomes as one JS array via a single JSON round
+/// trip: serialize the envelope in Rust, `JSON.parse` it once on the JS
+/// side. One boundary crossing regardless of item count, and the item
+/// `value`s stay JSON *strings* (the cheap direction), matching the
+/// scalar entry points' contract.
+fn outcomes_to_js(outcomes: &[BatchOutcome]) -> Result<Array, JsValue> {
+    let json =
+        serde_json::to_string(outcomes).map_err(|e| input_err_to_js("serialize-batch", e))?;
+    js_sys::JSON::parse(&json)?
+        .dyn_into::<Array>()
+        .map_err(|_| input_err_to_js("serialize-batch", "batch envelope did not parse to an array"))
 }
 
 // =============== options-bag parsing ===============

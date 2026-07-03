@@ -5,8 +5,8 @@
 // what lets CI's `wasm-pack test --node` actually execute them. With the
 // browser configuration set, the node runner skips the whole suite.
 
-use datalogic_wasm::{CompiledRule, Engine, evaluate};
-use js_sys::{Function, Object, Reflect};
+use datalogic_wasm::{CompiledRule, DataHandle, Engine, evaluate};
+use js_sys::{Array, Function, Object, Reflect};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
 
@@ -278,6 +278,321 @@ fn test_session_invalid_data_is_structured_error() {
 
     // A failed call must not poison the session.
     assert_eq!(session.evaluate(&rule, r#"{"x": 7}"#).unwrap(), "7");
+}
+
+// =============== DataHandle tests ===============
+
+#[wasm_bindgen_test]
+fn test_data_handle_parse_and_allocated_bytes() {
+    let handle = DataHandle::new(r#"{"a": [1, 2, 3], "b": "text"}"#).unwrap();
+    assert!(handle.allocated_bytes() > 0);
+}
+
+// The constructor's failure path must be a catchable, structured Error —
+// never a trap.
+#[wasm_bindgen_test]
+fn test_data_handle_bad_json_is_parse_error() {
+    let err = DataHandle::new("{ not json").unwrap_err();
+    let error: &js_sys::Error = err.dyn_ref().expect("must be a real js Error object");
+    assert_eq!(String::from(error.name()), "ParseError");
+    let kind = Reflect::get(&err, &JsValue::from_str("type")).unwrap();
+    assert_eq!(kind.as_string().as_deref(), Some("ParseError"));
+}
+
+#[wasm_bindgen_test]
+fn test_compiled_rule_evaluate_data() {
+    let rule = CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, false, None).unwrap();
+    let handle = DataHandle::new(r#"{"a": 1, "b": 2}"#).unwrap();
+
+    // Handles are never consumed by evaluation: same handle, many calls.
+    assert_eq!(rule.evaluate_data(&handle).unwrap(), "3");
+    assert_eq!(rule.evaluate_data(&handle).unwrap(), "3");
+}
+
+// One handle is engine-independent: it can feed rules compiled by
+// different engines (and the string path in between).
+#[wasm_bindgen_test]
+fn test_data_handle_reusable_across_engines_and_rules() {
+    let handle = DataHandle::new(r#"{"x": 41}"#).unwrap();
+
+    let engine_a = Engine::new(build_options(false, &[])).unwrap();
+    let rule_a = engine_a.compile(r#"{"+": [{"var": "x"}, 1]}"#).unwrap();
+    assert_eq!(rule_a.evaluate_data(&handle).unwrap(), "42");
+
+    let engine_b = Engine::new(build_options(false, &[])).unwrap();
+    let rule_b = engine_b.compile(r#"{"-": [{"var": "x"}, 1]}"#).unwrap();
+    assert_eq!(rule_b.evaluate_data(&handle).unwrap(), "40");
+}
+
+#[wasm_bindgen_test]
+fn test_session_evaluate_data() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine
+        .compile(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#)
+        .unwrap();
+    let mut session = engine.session();
+    let handle = DataHandle::new(r#"{"a": 10, "b": 20}"#).unwrap();
+
+    // Repeated handle evaluation on one session, interleaved with the
+    // string path — the arena reset must not invalidate the handle.
+    assert_eq!(session.evaluate_data(&rule, &handle).unwrap(), "30");
+    assert_eq!(session.evaluate(&rule, r#"{"a": 1, "b": 1}"#).unwrap(), "2");
+    assert_eq!(session.evaluate_data(&rule, &handle).unwrap(), "30");
+}
+
+// =============== Typed evaluation tests ===============
+
+#[wasm_bindgen_test]
+fn test_session_evaluate_bool() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine.compile(r#"{">=": [{"var": "age"}, 18]}"#).unwrap();
+    let mut session = engine.session();
+
+    let adult = DataHandle::new(r#"{"age": 21}"#).unwrap();
+    let minor = DataHandle::new(r#"{"age": 16}"#).unwrap();
+    assert!(session.evaluate_bool(&rule, &adult).unwrap());
+    assert!(!session.evaluate_bool(&rule, &minor).unwrap());
+}
+
+// Strictness: a non-boolean result is a TypeMismatch (message wording
+// shared with the C ABI binding), not a coercion.
+#[wasm_bindgen_test]
+fn test_session_evaluate_bool_type_mismatch() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine.compile(r#"{"+": [1, 2]}"#).unwrap();
+    let mut session = engine.session();
+    let handle = DataHandle::new("{}").unwrap();
+
+    let err = session.evaluate_bool(&rule, &handle).unwrap_err();
+    let error: &js_sys::Error = err.dyn_ref().expect("must be an Error object");
+    assert_eq!(String::from(error.name()), "TypeMismatch");
+    let message = String::from(error.message());
+    assert_eq!(message, "result is not a boolean (got number)");
+    let kind = Reflect::get(&err, &JsValue::from_str("type")).unwrap();
+    assert_eq!(kind.as_string().as_deref(), Some("TypeMismatch"));
+
+    // A mismatch must not poison the session.
+    assert_eq!(session.evaluate_number(&rule, &handle).unwrap(), 3.0);
+}
+
+#[wasm_bindgen_test]
+fn test_session_evaluate_number_and_mismatch() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let mut session = engine.session();
+    let handle = DataHandle::new(r#"{"price": 12.5, "name": "x"}"#).unwrap();
+
+    let number_rule = engine.compile(r#"{"var": "price"}"#).unwrap();
+    assert_eq!(session.evaluate_number(&number_rule, &handle).unwrap(), 12.5);
+
+    let string_rule = engine.compile(r#"{"var": "name"}"#).unwrap();
+    let err = session.evaluate_number(&string_rule, &handle).unwrap_err();
+    let error: &js_sys::Error = err.dyn_ref().expect("must be an Error object");
+    assert_eq!(String::from(error.name()), "TypeMismatch");
+    assert_eq!(
+        String::from(error.message()),
+        "result is not a number (got string)"
+    );
+}
+
+// evaluateTruthy never type-mismatches: any result collapses through the
+// engine's truthiness rules (the `if`/`and`/`or` coercion).
+#[wasm_bindgen_test]
+fn test_session_evaluate_truthy() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine.compile(r#"{"var": "v"}"#).unwrap();
+    let mut session = engine.session();
+
+    for (data, expected) in [
+        (r#"{"v": "non-empty"}"#, true),
+        (r#"{"v": ""}"#, false),
+        (r#"{"v": 0}"#, false),
+        (r#"{"v": [1]}"#, true),
+        (r#"{"v": null}"#, false),
+    ] {
+        let handle = DataHandle::new(data).unwrap();
+        assert_eq!(
+            session.evaluate_truthy(&rule, &handle).unwrap(),
+            expected,
+            "truthy({data})"
+        );
+    }
+}
+
+// =============== Batch evaluation tests ===============
+
+/// Read `status` off a batch outcome object.
+fn outcome_status(outcome: &JsValue) -> String {
+    Reflect::get(outcome, &JsValue::from_str("status"))
+        .unwrap()
+        .as_string()
+        .unwrap()
+}
+
+/// Read `value` (fulfilled entries) off a batch outcome object.
+fn outcome_value(outcome: &JsValue) -> String {
+    Reflect::get(outcome, &JsValue::from_str("value"))
+        .unwrap()
+        .as_string()
+        .unwrap()
+}
+
+/// Read `reason.<field>` (rejected entries) off a batch outcome object.
+fn outcome_reason_field(outcome: &JsValue, field: &str) -> JsValue {
+    let reason = Reflect::get(outcome, &JsValue::from_str("reason")).unwrap();
+    Reflect::get(&reason, &JsValue::from_str(field)).unwrap()
+}
+
+// One rule × many handles; a failing item never fails the call and
+// carries the {tag, message, operator?} reason — trap-free throughout.
+#[wasm_bindgen_test]
+fn test_session_evaluate_batch_mixed_outcomes() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine
+        .compile(r#"{"if": [{"var": "fail"}, {"throw": "boom"}, "ok"]}"#)
+        .unwrap();
+    let mut session = engine.session();
+
+    let handles = Array::new();
+    handles.push(&JsValue::from(
+        DataHandle::new(r#"{"fail": false}"#).unwrap(),
+    ));
+    handles.push(&JsValue::from(DataHandle::new(r#"{"fail": true}"#).unwrap()));
+    handles.push(&JsValue::from(
+        DataHandle::new(r#"{"fail": false}"#).unwrap(),
+    ));
+
+    let results = session.evaluate_batch(&rule, handles.as_ref()).unwrap();
+    assert_eq!(results.length(), 3);
+
+    let first = results.get(0);
+    assert_eq!(outcome_status(&first), "fulfilled");
+    assert_eq!(outcome_value(&first), "\"ok\"");
+
+    let second = results.get(1);
+    assert_eq!(outcome_status(&second), "rejected");
+    assert_eq!(
+        outcome_reason_field(&second, "tag").as_string().as_deref(),
+        Some("Thrown")
+    );
+    // `operator` is the *outermost* failing operator — here the `if`
+    // wrapping the `throw`, same attribution as the scalar error path.
+    assert_eq!(
+        outcome_reason_field(&second, "operator")
+            .as_string()
+            .as_deref(),
+        Some("if")
+    );
+    let message = outcome_reason_field(&second, "message")
+        .as_string()
+        .unwrap();
+    assert!(!message.is_empty());
+
+    let third = results.get(2);
+    assert_eq!(outcome_status(&third), "fulfilled");
+    assert_eq!(outcome_value(&third), "\"ok\"");
+}
+
+// A non-DataHandle element is a per-item InvalidArgument rejection; its
+// neighbours still evaluate and the call itself succeeds.
+#[wasm_bindgen_test]
+fn test_session_evaluate_batch_invalid_element_is_item_error() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine.compile(r#"{"var": "x"}"#).unwrap();
+    let mut session = engine.session();
+
+    let handles = Array::new();
+    handles.push(&JsValue::from(DataHandle::new(r#"{"x": 1}"#).unwrap()));
+    handles.push(&JsValue::from_str("not a handle"));
+    handles.push(&JsValue::from(DataHandle::new(r#"{"x": 3}"#).unwrap()));
+
+    let results = session.evaluate_batch(&rule, handles.as_ref()).unwrap();
+    assert_eq!(results.length(), 3);
+    assert_eq!(outcome_value(&results.get(0)), "1");
+
+    let bad = results.get(1);
+    assert_eq!(outcome_status(&bad), "rejected");
+    assert_eq!(
+        outcome_reason_field(&bad, "tag").as_string().as_deref(),
+        Some("InvalidArgument")
+    );
+    let message = outcome_reason_field(&bad, "message").as_string().unwrap();
+    assert!(message.contains("handles[1]"), "message: {message}");
+
+    assert_eq!(outcome_value(&results.get(2)), "3");
+}
+
+// A non-array `handles` argument is a call-level error (unlike per-item
+// problems).
+#[wasm_bindgen_test]
+fn test_session_evaluate_batch_non_array_is_call_error() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine.compile(r#"{"var": "x"}"#).unwrap();
+    let mut session = engine.session();
+
+    let err = session
+        .evaluate_batch(&rule, &JsValue::from_str("nope"))
+        .unwrap_err();
+    let error: &js_sys::Error = err.dyn_ref().expect("must be an Error object");
+    assert_eq!(String::from(error.name()), "ParseError");
+}
+
+// Many rules × one handle — the rule-set / feature-flag shape. The
+// caller's Rule objects survive the call (the batch path must not
+// consume them).
+#[wasm_bindgen_test]
+fn test_session_evaluate_many_mixed_outcomes() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let mut session = engine.session();
+    let handle = DataHandle::new(r#"{"n": 21}"#).unwrap();
+
+    let rules = Array::new();
+    rules.push(&JsValue::from(
+        engine.compile(r#"{"*": [{"var": "n"}, 2]}"#).unwrap(),
+    ));
+    rules.push(&JsValue::from(engine.compile(r#"{"throw": "nope"}"#).unwrap()));
+    rules.push(&JsValue::from(
+        engine.compile(r#"{"+": [{"var": "n"}, 1]}"#).unwrap(),
+    ));
+
+    for round in 0..2 {
+        let results = session.evaluate_many(rules.as_ref(), &handle).unwrap();
+        assert_eq!(results.length(), 3, "round {round}");
+        assert_eq!(outcome_value(&results.get(0)), "42", "round {round}");
+        let failed = results.get(1);
+        assert_eq!(outcome_status(&failed), "rejected", "round {round}");
+        assert_eq!(
+            outcome_reason_field(&failed, "tag").as_string().as_deref(),
+            Some("Thrown"),
+            "round {round}"
+        );
+        assert_eq!(outcome_value(&results.get(2)), "22", "round {round}");
+    }
+}
+
+// Element type confusion (a DataHandle in the rules array) is a per-item
+// rejection, and empty inputs produce empty outputs.
+#[wasm_bindgen_test]
+fn test_session_evaluate_many_wrong_class_and_empty() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let mut session = engine.session();
+    let handle = DataHandle::new(r#"{"n": 1}"#).unwrap();
+
+    let rules = Array::new();
+    rules.push(&JsValue::from(DataHandle::new("{}").unwrap()));
+    let results = session.evaluate_many(rules.as_ref(), &handle).unwrap();
+    assert_eq!(results.length(), 1);
+    let bad = results.get(0);
+    assert_eq!(outcome_status(&bad), "rejected");
+    assert_eq!(
+        outcome_reason_field(&bad, "tag").as_string().as_deref(),
+        Some("InvalidArgument")
+    );
+    let message = outcome_reason_field(&bad, "message").as_string().unwrap();
+    assert!(message.contains("rules[0]"), "message: {message}");
+
+    let empty = Array::new();
+    let results = session.evaluate_many(empty.as_ref(), &handle).unwrap();
+    assert_eq!(results.length(), 0);
 }
 
 // =============== Engine config tests ===============
