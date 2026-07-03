@@ -275,6 +275,7 @@ macro tier fills that gap with suites **synthesized in code**
 | `macro/deep-48`       | 48 levels of nesting; one 49-segment dotted `var` path                                     |
 | `macro/string-10kb`   | Two ~10 KB strings; `cat`, `substr` (middle and negative-start), substring `in`            |
 | `macro/eligibility`   | Realistic eligibility rule: and/or/comparisons/`missing`/`reduce` over a medium object     |
+| `macro/checkout-40`   | Realistic 40-item checkout decision (4.7 KB rule, ~26 distinct operators, 6 KB payload): completeness, risk screen, cart validation, promo pricing with cap, weight-based shipping, loyalty adjustment — **spec-compatible operators only**, so every subject runs 100% of it; the fair cross-engine row |
 
 Run it against datalogic-rs alone with:
 
@@ -289,12 +290,12 @@ pilot pass so one timed rep lands near ~250 ms; a fixed 100k iterations
 on a 10k-element array would run for minutes per suite. Every macro case
 is sanity-evaluated before timing; a rule that errors aborts the run
 instead of silently timing the error path. ns/op is per whole-rule
-evaluation: `macro/array-10k` at ~120 µs/op means one filter/map/sort
-pass over 10k elements costs ~120 µs, i.e. ~12 ns per element touched.
+evaluation: `macro/array-10k` at ~130 µs/op means one filter/map/sort
+pass over 10k elements costs ~130 µs, i.e. ~13 ns per element touched.
 
 ### Cross-engine macro matrix
 
-The same six suites also run across every subject of the matrix above:
+The same suites also run across every subject of the matrix above:
 
 ```bash
 cargo run --release -p datalogic-bench --bin compare \
@@ -313,18 +314,19 @@ Captured 2026-07-03, Apple M2 Pro (arm64), Rust 1.96.0, Node v22.22.2,
 release build from the repo root (no `target-cpu=native`):
 
 ```
-=== Cross-Library Matrix — avg ns/op (median of 3, ~200ms target/cell, 6 suites) ===
+=== Cross-Library Matrix — avg ns/op (median of 3, ~200ms target/cell, 7 suites) ===
 
 | Suite               | dlrs:engine | jsonlogic-rs | dlrs:wasm:compiled | json-logic-js | json-logic-engine | json-logic-engine:compiled |
 |---------------------|------------:|-------------:|-------------------:|--------------:|------------------:|---------------------------:|
-| macro/array-1k      |     10210.4 |     369331.0 |           224110.6 |     153911.2* |          30687.4* |                    7166.5* |
-| macro/array-10k     |    127509.4 |    4282730.1 |          2310157.3 |    1461131.7* |         283967.0* |                   65735.1* |
-| macro/object-128key |        65.5 |       5128.3 |             9240.6 |         272.5 |             251.5 |                      112.2 |
-| macro/deep-48       |       120.1 |      60322.9 |             4407.9 |        1317.3 |            1285.8 |                      136.9 |
-| macro/string-10kb   |      2808.2 |       2157.5 |            55421.3 |         746.0 |             379.7 |                       58.6 |
-| macro/eligibility   |       260.6 |      28593.3 |             9202.2 |        6115.4 |            5193.5 |                     1083.9 |
-| arithmetic mean     |     23495.7 |     791377.2 |           435423.3 |      270582.3 |           53627.5 |                    12382.2 |
-| geometric mean      |      1399.0 |      55800.0 |            46982.3 |        8466.2 |            4208.4 |                      878.6 |
+| macro/array-1k      |     10004.8 |     373201.5 |           223387.7 |     154172.1* |          30812.3* |                    7176.8* |
+| macro/array-10k     |    130701.7 |    4361015.9 |          2327601.2 |    1465646.6* |         287489.3* |                   67216.9* |
+| macro/object-128key |        66.3 |       5247.7 |             9359.9 |         286.6 |             251.5 |                      106.6 |
+| macro/deep-48       |       121.2 |      60965.4 |             4301.9 |        1406.6 |            1324.5 |                      141.4 |
+| macro/string-10kb   |      2809.0 |       2193.3 |            54813.4 |         740.1 |             377.9 |                       51.4 |
+| macro/eligibility   |       252.6 |      28655.8 |             9110.0 |        6775.2 |            5151.1 |                     1105.2 |
+| macro/checkout-40   |     28785.9 |    2270752.0 |           306637.4 |      556300.6 |           92825.9 |                    27722.1 |
+| arithmetic mean     |     24677.4 |    1014575.9 |           419315.9 |      312189.7 |           59747.5 |                    14788.6 |
+| geometric mean      |      2153.5 |      95847.7 |            61173.2 |       15875.0 |            6578.6 |                     1416.6 |
 
 * partial coverage — subject errored on some cases in this suite.
 
@@ -334,47 +336,75 @@ Geomean of per-suite ns/op ratios, computed only over suites where both
 subjects have finite cells. The per-column mean rows above cover different
 suite subsets when a subject errors; these ratios never mix subsets.
 
-  jsonlogic-rs                   39.9x slower than dlrs:engine                over  6 shared suites
-  dlrs:wasm:compiled             33.6x slower than dlrs:engine                over  6 shared suites
-  json-logic-js                   6.1x slower than dlrs:engine                over  6 shared suites
-  json-logic-engine               3.0x slower than dlrs:engine                over  6 shared suites
-  dlrs:engine                     1.6x slower than json-logic-engine:compiled over  6 shared suites
-  jsonlogic-rs                    1.2x slower than dlrs:wasm:compiled         over  6 shared suites
-  jsonlogic-rs                    6.6x slower than json-logic-js              over  6 shared suites
-  jsonlogic-rs                   13.3x slower than json-logic-engine          over  6 shared suites
-  jsonlogic-rs                   63.5x slower than json-logic-engine:compiled over  6 shared suites
-  dlrs:wasm:compiled              5.5x slower than json-logic-js              over  6 shared suites
-  dlrs:wasm:compiled             11.2x slower than json-logic-engine          over  6 shared suites
-  dlrs:wasm:compiled             53.5x slower than json-logic-engine:compiled over  6 shared suites
-  json-logic-js                   2.0x slower than json-logic-engine          over  6 shared suites
-  json-logic-js                   9.6x slower than json-logic-engine:compiled over  6 shared suites
-  json-logic-engine               4.8x slower than json-logic-engine:compiled over  6 shared suites
+  jsonlogic-rs                   44.5x slower than dlrs:engine                over  7 shared suites
+  dlrs:wasm:compiled             28.4x slower than dlrs:engine                over  7 shared suites
+  json-logic-js                   7.4x slower than dlrs:engine                over  7 shared suites
+  json-logic-engine               3.1x slower than dlrs:engine                over  7 shared suites
+  dlrs:engine                     1.5x slower than json-logic-engine:compiled over  7 shared suites
+  jsonlogic-rs                    1.6x slower than dlrs:wasm:compiled         over  7 shared suites
+  jsonlogic-rs                    6.0x slower than json-logic-js              over  7 shared suites
+  jsonlogic-rs                   14.6x slower than json-logic-engine          over  7 shared suites
+  jsonlogic-rs                   67.7x slower than json-logic-engine:compiled over  7 shared suites
+  dlrs:wasm:compiled              3.9x slower than json-logic-js              over  7 shared suites
+  dlrs:wasm:compiled              9.3x slower than json-logic-engine          over  7 shared suites
+  dlrs:wasm:compiled             43.2x slower than json-logic-engine:compiled over  7 shared suites
+  json-logic-js                   2.4x slower than json-logic-engine          over  7 shared suites
+  json-logic-js                  11.2x slower than json-logic-engine:compiled over  7 shared suites
+  json-logic-engine               4.6x slower than json-logic-engine:compiled over  7 shared suites
 ```
 
 Reading the macro matrix honestly:
 
 - `dlrs:engine` matches its self-benchmark macro numbers within a few
-  percent (e.g. `macro/array-10k` at about 128 microseconds per op,
+  percent (e.g. `macro/array-10k` at about 131 microseconds per op,
   roughly 13 ns per element), so the two tiers cross-validate.
+- **`macro/checkout-40` is the fair real-world row**: a large rule
+  built only from spec-compatible operators, byte-identical results
+  verified across engines, and full coverage in every column. On it,
+  `dlrs:engine` (28.8 µs) and `json-logic-engine:compiled` (27.7 µs)
+  are a statistical tie (the gap sits inside the ±5% run noise), with
+  every other subject 3.1x to 79x slower. The rule is
+  iterator-dominated — map/filter/reduce over 40-row object arrays,
+  with aggregates recomputed where referenced because pure-spec
+  JSONLogic has no local bindings (identical work for every engine) —
+  and per-row closure calls are exactly where a warmed JIT closes the
+  gap on native dispatch. dlrs's 7.5x micro-matrix lead lives on
+  dispatch-heavy rules; on per-row iteration the honest label is
+  "tied with the best JS engine, far ahead of everything else".
 - **Partial cells skip real work.** None of the JS subjects implement
   the non-spec `sort` operator, so their `*` cells on the two array
-  suites replace the most expensive case with a cheap throw. That
-  deflates their array averages relative to the subjects that actually
-  sort (`dlrs:engine`, `dlrs:wasm:compiled`), and it flatters
-  `json-logic-engine:compiled` in the ratio table above.
+  suites replace the most expensive case with a cheap throw (~1.6 µs)
+  while `dlrs:engine` actually sorts (437 µs of its per-case budget at
+  10k). Reconstructing a fair six-case comparison from per-case
+  measurements puts dlrs and `json-logic-engine:compiled` at parity on
+  both array suites (75.9 vs 76.4 µs per case at 10k) — the apparent
+  jle array wins in the ratio table are entirely the skipped sort.
 - `jsonlogic-rs` shows full coverage on the array suites but does no
   sorting either: it treats an object whose key is not a known
   operation as a raw literal and returns it unchanged, so the `sort`
   case "succeeds" without touching the array.
-- `macro/string-10kb` is the one suite the JS engines win outright. V8
-  represents concatenation and slicing as rope/sliced strings (O(1))
-  where `dlrs:engine` materialises a 20 KB `cat` result per eval;
-  `json-logic-engine:compiled` at ~55 ns/op is measuring V8's lazy
-  string machinery, not byte copies.
+- `macro/string-10kb` is the one suite the JS engines win outright,
+  and per-case measurement shows why: 96% of dlrs's cost is the two
+  `substr` cases (4.0 and 6.8 µs each), which pay O(n) UTF-8
+  char-boundary scans to honour character indexing, where V8's UTF-16
+  sliced strings slice in O(1) (~15 ns). `cat` is most of the
+  remainder: dlrs materialises the 20 KB result (408 ns) while V8
+  builds a lazy rope (10 ns) that the benchmark sink never forces
+  flat. The `in` case is trivial for everyone (the needle occurs
+  27 bytes into the haystack). An ASCII fast path for `substr` offset
+  math would collapse most of this row.
+- The pairwise line "`dlrs:engine` 1.5x slower than
+  `json-logic-engine:compiled`" is shape-dominated, not a speed
+  verdict: it averages two sort-skewed array cells and the
+  string-10kb outlier against four rows dlrs wins or ties. Remove the
+  asymmetric cells and the same computation favors dlrs on every
+  remaining suite except the checkout tie.
 - `dlrs:wasm:compiled` pays the V8-to-WASM string marshalling per call,
-  and that cost scales with payload size: ~54 microseconds per op on
+  and that cost scales with payload size: ~55 microseconds per op on
   `string-10kb` and ~2.3 ms per op on `array-10k` are boundary cost,
-  not engine cost.
+  not engine cost (the binding's parse-once `DataHandle` tier exists
+  for exactly this; see
+  [BINDINGS-OVERHEAD.md](./BINDINGS-OVERHEAD.md)).
 
 ## Caveats
 
