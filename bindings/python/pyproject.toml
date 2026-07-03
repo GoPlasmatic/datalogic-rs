@@ -12,7 +12,7 @@ build-backend = "maturin"
 # `@goplasmatic/datalogic-wasm` and `@goplasmatic/datalogic-node` on npm).
 name = "datalogic-py"
 version = "5.0.0"
-description = "Python bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many."
+description = "JSONLogic (json-logic) rules engine for Python — native Rust core, compile-once/evaluate-many, identical semantics across Python, Node.js, WASM, Go, Java, .NET, PHP, and Rust."
 readme = "README.md"
 requires-python = ">=3.10"
 # PEP 639 SPDX expression + license-files: maturin embeds the matched
@@ -24,7 +24,7 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Harishankar Narayanan", email = "nharishankar@gmail.com" },
 ]
-keywords = ["jsonlogic", "rules-engine", "business-rules", "feature-flags", "expression-engine", "json", "logic"]
+keywords = ["jsonlogic", "json-logic", "rules-engine", "business-rules", "feature-flags", "openfeature", "flagd", "expression-engine"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",

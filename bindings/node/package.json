@@ -1,7 +1,7 @@
 {
   "name": "@goplasmatic/datalogic-node",
   "version": "5.0.0",
-  "description": "Native Node.js bindings for the datalogic-rs JSONLogic engine — compile-once, evaluate-many.",
+  "description": "JSONLogic (json-logic) rules engine for Node.js — native Rust core via N-API, compile-once/evaluate-many. A fast alternative to json-logic-js with identical semantics across Node, browsers/WASM, Python, Go, Java, .NET, PHP, and Rust.",
   "main": "index.js",
   "types": "index.d.ts",
   "author": "Harishankar Narayanan <nharishankar@gmail.com>",
@@ -13,12 +13,17 @@
   },
   "keywords": [
     "jsonlogic",
+    "json-logic",
+    "json-logic-js",
     "rules-engine",
     "business-rules",
+    "expression-engine",
     "feature-flags",
-    "json",
-    "logic",
-    "napi"
+    "openfeature",
+    "flagd",
+    "napi",
+    "native",
+    "rust"
   ],
   "engines": {
     "node": ">= 18"

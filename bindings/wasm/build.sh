@@ -86,7 +86,7 @@ cat > pkg/package.json << EOF
 {
   "name": "@goplasmatic/datalogic-wasm",
   "version": "$VERSION",
-  "description": "High-performance JSONLogic engine for JavaScript/TypeScript - WebAssembly powered",
+  "description": "JSONLogic (json-logic) rules engine for browsers, edge, Deno, Bun, and Node — Rust core compiled to WebAssembly. A fast alternative to json-logic-js with identical semantics across 8 runtimes; flagd-compatible operators for OpenFeature-style feature flags.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -98,16 +98,17 @@ cat > pkg/package.json << EOF
   },
   "keywords": [
     "jsonlogic",
-    "json",
-    "logic",
-    "rules",
+    "json-logic",
+    "json-logic-js",
     "rules-engine",
-    "wasm",
-    "webassembly",
     "business-rules",
+    "expression-engine",
     "feature-flags",
     "openfeature",
-    "flagd"
+    "flagd",
+    "wasm",
+    "webassembly",
+    "browser"
   ],
   "type": "module",
   "main": "./nodejs/datalogic_wasm.js",

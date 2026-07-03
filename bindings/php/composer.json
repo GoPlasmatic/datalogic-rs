@@ -1,10 +1,10 @@
 {
     "name": "goplasmatic/datalogic",
-    "description": "PHP bindings for the datalogic-rs JSONLogic engine via PHP FFI over the shared C ABI.",
+    "description": "PHP bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via PHP FFI. Identical semantics across PHP, Node.js, WASM, Python, Go, Java, .NET, and Rust.",
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://github.com/GoPlasmatic/datalogic-rs",
-    "keywords": ["jsonlogic", "rules-engine", "datalogic", "ffi"],
+    "keywords": ["jsonlogic", "json-logic", "rules-engine", "business-rules", "expression-engine", "feature-flags", "openfeature", "flagd", "ffi", "datalogic"],
     "require": {
         "php": "^8.4",
         "ext-ffi": "*",

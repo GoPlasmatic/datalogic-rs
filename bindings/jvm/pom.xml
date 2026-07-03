@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>datalogic</name>
-    <description>Java bindings for the datalogic-rs JSONLogic engine via JNA over the shared C ABI.</description>
+    <description>Java/JVM bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via JNA. Compile once, evaluate in nanoseconds; identical semantics across Java, Kotlin, Scala, .NET, Python, Go, Node.js, WASM, PHP, and Rust.</description>
     <url>https://github.com/GoPlasmatic/datalogic-rs</url>
 
     <licenses>

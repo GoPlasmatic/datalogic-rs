@@ -12,10 +12,10 @@ authors.workspace = true
 repository.workspace = true
 homepage = "https://github.com/GoPlasmatic/datalogic-rs"
 documentation = "https://docs.rs/datalogic-rs"
-description = "A fast, type-safe Rust implementation of JSONLogic for evaluating logical rules as JSON. Perfect for business rules engines and dynamic filtering in Rust applications."
+description = "High-performance JSONLogic (json-logic) rules engine and sandboxed expression evaluator in Rust — one core, official bindings for Node.js, WASM, Python, Go, Java, .NET, and PHP. Compile once, evaluate in nanoseconds."
 readme = "README.md"
-keywords = ["jsonlogic", "rules-engine", "business-rules", "json", "logic"]
-categories = ["data-structures", "development-tools", "parsing"]
+keywords = ["jsonlogic", "json-logic", "rules-engine", "business-rules", "feature-flags"]
+categories = ["parser-implementations", "wasm", "development-tools"]
 exclude = [".DS_Store"]
 
 # docs.rs builds with the default feature set unless told otherwise. Our

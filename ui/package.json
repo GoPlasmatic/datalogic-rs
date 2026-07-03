@@ -3,16 +3,20 @@
   "private": false,
   "version": "5.0.0",
   "type": "module",
-  "description": "DataLogic Debugger - Visual JSONLogic Debugger & Editor for debugging and visualizing JSONLogic expressions",
+  "description": "React rule builder, visual debugger, and editor for JSONLogic (json-logic) — flow-diagram view and live execution tracing, powered by the datalogic-rs WASM engine.",
   "keywords": [
-    "JSONLogic Debugger",
-    "DataLogic Debugger",
-    "JSONLogic",
-    "DataLogic",
-    "visual debugger",
-    "logic editor",
+    "jsonlogic",
+    "json-logic",
+    "rules-engine",
+    "rule-builder",
+    "rule-editor",
+    "visual-debugger",
+    "logic-editor",
+    "business-rules",
     "react",
-    "flow diagram"
+    "react-component",
+    "flow-diagram",
+    "debugger"
   ],
   "homepage": "https://goplasmatic.github.io/datalogic-rs/playground/",
   "repository": {

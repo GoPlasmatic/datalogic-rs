@@ -1,9 +1,10 @@
-// Package datalogic provides Go bindings for the datalogic-rs JSONLogic
-// engine.
+// Package datalogic implements a JSONLogic (json-logic) rules engine for
+// Go, backed by the datalogic-rs native Rust core.
 //
-// The binding routes through the shared C ABI in bindings/c/ and links
-// libdatalogic_c.a statically. Run `make build` once after cloning to
-// produce the static library that cgo links against.
+// One engine, identical semantics across Go, Node.js, WASM, Python, Java,
+// .NET, PHP, and Rust: the binding routes through the shared C ABI in
+// bindings/c/ and links libdatalogic_c.a statically. Run `make build` once
+// after cloning to produce the static library that cgo links against.
 //
 // # Quick start
 //

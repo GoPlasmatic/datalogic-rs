@@ -16,11 +16,11 @@
     <Version>5.0.0</Version>
     <Authors>Plasmatic</Authors>
     <Company>Plasmatic</Company>
-    <Description>.NET bindings for the datalogic-rs JSONLogic engine. Wraps the shared C ABI via P/Invoke.</Description>
+    <Description>.NET bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via P/Invoke. Compile once, evaluate in nanoseconds; identical semantics across .NET, Java, Python, Go, Node.js, WASM, PHP, and Rust.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/GoPlasmatic/datalogic-rs</RepositoryUrl>
     <PackageProjectUrl>https://github.com/GoPlasmatic/datalogic-rs</PackageProjectUrl>
-    <PackageTags>jsonlogic;rules-engine;datalogic;native</PackageTags>
+    <PackageTags>jsonlogic;json-logic;rules-engine;business-rules;expression-engine;feature-flags;openfeature;flagd;datalogic;native</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeBuildOutput>true</IncludeBuildOutput>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
