@@ -135,18 +135,18 @@ let engine = Engine::builder()
 
 - The repo-root [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
   has the per-call cookbook.
-- [`api/reference.md`](api/reference.md) covers every v5 method.
+- [`rust/api-reference.md`](rust/api-reference.md) covers every v5 method.
 - [`getting-started/quick-start.md`](getting-started/quick-start.md)
   walks through the new module-level helpers.
 
-[`Engine`]: api/reference.md
-[`Logic`]: api/reference.md
+[`Engine`]: rust/api-reference.md
+[`Logic`]: rust/api-reference.md
 [`CustomOperator`]: advanced/custom-operators.md
-[`DataValue`]: api/reference.md
-[`Session`]: api/reference.md
-[`TracedRun<R>`]: api/reference.md
-[`IntoLogic`]: api/reference.md
-[`Engine::builder()`]: api/reference.md
+[`DataValue`]: rust/api-reference.md
+[`Session`]: rust/api-reference.md
+[`TracedRun<R>`]: rust/api-reference.md
+[`IntoLogic`]: rust/api-reference.md
+[`Engine::builder()`]: rust/api-reference.md
 
 ---
 
@@ -161,6 +161,6 @@ the [v4-to-v5 section](#v4-to-v5-migration) above and the repo-root
 
 If you encounter issues during migration:
 
-1. Check the [API Reference](api/reference.md)
-2. Review the [examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/examples)
+1. Check the [API Reference](rust/api-reference.md)
+2. Review the [examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples)
 3. Open an issue on [GitHub](https://github.com/GoPlasmatic/datalogic-rs/issues)

@@ -1,7 +1,7 @@
-# Playground
+# Playground (inline)
 
 > **Want the full experience?** Try the [Full-Page Visual Editor](playground/) with examples
-> and resizable panels.
+> and resizable panels. This page embeds the same widget inline for quick checks.
 
 Try JSONLogic expressions right in your browser! This playground uses the visual debugger component powered by WebAssembly.
 

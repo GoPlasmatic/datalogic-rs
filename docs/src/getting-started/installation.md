@@ -32,6 +32,28 @@ pip install datalogic-py
 go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5
 ```
 
+```java
+// Maven: pom.xml
+<dependency>
+    <groupId>io.github.goplasmatic</groupId>
+    <artifactId>datalogic</artifactId>
+    <version>5.0.0</version>
+</dependency>
+
+// Gradle: build.gradle.kts
+implementation("io.github.goplasmatic:datalogic:5.0.0")
+```
+
+```csharp
+// dotnet CLI
+dotnet add package Goplasmatic.Datalogic
+```
+
+```php
+// Composer
+composer require goplasmatic/datalogic
+```
+
 </div>
 
 > **Note for Rust users:** v5 does **not** require `serde_json` by default — the canonical
@@ -85,9 +107,9 @@ instructions and the language-idiomatic API:
 | JavaScript / TypeScript (WASM) | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)       | `npm i @goplasmatic/datalogic-wasm`                              | [JS / TS docs](../javascript/installation.md)        |
 | Python                         | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                                         | `pip install datalogic-py`                                       | [Python docs](../python/installation.md)    |
 | Go                             | `datalogic-go`                                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5`      | [Go docs](../go/installation.md)            |
-| JVM (Java, Kotlin, Scala)      | [`io.github.goplasmatic:datalogic`](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | Maven Central dependency                                  | [Java / Kotlin docs](../ffi/jvm.md)          |
-| .NET                           | [`Goplasmatic.Datalogic`](https://www.nuget.org/packages/Goplasmatic.Datalogic)                  | `dotnet add package Goplasmatic.Datalogic`                       | [.NET docs](../ffi/dotnet.md)    |
-| PHP                            | [`goplasmatic/datalogic`](https://packagist.org/packages/goplasmatic/datalogic)                  | `composer require goplasmatic/datalogic`                         | [PHP docs](../ffi/php.md)          |
+| JVM (Java, Kotlin, Scala)      | [`io.github.goplasmatic:datalogic`](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | Maven Central dependency                                  | [Java / Kotlin docs](../jvm.md)          |
+| .NET                           | [`Goplasmatic.Datalogic`](https://www.nuget.org/packages/Goplasmatic.Datalogic)                  | `dotnet add package Goplasmatic.Datalogic`                       | [.NET docs](../dotnet.md)    |
+| PHP                            | [`goplasmatic/datalogic`](https://packagist.org/packages/goplasmatic/datalogic)                  | `composer require goplasmatic/datalogic`                         | [PHP docs](../php.md)          |
 | React (visual debugger)        | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui)           | `npm i @goplasmatic/datalogic-ui`                                | [React docs](../react-ui/installation.md)                              |
 
 Building the WASM binding from source:
@@ -120,14 +142,11 @@ fn main() {
 
 ```javascript
 // index.js
-import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+import { apply } from '@goplasmatic/datalogic-node';
 
-async function run() {
-  await init();
-  const result = evaluate('{"+": [1, 2]}', '{}', false);
-  console.log(`1 + 2 = ${result}`); // 1 + 2 = 3
-}
-run();
+const result = apply({ '+': [1, 2] }, {});
+console.log(`1 + 2 = ${result}`); // 1 + 2 = 3
+// browser/edge: same API via @goplasmatic/datalogic-wasm, see the WASM chapter
 ```
 
 ```python
@@ -151,6 +170,39 @@ func main() {
     result, _ := datalogic.Apply(`{"+": [1, 2]}`, `{}`)
     fmt.Printf("1 + 2 = %s\n", result) // 1 + 2 = 3
 }
+```
+
+```java
+// Main.java
+import com.goplasmatic.datalogic.Engine;
+
+public class Main {
+    public static void main(String[] args) {
+        try (Engine engine = new Engine()) {
+            String result = engine.apply("{\"+\": [1, 2]}", "{}");
+            System.out.println("1 + 2 = " + result); // 1 + 2 = 3
+        }
+    }
+}
+```
+
+```csharp
+// Program.cs
+using Goplasmatic.Datalogic;
+
+using var engine = new Engine();
+var result = engine.Apply("""{"+": [1, 2]}""", "{}");
+Console.WriteLine($"1 + 2 = {result}"); // 1 + 2 = 3
+```
+
+```php
+<?php // test.php
+require 'vendor/autoload.php';
+
+use Goplasmatic\Datalogic\Engine;
+
+$engine = new Engine();
+echo "1 + 2 = " . $engine->apply('{"+": [1, 2]}', '{}'); // 1 + 2 = 3
 ```
 
 </div>

@@ -25,30 +25,34 @@
     - [Error Handling](operators/error-handling.md)
     - [flagd-Compat (`fractional`, `sem_ver`)](operators/flagd.md)
 
-# Language & UI Bindings
+# Languages
 
-- [JavaScript / TypeScript (WASM)](javascript/installation.md)
+- [Rust (native crate)](rust/overview.md)
+    - [API Reference](rust/api-reference.md)
+- [Node.js (native)](nodejs/overview.md)
+- [JavaScript in the Browser & Edge (WASM)](javascript/installation.md)
     - [Quick Start](javascript/quick-start.md)
     - [API Reference](javascript/api-reference.md)
     - [Framework Integration](javascript/frameworks.md)
 - [Python (datalogic-py)](python/installation.md)
     - [Quick Start](python/quick-start.md)
     - [API & GIL Management](python/api-gil.md)
+    - [Configuration & Errors](python/configuration-and-errors.md)
 - [Go (datalogic-go)](go/installation.md)
     - [Quick Start](go/quick-start.md)
     - [Concurrency & Sessions](go/concurrency.md)
-- [C-FFI (Java, .NET, PHP)](ffi/overview.md)
-    - [Java / Kotlin (JNA)](ffi/jvm.md)
-    - [.NET / C# (P/Invoke)](ffi/dotnet.md)
-    - [PHP (FFI)](ffi/php.md)
-    - [Memory & Safety](ffi/memory-safety.md)
+    - [Configuration & Errors](go/configuration-and-errors.md)
+- [Java / Kotlin (JVM)](jvm.md)
+- [.NET (C# / F#)](dotnet.md)
+- [PHP](php.md)
+- [C ABI (embedding & new bindings)](c-abi.md)
 - [React Visual Debugger](react-ui/installation.md)
     - [Quick Start](react-ui/quick-start.md)
     - [Modes](react-ui/modes.md)
     - [Props & API](react-ui/props-api.md)
     - [Customization](react-ui/customization.md)
 
-# Advanced
+# Guides
 
 - [Custom Operators](advanced/custom-operators.md)
 - [Configuration](advanced/configuration.md)
@@ -58,7 +62,6 @@
 
 # Reference
 
-- [API Reference](api/reference.md)
 - [Use Cases & Examples](use-cases/examples.md)
 - [Performance](performance.md)
 - [How It Compares](comparison.md)

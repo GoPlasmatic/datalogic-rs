@@ -52,8 +52,9 @@ let shared = std::sync::Arc::new(compiled);
 ```
 
 ```javascript
-// Compiles to a reusable Rule (the engine-less CompiledRule class is separate)
-const rule = engine.compile('{">": [{"var": "x"}, 10]}');
+// Compiles to a reusable Rule handle
+const rule = engine.compile({ '>': [{ var: 'x' }, 10] });
+// browser/edge: same API via @goplasmatic/datalogic-wasm, see the WASM chapter
 ```
 
 ```python
@@ -65,6 +66,21 @@ rule = engine.compile({">": [{"var": "x"}, 10]})
 // Compiles to a reusable *Rule
 rule, _ := engine.Compile(`{">": [{"var": "x"}, 10]}`)
 defer rule.Close()
+```
+
+```java
+// Compiles to a reusable Rule (AutoCloseable; thread-safe, share freely)
+Rule rule = engine.compile("{\">\": [{\"var\": \"x\"}, 10]}");
+```
+
+```csharp
+// Compiles to a reusable Rule (IDisposable; thread-safe, share freely)
+using var rule = engine.Compile("""{">": [{"var": "x"}, 10]}""");
+```
+
+```php
+// Compiles to a reusable Rule object
+$rule = $engine->compile('{">": [{"var": "x"}, 10]}');
 ```
 
 </div>
@@ -89,12 +105,16 @@ session.reset(); // Reset between batches
 ```
 
 ```javascript
-import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
-await init();
+import { Engine } from '@goplasmatic/datalogic-node';
 
-const rule = new CompiledRule('{">": [{"var": "x"}, 10]}', false);
-const result = rule.evaluate('{"x": 42}');
-console.log(result); // "true"
+const engine = new Engine();
+const rule = engine.compile({ '>': [{ var: 'x' }, 10] });
+
+// Session reuses one arena across calls
+const sess = engine.session();
+const result = sess.evaluate(rule, { x: 42 });
+console.log(result); // true
+// browser/edge: same API via @goplasmatic/datalogic-wasm, see the WASM chapter
 ```
 
 ```python
@@ -120,6 +140,36 @@ defer session.Close()
 
 result, _ := session.Evaluate(rule, `{"x": 42}`)
 fmt.Println(result) // "true"
+```
+
+```java
+// try-with-resources frees the native handles
+try (Engine engine = new Engine();
+     Rule rule = engine.compile("{\">\": [{\"var\": \"x\"}, 10]}");
+     Session session = engine.openSession()) {
+    String result = session.evaluate(rule, "{\"x\": 42}");
+    System.out.println(result); // "true"
+}
+```
+
+```csharp
+using var engine = new Engine();
+using var rule = engine.Compile("""{">": [{"var": "x"}, 10]}""");
+
+// Session reuses one arena across calls
+using var session = engine.OpenSession();
+var result = session.Evaluate(rule, """{"x": 42}""");
+Console.WriteLine(result); // "true"
+```
+
+```php
+$engine = new Engine();
+$rule = $engine->compile('{">": [{"var": "x"}, 10]}');
+
+// Session reuses one arena across calls
+$session = $engine->openSession();
+$result = $session->evaluate($rule, '{"x": 42}');
+echo $result; // "true"
 ```
 
 </div>
@@ -194,6 +244,53 @@ engineWithOps := datalogic.NewEngineBuilder().
     }).
     Build()
 defer engineWithOps.Close()
+```
+
+```java
+import com.goplasmatic.datalogic.Engine;
+
+// 1. Default engine (AutoCloseable; close it when done)
+Engine engine = new Engine();
+
+// 2. Engine with custom operators via the builder
+// (argsJson is a JSON array string; parse with your JSON library, Jackson shown)
+Engine engineWithOps = Engine.builder()
+    .addOperator("double", argsJson -> {
+        int n = mapper.readTree(argsJson).get(0).asInt();
+        return String.valueOf(n * 2);
+    })
+    .build();
+```
+
+```csharp
+using Goplasmatic.Datalogic;
+
+// 1. Default engine
+using var engine = new Engine();
+
+// 2. Engine with custom operators via the builder
+using var engineWithOps = Engine.Builder()
+    .AddOperator("double", argsJson =>
+    {
+        var n = System.Text.Json.Nodes.JsonNode.Parse(argsJson)![0]!.GetValue<double>();
+        return (n * 2).ToString();
+    })
+    .Build();
+```
+
+```php
+use Goplasmatic\Datalogic\Engine;
+
+// 1. Default engine
+$engine = new Engine();
+
+// 2. Engine with custom operators via the builder
+$engineWithOps = Engine::builder()
+    ->addOperator('double', function (string $argsJson): string {
+        $args = json_decode($argsJson, true);
+        return (string) ((int) $args[0] * 2);
+    })
+    ->build();
 ```
 
 </div>

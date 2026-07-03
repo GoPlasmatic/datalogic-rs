@@ -77,7 +77,7 @@ assert_eq!(result, "42");
 ```
 
 ```javascript
-// Node.js (native FFI)
+// Node.js (native FFI): pass a { name: fn } map as the second constructor argument
 import { Engine } from '@goplasmatic/datalogic-node';
 const engine = new Engine({}, {
   double: (argsJson) => {
@@ -85,18 +85,8 @@ const engine = new Engine({}, {
     return JSON.stringify(args[0] * 2);
   }
 });
-
-// WASM (browser / bundler)
-import init, { Engine as WasmEngine } from '@goplasmatic/datalogic-wasm';
-await init();
-const engineWasm = new WasmEngine({
-  customOperators: {
-    double: (argsJson) => {
-      const args = JSON.parse(argsJson);
-      return JSON.stringify(args[0] * 2);
-    }
-  }
-});
+// browser/edge: same callback shape via @goplasmatic/datalogic-wasm
+// (customOperators constructor option), see the WASM chapter
 ```
 
 ```python
@@ -127,6 +117,48 @@ engine := datalogic.NewEngineBuilder().
     }).
     Build()
 defer engine.Close()
+```
+
+```java
+// Java (JNA)
+import com.goplasmatic.datalogic.Engine;
+
+// argsJson is a JSON array string; parse with your JSON library (Jackson shown)
+try (Engine engine = Engine.builder()
+        .addOperator("double", argsJson -> {
+            int n = mapper.readTree(argsJson).get(0).asInt();
+            return String.valueOf(n * 2);
+        })
+        .build()) {
+    System.out.println(engine.apply("{\"double\": [21]}", "{}")); // "42"
+}
+```
+
+```csharp
+// C# / .NET
+using Goplasmatic.Datalogic;
+
+using var engine = Engine.Builder()
+    .AddOperator("double", argsJson =>
+    {
+        var n = System.Text.Json.Nodes.JsonNode.Parse(argsJson)![0]!.GetValue<double>();
+        return (n * 2).ToString();
+    })
+    .Build();
+Console.WriteLine(engine.Apply("""{"double": [21]}""", "{}")); // "42"
+```
+
+```php
+// PHP
+use Goplasmatic\Datalogic\Engine;
+
+$engine = Engine::builder()
+    ->addOperator('double', function (string $argsJson): string {
+        $args = json_decode($argsJson, true);
+        return (string) ((int) $args[0] * 2);
+    })
+    ->build();
+echo $engine->apply('{"double": [21]}', '{}'); // "42"
 ```
 
 </div>

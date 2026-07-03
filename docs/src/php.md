@@ -83,3 +83,9 @@ $engine->close();
 In PHP, FFI-allocated memory is released when wrapper objects go out of scope and are collected by the PHP engine. However, in long-running environments (such as PHP-FPM, Swoole, RoadRunner, or CLI daemons), garbage collection delays can accumulate heap usage. 
 
 To guarantee immediate cleanup, call `$object->close()` explicitly on the `Engine`, `Rule`, or `Session` wrappers.
+
+## Going deeper
+
+- [C ABI internals: memory management & thread safety](c-abi.md) — the native-heap ownership rules every FFI binding shares
+- [Engine configuration semantics](advanced/configuration.md)
+- [Package README on Packagist](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/php#readme) — full API surface, error types, and platform table

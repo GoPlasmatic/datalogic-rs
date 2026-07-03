@@ -42,3 +42,5 @@ for user in [{"score": 75}, {"score": 30}, {"score": 90}]:
 
 *   `rule.evaluate(dict_data)` accepts a Python `dict` or `list` and converts it directly into Rust types using `pythonize`. This is 3–10× faster than a standard JSON-string round-trip.
 *   `rule.evaluate_str(json_string)` accepts a raw JSON string. If you already have a serialized JSON payload (e.g. read from a network socket or file), use this method to bypass Python-to-Rust dictionary marshaling completely.
+
+Next: [Configuration & Errors](configuration-and-errors.md) covers engine configuration presets, the exception hierarchy, and type conversion.

@@ -6,14 +6,46 @@ positions it against the alternatives people most often evaluate it beside.
 For raw numbers and methodology, see [Performance](performance.md) and the
 [benchmark matrix](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).
 
-| Dimension | datalogic-rs | [json-logic-js](https://github.com/jwadhams/json-logic-js) | [json-logic-engine](https://github.com/TotalTechGeek/json-logic-engine) | [GoRules ZEN](https://github.com/gorules/zen) | [CEL](https://cel.dev/) |
-|---|---|---|---|---|---|
-| Format | JSONLogic (JSON data) | JSONLogic (defines the standard) | JSONLogic superset | Proprietary JDM + Zen expression language | CEL expression grammar (not JSON) |
-| Languages | One core, official bindings for Rust, Node, WASM, Python, Go, Java, .NET, PHP | JS core; other languages are separate community ports | JS/TS only | Rust core with several bindings | Go/Java mature, others varying |
-| Standard compliance | Passes the official JSONLogic test suite, plus opt-in extensions | The reference implementation | Superset with minor deviations | Not JSONLogic | Own spec |
-| Sandboxing | No `eval`, no I/O, core forbids unsafe code | No `eval` | No `eval` | Function nodes execute JavaScript (QuickJS) | Non-Turing-complete, strong formal story |
-| Tooling | React visual editor, step-through trace debugger, online playground | Play page | None official | JDM editor + commercial BRMS | Community playgrounds |
-| Extensibility | Custom operators per host language | Custom ops in JS | Custom ops (incl. async) in JS | Custom nodes | Extension functions per environment |
+| Dimension | datalogic-rs | [json-logic-js](https://github.com/jwadhams/json-logic-js) | [json-logic-engine](https://github.com/TotalTechGeek/json-logic-engine) | [jsonlogic-rs](https://github.com/bestowinc/json-logic-rs) | [GoRules ZEN](https://github.com/gorules/zen) | [CEL](https://cel.dev/) |
+|---|---|---|---|---|---|---|
+| Format | JSONLogic (JSON data) | JSONLogic (defines the standard) | JSONLogic superset | JSONLogic | Proprietary JDM + Zen expression language | CEL expression grammar (not JSON) |
+| Languages | One core, official bindings for Rust, Node, WASM, Python, Go, Java, .NET, PHP | JS core; other languages are separate community ports | JS/TS only | Rust (single crate, Python/WASM wrappers exist but stale) | Rust core with several bindings | Go/Java mature, others varying |
+| Standard compliance | Passes the official JSONLogic test suite, plus opt-in extensions | The reference implementation | Superset with minor deviations | Passes core suite | Not JSONLogic | Own spec |
+| Sandboxing | No `eval`, no I/O, core forbids unsafe code | No `eval` | No `eval` | No `eval` | Function nodes execute JavaScript (QuickJS) | Non-Turing-complete, strong formal story |
+| Tooling | React visual editor, step-through trace debugger, online playground | Play page | None official | None official | JDM editor + commercial BRMS | Community playgrounds |
+| Extensibility | Custom operators per host language | Custom ops in JS | Custom ops (incl. async) in JS | Limited | Custom nodes | Extension functions per environment |
+
+One naming collision deserves a call-out: `jsonlogic-rs` on crates.io is
+[bestowinc/json-logic-rs](https://github.com/bestowinc/json-logic-rs), a
+different project from this one despite the near-identical name. This crate
+is `datalogic-rs`. The two are compared directly
+[below](#jsonlogic-rs-bestowinc).
+
+## One engine vs. N ports
+
+JSONLogic's core promise is portability: rules are plain JSON, so any
+language can evaluate them. The ecosystem's structural problem is how that
+promise gets delivered. json-logic-js is the JavaScript reference, and every
+other language depends on an independent reimplementation: separate
+community ports for Python, PHP, Go, Ruby, Java, and more, each with its own
+maintainer, release cadence, and bug tail. The ports drift. Truthiness edge
+cases, type coercion, null handling, and error behavior diverge one patch
+release at a time, and a rule that passes tests in your Node service can
+quietly evaluate differently in your Python batch job.
+
+datalogic-rs inverts the model: one Rust core, compiled into every runtime.
+The Node addon, the WASM package, the Python wheel, and the Go, Java, .NET,
+and PHP bindings all embed the same engine; none of them reimplements a
+single operator. Semantic parity across languages is a build artifact, not a
+hope, and two concrete checks keep it that way:
+
+- The same 1,532-case conformance battery (53 suites) runs against the core
+  in CI. Every binding ships the exact engine those cases validated, so
+  there is no per-language test matrix to fall behind.
+- The flagd [`fractional` operator](operators/flagd.md) is byte-compatible
+  with the canonical Go evaluator's MurmurHash3 bucketing, so even
+  hash-based percentage rollouts put the same user in the same bucket in
+  every language.
 
 ## When to choose which
 
@@ -21,31 +53,138 @@ For raw numbers and methodology, see [Performance](performance.md) and the
 database column, diffed in review, generated by a UI, and evaluated with
 identical semantics on the client and every backend service. Its two most
 distinctive properties are one engine shared binary-identically across eight
-languages, and an official visual debugger for the standard.
+languages, and an official visual debugger for the standard. Each
+alternative below is genuinely the better pick in its own lane.
 
-**json-logic-js** is the reference implementation and defines the JSONLogic
-standard. If you only need JavaScript and are comfortable with the reference
-engine's performance, it is the canonical choice. datalogic-rs passes the
-same official suite, so existing json-logic-js rules run unchanged (see
-[Coming from json-logic-js](coming-from-json-logic-js.md)) while adding
-native-speed evaluation and the other language bindings.
+### json-logic-js
 
-**json-logic-engine** is the fast, actively maintained JavaScript engine. It
-is the credible JS-side alternative on speed. datalogic-rs differs by
-offering one core across many languages, native (non-JS) bindings, and the
-visual tooling; json-logic-engine offers JS-native ergonomics like async
-custom operators.
+The reference implementation, and the project that defines the JSONLogic
+standard. datalogic-rs passes the same official test suite, so existing
+json-logic-js rules run unchanged.
 
-**GoRules ZEN** is a business-rules platform built around decision tables
-and graphs (a proprietary JDM format), with a commercial editor. Reach for
-it when you want a full BRMS abstraction for business users. datalogic-rs is
-a lighter embedding around an open standard, with a stricter sandbox (ZEN's
-function nodes run JavaScript; datalogic-rs executes no rule-supplied code at
-all).
+**Choose it when:** you only need JavaScript, you value the smallest and
+most battle-tested dependency, and the reference engine's performance is
+comfortable at your rule volume. As the standard's source of truth, it is
+the canonical choice for a JS-only stack.
 
-**CEL** (Common Expression Language) owns the "safe expression language"
-space in the Kubernetes and Envoy ecosystems, with a strong non-Turing-complete
-guarantee. Choose CEL when you want an expression grammar and its ecosystem
-integrations. datalogic-rs's wedge is that rules are plain JSON: storable,
-diffable, and UI-generatable with no grammar or parser, plus an official
-visual editor.
+**Choose datalogic-rs when:** the same rules must also run outside
+JavaScript, evaluation is hot enough to show up in profiles (the native
+engine measures about 44x faster across the shared benchmark suites), or
+you want the visual debugger and playground.
+
+Migrating is close to a package swap; the full mapping is in
+[Coming from json-logic-js](coming-from-json-logic-js.md).
+
+### json-logic-engine
+
+The fast, actively maintained JavaScript engine, and the credible JS-side
+alternative on speed: its compiled mode is the only non-Rust subject in the
+same order of magnitude as datalogic-rs in the benchmark matrix.
+
+**Choose it when:** your stack is JS/TS end to end and you want JS-native
+ergonomics, above all async custom operators, which a compiled-core engine
+cannot offer as naturally.
+
+**Choose datalogic-rs when:** you need one core across many languages,
+native (non-JS) bindings, closer adherence to the reference semantics, or
+the visual tooling. Rules that stay inside the shared JSONLogic standard
+carry over unchanged.
+
+### jsonlogic-rs (bestowinc)
+
+The identically named neighbor on crates.io, and the comparison people
+search for most. jsonlogic-rs is a single-crate Rust implementation of core
+JSONLogic with an `apply(&Value, &Value)` API: there is no compile step, so
+every call re-walks the rule JSON. Python and WASM wrappers exist in the
+same repository but have not seen recent releases. It is a reasonable, small
+dependency for occasional evaluation of standard rules.
+
+**Choose it when:** you want a minimal one-function crate, your rules stick
+to the core standard, and evaluations are infrequent enough that per-call
+rule walking does not matter.
+
+**Choose datalogic-rs when:** evaluation is hot (compile-once evaluation
+measures about 22x faster geomean on the shared suites), you need the
+extended operators (datetime, string, `try`/`throw`, flagd), custom
+operators, tracing, or any of the non-Rust bindings. Both engines speak
+JSONLogic, so rules carry over unchanged; switching is confined to the Rust
+call sites, and the [quick start](getting-started/quick-start.md) shows the
+equivalent one-liner.
+
+### GoRules ZEN
+
+A business-rules platform built around decision tables and graphs (a
+proprietary JDM format), with a commercial editor. It solves a bigger
+problem than expression evaluation.
+
+**Choose it when:** you want a full BRMS abstraction for business users:
+decision tables, graph orchestration, and a polished commercial editing
+experience on top of the engine.
+
+**Choose datalogic-rs when:** you want a lighter embedding around an open
+standard, or a stricter sandbox: ZEN's function nodes run JavaScript
+(QuickJS), while datalogic-rs executes no rule-supplied code at all.
+
+### CEL
+
+Common Expression Language owns the "safe expression language" space in the
+Kubernetes and Envoy ecosystems, with a strong non-Turing-complete guarantee
+and a formal spec.
+
+**Choose it when:** you want an expression grammar (not JSON) and its
+ecosystem integrations, or you already live in a CEL-native environment
+such as Kubernetes admission control.
+
+**Choose datalogic-rs when:** rules should be plain JSON: storable,
+diffable, and UI-generatable with no grammar or parser to maintain, plus an
+official visual editor for the people who write the rules.
+
+## The numbers
+
+Geomean execution time across 44 benchmark suites (Apple M2 Pro; median of
+3 samples; methodology in the
+[benchmark matrix](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)).
+
+<!-- canonical-bench v5.0 -->
+```text
+datalogic-rs (native Rust)              | 9.7 ns   (■) 1x
+json-logic-engine (JS, compiled)        | 47.2 ns  (■■■■■) 4.9x
+json-logic-engine (JS, interpreted)     | 160.3 ns (■■■■■■■■■■■■■■■■) 16.5x
+jsonlogic-rs (bestowinc Rust engine)    | 218.0 ns (■■■■■■■■■■■■■■■■■■■■■) 22.5x
+json-logic-js (Reference JS library)    | 423.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 43.7x
+```
+
+One honest caveat: the WASM build under Node measures 855.6 ns (88x
+native), so on Node servers the native binding is the fast path; the WASM
+package is for browsers and edge runtimes.
+
+## Proof: the same rule everywhere
+
+One rule, one datum, eight runtimes:
+
+```json
+{
+  "and": [
+    {">=": [{"var": "age"}, 18]},
+    {"==": [{"var": "status"}, "active"]}
+  ]
+}
+```
+
+With data `{"age": 25, "status": "active"}`, every binding returns `true`:
+
+| Runtime | One-line call |
+|---|---|
+| Rust | `datalogic_rs::eval_str(rule, data)?` |
+| Node.js | `apply(rule, data)` |
+| Browser (WASM) | `evaluate(rule, data, false)` |
+| Python | `apply(rule, data)` |
+| Go | `datalogic.Apply(rule, data)` |
+| Java | `engine.apply(rule, data)` |
+| C# | `engine.Apply(rule, data)` |
+| PHP | `$engine->apply($rule, $data)` |
+
+Not eight lookalike engines: the same compiled core behind eight call
+signatures. Try the rule live in the
+[playground](https://goplasmatic.github.io/datalogic-rs/playground/), then
+pick your language in [Installation](getting-started/installation.md).

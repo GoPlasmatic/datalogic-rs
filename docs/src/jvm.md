@@ -1,6 +1,6 @@
-# Java / Kotlin (JNA)
+# Java / Kotlin (JVM)
 
-The Java binding uses Java Native Access (JNA) to wrap the shared C ABI. It supports **JDK 11 and newer**.
+The JVM binding `io.github.goplasmatic:datalogic` uses Java Native Access (JNA) to wrap the shared C ABI. It supports **JDK 11 and newer** and works from Java, Kotlin, and Scala.
 
 ## Installation
 
@@ -91,3 +91,9 @@ public class Main {
 
 *   `Engine` and `Rule` instances are fully thread-safe and can be shared globally.
 *   `Session` instances are **not** thread-safe and must be kept local to individual threads.
+
+## Going deeper
+
+- [C ABI internals: memory management & thread safety](c-abi.md) — the native-heap ownership rules every FFI binding shares
+- [Engine configuration semantics](advanced/configuration.md)
+- [Package README on Maven Central](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#readme) — full API surface, error types, and platform table

@@ -58,3 +58,5 @@ func main() {
     fmt.Println(result2) // "fail"
 }
 ```
+
+Next: [Configuration & Errors](configuration-and-errors.md) covers engine configuration via the builder and the `*datalogic.Error` type.

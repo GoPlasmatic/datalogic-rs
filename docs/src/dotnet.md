@@ -62,3 +62,9 @@ foreach (var input in dataset)
 *   `Engine` and `Rule` instances are thread-safe and can be shared globally.
 *   `Session` instances are **not** thread-safe and must be kept local to individual threads.
 *   All public types implement `IDisposable`. If a developer forgets to call `Dispose()`, the wrappers contain finalizers to release native memory as a best-effort fallback. However, explicit disposal is highly recommended to prevent resource starvation.
+
+## Going deeper
+
+- [C ABI internals: memory management & thread safety](c-abi.md) — the native-heap ownership rules every FFI binding shares
+- [Engine configuration semantics](advanced/configuration.md)
+- [Package README on NuGet](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/dotnet#readme) — full API surface, error types, and platform table

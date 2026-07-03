@@ -25,3 +25,14 @@ runnable = false
 [output.html.fold]
 enable = true
 level = 1
+
+# Redirects for pages moved in the 2026-07 docs restructure (Languages
+# section promotion). Keys are old paths; values resolve relative to the
+# old page location.
+[output.html.redirect]
+"/api/reference.html" = "../rust/api-reference.html"
+"/ffi/jvm.html" = "../jvm.html"
+"/ffi/dotnet.html" = "../dotnet.html"
+"/ffi/php.html" = "../php.html"
+"/ffi/overview.html" = "../c-abi.html"
+"/ffi/memory-safety.html" = "../c-abi.html"

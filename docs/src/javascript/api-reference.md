@@ -110,7 +110,7 @@ interface Step {
 > The `TracedResult` JSON layout is the JavaScript-side wire shape and is
 > stable across the v4 → v5 cutover. On the Rust side it is produced from
 > a `datalogic_rs::TracedRun<String>` (see the
-> [Rust API reference](../api/reference.md#tracedrunr-feature--trace)).
+> [Rust API reference](../rust/api-reference.md#tracedrunr-feature--trace)).
 
 **Example:**
 ```javascript
